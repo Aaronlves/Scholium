@@ -218,94 +218,71 @@ top clearance belongs to the scrolling document.
 
 ### 5.2 Properties
 
-Properties keeps three independent contracts: canonical vocabulary and
-ownership, the default About profile, and creation requirements. Visibility
-does not imply recognition or editability. Analysis, Topic, and Work have no
-required creation property; the interface uses no asterisk or required-looking
-marker. Cross-field validation remains fail-closed for values that are supplied.
+Properties separates eight states that never imply one another: supported,
+applicable, recommended, Agent-required, creatable, present, About-visible,
+and structured-editable. Their owners are respectively the canonical property
+catalog, Analysis source-type profile, that profile's recommendation order,
+Triptych Agent-creation settings, role creation policy, exact YAML, the About
+profile, and the structured-edit allowlist. Exact New Note YAML and Zotero
+binding are separate contracts again; neither is inferred from these states.
 
-Each vault may configure visible About fields and order from its role-specific
-About catalog; no folder/note layouts or default disclosure state exist.
-Complete Properties is an explicit editing destination. Identity,
-fingerprints, provenance, protected-machine fields, and app facts are not
-ordinary Properties controls even when exact Source YAML contains them.
+Every canonical field is researcher-owned source metadata. Scholium has no
+protected-machine Property. Identity, fingerprints, provenance, bindings,
+timestamps, permissions, and app facts remain outside YAML even when a custom
+key has a similar name. Unknown or retired YAML remains byte-preserved custom
+source. Literal `property:` Search addressability grants no canonical meaning.
 
-`research_unit` is role-aware:
+Analysis recognizes the citation-ready catalog and source-type profiles in
+Appendix A. It uses string `publication_date`, never numeric `year`; publication
+state belongs to `publication_status`. Creator fields use ordered nonempty
+CreatorLists. Scholium validates shapes and source safety but never verifies or
+normalizes bibliographic truth, identifiers, URLs, language, dates, names,
+volume/issue/pages, or publisher data.
 
-- Analysis accepts `completion` and/or `limitations`;
-- Topic and Work accept `scope` and/or `limitations`; Work labels `scope`
-  **Research Scope**.
+`research_unit`, `completion`, and role-specific `scope` have no canonical
+meaning. All roles instead share optional top-level `limitations`, a nonempty
+ordered list of material boundaries. Analysis alone adds `source_basis`, a
+nonempty ordered list describing consulted material, version, range, or
+locator conditions; it is not completion or a quality grade. Existing
+`research_unit`, `year`, `access`, `text_reliability`, `locators`, Debate
+Importance, Work `kind`/`authors`/`venue`, and other retired bytes remain custom
+source without aliases, migration, dual reads, filters, or special UI.
 
-Empty mappings, unknown members, wrong member types, or members from another
-role are invalid. Removing one member preserves the others; only removing the
-last non-empty member removes the mapping. Limitations are material claim
-boundaries, never identity, links, confidence, timestamps, derived facts, or a
-generic workflow state. An authorized agent edit follows the Research Action
-Grant, conflict, fingerprint, and exact-source preservation rules.
-
-Analysis `completion` is `complete`, `incomplete`, or a quoted ratio such as
-`"6/11"`. A ratio requires a positive total and `0 <= completed <= total`.
-It states represented material only: it quietly reminds the researcher of
-incompleteness but does not identify units, certify adequacy, create a ledger,
-gate work, enter Search, or duplicate a Limitation. A single article in an
-edited collection may use the binary form. The researcher or an authorized
-agent chooses the form; Scholium never infers it from Zotero type, children,
-or page count.
-
-Analysis retains YAML `title` for source identity and agent indexing but About
-does not show it. Analysis resolves display identity as YAML `title`, then the
-first H1, then filename. Topic and Work do not recognize YAML `title`; both use
-the first H1, then filename. One shared resolver supplies Workspace, Search,
+Analysis YAML `title` is an optional analyzed-source title and resolves display
+identity before first H1 and filename. It is not shown in About. Topic and Work
+do not recognize YAML `title`; both resolve first H1, then filename. Rename
+never synchronizes YAML title or H1. One resolver supplies Workspace, Search,
 Link Graph, and Research Actions.
 
-Creation/modification times are app-owned Research Record facts, not
-Properties; timestamp keys in Markdown remain exact custom source.
+`summary` is an optional multiline navigation declaration about the current
+Note. It is not a source abstract, Skill, unified stance, completeness claim,
+Researcher State, acceptance, or writer proof. Researcher and authorized Agent
+edits share the exact-revision, attribution, conflict, and recovery boundary;
+the current value alone never identifies its author.
 
-`summary` is one optional canonical researcher-owned string Property shared by
-Analysis, Topic, and Work. It is a short human-readable navigation declaration
-about the current Note as a whole: what it studies, its distinctive scope or
-problem, and why a later researcher or Agent may need to open it. It is not a
-Skill, instruction, source, unified position, completeness assertion,
-Researcher State, or researcher acceptance. A substantive claim found through
-it must be checked against the current exact Note body and actual sources.
+Each Triptych role stores independent About order, structured-edit allowlist,
+and exact delimiter-free `newNoteYAML`. Analysis additionally stores per-source
+type Agent-required fields. The three built-in seeds and all built-in required
+sets are empty. About and edit defaults never materialize keys. Settings uses
+one explicit schema envelope and exact-byte `SettingsRevision`; save is an
+expected-revision atomic transaction with readback. Old, future, damaged,
+conflicting, and current-schema-needs-review states remain distinct and never
+fall back to overwriting defaults.
 
-Researcher and authorized Agent edits maintain the same YAML field through the
-ordinary exact-revision, attribution, conflict, and recovery boundary. There
-is no human/Agent pair, approval copy, pending summary, automatic backfill, or
-summary lifecycle. Missing, not-yet-written, and not-applicable are valid.
-Scholium never silently generates, overwrites, or claims freshness for it. A
-Scholium-mediated write or Research Record retains its actual actor only in the
-existing operation/Record owner that proves that act. The current Note revision
-and `summary` value alone do not identify their writer: Research Context reports
-that actor as unknown unless such an authoritative owner separately proves it.
-Authorization, the last Run, file location, macOS user, or vault ownership may
-not fill the gap. Agent authority does not turn the field into a
-researcher-authored stance, and Scholium creates no writer-history database to
-infer one. An uncommitted machine summary remains a disposable projection and
-can never write source.
-The field should preserve competing interpretations, historical differences,
-open questions, and mixed epistemic identities rather than compressing them
-into false consensus.
+Bundled prompt-template bodies are the sole decoded-value exception: their
+stable IDs select current app-bundled definitions projected in memory without
+rewriting `settings.json`. Researcher templates and active IDs remain exact
+portable settings; a missing or mismatched active ID needs review rather than
+being repaired.
 
-An Analysis may pair whole-number `debate_importance` (0–10) with
-`debate_importance_scope`. Both are required together and comparable only
-within the same named debate, domain, tradition, period, or reception context.
-It is not project relevance, source quality, truth, prestige, or citation
-impact. After choosing one exact scope, Library may sort rated Analyses high to
-low with unrated notes afterward. No global cross-debate ranking exists;
-Scholium neither generates nor presents Project Relevance. Existing
-`relevance` and `relevance_rating` are preserved custom data with no Scholium
-semantics.
-
-About omits absent fields without explanatory empty copy. Its role-specific
-order is defined in Appendix A. `status` has no Scholium semantics, query,
-index, filter, ordering, or UI. Work `deadline`, Topic/Work YAML `title`,
-required markers, and **Open Properties by Default** likewise do not exist.
-Unknown source YAML remains byte-preserved but acquires no Scholium semantics.
-Section 13 may address a literal top-level YAML key for presence or exact
-string-value retrieval. That addressability is a source-faithful Search lead,
-not admission to the canonical Property catalog, validation, display,
-philosophical interpretation, or researcher judgment.
+Complete Properties shows every safely bounded existing top-level property.
+Allowed canonical or observably scalar/list values receive structured controls;
+unsupported shapes remain read-only with a Source route. **Add a Property…**
+creates only a missing canonical key with a valid nonempty value. A YAML-free
+Note offers explicit **Add YAML Properties…** or **Keep Without YAML**; insertion
+is a single current-fingerprint-bound source transaction, never automatic or
+batch migration. About omits absent and empty values and follows Appendix A's
+fixed groups; Tags form the final named group and render as neutral capsules.
 
 ### 5.3 Create, duplicate, rename, and identity
 
@@ -314,7 +291,7 @@ Library-header Add menu offers both actions at the current vault root. A
 secondary click in unoccupied Library source-list space offers the same compact
 pair; the header menu remains their primary pointer and accessibility route, so
 secondary click is never required. **File → New Note** and its keyboard
-shortcut directly create the same empty root note. A folder row's **New Note**
+shortcut directly create the same managed root note. A folder row's **New Note**
 and **New Folder** context actions create inside that exact vault-relative
 folder; the folder row also exposes equivalent accessibility actions.
 
@@ -387,12 +364,35 @@ Successful creation selects and opens the note. Creation never presents a
 sheet, popover, naming form, or required-properties step; naming and Properties
 remain later explicit edits.
 
+GUI, researcher CLI, and authenticated Agent creation share one
+Application-owned managed creator. It snapshots one valid Settings revision,
+selects the role seed, composes the complete candidate once, atomically claims
+the path, commits source and stable identity, and readbacks before publishing.
+Import, Duplicate, Restore, external discovery, and managed Critique creation
+retain their own complete-source contracts and do not inject the seed.
+
+GUI New Note copies only the role seed. With no seed, the body begins at byte
+zero. With a seed, source is `---\n`, exact LF-normalized delimiter-free seed,
+`---\n`, then body with no inserted blank line. It opens directly in Edit,
+places the caret at the exact body start, and gives the editor focus after mode
+acknowledgement. `Untitled` is only the claimed path; no H1 or YAML title is
+generated. A header-only note has an exact empty body even though source is
+nonempty; later Review uses the body boundary, never raw byte count, for Empty
+Note and does not start an empty renderer. Malformed frontmatter is never empty.
+
+Typed Agent Analysis creation requires an `AnalysisSourceType` plus valid
+applicable canonical values. Application serializes `type`, optional analyzed
+source `title`, other supplied fields in profile order, then the exact seed.
+The Agent must satisfy that type's Settings-required fields. It cannot submit
+`type` again, collide with a seed key, invent placeholders, receive seed values,
+or use create authority after the new identity exists. Researcher CLI creation
+uses the same creator and seed but has no Agent-required-field policy.
+
 Only after the source commit and latest authoritative Library projection are
 available, successful creation clears active Library filters, expands only the
 created note's folder ancestors, preserves every unrelated disclosure, and
 reveals the selected row without moving keyboard focus into Library. Ordinary
-sort order remains unchanged; **Debate Importance** falls back to **Recently
-Modified** when clearing its required explicit debate scope. A failure before
+sort order remains unchanged. A failure before
 this presentation transition preserves the prior filters, disclosure, sort,
 selection, and visible source.
 

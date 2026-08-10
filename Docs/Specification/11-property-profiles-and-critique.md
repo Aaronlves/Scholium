@@ -5,60 +5,131 @@
 ## Appendix A. Default property profiles
 
 Existing/custom YAML remains authoritative and losslessly preserved. Canonical
-vocabulary defines recognized meaning; About defines the default read-only
-projection; creation requirements are empty for every role. Profiles never
-inject absent YAML, erase unknown source, or turn visibility into editability.
-App-owned time and provenance remain outside frontmatter. Research Unit follows
-the role-aware constraints in §5.2.
+vocabulary defines recognized shape and meaning; source-type profiles define
+applicability, recommendation, and serialization order; About and structured
+editing are independent role settings; exact New Note YAML defines only source
+copied at creation; Agent-required fields apply only to typed Analysis create.
+None materializes an absent key. Every built-in seed and Agent-required set is
+empty. App facts and integrations remain outside frontmatter.
 
 ### Analyses
 
-| YAML | Ownership | Default About | Rule |
-| --- | --- | --- | --- |
-| `title` | Researcher | No | Source identity; resolver fallback is H1, then filename. |
-| `research_unit` | Researcher | Completion, then every Limitation | Optional `completion` and/or `limitations`. |
-| `authors` | Researcher | Yes | Author list. |
-| `year` | Researcher | Yes | Publication year. |
-| `type` | Researcher | Yes | Publication form. |
-| `access` | Researcher | Combined Source Basis | Extent of consulted material. |
-| `text_reliability` | Researcher | Combined Source Basis | Reliability of consulted text. |
-| `locators` | Researcher | Combined Source Basis | Citation stability/checkability. |
-| `tags` | Researcher | No | Retrieval terms. |
-| `summary` | Researcher / authorized Agent | Yes | Optional short navigation declaration; one current YAML owner, actual writer retained. |
-| `debate_importance` | Researcher | No | Optional whole number 0–10. |
-| `debate_importance_scope` | Researcher | No | Must appear with Debate Importance. |
-| `zotero_item_key` | Protected machine | No | Exact task-context identity; not ordinarily editable. |
+All 56 supported keys are optional researcher-owned top-level properties. The
+Source group contains choice `type`; text `title`, `short_title`,
+`original_title`, `reviewed_title`, `genre`, `medium`, `version`, and
+`language`; and CreatorList `authors`, `editors`, `translators`,
+`collection_editors`, `container_authors`, `original_authors`, and
+`reviewed_authors`. The Publication group contains source-safe date text
+`publication_date`, `original_publication_date`, and `event_date`; and text
+`publication_status`, `container_title`, `container_title_short`,
+`series_title`, `series_number`, `volume`, `volume_title`, `issue`, `pages`,
+`chapter_number`, `edition`, `number_of_volumes`, `publisher`,
+`publisher_place`, `original_publisher`, `original_publisher_place`,
+`institution`, `report_number`, `event_title`, and `event_place`.
 
-Debate Importance follows 5.2 and never means project relevance, quality,
-truth, prestige, or citation count. Relevance keys remain custom source.
+| Presentation group | Canonical keys and shapes |
+| --- | --- |
+| Access & Identifiers | source-safe date text `accessed_date`; text `doi`, `isbn`, `issn`, `url`, `pmid`, `pmcid`, `arxiv_id`, `archive`, `archive_collection`, `archive_location`, `archive_place`, `call_number` |
+| Research | nonempty text lists `source_basis`, `limitations`; multiline text `summary` |
+| Tags | nonempty text list `tags` |
+
+A CreatorList is a nonempty ordered sequence of mappings. A person requires
+nonempty `family` and may have `given`, `suffix`, `non_dropping_particle`, and
+`dropping_particle`. A literal creator contains only nonempty `literal`.
+Person and literal forms never mix and unknown members are invalid. Scholium
+does not split, invert, transliterate, or normalize names.
+
+`type` is one of the following stable values and has one deterministic future
+CSL output:
+
+| Analysis type | CSL type |
+| --- | --- |
+| `journal_article` | `article-journal` |
+| `book` | `book` |
+| `chapter` | `chapter` |
+| `encyclopedia_entry` | `entry-encyclopedia` |
+| `thesis` | `thesis` |
+| `manuscript` | `manuscript` |
+| `report` | `report` |
+| `preprint` | `article` |
+| `conference_paper` | `paper-conference` |
+| `presentation` | `speech` |
+| `webpage` | `webpage` |
+| `review` | `review-book` |
+| `dataset` | `dataset` |
+| `software` | `software` |
+| `archival_item` | `document` |
+| `correspondence` | `personal_communication` |
+| `audiovisual` | `motion_picture` |
+| `other` | `document` |
+
+The built-in source-type catalog owns applicable fields, recommended order,
+and deterministic serialization order. Journal articles, books,
+chapters/encyclopedia entries, theses, manuscript/report/preprint,
+conference/presentation, webpages, reviews, archival/correspondence, and
+dataset/software/audiovisual families use their ordinary bibliographic fields;
+`other` permits the complete catalog. Research fields apply to every type.
+Recommended is discovery order only. Settings may mark only applicable,
+shape-known fields Agent-required; `type` is intrinsically required and cannot
+be disabled. A seed collision is invalid. Requiredness never affects GUI New
+Note, researcher CLI creation, an existing Note, or later property permission.
+
+Default About order is Source `type`; Publication `publication_date`; Research
+`limitations`, `summary`, `source_basis`; then Tags. `title` remains visible in
+Complete Properties and participates in Analysis identity but is not repeated
+in About. Every canonical Analysis key is in the default structured-edit
+allowlist; this enables on-demand creation and does not create empty YAML.
 
 ### Topics
 
 Topic YAML is optional.
 
-| YAML | Ownership | Default About | Rule |
+| YAML | Shape | Default About | Rule |
 | --- | --- | --- | --- |
-| `research_unit` | Researcher | Scope, then every Limitation | Optional `scope` and/or `limitations`. |
-| `aliases` | Researcher | Yes | Search and link alternatives. |
-| `tags` | Researcher | No | Retrieval terms. |
-| `summary` | Researcher / authorized Agent | Yes | Optional short navigation declaration; one current YAML owner, actual writer retained. |
+| `aliases` | Nonempty text list | Topic Description | Search and link alternatives. |
+| `summary` | Multiline text | Topic Description | Navigation declaration. |
+| `limitations` | Nonempty text list | Research | Material boundaries. |
+| `tags` | Nonempty text list | Tags | Researcher retrieval terms. |
 
-Topic identity is first H1, then filename. YAML `title` is not recognized.
+All four fields are structured-editable by default. Topic identity is first
+H1, then filename. YAML `title`, `research_unit`, and `scope` are not
+recognized.
 
 ### Works
 
-| YAML | Ownership | Default About | Rule |
+| YAML | Shape | Default About | Rule |
 | --- | --- | --- | --- |
-| `research_unit` | Researcher | Research Scope, then every Limitation | Optional `scope` and/or `limitations`. |
-| `kind` | Researcher | Yes | Paper, chapter, book, talk, review, teaching material, etc. |
-| `authors` | Researcher | Yes | Co-authors when relevant. |
-| `venue` | Researcher | Yes | Intended or actual journal, publisher, course, or event. |
-| `tags` | Researcher | No | Retrieval terms. |
-| `summary` | Researcher / authorized Agent | Yes | Optional short navigation declaration; one current YAML owner, actual writer retained. |
+| `work_type` | Choice | Work Description | `paper`, `chapter`, `book`, `talk`, `review`, `teaching`, or `other`. |
+| `coauthors` | Nonempty text list | Work Description | Co-authors when relevant. |
+| `summary` | Multiline text | Work Description | Navigation declaration. |
+| `limitations` | Nonempty text list | Research | Material boundaries. |
+| `tags` | Nonempty text list | Tags | Researcher retrieval terms. |
 
-Work identity is first H1, then filename. YAML `title`, `status`, and `deadline`
-are not recognized. Only canonical keys receive typed semantics; all other
-source remains custom and targeted edits never normalize it.
+All five fields are structured-editable by default. Work identity is first H1,
+then filename. YAML `title`, `kind`, `authors`, `venue`, `research_unit`,
+`scope`, `status`, and `deadline` are not recognized. Only canonical keys
+receive typed semantics; all other source remains custom and targeted edits
+never normalize it.
+
+### Shared presentation and settings rules
+
+Group order is Analysis **Source → Publication → Access & Identifiers →
+Research → Other Properties → Tags**, Topic **Topic Description → Research →
+Other Properties → Tags**, and Work **Work Description → Research → Other
+Properties → Tags**. One catalog owns membership. **Other Properties** contains
+safe custom projections without granting type or creation semantics. About
+shows only groups with nonempty selected values; group headings are subordinate
+reading hierarchy, not cards or filters. Tags are neutral content capsules.
+
+`settings.json` schema, exact seed, About profile, edit allowlist, and Analysis
+Agent requirements share one exact-byte revision and one atomic save. Restore
+About/edit defaults never changes seed; clearing seed never changes profiles or
+requirements. Seeds contain delimiter-free YAML mapping source, normalize only
+configuration newlines to LF, require a terminating LF, and preserve comments, order,
+quoting, scalar style, and meaningful blank lines. They never contain title;
+Analysis seeds also never contain type. Invalid, duplicate, reserved,
+unsupported, larger than 64 KiB in UTF-8, or required-field-colliding source
+cannot be saved.
 
 ## Appendix B. Bundled Critique Method requirements
 

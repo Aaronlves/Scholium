@@ -23,41 +23,27 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(note.rawContent == source)
     }
 
-    @Test("Debate Importance follows the Core integer-range contract")
-    func debateImportanceUsesCoreRange() throws {
+    @Test("Publication date is source-safe text and legacy year stays custom")
+    func publicationDateUsesCoreShape() throws {
         let contract = try #require(
-            PropertyContractCatalog.contract(for: "debate_importance", profile: .analysis)
+            PropertyContractCatalog.contract(for: "publication_date", profile: .analysis)
         )
-        let bounds = try #require(contract.constraints.compactMap { constraint in
-            guard case .integerRange(let minimum, let maximum) = constraint else {
-                return nil as ClosedRange<Int>?
-            }
-            return minimum...maximum
-        }.first)
-        let midpoint = bounds.lowerBound + (bounds.upperBound - bounds.lowerBound) / 2
-        let cases: [(yaml: String, expected: Int?)] = [
-            (String(bounds.lowerBound), bounds.lowerBound),
-            (String(bounds.upperBound), bounds.upperBound),
-            (String(bounds.lowerBound - 1), nil),
-            (String(bounds.upperBound + 1), nil),
-            ("\"\(midpoint)\"", nil),
-            ("\(midpoint).0", nil),
-        ]
+        #expect(contract.valueKind == .date)
+        #expect(PropertyContractCatalog.contract(for: "year", profile: .analysis) == nil)
+        let source = """
+        ---
+        publication_date: 1990/1992
+        year: 1991
+        unknown:
+          nested: untouched
+        ---
+        Body
+        """
+        let note = metadataLocation(source, role: .sourceCorpus)
 
-        for item in cases {
-            let source = """
-            ---
-            \(contract.canonicalKey): \(item.yaml)
-            unknown:
-              nested: untouched
-            ---
-            Body
-            """
-            let note = metadataLocation(source, role: .sourceCorpus)
-
-            #expect(note.debateImportance == item.expected)
-            #expect(note.rawContent == source)
-        }
+        #expect(note.property(at: "publication_date") == .string("1990/1992"))
+        #expect(note.property(at: "year") == .integer(1991))
+        #expect(note.rawContent == source)
     }
 
     @Test("Workspace locations reuse the fingerprint-bound title projection")

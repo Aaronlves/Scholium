@@ -1,54 +1,32 @@
 import ScholiumContracts
 
-enum AboutProfileEntry: Hashable {
-    case completion
-    case scope(label: String)
-    case limitations
-    case property(String)
-    case sourceBasis
+struct AboutProfileGroup: Hashable {
+    let group: PropertyPresentationGroup
+    let keys: [String]
 }
 
-/// Default About fields are a presentation profile, not the canonical
-/// property vocabulary and not a creation checklist.
+/// About selection and group-major reading order. The presentation catalog is
+/// the only field-membership owner; this type only applies the saved profile.
 enum AboutProfileCatalog {
-    private static let analysisSourceBasisKeys: Set<String> = [
-        "access", "text_reliability", "locators",
-    ]
-
-    static func entries(
+    static func groupedEntries(
         for profile: SchemaProfileID,
         visibleFields: [String]?
-    ) -> [AboutProfileEntry] {
-        var result: [AboutProfileEntry] = switch profile {
-        case .analysis: [.completion, .limitations]
-        case .topicMarkdown: [.scope(label: "Scope"), .limitations]
-        case .draftProject: [.scope(label: "Research Scope"), .limitations]
-        case .genericMarkdown: []
+    ) -> [AboutProfileGroup] {
+        let fields = (visibleFields ?? defaultVisibleFields(for: profile)).filter {
+            allowsOptionalField($0, profile: profile)
         }
-
-        let fields = visibleFields ?? defaultVisibleFields(for: profile)
-        var insertedSourceBasis = false
-        for key in fields where allowsOptionalField(key, profile: profile) {
-            if profile == .analysis, analysisSourceBasisKeys.contains(key) {
-                guard !insertedSourceBasis else { continue }
-                result.append(.sourceBasis)
-                insertedSourceBasis = true
-            } else {
-                result.append(.property(key))
-            }
+        let grouped = Dictionary(grouping: fields) { key in
+            PropertyPresentationCatalog.presentation(for: key, in: profile)?.group ?? .other
         }
-        return result
+        return PropertyPresentationGroup.allCases.compactMap { group in
+            guard let keys = grouped[group], !keys.isEmpty else { return nil }
+            return AboutProfileGroup(group: group, keys: keys)
+        }.sorted { $0.group.order < $1.group.order }
     }
 
     static func allowsOptionalField(_ key: String, profile: SchemaProfileID) -> Bool {
         guard !ResearcherPropertyPolicy.isHidden(key) else { return false }
-        if ["research_unit", "tags", "scope", "limitations", "completion"].contains(key) {
-            return false
-        }
-        if profile == .analysis, ["title", "zotero_item_key"].contains(key) {
-            return false
-        }
-        return true
+        return !(profile == .analysis && key == "title")
     }
 
     private static func defaultVisibleFields(for profile: SchemaProfileID) -> [String] {

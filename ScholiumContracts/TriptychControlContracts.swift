@@ -28,6 +28,13 @@ public struct TriptychManifest: Codable, Hashable, Sendable {
 }
 
 public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
+    /// Exact delimiter-free YAML copied into future managed notes for this
+    /// role. `nil` means managed creation remains YAML-free unless typed
+    /// creation metadata supplies properties.
+    public var newNoteYAML: String? {
+        didSet { newNoteYAML = Self.normalizedNewNoteYAML(newNoteYAML) }
+    }
+
     /// Fields shown by the collapsed Properties projection, in display order.
     public var visibleFields: [String] {
         didSet { visibleFields = Self.unique(visibleFields) }
@@ -40,11 +47,36 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
     }
 
     public init(
+        newNoteYAML: String? = nil,
         visibleFields: [String] = [],
         editableFields: [String] = []
     ) {
+        self.newNoteYAML = Self.normalizedNewNoteYAML(newNoteYAML)
         self.visibleFields = Self.unique(visibleFields)
         self.editableFields = Self.unique(editableFields)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case newNoteYAML
+        case visibleFields
+        case editableFields
+    }
+
+    /// Decoding deliberately retains current-schema bytes semantically as
+    /// authored. The shared settings validator, rather than synthesized
+    /// Codable or property observers, decides whether they need review.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        newNoteYAML = try container.decodeIfPresent(String.self, forKey: .newNoteYAML)
+        visibleFields = try container.decode([String].self, forKey: .visibleFields)
+        editableFields = try container.decode([String].self, forKey: .editableFields)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(newNoteYAML, forKey: .newNoteYAML)
+        try container.encode(visibleFields, forKey: .visibleFields)
+        try container.encode(editableFields, forKey: .editableFields)
     }
 
     /// Adds or removes a field without losing the explicit order of the
@@ -89,23 +121,87 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         let normalized = field.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? nil : normalized
     }
+
+    private static func normalizedNewNoteYAML(_ source: String?) -> String? {
+        guard var source else { return nil }
+        source = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        if !source.hasSuffix("\n") { source += "\n" }
+        return source
+    }
+}
+
+public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
+    public var requiredFieldsBySourceType: [AnalysisSourceType: [String]] {
+        didSet { requiredFieldsBySourceType = Self.normalized(requiredFieldsBySourceType) }
+    }
+
+    public init(requiredFieldsBySourceType: [AnalysisSourceType: [String]] = [:]) {
+        self.requiredFieldsBySourceType = Self.normalized(requiredFieldsBySourceType)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requiredFieldsBySourceType
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        requiredFieldsBySourceType = try container.decode(
+            [AnalysisSourceType: [String]].self,
+            forKey: .requiredFieldsBySourceType
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requiredFieldsBySourceType, forKey: .requiredFieldsBySourceType)
+    }
+
+    public func requiredFields(for sourceType: AnalysisSourceType) -> [String] {
+        requiredFieldsBySourceType[sourceType] ?? []
+    }
+
+    private static func normalized(
+        _ fields: [AnalysisSourceType: [String]]
+    ) -> [AnalysisSourceType: [String]] {
+        fields.reduce(into: [:]) { result, entry in
+            var seen: Set<String> = []
+            let values = entry.value.compactMap { raw -> String? in
+                let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !key.isEmpty, seen.insert(key).inserted else { return nil }
+                return key
+            }
+            if !values.isEmpty { result[entry.key] = values }
+        }
+    }
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 2
+
+    public let schemaVersion: Int
     public var properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
         didSet { properties = Self.completeProperties(properties) }
     }
+    public var analysisAgentCreation: AnalysisAgentCreationConfiguration
     public var promptTemplates: [ResearchPromptTemplate]
     public var activePromptTemplateIDs: [ResearchPromptKind: UUID]
     public var attentionDismissalDays: Int
 
     public init(
         properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = Self.defaultProperties,
+        analysisAgentCreation: AnalysisAgentCreationConfiguration = .init(),
         promptTemplates: [ResearchPromptTemplate]? = nil,
         activePromptTemplateIDs: [ResearchPromptKind: UUID]? = nil,
         attentionDismissalDays: Int = 7
     ) {
+        schemaVersion = Self.currentSchemaVersion
         self.properties = Self.completeProperties(properties)
+        self.analysisAgentCreation = analysisAgentCreation
         var templates = promptTemplates ?? [.defaultDialogue, .defaultCritique]
         let activeIDs = activePromptTemplateIDs ?? [
             .dialogue: ResearchPromptTemplate.defaultDialogue.id,
@@ -125,7 +221,9 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case properties
+        case analysisAgentCreation
         case promptTemplates
         case activePromptTemplateIDs
         case attentionDismissalDays
@@ -133,23 +231,56 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            properties: try container.decode(
-                [WorkspaceVaultSlot: VaultPropertiesConfiguration].self,
-                forKey: .properties
-            ),
-            promptTemplates: try container.decode([ResearchPromptTemplate].self, forKey: .promptTemplates),
-            activePromptTemplateIDs: try container.decode([ResearchPromptKind: UUID].self, forKey: .activePromptTemplateIDs),
-            attentionDismissalDays: try container.decode(
-                Int.self,
-                forKey: .attentionDismissalDays
+        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .schemaVersion,
+                in: container,
+                debugDescription: "Unsupported Triptych settings schema \(schemaVersion)."
             )
+        }
+        let properties = try container.decode(
+            [WorkspaceVaultSlot: VaultPropertiesConfiguration].self,
+            forKey: .properties
         )
+        guard Set(properties.keys) == Set(WorkspaceVaultSlot.allCases) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .properties,
+                in: container,
+                debugDescription: "Properties settings must contain exactly all Triptych roles."
+            )
+        }
+        self.schemaVersion = schemaVersion
+        self.properties = properties
+        analysisAgentCreation = try container.decode(
+            AnalysisAgentCreationConfiguration.self,
+            forKey: .analysisAgentCreation
+        )
+        promptTemplates = try container.decode(
+            [ResearchPromptTemplate].self,
+            forKey: .promptTemplates
+        )
+        activePromptTemplateIDs = try container.decode(
+            [ResearchPromptKind: UUID].self,
+            forKey: .activePromptTemplateIDs
+        )
+        attentionDismissalDays = try container.decode(
+            Int.self,
+            forKey: .attentionDismissalDays
+        )
+        for bundled in [ResearchPromptTemplate.defaultDialogue, .defaultCritique] {
+            if let index = promptTemplates.firstIndex(where: { $0.id == bundled.id }) {
+                promptTemplates[index] = bundled
+            }
+        }
+        promptTemplates = Self.completeTemplates(promptTemplates)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(properties, forKey: .properties)
+        try container.encode(analysisAgentCreation, forKey: .analysisAgentCreation)
         try container.encode(promptTemplates, forKey: .promptTemplates)
         try container.encode(activePromptTemplateIDs, forKey: .activePromptTemplateIDs)
         try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
@@ -158,21 +289,17 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public static let defaultProperties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
-                "summary", "authors", "year", "type", "access", "text_reliability", "locators",
+                "type", "publication_date", "limitations", "summary", "source_basis", "tags",
             ],
-            editableFields: [
-                "title", "summary", "authors", "year", "type",
-                "debate_importance", "debate_importance_scope",
-                "access", "text_reliability", "locators", "tags", "research_unit",
-            ]
+            editableFields: PropertyContractCatalog.analysisCanonicalKeys
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["summary", "aliases"],
-            editableFields: ["summary", "aliases", "tags", "research_unit"]
+            visibleFields: ["summary", "aliases", "limitations", "tags"],
+            editableFields: ["aliases", "summary", "limitations", "tags"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["summary", "kind", "authors", "venue"],
-            editableFields: ["summary", "kind", "authors", "venue", "tags", "research_unit"]
+            visibleFields: ["work_type", "coauthors", "summary", "limitations", "tags"],
+            editableFields: ["work_type", "coauthors", "summary", "limitations", "tags"]
         ),
     ]
 
@@ -410,6 +537,14 @@ public struct NoteIdentityReconciliation: Codable, Hashable, Sendable {
 
 public enum TriptychControlError: LocalizedError, Sendable {
     case invalidManifest
+    case settingsMissing
+    case settingsOldSchema(Int?)
+    case settingsFutureSchema(Int)
+    case settingsCorrupted
+    case settingsNeedsReview(String)
+    case settingsRevisionConflict
+    case invalidZoteroBindings
+    case zoteroBindingsRevisionConflict
     case invalidIdentityCandidate(UUID)
     case identityPathAlreadyAssigned(String)
     case identityRebindingNotFound(UUID)
@@ -418,6 +553,23 @@ public enum TriptychControlError: LocalizedError, Sendable {
         switch self {
         case .invalidManifest:
             return "The Triptych manifest is missing or does not match the selected vaults."
+        case .settingsMissing:
+            return "The portable Triptych settings are missing. Managed creation is unavailable until they are restored."
+        case .settingsOldSchema(let version):
+            let value = version.map(String.init) ?? "without a version"
+            return "The portable Triptych settings use an unsupported old schema (\(value)). Their exact bytes were preserved."
+        case .settingsFutureSchema(let version):
+            return "The portable Triptych settings use future schema \(version). Their exact bytes were preserved."
+        case .settingsCorrupted:
+            return "The current-schema portable Triptych settings are damaged. Their exact bytes were preserved for recovery."
+        case .settingsNeedsReview(let reason):
+            return "The current-schema portable Triptych settings need review before managed creation can continue: \(reason)"
+        case .settingsRevisionConflict:
+            return "The Triptych settings changed after they were loaded. Reload the saved settings before trying again."
+        case .invalidZoteroBindings:
+            return "The portable Zotero bindings are missing, damaged, or use an unsupported schema."
+        case .zoteroBindingsRevisionConflict:
+            return "The Zotero bindings changed after they were loaded. Reload them before trying again."
         case .invalidIdentityCandidate(let id):
             return "The selected note identity is no longer a valid candidate: \(id.uuidString)"
         case .identityPathAlreadyAssigned(let path):

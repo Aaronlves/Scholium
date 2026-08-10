@@ -1234,7 +1234,6 @@ struct WindowControllerArchitectureTests {
         var filters = DiscoveryFilterState()
         filters.needsAttention = true
         filters.tag = "ethics"
-        filters.year = 2026
         controller.replaceFilters(filters)
         controller.selectSortOrder(.titleDescending)
         let scope = LibraryDisclosureScope(

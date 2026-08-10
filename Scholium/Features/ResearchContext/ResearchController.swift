@@ -367,12 +367,18 @@ final class ResearchController: ObservableObject {
         try await requireCheckpoints().restoreCheckpoint(checkpointID, selection: selection)
     }
 
-    func settings() async throws -> TriptychSettings {
+    func settings() async throws -> TriptychSettingsSnapshot {
         try await requireRecords().settings()
     }
 
-    func saveSettings(_ settings: TriptychSettings) async throws {
-        try await requireRecords().saveSettings(settings)
+    func saveSettings(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) async throws -> TriptychSettingsSnapshot {
+        try await requireRecords().saveSettings(
+            settings,
+            expectedRevision: expectedRevision
+        )
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

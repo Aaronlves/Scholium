@@ -158,24 +158,21 @@ struct SidebarTreeTests {
         ])
     }
 
-    @Test("Library filter presentation derives summary and scoped ordering from one value")
+    @Test("Library filter presentation counts only complete property filters")
     func libraryFilterPresentationProjection() {
         var filters = DiscoveryFilterState()
         #expect(sidebarActiveLibraryFilterCount(filters) == 0)
-        #expect(!sidebarHasScopedDebateImportanceFilter(filters))
 
         filters.needsAttention = true
         filters.tag = "Agency"
-        filters.propertyKey = "debate_importance_scope"
+        filters.propertyKey = "publication_status"
         #expect(sidebarActiveLibraryFilterCount(filters) == 2)
-        #expect(!sidebarHasScopedDebateImportanceFilter(filters))
 
-        filters.propertyValue = "Central dispute"
+        filters.propertyValue = "forthcoming"
         #expect(sidebarActiveLibraryFilterCount(filters) == 3)
-        #expect(sidebarHasScopedDebateImportanceFilter(filters))
 
         filters.propertyValue = "  \n"
-        #expect(!sidebarHasScopedDebateImportanceFilter(filters))
+        #expect(sidebarActiveLibraryFilterCount(filters) == 3)
     }
 
     @Test("Modified ordering uses file time before the title tie-break")

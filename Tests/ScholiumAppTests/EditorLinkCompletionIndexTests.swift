@@ -85,8 +85,6 @@ struct EditorLinkCompletionIndexTests {
                 stableNoteID: UUID().uuidString
             ),
             title: title,
-            zoteroItemKey: nil,
-            zoteroSourceIdentity: nil,
             fingerprint: DocumentFingerprint(content: "# \(title)\n"),
             validationWarnings: []
         )

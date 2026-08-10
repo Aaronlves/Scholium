@@ -143,7 +143,7 @@ any app window needs them; snapshot performs one-shot loading without watchers
 and shuts down after each CLI invocation.
 
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
-`Triptychs/<triptych-id>/indexes/search-v6.sqlite`; pooled vault runtimes own
+`Triptychs/<triptych-id>/indexes/search-v7.sqlite`; pooled vault runtimes own
 repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
 index. The catalog retains exact `NoteDocument`, descriptor-observed file
 metadata, `SourceVersion`, cached `MarkdownSemanticDocument`, and the
@@ -378,7 +378,7 @@ Search, but the feature folds it beneath its direct parent instead of
 projecting a peer collection row.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable catalog, per-vault snapshots, selected Location's
-Notes/tags/authors/years/revisions and property-filter options, graph, Note
+Notes/tags/authors/revisions and property-filter options, graph, Note
 Search generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing
 event generations, stages a complete `State`, and publishes that state once.
@@ -406,7 +406,11 @@ derived state stale; its graph-count values are nonauthorizing placeholders and
 Research Actions remain closed. The matching complete generation replaces this
 overlay through the ordinary event gate. The window therefore activates the
 new stable identity without blocking on Triptych-wide identity reconciliation
-or graph construction and without creating a second source authority. Only
+or graph construction and without creating a second source authority. The
+managed creator snapshots the current Settings revision and prepared role
+source before committing; GUI, researcher CLI, and Agent adapters never compose
+their own headers. The window selects Edit and requests the exact body offset
+only after the durable source commit and editor mode acknowledgement. Only
 after activation, `DiscoveryController` clears excluding Library filters,
 unions the destination's folder ancestors into window-local disclosure, and
 publishes one generation- and scope-bound reveal request. `SidebarView` consumes
@@ -493,8 +497,8 @@ likewise runs only when the desired disclosure set or outline structure changes;
 an unrelated configuration application neither rescans every item twice nor
 replays AppKit expansion. `WindowModel` filters and orders
 the Note sequence before the cache lookup. Modified-time ordering reads a Note
-title only for an actual timestamp tie; title and Debate Importance ordering
-retain their existing title fallback. The tree projection preserves
+title only for an actual timestamp tie; title ordering retains its existing
+fallback. The tree projection preserves
 that order within each Folder without receiving a second comparator closure.
 `SidebarContext` derives its vault identity from the disclosure scope and names
 the shared create/move/drop gate as Library mutation capability, so parallel
@@ -541,7 +545,10 @@ are partitioned by the three Triptych workspaces; Sidebar/Inspector visibility,
 split geometry, toolbar, and window frame remain outer-window state. Controllers
 do not mutate one another. Separate
 `WorkspaceSettingsModel` groups workspace, machine, Zotero, and Research
-Guidance capabilities without constructing a document window.
+Guidance capabilities without constructing a document window. Its delivery-
+neutral snapshot carries both `TriptychSettings` and exact `SettingsRevision`;
+every save returns a replacement snapshot, so two Settings windows cannot
+silently last-writer-win.
 
 ### Document tabs and native shell
 
@@ -624,11 +631,14 @@ The Inspector has exactly three current-note modes: Overview, Connect, and
 Actions. Overview presents a current-Note Attention summary whose one button
 routes to the exact Workspace's Attention popover, followed by role-aware About fields;
 About keeps selectable values and routes editing through its heading button.
-For a current Analysis only, the window root normalizes its non-empty protected
-Zotero item key and supplies one immutable navigation value plus the existing
+For a current Analysis only, `WorkspaceSnapshotBuilder` joins a portable typed
+Zotero binding through the resolved stable Note UUID. The window root supplies
+its exact user/group library identity and item key as one immutable navigation
+value plus the existing
 `ZoteroBridge` presentation effect. About renders that value as one quiet
 **Open in Zotero** row without exposing the key, fetched metadata, matching, or
-confirmation. Connect projects direct and
+confirmation. Frontmatter never participates in this projection. Connect
+projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source
 anchor as a named secondary action without a trailing glyph. Actions resolves

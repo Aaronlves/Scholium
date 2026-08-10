@@ -161,10 +161,9 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
                       && !key.unicodeScalars.contains(where: {
                           CharacterSet.controlCharacters.contains($0)
                       })
-                      && !PropertyContractCatalog.isProtectedMachineKey(key)
               }) else {
             throw ResearchActionExecutionContractError.invalidAuthority(
-                "Editable property keys exceed their bounded, nonprotected contract."
+                "Editable property keys exceed their bounded contract."
             )
         }
         schemaVersion = Self.currentSchemaVersion

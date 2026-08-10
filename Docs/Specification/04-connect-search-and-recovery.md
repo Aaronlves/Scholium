@@ -88,7 +88,7 @@ Set Aside and Trash are excluded except when one is the open This Note.
 
 The shared finite grammar is space-as-AND, escaped exact phrases, trailing
 prefix `*`, clause exclusion, Note lexical fields `title`, `alias`, `heading`,
-`summary`, `body`, `author`, `year`, `tag`, `footnote`, and `path`, Note structured fields
+`summary`, `body`, `author`, `publication_date`, `tag`, `footnote`, and `path`, Note structured fields
 `callout` and `has:broken-link`, and the clauses below. Structured filter-only
 queries are valid. A query containing only excluded free text is invalid.
 `status` remains unsupported. Unknown fields or canonical values, `vault`,
@@ -152,7 +152,8 @@ reason, exact source range, and Note fingerprint. Neither provider may present
 itself as the other.
 
 Search projects visible semantic text and identity/filter fields, never raw
-Markdown source or link destinations. Title, alias, heading, author, year, tag,
+Markdown source or link destinations. Title, alias, heading, author,
+publication date, tag,
 path, `summary`, Callout, footnote, and residual body remain distinguishable;
 links contribute displayed text and images contribute alt text. Source mappings
 retain exact ranges. CJK uses the same deterministic projection and contiguous-
@@ -281,6 +282,12 @@ files and supports selected-note or whole-Triptych restore. A full rollback
 moves post-checkpoint files to Trash instead of permanently deleting them.
 Restore writes new current source through the conflict-aware repository path;
 Undo remains editor-session only.
+
+A selected single-Note Markdown restore never changes its portable Zotero
+binding. A complete Triptych restore restores the checkpoint's portable
+`.scholium/` bytes, including bindings. A restored binding is revalidated when
+used; a missing or ambiguous stable identity is nonauthorizing and is never
+reassigned by path, filename, title, or metadata similarity.
 
 There is no checkpoint-management screen or proprietary backup format. Finder
 manages folders. Document, HTML, PDF, and DOCX export is deferred, not

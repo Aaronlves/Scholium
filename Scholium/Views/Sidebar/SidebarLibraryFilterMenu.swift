@@ -9,7 +9,6 @@ struct SidebarLibraryFilterOptions: Equatable, Sendable {
     let graphIsAvailable: Bool
     let tags: [String]
     let authors: [String]
-    let years: [Int]
     let propertyKeys: [String]
     let propertyValues: [String: [String]]
 }
@@ -21,17 +20,8 @@ func sidebarActiveLibraryFilterCount(_ filters: DiscoveryFilterState) -> Int {
         filters.hasMalformedMetadata,
         filters.tag != nil,
         filters.author != nil,
-        filters.year != nil,
         filters.propertyKey != nil && filters.propertyValue != nil,
     ].count(where: { $0 })
-}
-
-func sidebarHasScopedDebateImportanceFilter(
-    _ filters: DiscoveryFilterState
-) -> Bool {
-    filters.propertyKey == "debate_importance_scope"
-        && filters.propertyValue?
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
 }
 
 /// Library Filter presentation only. All mutations are complete replacement
@@ -92,18 +82,6 @@ struct SidebarLibraryFilterMenu: View {
                             }
                         }
                     }
-                    if !options.years.isEmpty {
-                        Menu("Year") {
-                            Button("Any Year") { updateFilters { $0.year = nil } }
-                            Divider()
-                            ForEach(options.years, id: \.self) { year in
-                                let title = year.formatted(.number.grouping(.never))
-                                filterChoice(title, selected: filters.year == year) {
-                                    updateFilters { $0.year = year }
-                                }
-                            }
-                        }
-                    }
                 }
                 if !options.propertyKeys.isEmpty {
                     Section("Properties") {
@@ -137,10 +115,6 @@ struct SidebarLibraryFilterMenu: View {
                             filterChoice(order.title, selected: sortOrder == order) {
                                 selectSortOrder(order)
                             }
-                            .disabled(
-                                order == .debateImportanceDescending
-                                    && !sidebarHasScopedDebateImportanceFilter(filters)
-                            )
                         }
                     }
                 }

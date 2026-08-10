@@ -1928,11 +1928,6 @@ final class WindowModel: ObservableObject {
         set { updateDiscoveryFilters { $0.author = newValue } }
     }
 
-    var selectedYear: Int? {
-        get { discoveryController.library.filters.year }
-        set { updateDiscoveryFilters { $0.year = newValue } }
-    }
-
     var selectedPropertyKey: String? {
         get { discoveryController.library.filters.propertyKey }
         set { updateDiscoveryFilters { $0.propertyKey = newValue } }
@@ -2211,10 +2206,7 @@ final class WindowModel: ObservableObject {
         #endif
         if let saved = UserDefaults.standard.string(forKey: "noteSortOrder"),
            let order = NoteSortOrder(rawValue: saved) {
-            // Metadata filters are intentionally request-local and are not
-            // restored. A Debate Importance ordering without one explicit
-            // debate scope would compare incommensurable ratings.
-            noteSortOrder = order == .debateImportanceDescending ? .modifiedNewest : order
+            noteSortOrder = order
         }
         UserDefaults.standard.removeObject(forKey: "libraryViewMode")
         searchController.loadSavedSearches()
@@ -3436,7 +3428,6 @@ final class WindowModel: ObservableObject {
         }
         if let tag = selectedTag { result = result.filter { $0.tags.contains(tag) } }
         if let author = selectedAuthor { result = result.filter { $0.authors.contains(author) } }
-        if let year = selectedYear { result = result.filter { $0.year == year } }
         if let key = selectedPropertyKey, let value = selectedPropertyValue {
             result = result.filter { $0.property(at: key)?.appFilterValues.contains(value) == true }
         }
@@ -3503,56 +3494,27 @@ final class WindowModel: ObservableObject {
             return lhs.displayName.localizedStandardCompare(
                 rhs.displayName
             ) == .orderedDescending
-        case .debateImportanceDescending:
-            guard hasScopedDebateImportanceFilter else {
-                if lhs.fileModifiedAt != rhs.fileModifiedAt { return lhs.fileModifiedAt > rhs.fileModifiedAt }
-                break
-            }
-            switch (lhs.debateImportance, rhs.debateImportance) {
-            case let (left?, right?) where left != right:
-                return left > right
-            case (_?, nil):
-                return true
-            case (nil, _?):
-                return false
-            default:
-                break
-            }
         }
         return lhs.displayName.localizedStandardCompare(
             rhs.displayName
         ) == .orderedAscending
     }
 
-    var hasScopedDebateImportanceFilter: Bool {
-        selectedPropertyKey == "debate_importance_scope"
-            && selectedPropertyValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    }
-
     var availableAuthors: [String] {
         workspaceProjectionController.authors
-    }
-
-    var availableYears: [Int] {
-        workspaceProjectionController.years
     }
 
     var activeMetadataFilterCount: Int {
         [
             selectedAuthor != nil,
-            selectedYear != nil,
             selectedPropertyKey != nil && selectedPropertyValue != nil,
         ].count(where: { $0 })
     }
 
     func clearMetadataFilters() {
         selectedAuthor = nil
-        selectedYear = nil
         selectedPropertyKey = nil
         selectedPropertyValue = nil
-        if noteSortOrder == .debateImportanceDescending {
-            noteSortOrder = .modifiedNewest
-        }
     }
 
     // MARK: Actions
@@ -4081,7 +4043,7 @@ final class WindowModel: ObservableObject {
         let capabilities = try await workspaceStore.workspaceCapabilities(id: assignment.id)
         bindApplicationCapabilities(to: capabilities)
         let researchSnapshot = try await researchController.researchSnapshot()
-        triptychSettings = try await researchController.settings()
+        triptychSettings = try await researchController.settings().settings
         if !researchSnapshot.healthIssues.isEmpty {
             vaultError = ([
                 "Some Scholium research history could not be loaded. The affected files remain unchanged and edits to those records are blocked.",
@@ -4258,11 +4220,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func saveTriptychSettings(_ settings: TriptychSettings) async throws {
-        try await researchController.saveSettings(settings)
-        triptychSettings = settings
-    }
-
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
         let selected = shellState.selectedWorkspace
         return workspaceAssignment?.vault(for: selected) == nil ? nil : selected
@@ -4377,7 +4334,7 @@ final class WindowModel: ObservableObject {
             selection: selection
         )
         do {
-            triptychSettings = try await researchController.settings()
+            triptychSettings = try await researchController.settings().settings
             try await rescanVault()
         } catch {
             refreshStatusText = "Triptych refresh failed after restore"
@@ -5405,16 +5362,12 @@ final class WindowModel: ObservableObject {
     }
 
     private func revealCreatedNoteInLibrary(_ relativePath: String, vaultID: UUID) {
-        let invalidatesDebateImportanceSort = noteSortOrder == .debateImportanceDescending
         let scope = LibraryDisclosureScope(vaultID: vaultID, locationScope: .workspace)
         discoveryController.prepareCreatedNoteReveal(
             relativePath: relativePath,
             folderAncestors: libraryFolderAncestors(forDocumentPath: relativePath),
             in: scope
         )
-        if invalidatesDebateImportanceSort {
-            noteSortOrder = .modifiedNewest
-        }
     }
 
     private func migrateFolderDisclosure(
@@ -6005,6 +5958,7 @@ final class WindowModel: ObservableObject {
                 vaultID: descriptor.reference.vaultID,
                 relativePath: note.relativePath
             ),
+            stableNoteID: note.workspaceSnapshot?.stableIdentity.resolvedID,
             editorSessionID: sessionID,
             source: source,
             editorRevision: UInt64(max(0, session.editorSession.generation))
@@ -6343,10 +6297,6 @@ final class WindowModel: ObservableObject {
             clearFilters: clearsFilters,
             in: scope
         )
-        if clearsFilters,
-           noteSortOrder == .debateImportanceDescending {
-            noteSortOrder = .modifiedNewest
-        }
     }
 
     private func reconcileDocumentSessionLeases() {
@@ -6657,21 +6607,17 @@ final class WindowModel: ObservableObject {
     func saveProperties(
         for note: WindowDocumentLocation,
         proposedFrontmatter: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint,
-        researchUnitEdit: ResearchUnitEdit? = nil
+        expectedRevision: DocumentFingerprint
     ) async throws -> WindowDocumentLocation {
         guard let context = activeDocumentContext(for: note.relativePath) else {
             throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
         }
         let original = context.note
 
-        var edits = PropertyEditorModel.frontmatterEdits(
+        let edits = PropertyEditorModel.frontmatterEdits(
             from: original.frontmatter,
             to: proposedFrontmatter
         )
-        if let researchUnitEdit {
-            edits["research_unit"] = researchUnitEdit.coreValue
-        }
         do {
             let outcome = try await documentController.save(
                 VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: note.relativePath),

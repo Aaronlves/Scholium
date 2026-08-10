@@ -204,7 +204,9 @@ The portable directory beside Works contains only:
 
 - manifest and stable identity mappings;
 - Triptych Guide and Triptych-local settings or folder preferences;
-- per-vault Properties profiles;
+- per-vault Properties profiles, exact New Note YAML, and Analysis Agent
+  creation requirements;
+- typed Analysis-to-Zotero bindings keyed by stable Note identity;
 - current primary Skill Markdown, optional machine-local folder markers,
   Philosophical Practices, Action Profiles, and explicit Action bindings; and
 - portable intellectual Research Records under
@@ -226,6 +228,14 @@ Application Support owns:
   pending permission decisions, source bookmarks, transport state, derived
   record indexes, and other machine-local execution data; and
 - self-contained Triptych checkpoints.
+
+Authored Markdown/YAML contains only research content that remains meaningful
+outside Scholium. Portable `.scholium/` contains only synchronized control
+state required to continue interpreting the same Triptych. Application Support
+contains machine-local access, execution, derived, window, temporary, and
+recovery state. A portable binding is not a Property or a general machine-field
+bag; an absolute path, bookmark, secret, Session, index, or live editor state
+is never portable control state.
 
 Production requires the real per-user Application Support root before it may
 construct a workspace runtime or any machine-owned store. Failure to resolve,

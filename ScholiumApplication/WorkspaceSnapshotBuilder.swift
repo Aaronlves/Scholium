@@ -377,11 +377,18 @@ enum WorkspaceSnapshotBuilder {
                         assignment.id
                     )
                 }
+                let stableNoteID: String?
+                if case .resolved(let noteID) = loaded.identityStates[document.relativePath] {
+                    stableNoteID = noteID.uuidString.lowercased()
+                } else {
+                    stableNoteID = nil
+                }
                 return SearchIndexDocument(
                     vaultID: loaded.vault.id,
                     vaultName: loaded.vault.name,
                     vaultRole: loaded.vault.role,
                     document: document,
+                    stableNoteID: stableNoteID,
                     semantic: semantic,
                     cachedSourceProjection: cachedSourceProjection,
                     hasBrokenLink: brokenNoteIDs.contains(id)
@@ -426,13 +433,32 @@ enum WorkspaceSnapshotBuilder {
             records: finishedResearchRecordListing.records,
             loadedVaults: loadedVaults
         )
+        let zoteroBindingSnapshot = try await services.controlStore.zoteroBindings()
+        let zoteroBindingsByNoteID = Dictionary(
+            uniqueKeysWithValues: zoteroBindingSnapshot.bindings.map { ($0.noteID, $0) }
+        )
+        let stableNoteIDPairs: [(VaultQualifiedNoteID, UUID)] = loadedVaults.flatMap { loaded in
+            loaded.identityStates.compactMap { relativePath, state -> (VaultQualifiedNoteID, UUID)? in
+                guard case .resolved(let noteID) = state else { return nil }
+                return (
+                    VaultQualifiedNoteID(
+                        vaultID: loaded.vault.id,
+                        relativePath: relativePath
+                    ),
+                    noteID
+                )
+            }
+        }
+        let stableNoteIDs = Dictionary(uniqueKeysWithValues: stableNoteIDPairs)
         let catalog = WorkspaceCatalogBuilder.build(
             vaults: loadedVaults.map(\.vault),
             documents: documentsByVault,
             semanticDocuments: semanticDocuments,
             settlementStates: settlementStates,
             additionalAttention: materialChangedSinceUseAttention,
-            graph: graph
+            graph: graph,
+            stableNoteIDs: stableNoteIDs,
+            zoteroBindingsByNoteID: zoteroBindingsByNoteID
         )
 
         var healthIssues: [String] = []

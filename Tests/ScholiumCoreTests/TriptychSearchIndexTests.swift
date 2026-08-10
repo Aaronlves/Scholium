@@ -4,7 +4,7 @@ import SQLite3
 import Testing
 @testable import ScholiumCore
 
-@Suite("Triptych Search v6 index")
+@Suite("Triptych Search v7 index")
 struct TriptychSearchIndexTests {
     @Test("One corpus ranks exact identity before lexical results and applies vault scope")
     func unifiedCorpusAndScope() async throws {
@@ -355,6 +355,35 @@ struct TriptychSearchIndexTests {
         #expect(filterOnly.noteResults.count == 1)
     }
 
+    @Test("This Note reports only portable stable identity and ignores forged YAML identity")
+    func currentNotePortableIdentity() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID,
+            vaults: [fixture.topics]
+        )
+        _ = try await index.synchronize([])
+        let stableID = UUID()
+        let snapshot = SearchSourceSnapshot(
+            noteID: VaultQualifiedNoteID(
+                vaultID: fixture.topics.id,
+                relativePath: "Current.md"
+            ),
+            stableNoteID: stableID,
+            editorSessionID: UUID(),
+            source: "---\nnote_id: forged\n---\nportable identity result",
+            editorRevision: 1
+        )
+        let response = try await index.testSearch(SearchRequest(
+            query: "portable",
+            presentationScope: .thisNote,
+            executionScope: .currentNote(snapshot),
+            limit: 20
+        ))
+        #expect(response.noteResults.map(\.stableNoteID) == [stableID.uuidString.lowercased()])
+    }
+
     @Test("This Note enforces phrase and mixed-script boundaries and marks each occurrence")
     func currentNoteBoundariesAndOccurrenceHighlights() async throws {
         let fixture = try Fixture()
@@ -665,10 +694,10 @@ struct TriptychSearchIndexTests {
         init() throws {
             root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
                 .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v6-test-artifacts", isDirectory: true)
+                .appendingPathComponent("search-v7-test-artifacts", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v6.sqlite")
+            databaseURL = root.appendingPathComponent("search-v7.sqlite")
         }
 
         func item(

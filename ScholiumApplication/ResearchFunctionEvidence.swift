@@ -17,20 +17,16 @@ extension ResearchFunctionCoordinator {
     }
 
     func zoteroBibliographicContext(
-        for target: ValidatedFunctionObject,
-        sourceReference: ResearchSourceReference?
-    ) async -> ZoteroBibliographicContext? {
+        for target: ValidatedFunctionObject
+    ) async throws -> ZoteroBibliographicContext? {
         guard target.note.schemaProfile == .analysis,
-              let rawKey = normalizedTargetZoteroItemKey(target)
-                ?? sourceReference?.identity.zoteroItemKey else {
+              let binding = try await portableTargetZoteroBinding(target) else {
             return nil
         }
-        let itemKey = rawKey.uppercased()
+        let itemKey = binding.itemKey
         let capturedAt = researchFunctionRecordTimestamp()
         do {
-            switch try await dependencies.zotero.resolve(
-                source: ZoteroSourceIdentity(itemKey: itemKey)
-            ) {
+            switch try await dependencies.zotero.resolve(binding: binding) {
             case .matched(let metadata, .itemKey):
                 return ZoteroBibliographicContext(
                     itemKey: itemKey,

@@ -439,15 +439,14 @@ extension ResearchFunctionOperationsTests {
                 )
             )
         )
-        let document = try await handle.documents.load(fixture.analysisID)
-        let changed = document.rawContent.replacingOccurrences(
-            of: "zotero_item_key: 'PARENT01'",
-            with: "zotero_item_key: 'PARENT99'"
-        )
-        _ = try await handle.documents.save(
-            fixture.analysisID,
-            changeSet: .exactContent(changed),
-            expectedRevision: document.fingerprint
+        let bindingSnapshot = try await handle.services.controlStore.zoteroBindings()
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            AnalysisZoteroBinding(
+                noteID: analysis.noteID,
+                library: .user,
+                itemKey: "PARENT99"
+            ),
+            expectedRevision: bindingSnapshot.revision
         )
         analysis = try await researchFunctionTarget(
             fixture.analysisID,
@@ -464,8 +463,8 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("An empty Analysis Zotero key does not override an explicit attachment parent")
-    func emptyZoteroKeyUsesExplicitAttachmentIdentity() async throws {
+    @Test("A Zotero attachment without a portable binding does not trigger bibliographic metadata read")
+    func attachmentWithoutBindingSkipsBibliographicRead() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "")
         defer { fixture.remove() }
         let envelope = """
@@ -487,7 +486,6 @@ extension ResearchFunctionOperationsTests {
         let script = ZoteroRequestScript(steps:
             attachmentResponses
                 + attachmentResponses
-                + [.response(status: 404, data: Data())]
                 + attachmentResponses
                 + attachmentResponses
         )
@@ -515,7 +513,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionRequest(function: .develop, target: analysis)
         )
         #expect(preparation.snapshot.sourceReference?.identity.zoteroItemKey == "PARENT01")
-        #expect(await script.requestCount() == 9)
+        #expect(await script.requestCount() == 8)
         await runtime.shutdown()
     }
 

@@ -116,17 +116,18 @@ model; the app wrapper carries only the Application-owned workspace snapshot
 without copying its exact source.
 
 Contracts' `PropertyContract` catalog is the sole canonical vocabulary and
-ownership authority. It defines role-specific keys, value kinds, empty
-creation requirements, allowed values, cross-field constraints, and validation.
-`ResearchUnitDeclaration` separately parses Analysis Completion versus
-Topic/Work Scope, and `ResearchNoteTitleResolver` supplies one role-aware
-identity fallback to Workspace, Search, Link Graph, and Research Actions.
-App's independent `AboutProfileCatalog` owns default display choices and order;
-`PropertyPresentation` adds labels, help, grouping, and control style only.
+shape authority. It defines clean-sheet role keys, value kinds, allowed values,
+CreatorList structure, and shape/source-safety validation. It contains no
+creation-requiredness or machine ownership. `AnalysisSourceTypeProfileCatalog`
+separately owns applicable, recommended, and deterministic serialization order.
+`ResearchNoteTitleResolver` supplies one role-aware identity fallback to
+Workspace, Search, Link Graph, and Research Actions. App's independent
+`AboutProfileCatalog` owns researcher-configured display choices and order;
+`PropertyPresentation` adds label, help, one group, and control style only.
 Property edits are validated through Contracts and applied by Application as targeted
 `NoteDocument` changes. `FrontmatterPatchPlanner` first validates complete YAML
 with Yams, then proves a unique bounded plain key. Ordinary scalar edits replace
-only the value token; the role-aware Research Unit uses bounded member and array
+only the value token; list and creator edits use bounded sequence/member
 replacements; and a missing key is appended only at a proven top-level or child
 block-mapping boundary. Flow roots, quoted/duplicate or complex keys,
 merge/anchor/alias involvement, block scalars, structured scalar continuations,
@@ -165,3 +166,16 @@ explainable but belongs to the same Note/index generation and cannot write the
 Property. Quoted source ranges may include their delimiters; a block or
 otherwise unbounded scalar retains Property presence but is excluded from
 summary lexical projection until an exact range is provable.
+
+The lexical projection uses string `publication_date`; there is no numeric
+`year` field or derived year guess. The FTS schema version changes with that
+column and query grammar, so an old disposable database is rebuilt rather than
+adapted. Literal `property:year` may still find authored custom source, but it
+does not restore field semantics, filters, ranking, or aliases.
+
+`TriptychControlStore` owns `analysis-zotero-bindings.json`, a strict portable
+envelope of one typed user/group-library + item-key relationship per stable
+Analysis Note UUID. Reads return an exact-byte revision; set and clear require
+that revision, atomically replace, and readback. `WorkspaceSnapshotBuilder`
+joins bindings only through resolved portable identities. The catalog and
+Overview never derive a binding from frontmatter or bibliographic similarity.

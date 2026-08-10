@@ -315,15 +315,10 @@ struct ContentView: View {
     private var researchInspectorContentContext: ResearchInspectorContentContext {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
-                researchUnit: appState.currentNote?.researchUnit
-                    ?? ResearchUnitDeclaration(
-                        frontmatter: [:],
-                        profile: .genericMarkdown
-                    ),
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
                 freshness: researchProjectionFreshness,
                 propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
-                zoteroItemKey: currentAnalysisZoteroItemKey,
+                zoteroBinding: currentAnalysisZoteroBinding,
                 noteReviewState: currentNoteReviewState
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
@@ -353,8 +348,8 @@ struct ContentView: View {
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
             },
-            openZoteroItem: { itemKey in
-                await appState.zoteroBridge.openInZotero(zoteroKey: itemKey)
+            openZoteroItem: { binding in
+                await appState.zoteroBridge.openInZotero(binding: binding)
             }
         )
     }
@@ -381,11 +376,14 @@ struct ContentView: View {
         )
     }
 
-    private var currentAnalysisZoteroItemKey: String? {
+    private var currentAnalysisZoteroBinding: AnalysisZoteroBinding? {
         guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
-        return ZoteroBridge.normalizedItemKey(
-            appState.currentNote?.frontmatter["zotero_item_key"]?.scalarString
-        )
+        guard let note = appState.currentNote,
+              let vaultID = appState.currentDocumentVaultID else { return nil }
+        return appState.workspaceCatalog?.notes.first {
+            $0.reference.vaultID == vaultID
+                && $0.reference.relativePath == note.relativePath
+        }?.zoteroBinding
     }
 
     private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
@@ -647,7 +645,6 @@ struct ContentView: View {
                 graphIsAvailable: appState.relationshipGraph != nil,
                 tags: appState.allTags,
                 authors: appState.availableAuthors,
-                years: appState.availableYears,
                 propertyKeys: propertyFilterOptions.keys,
                 propertyValues: propertyFilterOptions.valuesByKey
             ),
@@ -747,12 +744,11 @@ struct ContentView: View {
                     onClose: {
                         finishFrontmatter(route)
                     }
-                ) { proposedFrontmatter, researchUnitEdit, revision in
+                ) { proposedFrontmatter, revision in
                     _ = try await appState.saveProperties(
                         for: note,
                         proposedFrontmatter: proposedFrontmatter,
-                        expectedRevision: revision,
-                        researchUnitEdit: researchUnitEdit
+                        expectedRevision: revision
                     )
                 }
                     .frame(minWidth: 520, minHeight: 560)

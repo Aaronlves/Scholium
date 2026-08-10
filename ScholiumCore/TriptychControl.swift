@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import ScholiumContracts
 
@@ -47,12 +48,51 @@ public actor TriptychControlStore {
         }
     }
 
+    private struct AnalysisZoteroBindingFile: Codable {
+        static let currentSchemaVersion = 1
+
+        let schemaVersion: Int
+        var bindings: [AnalysisZoteroBinding]
+
+        init(bindings: [AnalysisZoteroBinding]) {
+            schemaVersion = Self.currentSchemaVersion
+            self.bindings = bindings.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case schemaVersion
+            case bindings
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+            guard schemaVersion == Self.currentSchemaVersion else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .schemaVersion,
+                    in: container,
+                    debugDescription: "Unsupported Zotero binding schema \(schemaVersion)."
+                )
+            }
+            bindings = try container.decode([AnalysisZoteroBinding].self, forKey: .bindings)
+            guard Set(bindings.map(\.noteID)).count == bindings.count else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .bindings,
+                    in: container,
+                    debugDescription: "A Note may have at most one Zotero binding."
+                )
+            }
+        }
+    }
+
     public let controlURL: URL
 
     private let manifestURL: URL
     private let settingsURL: URL
     private let identitiesURL: URL
+    private let analysisZoteroBindingsURL: URL
     private let fileManager: FileManager
+    private let controlWriteHook: (@Sendable (URL) throws -> Void)?
 
     public init(worksVaultURL: URL, fileManager: FileManager = .default) {
         controlURL = worksVaultURL.standardizedFileURL
@@ -61,7 +101,25 @@ public actor TriptychControlStore {
         manifestURL = controlURL.appendingPathComponent("manifest.json")
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
+        analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         self.fileManager = fileManager
+        controlWriteHook = nil
+    }
+
+    init(
+        worksVaultURL: URL,
+        fileManager: FileManager = .default,
+        controlWriteHook: @escaping @Sendable (URL) throws -> Void
+    ) {
+        controlURL = worksVaultURL.standardizedFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".scholium", isDirectory: true)
+        manifestURL = controlURL.appendingPathComponent("manifest.json")
+        settingsURL = controlURL.appendingPathComponent("settings.json")
+        identitiesURL = controlURL.appendingPathComponent("identities.json")
+        analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
+        self.fileManager = fileManager
+        self.controlWriteHook = controlWriteHook
     }
 
     @discardableResult
@@ -96,6 +154,9 @@ public actor TriptychControlStore {
         if !fileManager.fileExists(atPath: identitiesURL.path) {
             try encode(IdentityFile(records: []), to: identitiesURL)
         }
+        if !fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) {
+            try encode(AnalysisZoteroBindingFile(bindings: []), to: analysisZoteroBindingsURL)
+        }
         return manifest
     }
 
@@ -106,13 +167,87 @@ public actor TriptychControlStore {
         return manifest
     }
 
-    public func settings() throws -> TriptychSettings {
-        try decodeIfPresent(TriptychSettings.self, from: settingsURL) ?? TriptychSettings()
+    public func settings() throws -> TriptychSettingsSnapshot {
+        guard fileManager.fileExists(atPath: settingsURL.path) else {
+            throw TriptychControlError.settingsMissing
+        }
+        let data = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
+        let settings = try decodeValidatedSettings(data)
+        return TriptychSettingsSnapshot(
+            settings: settings,
+            revision: SettingsRevision(fingerprint: DocumentFingerprint(data: data))
+        )
     }
 
-    public func saveSettings(_ settings: TriptychSettings) throws {
+    @discardableResult
+    public func saveSettings(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) throws -> TriptychSettingsSnapshot {
+        do {
+            try TriptychSettingsValidator.validate(settings)
+        } catch {
+            throw TriptychControlError.settingsNeedsReview(error.localizedDescription)
+        }
         try ensureControlDirectory()
-        try encode(settings, to: settingsURL)
+        guard fileManager.fileExists(atPath: settingsURL.path) else {
+            throw TriptychControlError.settingsMissing
+        }
+        let current = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
+        guard DocumentFingerprint(data: current) == expectedRevision.fingerprint else {
+            throw TriptychControlError.settingsRevisionConflict
+        }
+        let candidate = try encodedData(settings)
+        let readback = try replaceExactFile(
+            at: settingsURL,
+            expected: current,
+            candidate: candidate,
+            conflict: TriptychControlError.settingsRevisionConflict
+        )
+        guard readback == candidate,
+              let decoded = try? decodeValidatedSettings(readback),
+              decoded == settings else {
+            throw TriptychControlError.settingsCorrupted
+        }
+        return TriptychSettingsSnapshot(
+            settings: decoded,
+            revision: SettingsRevision(fingerprint: DocumentFingerprint(data: readback))
+        )
+    }
+
+    public func zoteroBindings() throws -> AnalysisZoteroBindingsSnapshot {
+        guard fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) else {
+            throw TriptychControlError.invalidZoteroBindings
+        }
+        let data = try Data(contentsOf: analysisZoteroBindingsURL, options: [.mappedIfSafe])
+        guard let payload = try? decoder().decode(AnalysisZoteroBindingFile.self, from: data) else {
+            throw TriptychControlError.invalidZoteroBindings
+        }
+        return AnalysisZoteroBindingsSnapshot(
+            bindings: payload.bindings,
+            revision: DocumentFingerprint(data: data)
+        )
+    }
+
+    @discardableResult
+    public func setZoteroBinding(
+        _ binding: AnalysisZoteroBinding,
+        expectedRevision: DocumentFingerprint
+    ) throws -> AnalysisZoteroBindingsSnapshot {
+        try updateZoteroBindings(expectedRevision: expectedRevision) { bindings in
+            bindings.removeAll { $0.noteID == binding.noteID }
+            bindings.append(binding)
+        }
+    }
+
+    @discardableResult
+    public func clearZoteroBinding(
+        for noteID: UUID,
+        expectedRevision: DocumentFingerprint
+    ) throws -> AnalysisZoteroBindingsSnapshot {
+        try updateZoteroBindings(expectedRevision: expectedRevision) { bindings in
+            bindings.removeAll { $0.noteID == noteID }
+        }
     }
 
     public func identity(
@@ -376,6 +511,24 @@ public actor TriptychControlStore {
         )
         payload.records.append(duplicate)
         try encode(payload, to: identitiesURL)
+        if let sourceBinding = try zoteroBindings().binding(for: sourceID) {
+            do {
+                let duplicateBinding = try AnalysisZoteroBinding(
+                    noteID: duplicate.id,
+                    library: sourceBinding.library,
+                    itemKey: sourceBinding.itemKey
+                )
+                let bindingSnapshot = try zoteroBindings()
+                _ = try setZoteroBinding(
+                    duplicateBinding,
+                    expectedRevision: bindingSnapshot.revision
+                )
+            } catch {
+                payload.records.removeAll { $0.id == duplicate.id }
+                try? encode(payload, to: identitiesURL)
+                throw error
+            }
+        }
         return duplicate
     }
 
@@ -402,6 +555,13 @@ public actor TriptychControlStore {
             return ambiguity.candidateIDs.isEmpty ? nil : ambiguity
         }
         try encode(payload, to: identitiesURL)
+        let bindingSnapshot = try zoteroBindings()
+        if bindingSnapshot.binding(for: id) != nil {
+            _ = try clearZoteroBinding(
+                for: id,
+                expectedRevision: bindingSnapshot.revision
+            )
+        }
         return record
     }
 
@@ -417,6 +577,7 @@ public actor TriptychControlStore {
         }
         return PermanentDeletionIdentityBackup(
             record: record,
+            zoteroBinding: try zoteroBindings().binding(for: id),
             pendingRebindings: payload.pendingRebindings.filter { $0.noteID == id },
             ambiguities: payload.unresolvedAmbiguities.compactMap { ambiguity in
                 guard ambiguity.candidateIDs.contains(id) else { return nil }
@@ -471,6 +632,16 @@ public actor TriptychControlStore {
             }
         }
         try encode(payload, to: identitiesURL)
+        if let binding = backup.zoteroBinding {
+            let snapshot = try zoteroBindings()
+            if let existing = snapshot.binding(for: backup.record.id) {
+                guard existing == binding else {
+                    throw TriptychControlError.invalidZoteroBindings
+                }
+            } else {
+                _ = try setZoteroBinding(binding, expectedRevision: snapshot.revision)
+            }
+        }
     }
 
     /// Reconciles one vault inventory in one atomic portable-state write.
@@ -722,17 +893,186 @@ public actor TriptychControlStore {
 
     private func decodeIfPresent<T: Decodable>(_ type: T.Type, from url: URL) throws -> T? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(type, from: Data(contentsOf: url))
+        return try decoder().decode(type, from: Data(contentsOf: url))
     }
 
     private func encode<T: Encodable>(_ value: T, to url: URL) throws {
         try ensureControlDirectory()
+        try encodedData(value).write(to: url, options: .atomic)
+    }
+
+    private func decoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+
+    private func encodedData<T: Encodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(value).write(to: url, options: .atomic)
+        return try encoder.encode(value)
+    }
+
+    private func decodeValidatedSettings(_ data: Data) throws -> TriptychSettings {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let envelope = object as? [String: Any] else {
+            throw TriptychControlError.settingsCorrupted
+        }
+        guard let rawVersion = envelope["schemaVersion"] else {
+            throw TriptychControlError.settingsOldSchema(nil)
+        }
+        guard let number = rawVersion as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            throw TriptychControlError.settingsCorrupted
+        }
+        let version = number.intValue
+        guard version >= TriptychSettings.currentSchemaVersion else {
+            throw TriptychControlError.settingsOldSchema(version)
+        }
+        guard version <= TriptychSettings.currentSchemaVersion else {
+            throw TriptychControlError.settingsFutureSchema(version)
+        }
+        let settings: TriptychSettings
+        do {
+            settings = try decoder().decode(TriptychSettings.self, from: data)
+        } catch {
+            throw TriptychControlError.settingsCorrupted
+        }
+        do {
+            try TriptychSettingsValidator.validate(settings)
+        } catch {
+            throw TriptychControlError.settingsNeedsReview(error.localizedDescription)
+        }
+        return settings
+    }
+
+    /// Replaces a portable control file only if the exact authorized preimage
+    /// is still the atomically displaced file. NSFileCoordinator covers
+    /// participating sync providers; the swap/readback proof detects an
+    /// uncoordinated writer in the final-check window and restores its bytes.
+    private func replaceExactFile(
+        at url: URL,
+        expected: Data,
+        candidate: Data,
+        conflict: @autoclosure () -> Error
+    ) throws -> Data {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordinationError: NSError?
+        var outcome: Result<Data, Error>?
+        coordinator.coordinate(
+            writingItemAt: url,
+            options: .forReplacing,
+            error: &coordinationError
+        ) { coordinatedURL in
+            outcome = Result {
+                let initial = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
+                guard initial == expected else { throw conflict() }
+
+                let stagingURL = coordinatedURL.deletingLastPathComponent()
+                    .appendingPathComponent(
+                        ".\(coordinatedURL.lastPathComponent)-staging-\(UUID().uuidString.lowercased())"
+                    )
+                var stagingExists = false
+                defer {
+                    if stagingExists { try? self.fileManager.removeItem(at: stagingURL) }
+                }
+                try candidate.write(to: stagingURL, options: .withoutOverwriting)
+                stagingExists = true
+                let stagingDescriptor = Darwin.open(stagingURL.path, O_RDONLY | O_NOFOLLOW)
+                guard stagingDescriptor >= 0 else { throw POSIXError(.EIO) }
+                defer { Darwin.close(stagingDescriptor) }
+                var stagingStatus = stat()
+                guard fstat(stagingDescriptor, &stagingStatus) == 0,
+                      (stagingStatus.st_mode & S_IFMT) == S_IFREG,
+                      stagingStatus.st_nlink == 1,
+                      fsync(stagingDescriptor) == 0 else {
+                    throw POSIXError(.EIO)
+                }
+
+                let rechecked = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
+                guard rechecked == expected else { throw conflict() }
+                try self.controlWriteHook?(coordinatedURL)
+
+                guard renameatx_np(
+                    AT_FDCWD,
+                    stagingURL.path,
+                    AT_FDCWD,
+                    coordinatedURL.path,
+                    UInt32(RENAME_SWAP)
+                ) == 0 else {
+                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+
+                let canonical = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
+                let displaced = try Data(contentsOf: stagingURL, options: [.mappedIfSafe])
+                guard canonical == candidate, displaced == expected else {
+                    if canonical == candidate {
+                        _ = renameatx_np(
+                            AT_FDCWD,
+                            stagingURL.path,
+                            AT_FDCWD,
+                            coordinatedURL.path,
+                            UInt32(RENAME_SWAP)
+                        )
+                    }
+                    throw conflict()
+                }
+                try self.fileManager.removeItem(at: stagingURL)
+                stagingExists = false
+                let directoryDescriptor = Darwin.open(
+                    coordinatedURL.deletingLastPathComponent().path,
+                    O_RDONLY | O_DIRECTORY
+                )
+                if directoryDescriptor >= 0 {
+                    defer { Darwin.close(directoryDescriptor) }
+                    guard fsync(directoryDescriptor) == 0 else { throw POSIXError(.EIO) }
+                }
+                let readback = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
+                guard readback == candidate else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                return readback
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let outcome else { throw CocoaError(.fileWriteUnknown) }
+        return try outcome.get()
+    }
+
+    private func updateZoteroBindings(
+        expectedRevision: DocumentFingerprint,
+        change: (inout [AnalysisZoteroBinding]) -> Void
+    ) throws -> AnalysisZoteroBindingsSnapshot {
+        let snapshot = try zoteroBindings()
+        guard snapshot.revision == expectedRevision else {
+            throw TriptychControlError.zoteroBindingsRevisionConflict
+        }
+        var bindings = snapshot.bindings
+        change(&bindings)
+        let payload = AnalysisZoteroBindingFile(bindings: bindings)
+        let candidate = try encodedData(payload)
+        let current = try Data(
+            contentsOf: analysisZoteroBindingsURL,
+            options: [.mappedIfSafe]
+        )
+        guard DocumentFingerprint(data: current) == expectedRevision else {
+            throw TriptychControlError.zoteroBindingsRevisionConflict
+        }
+        let readback = try replaceExactFile(
+            at: analysisZoteroBindingsURL,
+            expected: current,
+            candidate: candidate,
+            conflict: TriptychControlError.zoteroBindingsRevisionConflict
+        )
+        guard readback == candidate,
+              let decoded = try? decoder().decode(AnalysisZoteroBindingFile.self, from: readback) else {
+            throw TriptychControlError.invalidZoteroBindings
+        }
+        return AnalysisZoteroBindingsSnapshot(
+            bindings: decoded.bindings,
+            revision: DocumentFingerprint(data: readback)
+        )
     }
 
     private func persistentlyEquivalent<T: Encodable>(_ lhs: T, _ rhs: T) throws -> Bool {

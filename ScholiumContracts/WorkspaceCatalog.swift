@@ -20,8 +20,7 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
     public let reference: VaultNoteReference
     public let title: String
     public let aliases: [String]
-    public let zoteroItemKey: String?
-    public let zoteroSourceIdentity: ZoteroSourceIdentity?
+    public let zoteroBinding: AnalysisZoteroBinding?
     public let fingerprint: DocumentFingerprint
     public let validationWarnings: [String]
 
@@ -29,22 +28,20 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         reference: VaultNoteReference,
         title: String,
         aliases: [String] = [],
-        zoteroItemKey: String?,
-        zoteroSourceIdentity: ZoteroSourceIdentity?,
+        zoteroBinding: AnalysisZoteroBinding? = nil,
         fingerprint: DocumentFingerprint,
         validationWarnings: [String]
     ) {
         self.reference = reference
         self.title = title
         self.aliases = aliases
-        self.zoteroItemKey = zoteroItemKey
-        self.zoteroSourceIdentity = zoteroSourceIdentity
+        self.zoteroBinding = zoteroBinding
         self.fingerprint = fingerprint
         self.validationWarnings = validationWarnings
     }
 
     private enum CodingKeys: String, CodingKey {
-        case reference, title, aliases, zoteroItemKey, zoteroSourceIdentity
+        case reference, title, aliases, zoteroBinding
         case fingerprint, validationWarnings
     }
 
@@ -53,10 +50,9 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         reference = try container.decode(VaultNoteReference.self, forKey: .reference)
         title = try container.decode(String.self, forKey: .title)
         aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
-        zoteroItemKey = try container.decodeIfPresent(String.self, forKey: .zoteroItemKey)
-        zoteroSourceIdentity = try container.decodeIfPresent(
-            ZoteroSourceIdentity.self,
-            forKey: .zoteroSourceIdentity
+        zoteroBinding = try container.decodeIfPresent(
+            AnalysisZoteroBinding.self,
+            forKey: .zoteroBinding
         )
         fingerprint = try container.decode(DocumentFingerprint.self, forKey: .fingerprint)
         validationWarnings = try container.decode([String].self, forKey: .validationWarnings)
@@ -314,7 +310,9 @@ public enum WorkspaceCatalogBuilder {
         settlementStates: [String: WorkspaceSettlementState] = [:],
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
-        identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
+        identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
+        stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:],
+        zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding] = [:]
     ) -> WorkspaceCatalogSnapshot {
         build(
             vaults: vaults,
@@ -323,7 +321,9 @@ public enum WorkspaceCatalogBuilder {
             settlementStates: settlementStates,
             additionalAttention: additionalAttention,
             graph: graph,
-            identityAmbiguitiesByVault: identityAmbiguitiesByVault
+            identityAmbiguitiesByVault: identityAmbiguitiesByVault,
+            stableNoteIDs: stableNoteIDs,
+            zoteroBindingsByNoteID: zoteroBindingsByNoteID
         )
     }
 
@@ -334,7 +334,9 @@ public enum WorkspaceCatalogBuilder {
         settlementStates: [String: WorkspaceSettlementState] = [:],
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
-        identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:]
+        identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
+        stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:],
+        zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding] = [:]
     ) -> WorkspaceCatalogSnapshot {
         let vaultsByID = Dictionary(uniqueKeysWithValues: vaults.map { ($0.id, $0) })
         var resolvedSemanticDocuments = semanticDocuments
@@ -358,29 +360,20 @@ public enum WorkspaceCatalogBuilder {
         for vaultID in documents.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
             guard let vault = vaultsByID[vaultID] else { continue }
             for document in (documents[vaultID] ?? []).sorted(by: { $0.relativePath < $1.relativePath }) {
-                let stableID = ["note_id", "paper_id", "topic_id", "output_id"]
-                    .compactMap { document.parsedFrontmatter[$0]?.catalogScalar }
-                    .first
+                let qualifiedID = VaultQualifiedNoteID(
+                    vaultID: vault.id,
+                    relativePath: document.relativePath
+                )
+                let stableNoteID = stableNoteIDs[qualifiedID]
                 let reference = VaultNoteReference(
                     vaultID: vault.id,
                     vaultName: vault.name,
                     vaultRole: vault.role,
                     relativePath: document.relativePath,
-                    stableNoteID: stableID
+                    stableNoteID: stableNoteID?.uuidString.lowercased()
                 )
                 references[reference.id] = reference
                 let settlement = settlementStates[reference.id]
-                let zoteroItemKey = vault.role == .sourceCorpus
-                    ? document.parsedFrontmatter["zotero_item_key"]?.catalogScalar
-                    : nil
-                let zoteroSourceIdentity = vault.role == .sourceCorpus
-                    ? ZoteroSourceIdentity(
-                        itemKey: zoteroItemKey,
-                        title: document.parsedFrontmatter["title"]?.catalogScalar,
-                        authors: document.parsedFrontmatter["authors"]?.catalogStrings ?? [],
-                        year: document.parsedFrontmatter["year"]?.catalogInteger
-                    )
-                    : nil
                 notes.append(WorkspaceCatalogNote(
                     reference: reference,
                     title: ResearchNoteTitleResolver.resolve(
@@ -393,15 +386,14 @@ public enum WorkspaceCatalogBuilder {
                             )
                         ]
                     ).title,
-                    aliases: (
-                        document.parsedFrontmatter["aliases"]?.catalogStrings
-                            ?? document.parsedFrontmatter["alias"]?.catalogStrings
-                            ?? []
-                    )
+                    aliases: (vault.role == .topicKnowledge
+                        ? document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
+                        : [])
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty },
-                    zoteroItemKey: zoteroItemKey,
-                    zoteroSourceIdentity: zoteroSourceIdentity,
+                    zoteroBinding: vault.role == .sourceCorpus
+                        ? stableNoteID.flatMap { zoteroBindingsByNoteID[$0] }
+                        : nil,
                     fingerprint: document.fingerprint,
                     validationWarnings: document.validationWarnings
                 ))

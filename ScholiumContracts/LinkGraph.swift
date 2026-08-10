@@ -37,18 +37,12 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
             profile: profile,
             semantic: semantic
         ).title
-        aliases = Self.aliases(from: document.parsedFrontmatter["aliases"])
+        aliases = PropertyContractCatalog.contract(for: "aliases", profile: profile) == nil
+            ? []
+            : document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
         noteType = document.parsedFrontmatter["note_type"]?.nonemptyString
         headings = semantic.headings
         blockAnchors = Self.blockAnchors(in: document, blocks: semantic.blocks)
-    }
-
-    private static func aliases(from value: YAMLValue?) -> [String] {
-        switch value {
-        case .string(let alias): [alias].filter { !$0.isEmpty }
-        case .array(let aliases): aliases.compactMap(\.nonemptyString)
-        default: []
-        }
     }
 
     private static func blockAnchors(in document: NoteDocument, blocks: [MarkdownBlock]) -> [String: SourceSpan] {

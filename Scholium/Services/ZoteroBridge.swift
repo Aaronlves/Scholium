@@ -34,19 +34,20 @@ actor ZoteroBridge {
         #endif
     }
 
-    func openInZotero(zoteroKey: String) {
-        guard let url = Self.itemURL(zoteroKey: zoteroKey) else { return }
+    func openInZotero(binding: AnalysisZoteroBinding) {
+        guard let url = Self.itemURL(binding: binding) else { return }
         #if canImport(AppKit)
         NSWorkspace.shared.open(url)
         #endif
     }
 
-    nonisolated static func normalizedItemKey(_ value: String?) -> String? {
-        try? ResearchSourceIdentity.normalizedZoteroKey(value)
-    }
-
-    nonisolated static func itemURL(zoteroKey: String?) -> URL? {
-        guard let key = normalizedItemKey(zoteroKey) else { return nil }
-        return URL(string: "zotero://select/library/items/\(key)")
+    nonisolated static func itemURL(binding: AnalysisZoteroBinding) -> URL? {
+        let path = switch binding.library {
+        case .user:
+            "library/items/\(binding.itemKey)"
+        case .group(let groupID):
+            "groups/\(groupID)/items/\(binding.itemKey)"
+        }
+        return URL(string: "zotero://select/\(path)")
     }
 }

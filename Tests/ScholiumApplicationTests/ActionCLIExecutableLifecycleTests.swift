@@ -390,8 +390,8 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(Set(observedIDs.values).count == 1)
     }
 
-    @Test("The real CLI exposes the provider-discriminated Search v6 text and JSONL contracts")
-    func searchV6Contract() async throws {
+    @Test("The real CLI exposes the provider-discriminated Search v7 text and JSONL contracts")
+    func searchV7Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }

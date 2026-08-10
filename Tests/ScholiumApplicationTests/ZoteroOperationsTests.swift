@@ -92,6 +92,39 @@ struct ZoteroOperationsTests {
         ])
     }
 
+    @Test("The same item key resolves through the exact portable user or group library")
+    func exactBindingLibraryRoute() async throws {
+        let item = Data("""
+        {
+          "key": "SHARED01",
+          "data": {
+            "key": "SHARED01",
+            "itemType": "journalArticle",
+            "title": "Library-specific item",
+            "creators": []
+          }
+        }
+        """.utf8)
+        let script = AttachmentRequestScript(responses: [(200, item), (200, item)])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+        _ = try await operations.resolve(binding: AnalysisZoteroBinding(
+            noteID: UUID(),
+            library: .user,
+            itemKey: "SHARED01"
+        ))
+        _ = try await operations.resolve(binding: AnalysisZoteroBinding(
+            noteID: UUID(),
+            library: .group(42),
+            itemKey: "SHARED01"
+        ))
+        #expect(await script.paths() == [
+            "/api/users/0/items/SHARED01",
+            "/api/groups/42/items/SHARED01",
+        ])
+    }
+
     @Test("A Zotero attachment from another parent fails before file lookup")
     func attachmentParentMismatch() async throws {
         let envelope = """

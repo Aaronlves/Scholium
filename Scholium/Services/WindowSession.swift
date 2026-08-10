@@ -587,7 +587,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             )
         }
         let handle = try await workspaceHandle(id: assignment.id)
-        let settings = try await handle.research.settings()
+        let settingsSnapshot = try await handle.research.settings()
         var propertyKeys: [WorkspaceVaultSlot: Set<String>] = [:]
         for vault in try await handle.documents.snapshot() {
             propertyKeys[vault.slot] = Set(
@@ -598,7 +598,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             registeredVaults: vaults,
             registeredTriptychs: triptychs,
             activeTriptychID: handle.id,
-            triptychSettings: settings,
+            triptychSettings: settingsSnapshot.settings,
+            settingsRevision: settingsSnapshot.revision,
             propertyKeysBySlot: propertyKeys
         )
     }
@@ -620,9 +621,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     )
                     return try await settingsSnapshot(preferredTriptychID: handle.id)
                 },
-                saveTriptychSettings: { [self] id, settings in
+                saveTriptychSettings: { [self] id, settings, expectedRevision in
                     let handle = try await workspaceHandle(id: id)
-                    try await handle.research.saveSettings(settings)
+                    _ = try await handle.research.saveSettings(
+                        settings,
+                        expectedRevision: expectedRevision
+                    )
                     return try await settingsSnapshot(preferredTriptychID: id)
                 },
                 portableContainerURL: { [self] url in

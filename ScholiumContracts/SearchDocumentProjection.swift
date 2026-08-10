@@ -54,10 +54,11 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
             $0.normalizedUTF16LowerBound < range.upperBound
                 && $0.normalizedUTF16UpperBound > range.lowerBound
         }
-        guard let first = overlapping.first, let last = overlapping.last else {
+        guard !overlapping.isEmpty else {
             return sourceRange.map { $0.utf16LowerBound..<$0.utf16UpperBound }
         }
-        return first.sourceUTF16LowerBound..<last.sourceUTF16UpperBound
+        return overlapping.map(\.sourceUTF16LowerBound).min()!
+            ..< overlapping.map(\.sourceUTF16UpperBound).max()!
     }
 }
 
@@ -70,7 +71,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public let headings: [String]
     public let summary: String?
     public let authors: [String]
-    public let year: String?
+    public let publicationDate: String?
     public let tags: [String]
     public let body: String
     public let callouts: String
@@ -97,23 +98,34 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let titleValue = titleResolution.title
         title = titleValue
         titleUsesFilenameFallback = titleResolution.source == .filename
-        aliases = document.parsedFrontmatter["aliases"]?.searchStrings
-            ?? document.parsedFrontmatter["alias"]?.searchStrings
-            ?? []
+        aliases = PropertyContractCatalog.contract(for: "aliases", profile: profile) == nil
+            ? []
+            : document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
         headings = semantic.headings.map(\.text)
         let propertyProjection = SearchPropertyProjection(document: document)
-        let summaryMember = propertyProjection.entry(forExactKey: "summary")
+        let summaryMember = PropertyContractCatalog.contract(
+            for: "summary",
+            profile: profile
+        ) == nil ? nil : propertyProjection.entry(forExactKey: "summary")
             .flatMap { entry in
                 entry.valueKind == .string && entry.stringMembers.count == 1
                     ? entry.stringMembers.first
                     : nil
             }
         summary = summaryMember?.value
-        authors = document.parsedFrontmatter["authors"]?.searchStrings
-            ?? document.parsedFrontmatter["author"]?.searchStrings
-            ?? []
-        year = document.parsedFrontmatter["year"]?.displayScalar
-        tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
+        let creatorNames = PropertyContractCatalog.contract(
+            for: "authors",
+            profile: profile
+        ) == nil ? [] : document.parsedFrontmatter["authors"]
+            .flatMap { PropertyContractCatalog.creatorNames(from: $0) } ?? []
+        authors = creatorNames.map(\.displayName)
+        publicationDate = PropertyContractCatalog.contract(
+            for: "publication_date",
+            profile: profile
+        ) == nil ? nil : document.parsedFrontmatter["publication_date"]?.canonicalSearchText
+        tags = PropertyContractCatalog.contract(for: "tags", profile: profile) == nil
+            ? []
+            : document.parsedFrontmatter["tags"]?.canonicalStringList ?? []
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
@@ -171,8 +183,52 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
             ))
         }
         appendMetadata(aliases, field: .alias, preferredRange: frontmatterRange)
-        appendMetadata(authors, field: .author, preferredRange: frontmatterRange)
-        if let year { appendMetadata([year], field: .year, preferredRange: frontmatterRange) }
+        for creator in creatorNames {
+            var textCursor = 0
+            var fragments: [SearchVisibleFragment] = []
+            for (index, component) in creator.searchableComponents.enumerated() {
+                if index > 0 {
+                    fragments.append(SearchVisibleFragment(
+                        textRange: textCursor..<(textCursor + 1),
+                        sourceRange: nil,
+                        exact: false
+                    ))
+                    textCursor += 1
+                }
+                let textRange = textCursor..<(textCursor + component.utf16.count)
+                if let sourceRange = sourceLocator.uniqueRange(
+                    of: component,
+                    within: frontmatterRange
+                ) {
+                    fragments.append(SearchVisibleFragment(
+                        textRange: textRange,
+                        sourceRange: sourceRange,
+                        exact: true
+                    ))
+                }
+                textCursor = textRange.upperBound
+            }
+            let sourceRanges = fragments.compactMap(\.sourceRange)
+            let coveringRange = sourceRanges.isEmpty ? nil
+                : sourceRanges.map(\.lowerBound).min()!
+                    ..< sourceRanges.map(\.upperBound).max()!
+            builtSegments.append(SearchProjectionBuilder.segment(
+                field: .author,
+                ordinal: builtSegments.count,
+                text: creator.displayName,
+                sourceRange: coveringRange,
+                source: document.rawContent,
+                sourceLocator: sourceLocator,
+                explicitMap: fragments
+            ))
+        }
+        if let publicationDate {
+            appendMetadata(
+                [publicationDate],
+                field: .publicationDate,
+                preferredRange: frontmatterRange
+            )
+        }
         appendMetadata(tags, field: .tag, preferredRange: frontmatterRange)
         builtSegments.append(SearchProjectionBuilder.segment(
             field: .path,
@@ -324,7 +380,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         case .heading: headings.joined(separator: "\n")
         case .summary: summary ?? ""
         case .author: authors.joined(separator: "\n")
-        case .year: year ?? ""
+        case .publicationDate: publicationDate ?? ""
         case .tag: tags.joined(separator: "\n")
         case .body: body
         case .callout: callouts

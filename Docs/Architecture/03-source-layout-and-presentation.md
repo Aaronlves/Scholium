@@ -275,7 +275,7 @@ Connect, and Actions modes share the one native trailing split
 item and one `ResearchInspectorMode` per Triptych workspace; switching workspace
 restores its value without reconstructing the native Inspector. Mode changes and
 note/tab changes never reconstruct the retained Document host. `ResearchOverviewPresentation`
-contains at most one normalized Zotero navigation key for the current Analysis;
+contains at most one typed user/group-library plus item-key binding for the current Analysis;
 the view neither derives nor displays protected machine data.
 
 `ConnectionsInspectorView` owns one nonpersistent `ConnectionDirection`,

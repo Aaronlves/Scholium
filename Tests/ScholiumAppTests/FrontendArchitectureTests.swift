@@ -2169,7 +2169,8 @@ struct FrontendArchitectureTests {
                 "ScholiumTypography.scholarly(.emphasis)"
             ))
         #expect(researchSource.contains("aboutSection"))
-        #expect(researchSource.contains("propertyFacts"))
+        #expect(researchSource.contains("aboutGroups"))
+        #expect(researchSource.contains("ScholiumApparatusFactGrid(facts: group.facts)"))
         #expect(researchSource.contains("ResearchProjectionFreshnessView("))
         #expect(researchSource.contains("ScholiumApparatusStateView("))
         #expect(
@@ -2222,8 +2223,9 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains("visibleAttentionKinds.prefix(3)"))
         #expect(!researchSource.contains("Text(item.message)"))
         #expect(!researchSource.contains("\"Show All\""))
-        #expect(researchSource.contains("if let invalidResearchUnitMessage"))
-        #expect(researchSource.contains("systemImage: \"exclamationmark.triangle\""))
+        #expect(!researchSource.contains("ResearchUnit"))
+        #expect(researchSource.contains("AboutProfileCatalog.groupedEntries"))
+        #expect(researchSource.contains("AboutTagsView"))
         #expect(researchSource.contains("ScholiumApparatusSectionHeaderButton("))
         #expect(researchSource.contains("actionLabel: \"Edit Properties\""))
         #expect(researchSource.contains("accessibilityIdentifier: \"scholium.about.edit\""))

@@ -13,7 +13,6 @@ struct FrontmatterEditorView: View {
     let onClose: (@MainActor () -> Void)?
     let save: @MainActor (
         [String: YAMLValue],
-        ResearchUnitEdit?,
         DocumentFingerprint
     ) async throws -> Void
 
@@ -25,13 +24,6 @@ struct FrontmatterEditorView: View {
     @State private var expectedRevision: DocumentFingerprint?
     @State private var saveError: String?
     @State private var showAvailableProperties = false
-    @State private var researchUnitCompletion = ""
-    @State private var originalResearchUnitCompletion = ""
-    @State private var researchUnitScope = ""
-    @State private var originalResearchUnitScope = ""
-    @State private var researchUnitLimitationsText = ""
-    @State private var originalResearchUnitLimitationsText = ""
-    @State private var researchUnitWasInvalid = false
 
     init(
         note: WindowDocumentLocation,
@@ -40,7 +32,6 @@ struct FrontmatterEditorView: View {
         onClose: (@MainActor () -> Void)? = nil,
         save: @escaping @MainActor (
             [String: YAMLValue],
-            ResearchUnitEdit?,
             DocumentFingerprint
         ) async throws -> Void
     ) {
@@ -113,34 +104,12 @@ struct FrontmatterEditorView: View {
                     Text("Researcher Properties")
                         .font(ScholiumTypography.interface(.sectionTitle))
 
-                    if supportsResearchUnit {
-                        researchUnitEditor
-                    }
-
                     if allFields.isEmpty {
                         Label(
                             "No other fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML.",
                             systemImage: "lock"
                         )
                         .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                    }
-
-                    if hiddenPropertyCount > 0 {
-                        Group {
-                            if hiddenPropertyCount == 1 {
-                                Label(
-                                    "One machine or custom property is preserved in Source mode.",
-                                    systemImage: "gearshape.2"
-                                )
-                            } else {
-                                Label(
-                                    "\(hiddenPropertyCount) machine or custom properties are preserved in Source mode.",
-                                    systemImage: "gearshape.2"
-                                )
-                            }
-                        }
-                        .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                     }
 
@@ -206,20 +175,6 @@ struct FrontmatterEditorView: View {
                 fieldValues[field.key] = stringValue
                 originalFieldValues[field.key] = stringValue
             }
-            let declaration = note.researchUnit
-            switch declaration.state {
-            case .absent:
-                break
-            case .declared:
-                researchUnitCompletion = declaration.completion?.yamlScalar ?? ""
-                originalResearchUnitCompletion = researchUnitCompletion
-                researchUnitScope = declaration.scope ?? ""
-                originalResearchUnitScope = researchUnitScope
-                researchUnitLimitationsText = declaration.limitations.joined(separator: "\n")
-                originalResearchUnitLimitationsText = researchUnitLimitationsText
-            case .invalid:
-                researchUnitWasInvalid = true
-            }
             expectedRevision = initialExpectedRevision
         }
         .alert("Could Not Save", isPresented: Binding(
@@ -229,109 +184,6 @@ struct FrontmatterEditorView: View {
             Button("Keep Editing", role: .cancel) { saveError = nil }
         } message: {
             Text(saveError ?? "")
-        }
-    }
-
-    private var hiddenPropertyCount: Int {
-        editorModel.hiddenPropertyCount
-    }
-
-    private var supportsResearchUnit: Bool {
-        guard PropertyContractCatalog.contract(
-            for: "research_unit",
-            profile: note.schemaProfile
-        ) != nil else { return false }
-        return configuredEditableFields?.contains("research_unit") ?? true
-    }
-
-    private var researchUnitLimitations: [String] {
-        researchUnitLimitationsText
-            .split(whereSeparator: { $0.isNewline })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private var researchUnitHasChanges: Bool {
-        researchUnitCompletion != originalResearchUnitCompletion
-            || researchUnitScope != originalResearchUnitScope
-            || researchUnitLimitationsText != originalResearchUnitLimitationsText
-    }
-
-    @ViewBuilder
-    private var researchUnitEditor: some View {
-        GroupBox("Research Unit") {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.groupSpacing) {
-                Text(researchUnitHelp)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if researchUnitWasInvalid {
-                    Label(
-                        "The existing Research Unit is not valid for this note role. Source mode preserves its exact YAML; changing these fields will replace it with a valid declaration.",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.attention)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if note.schemaProfile == .analysis {
-                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.optionSpacing) {
-                        Text("Completion")
-                            .font(ScholiumTypography.interface(.rowTitle))
-                        TextField("complete, incomplete, or 6/11", text: $researchUnitCompletion)
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Analysis completion")
-                            .accessibilityIdentifier("scholium.properties.researchUnitCompletion")
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.optionSpacing) {
-                        Text(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
-                            .font(ScholiumTypography.interface(.rowTitle))
-                        TextField("Describe the boundary of this note's research", text: $researchUnitScope)
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel(note.schemaProfile == .draftProject ? "Research Scope" : "Scope")
-                            .accessibilityIdentifier("scholium.properties.researchUnitScope")
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.optionSpacing) {
-                    Text("Limitations")
-                        .font(ScholiumTypography.interface(.rowTitle))
-                    Text("One material boundary per line.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                    TextEditor(text: $researchUnitLimitationsText)
-                        .font(ScholiumTypography.scholarly(.body))
-                        .frame(minHeight: 70)
-                        .scrollContentBackground(.hidden)
-                        .padding(ScholiumGrid.Spacing.labelAccessoryGap)
-                        .background(
-                            ScholiumColorRole.documentBackground.color,
-                            in: RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
-                                style: .continuous
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(
-                                cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
-                                style: .continuous
-                            )
-                                .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
-                        )
-                        .accessibilityLabel("Research Unit Limitations")
-                }
-
-                if let error = fieldErrors["research_unit"] {
-                    Label(error, systemImage: "exclamationmark.circle.fill")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.destructive)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
         }
     }
 
@@ -485,8 +337,11 @@ struct FrontmatterEditorView: View {
                 .frame(maxWidth: 240)
             }
 
-        case .researchUnit:
-            EmptyView()
+        case .creatorListEditor:
+            Text(fieldValues[field.key] ?? "—")
+                .font(ScholiumTypography.scholarly(.body))
+                .scholiumForeground(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -635,9 +490,8 @@ struct FrontmatterEditorView: View {
         let changedFields = allFields.filter { field in
             !field.isReadOnly && fieldValues[field.key] != originalFieldValues[field.key]
         }
-        let hasResearchUnitChanges = researchUnitHasChanges
 
-        guard !changedFields.isEmpty || hasResearchUnitChanges else {
+        guard !changedFields.isEmpty else {
             closeEditor()
             return
         }
@@ -652,45 +506,10 @@ struct FrontmatterEditorView: View {
             )
         }
 
-        let researchUnitEdit: ResearchUnitEdit?
-        if hasResearchUnitChanges {
-            let completionText = researchUnitCompletion.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-            let completion: AnalysisCompletion?
-            if completionText.isEmpty {
-                completion = nil
-            } else if let parsed = AnalysisCompletion(yamlScalar: completionText) {
-                completion = parsed
-            } else {
-                fieldErrors = [
-                    "research_unit": "Completion must be complete, incomplete, or a valid completed/total ratio."
-                ]
-                return
-            }
-
-            let trimmedScope = researchUnitScope.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-            let scope = trimmedScope.isEmpty ? nil : trimmedScope
-            researchUnitEdit = completion == nil
-                && scope == nil
-                && researchUnitLimitations.isEmpty
-                ? .remove
-                : .set(
-                    completion: completion,
-                    scope: scope,
-                    limitations: researchUnitLimitations
-                )
-        } else {
-            researchUnitEdit = nil
-        }
-
         fieldErrors = [:]
         saveError = nil
         let issues = editorModel.validationIssues(
             proposedFrontmatter: proposedFrontmatter,
-            researchUnitEdit: researchUnitEdit,
             changedKeys: Set(changedFields.map(\.key))
         )
         for issue in issues {
@@ -710,7 +529,7 @@ struct FrontmatterEditorView: View {
         isSaving = true
         Task {
             do {
-                try await save(proposedFrontmatter, researchUnitEdit, revision)
+                try await save(proposedFrontmatter, revision)
                 isSaving = false
                 closeEditor()
             } catch {
@@ -729,19 +548,6 @@ struct FrontmatterEditorView: View {
     }
 
     // MARK: - Helpers
-
-    private var researchUnitHelp: String {
-        switch note.schemaProfile {
-        case .analysis:
-            "Record how much source material this Analysis represents and any material limitations. Completion does not judge analytical adequacy."
-        case .topicMarkdown:
-            "Describe the Topic's conceptual or debate scope and any material limitations."
-        case .draftProject:
-            "Describe this Work's Research Scope and any material limitations."
-        case .genericMarkdown:
-            "This note role does not define a Research Unit."
-        }
-    }
 
     private func frontmatterToString(_ value: YAMLValue) -> String {
         switch value {
@@ -835,13 +641,13 @@ struct FlowLayout: Layout {
         rawContent: """
         ---
         title: Attention Is All You Need
-        authors: [Smith, Jones]
-        year: 2023
+        authors:
+          - family: Smith
+          - family: Jones
+        publication_date: "2023"
         tags: [attention, nlp]
-        research_unit:
-          completion: 6/11
         ---
         """,
         vaultRole: .sourceCorpus
-    )) { _, _, _ in }
+    )) { _, _ in }
 }

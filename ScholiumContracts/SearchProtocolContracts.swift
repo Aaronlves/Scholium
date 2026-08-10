@@ -4,8 +4,8 @@ import Foundation
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
-    public static let currentVersion = 6
-    public static let schemaVersion = 9
+    public static let currentVersion = 7
+    public static let schemaVersion = 10
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
     public static let maximumInterfaceResults = 100
@@ -75,17 +75,20 @@ public struct SearchDefinition: Codable, Hashable, Sendable {
 /// Exact, nonpersisted editor authority used only by This Note Search.
 public struct SearchSourceSnapshot: Codable, Hashable, Sendable {
     public let noteID: VaultQualifiedNoteID
+    public let stableNoteID: UUID?
     public let editorSessionID: UUID
     public let source: String
     public let editorRevision: UInt64
 
     public init(
         noteID: VaultQualifiedNoteID,
+        stableNoteID: UUID? = nil,
         editorSessionID: UUID,
         source: String,
         editorRevision: UInt64
     ) {
         self.noteID = noteID
+        self.stableNoteID = stableNoteID
         self.editorSessionID = editorSessionID
         self.source = source
         self.editorRevision = editorRevision

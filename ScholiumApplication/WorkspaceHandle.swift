@@ -880,8 +880,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         let issues = PropertyContractCatalog.validate(
             frontmatter: frontmatter,
-            profile: profile,
-            context: .creation
+            profile: profile
         )
         guard issues.isEmpty else { throw DocumentCreationError.invalidMetadata(issues) }
 
@@ -912,8 +911,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         let issues = PropertyContractCatalog.validate(
             frontmatter: [:],
-            profile: profile,
-            context: .creation
+            profile: profile
         )
         guard issues.isEmpty else {
             throw DocumentCreationError.invalidMetadata(issues)
@@ -2704,18 +2702,25 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return await services.critiqueRegistry.association(workNoteID: workNoteID)
     }
 
-    func triptychSettings() async throws -> TriptychSettings {
+    func triptychSettings() async throws -> TriptychSettingsSnapshot {
         try requireActive()
         return try await services.controlStore.settings()
     }
 
-    func saveTriptychSettings(_ settings: TriptychSettings) async throws {
+    func saveTriptychSettings(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) async throws -> TriptychSettingsSnapshot {
         try requireActive()
-        try await services.controlStore.saveSettings(settings)
+        let snapshot = try await services.controlStore.saveSettings(
+            settings,
+            expectedRevision: expectedRevision
+        )
         try await refreshAfterCommittedOperation(
             "The Triptych settings",
             publication: .researchRecords
         )
+        return snapshot
     }
 
 

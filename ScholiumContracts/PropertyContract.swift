@@ -13,91 +13,39 @@ public enum PropertyValueKind: String, Codable, Hashable, Sendable {
     case textList
     case choice
     case mapping
-}
-
-/// Requiredness applies only while deliberately creating a new durable note.
-/// Existing notes remain readable when a required-for-creation property is
-/// absent; Scholium does not migrate or repair them merely by opening them.
-public enum PropertyCreationRequirement: String, Codable, Hashable, Sendable {
-    case optional
-    case required
-}
-
-/// Declares who may author a recognized property through structured product
-/// surfaces. Protected machine properties remain part of the exact Markdown
-/// vocabulary, but are excluded from researcher-facing editors and profiles.
-public enum PropertyOwnership: String, Codable, Hashable, Sendable {
-    case researcher
-    case protectedMachine = "protected_machine"
-}
-
-/// A semantic constraint that relates one property to another value or
-/// property. Constraints are descriptive Core data as well as validation
-/// inputs, so every delivery surface can inspect the same rule catalog.
-public enum PropertyConstraint: Codable, Hashable, Sendable {
-    /// The property and its peer must either both be present or both be absent.
-    case pairedWith(canonicalKey: String)
-    /// A present value must be a whole number inside the inclusive bounds.
-    case integerRange(minimum: Int, maximum: Int)
-    /// During creation, this property is required when another canonical
-    /// property contains the specified controlled value.
-    case requiredWhen(canonicalKey: String, equals: String)
+    case creatorList
 }
 
 /// One canonical property definition shared by headless Core consumers.
-/// Labels, grouping, display order, and control selection remain app concerns.
+/// Requiredness, visibility, structured-edit access, presentation, and exact
+/// New Note YAML are deliberately owned by separate contracts.
 public struct PropertyContract: Codable, Hashable, Sendable {
     public let canonicalKey: String
     public let valueKind: PropertyValueKind
-    public let creationRequirement: PropertyCreationRequirement
-    public let ownership: PropertyOwnership
     public let allowedValues: [String]?
-    public let constraints: [PropertyConstraint]
 
     public init(
         canonicalKey: String,
         valueKind: PropertyValueKind,
-        creationRequirement: PropertyCreationRequirement = .optional,
-        ownership: PropertyOwnership = .researcher,
-        allowedValues: [String]? = nil,
-        constraints: [PropertyConstraint] = []
+        allowedValues: [String]? = nil
     ) {
         self.canonicalKey = canonicalKey
         self.valueKind = valueKind
-        self.creationRequirement = creationRequirement
-        self.ownership = ownership
         self.allowedValues = allowedValues.map(Self.unique)
-        self.constraints = Self.unique(constraints)
     }
 
     private static func unique(_ values: [String]) -> [String] {
         var seen: Set<String> = []
         return values.filter { seen.insert($0).inserted }
     }
-
-    private static func unique(_ values: [PropertyConstraint]) -> [PropertyConstraint] {
-        var seen: Set<PropertyConstraint> = []
-        return values.filter { seen.insert($0).inserted }
-    }
-}
-
-public enum PropertyValidationContext: String, Codable, Hashable, Sendable {
-    /// Validate only metadata that is actually present. Missing creation
-    /// requirements do not make an existing note malformed.
-    case existingDocument
-    /// Also report properties required by the selected profile at creation.
-    case creation
 }
 
 public struct PropertyValidationIssue: Codable, Hashable, Sendable {
     public enum Code: String, Codable, Hashable, Sendable {
         case malformedFrontmatter
-        case missingRequiredProperty
         case invalidValueKind
         case valueNotAllowed
-        case invalidResearchUnit
-        case debateImportanceOutOfRange
-        case pairedPropertyMissing
+        case invalidCreator
     }
 
     /// The canonical key, or `nil` when the complete frontmatter envelope is
@@ -110,6 +58,16 @@ public struct PropertyValidationIssue: Codable, Hashable, Sendable {
         self.propertyKey = propertyKey
         self.code = code
         self.message = message
+    }
+}
+
+public struct CreatorNameProjection: Codable, Hashable, Sendable {
+    public let displayName: String
+    public let searchableComponents: [String]
+
+    public init(displayName: String, searchableComponents: [String]) {
+        self.displayName = displayName
+        self.searchableComponents = searchableComponents
     }
 }
 
@@ -135,19 +93,39 @@ public enum PropertyContractCatalog {
         contract(for: key, profile: profile)?.canonicalKey
     }
 
-    /// Protected machine keys remain recognizable source vocabulary but can
-    /// never become a researcher-editable Action Profile boundary.
-    static func isProtectedMachineKey(_ key: String) -> Bool {
-        protectedMachineKeys.contains(key)
+    /// Produces deterministic display/search values only for a completely
+    /// valid canonical CreatorList. It never accepts legacy string arrays or
+    /// coerces YAML scalars into names.
+    public static func creatorNames(from value: YAMLValue) -> [CreatorNameProjection]? {
+        guard validateCreatorList(value, key: "creators") == nil,
+              case .array(let entries) = value else { return nil }
+        return entries.compactMap { entry in
+            guard case .object(let members) = entry else { return nil }
+            if case .string(let literal)? = members["literal"] {
+                return CreatorNameProjection(
+                    displayName: literal,
+                    searchableComponents: [literal]
+                )
+            }
+            let orderedKeys = [
+                "given", "dropping_particle", "non_dropping_particle", "family", "suffix",
+            ]
+            let components = orderedKeys.compactMap { key -> String? in
+                guard case .string(let value)? = members[key] else { return nil }
+                return value
+            }
+            return CreatorNameProjection(
+                displayName: components.joined(separator: " "),
+                searchableComponents: components
+            )
+        }
     }
 
     /// Validates a parsed document without changing its exact source or
-    /// reconstructing YAML. A malformed mapping produces an envelope issue
-    /// and remains readable through the original `NoteDocument`.
+    /// reconstructing YAML. Unknown YAML remains authored custom source.
     public static func validate(
         _ document: NoteDocument,
-        profile: SchemaProfileID,
-        context: PropertyValidationContext = .existingDocument
+        profile: SchemaProfileID
     ) -> [PropertyValidationIssue] {
         guard document.validationWarnings.isEmpty else {
             return [PropertyValidationIssue(
@@ -156,52 +134,24 @@ public enum PropertyContractCatalog {
                 message: document.validationWarnings.joined(separator: "\n")
             )]
         }
-        return validate(
-            frontmatter: document.parsedFrontmatter,
-            profile: profile,
-            context: context
-        )
+        return validate(frontmatter: document.parsedFrontmatter, profile: profile)
     }
 
-    /// Validates only recognized semantic properties. Unknown YAML remains
-    /// outside this projection and is neither diagnosed nor changed.
+    /// Validates only recognized semantic properties. Bibliographic values are
+    /// shape-checked but never normalized or verified against external facts.
     public static func validate(
         frontmatter: [String: YAMLValue],
-        profile: SchemaProfileID,
-        context: PropertyValidationContext = .existingDocument
+        profile: SchemaProfileID
     ) -> [PropertyValidationIssue] {
-        let contracts = contracts(for: profile)
         var issues: [PropertyValidationIssue] = []
-
-        for contract in contracts {
-            let value = resolvedValue(for: contract, in: frontmatter)
-            if context == .creation,
-               contract.creationRequirement == .required,
-               value.map(isEmpty) != false {
-                issues.append(PropertyValidationIssue(
-                    propertyKey: contract.canonicalKey,
-                    code: .missingRequiredProperty,
-                    message: "\(contract.canonicalKey) is required when creating this note."
-                ))
-                continue
-            }
-            guard let value else { continue }
-
-            if contract.canonicalKey == "research_unit" {
-                let declaration = ResearchUnitDeclaration(
-                    frontmatter: ["research_unit": value],
-                    profile: profile
-                )
-                if let message = declaration.validationMessage {
-                    issues.append(PropertyValidationIssue(
-                        propertyKey: contract.canonicalKey,
-                        code: .invalidResearchUnit,
-                        message: message
-                    ))
+        for contract in contracts(for: profile) {
+            guard let value = frontmatter[contract.canonicalKey] else { continue }
+            if contract.valueKind == .creatorList {
+                if let creatorIssue = validateCreatorList(value, key: contract.canonicalKey) {
+                    issues.append(creatorIssue)
                 }
                 continue
             }
-
             guard isCompatible(value, with: contract.valueKind) else {
                 issues.append(PropertyValidationIssue(
                     propertyKey: contract.canonicalKey,
@@ -210,7 +160,6 @@ public enum PropertyContractCatalog {
                 ))
                 continue
             }
-
             guard let allowedValues = contract.allowedValues, !isEmpty(value) else { continue }
             let allowed = Set(allowedValues)
             let suppliedValues: [String]
@@ -228,12 +177,6 @@ public enum PropertyContractCatalog {
                 ))
             }
         }
-
-        issues.append(contentsOf: validateConstraints(
-            frontmatter: frontmatter,
-            contracts: contracts,
-            context: context
-        ))
         return issues
     }
 
@@ -243,13 +186,10 @@ public enum PropertyContractCatalog {
 
         init(contracts: [PropertyContract]) {
             self.contracts = contracts
-            var canonical: [String: PropertyContract] = [:]
-            for contract in contracts {
-                if canonical[contract.canonicalKey] == nil {
-                    canonical[contract.canonicalKey] = contract
-                }
-            }
-            canonicalByKey = canonical
+            canonicalByKey = Dictionary(
+                contracts.map { ($0.canonicalKey, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
         }
     }
 
@@ -257,11 +197,6 @@ public enum PropertyContractCatalog {
     private static let topicProfile = CachedProfile(contracts: topicContracts)
     private static let workProfile = CachedProfile(contracts: workContracts)
     private static let genericProfile = CachedProfile(contracts: [])
-    private static let protectedMachineKeys = Set(
-        (analysisContracts + topicContracts + workContracts)
-            .filter { $0.ownership == .protectedMachine }
-            .map(\.canonicalKey)
-    )
 
     private static func cachedProfile(for profile: SchemaProfileID) -> CachedProfile {
         switch profile {
@@ -272,197 +207,193 @@ public enum PropertyContractCatalog {
         }
     }
 
-    private static let analysisContracts: [PropertyContract] = {
-        [
-            property("title", .text),
-            property("summary", .text),
-            property("authors", .textList),
-            property("year", .number),
-            property("type", .choice, allowed: [
-                "journal_article", "book", "book_chapter", "handbook_chapter",
-                "encyclopedia_entry", "thesis", "manuscript", "other",
-            ]),
-            property("tags", .tags),
-            property("research_unit", .mapping),
-            property("zotero_item_key", .text, ownership: .protectedMachine),
-            property("access", .choice, allowed: [
-                "full_text", "partial_text", "metadata_only", "unavailable",
-            ]),
-            property("text_reliability", .choice, allowed: [
-                "verified", "usable_with_caution", "unreliable",
-            ]),
-            property("locators", .choice, allowed: [
-                "reliable", "partial", "unverified", "unavailable",
-            ]),
-            property(
-                "debate_importance",
-                .number,
-                constraints: [
-                    .integerRange(minimum: 0, maximum: 10),
-                    .pairedWith(canonicalKey: "debate_importance_scope"),
-                ]
-            ),
-            property(
-                "debate_importance_scope",
-                .text,
-                constraints: [.pairedWith(canonicalKey: "debate_importance")]
-            ),
-        ]
-    }()
+    public static let analysisCanonicalKeys: [String] = analysisContracts.map(\.canonicalKey)
+
+    private static let analysisContracts: [PropertyContract] = [
+        property("type", .choice, allowed: AnalysisSourceType.allCases.map(\.rawValue)),
+        property("title", .text),
+        property("short_title", .text),
+        property("original_title", .text),
+        property("reviewed_title", .text),
+        property("genre", .text),
+        property("medium", .text),
+        property("version", .text),
+        property("language", .text),
+        property("authors", .creatorList),
+        property("editors", .creatorList),
+        property("translators", .creatorList),
+        property("collection_editors", .creatorList),
+        property("container_authors", .creatorList),
+        property("original_authors", .creatorList),
+        property("reviewed_authors", .creatorList),
+        property("publication_date", .date),
+        property("publication_status", .text),
+        property("original_publication_date", .date),
+        property("accessed_date", .date),
+        property("event_date", .date),
+        property("container_title", .text),
+        property("container_title_short", .text),
+        property("series_title", .text),
+        property("series_number", .text),
+        property("volume", .text),
+        property("volume_title", .text),
+        property("issue", .text),
+        property("pages", .text),
+        property("chapter_number", .text),
+        property("edition", .text),
+        property("number_of_volumes", .text),
+        property("publisher", .text),
+        property("publisher_place", .text),
+        property("original_publisher", .text),
+        property("original_publisher_place", .text),
+        property("institution", .text),
+        property("report_number", .text),
+        property("event_title", .text),
+        property("event_place", .text),
+        property("doi", .text),
+        property("isbn", .text),
+        property("issn", .text),
+        property("url", .text),
+        property("pmid", .text),
+        property("pmcid", .text),
+        property("arxiv_id", .text),
+        property("archive", .text),
+        property("archive_collection", .text),
+        property("archive_location", .text),
+        property("archive_place", .text),
+        property("call_number", .text),
+        property("source_basis", .textList),
+        property("limitations", .textList),
+        property("tags", .tags),
+        property("summary", .multilineText),
+    ]
 
     private static let topicContracts: [PropertyContract] = [
-        property("summary", .text),
         property("aliases", .textList),
+        property("summary", .multilineText),
+        property("limitations", .textList),
         property("tags", .tags),
-        property("research_unit", .mapping),
     ]
 
     private static let workContracts: [PropertyContract] = [
-        property("summary", .text),
-        property("authors", .textList),
-        property("kind", .choice, allowed: [
+        property("work_type", .choice, allowed: [
             "paper", "chapter", "book", "talk", "review", "teaching", "other",
         ]),
+        property("coauthors", .textList),
+        property("summary", .multilineText),
+        property("limitations", .textList),
         property("tags", .tags),
-        property("research_unit", .mapping),
-        property("venue", .text),
     ]
 
     private static func property(
         _ key: String,
         _ kind: PropertyValueKind,
-        requirement: PropertyCreationRequirement = .optional,
-        ownership: PropertyOwnership = .researcher,
-        allowed: [String]? = nil,
-        constraints: [PropertyConstraint] = []
+        allowed: [String]? = nil
     ) -> PropertyContract {
-        PropertyContract(
-            canonicalKey: key,
-            valueKind: kind,
-            creationRequirement: requirement,
-            ownership: ownership,
-            allowedValues: allowed,
-            constraints: constraints
-        )
+        PropertyContract(canonicalKey: key, valueKind: kind, allowedValues: allowed)
     }
 
-    private static func resolvedValue(
-        for contract: PropertyContract,
-        in frontmatter: [String: YAMLValue]
-    ) -> YAMLValue? {
-        frontmatter[contract.canonicalKey]
-    }
-
-    private static func isCompatible(
-        _ value: YAMLValue,
-        with kind: PropertyValueKind
-    ) -> Bool {
+    private static func isCompatible(_ value: YAMLValue, with kind: PropertyValueKind) -> Bool {
         switch kind {
         case .text, .multilineText, .date, .choice:
-            if case .string = value { return true }
+            if case .string(let text) = value {
+                return isSourceSafeText(text, allowsNewlines: kind == .multilineText)
+            }
+        case .boolean:
+            if case .boolean = value { return true }
         case .number:
             if case .integer = value { return true }
             if case .double = value { return true }
-        case .boolean:
-            if case .boolean = value { return true }
         case .tags, .textList:
             if case .array(let values) = value {
-                return values.allSatisfy { $0.scalarString != nil }
+                return !values.isEmpty && values.allSatisfy {
+                    guard case .string(let text) = $0 else { return false }
+                    return isSourceSafeText(text, allowsNewlines: false)
+                }
             }
         case .mapping:
             if case .object = value { return true }
+        case .creatorList:
+            return validateCreatorList(value, key: "creator") == nil
         }
         return false
     }
 
+    private static func validateCreatorList(
+        _ value: YAMLValue,
+        key: String
+    ) -> PropertyValidationIssue? {
+        guard case .array(let entries) = value, !entries.isEmpty else {
+            return creatorIssue(key, "\(key) must be a nonempty list of creator mappings.")
+        }
+        let personKeys: Set<String> = [
+            "family", "given", "suffix", "non_dropping_particle", "dropping_particle",
+        ]
+        for (index, entry) in entries.enumerated() {
+            guard case .object(let members) = entry else {
+                return creatorIssue(key, "Creator \(index + 1) in \(key) must be a mapping.")
+            }
+            let keys = Set(members.keys)
+            if let literal = members["literal"] {
+                guard keys == ["literal"],
+                      case .string(let text) = literal,
+                      isSourceSafeText(text, allowsNewlines: false) else {
+                    return creatorIssue(
+                        key,
+                        "Literal creator \(index + 1) in \(key) must contain only nonempty literal text."
+                    )
+                }
+                continue
+            }
+            guard keys.isSubset(of: personKeys), keys.contains("family"),
+                  members.values.allSatisfy({ value in
+                      guard case .string(let text) = value else { return false }
+                      return isSourceSafeText(text, allowsNewlines: false)
+                  }) else {
+                return creatorIssue(
+                    key,
+                    "Person creator \(index + 1) in \(key) requires family and supports only the canonical name members."
+                )
+            }
+        }
+        return nil
+    }
+
+    private static func creatorIssue(_ key: String, _ message: String) -> PropertyValidationIssue {
+        PropertyValidationIssue(propertyKey: key, code: .invalidCreator, message: message)
+    }
+
+    private static func isSourceSafeText(_ text: String, allowsNewlines: Bool) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return text.unicodeScalars.allSatisfy { scalar in
+            if scalar == "\n" || scalar == "\r" { return allowsNewlines }
+            return !CharacterSet.controlCharacters.contains(scalar)
+        }
+    }
+
     private static func isEmpty(_ value: YAMLValue) -> Bool {
         switch value {
-        case .string(let value):
-            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .array(let values):
-            values.isEmpty
-        case .object(let values):
-            values.isEmpty
-        case .null:
-            true
-        case .integer, .double, .boolean:
-            false
+        case .string(let value): value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .array(let values): values.isEmpty
+        case .object(let values): values.isEmpty
+        case .null: true
+        case .integer, .double, .boolean: false
         }
     }
 
     private static func description(of kind: PropertyValueKind) -> String {
         switch kind {
-        case .text: "text"
-        case .multilineText: "multiline text"
-        case .number: "a number"
-        case .date: "a date"
+        case .text: "nonempty single-line text"
+        case .multilineText: "nonempty text"
+        case .date: "nonempty source-safe date text"
         case .boolean: "true or false"
-        case .tags: "a list of tags"
-        case .textList: "a list of text values"
+        case .number: "a number"
+        case .tags: "a nonempty list of tags"
+        case .textList: "a nonempty list of text values"
         case .choice: "one controlled text value"
         case .mapping: "a mapping"
+        case .creatorList: "a nonempty list of creator mappings"
         }
-    }
-
-    private static func validateConstraints(
-        frontmatter: [String: YAMLValue],
-        contracts: [PropertyContract],
-        context: PropertyValidationContext
-    ) -> [PropertyValidationIssue] {
-        var issues: [PropertyValidationIssue] = []
-        var seenIssueKeys: Set<String> = []
-        for contract in contracts {
-            let value = resolvedValue(for: contract, in: frontmatter)
-            let isPresent = value.map { !isEmpty($0) } == true
-            for constraint in contract.constraints {
-                let issue: PropertyValidationIssue?
-                switch constraint {
-                case .pairedWith(let peerKey):
-                    guard let peer = contracts.first(where: { $0.canonicalKey == peerKey }) else {
-                        continue
-                    }
-                    let peerIsPresent = resolvedValue(for: peer, in: frontmatter)
-                        .map { !isEmpty($0) } == true
-                    guard isPresent != peerIsPresent else { continue }
-                    let missingKey = isPresent ? peer.canonicalKey : contract.canonicalKey
-                    issue = PropertyValidationIssue(
-                        propertyKey: missingKey,
-                        code: .pairedPropertyMissing,
-                        message: "\(contract.canonicalKey) and \(peer.canonicalKey) must be provided together."
-                    )
-                case .integerRange(let minimum, let maximum):
-                    guard let value, isPresent else { continue }
-                    guard case .integer(let integer) = value,
-                          (minimum...maximum).contains(integer) else {
-                        issue = PropertyValidationIssue(
-                            propertyKey: contract.canonicalKey,
-                            code: .debateImportanceOutOfRange,
-                            message: "\(contract.canonicalKey) must be a whole number from \(minimum) to \(maximum)."
-                        )
-                        break
-                    }
-                    issue = nil
-                case .requiredWhen(let controllingKey, let expectedValue):
-                    guard context == .creation,
-                          case .string(let actualValue) = frontmatter[controllingKey],
-                          actualValue == expectedValue,
-                          !isPresent else {
-                        continue
-                    }
-                    issue = PropertyValidationIssue(
-                        propertyKey: contract.canonicalKey,
-                        code: .missingRequiredProperty,
-                        message: "\(contract.canonicalKey) is required when creating a \(expectedValue) record."
-                    )
-                }
-                let issueKey = issue.map {
-                    "\($0.propertyKey ?? ""):\($0.code.rawValue)"
-                }
-                if let issue, let issueKey, seenIssueKeys.insert(issueKey).inserted {
-                    issues.append(issue)
-                }
-            }
-        }
-        return issues
     }
 }

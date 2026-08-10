@@ -709,9 +709,6 @@ struct SidebarView: View {
 
     private func clearAllFilters() {
         controller.replaceFilters(DiscoveryFilterState())
-        if controller.library.sortOrder == .debateImportanceDescending {
-            context.selectSortOrder(.modifiedNewest)
-        }
     }
 }
 

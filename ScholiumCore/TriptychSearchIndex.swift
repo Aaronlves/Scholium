@@ -95,7 +95,7 @@ public actor TriptychSearchIndex {
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString.lowercased(), isDirectory: true)
             .appendingPathComponent("indexes", isDirectory: true)
-            .appendingPathComponent("search-v6.sqlite", isDirectory: false)
+            .appendingPathComponent("search-v7.sqlite", isDirectory: false)
     }
 
     /// Replaces only a disposable generated database. The v1 files and all
@@ -121,7 +121,7 @@ public actor TriptychSearchIndex {
                 withIntermediateDirectories: true
             )
             let stagingURL = databaseURL.deletingLastPathComponent()
-                .appendingPathComponent(".search-v6-staging-\(UUID().uuidString).sqlite")
+                .appendingPathComponent(".search-v7-staging-\(UUID().uuidString).sqlite")
             do {
                 do {
                     let staged = try SearchSQLiteDatabase(path: stagingURL.path)
@@ -132,7 +132,7 @@ public actor TriptychSearchIndex {
                 }
                 guard Darwin.rename(stagingURL.path, databaseURL.path) == 0 else {
                     throw SearchIndexError.sqlite(
-                        "could not atomically publish a rebuilt Search v6 database"
+                        "could not atomically publish a rebuilt Search v7 database"
                     )
                 }
                 for suffix in ["-wal", "-shm"] {
@@ -465,7 +465,7 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
         }
         guard let published = try readGeneration(in: database, triptychID: triptychID) else {
-            throw SearchIndexError.invalidDocuments("Search v6 did not publish a generation")
+            throw SearchIndexError.invalidDocuments("Search v7 did not publish a generation")
         }
         let disposition: SearchIndexSyncDisposition
         if recoveredGeneratedDatabase {
@@ -728,9 +728,8 @@ public actor TriptychSearchIndex {
             vaultName: descriptor?.name ?? source.noteID.vaultID.uuidString,
             vaultRole: role,
             relativePath: source.noteID.relativePath,
-            stableNoteID: ["note_id", "paper_id", "topic_id", "output_id"]
-                .compactMap { note.parsedFrontmatter[$0]?.searchStrings.first }
-                .first,
+            stableNoteID: source.stableNoteID?.uuidString.lowercased()
+                ?? indexed?.stableNoteID,
             title: projection.title,
             normalizedTitle: SearchTextNormalization.normalize(projection.title),
             titleUsesFilenameFallback: projection.titleUsesFilenameFallback,
@@ -1134,13 +1133,15 @@ public actor TriptychSearchIndex {
         let rowID: Int
         let fingerprint: DocumentFingerprint
         let hasBrokenLink: Bool
+        let stableNoteID: String?
     }
 
     private func indexedDocumentMetadata(_ id: VaultQualifiedNoteID) throws -> IndexedMetadata? {
         var result: IndexedMetadata?
         try database.query(
             """
-            SELECT id, fingerprint_sha256, fingerprint_byte_count, has_broken_link
+            SELECT id, fingerprint_sha256, fingerprint_byte_count, has_broken_link,
+                   stable_note_id
             FROM search_documents WHERE vault_id = ? AND relative_path = ?;
             """,
             bindings: [.text(id.vaultID.uuidString.lowercased()), .text(id.relativePath)]
@@ -1149,7 +1150,8 @@ public actor TriptychSearchIndex {
             result = IndexedMetadata(
                 rowID: row.int(at: 0),
                 fingerprint: DocumentFingerprint(sha256: sha, byteCount: row.int(at: 2)),
-                hasBrokenLink: row.int(at: 3) == 1
+                hasBrokenLink: row.int(at: 3) == 1,
+                stableNoteID: row.text(at: 4)
             )
         }
         return result
@@ -1350,7 +1352,7 @@ public actor TriptychSearchIndex {
         try database.execute(
             """
             INSERT INTO search_fts(
-                document_id, path, title, aliases, headings, summary, authors, year, tags,
+                document_id, path, title, aliases, headings, summary, authors, publication_date, tags,
                 callouts, footnotes, body
             ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
@@ -1361,7 +1363,7 @@ public actor TriptychSearchIndex {
                 .text(SearchTokenization.indexText(projection.headings.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.summary ?? "")),
                 .text(SearchTokenization.indexText(projection.authors.joined(separator: " "))),
-                .text(SearchTokenization.indexText(projection.year ?? "")),
+                .text(SearchTokenization.indexText(projection.publicationDate ?? "")),
                 .text(SearchTokenization.indexText(projection.tags.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.callouts)),
                 .text(SearchTokenization.indexText(projection.footnotes)),
@@ -1490,7 +1492,7 @@ public actor TriptychSearchIndex {
             FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
         );
         CREATE VIRTUAL TABLE search_fts USING fts5(
-            document_id UNINDEXED, path, title, aliases, headings, summary, authors, year,
+            document_id UNINDEXED, path, title, aliases, headings, summary, authors, publication_date,
             tags, callouts, footnotes, body,
             tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3'
         );
@@ -1809,7 +1811,7 @@ private enum SearchMatcher {
         case .summary: .summary
         case .body: .body
         case .author: .author
-        case .year: .year
+        case .publicationDate: .publicationDate
         case .tag: .tag
         case .footnote: .footnote
         case .path: .path
@@ -1878,7 +1880,7 @@ private enum SearchMatcher {
             case .summary: "summary"
             case .body: "body"
             case .author: "authors"
-            case .year: "year"
+            case .publicationDate: "publication_date"
             case .tag: "tags"
             case .footnote: "footnotes"
             case .path: "path"
@@ -2235,7 +2237,7 @@ private enum NoteSearchResultBuilder {
         case .heading: "Heading"
         case .summary: "Summary"
         case .author: "Author"
-        case .year: "Year"
+        case .publicationDate: "Publication Date"
         case .tag: "Tag"
         case .body: "Body"
         case .callout: "Callout"
@@ -2272,7 +2274,7 @@ private final class SearchSQLiteDatabase: @unchecked Sendable {
             nil
         ) != SQLITE_OK {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) }
-                ?? "could not open Search v6 database"
+                ?? "could not open Search v7 database"
             let code = handle.map { sqlite3_extended_errcode($0) }
             if let handle { sqlite3_close(handle) }
             if code.map({ ($0 & 0xFF) == SQLITE_CORRUPT || ($0 & 0xFF) == SQLITE_NOTADB }) == true {
@@ -2414,7 +2416,7 @@ private struct SearchSQLiteStatement {
                 }
             }
             guard result == SQLITE_OK else {
-                throw SearchIndexError.sqlite("could not bind a Search v6 parameter")
+                throw SearchIndexError.sqlite("could not bind a Search v7 parameter")
             }
         }
     }

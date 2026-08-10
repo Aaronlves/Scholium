@@ -284,6 +284,19 @@ or persistent group. Single-request member count, Run-total member count, and
 encoded payload have explicit testable limits; exceeding one returns a bounded
 continuation result rather than widening authority.
 
+The operation is always explicit: `create_note`, `modify_markdown`,
+`modify_properties`, `set_zotero_binding`, or `clear_zotero_binding`.
+`create_note` binds a proven-absent path, one authorized new identity, the
+current Settings revision, and for Analysis an allowed source type plus typed
+initial fields. It is idempotent only for the same hidden creation operation;
+after creation the identity is no longer new. Body authority cannot rewrite
+frontmatter, property authority is limited to exact granted keys, and either
+source authority is insufficient for integration binding. Binding authority
+is insufficient for Markdown. Agent Analysis creation must satisfy the
+source-type applicability and Settings-required-field plan without receiving
+exact seed bytes or values; unsupported or unavailable required data fails
+closed instead of producing placeholders.
+
 One authorization may bind several exact documents, but every actual mutation
 uses a nonreusable short-lived capability bound to the current unique writable
 Session, Run, complete allowed document set, and each member's expected
@@ -582,10 +595,10 @@ retryable until authority and transaction outcomes are known.
    the researcher decide whether a Topic or Work should change.
 
 For a long source, maintain one source-level Analysis by default. Each Run
-declares a bounded unit and expands Research Unit only to represented material.
-Unread, excluded, unreliable, or incomplete material becomes a Limitation.
-**Entire source** requires source-wide analysis; `complete` means complete only
-for the declared unit.
+declares its bounded source scope in the Research Record. Unread, excluded,
+unreliable, or incomplete material becomes a top-level `limitations` entry;
+consulted versions, ranges, or locator conditions belong in `source_basis`.
+Neither field is a completion grade.
 
 ## 10. Topics workflow
 

@@ -78,6 +78,10 @@
 
 ### Document and editor
 
+- Managed New Note announces the created Note once, opens Edit, and places the
+  insertion point at the exact body start without an intermediate Review or
+  Library focus stop. A committed-source/editor-failed state names **Retry
+  Edit** and **Source** and never invites duplicate creation.
 - Review, Edit, and Source expose their current mode, exact content state, and
   one coherent focus order. Mode changes, external updates, conflict,
   recovery, window inactivity, and container reconstruction never discard a
@@ -106,6 +110,27 @@
 - Autosave Failed, Conflict, and cleanup warnings state the retained-buffer or
   committed-source consequence and expose the applicable recovery. Checkpoint
   Restored is transient and never moves Document focus.
+
+### Properties and portable settings
+
+- Settings names the selected role, exact YAML editor, fixed delimiters,
+  source-type picker, Agent-required checkboxes, About fields, structured-edit
+  fields, validation location, dirty/save/conflict state, and separate restore
+  or clear consequences in one keyboard order. Its multiline YAML editor keeps
+  selection, Undo/Redo, Find, mixed-script text, and an LTR technical region.
+- Source-type switching retains every unsaved requirements draft. Invalid
+  fields in another role or type remain named and prevent the single atomic
+  save. Revision conflict preserves the draft and offers **Reload Saved
+  Settings**; errors are never color-only or a generic alert.
+- Complete Properties exposes existing key, label, value/summary, editability,
+  source-only state, and not-typical status. **Add a Property…** is a searchable
+  grouped chooser with one listbox selection, keyboard acceptance, Escape
+  cancellation, and focus return. YAML-free insertion explicitly distinguishes
+  **Add YAML Properties…** from **Keep Without YAML**.
+- About group headings participate in the reading hierarchy without becoming
+  duplicate top-level sections. The complete fact grid preserves row/column
+  association under enlargement and reflow. Tags are individually readable
+  neutral tokens in source order, not color-coded status or unlabeled chips.
 
 ### Search, Inspector, and Research Actions
 

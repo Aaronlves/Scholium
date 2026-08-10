@@ -229,7 +229,7 @@ private struct PropertiesSettingsView: View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
             Text("Vault-Wide Properties")
                 .font(ScholiumTypography.interface(.primaryTitle))
-            Text("Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. The role-specific Research Unit remains part of the default About profile; Source mode always exposes the exact YAML.")
+            Text("Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. Existing custom YAML remains visible in Complete Properties; Source mode always exposes the exact source.")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
             Picker("Vault", selection: $selectedSlot) {

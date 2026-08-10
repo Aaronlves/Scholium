@@ -339,10 +339,7 @@ struct ResearchFixture: Sendable {
             options: .atomic
         )
 
-        let analysisKeyLine = analysisZoteroKey.map {
-            "zotero_item_key: '\($0)'\r\n"
-        } ?? ""
-        let analysisSource = "\u{FEFF}---\r\ntitle: Analysis\r\n\(analysisKeyLine)research_unit:\r\n  completion: incomplete\r\nunknown_key: 'preserve me'\r\n---\r\n# Analysis\r\n\r\nExact philosophical claim with a narrow reconstruction. See [[Agency]].\r\n"
+        let analysisSource = "\u{FEFF}---\r\ntitle: Analysis\r\nlimitations:\r\n  - Source coverage is bounded.\r\nunknown_key: 'preserve me'\r\n---\r\n# Analysis\r\n\r\nExact philosophical claim with a narrow reconstruction. See [[Agency]].\r\n"
         try Data(analysisSource.utf8).write(
             to: analyses.appendingPathComponent("Analysis.md"),
             options: .atomic
@@ -360,8 +357,8 @@ struct ResearchFixture: Sendable {
             to: debates.appendingPathComponent("Nested Topic.md"),
             options: .atomic
         )
-        let workKeyLine = workZoteroKey.map { "zotero_item_key: '\($0)'\n" } ?? ""
-        try Data("---\ntitle: Draft Argument\nkind: chapter\n\(workKeyLine)---\n# Draft Argument\n\nA claim requiring Critique. See [[Analysis]].\n".utf8).write(
+        _ = workZoteroKey
+        try Data("---\nwork_type: chapter\n---\n# Draft Argument\n\nA claim requiring Critique. See [[Analysis]].\n".utf8).write(
             to: works.appendingPathComponent("Draft Argument.md"),
             options: .atomic
         )
@@ -390,6 +387,18 @@ struct ResearchFixture: Sendable {
             role: .analysis,
             handle: handle
         )
+        if let rawKey = analysisZoteroKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawKey.isEmpty {
+            let snapshot = try await handle.services.controlStore.zoteroBindings()
+            _ = try await handle.services.controlStore.setZoteroBinding(
+                AnalysisZoteroBinding(
+                    noteID: sourceTarget.noteID,
+                    library: .user,
+                    itemKey: rawKey
+                ),
+                expectedRevision: snapshot.revision
+            )
+        }
         _ = try await handle.research.bindSourceAccess(ResearchSourceBindingRequest(
             target: sourceTarget,
             selection: .localFile(analysisSourceFile)

@@ -92,6 +92,7 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
 /// attachment's local `/file/view/url` endpoint.
 public enum ZoteroLocalRequestPolicy {
     public static func makeReadRequest(
+        library: ZoteroLibraryIdentity = .user,
         path: String,
         query: [URLQueryItem] = []
     ) -> URLRequest? {
@@ -100,7 +101,7 @@ public enum ZoteroLocalRequestPolicy {
               Set(query.map(\.name)).isSubset(of: [
                 "format", "itemType", "q", "qmode", "limit",
               ]),
-              let baseURL = URL(string: "http://127.0.0.1:23119/api/users/0/") else {
+              let baseURL = baseURL(for: library) else {
             return nil
         }
         var components = URLComponents(
@@ -122,6 +123,17 @@ public enum ZoteroLocalRequestPolicy {
         )
         request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
         return request
+    }
+
+    private static func baseURL(for library: ZoteroLibraryIdentity) -> URL? {
+        switch library {
+        case .user:
+            URL(string: "http://127.0.0.1:23119/api/users/0/")
+        case .group(let groupID):
+            groupID > 0
+                ? URL(string: "http://127.0.0.1:23119/api/groups/\(groupID)/")
+                : nil
+        }
     }
 
     private static func allowed(path: String) -> Bool {

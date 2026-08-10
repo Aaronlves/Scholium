@@ -271,6 +271,10 @@ Menus follow researcher tasks:
   could exclude the created row, expands that row's folder ancestors, retains
   unrelated disclosure and ordinary sorting, and scrolls the selected row into
   view once. This reveal does not transfer keyboard focus.
+  The Document transition itself opens Edit and transfers focus to the exact
+  body insertion point only after editor mode acknowledgement. This explicit
+  writing focus is separate from Library reveal and remains recoverable when
+  the editor fails after the durable source commit.
 - The Library Location shows no total. Triptych Attention treats zero as the
   steady state, **1–3** unresolved items as its primary design condition, and
   larger queues as exceptional accumulation rather than a separate mode or
@@ -407,7 +411,6 @@ Menus follow researcher tasks:
   currently presented Note also removes that document page and shows the
   no-document empty state; explicit selection in the destination Location
   remains the route for browsing its content.
-- Debate Importance ordering first requires one exact Debate Scope.
 - Shared Search follows Section 13: one compact centered surface, always-visible
   provider-specific scope, no empty sheet, and bounded Note or Record results
   that identify match context, source freshness, and destination. Typing a

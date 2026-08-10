@@ -212,7 +212,7 @@ struct ScholiumApparatusFactGrid: View {
                                 factLabel(fact.label)
                                     .multilineTextAlignment(.trailing)
                                     .frame(
-                                        minWidth: ScholiumMetrics.Apparatus.factLabelMinimumWidth,
+                                        width: ScholiumMetrics.Apparatus.factLabelMinimumWidth,
                                         alignment: .trailing
                                     )
                                     .gridColumnAlignment(.trailing)

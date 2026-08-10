@@ -79,11 +79,10 @@ struct ResearchProjectionFreshnessView: View {
 }
 
 struct ResearchOverviewPresentation {
-    let researchUnit: ResearchUnitDeclaration
     let visibleAttentionItems: [AttentionQueueItem]
     let freshness: ResearchProjectionFreshness
     let propertiesConfiguration: VaultPropertiesConfiguration?
-    let zoteroItemKey: String?
+    let zoteroBinding: AnalysisZoteroBinding?
     let noteReviewState: WorkspaceNoteReviewState?
 }
 
@@ -94,15 +93,14 @@ struct ResearchInspectorContentContext {
     let openAttention: () -> Void
     let openNoteReview: () -> Void
     let retryRefresh: () -> Void
-    let openZoteroItem: (String) async -> Void
+    let openZoteroItem: (AnalysisZoteroBinding) async -> Void
 
-    var researchUnit: ResearchUnitDeclaration { presentation.researchUnit }
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
     var propertiesConfiguration: VaultPropertiesConfiguration? {
         presentation.propertiesConfiguration
     }
-    var zoteroItemKey: String? { presentation.zoteroItemKey }
+    var zoteroBinding: AnalysisZoteroBinding? { presentation.zoteroBinding }
     var noteReviewState: WorkspaceNoteReviewState? {
         presentation.noteReviewState
     }
@@ -276,36 +274,41 @@ struct ResearchOverviewView: View {
 
             VStack(
                 alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
+                spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
             ) {
-                if !propertyFacts.isEmpty {
-                    ScholiumApparatusFactGrid(facts: propertyFacts)
-                }
+                ForEach(aboutGroups) { group in
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
+                    ) {
+                        Text(group.group.label)
+                            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
+                            .scholiumForeground(.secondaryText)
+                            .accessibilityHeading(.h3)
 
-                if let invalidResearchUnitMessage {
-                    ScholiumApparatusStateView(
-                        "Research Unit",
-                        detail: invalidResearchUnitMessage,
-                        systemImage: "exclamationmark.triangle",
-                        density: .block
-                    )
-                }
-
-                ForEach(Array(readingBlocks.enumerated()), id: \.offset) { _, block in
-                    ScholiumApparatusReadingBlock(
-                        label: block.label,
-                        text: block.text,
-                        monospacedDigits: block.monospacedDigits
-                    )
+                        if !group.facts.isEmpty {
+                            ScholiumApparatusFactGrid(facts: group.facts)
+                        }
+                        ForEach(Array(group.readingBlocks.enumerated()), id: \.offset) { _, block in
+                            ScholiumApparatusReadingBlock(
+                                label: block.label,
+                                text: block.text
+                            )
+                        }
+                        if !group.tags.isEmpty {
+                            AboutTagsView(tags: group.tags)
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
             .accessibilityIdentifier("scholium.about")
 
-            if let itemKey = context.zoteroItemKey {
+            if let binding = context.zoteroBinding {
                 Button {
-                    Task { await context.openZoteroItem(itemKey) }
+                    Task { await context.openZoteroItem(binding) }
                 } label: {
                     ScholiumApparatusActionRowContent(
                         title: Text("Open in Zotero"),
@@ -328,132 +331,89 @@ struct ResearchOverviewView: View {
     private struct ReadingBlock {
         let label: String
         let text: String
-        var monospacedDigits = false
     }
 
-    private var readingBlocks: [ReadingBlock] {
-        switch context.researchUnit.state {
-        case .absent, .invalid:
-            return []
-        case .declared:
-            var result: [ReadingBlock] = []
-            let entries = AboutProfileCatalog.entries(
-                for: note.schemaProfile,
-                visibleFields: context.propertiesConfiguration?.visibleFields
-            )
-            for entry in entries {
-                switch entry {
-                case .completion:
-                    continue
-                case .scope(let label):
-                    if let scope = context.researchUnit.scope {
-                        result.append(ReadingBlock(
-                            label: ScholiumL10n.dynamicString(label),
-                            text: scope
-                        ))
-                    }
-                case .limitations:
-                    for (index, limitation) in context.researchUnit.limitations.enumerated() {
-                        let label = context.researchUnit.limitations.count == 1
-                            ? ScholiumL10n.dynamicString("Limitation")
-                            : String.localizedStringWithFormat(
-                                ScholiumL10n.dynamicString("Limitation %lld"),
-                                Int64(index + 1)
-                            )
-                        result.append(ReadingBlock(label: label, text: limitation))
-                    }
-                case .property, .sourceBasis:
-                    continue
-                }
-            }
-            return result
-        }
+    private struct AboutGroupContent: Identifiable {
+        var id: PropertyPresentationGroup { group }
+        let group: PropertyPresentationGroup
+        let facts: [ScholiumApparatusFact]
+        let readingBlocks: [ReadingBlock]
+        let tags: [String]
     }
 
-    private var invalidResearchUnitMessage: String? {
-        guard case .invalid(let message) = context.researchUnit.state else {
-            return nil
-        }
-        return message
-    }
-
-    private var propertyFacts: [ScholiumApparatusFact] {
-        let entries = AboutProfileCatalog.entries(
+    private var aboutGroups: [AboutGroupContent] {
+        AboutProfileCatalog.groupedEntries(
             for: note.schemaProfile,
             visibleFields: context.propertiesConfiguration?.visibleFields
-        )
-        return entries.compactMap { entry in
-            switch entry {
-            case .completion:
-                guard let completion = context.researchUnit.completion else { return nil }
-                return ScholiumApparatusFact(
-                    id: "completion",
-                    label: ScholiumL10n.dynamicString("Completion"),
-                    value: completionDisplayValue(completion),
-                    monospacedDigits: true
-                )
-            case .property(let key):
-                return propertyFact(for: key)
-            case .sourceBasis:
-                guard let value = sourceBasis else { return nil }
-                return ScholiumApparatusFact(
-                    id: "source_basis",
-                    label: ScholiumL10n.dynamicString("Source basis"),
-                    value: value
-                )
-            case .scope, .limitations:
-                return nil
+        ).compactMap { configured in
+            let facts = configured.keys.compactMap { key in
+                isLongResearchField(key) || key == "tags" ? nil : propertyFact(for: key)
             }
+            let blocks = configured.keys.flatMap(readingBlocks(for:))
+            let tags = configured.group == .tags ? note.tags : []
+            guard !facts.isEmpty || !blocks.isEmpty || !tags.isEmpty else { return nil }
+            return AboutGroupContent(
+                group: configured.group,
+                facts: facts,
+                readingBlocks: blocks,
+                tags: tags
+            )
         }
     }
 
     private func propertyFact(for key: String) -> ScholiumApparatusFact? {
         guard let raw = note.property(at: key),
               let value = propertyDisplayValue(raw, key: key) else { return nil }
-        let label: String = switch key {
-        case "authors": ScholiumL10n.dynamicString(
-            note.authors.count == 1 ? "Author" : "Authors"
-        )
-        case "debate_importance": ScholiumL10n.dynamicString("Importance")
-        default:
-            PropertyPresentationCatalog.presentation(
-                for: key,
-                in: note.schemaProfile
-            )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
-        }
+        let label = PropertyPresentationCatalog.presentation(
+            for: key,
+            in: note.schemaProfile
+        )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
         return ScholiumApparatusFact(id: key, label: label, value: value)
     }
 
-    private var sourceBasis: String? {
-        let components: [String] = [
-            sourceBasisValue(key: "access", suffix: nil),
-            sourceBasisValue(key: "text_reliability", suffix: "text"),
-            sourceBasisValue(key: "locators", suffix: "locators"),
-        ].compactMap { $0 }
-        return components.isEmpty ? nil : components.joined(separator: ", ")
+    private func readingBlocks(for key: String) -> [ReadingBlock] {
+        guard isLongResearchField(key), let value = note.property(at: key) else { return [] }
+        let label = PropertyPresentationCatalog.presentation(
+            for: key,
+            in: note.schemaProfile
+        )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
+        switch value {
+        case .string(let text):
+            let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? [] : [ReadingBlock(label: label, text: text)]
+        case .array:
+            let values = value.canonicalStringList ?? []
+            return values.enumerated().map { index, text in
+                ReadingBlock(
+                    label: values.count == 1 ? label : "\(label) \(index + 1)",
+                    text: text
+                )
+            }
+        default:
+            return []
+        }
     }
 
-    private func sourceBasisValue(key: String, suffix: String?) -> String? {
-        guard let raw = note.property(at: key),
-              let value = propertyDisplayValue(raw, key: key) else { return nil }
-        return suffix.map { "\(value) \($0)" } ?? value
+    private func isLongResearchField(_ key: String) -> Bool {
+        ["summary", "source_basis", "limitations"].contains(key)
     }
 
     private func propertyDisplayValue(_ value: YAMLValue, key: String) -> String? {
-        let display = value.displayScalar
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "_", with: " ")
-        guard !display.isEmpty, display != "null" else { return nil }
-        let localized = display.prefix(1).uppercased() + display.dropFirst()
-        return key == "debate_importance" ? "\(localized) of 10" : localized
-    }
-
-    private func completionDisplayValue(_ completion: AnalysisCompletion) -> String {
-        switch completion {
-        case .complete: ScholiumL10n.dynamicString("Complete")
-        case .incomplete: ScholiumL10n.dynamicString("Incomplete")
-        case .represented: completion.yamlScalar
+        let display: String? = switch value {
+        case .string(let value): value
+        case .integer(let value): String(value)
+        case .double(let value): String(value)
+        case .boolean(let value): value ? "true" : "false"
+        case .array:
+            value.canonicalStringList?.joined(separator: ", ")
+                ?? PropertyContractCatalog.creatorNames(from: value)?
+                    .map(\.displayName).joined(separator: "; ")
+        case .object, .null:
+            nil
         }
+        guard let display else { return nil }
+        let trimmed = display.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func attentionTitle(for kind: AttentionQueueKind) -> LocalizedStringResource {
@@ -485,6 +445,30 @@ struct ResearchOverviewView: View {
     }
 }
 
+private struct AboutTagsView: View {
+    let tags: [String]
+
+    var body: some View {
+        FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
+            ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
+                Text(tag)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+                    .padding(.vertical, ScholiumMetrics.Properties.tagVerticalInset)
+                    .background(
+                        ScholiumColorRole.raisedSurfaceBackground.color,
+                        in: Capsule()
+                    )
+                    .overlay(Capsule().stroke(ScholiumColorRole.separator.color, lineWidth: 1))
+                    .accessibilityLabel(tag)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
 #Preview {
     ResearchOverviewView(
         note: .syntheticPreview(
@@ -494,14 +478,10 @@ struct ResearchOverviewView: View {
         ),
         context: ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
-                researchUnit: ResearchUnitDeclaration(
-                    frontmatter: [:],
-                    profile: .topicMarkdown
-                ),
                 visibleAttentionItems: [],
                 freshness: .unavailable("No workspace is open."),
                 propertiesConfiguration: nil,
-                zoteroItemKey: nil,
+                zoteroBinding: nil,
                 noteReviewState: nil
             ),
             attentionPopoverSession: nil,

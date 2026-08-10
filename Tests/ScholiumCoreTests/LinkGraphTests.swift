@@ -651,7 +651,14 @@ struct LinkGraphTests {
         let semantics = Dictionary(uniqueKeysWithValues: documents.map { (id($0.relativePath), MarkdownSemanticDocument(parsing: $0)) })
         let snapshot = LinkGraphBuilder.build(
             generation: 1,
-            catalog: documents.map { LinkCatalogNote(vaultID: vaultID, document: $0, semantic: semantics[id($0.relativePath)]!) },
+            catalog: documents.map {
+                LinkCatalogNote(
+                    vaultID: vaultID,
+                    document: $0,
+                    profile: $0.relativePath.hasPrefix("Topics/") ? .topicMarkdown : .draftProject,
+                    semantic: semantics[id($0.relativePath)]!
+                )
+            },
             documents: semantics
         )
 

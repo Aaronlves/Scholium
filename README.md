@@ -87,7 +87,7 @@ The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, note/folder lifecycle, external-edit
 conflicts, checkpoints and per-Note recovery, Settle, unified Discussion,
 Critique, and Research Actions with editable current Methods, academic
-Profiles, and Philosophical Practices. Search v6 gives the app, CLI, Research
+Profiles, and Philosophical Practices. Search v7 gives the app, CLI, Research
 Records, and authenticated Research Context one typed retrieval owner for
 lexical, Property, explicit direct-relation, canonical-summary, and Record
 queries without turning the index into research authority.

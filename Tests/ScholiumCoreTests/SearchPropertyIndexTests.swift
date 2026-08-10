@@ -3,7 +3,7 @@ import ScholiumContracts
 import Testing
 @testable import ScholiumCore
 
-@Suite("Search v6 property and relationship filters")
+@Suite("Search v7 property and relationship filters")
 struct SearchPropertyIndexTests {
     @Test("Top-level property presence and exact strings retain typed source provenance")
     func propertyPresenceEqualityAndSourceRanges() async throws {
@@ -124,7 +124,7 @@ struct SearchPropertyIndexTests {
         _ = try await incremental.synchronize([edited])
 
         let clean = try fixture.index(
-            at: fixture.root.appendingPathComponent("clean-search-v6.sqlite")
+            at: fixture.root.appendingPathComponent("clean-search-v7.sqlite")
         )
         _ = try await clean.synchronize([edited])
 
@@ -268,13 +268,13 @@ struct SearchPropertyIndexTests {
                 isDirectory: true
             )
                 .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v6-property-tests", isDirectory: true)
+                .appendingPathComponent("search-v7-property-tests", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(
                 at: root,
                 withIntermediateDirectories: true
             )
-            databaseURL = root.appendingPathComponent("search-v6.sqlite")
+            databaseURL = root.appendingPathComponent("search-v7.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {

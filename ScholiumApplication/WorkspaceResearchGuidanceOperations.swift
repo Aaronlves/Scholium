@@ -81,9 +81,9 @@ extension WorkspaceHandle {
                         ResearchSourceAccessFailure(code: .zoteroIdentityMismatch)
                     )
                 }
-                let targetItemKey = researchFunctionCoordinator
-                    .normalizedTargetZoteroItemKey(target)
-                guard targetItemKey == nil || targetItemKey == attachment.itemKey else {
+                let targetBinding = try await researchFunctionCoordinator
+                    .portableTargetZoteroBinding(target)
+                guard targetBinding == nil || targetBinding?.itemKey == attachment.itemKey else {
                     throw ResearchFunctionContractError.sourceAccessUnavailable(
                         ResearchSourceAccessFailure(code: .zoteroIdentityMismatch)
                     )

@@ -350,8 +350,8 @@ struct WorkspaceCatalogTests {
     }
 
 
-    @Test("Only the canonical Analysis Zotero item key enters the catalog")
-    func canonicalAnalysisZoteroItemKeyOnly() {
+    @Test("Only a stable-ID Analysis binding enters the catalog")
+    func portableAnalysisZoteroBindingOnly() throws {
         let analysisVault = vault("Analyses", .sourceCorpus)
         let topicVault = vault("Topics", .topicKnowledge)
         let worksVault = vault("Works", .draftProject)
@@ -359,9 +359,9 @@ struct WorkspaceCatalogTests {
             "Canonical.md",
             "---\ntitle: Canonical\nzotero_item_key: CANON001\n---\nAnalysis"
         )
-        let legacyAlias = note(
-            "Legacy Alias.md",
-            "---\ntitle: Legacy Alias\nzoteroKey: ALIAS001\n---\nAnalysis"
+        let unbound = note(
+            "Unbound.md",
+            "---\ntitle: Unbound\nzotero_item_key: YAML001\n---\nAnalysis"
         )
         let topic = note(
             "Topic.md",
@@ -371,22 +371,42 @@ struct WorkspaceCatalogTests {
             "Work.md",
             "---\nzotero_item_key: WORK001\n---\n# Work"
         )
+        let analysisID = UUID()
+        let topicID = UUID()
+        let analysisBinding = try AnalysisZoteroBinding(
+            noteID: analysisID,
+            library: .user,
+            itemKey: "bound001"
+        )
+        let topicBinding = try AnalysisZoteroBinding(
+            noteID: topicID,
+            library: .user,
+            itemKey: "topic001"
+        )
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [analysisVault, topicVault, worksVault],
             documents: [
-                analysisVault.id: [canonical, legacyAlias],
+                analysisVault.id: [canonical, unbound],
                 topicVault.id: [topic],
                 worksVault.id: [work],
+            ],
+            stableNoteIDs: [
+                VaultQualifiedNoteID(vaultID: analysisVault.id, relativePath: canonical.relativePath): analysisID,
+                VaultQualifiedNoteID(vaultID: topicVault.id, relativePath: topic.relativePath): topicID,
+            ],
+            zoteroBindingsByNoteID: [
+                analysisID: analysisBinding,
+                topicID: topicBinding,
             ]
         )
         let notesByPath = Dictionary(uniqueKeysWithValues: snapshot.notes.map {
             ($0.reference.relativePath, $0)
         })
 
-        #expect(notesByPath["Canonical.md"]?.zoteroItemKey == "CANON001")
-        #expect(notesByPath["Legacy Alias.md"]?.zoteroItemKey == nil)
-        #expect(notesByPath["Topic.md"]?.zoteroItemKey == nil)
-        #expect(notesByPath["Work.md"]?.zoteroItemKey == nil)
+        #expect(notesByPath["Canonical.md"]?.zoteroBinding == analysisBinding)
+        #expect(notesByPath["Unbound.md"]?.zoteroBinding == nil)
+        #expect(notesByPath["Topic.md"]?.zoteroBinding == nil)
+        #expect(notesByPath["Work.md"]?.zoteroBinding == nil)
     }
 
 

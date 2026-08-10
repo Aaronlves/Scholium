@@ -1,0 +1,253 @@
+import Foundation
+
+public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable {
+    case incompleteRoleConfiguration
+    case noncanonicalConfigurationField(WorkspaceVaultSlot, String)
+    case seedTooLarge(WorkspaceVaultSlot, Int)
+    case invalidSeed(WorkspaceVaultSlot, String)
+    case reservedSeedKey(WorkspaceVaultSlot, String)
+    case canonicalSeedRoleMismatch(WorkspaceVaultSlot, String)
+    case invalidRequiredField(AnalysisSourceType, String)
+    case requiredFieldNotApplicable(AnalysisSourceType, String)
+    case requiredFieldCollidesWithSeed(AnalysisSourceType, String)
+    case invalidAttentionDismissalDays
+    case invalidPromptConfiguration
+
+    public var errorDescription: String? {
+        switch self {
+        case .incompleteRoleConfiguration:
+            "Properties settings must contain exactly the Analysis, Topic, and Work roles."
+        case .noncanonicalConfigurationField(let role, let field):
+            "The \(role.rawValue) Properties configuration contains a blank, duplicate, or unnormalized field: \(field)."
+        case .seedTooLarge(let role, let count):
+            "The \(role.rawValue) New Note YAML is \(count) bytes; the maximum is \(TriptychSettingsValidator.maximumSeedUTF8Bytes)."
+        case .invalidSeed(let role, let reason):
+            "The \(role.rawValue) New Note YAML is invalid: \(reason)"
+        case .reservedSeedKey(let role, let key):
+            "The \(role.rawValue) New Note YAML cannot contain the reserved key \(key)."
+        case .canonicalSeedRoleMismatch(let role, let key):
+            "\(key) is a canonical Property for another role and cannot be used in the \(role.rawValue) New Note YAML."
+        case .invalidRequiredField(let type, let key):
+            "\(key) is not a shape-known Agent-creatable field for \(type.rawValue)."
+        case .requiredFieldNotApplicable(let type, let key):
+            "\(key) does not apply to \(type.rawValue)."
+        case .requiredFieldCollidesWithSeed(let type, let key):
+            "\(key) is both Agent-required for \(type.rawValue) and present in the Analysis New Note YAML."
+        case .invalidAttentionDismissalDays:
+            "Attention dismissal days must be positive."
+        case .invalidPromptConfiguration:
+            "The active prompt-template configuration is incomplete or inconsistent."
+        }
+    }
+}
+
+/// The sole semantic compiler gate for portable settings. Loading, saving,
+/// managed creation, and Settings UI validation must all use this contract.
+public enum TriptychSettingsValidator {
+    public static let maximumSeedUTF8Bytes = 64 * 1024
+
+    private static let reservedMachineKeys: Set<String> = [
+        "note_id", "paper_id", "topic_id", "output_id", "zotero_item_key",
+        "created_at", "updated_at", "fingerprint", "provenance",
+    ]
+
+    public static func validate(_ settings: TriptychSettings) throws {
+        guard Set(settings.properties.keys) == Set(WorkspaceVaultSlot.allCases) else {
+            throw TriptychSettingsValidationError.incompleteRoleConfiguration
+        }
+        guard settings.attentionDismissalDays > 0 else {
+            throw TriptychSettingsValidationError.invalidAttentionDismissalDays
+        }
+        try validatePromptConfiguration(settings)
+
+        var seedKeysByRole: [WorkspaceVaultSlot: Set<String>] = [:]
+        for role in WorkspaceVaultSlot.allCases {
+            let configuration = settings.properties[role]!
+            try validateConfiguredFields(configuration.visibleFields, role: role)
+            try validateConfiguredFields(configuration.editableFields, role: role)
+            seedKeysByRole[role] = try validateSeed(configuration.newNoteYAML, role: role)
+        }
+
+        let analysisSeedKeys = seedKeysByRole[.paperAnalysis] ?? []
+        for sourceType in AnalysisSourceType.allCases {
+            let required = settings.analysisAgentCreation.requiredFields(for: sourceType)
+            try validateRequiredFields(
+                required,
+                sourceType: sourceType,
+                analysisSeedKeys: analysisSeedKeys
+            )
+        }
+    }
+
+    public static func seedKeys(
+        in source: String?,
+        role: WorkspaceVaultSlot
+    ) throws -> Set<String> {
+        try validateSeed(source, role: role)
+    }
+
+    private static func validateConfiguredFields(
+        _ fields: [String],
+        role: WorkspaceVaultSlot
+    ) throws {
+        var seen: Set<String> = []
+        for field in fields {
+            let normalized = field.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty,
+                  normalized == field,
+                  seen.insert(field).inserted else {
+                throw TriptychSettingsValidationError.noncanonicalConfigurationField(
+                    role,
+                    field
+                )
+            }
+        }
+    }
+
+    private static func validateSeed(
+        _ source: String?,
+        role: WorkspaceVaultSlot
+    ) throws -> Set<String> {
+        guard let source else { return [] }
+        let byteCount = source.utf8.count
+        guard byteCount <= maximumSeedUTF8Bytes else {
+            throw TriptychSettingsValidationError.seedTooLarge(role, byteCount)
+        }
+        guard source == normalizedSeed(source) else {
+            throw TriptychSettingsValidationError.invalidSeed(
+                role,
+                "configuration newlines or the final newline are not normalized"
+            )
+        }
+        do {
+            _ = try FrontmatterPatchPlanner.plan(
+                frontmatter: source,
+                edits: [:],
+                newline: "\n"
+            )
+        } catch {
+            throw TriptychSettingsValidationError.invalidSeed(
+                role,
+                error.localizedDescription
+            )
+        }
+
+        let document = NoteDocument(
+            relativePath: "Settings Seed.md",
+            rawContent: "---\n\(source)---\n"
+        )
+        guard document.validationWarnings.isEmpty,
+              document.rawFrontmatter != nil,
+              !document.parsedFrontmatter.isEmpty else {
+            throw TriptychSettingsValidationError.invalidSeed(
+                role,
+                "the seed must contain at least one top-level mapping entry"
+            )
+        }
+        let keys = Set(document.parsedFrontmatter.keys)
+        let roleReserved: Set<String> = role == .paperAnalysis
+            ? reservedMachineKeys.union(["title", "type"])
+            : reservedMachineKeys.union(["title"])
+        if let reserved = keys.intersection(roleReserved).sorted().first {
+            throw TriptychSettingsValidationError.reservedSeedKey(role, reserved)
+        }
+
+        let profile = profile(for: role)
+        for (key, value) in document.parsedFrontmatter {
+            guard PropertyContractCatalog.contract(for: key, profile: profile) != nil else {
+                if isCanonicalInAnotherRole(key, excluding: profile) {
+                    throw TriptychSettingsValidationError.canonicalSeedRoleMismatch(role, key)
+                }
+                continue
+            }
+            guard !isExplicitEmpty(value) else { continue }
+            if let issue = PropertyContractCatalog.validate(
+                frontmatter: [key: value],
+                profile: profile
+            ).first {
+                throw TriptychSettingsValidationError.invalidSeed(role, issue.message)
+            }
+        }
+        return keys
+    }
+
+    private static func validateRequiredFields(
+        _ fields: [String],
+        sourceType: AnalysisSourceType,
+        analysisSeedKeys: Set<String>
+    ) throws {
+        var seen: Set<String> = []
+        let applicable = Set(
+            AnalysisSourceTypeProfileCatalog.profile(for: sourceType).applicableFields
+        )
+        for key in fields {
+            let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard normalized == key,
+                  !key.isEmpty,
+                  key != "type",
+                  seen.insert(key).inserted,
+                  PropertyContractCatalog.contract(for: key, profile: .analysis) != nil else {
+                throw TriptychSettingsValidationError.invalidRequiredField(sourceType, key)
+            }
+            guard applicable.contains(key) else {
+                throw TriptychSettingsValidationError.requiredFieldNotApplicable(sourceType, key)
+            }
+            guard !analysisSeedKeys.contains(key) else {
+                throw TriptychSettingsValidationError.requiredFieldCollidesWithSeed(
+                    sourceType,
+                    key
+                )
+            }
+        }
+    }
+
+    private static func validatePromptConfiguration(_ settings: TriptychSettings) throws {
+        guard Set(settings.promptTemplates.map(\.id)).count == settings.promptTemplates.count else {
+            throw TriptychSettingsValidationError.invalidPromptConfiguration
+        }
+        for kind in ResearchPromptKind.allCases {
+            guard let active = settings.activePromptTemplateIDs[kind],
+                  settings.promptTemplates.contains(where: {
+                      $0.id == active && $0.kind == kind
+                  }) else {
+                throw TriptychSettingsValidationError.invalidPromptConfiguration
+            }
+        }
+    }
+
+    private static func normalizedSeed(_ source: String) -> String {
+        var source = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        if !source.isEmpty, !source.hasSuffix("\n") { source += "\n" }
+        return source
+    }
+
+    private static func profile(for role: WorkspaceVaultSlot) -> SchemaProfileID {
+        switch role {
+        case .paperAnalysis: .analysis
+        case .topicKnowledge: .topicMarkdown
+        case .output: .draftProject
+        }
+    }
+
+    private static func isCanonicalInAnotherRole(
+        _ key: String,
+        excluding profile: SchemaProfileID
+    ) -> Bool {
+        [SchemaProfileID.analysis, .topicMarkdown, .draftProject].contains { candidate in
+            candidate != profile
+                && PropertyContractCatalog.contract(for: key, profile: candidate) != nil
+        }
+    }
+
+    private static func isExplicitEmpty(_ value: YAMLValue) -> Bool {
+        switch value {
+        case .string(let value): value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .array(let values): values.isEmpty
+        case .object(let values): values.isEmpty
+        case .null: true
+        case .integer, .double, .boolean: false
+        }
+    }
+}

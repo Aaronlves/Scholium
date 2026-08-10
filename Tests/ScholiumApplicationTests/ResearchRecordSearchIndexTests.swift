@@ -349,8 +349,6 @@ private extension ResearchRecordSearchIndexTests {
                 ),
                 title: "Current Akrasia",
                 aliases: ["Akrasia Alias"],
-                zoteroItemKey: nil,
-                zoteroSourceIdentity: nil,
                 fingerprint: DocumentFingerprint(content: "current-alpha"),
                 validationWarnings: []
             )]

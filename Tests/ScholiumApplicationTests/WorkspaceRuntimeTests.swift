@@ -520,14 +520,14 @@ struct WorkspaceRuntimeTests {
                 fixture.assignment.id.uuidString.lowercased(),
                 isDirectory: true
             )
-            .appendingPathComponent("indexes/search-v6.sqlite")
+            .appendingPathComponent("indexes/search-v7.sqlite")
         let secondIndex = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(
                 secondAssignment.id.uuidString.lowercased(),
                 isDirectory: true
             )
-            .appendingPathComponent("indexes/search-v6.sqlite")
+            .appendingPathComponent("indexes/search-v7.sqlite")
         #expect(firstIndex != secondIndex)
         #expect(FileManager.default.fileExists(atPath: firstIndex.path))
         #expect(FileManager.default.fileExists(atPath: secondIndex.path))

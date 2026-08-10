@@ -1,218 +1,118 @@
-import Foundation
-import Testing
 import ScholiumContracts
-@testable import ScholiumCore
+import Testing
 
-@Suite("Property contracts")
+@Suite("Canonical property contracts")
 struct PropertyContractTests {
-    @Test("Default Triptych profiles expose the current canonical vocabulary")
-    func defaultProfileVocabulary() throws {
-        let analysis = PropertyContractCatalog.contracts(for: .analysis)
-        let topic = PropertyContractCatalog.contracts(for: .topicMarkdown)
-        let work = PropertyContractCatalog.contracts(for: .draftProject)
+    @Test("Analysis catalog is the frozen 56-key clean-sheet vocabulary")
+    func analysisCatalog() throws {
+        let contracts = PropertyContractCatalog.contracts(for: .analysis)
+        let keys = contracts.map(\.canonicalKey)
 
-        #expect(analysis.map(\.canonicalKey) == [
-            "title", "summary", "authors", "year", "type", "tags", "research_unit",
-            "zotero_item_key", "access", "text_reliability", "locators",
-            "debate_importance", "debate_importance_scope",
-        ])
-        #expect(topic.map(\.canonicalKey) == [
-            "summary", "aliases", "tags", "research_unit",
-        ])
-        #expect(work.map(\.canonicalKey) == [
-            "summary", "authors", "kind", "tags", "research_unit", "venue",
-        ])
+        #expect(keys.count == 56)
+        #expect(Set(keys).count == 56)
+        #expect(keys.contains("publication_date"))
+        #expect(keys.contains("reviewed_authors"))
+        #expect(keys.contains("archive_location"))
+        #expect(keys.contains("source_basis"))
+        #expect(!keys.contains("year"))
+        #expect(!keys.contains("research_unit"))
+        #expect(!keys.contains("zotero_item_key"))
+        #expect(!keys.contains("debate_importance"))
+    }
 
-        for profile in [SchemaProfileID.analysis, .topicMarkdown, .draftProject] {
-            let summary = try #require(
-                PropertyContractCatalog.contract(for: "summary", profile: profile)
+    @Test("Topic and Work use the small clean-sheet vocabularies")
+    func roleCatalogs() {
+        #expect(PropertyContractCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey) == [
+            "aliases", "summary", "limitations", "tags",
+        ])
+        #expect(PropertyContractCatalog.contracts(for: .draftProject).map(\.canonicalKey) == [
+            "work_type", "coauthors", "summary", "limitations", "tags",
+        ])
+    }
+
+    @Test("CreatorList accepts canonical person and literal entries")
+    func creatorListShape() {
+        let valid: [String: YAMLValue] = [
+            "authors": .array([
+                .object(["family": .string("Tappolet"), "given": .string("Christine")]),
+                .object(["literal": .string("World Health Organization")]),
+            ]),
+        ]
+
+        #expect(PropertyContractCatalog.validate(frontmatter: valid, profile: .analysis).isEmpty)
+    }
+
+    @Test("CreatorList rejects mixed, unknown, empty, and legacy string shapes")
+    func creatorListRefusals() {
+        let invalidValues: [YAMLValue] = [
+            .array([.string("Christine Tappolet")]),
+            .array([.object(["given": .string("Christine")])]),
+            .array([.object(["literal": .string("WHO"), "family": .string("WHO")])]),
+            .array([.object(["family": .string("Tappolet"), "orcid": .string("x")])]),
+            .array([.object(["family": .integer(123)])]),
+            .array([]),
+        ]
+
+        for value in invalidValues {
+            let issues = PropertyContractCatalog.validate(
+                frontmatter: ["authors": value],
+                profile: .analysis
             )
-            #expect(summary.valueKind == .text)
-            #expect(summary.ownership == .researcher)
-            #expect(summary.creationRequirement == .optional)
-        }
-
-        let researchUnit = try #require(
-            PropertyContractCatalog.contract(for: "research_unit", profile: .analysis)
-        )
-        #expect(researchUnit.valueKind == .mapping)
-        #expect(researchUnit.creationRequirement == .optional)
-        #expect(analysis.allSatisfy { $0.creationRequirement == .optional })
-        #expect(PropertyContractCatalog.contract(
-            for: "zotero_item_key",
-            profile: .analysis
-        )?.ownership == .protectedMachine)
-        #expect(PropertyContractCatalog.contract(for: "status", profile: .analysis) == nil)
-        #expect(PropertyContractCatalog.contract(for: "deadline", profile: .draftProject) == nil)
-        let importance = try #require(
-            PropertyContractCatalog.contract(for: "debate_importance", profile: .analysis)
-        )
-        #expect(importance.constraints.contains(
-            .integerRange(minimum: 0, maximum: 10)
-        ))
-        #expect(importance.constraints.contains(
-            .pairedWith(canonicalKey: "debate_importance_scope")
-        ))
-        #expect(PropertyContractCatalog.contract(
-            for: "research_unit",
-            profile: .topicMarkdown
-        )?.creationRequirement == .optional)
-    }
-
-    @Test("Every profile has unique canonical keys and stable indexed lookup")
-    func profileKeysAreUniqueAndRoundTripThroughTheIndex() {
-        for profile in SchemaProfileID.allCases {
-            let contracts = PropertyContractCatalog.contracts(for: profile)
-            let keys = contracts.map(\.canonicalKey)
-            #expect(Set(keys).count == keys.count, "Duplicate canonical key in \(profile.rawValue)")
-
-            for contract in contracts {
-                #expect(PropertyContractCatalog.contract(
-                    for: contract.canonicalKey,
-                    profile: profile
-                ) == contract)
-            }
+            #expect(issues.map(\.code) == [.invalidCreator])
         }
     }
 
-    @Test("Creation requirements remain contextual")
-    func creationRequirementsAreContextual() {
-        let existing = PropertyContractCatalog.validate(
-            frontmatter: [:],
-            profile: .analysis,
-            context: .existingDocument
-        )
-        #expect(existing.isEmpty)
+    @Test("Text lists and tags reject scalar coercion")
+    func textCollectionsRequireStrings() {
+        for key in ["source_basis", "limitations", "tags"] {
+            #expect(PropertyContractCatalog.validate(
+                frontmatter: [key: .array([.boolean(true), .integer(1)])],
+                profile: .analysis
+            ).map(\.code) == [.invalidValueKind])
+        }
+    }
 
-        let creation = PropertyContractCatalog.validate(
-            frontmatter: [:],
-            profile: .analysis,
-            context: .creation
-        )
-        #expect(creation.isEmpty)
-
-        let yamlFreeTopic = NoteDocument(
-            relativePath: "Topics/Agency.md",
-            rawContent: "# Agency\n"
-        )
+    @Test("Dates remain source-safe strings and are not parsed or normalized")
+    func dateShape() {
+        for value in ["2026", "circa 1920", "forthcoming?", "1990/1992"] {
+            #expect(PropertyContractCatalog.validate(
+                frontmatter: ["publication_date": .string(value)],
+                profile: .analysis
+            ).isEmpty)
+        }
         #expect(PropertyContractCatalog.validate(
-            yamlFreeTopic,
-            profile: .topicMarkdown,
-            context: .creation
-        ).isEmpty)
-        #expect(yamlFreeTopic.rawFrontmatter == nil)
-        #expect(yamlFreeTopic.rawContent == "# Agency\n")
+            frontmatter: ["publication_date": .integer(2026)],
+            profile: .analysis
+        ).map(\.code) == [.invalidValueKind])
     }
 
-    @Test("Allowed values and Analysis cross-field rules match the current editor contract")
-    func allowedValuesAndAnalysisCrossFields() {
-        let invalid = PropertyContractCatalog.validate(
-            frontmatter: [
-                "type": .string("web_page"),
-                "status": .string("settled"),
-                "debate_importance": .double(7.0),
-            ],
-            profile: .analysis
-        )
-        #expect(invalid.contains {
-            $0.propertyKey == "type" && $0.code == .valueNotAllowed
-        })
-        #expect(!invalid.contains { $0.propertyKey == "status" })
-        #expect(invalid.contains {
-            $0.propertyKey == "debate_importance"
-                && $0.code == .debateImportanceOutOfRange
-        })
-        #expect(invalid.contains {
-            $0.propertyKey == "debate_importance_scope"
-                && $0.code == .pairedPropertyMissing
-        })
+    @Test("Source types have one CSL mapping and valid profile partitions")
+    func sourceTypeProfiles() {
+        let canonical = Set(PropertyContractCatalog.analysisCanonicalKeys)
+        #expect(AnalysisSourceType.allCases.count == 18)
+        #expect(Set(AnalysisSourceType.allCases.map(\.cslType)).contains("article-journal"))
 
-        let valid = PropertyContractCatalog.validate(
-            frontmatter: [
-                "type": .string("journal_article"),
-                "status": .string("complete"),
-                "debate_importance": .integer(7),
-                "debate_importance_scope": .string("The fitting-attitude debate"),
-            ],
-            profile: .analysis
-        )
-        #expect(valid.isEmpty)
-
-        let scopeWithoutRating = PropertyContractCatalog.validate(
-            frontmatter: [
-                "debate_importance_scope": .string("The fitting-attitude debate")
-            ],
-            profile: .analysis
-        )
-        #expect(scopeWithoutRating == [PropertyValidationIssue(
-            propertyKey: "debate_importance",
-            code: .pairedPropertyMissing,
-            message: "debate_importance and debate_importance_scope must be provided together."
-        )])
-    }
-
-    @Test("Research Unit validation reuses the Core declaration contract")
-    func researchUnitValidation() {
-        let issues = PropertyContractCatalog.validate(
-            frontmatter: [
-                "research_unit": .object([
-                    "scope": .string(""),
-                    "limitations": .array([.string("Outside the selected chapters")]),
-                ])
-            ],
-            profile: .analysis
-        )
-        #expect(issues == [PropertyValidationIssue(
-            propertyKey: "research_unit",
-            code: .invalidResearchUnit,
-            message: "Unsupported field: scope."
-        )])
-    }
-
-    @Test("Malformed frontmatter remains exact and receives only an envelope issue")
-    func malformedFrontmatterIsReadOnly() {
-        let source = "---\r\ntitle: \"Unclosed\r\ncustom: keep\r\n---\r\n# Body\r\n"
-        let document = NoteDocument(relativePath: "Analyses/Broken.md", rawContent: source)
-        let originalBytes = document.sourceBytes
-        let originalFingerprint = document.fingerprint
-
-        let issues = PropertyContractCatalog.validate(
-            document,
-            profile: .analysis,
-            context: .creation
-        )
-
-        #expect(issues.count == 1)
-        #expect(issues.first?.code == .malformedFrontmatter)
-        #expect(issues.first?.propertyKey == nil)
-        #expect(document.rawContent == source)
-        #expect(document.sourceBytes == originalBytes)
-        #expect(document.fingerprint == originalFingerprint)
-        #expect(throws: VaultRepositoryError.self) {
-            try document.applying(
-                .frontmatter(["title": .string("Replacement")]),
-                timestampKey: nil
-            )
+        for sourceType in AnalysisSourceType.allCases {
+            let profile = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
+            let applicable = Set(profile.applicableFields)
+            #expect(applicable.isSubset(of: canonical))
+            #expect(Set(profile.recommendedFieldOrder).isSubset(of: applicable))
+            #expect(Set(profile.serializationFieldOrder) == applicable)
+            #expect(profile.serializationFieldOrder.first == "type")
         }
     }
 
-    @Test("Contract profiles and key lookups remain immutable cached data")
-    func catalogHasCachedStorageAndLookups() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumContracts/PropertyContract.swift"
-            ),
-            encoding: .utf8
+    @Test("Retired and unknown keys remain undiagnosed custom source")
+    func customSourceRemainsOutsideCanonicalValidation() {
+        let issues = PropertyContractCatalog.validate(
+            frontmatter: [
+                "year": .integer(2020),
+                "research_unit": .object(["completion": .string("complete")]),
+                "zotero_item_key": .string("ABCD1234"),
+                "custom_field": .object(["nested": .boolean(true)]),
+            ],
+            profile: .analysis
         )
-
-        #expect(source.contains("private struct CachedProfile"))
-        #expect(source.contains("let canonicalByKey: [String: PropertyContract]"))
-        #expect(!source.contains("aliasByKey"))
-        #expect(source.contains("private static let workProfile"))
-        #expect(!source.contains("private static var workProfile"))
+        #expect(issues.isEmpty)
     }
 }

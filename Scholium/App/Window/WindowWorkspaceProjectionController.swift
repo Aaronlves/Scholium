@@ -64,7 +64,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var notes: [WindowDocumentLocation] = []
         var tags: [String] = []
         var authors: [String] = []
-        var years: [Int] = []
         var documentRevisions: [String: DocumentFingerprint] = [:]
         var relationshipGraph: GraphSnapshot?
         var searchGeneration: SearchGenerationID?
@@ -107,7 +106,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     var notes: [WindowDocumentLocation] { state.notes }
     var tags: [String] { state.tags }
     var authors: [String] { state.authors }
-    var years: [Int] { state.years }
     var documentRevisions: [String: DocumentFingerprint] { state.documentRevisions }
     var relationshipGraph: GraphSnapshot? { state.relationshipGraph }
     var searchGeneration: SearchGenerationID? { state.searchGeneration }
@@ -654,7 +652,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.notes = notes
         state.tags = notes.orderedTags
         state.authors = Set(notes.flatMap(\.authors)).sorted()
-        state.years = Set(notes.compactMap(\.year)).sorted(by: >)
         state.documentRevisions = Dictionary(uniqueKeysWithValues: notes.map {
             ($0.relativePath, $0.document.fingerprint)
         })

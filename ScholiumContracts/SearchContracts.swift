@@ -1,7 +1,8 @@
 import Foundation
 
 public enum SearchMatchedField: String, Codable, Hashable, Sendable {
-    case title, alias, heading, summary, author, year, tag, body, callout, footnote, path
+    case title, alias, heading, summary, author, tag, body, callout, footnote, path
+    case publicationDate = "publication_date"
     case brokenLink = "broken_link"
 }
 
@@ -286,7 +287,7 @@ public struct SearchIndexDocument: Sendable {
     public let title: String
     public let aliases: [String]
     public let authors: [String]
-    public let year: String?
+    public let publicationDate: String?
     public let tags: [String]
     public let document: NoteDocument
     public let semantic: MarkdownSemanticDocument
@@ -300,6 +301,7 @@ public struct SearchIndexDocument: Sendable {
         vaultName: String,
         vaultRole: VaultRole,
         document: NoteDocument,
+        stableNoteID: String? = nil,
         semantic: MarkdownSemanticDocument? = nil,
         hasBrokenLink: Bool = false
     ) {
@@ -308,6 +310,7 @@ public struct SearchIndexDocument: Sendable {
             vaultName: vaultName,
             vaultRole: vaultRole,
             document: document,
+            stableNoteID: stableNoteID,
             resolvedSemantic: semantic ?? MarkdownSemanticDocument(
                 parsing: document
             ),
@@ -321,6 +324,7 @@ public struct SearchIndexDocument: Sendable {
         vaultName: String,
         vaultRole: VaultRole,
         document: NoteDocument,
+        stableNoteID: String? = nil,
         semantic: MarkdownSemanticDocument,
         cachedSourceProjection: SearchDocumentProjection,
         hasBrokenLink: Bool = false
@@ -330,6 +334,7 @@ public struct SearchIndexDocument: Sendable {
             vaultName: vaultName,
             vaultRole: vaultRole,
             document: document,
+            stableNoteID: stableNoteID,
             resolvedSemantic: semantic,
             sourceProjection: cachedSourceProjection,
             hasBrokenLink: hasBrokenLink
@@ -341,6 +346,7 @@ public struct SearchIndexDocument: Sendable {
         vaultName: String,
         vaultRole: VaultRole,
         document: NoteDocument,
+        stableNoteID: String?,
         resolvedSemantic: MarkdownSemanticDocument,
         sourceProjection cachedSourceProjection: SearchDocumentProjection?,
         hasBrokenLink: Bool
@@ -351,30 +357,36 @@ public struct SearchIndexDocument: Sendable {
         self.document = document
         self.semantic = resolvedSemantic
         relativePath = document.relativePath
-        stableNoteID = ["note_id", "paper_id", "topic_id", "output_id"]
-            .compactMap { document.parsedFrontmatter[$0]?.searchStrings.first }
-            .first
+        self.stableNoteID = stableNoteID
+        let profile = WorkflowProfileResolver.resolve(
+            vaultRole: vaultRole,
+            frontmatter: document.parsedFrontmatter,
+            relativePath: document.relativePath
+        )
         title = ResearchNoteTitleResolver.resolve(
             document: document,
             vaultRole: vaultRole,
             semantic: self.semantic
         ).title
-        aliases = document.parsedFrontmatter["aliases"]?.searchStrings
-            ?? document.parsedFrontmatter["alias"]?.searchStrings
-            ?? []
-        authors = document.parsedFrontmatter["authors"]?.searchStrings
-            ?? document.parsedFrontmatter["author"]?.searchStrings
-            ?? []
-        year = document.parsedFrontmatter["year"]?.displayScalar
-        tags = document.parsedFrontmatter["tags"]?.searchStrings ?? []
+        aliases = PropertyContractCatalog.contract(for: "aliases", profile: profile) == nil
+            ? []
+            : document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
+        authors = PropertyContractCatalog.contract(for: "authors", profile: profile) == nil
+            ? []
+            : document.parsedFrontmatter["authors"]
+                .flatMap(PropertyContractCatalog.creatorNames(from:))?
+                .map(\.displayName) ?? []
+        publicationDate = PropertyContractCatalog.contract(
+            for: "publication_date",
+            profile: profile
+        ) == nil ? nil : document.parsedFrontmatter["publication_date"]?.canonicalSearchText
+        tags = PropertyContractCatalog.contract(for: "tags", profile: profile) == nil
+            ? []
+            : document.parsedFrontmatter["tags"]?.canonicalStringList ?? []
         self.hasBrokenLink = hasBrokenLink
         let sourceProjection = cachedSourceProjection ?? SearchDocumentProjection(
             document: document,
-            profile: WorkflowProfileResolver.resolve(
-                vaultRole: vaultRole,
-                frontmatter: document.parsedFrontmatter,
-                relativePath: document.relativePath
-            ),
+            profile: profile,
             semantic: self.semantic
         )
         projection = sourceProjection.applyingDynamicState(
@@ -425,5 +437,28 @@ public extension YAMLValue {
         case .object(let values): values.keys.sorted().flatMap { values[$0]?.searchStrings ?? [] }
         case .null: []
         }
+    }
+
+    var canonicalStringList: [String]? {
+        guard case .array(let values) = self, !values.isEmpty else { return nil }
+        let strings = values.compactMap { value -> String? in
+            guard case .string(let string) = value,
+                  !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  string.unicodeScalars.allSatisfy({
+                      !CharacterSet.controlCharacters.contains($0)
+                  }) else { return nil }
+            return string
+        }
+        return strings.count == values.count ? strings : nil
+    }
+
+    var canonicalSearchText: String? {
+        guard case .string(let value) = self,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              value.unicodeScalars.allSatisfy({ scalar in
+                  scalar != "\n" && scalar != "\r"
+                      && !CharacterSet.controlCharacters.contains(scalar)
+              }) else { return nil }
+        return value
     }
 }

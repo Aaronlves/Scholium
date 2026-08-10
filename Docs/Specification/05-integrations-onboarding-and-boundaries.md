@@ -17,40 +17,50 @@ privacy statement.
 When disabled, direct the researcher to **Allow other applications on this
 computer to communicate with Zotero** in Zotero's Advanced settings.
 
-### 15.2 Protected Analysis task context
+### 15.2 Portable Analysis binding and task context
 
-`zotero_item_key` is an Analysis-only protected-machine field. It is absent
-from About and ordinary Properties. Scholium has no **Create Analysis from
-Zotero**, matching, comparison, confirmation, or metadata-overwrite flow. Only
-a protected machine or authorized agent mutation may write the key through the
-current-fingerprint boundary.
+An `AnalysisZoteroBinding` in portable `.scholium/` relates one stable Analysis
+Note UUID to one exact Zotero user or group library identity and normalized
+item key. It is not YAML, a Property, bibliographic metadata, or researcher
+source. A `zotero_item_key` found in Markdown is ordinary custom source and
+grants no integration behavior or authority. Scholium never infers a binding
+from YAML, path, filename, title, authors, identifier, date, or similarity.
 
-When the current Analysis has a valid normalized key, Overview exposes one quiet
-**Open in Zotero** action that opens that exact item in Zotero Desktop. The
-action displays neither the key nor fetched Zotero metadata, performs no
-matching or confirmation, and is absent for Topics, Works, and Analyses without
-a valid key.
+Only dedicated set/clear Zotero-binding operations may change it;
+`modify_markdown` and `modify_properties` cannot. Rename, Move, Set Aside, and
+Trash retain it by stable identity. Duplicate Analysis explicitly copies the
+relationship; permanent deletion removes it. The Zotero integration surface
+provides visible open, clear, and rebind paths. Single-Note Markdown restore
+leaves it unchanged; complete Triptych restore follows §14.
+
+When the current Analysis has a valid binding, Overview exposes one quiet
+**Open in Zotero** action for that exact library item. It displays neither the
+key nor fetched metadata and is absent without a current binding.
 
 When Analyze or another eligible Analysis Action begins preparation with a
-non-empty key,
-Application performs one exact local item read and automatically attaches the
-catalogued `scholium-zotero-integration` System Skill. The immutable Action
-snapshot is labelled **Zotero bibliographic metadata** and may carry item key,
-item type, title, complete creator roles, date/year, language, container,
-volume, issue, pages, edition, series, publisher, place, DOI, ISBN, ISSN,
-citation key, URL, abstract, tags, Collections, and modification time.
+binding, Application performs one exact local item read and automatically
+attaches the catalogued `scholium-zotero-integration` System Skill. The
+immutable Action snapshot is labelled **Zotero bibliographic metadata** and
+may carry item key, item type, title, complete creator roles, date/year,
+language, container, volume, issue, pages, edition, series, publisher, place,
+DOI, ISBN, ISSN, citation key, URL, abstract, tags, Collections, and
+modification time.
 
-The same run reuses that snapshot when resumed; every new run reads Zotero
+The same Run reuses that snapshot when resumed; every new Run reads Zotero
 again. No metadata cache crosses tasks. Unavailable Zotero, a missing item, or
-an invalid response adds one nonblocking warning and never prevents the agent
+an invalid response adds one nonblocking warning and never prevents the Agent
 from continuing with available evidence or leaving unnecessary fields absent.
-No key and non-Analysis targets perform no read and emit no Zotero warning.
+No binding and non-Analysis targets perform no read and emit no warning.
 
 Task metadata is never written into Markdown or displayed in Inspector.
-Abstract, tags, and Collections remain bibliographic metadata, never paper
+Abstract, tags, and Collections remain bibliographic metadata, never source
 content or philosophical evidence. Attachments, Zotero Notes, annotations,
 PDFs, and full text never enter automatic context. Built-in integration never
-changes Zotero data, files, or live SQLite.
+changes Zotero data, files, or live SQLite. Binding never creates a
+bibliographic snapshot: connection, binding, opening, and Action preparation
+never write, refresh, reconcile, or override Analysis Properties. A future
+fill operation requires a separate explicit, field-bounded,
+current-fingerprint source transaction.
 
 ### 15.3 Literature Recommendations and the Zotero boundary
 

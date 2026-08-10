@@ -1,47 +1,42 @@
 import ScholiumContracts
 
-/// A stable visual section in the structured Properties interface.
-///
-/// Groups and their ordering are GUI policy only. Property meaning,
-/// requiredness, allowed values, aliases, and validation remain in Core.
+/// The one fixed presentation-group vocabulary shared by Properties,
+/// Settings, and About. YAML remains flat; these groups are reading order.
 enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
-    case researchUnit
-    case about
     case source
-    case progress
-    case assessment
-    case use
-    case history
+    case publication
+    case accessAndIdentifiers
+    case topicDescription
+    case workDescription
+    case research
     case other
+    case tags
 
     var label: String {
         switch self {
-        case .researchUnit: ScholiumL10n.dynamicString("Research Unit")
-        case .about: ScholiumL10n.dynamicString("About")
         case .source: ScholiumL10n.dynamicString("Source")
-        case .progress: ScholiumL10n.dynamicString("Progress")
-        case .assessment: ScholiumL10n.dynamicString("Assessment")
-        case .use: ScholiumL10n.dynamicString("Use")
-        case .history: ScholiumL10n.dynamicString("History")
-        case .other: ScholiumL10n.dynamicString("Other")
+        case .publication: ScholiumL10n.dynamicString("Publication")
+        case .accessAndIdentifiers: ScholiumL10n.dynamicString("Access & Identifiers")
+        case .topicDescription: ScholiumL10n.dynamicString("Topic Description")
+        case .workDescription: ScholiumL10n.dynamicString("Work Description")
+        case .research: ScholiumL10n.dynamicString("Research")
+        case .other: ScholiumL10n.dynamicString("Other Properties")
+        case .tags: ScholiumL10n.dynamicString("Tags")
         }
     }
 
     var order: Int {
         switch self {
-        case .researchUnit: 0
-        case .about: 1
-        case .source: 2
-        case .progress: 3
-        case .assessment: 4
-        case .use: 5
-        case .history: 6
-        case .other: 7
+        case .source, .topicDescription, .workDescription: 0
+        case .publication: 1
+        case .accessAndIdentifiers: 2
+        case .research: 3
+        case .other: 4
+        case .tags: 5
         }
     }
 }
 
-/// The GUI control family used to present one Core property contract.
 enum PropertyControlStyle: String, CaseIterable, Hashable, Sendable {
     case textField
     case multilineText
@@ -51,12 +46,9 @@ enum PropertyControlStyle: String, CaseIterable, Hashable, Sendable {
     case tagEditor
     case textListEditor
     case choicePicker
-    case researchUnit
+    case creatorListEditor
 }
 
-/// Human-facing metadata for one canonical Core property.
-///
-/// The descriptor deliberately contains no semantic rules.
 struct PropertyPresentation: Hashable, Sendable {
     let key: String
     let label: String
@@ -74,22 +66,21 @@ enum PropertyPresentationCatalog {
     ]
 
     static func presentations(for profile: SchemaProfileID) -> [PropertyPresentation] {
-        let presentations: [PropertyPresentation] = switch profile {
-        case .analysis:
-            analysis
-        case .topicMarkdown:
-            topic
-        case .draftProject:
-            work
-        case .genericMarkdown:
-            []
-        }
-        return presentations.sorted {
+        let contracts = PropertyContractCatalog.contracts(for: profile)
+        return contracts.enumerated().map { index, contract in
+            PropertyPresentation(
+                key: contract.canonicalKey,
+                label: label(for: contract.canonicalKey),
+                help: help(for: contract.canonicalKey),
+                group: group(for: contract.canonicalKey, profile: profile),
+                order: index,
+                controlStyle: controlStyle(for: contract)
+            )
+        }.sorted {
             ($0.group.order, $0.order) < ($1.group.order, $1.order)
         }
     }
 
-    /// Resolves a GUI descriptor to its canonical semantic authority.
     static func contract(
         for presentation: PropertyPresentation,
         in profile: SchemaProfileID
@@ -97,74 +88,109 @@ enum PropertyPresentationCatalog {
         guard let contract = PropertyContractCatalog.contract(
             for: presentation.key,
             profile: profile
-        ), contract.canonicalKey == presentation.key else {
-            return nil
-        }
+        ), contract.canonicalKey == presentation.key else { return nil }
         return contract
     }
 
-    static func presentation(for key: String, in profile: SchemaProfileID) -> PropertyPresentation? {
+    static func presentation(
+        for key: String,
+        in profile: SchemaProfileID
+    ) -> PropertyPresentation? {
         presentations(for: profile).first { $0.key == key }
     }
 
-    private static let analysis: [PropertyPresentation] = [
-        item("title", "Title", "Title of the analyzed source.", .about, 0, .textField),
-        item("summary", "Summary", "Short navigation description of this Note; open the current Note and sources before relying on it.", .about, 1, .textField),
-        item("authors", "Authors", nil, .about, 2, .textListEditor),
-        item("year", "Year", nil, .about, 3, .numberField),
-        item("type", "Type", "Publication form, not philosophical role.", .about, 4, .choicePicker),
-        item("tags", "Tags", nil, .about, 5, .tagEditor),
-        item(
-            "research_unit", "Research Unit",
-            "Record represented completion and any material limitations; this does not judge analytical adequacy.",
-            .researchUnit, 0, .researchUnit
-        ),
-        item("access", "Access", "Extent of source material available for the analysis.", .source, 0, .choicePicker),
-        item("text_reliability", "Text Reliability", "Reliability of the text actually consulted.", .source, 1, .choicePicker),
-        item("locators", "Locators", "Whether citations can be checked at stable locations.", .source, 2, .choicePicker),
-        item(
-            "debate_importance", "Debate Importance",
-            "Optional whole-number 0–10 assessment within the separately named debate scope; not project relevance, quality, truth, prestige, or citation count.",
-            .assessment, 0, .numberField
-        ),
-        item(
-            "debate_importance_scope", "Debate Scope",
-            "Debate, domain, tradition, period, or reception context within which Debate Importance was assessed.",
-            .assessment, 1, .textField
-        ),
+    private static let analysisSourceKeys: Set<String> = [
+        "type", "title", "short_title", "original_title", "reviewed_title",
+        "genre", "medium", "version", "language", "authors", "editors",
+        "translators", "collection_editors", "container_authors",
+        "original_authors", "reviewed_authors",
     ]
 
-    private static let topic: [PropertyPresentation] = [
-        item("summary", "Summary", "Short navigation description of this Note; open the current Note and sources before relying on it.", .about, 0, .textField),
-        item("aliases", "Aliases", "Alternative names used for finding and linking the Topic.", .about, 1, .textListEditor),
-        item("tags", "Tags", nil, .about, 2, .tagEditor),
-        item("research_unit", "Research Unit", "Optional conceptual or debate scope plus material limitations.", .researchUnit, 0, .researchUnit),
+    private static let analysisAccessKeys: Set<String> = [
+        "accessed_date", "doi", "isbn", "issn", "url", "pmid", "pmcid",
+        "arxiv_id", "archive", "archive_collection", "archive_location",
+        "archive_place", "call_number",
     ]
 
-    private static let work: [PropertyPresentation] = [
-        item("summary", "Summary", "Short navigation description of this Note; open the current Note and sources before relying on it.", .about, 0, .textField),
-        item("authors", "Authors", "Use for co-authored work; omit for an ordinary single-author vault.", .about, 1, .textListEditor),
-        item("kind", "Kind", "Optional form of the authored Work.", .about, 2, .choicePicker),
-        item("tags", "Tags", nil, .about, 3, .tagEditor),
-        item("research_unit", "Research Unit", "Optional Research Scope plus material limitations.", .researchUnit, 0, .researchUnit),
-        item("venue", "Venue", "Journal, publisher, course, event, or other destination.", .use, 0, .textField),
-    ]
+    private static func group(
+        for key: String,
+        profile: SchemaProfileID
+    ) -> PropertyPresentationGroup {
+        if key == "tags" { return .tags }
+        if key == "limitations" || key == "source_basis" { return .research }
+        switch profile {
+        case .analysis:
+            if key == "summary" { return .research }
+            if analysisSourceKeys.contains(key) { return .source }
+            if analysisAccessKeys.contains(key) { return .accessAndIdentifiers }
+            return .publication
+        case .topicMarkdown:
+            return key == "limitations" ? .research : .topicDescription
+        case .draftProject:
+            return key == "limitations" ? .research : .workDescription
+        case .genericMarkdown:
+            return .other
+        }
+    }
 
-    private static func item(
-        _ key: String,
-        _ label: String,
-        _ help: String?,
-        _ group: PropertyPresentationGroup,
-        _ order: Int,
-        _ controlStyle: PropertyControlStyle
-    ) -> PropertyPresentation {
-        PropertyPresentation(
-            key: key,
-            label: ScholiumL10n.dynamicString(label),
-            help: help.map(ScholiumL10n.dynamicString),
-            group: group,
-            order: order,
-            controlStyle: controlStyle
+    private static func controlStyle(for contract: PropertyContract) -> PropertyControlStyle {
+        switch contract.valueKind {
+        case .text: .textField
+        case .multilineText: .multilineText
+        case .number: .numberField
+        case .date: .dateField
+        case .boolean: .toggle
+        case .tags: .tagEditor
+        case .textList: .textListEditor
+        case .choice: .choicePicker
+        case .creatorList: .creatorListEditor
+        case .mapping: .multilineText
+        }
+    }
+
+    private static func label(for key: String) -> String {
+        let fixed: [String: String] = [
+            "type": "Source Type", "title": "Title", "short_title": "Short Title",
+            "original_title": "Original Title", "reviewed_title": "Reviewed Title",
+            "genre": "Genre", "medium": "Medium", "version": "Version",
+            "language": "Language", "authors": "Authors", "editors": "Editors",
+            "translators": "Translators", "collection_editors": "Collection Editors",
+            "container_authors": "Container Authors", "original_authors": "Original Authors",
+            "reviewed_authors": "Reviewed Authors", "publication_date": "Publication Date",
+            "publication_status": "Publication Status",
+            "original_publication_date": "Original Publication Date",
+            "accessed_date": "Accessed Date", "event_date": "Event Date",
+            "container_title": "Container Title", "container_title_short": "Short Container Title",
+            "series_title": "Series Title", "series_number": "Series Number",
+            "volume": "Volume", "volume_title": "Volume Title", "issue": "Issue",
+            "pages": "Pages", "chapter_number": "Chapter Number", "edition": "Edition",
+            "number_of_volumes": "Number of Volumes", "publisher": "Publisher",
+            "publisher_place": "Publisher Place", "original_publisher": "Original Publisher",
+            "original_publisher_place": "Original Publisher Place", "institution": "Institution",
+            "report_number": "Report Number", "event_title": "Event Title",
+            "event_place": "Event Place", "doi": "DOI", "isbn": "ISBN", "issn": "ISSN",
+            "url": "URL", "pmid": "PMID", "pmcid": "PMCID", "arxiv_id": "arXiv ID",
+            "archive": "Archive", "archive_collection": "Archive Collection",
+            "archive_location": "Archive Location", "archive_place": "Archive Place",
+            "call_number": "Call Number", "source_basis": "Source Basis",
+            "limitations": "Limitations", "tags": "Tags", "summary": "Summary",
+            "aliases": "Aliases", "work_type": "Work Type", "coauthors": "Co-authors",
+        ]
+        return ScholiumL10n.dynamicString(
+            fixed[key] ?? key.replacingOccurrences(of: "_", with: " ").capitalized
         )
+    }
+
+    private static func help(for key: String) -> String? {
+        let text: String? = switch key {
+        case "title": "Title of the analyzed source."
+        case "summary": "Short navigation description of this Note; open the current Note and sources before relying on it."
+        case "source_basis": "Consulted material, version, range, or locator conditions."
+        case "limitations": "Material boundaries of this Note."
+        case "aliases": "Alternative names used for finding and linking this Topic."
+        case "tags": "Short researcher-defined retrieval terms."
+        default: nil
+        }
+        return text.map(ScholiumL10n.dynamicString)
     }
 }

@@ -7,7 +7,6 @@ struct DiscoveryFilterState: Equatable, Sendable {
     var hasMalformedMetadata = false
     var tag: String?
     var author: String?
-    var year: Int?
     var propertyKey: String?
     var propertyValue: String?
 }

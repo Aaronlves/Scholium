@@ -111,7 +111,6 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
     case modifiedOldest
     case titleAscending
     case titleDescending
-    case debateImportanceDescending
 
     var id: String { rawValue }
 
@@ -121,7 +120,6 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
         case .modifiedOldest: ScholiumL10n.dynamicString("Least Recently Modified")
         case .titleAscending: ScholiumL10n.dynamicString("Title, A to Z")
         case .titleDescending: ScholiumL10n.dynamicString("Title, Z to A")
-        case .debateImportanceDescending: ScholiumL10n.dynamicString("Debate Importance, High to Low")
         }
     }
 
@@ -131,7 +129,6 @@ enum NoteSortOrder: String, CaseIterable, Identifiable, Sendable {
         case .modifiedOldest: "clock"
         case .titleAscending: "textformat.abc"
         case .titleDescending: "textformat.abc.dottedunderline"
-        case .debateImportanceDescending: "arrow.down.circle"
         }
     }
 }

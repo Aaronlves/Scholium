@@ -112,6 +112,24 @@ Profiles & Practices, Collaboration, Sources & Integrations, and Recovery &
 Technical. Each editor mutates one owner at a time through an expected-revision
 transaction.
 
+Portable `TriptychSettings` is a separate strict owner for role Properties.
+Its current schema contains exact delimiter-free New Note YAML, About order,
+structured-edit allowlists, and per-source-type Analysis Agent requirements.
+`TriptychControlStore.settings()` returns decoded settings plus a
+`SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
+complete candidate and expected revision, rechecks current bytes inside the
+store actor, atomically replaces, readbacks, decodes, and returns the new
+revision. It never value-compares decoded settings, falls back to defaults for
+an existing invalid file, or ships an old-schema decoder.
+Current bundled prompt bodies are app projections selected by stable IDs; load
+may replace or supply those in memory without writing the portable file. It
+does not repair researcher templates or invalid active-template IDs.
+
+`PropertyContractCatalog` owns shapes; `AnalysisSourceTypeProfileCatalog` owns
+applicable/recommended/serialization order; Settings owns only selection and
+exact seed source. A later managed-creation projection may compile those values
+in memory, but no second persisted template or requirements revision exists.
+
 The Profile editor can change only visible name, order, enabled state,
 role-valid placement, and bounded ordered academic fields. The Methods and
 Practices editors operate on exact Markdown and expose their one recovery

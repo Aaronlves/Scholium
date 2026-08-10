@@ -362,7 +362,8 @@ struct SearchProtocolContractsTests {
             ("autonomy NEAR agency", .unsupportedSyntax),
             ("/autonomy/", .unsupportedSyntax),
             ("autonomy~", .unsupportedSyntax),
-            ("year:1990..2000", .unsupportedSyntax),
+            ("publication_date:1990..2000", .unsupportedSyntax),
+            ("year:1998", .unknownField),
             ("title:", .missingFieldValue),
             ("callout:not-canonical", .unknownStructuredValue),
             ("-autonomy", .onlyExcludedFreeText),
@@ -395,8 +396,9 @@ struct SearchProtocolContractsTests {
         title: Test Note
         summary: "A concise autonomy map"
         aliases: [Alias]
-        authors: [Author]
-        year: 2026
+        authors:
+          - family: Author
+        publication_date: "2026"
         tags: [search]
         status: draft
         ---
@@ -463,6 +465,75 @@ struct SearchProtocolContractsTests {
                 length: sourceRange.count
             )) == needle)
         }
+    }
+
+    @Test("Typed Search metadata rejects legacy aliases and invalid canonical shapes")
+    func typedMetadataFailsClosed() {
+        let document = NoteDocument(
+            relativePath: "Legacy.md",
+            rawContent: """
+            ---
+            note_id: forged-yaml-identity
+            alias: Legacy Alias
+            author: Legacy Author
+            authors: [T. Scanlon]
+            publication_date: 1998
+            tags: [valid, true]
+            ---
+            Body
+            """
+        )
+        let stableID = UUID().uuidString.lowercased()
+        let indexed = SearchIndexDocument(
+            vaultID: UUID(),
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus,
+            document: document,
+            stableNoteID: stableID
+        )
+        #expect(indexed.stableNoteID == stableID)
+        #expect(indexed.aliases.isEmpty)
+        #expect(indexed.authors.isEmpty)
+        #expect(indexed.publicationDate == nil)
+        #expect(indexed.tags.isEmpty)
+        #expect(!indexed.projection.segments.contains {
+            [.alias, .author, .publicationDate, .tag].contains($0.field)
+        })
+    }
+
+    @Test("CreatorList preserves creator order and exact searchable component ranges")
+    func creatorListProjection() throws {
+        let source = """
+        ---
+        authors:
+          - family: Scanlon
+            given: T.
+          - literal: World Health Organization
+        ---
+        Body
+        """
+        let projection = SearchDocumentProjection(
+            document: NoteDocument(relativePath: "Creators.md", rawContent: source),
+            profile: .analysis
+        )
+        #expect(projection.authors == ["T. Scanlon", "World Health Organization"])
+        let components = projection.segments.filter { $0.field == .author }
+        #expect(components.map(\.text) == ["T. Scanlon", "World Health Organization"])
+        let person = try #require(components.first)
+        let fullRange = try #require(person.sourceUTF16Range(
+            forNormalizedUTF16Range: 0..<person.normalizedText.utf16.count
+        ))
+        let personSource = (source as NSString).substring(with: NSRange(
+            location: fullRange.lowerBound,
+            length: fullRange.count
+        ))
+        #expect(personSource.hasPrefix("Scanlon"))
+        #expect(personSource.contains("given: T."))
+        let literal = try #require(components.last?.sourceRange)
+        #expect((source as NSString).substring(with: NSRange(
+            location: literal.utf16LowerBound,
+            length: literal.utf16UpperBound - literal.utf16LowerBound
+        )) == "World Health Organization")
     }
 
     @Test("Summary projection fails closed when exact scalar provenance is unavailable")

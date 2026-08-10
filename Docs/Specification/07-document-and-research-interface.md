@@ -8,7 +8,7 @@ state presentation belongs to [Scholium Design](../../Design.md#199-cross-functi
 Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Their
 chooser retains exactly one current selection for each live Triptych workspace
 session, owned by the Document presentation rather than by a Note or Document
-tab. Each workspace starts in Review and carries its one live mode across Note
+tab. Each workspace normally starts in Review and carries its one live mode across Note
 and tab changes. Switching workspace retains the origin selection and restores
 the destination workspace's live selection with its tab group; it does not
 create a per-Note mode history or reconstruct an editor. Window-session
@@ -30,12 +30,12 @@ empty Review Comment releases its input focus and retained action anchor, so
 the next pointer or keyboard selection is immediately available without
 erasing the current visible selection.
 
-When the selected note's exact Markdown source is zero bytes, Review presents
-one centered read-only group: decorative document symbol, **Empty Note**, and
-**This note has no content.** This is a completed source state, not Loading,
-and it starts no empty renderer. Whitespace, an unavailable File Provider
-source, an unresolved read, and a rendering failure are not empty notes and
-retain their distinct states.
+Managed New Note selects Edit and focuses the exact body start after commit.
+Editor failure retains the Note with **Retry Edit** and **Source**.
+
+An exact empty body presents **Empty Note** and **This note has no body
+content.** without starting a renderer. Malformed frontmatter, whitespace,
+unavailable source, unresolved reads, and render failures remain distinct.
 
 The two selection surfaces share one restrained component style: an opaque
 document-adjacent semantic surface, a neutral semantic separator boundary,
@@ -162,10 +162,10 @@ Properties remains in Research. Compact identity stays secondary and static;
 H1 stays primary without handoff or scroll animation.
 Document Text Size is per-window and source-neutral.
 
-Properties performs targeted frontmatter edits and distinguishes absent,
-empty, invalid, derived, and not-applicable. Exact YAML stays available in
-Source. About follows the role-specific catalog in Appendix A; absence is
-quiet, and `zotero_item_key` and Analysis title are never selectable there.
+Properties lists safe top-level keys, routes unsupported shapes to Source, and
+adds only valid values. YAML-free insertion is explicit. About remains one
+grouped section with a shared fact grid, reading blocks, and final neutral Tag
+capsules. Binding metadata remains a Zotero action.
 
 ## 18.5 Contextual research and Actions
 
@@ -391,11 +391,11 @@ Overview presents only compact current-note projections, in this order:
 2. **Review:** distinct from Attention. It states **No Agent changes to review**,
    **Needs Review · N Agent activities** as one full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** non-empty Appendix A fields only; Scope and Limitations use
-   reading blocks. Its heading is **Edit Properties**, while values remain
+3. **About:** nonempty fields in fixed groups. Research fields
+   use reading blocks; final Tags use neutral capsules. Its heading is **Edit Properties**, while values remain
    static and selectable; no bottom Edit or Customize exists. A current
-   Analysis with a valid protected Zotero key adds quiet **Open in Zotero**
-   without exposing the key or metadata. Research Status, Key Properties,
+   Analysis with a valid portable typed Zotero binding adds quiet **Open in Zotero**
+   without exposing the library, key, or metadata. Research Status, Key Properties,
    Provenance, Derived State, and a Zotero section remain absent.
 
 A pending activity set automatically presents a once-announced, focus-neutral

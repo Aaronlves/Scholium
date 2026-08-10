@@ -501,10 +501,7 @@ extension ResearchFunctionCoordinator {
             for: target,
             function: request.function
         )
-        let zoteroContext = await zoteroBibliographicContext(
-            for: target,
-            sourceReference: sourceAccess?.reference
-        )
+        let zoteroContext = try await zoteroBibliographicContext(for: target)
         _ = try await validateResearchFunctionWriteTargets(request, host: host)
         _ = try await validateResearchFunctionFidelityTargets(request, host: host)
         let actionAuthority = try resolvedActionAuthority(

@@ -75,8 +75,8 @@ struct WorkflowSchemaTests {
         #expect(!analyses.editableFields.contains("relevance"))
         #expect(!analyses.visibleFields.contains("debate_importance"))
         #expect(!analyses.visibleFields.contains("debate_importance_scope"))
-        #expect(analyses.editableFields.contains("debate_importance"))
-        #expect(analyses.editableFields.contains("debate_importance_scope"))
+        #expect(!analyses.editableFields.contains("debate_importance"))
+        #expect(!analyses.editableFields.contains("debate_importance_scope"))
         #expect(!works.visibleFields.contains("deadline"))
         #expect(!works.editableFields.contains("deadline"))
     }

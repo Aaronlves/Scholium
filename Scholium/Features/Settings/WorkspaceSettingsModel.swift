@@ -20,6 +20,7 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     var registeredTriptychs: [TriptychAssignment]
     var activeTriptychID: UUID?
     var triptychSettings: TriptychSettings
+    var settingsRevision: SettingsRevision?
     var propertyKeysBySlot: [WorkspaceVaultSlot: Set<String>]
 
     init(
@@ -27,12 +28,14 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
         registeredTriptychs: [TriptychAssignment] = [],
         activeTriptychID: UUID? = nil,
         triptychSettings: TriptychSettings = TriptychSettings(),
+        settingsRevision: SettingsRevision? = nil,
         propertyKeysBySlot: [WorkspaceVaultSlot: Set<String>] = [:]
     ) {
         self.registeredVaults = registeredVaults
         self.registeredTriptychs = registeredTriptychs
         self.activeTriptychID = activeTriptychID
         self.triptychSettings = triptychSettings
+        self.settingsRevision = settingsRevision
         self.propertyKeysBySlot = propertyKeysBySlot
     }
 }
@@ -44,7 +47,9 @@ struct WorkspaceSettingsWorkspaceCapabilities {
     let configureWorkspace: (
         URL, URL, URL, URL, UUID?, String?
     ) async throws -> WorkspaceSettingsSnapshot
-    let saveTriptychSettings: (UUID, TriptychSettings) async throws -> WorkspaceSettingsSnapshot
+    let saveTriptychSettings: (
+        UUID, TriptychSettings, SettingsRevision
+    ) async throws -> WorkspaceSettingsSnapshot
     let portableContainerURL: (URL) async -> URL?
 }
 
@@ -159,7 +164,9 @@ struct WorkspaceSettingsCapabilities {
 final class WorkspaceSettingsModel: ObservableObject {
     typealias SnapshotLoader = @MainActor () async throws -> WorkspaceSettingsSnapshot
     typealias TriptychActivator = @MainActor (UUID) async throws -> WorkspaceSettingsSnapshot
-    typealias SettingsSaver = @MainActor (TriptychSettings) async throws -> WorkspaceSettingsSnapshot
+    typealias SettingsSaver = @MainActor (
+        TriptychSettings, SettingsRevision
+    ) async throws -> WorkspaceSettingsSnapshot
 
     @Published private(set) var selectedPane: WorkspaceSettingsPane
     @Published private(set) var snapshot: WorkspaceSettingsSnapshot
@@ -303,14 +310,21 @@ final class WorkspaceSettingsModel: ObservableObject {
     }
 
     func saveTriptychSettings(_ settings: TriptychSettings) async throws {
+        guard let expectedRevision = snapshot.settingsRevision else {
+            throw TriptychControlError.settingsMissing
+        }
         if let saveSnapshot {
-            replaceSnapshot(try await saveSnapshot(settings))
+            replaceSnapshot(try await saveSnapshot(settings, expectedRevision))
             return
         }
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        replaceSnapshot(try await capabilities.workspace.saveTriptychSettings(id, settings))
+        replaceSnapshot(try await capabilities.workspace.saveTriptychSettings(
+            id,
+            settings,
+            expectedRevision
+        ))
     }
 
     func configureTriptych(

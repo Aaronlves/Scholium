@@ -184,6 +184,31 @@ public actor ZoteroOperations: ZoteroUseCases {
         return .notFound
     }
 
+    /// Resolves one exact portable Analysis binding without searching another
+    /// library that happens to contain the same item key.
+    func resolve(binding: AnalysisZoteroBinding) async throws -> ZoteroMatchResult {
+        do {
+            let data = try await request(
+                library: binding.library,
+                path: "items/\(binding.itemKey)",
+                query: [URLQueryItem(name: "format", value: "json")]
+            )
+            let candidates = try decodedParentItems(data)
+            return try await enrichingCollections(
+                in: ZoteroMetadataMatcher.match(
+                    source: ZoteroSourceIdentity(itemKey: binding.itemKey),
+                    candidates: candidates
+                ),
+                library: binding.library
+            )
+        } catch let error as ZoteroUseCaseError {
+            if case .itemMissing = error { return .notFound }
+            throw error
+        } catch is DecodingError {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+    }
+
     func resolveAttachment(
         itemKey rawItemKey: String,
         attachmentKey rawAttachmentKey: String
@@ -286,7 +311,8 @@ public actor ZoteroOperations: ZoteroUseCases {
     }
 
     private func enrichingCollections(
-        in result: ZoteroMatchResult
+        in result: ZoteroMatchResult,
+        library: ZoteroLibraryIdentity = .user
     ) async throws -> ZoteroMatchResult {
         guard case .matched(let item, let basis) = result,
               !item.collectionKeys.isEmpty else { return result }
@@ -294,6 +320,7 @@ public actor ZoteroOperations: ZoteroUseCases {
         for key in item.collectionKeys {
             do {
                 let data = try await request(
+                    library: library,
                     path: "collections/\(key)",
                     query: [URLQueryItem(name: "format", value: "json")]
                 )
@@ -307,8 +334,16 @@ public actor ZoteroOperations: ZoteroUseCases {
         return .matched(item.replacingCollectionNames(names), basis: basis)
     }
 
-    private func request(path: String, query: [URLQueryItem]) async throws -> Data {
-        guard let request = ZoteroLocalRequestPolicy.makeReadRequest(path: path, query: query) else {
+    private func request(
+        library: ZoteroLibraryIdentity = .user,
+        path: String,
+        query: [URLQueryItem]
+    ) async throws -> Data {
+        guard let request = ZoteroLocalRequestPolicy.makeReadRequest(
+            library: library,
+            path: path,
+            query: query
+        ) else {
             throw ZoteroUseCaseError.invalidResponse
         }
         let data: Data

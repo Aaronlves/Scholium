@@ -50,10 +50,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
         )
     }
 
-    @Test("Search v6 records its 2,056-note cold, warm, and incremental acceptance evidence")
+    @Test("Search v7 records its 2,056-note cold, warm, and incremental acceptance evidence")
     func searchFoundationAcceptanceEvidence() async throws {
         let root = repositoryRoot
-            .appendingPathComponent(".build/search-v6-performance-artifacts", isDirectory: true)
+            .appendingPathComponent(".build/search-v7-performance-artifacts", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let triptychID = UUID()
@@ -62,7 +62,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
             RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixture/topics"),
             RegisteredVault(name: "Works", role: .draftProject, canonicalPath: "/fixture/works"),
         ]
-        let databaseURL = root.appendingPathComponent("search-v6.sqlite")
+        let databaseURL = root.appendingPathComponent("search-v7.sqlite")
         let index = try TriptychSearchIndex(
             databaseURL: databaseURL,
             triptychID: triptychID
@@ -114,7 +114,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
         let incrementalP95 = p95(incrementalSamples)
         let generation = try #require(await index.generation())
         let report: [String: Any] = [
-            "artifact_schema": "scholium-search-v6-performance-v1",
+            "artifact_schema": "scholium-search-v7-performance-v1",
             "fixture": "synthetic-mixed-script-2056",
             "fixture_note_count": documents.count,
             "fixture_manifest": generation.sourceManifestHash,
@@ -146,10 +146,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
         print("SEARCH_V6_PERFORMANCE_REPORT \(reportURL.path)")
         print(String(decoding: reportData, as: UTF8.self))
 
-        #expect(warmQueryP95 <= 0.100, "Warm Search v6 p95 was \(warmQueryP95) seconds")
+        #expect(warmQueryP95 <= 0.100, "Warm Search v7 p95 was \(warmQueryP95) seconds")
         #expect(
             incrementalP95 <= 0.250,
-            "Single-note Search v6 publication p95 was \(incrementalP95) seconds"
+            "Single-note Search v7 publication p95 was \(incrementalP95) seconds"
         )
     }
 
@@ -178,8 +178,9 @@ struct PerformanceRegressionMicrobenchmarkTests {
         let content = """
         ---
         title: Philosophical Note \(number)
-        authors: [Researcher \(number % 17)]
-        year: \(1950 + number % 77)
+        authors:
+          - family: Researcher \(number % 17)
+        publication_date: "\(1950 + number % 77)"
         tags: [normativity, cluster-\(number % 9)]
         ---
         # Argument \(number)

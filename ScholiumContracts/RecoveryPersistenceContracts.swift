@@ -71,15 +71,18 @@ public struct PermanentDeletionIdentityAmbiguity: Codable, Hashable, Sendable {
 
 public struct PermanentDeletionIdentityBackup: Codable, Hashable, Sendable {
     public let record: NoteIdentityRecord
+    public let zoteroBinding: AnalysisZoteroBinding?
     public let pendingRebindings: [NoteIdentityPendingRebinding]
     public let ambiguities: [PermanentDeletionIdentityAmbiguity]
 
     public init(
         record: NoteIdentityRecord,
+        zoteroBinding: AnalysisZoteroBinding? = nil,
         pendingRebindings: [NoteIdentityPendingRebinding],
         ambiguities: [PermanentDeletionIdentityAmbiguity]
     ) {
         self.record = record
+        self.zoteroBinding = zoteroBinding
         self.pendingRebindings = pendingRebindings
         self.ambiguities = ambiguities
     }

@@ -218,8 +218,11 @@ public protocol ResearchRecordUseCases: Sendable {
         roundID: UUID,
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation
-    func settings() async throws -> TriptychSettings
-    func saveSettings(_ settings: TriptychSettings) async throws
+    func settings() async throws -> TriptychSettingsSnapshot
+    func saveSettings(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) async throws -> TriptychSettingsSnapshot
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
 }

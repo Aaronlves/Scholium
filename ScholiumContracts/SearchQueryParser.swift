@@ -12,7 +12,7 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
     case summary
     case body
     case author
-    case year
+    case publicationDate = "publication_date"
     case tag
     case footnote
     case path
@@ -1263,7 +1263,7 @@ public enum SearchQueryParser {
                 unfieldedValues.append(lexical.value.text)
             case .title, .alias, .path:
                 fieldedIdentityValues.append(lexical.value.text)
-            case .heading, .summary, .body, .author, .year, .tag, .footnote:
+            case .heading, .summary, .body, .author, .publicationDate, .tag, .footnote:
                 continue
             }
         }

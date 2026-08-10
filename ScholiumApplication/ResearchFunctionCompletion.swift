@@ -1560,8 +1560,8 @@ extension ResearchFunctionCoordinator {
                 ResearchSourceAccessFailure(code: .zoteroIdentityMismatch)
             )
         }
-        let targetItemKey = normalizedTargetZoteroItemKey(target)
-        guard targetItemKey == nil || targetItemKey == itemKey else {
+        let targetBinding = try await portableTargetZoteroBinding(target)
+        guard targetBinding == nil || targetBinding?.itemKey == itemKey else {
             throw ResearchFunctionContractError.sourceAccessUnavailable(
                 ResearchSourceAccessFailure(code: .zoteroIdentityMismatch)
             )
@@ -1668,16 +1668,11 @@ extension ResearchFunctionCoordinator {
         return proposedURL.standardizedFileURL
     }
 
-    func normalizedTargetZoteroItemKey(
+    func portableTargetZoteroBinding(
         _ target: ValidatedFunctionObject
-    ) -> String? {
-        guard let key = target.note.document.parsedFrontmatter[
-            "zotero_item_key"
-        ]?.scalarString?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !key.isEmpty else {
-            return nil
-        }
-        return key.uppercased()
+    ) async throws -> AnalysisZoteroBinding? {
+        try await dependencies.controlStore.zoteroBindings()
+            .binding(for: target.noteID)
     }
 
     func repository(vaultID: UUID) throws -> VaultRepository {

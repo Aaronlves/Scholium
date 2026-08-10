@@ -76,67 +76,16 @@ enum NoteProfile: String, Codable, Hashable {
 /// Researcher-facing property policy. Keys hidden here remain present in the
 /// exact Markdown source and in the agent-facing semantic projection.
 enum ResearcherPropertyPolicy {
-  static let explicitlyHiddenKeys: Set<String> = [
-    "id", "record_type", "schema_version", "paper_id", "note_id",
-    "status", "deadline",
-    "zotero_item_key", "zotero_attachment_key", "zotero_citation_key",
-    "zoterokey", "citation_key", "citationkey", "citekey",
-    "main_topic", "related_topics", "follow_up",
-    "primary_cluster", "secondary_clusters", "follow_up_leads",
-  ]
-
-  /// These values remain useful to display, but structured editing must not
-  /// make machine history or provenance look like researcher-authored YAML.
-  /// Exact Source mode remains available when the researcher intentionally
-  /// needs to assume responsibility for such a change.
-  static let structuredEditingProtectedKeys: Set<String> = [
-    "created", "updated", "modified", "analysis_created_at", "analysis_updated_at",
-    "created_at", "updated_at", "last_modified_by", "last_modified_at",
-    "origin", "provenance", "last_reviewed",
-  ]
-
   static func isHidden(_ key: String) -> Bool {
-    let normalized = key.lowercased()
-    if explicitlyHiddenKeys.contains(normalized) { return true }
-    return normalized.hasSuffix("_id") || normalized.hasSuffix("_key")
+    false
   }
 
   static func isHumanEditable(_ key: String) -> Bool {
-    let normalized = key.lowercased()
-    return !isHidden(normalized)
-      && !structuredEditingProtectedKeys.contains(normalized)
-      && !normalized.contains(".")
+    !key.contains(".")
   }
 }
 
 // MARK: - Window Document Location
-
-/// A validated structured edit for the optional role-aware Research Unit.
-/// Removing the mapping is explicit; an empty or malformed mapping is never
-/// emitted by the Properties editor.
-enum ResearchUnitEdit: Hashable, Sendable {
-  case set(completion: AnalysisCompletion?, scope: String?, limitations: [String])
-  case remove
-
-  var coreValue: FrontmatterEditValue {
-    switch self {
-    case .set(let completion, let scope, let limitations):
-      var values: [String: FrontmatterEditValue] = [:]
-      if let completion {
-        values["completion"] = .string(completion.yamlScalar)
-      }
-      if let scope {
-        values["scope"] = .string(scope)
-      }
-      if !limitations.isEmpty {
-        values["limitations"] = .array(limitations)
-      }
-      return .mapping(values)
-    case .remove:
-      return .remove
-    }
-  }
-}
 
 /// One window-visible document location backed by the shared immutable
 /// Application snapshot for its exact Triptych vault.
@@ -252,22 +201,13 @@ extension WindowDocumentLocation {
 
   var title: String? { displayName }
   var aliases: [String] {
-    (frontmatter["aliases"] ?? frontmatter["alias"])?.appArrayValue ?? []
+    frontmatter["aliases"]?.canonicalStringList ?? []
   }
-  var tags: [String] { frontmatter["tags"]?.appArrayValue ?? [] }
-  var year: Int? { frontmatter["year"]?.appIntValue }
-  var authors: [String] { frontmatter["authors"]?.appArrayValue ?? [] }
-  var debateImportance: Int? {
-    guard case .integer(let rating)? = property(at: "debate_importance"),
-          let contract = propertyContract(for: "debate_importance"),
-          contract.containsInteger(rating) else { return nil }
-    return rating
-  }
-  var researchUnit: ResearchUnitDeclaration {
-    ResearchUnitDeclaration(
-      frontmatter: document.parsedFrontmatter,
-      profile: schemaProfile
-    )
+  var tags: [String] { frontmatter["tags"]?.canonicalStringList ?? [] }
+  var authors: [String] {
+    frontmatter["authors"]
+      .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
+      .map(\.displayName) ?? []
   }
   var created: Date? { property(at: "created")?.appDateValue }
   var modified: Date? { property(at: "updated")?.appDateValue }
@@ -341,17 +281,6 @@ extension WindowDocumentLocation {
       }
     }
     return result
-  }
-}
-
-private extension PropertyContract {
-  func containsInteger(_ value: Int) -> Bool {
-    for constraint in constraints {
-      if case .integerRange(let minimum, let maximum) = constraint {
-        return (minimum...maximum).contains(value)
-      }
-    }
-    return false
   }
 }
 

@@ -55,20 +55,41 @@ struct TriptychControlTests {
     @Test("Properties configuration preserves order and removes duplicate fields")
     func propertiesConfigurationOrderingAndDeduplication() {
         var configuration = VaultPropertiesConfiguration(
-            visibleFields: [" authors ", "year", "authors", "", "type"],
+            newNoteYAML: "tags: [draft]\r\n\r\n",
+            visibleFields: [" authors ", "publication_date", "authors", "", "type"],
             editableFields: ["title", " title ", "tags"]
         )
 
-        #expect(configuration.visibleFields == ["authors", "year", "type"])
+        #expect(configuration.newNoteYAML == "tags: [draft]\n\n")
+        #expect(configuration.visibleFields == ["authors", "publication_date", "type"])
         #expect(configuration.editableFields == ["title", "tags"])
 
         configuration.moveVisibleField("type", to: 0)
         configuration.setVisible(true, field: " access ")
-        configuration.setVisible(false, field: "year")
+        configuration.setVisible(false, field: "publication_date")
         configuration.editableFields.append(" tags ")
 
         #expect(configuration.visibleFields == ["type", "authors", "access"])
         #expect(configuration.editableFields == ["title", "tags"])
+    }
+
+    @Test("Seed normalization preserves keep-chomping trailing blank lines exactly")
+    func seedKeepChompingRoundTrip() throws {
+        let exact = "summary: |+\r\n  first line\r\n\r\n\r\n# trailing context\r\n\r\n"
+        let expected = exact.replacingOccurrences(of: "\r\n", with: "\n")
+        var settings = TriptychSettings()
+        settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
+            newNoteYAML: exact,
+            visibleFields: [],
+            editableFields: []
+        )
+        #expect(settings.properties[.paperAnalysis]?.newNoteYAML == expected)
+        try TriptychSettingsValidator.validate(settings)
+        let decoded = try JSONDecoder().decode(
+            TriptychSettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+        #expect(decoded.properties[.paperAnalysis]?.newNoteYAML == expected)
     }
 
     @Test("Vault-wide Properties settings persist independently for all three vaults")
@@ -81,7 +102,8 @@ struct TriptychControlTests {
 
         let expected = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                visibleFields: ["authors", "year", "type"],
+                newNoteYAML: "language: en\n",
+                visibleFields: ["authors", "publication_date", "type"],
                 editableFields: ["title", "authors"]
             ),
             .topicKnowledge: VaultPropertiesConfiguration(
@@ -89,18 +111,23 @@ struct TriptychControlTests {
                 editableFields: []
             ),
             .output: VaultPropertiesConfiguration(
-                visibleFields: ["kind", "authors", "venue"],
-                editableFields: ["kind", "authors", "venue"]
+                visibleFields: ["work_type", "coauthors"],
+                editableFields: ["work_type", "coauthors"]
             ),
-        ])
+        ], analysisAgentCreation: AnalysisAgentCreationConfiguration(
+            requiredFieldsBySourceType: [.journalArticle: ["title", "authors"]]
+        ))
 
-        try await store.saveSettings(expected)
+        let initial = try await store.settings()
+        _ = try await store.saveSettings(expected, expectedRevision: initial.revision)
         let loaded = try await store.settings()
 
-        #expect(loaded.properties == expected.properties)
-        #expect(loaded.properties[.paperAnalysis]?.visibleFields == ["authors", "year", "type"])
-        #expect(loaded.properties[.topicKnowledge]?.editableFields == [])
-        #expect(loaded.properties[.output]?.visibleFields == ["kind", "authors", "venue"])
+        #expect(loaded.settings.properties == expected.properties)
+        #expect(loaded.settings.properties[.paperAnalysis]?.newNoteYAML == "language: en\n")
+        #expect(loaded.settings.properties[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
+        #expect(loaded.settings.properties[.topicKnowledge]?.editableFields == [])
+        #expect(loaded.settings.properties[.output]?.visibleFields == ["work_type", "coauthors"])
+        #expect(loaded.settings.analysisAgentCreation.requiredFields(for: .journalArticle) == ["title", "authors"])
     }
 
     @Test("Missing vault Properties entries receive role defaults")
@@ -116,10 +143,229 @@ struct TriptychControlTests {
         #expect(settings.properties[.paperAnalysis]?.visibleFields == ["authors"])
         #expect(settings.properties[.topicKnowledge] == TriptychSettings.defaultProperties[.topicKnowledge])
         #expect(settings.properties[.output] == TriptychSettings.defaultProperties[.output])
-        #expect(settings.properties[.output]?.visibleFields.contains("kind") == true)
-        #expect(settings.properties[.output]?.visibleFields.contains("project") == false)
-        #expect(settings.properties[.output]?.editableFields.contains("kind") == true)
-        #expect(settings.properties[.output]?.editableFields.contains("project") == false)
+        #expect(settings.properties[.output]?.visibleFields.contains("work_type") == true)
+        #expect(settings.properties[.output]?.visibleFields.contains("kind") == false)
+        #expect(settings.properties[.output]?.editableFields.contains("coauthors") == true)
+        #expect(settings.properties[.output]?.editableFields.contains("authors") == false)
+    }
+
+    @Test("Settings save rejects a stale exact-byte revision without overwriting")
+    func settingsRevisionConflict() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: ids)
+        let initial = try await store.settings()
+
+        var first = initial.settings
+        first.attentionDismissalDays = 14
+        let committed = try await store.saveSettings(first, expectedRevision: initial.revision)
+
+        var staleCandidate = initial.settings
+        staleCandidate.attentionDismissalDays = 30
+        await #expect(throws: TriptychControlError.self) {
+            try await store.saveSettings(staleCandidate, expectedRevision: initial.revision)
+        }
+        #expect(try await store.settings() == committed)
+    }
+
+    @Test("Settings compiler rejects invalid seeds and Agent requirement collisions before write")
+    func settingsCompilerRejectsInvalidCandidates() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await store.bootstrap(vaultIDs: Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        ))
+        let initial = try await store.settings()
+        var invalid = initial.settings
+        invalid.properties[.paperAnalysis] = VaultPropertiesConfiguration(
+            newNoteYAML: "authors:\n  - family: Scanlon\n",
+            visibleFields: invalid.properties[.paperAnalysis]?.visibleFields ?? [],
+            editableFields: invalid.properties[.paperAnalysis]?.editableFields ?? []
+        )
+        invalid.analysisAgentCreation = AnalysisAgentCreationConfiguration(
+            requiredFieldsBySourceType: [.journalArticle: ["authors"]]
+        )
+
+        do {
+            _ = try await store.saveSettings(invalid, expectedRevision: initial.revision)
+            Issue.record("An invalid settings candidate was written.")
+        } catch let error as TriptychControlError {
+            guard case .settingsNeedsReview = error else {
+                Issue.record("Unexpected settings error: \(error)")
+                return
+            }
+        }
+        #expect(try await store.settings() == initial)
+    }
+
+    @Test("Settings compiler distinguishes custom seed keys from another role's canonical keys")
+    func seedRoleMismatch() throws {
+        var settings = TriptychSettings()
+        settings.properties[.output] = VaultPropertiesConfiguration(
+            newNoteYAML: "doi: custom-looking-but-analysis-canonical\n",
+            visibleFields: [],
+            editableFields: []
+        )
+        #expect(throws: TriptychSettingsValidationError.self) {
+            try TriptychSettingsValidator.validate(settings)
+        }
+
+        settings.properties[.output] = VaultPropertiesConfiguration(
+            newNoteYAML: "researcher_method: dialectical\n",
+            visibleFields: [],
+            editableFields: []
+        )
+        try TriptychSettingsValidator.validate(settings)
+    }
+
+    @Test("Settings loader distinguishes old, future, corrupt, and current-schema review states")
+    func settingsFailureStatesRemainDistinct() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await store.bootstrap(vaultIDs: Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        ))
+        let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+
+        var invalidActive = TriptychSettings()
+        invalidActive.activePromptTemplateIDs[.dialogue] = UUID()
+        let invalidActiveBytes = try JSONEncoder().encode(invalidActive)
+        try invalidActiveBytes.write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
+        #expect(try Data(contentsOf: url) == invalidActiveBytes)
+
+        try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsOldSchema(nil) = $0 { true } else { false } })
+
+        try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsFutureSchema(999) = $0 { true } else { false } })
+
+        try Data(#"{"schemaVersion":2,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
+
+        var reviewed = TriptychSettings()
+        reviewed.properties[.paperAnalysis] = VaultPropertiesConfiguration(
+            newNoteYAML: "title: reserved\n",
+            visibleFields: [],
+            editableFields: []
+        )
+        try JSONEncoder().encode(reviewed).write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
+    }
+
+    @Test("An uncoordinated final-window replacement is preserved instead of overwritten")
+    func settingsFinalWindowConflict() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let external = Data("external replacement".utf8)
+        let store = TriptychControlStore(
+            worksVaultURL: fixture.works,
+            controlWriteHook: { url in try external.write(to: url, options: .atomic) }
+        )
+        _ = try await store.bootstrap(vaultIDs: Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        ))
+        let initial = try await store.settings()
+        var candidate = initial.settings
+        candidate.attentionDismissalDays = 30
+
+        await #expect(throws: TriptychControlError.self) {
+            try await store.saveSettings(candidate, expectedRevision: initial.revision)
+        }
+        #expect(try Data(contentsOf: fixture.root.appendingPathComponent(".scholium/settings.json")) == external)
+    }
+
+    @Test("Zotero binding is portable, typed, revision-checked, and independent of YAML")
+    func portableZoteroBinding() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: ids)
+        let noteID = UUID()
+        let initial = try await store.zoteroBindings()
+        let binding = try AnalysisZoteroBinding(
+            noteID: noteID,
+            library: .group(42),
+            itemKey: "abcd1234"
+        )
+
+        let committed = try await store.setZoteroBinding(
+            binding,
+            expectedRevision: initial.revision
+        )
+        #expect(committed.binding(for: noteID)?.itemKey == "ABCD1234")
+        #expect(committed.binding(for: noteID)?.library == .group(42))
+        await #expect(throws: TriptychControlError.self) {
+            try await store.clearZoteroBinding(
+                for: noteID,
+                expectedRevision: initial.revision
+            )
+        }
+
+        let cleared = try await store.clearZoteroBinding(
+            for: noteID,
+            expectedRevision: committed.revision
+        )
+        #expect(cleared.bindings.isEmpty)
+    }
+
+    @Test("Binding decode validates item and library identity")
+    func bindingDecodeFailsClosed() throws {
+        let noteID = UUID()
+        let invalidItem = Data("""
+        {"note_id":"\(noteID.uuidString)","library":{"kind":"user"},"item_key":"../bad"}
+        """.utf8)
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(AnalysisZoteroBinding.self, from: invalidItem)
+        }
+        #expect(throws: AnalysisZoteroBindingError.self) {
+            try AnalysisZoteroBinding(noteID: noteID, library: .group(0), itemKey: "ABCD")
+        }
+    }
+
+    @Test("Duplicate copies and permanent purge restore the portable Zotero binding")
+    func bindingFollowsIdentityLifecycle() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let analysesID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: analysesID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let fingerprint = DocumentFingerprint(content: "Analysis")
+        let original = try #require(try await store.identity(
+            forVaultID: analysesID,
+            relativePath: "A.md",
+            fingerprint: fingerprint
+        ))
+        let bindingRevision = try await store.zoteroBindings().revision
+        _ = try await store.setZoteroBinding(
+            try AnalysisZoteroBinding(noteID: original.id, library: .group(42), itemKey: "ABCD"),
+            expectedRevision: bindingRevision
+        )
+        let duplicate = try await store.duplicateIdentity(
+            from: original.id,
+            to: "A copy.md",
+            fingerprint: fingerprint
+        )
+        #expect(try await store.zoteroBindings().binding(for: duplicate.id)?.library == .group(42))
+
+        let backup = try await store.prepareIdentityPurge(
+            id: original.id,
+            vaultID: analysesID,
+            relativePath: "A.md"
+        )
+        _ = try await store.purgeIdentity(
+            id: original.id,
+            vaultID: analysesID,
+            relativePath: "A.md"
+        )
+        #expect(try await store.zoteroBindings().binding(for: original.id) == nil)
+        try await store.restorePurgedIdentity(backup)
+        #expect(try await store.zoteroBindings().binding(for: original.id)?.itemKey == "ABCD")
     }
 
     @Test("Bootstrap writes only portable state beside Works")
@@ -134,6 +380,7 @@ struct TriptychControlTests {
         #expect(manifest.vaultIDs == ids)
         #expect(await store.controlURL == fixture.root.appendingPathComponent(".scholium", isDirectory: true))
         #expect(FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent(".scholium/manifest.json").path))
+        #expect(FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent(".scholium/analysis-zotero-bindings.json").path))
         #expect(!FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent(".scholium/projects.json").path))
 
         let data = try Data(contentsOf: fixture.root.appendingPathComponent(".scholium/manifest.json"))
@@ -499,6 +746,20 @@ struct TriptychControlTests {
         )
         #expect(resolved.id == first.id)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).first?.fingerprint == editedFingerprint)
+    }
+
+    private func expectSettingsError(
+        _ store: TriptychControlStore,
+        matching predicate: (TriptychControlError) -> Bool
+    ) async {
+        do {
+            _ = try await store.settings()
+            Issue.record("Expected settings loading to fail.")
+        } catch let error as TriptychControlError {
+            #expect(predicate(error))
+        } catch {
+            Issue.record("Unexpected settings error: \(error)")
+        }
     }
 
     private struct Fixture {

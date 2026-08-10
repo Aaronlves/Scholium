@@ -215,7 +215,6 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(controller.notes.first?.rawContent.contains("# After") == true)
         #expect(controller.tags == ["updated"])
         #expect(controller.authors == ["Arendt"])
-        #expect(controller.years == [2024])
         #expect(controller.documentRevisions["Active.md"] == replacement.fingerprint)
         #expect(controller.vaultSnapshot(
             id: fixture.vault.id

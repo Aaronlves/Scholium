@@ -803,14 +803,20 @@ public actor ResearchOperations:
         return try await handle.restoreCheckpoint(checkpointID, selection: selection)
     }
 
-    public func settings() async throws -> TriptychSettings {
+    public func settings() async throws -> TriptychSettingsSnapshot {
         let handle = try await reference.requireHandle()
         return try await handle.triptychSettings()
     }
 
-    public func saveSettings(_ settings: TriptychSettings) async throws {
+    public func saveSettings(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) async throws -> TriptychSettingsSnapshot {
         let handle = try await reference.requireHandle()
-        try await handle.saveTriptychSettings(settings)
+        return try await handle.saveTriptychSettings(
+            settings,
+            expectedRevision: expectedRevision
+        )
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {

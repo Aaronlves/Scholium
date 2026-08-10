@@ -22,7 +22,8 @@ Architecture, Status, and evidence rather than copying them into another pack.
 - Edit/Source fidelity, formatting, Review passage Comment, and Markdown
   Callout authoring,
   and mode changes;
-- About/Properties, optional Research Unit, Settle, and simplified Actions;
+- categorized About/Properties, optional top-level Research fields, Settle,
+  and simplified Actions;
 - native split resize/visibility, Document tabs without shell reconstruction,
   focus, keyboard, light/dark, scaling, minimum width, and core VoiceOver; and
 - external edits, conflicts, stable rename, Set Aside, Trash, checkpoints,

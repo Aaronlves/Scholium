@@ -5,9 +5,9 @@ import Testing
 @testable import ScholiumCore
 
 /// The original 17 lexical baselines are retained here, but execute against
-/// the only user-reachable Search v6 engine. They are regression evidence, not a
+/// the only user-reachable Search v7 engine. They are regression evidence, not a
 /// second implementation contract.
-@Suite("Search v6 retained lexical baselines")
+@Suite("Search v7 retained lexical baselines")
 struct SearchIndexTests {
     @Test("Phrases, prefixes, fields, CJK, and retrieval classification share one contract")
     func queryContract() async throws {
@@ -17,8 +17,10 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Papers/Reasons.md", """
             ---
             title: Normative Reasons
-            authors: [T. Scanlon]
-            year: 1998
+            authors:
+              - family: Scanlon
+                given: T.
+            publication_date: "1998"
             tags: [reasons, normativity]
             status: reviewed
             ---
@@ -147,7 +149,9 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Papers/Reasons.md", """
             ---
             title: Normative Reasons
-            authors: [T. Scanlon]
+            authors:
+              - family: Scanlon
+                given: T.
             tags: [reasons, normativity]
             ---
             # Deliberative Control
@@ -161,6 +165,14 @@ struct SearchIndexTests {
         #expect(!title.snippet.contains("title:"))
         let author = try #require(await index.testSearch(fixture.request("author:Scanlon")).noteResults.first)
         #expect(author.snippet == "T. Scanlon")
+        let authorPhraseRequest = fixture.request("author:\"T. Scanlon\"")
+        let authorPhraseAST = try #require(
+            SearchQueryParser.parse(authorPhraseRequest.query).ast
+        )
+        #expect(authorPhraseAST.positiveLexicalClauses.first?.value == .phrase("t. scanlon"))
+        let authorPhrase = try await index.testSearch(authorPhraseRequest)
+            .noteResults.first?.snippet
+        #expect(authorPhrase == "T. Scanlon")
         let body = try #require(await index.testSearch(fixture.request("deliberation")).noteResults.first)
         #expect(body.snippet.contains("guide deliberation"))
         #expect(!body.snippet.contains("**"))
@@ -189,7 +201,7 @@ struct SearchIndexTests {
         }
         documents += [
             fixture.item(fixture.analyses, "Title.md", "---\ntitle: Deliberative Autonomy\n---\nA concise account."),
-            fixture.item(fixture.analyses, "Alias.md", "---\ntitle: Agency Structure\naliases: [Deliberative Autonomy]\n---\nA concise account."),
+            fixture.item(fixture.topics, "Alias.md", "---\naliases: [Deliberative Autonomy]\n---\n# Agency Structure\nA concise account."),
             fixture.item(fixture.analyses, "Heading.md", "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account."),
             fixture.item(fixture.analyses, "Body.md", "---\ntitle: Practical Reason\n---\nThis develops deliberative autonomy."),
         ]
@@ -206,8 +218,8 @@ struct SearchIndexTests {
         let leading = [
             fixture.item(fixture.analyses, "00-title.md", "---\ntitle: Practical Identity\n---\nShort."),
             fixture.item(fixture.analyses, "01-title.md", "---\ntitle: Practical Identity\n---\nShort."),
-            fixture.item(fixture.analyses, "10-alias.md", "---\ntitle: Alpha\naliases: [Practical Identity]\n---\nShort."),
-            fixture.item(fixture.analyses, "11-alias.md", "---\ntitle: Beta\naliases: [Practical Identity]\n---\nShort."),
+            fixture.item(fixture.topics, "10-alias.md", "---\naliases: [Practical Identity]\n---\n# Alpha\nShort."),
+            fixture.item(fixture.topics, "11-alias.md", "---\naliases: [Practical Identity]\n---\n# Beta\nShort."),
             fixture.item(fixture.analyses, "20-heading.md", "---\ntitle: Gamma\n---\n# Practical Identity\nShort."),
             fixture.item(fixture.analyses, "21-heading.md", "---\ntitle: Delta\n---\n# Practical Identity\nShort."),
         ]
@@ -349,10 +361,10 @@ struct SearchIndexTests {
                 fileURLWithPath: FileManager.default.currentDirectoryPath,
                 isDirectory: true
             )
-                .appendingPathComponent(".build/search-v6-retained-tests", isDirectory: true)
+                .appendingPathComponent(".build/search-v7-retained-tests", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v6.sqlite")
+            databaseURL = root.appendingPathComponent("search-v7.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {
