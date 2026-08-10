@@ -45,6 +45,10 @@ committed-text synchronization, conflict comparison, and
 flush-before-agent-work. The Swift
 model retains these facts across SwiftUI view reconstruction; it never
 reconstructs writable Markdown from HTML, parsed YAML, or another projection.
+`DocumentConflictSnapshot` supplies exact editor/disk inputs to the Contracts-
+owned `ExactSourceComparisonBuilder`; it no longer owns a second line-diff
+algorithm. Document still owns conflict actions and buffer authority, while the
+comparison value and future shared sheet remain pure disposable presentation.
 
 `DocumentEditorHost` is the persistent presentation boundary for one selected
 document session. Review is mounted continuously; after first editor allocation,

@@ -363,9 +363,17 @@ extension WorkspaceHandle {
         case .current:
             do {
                 _ = try await services.portableResearchRecordStore
-                    .clearMethodFeedbackComment(
+                    .saveResearcherResponse(
+                        try ResearcherResponseDraft(
+                            evaluation: try portable.researcherEvaluation.map(
+                                ResearcherEvaluationDraft.init
+                            ),
+                            methodFeedbackText: nil
+                        ),
                         recordID: portable.id,
-                        expectedCommentRevision: improvement.feedbackRevision,
+                        expectedEvaluationRevision:
+                            portable.researcherEvaluation?.revision,
+                        expectedMethodFeedbackRevision: improvement.feedbackRevision,
                         expectedResultFingerprint:
                             improvement.expectedResultFingerprint
                     )

@@ -5,6 +5,29 @@ import Testing
 
 @Suite("Authenticated bounded Research write sets", .serialized)
 struct ResearchBoundedWriteOperationsTests {
+    @Test("Only Agent writes can enter the bounded Research write ledger")
+    func boundedWriteActorIsAgentOnly() {
+        let starting = DocumentFingerprint(content: "starting")
+        let ending = DocumentFingerprint(content: "ending")
+        #expect(throws: ResearchBoundedWriteSetError.invalidWriteRecord) {
+            _ = try ResearchDocumentWriteRecord(
+                id: UUID(),
+                runID: UUID(),
+                target: ResearchWriteTargetHandle(rawValue: "target-handle-00000001")!,
+                actor: .researcher,
+                operation: .modifyMarkdown,
+                requestFingerprint: DocumentFingerprint(content: "request"),
+                expectedRevision: starting,
+                intendedRevision: ending,
+                observedRevision: ending,
+                state: .committed,
+                checkpointID: UUID(),
+                startedAt: Date(timeIntervalSince1970: 10),
+                finishedAt: Date(timeIntervalSince1970: 11)
+            )
+        }
+    }
+
     @Test("Agent write warnings preserve every committed post-save condition")
     func combinedCommittedWarningsRemainBounded() throws {
         let warning = try #require(boundedResearchDocumentWriteWarning([
@@ -118,6 +141,9 @@ struct ResearchBoundedWriteOperationsTests {
         )
         #expect(stored.documentWriteRecords.count == 2)
         #expect(Set(stored.boundedWriteSet.entries.map(\.checkpointID)).count == 3)
+        #expect(try await handle.snapshot().research.activities.contains {
+            $0.runID == connection.preparation.runID && $0.state == .running
+        })
         await runtime.shutdown()
     }
 
@@ -190,6 +216,11 @@ struct ResearchBoundedWriteOperationsTests {
             id: connection.preparation.runID
         )
         #expect(final.boundedWriteSet.entry(handle: topicHandle)?.state == .conflict)
+        #expect(try await handle.snapshot().research.activities.contains {
+            $0.runID == connection.preparation.runID
+                && $0.state == .needsAttention
+                && $0.repairReason == .sourceConflict
+        })
         #expect(final.boundedWriteSet.entry(handle: initialEntry.handle)?.state == .ready)
         #expect(!final.boundedWriteSet.entries.contains {
             $0.note.relativePath == "Draft Argument.md"
@@ -309,6 +340,161 @@ struct ResearchBoundedWriteOperationsTests {
                 now: now
             )
         }
+    }
+
+    @Test("Direct undo restores the first committed Agent baseline after conflict and rename")
+    func researchRecordUndoPreservesPreAgentExternalRevision() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let run = try await handle.research.protectedFunctionRun(
+            id: connection.preparation.runID
+        )
+        let initial = try await handle.documents.load(fixture.analysisID)
+        let externalSource = initial.rawContent + "\nExternal pre-Agent addition.\n"
+        let externalURL = fixture.analysesURL.appendingPathComponent("Analysis.md")
+        try Data(externalSource.utf8).write(to: externalURL, options: .atomic)
+        let agentSource = externalSource + "\nAgent addition.\n"
+        let intent = try ResearchDocumentWriteIntent(
+            requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000501")!,
+            role: .analysis,
+            relativePath: "Analysis.md",
+            content: agentSource
+        )
+        let conflict = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(conflict.state == .conflict)
+        _ = try await handle.research.resolveAgentWriteConflict(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteConflictResolutionIntent(
+                requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000502")!,
+                role: .analysis,
+                relativePath: "Analysis.md",
+                action: .refreshAuthority
+            )
+        )
+        let write = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(write.state == .committed)
+
+        let resultSubmission = try makeTestAgentResultSubmission(
+            for: run,
+            literatureRecommendations: []
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            submission: resultSubmission
+        )
+        if !receipt.recordFormed {
+            try await completeAutomaticFidelity(
+                parentRunID: connection.preparation.runID,
+                handle: handle
+            )
+            _ = try await handle.research.submitAgentResult(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                submission: resultSubmission
+            )
+        }
+        let record = try #require(
+            try await handle.research.finishedResearchRecords(noteID: nil)
+                .first(where: { $0.id == connection.preparation.runID })
+        )
+        let change = try #require(record.confirmedChanges.first)
+        let participant = try #require(record.participatingNotes.first(where: {
+            $0.noteID == change.noteID
+        }))
+        let externalRevision = DocumentFingerprint(content: externalSource)
+        #expect(participant.startingRevision == initial.fingerprint)
+        #expect(change.startingRevision == externalRevision)
+        #expect(change.endingRevision == DocumentFingerprint(content: agentSource))
+        let readyActivity = try #require(
+            try await handle.snapshot().research.activities.first(where: {
+                $0.runID == record.id
+            })
+        )
+        #expect(readyActivity.state == .resultReady)
+        #expect(readyActivity.repairReason == nil)
+
+        let comparison = try await handle.research.researchRecordComparison(
+            recordID: record.id,
+            noteID: change.noteID
+        )
+        #expect(comparison.startingRevision == externalRevision)
+        #expect(comparison.endingRevision == change.endingRevision)
+
+        let moved: TriptychMoveCommit
+        do {
+            moved = try await handle.documents.move(
+                fixture.analysisID,
+                to: "Renamed Analysis.md",
+                expectedRevision: change.endingRevision
+            ).committedValue
+        } catch {
+            Issue.record("Rename before direct undo failed: \(error)")
+            throw error
+        }
+        let kept = try await handle.research.keepResearchRecordChanges(
+            recordID: record.id,
+            expectedReviewRevision: nil,
+            expectedResultFingerprint: try record.finalizedResultFingerprint()
+        )
+        #expect(kept.researcherReviewDisposition?.reviewedChanges.first?.outcome
+            == .keptAgentRevision)
+        #expect(try await handle.snapshot().research.activities.allSatisfy {
+            $0.runID != record.id
+        })
+        enum InjectedDispositionReadbackFault: Error { case afterRename }
+        await handle.services.portableResearchRecordStore.setPostCommitFaultForTesting { _ in
+            throw InjectedDispositionReadbackFault.afterRename
+        }
+        let undo: ResearchRecordChangesUndoResult
+        do {
+            undo = try await handle.research.undoResearchRecordChanges(
+                recordID: record.id,
+                selectedNoteIDs: [change.noteID],
+                expectedReviewRevision: kept.researcherReviewDisposition?.revision,
+                expectedResultFingerprint: try record.finalizedResultFingerprint()
+            )
+        } catch {
+            await handle.services.portableResearchRecordStore
+                .setPostCommitFaultForTesting(nil)
+            Issue.record("Direct undo failed after rename: \(error)")
+            throw error
+        }
+        await handle.services.portableResearchRecordStore.setPostCommitFaultForTesting(nil)
+        #expect(undo.documents.map(\.status) == [.restored])
+        #expect(undo.record.researcherReviewIsComplete)
+        #expect(undo.record.researcherReviewDisposition?.reviewedChanges.first?.outcome
+            == .restoredStartingRevision)
+        #expect(try await handle.documents.load(moved.destination).sourceBytes
+            == Data(externalSource.utf8))
+        let reconciled = try await handle.research.undoResearchRecordChanges(
+            recordID: record.id,
+            selectedNoteIDs: [change.noteID],
+            expectedReviewRevision: undo.record.researcherReviewDisposition?.revision,
+            expectedResultFingerprint: try record.finalizedResultFingerprint()
+        )
+        #expect(reconciled.documents.map(\.status) == [.alreadyAtStartingRevision])
+        await #expect(throws: PortableResearcherReviewMutationError.staleReviewRevision) {
+            _ = try await handle.research.undoResearchRecordChanges(
+                recordID: record.id,
+                selectedNoteIDs: [change.noteID],
+                expectedReviewRevision: nil,
+                expectedResultFingerprint: try record.finalizedResultFingerprint()
+            )
+        }
+        await runtime.shutdown()
     }
 
     @Test("A conflict refreshes one exact member, retries idempotently, and can later be abandoned")
@@ -575,6 +761,48 @@ struct ResearchBoundedWriteOperationsTests {
             pairingCode: handoff.pairingCode
         )
         return (preparation, handoff, credential)
+    }
+
+    private func completeAutomaticFidelity(
+        parentRunID: UUID,
+        handle: WorkspaceHandle
+    ) async throws {
+        let automatic = try await handle.research.prepareProtectedAutomaticFidelity(
+            parentRunID: parentRunID
+        )
+        let preparation = automatic.preparation
+        let checks = preparation.snapshot.request.checks.sorted {
+            $0.rawValue < $1.rawValue
+        }
+        let outcomes = checks.map(FidelityCheckOutcome.passed)
+        let targets = preparation.snapshot.request.resolvedFidelityTargets
+        _ = try await completeTestProtectedFunction(
+            handle: handle,
+            submission: ResearchFunctionCompletionSubmission(
+                runID: preparation.runID,
+                confirmationToken: preparation.snapshot.confirmationToken,
+                recordTitle: try ResearchRecordTitle("Test research result"),
+                finalTargetFingerprint: targets.count == 1
+                    ? targets[0].fingerprint
+                    : nil,
+                summary: "Checked every exact final Agent revision.",
+                didModifyTarget: false,
+                fidelityOutcomes: targets.count == 1 ? outcomes : [],
+                fidelityTargetSubmissions: targets.count > 1
+                    ? targets.map { target in
+                        ResearchFunctionFidelityTargetSubmission(
+                            noteID: target.noteID,
+                            note: target.note,
+                            fingerprint: target.fingerprint,
+                            outcomes: outcomes
+                        )
+                    }
+                    : []
+            )
+        )
+        _ = try await handle.research.prepareProtectedAutomaticFidelity(
+            parentRunID: parentRunID
+        )
     }
 
     private func extensionIntent(

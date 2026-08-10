@@ -76,7 +76,7 @@ struct ResearcherEvaluationStateTests {
         )
         #expect(
             ResearchFormSaveStatus.afterEvaluationMutationFailure(
-                PortableResearchEvaluationMutationError.recordUnavailable
+                PortableResearcherResponseMutationError.recordUnavailable
             ) == .outOfDate
         )
         #expect(

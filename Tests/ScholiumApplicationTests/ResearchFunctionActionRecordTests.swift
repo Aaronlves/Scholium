@@ -815,6 +815,9 @@ extension ResearchFunctionOperationsTests {
                 target: actionNote(work)
             )
         )
+        #expect(try await handle.snapshot().research.activities.contains {
+            $0.runID == action.runID && $0.state == .waitingForAgent
+        })
         let run = try await handle.research.protectedFunctionRun(id: action.runID)
         #expect(run.snapshot.request.target.fingerprint == work.fingerprint)
 
@@ -831,6 +834,21 @@ extension ResearchFunctionOperationsTests {
         #expect(!portable.academicResults.isEmpty)
         #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.fidelityCompletion == .notRequired)
+        #expect(try await handle.snapshot().research.activities.contains {
+            $0.runID == action.runID
+                && $0.state == .resultReady
+                && $0.recordID == portable.id
+        })
+        let finished = try await handle.research
+            .finishResearchRecordReviewWithCurrentState(
+                recordID: portable.id,
+                expectedReviewRevision: nil,
+                expectedResultFingerprint: try portable.finalizedResultFingerprint()
+            )
+        #expect(finished.researcherReviewIsComplete)
+        #expect(try await handle.snapshot().research.activities.allSatisfy {
+            $0.runID != action.runID
+        })
         #expect(try await handle.snapshot().research.critiques.allSatisfy { critique in
             !critique.rounds.contains { $0.id == action.runID }
         })

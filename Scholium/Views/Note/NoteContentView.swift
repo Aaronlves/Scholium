@@ -1871,27 +1871,27 @@ private struct ConflictComparisonSheet: View {
         )
     }
 
-    private func marker(for kind: DocumentConflictLineKind) -> String {
+    private func marker(for kind: ExactSourceComparisonLineKind) -> String {
         switch kind {
         case .unchanged: " "
-        case .editorOnly: "−"
-        case .diskOnly: "+"
+        case .startingOnly: "−"
+        case .endingOnly: "+"
         }
     }
 
-    private func label(for kind: DocumentConflictLineKind) -> String {
+    private func label(for kind: ExactSourceComparisonLineKind) -> String {
         switch kind {
         case .unchanged: "Unchanged"
-        case .editorOnly: "Current editor only"
-        case .diskOnly: "Disk version only"
+        case .startingOnly: "Current editor only"
+        case .endingOnly: "Disk version only"
         }
     }
 
-    private func identifier(for kind: DocumentConflictLineKind) -> String {
+    private func identifier(for kind: ExactSourceComparisonLineKind) -> String {
         switch kind {
         case .unchanged: "unchanged"
-        case .editorOnly: "editorOnly"
-        case .diskOnly: "diskOnly"
+        case .startingOnly: "editorOnly"
+        case .endingOnly: "diskOnly"
         }
     }
 
@@ -1905,10 +1905,10 @@ private struct ConflictComparisonSheet: View {
         )
     }
 
-    private func colorRole(for kind: DocumentConflictLineKind) -> ScholiumColorRole {
+    private func colorRole(for kind: ExactSourceComparisonLineKind) -> ScholiumColorRole {
         switch kind {
         case .unchanged: .secondaryText
-        case .editorOnly, .diskOnly: .attention
+        case .startingOnly, .endingOnly: .attention
         }
     }
 
@@ -1916,7 +1916,9 @@ private struct ConflictComparisonSheet: View {
         "SHA-256 \(fingerprint.sha256.prefix(12))… (\(fingerprint.byteCount) bytes)"
     }
 
-    private var diffLines: [DocumentConflictLine] { conflict.comparisonLines }
+    private var diffLines: [ExactSourceComparisonLine] {
+        (try? conflict.exactComparison().lines) ?? []
+    }
 }
 
 private struct CritiqueFindingDispositionRow: View {

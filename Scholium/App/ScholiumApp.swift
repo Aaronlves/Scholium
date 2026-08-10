@@ -312,22 +312,16 @@ private struct ScholiumResearchRecordsRoot: View {
                                 note: note
                             )
                     },
-                    saveEvaluation: {
-                        recordID, draft, expectedEvaluationRevision, resultFingerprint in
+                    saveResponse: {
+                        recordID, draft, expectedEvaluationRevision,
+                        expectedMethodFeedbackRevision, resultFingerprint in
                         try await capabilities.research.records
-                            .saveResearcherEvaluation(
+                            .saveResearcherResponse(
                                 recordID: recordID,
                                 draft: draft,
                                 expectedEvaluationRevision: expectedEvaluationRevision,
-                                expectedResultFingerprint: resultFingerprint
-                            )
-                    },
-                    clearEvaluation: {
-                        recordID, expectedEvaluationRevision, resultFingerprint in
-                        try await capabilities.research.records
-                            .clearResearcherEvaluation(
-                                recordID: recordID,
-                                expectedEvaluationRevision: expectedEvaluationRevision,
+                                expectedMethodFeedbackRevision:
+                                    expectedMethodFeedbackRevision,
                                 expectedResultFingerprint: resultFingerprint
                             )
                     },
@@ -337,7 +331,7 @@ private struct ScholiumResearchRecordsRoot: View {
                         guard let record = records.first(where: {
                             $0.id == recordID
                         }) else {
-                            throw PortableResearchEvaluationMutationError
+                            throw PortableResearcherResponseMutationError
                                 .recordUnavailable
                         }
                         return record
@@ -4036,20 +4030,14 @@ final class WindowModel: ObservableObject {
             cancel: { runID in
                 try await capabilities.research.actions.cancelAction(runID: runID)
             },
-            saveEvaluation: {
-                recordID, draft, expectedEvaluationRevision, resultFingerprint in
-                try await capabilities.research.records.saveResearcherEvaluation(
+            saveResponse: {
+                recordID, draft, expectedEvaluationRevision,
+                expectedMethodFeedbackRevision, resultFingerprint in
+                try await capabilities.research.records.saveResearcherResponse(
                     recordID: recordID,
                     draft: draft,
                     expectedEvaluationRevision: expectedEvaluationRevision,
-                    expectedResultFingerprint: resultFingerprint
-                )
-            },
-            clearEvaluation: {
-                recordID, expectedEvaluationRevision, resultFingerprint in
-                try await capabilities.research.records.clearResearcherEvaluation(
-                    recordID: recordID,
-                    expectedEvaluationRevision: expectedEvaluationRevision,
+                    expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
                     expectedResultFingerprint: resultFingerprint
                 )
             },
@@ -4057,26 +4045,9 @@ final class WindowModel: ObservableObject {
                 let records = try await capabilities.research.records
                     .finishedResearchRecords(noteID: nil)
                 guard let record = records.first(where: { $0.id == recordID }) else {
-                    throw PortableResearchEvaluationMutationError.recordUnavailable
+                    throw PortableResearcherResponseMutationError.recordUnavailable
                 }
                 return record
-            },
-            saveMethodFeedback: {
-                recordID, draft, expectedCommentRevision, resultFingerprint in
-                try await capabilities.research.records.saveMethodFeedbackComment(
-                    recordID: recordID,
-                    draft: draft,
-                    expectedCommentRevision: expectedCommentRevision,
-                    expectedResultFingerprint: resultFingerprint
-                )
-            },
-            clearMethodFeedback: {
-                recordID, expectedCommentRevision, resultFingerprint in
-                try await capabilities.research.records.clearMethodFeedbackComment(
-                    recordID: recordID,
-                    expectedCommentRevision: expectedCommentRevision,
-                    expectedResultFingerprint: resultFingerprint
-                )
             },
             startMethodImprovement: { recordID in
                 try await capabilities.research.records

@@ -314,7 +314,7 @@ preservation of the researcher's thesis, philosophical quality, or researcher
 acceptance. Those remain method, attributed reasons, visible changes,
 recovery, optional Check Fidelity, and researcher judgment.
 
-### 8.4 Result Contract, one Research Record, and evaluation
+### 8.4 Result Contract, one Research Record, and researcher review
 
 Each Run freezes one **Result Contract** from its Action Profile. Academic
 fields are flat text, single-choice, or multi-choice, each excluded, optional,
@@ -354,8 +354,10 @@ success.
 One Run has one canonical result payload partitioned into the Record Title,
 Agent academic fields, and Scholium machine fields. The Run owns it until every initiated write and
 recovery duty is determined. Safe finalization creates exactly one portable
-**Research Record** and the Action sheet then presents that Record; there is no
-independent Result object or second durable store. A crash between commit,
+**Research Record**; Records is the only result-processing interface and there
+is no independent Result object or second durable store. The Action row derives
+its lifecycle from the Run and Record and opens that exact Record only after an
+explicit researcher action. A crash between commit,
 readback, and finalization may retain overlapping private recovery evidence,
 but startup reconciles it to the same one result and one Record.
 
@@ -370,12 +372,13 @@ provider-internal ID,
 complete response, context assembly, prompt, read count, click, dwell, or tool
 trace.
 
-Every safely finalized Research Record may contain one optional current
-**Researcher Evaluation** partition owned by that Record. It is editable from
-two routes: immediately below the returned result in the Action sheet and
-later in Record detail. Both routes edit the same Record identity, field
-contract, and current evaluation revision; they are not quick/full schemas or
-separate objects.
+Every safely finalized Action Research Record may contain one optional current
+**Researcher Response** owned by that Record. One editor presents **Researcher
+Evaluation** first and **Method Feedback** second, then saves or clears the two
+semantic partitions in one atomic **Save Response** replacement. Discussion
+Records have no source-change review or Researcher Response workflow. Method
+Feedback remains a researcher-authored comment about the exact Method used by
+the Record; saving it alone authorizes no Agent access.
 
 The evaluation contains:
 
@@ -394,22 +397,54 @@ researcher-authored evidence about one exact response; it does not change the
 finalized Agent/Scholium result, Record completion, Settle, or philosophical
 truth.
 
-Every evaluation save, replacement, or clear carries the expected evaluation
-revision and immutable finalized-result fingerprint. The Record store atomically
-changes only evaluation content, researcher actor, evaluation revision, and
-time, reads back, and otherwise fails closed. A stale editor retains local
-input and must reload rather than overwrite. A deleted/unavailable Record
-cannot receive the draft or redirect it to another Record. Before finalization,
-the return-window form is explicitly an unsaved local draft, never searchable
-or visible elsewhere, and closing it with input requires confirmation. Beta
-does not persist that pre-finalization draft across windows or app restart.
+Every Response save carries the expected Evaluation revision, expected Method
+Feedback revision, and immutable finalized-result fingerprint. The Record
+store validates all three under one lock, atomically replaces both partitions,
+reads back, and otherwise rejects the entire save while retaining the local
+draft. Clearing either saved partition is an explicit confirmed edit inside the
+same Response editor. A deleted or unavailable Record cannot receive or
+redirect the draft.
+
+An Action Record also has one researcher-owned **Review Disposition** separate
+from Evaluation, Method Feedback, and the immutable finalized result. A
+no-source-change result becomes complete only through **Finish Review**. For a
+Record with confirmed Agent changes, every change must have exactly one current
+outcome: **kept Agent revision**, **restored starting revision**, **superseded
+by later revision**, or **unavailable**. Partial decisions remain pending and
+keep the Action at **Result Ready**. These factual outcomes do not mean
+philosophical acceptance, truth, adoption, or source fidelity.
+
+Agent edits are already authoritative source when the Result arrives. A
+confirmed change begins at the expected revision of that document's first
+successfully committed Agent write and ends at the last confirmed readback;
+conflicted, abandoned, or uncommitted attempts never move that baseline. Thus
+an external edit made after Run preparation but before the first Agent commit
+is preserved by direct undo. Comparison accepts only these confirmed revision
+pairs and never labels Discussion, researcher, or external changes as Agent
+work. A Manuscript coordination Record does not copy a selected child Run's
+change; the child Action Record remains that write and checkpoint's owner.
+
+Direct undo is a recovery action, not delayed authorization. Application alone
+resolves the first committed write's **Before Agent Work** checkpoint, current
+stable Note identity and path, exact ending revision, and exact checkpoint
+bytes. It restores only a complete selected document, creates **Before
+Restore**, replaces atomically, reads back, and records each document's factual
+outcome; a multi-document request is a sequence of independent transactions,
+not an atomic batch. Before the first source write it advances the caller's
+exact Review revision and invalidates selected outcomes; stale claims fail
+without touching source, while a later Record failure cannot leave an old Keep
+decision authoritative. A rename follows stable identity. A later edit, missing
+Note, failed readback, or uncertain commit remains explicit and never triggers
+an approximate or hunk-level restore.
 
 Portable Records remain one strict closed schema under
 `.scholium/research-records/v1/`; unknown schema/fields fail closed. A Record
 retains its frozen Record Title, attributed researcher and Agent statements, participating exact Note
 revisions, Action, minimal method provenance, Context Use Report, confirmed
 changes, discrepancies, Fidelity completion, Analyze-only Literature
-Recommendations, and current Researcher Evaluation. It excludes raw secrets,
+Recommendations, current Researcher Response, and current Review Disposition.
+The researcher-owned partitions are excluded from the finalized-result
+fingerprint. It excludes raw secrets,
 bookmarks, absolute paths, method/folder snapshots, prompts, token counts,
 transport logs, window state, and diff hunks. Markdown remains authoritative
 research content; Records never reconstruct writable source.
@@ -484,10 +519,10 @@ from `continued from`. That child remains one portable Record and remains
 searchable, but the Records collection folds it beneath its parent rather than
 creating a second peer top-level row.
 
-The parent Action presentation accepts one short researcher Method comment and
-an explicit **Improve Current Method...** action; Research Records does not
-duplicate either control. Saving or editing the comment alone authorizes no
-Agent access. Starting that action, not Full Access or Evaluation, creates one
+The Record's Researcher Response accepts one short Method Feedback comment and
+the Record exposes an explicit **Improve Current Method...** action. Saving or
+editing the comment alone authorizes no Agent access. Starting that action, not
+Full Access, Evaluation, or source disposition, creates one
 separately paired improvement Run bound to the parent Record, exact comment
 revision/text, finalized Result fingerprint, original registration relation,
 current primary Method, linked Practices, and their exact revisions. It

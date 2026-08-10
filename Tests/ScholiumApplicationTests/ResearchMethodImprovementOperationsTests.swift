@@ -132,12 +132,16 @@ struct ResearchMethodImprovementOperationsTests {
             credential: firstCredential,
             run: firstHandoff.run
         )
-        let revised = try await handle.research.saveMethodFeedbackComment(
+        let revised = try await handle.research.saveResearcherResponse(
             recordID: record.id,
-            draft: try ResearchMethodFeedbackDraft(
-                text: "The revised comment asks only for a diagnosis."
+            draft: try ResearcherResponseDraft(
+                evaluation: try first.researcherEvaluation.map(
+                    ResearcherEvaluationDraft.init
+                ),
+                methodFeedbackText: "The revised comment asks only for a diagnosis."
             ),
-            expectedCommentRevision: first.methodFeedbackComment?.revision,
+            expectedEvaluationRevision: first.researcherEvaluation?.revision,
+            expectedMethodFeedbackRevision: first.methodFeedbackComment?.revision,
             expectedResultFingerprint: try first.finalizedResultFingerprint()
         )
         let staleSubmission = try ResearchMethodImprovementSubmission(
@@ -382,10 +386,16 @@ struct ResearchMethodImprovementOperationsTests {
         to record: PortableResearchRecord,
         handle: WorkspaceHandle
     ) async throws -> PortableResearchRecord {
-        try await handle.research.saveMethodFeedbackComment(
+        try await handle.research.saveResearcherResponse(
             recordID: record.id,
-            draft: try ResearchMethodFeedbackDraft(text: text),
-            expectedCommentRevision: record.methodFeedbackComment?.revision,
+            draft: try ResearcherResponseDraft(
+                evaluation: try record.researcherEvaluation.map(
+                    ResearcherEvaluationDraft.init
+                ),
+                methodFeedbackText: text
+            ),
+            expectedEvaluationRevision: record.researcherEvaluation?.revision,
+            expectedMethodFeedbackRevision: record.methodFeedbackComment?.revision,
             expectedResultFingerprint: try record.finalizedResultFingerprint()
         )
     }

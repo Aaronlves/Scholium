@@ -280,24 +280,63 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict schema-6 Records, including the
-frozen Record Title, and exact source-byte fingerprints. Record mutation is
-limited to Analyze recommendation disposition/note and the Record-owned
-Researcher Evaluation partition. Those paths all use one revision-safe
-replacement primitive under portable coordination and lock, distinguish
-pre-commit refusal from post-commit uncertainty, and read back before success.
+`PortableResearchRecordStore` owns strict schema-7 Records, including the
+frozen Record Title, exact source-byte fingerprints, researcher-owned Response,
+and researcher-owned Review Disposition. Analyze recommendation mutation,
+atomic Response replacement, and Review Disposition replacement all use one
+revision-safe replacement primitive under portable coordination and lock,
+distinguish pre-commit refusal from post-commit uncertainty, and read back
+before success. Schema 6 has no decoder or mutation route; its bytes remain
+untouched and nonauthorizing when encountered.
 
-Researcher Evaluation compare-and-save uses exact Record ID, expected
-evaluation revision, and finalized-result fingerprint. It re-encodes the same
-decoded finalized result without modification and proves its canonical
-fingerprint before/after the evaluation-only change. Record deletion removes
-the evaluation and writes the existing minimal machine-local tombstone; no
-other operation can recreate or reparent it.
+`saveResearcherResponse` uses exact Record ID, expected Evaluation revision,
+expected Method Feedback revision, and finalized-result fingerprint. It
+validates all tokens under the same lock and replaces both Response partitions
+in one Record write; a stale token rejects the whole candidate. Review
+Disposition has its own revision CAS and is excluded, together with Response
+and recommendation disposition, from finalized-result identity. Record
+deletion removes those partitions and writes the existing minimal machine-local
+tombstone; no other operation can recreate or reparent them.
 
-The shared Action/Record Evaluation surface receives only a safely finalized
-portable Record, keeps its unsaved draft in that route, and disables further
-mutation and route dismissal while a save, clear, or reload is unresolved, or
-while its expected revision is out of date.
+Action completion derives each confirmed change's starting revision from the
+expected revision of its first `committed` Agent write record, not the Run-start
+participant revision or an earlier conflict/abandonment. Its ending revision is
+the last confirmed readback. Manuscript parent Records do not duplicate a
+selected child Action's change. `ExactSourceComparisonBuilder` is the single exact
+byte-diff owner for both Record confirmed-change pairs and Document conflict
+inputs; the projections remain disposable and non-Codable.
+
+Application owns `keepResearchRecordChanges`, current-state completion, and
+`undoResearchRecordChanges`. Direct undo preflights every selected confirmed
+change against its Local Execution entry, first committed write, exact
+research-continuation checkpoint metadata and bytes, current controlled stable
+identity/path/role, and Agent ending revision. Core's dedicated
+`restoreResearchActionNoteFile` alone permits a verified research-continuation
+source to restore a renamed destination, while the ordinary checkpoint API
+retains its stricter same-path rule. Core still creates Before Restore, replaces
+one document atomically, and reads back. Application merges only observed
+per-document facts into Review Disposition; multi-document requests are not a
+durable transaction. Before source mutation, undo performs a non-elidable CAS
+claim on the caller's exact Review revision and removes selected outcomes. The
+claim resolves commit uncertainty by exact disposition-revision readback;
+post-source reconciliation preserves concurrent unselected outcomes, and every
+attempted source replacement triggers refresh even if the final Record write
+fails.
+
+`WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`
+from schema-10 Local Execution plus exact portable Record reads. The projection
+contains only Run, Action, target stable Note ID, one interface state, optional
+Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
+omits pairing codes, Session secrets, checkpoint IDs, source bytes, prompts,
+and tool traces. Needs Attention follows the current bounded-entry/recovery
+state, not an immutable historical conflict record. Local Execution and Record remain the durable owners; the
+projection cannot authorize a write or survive independently.
+
+The existing Action and Record views are temporarily adapted to the atomic
+Response capability but still present their prior separate result/evaluation
+surfaces. The Records result-processing layout and removal of the Action-sheet
+result subtree remain interface cutover work rather than a second persistence
+owner.
 Confirmed reload rereads the exact Record ID through the existing Record use
 case and accepts no differently identified response; it adds no presentation
 cache or Evaluation owner.
@@ -306,9 +345,7 @@ mutation-outcome taxonomy rather than exposing a Core error to the interface.
 An already-committed refresh failure or commit-uncertain replacement is
 nonretryable until that exact-ID reload reconciles the Record; only a
 proven-not-committed failure appears as **Save Failed**.
-The current Action result pipeline publishes no separate pre-finalization
-result projection, so it does not yet instantiate the canonical
-pre-finalization local-draft state. Likewise, a workspace refresh that removes
+Likewise, a workspace refresh that removes
 a Record removes the current presentation subtree; the store refuses any later
 write to that missing identity, but no window-level owner presently preserves
 the displaced local draft.
@@ -329,7 +366,7 @@ Document / Research menu / Search Record result
         -> ScholiumResearchRecordsFeature.ResearchRecordBrowserModel
              +-- Application Record Search
                   +-- exact total, provider-owned sort, 100-row slices
-             +-- Portable Record mutation/evaluation use cases
+             +-- Portable Record response/review/undo use cases
              +-- collection / Record / Reading Lead route
              +-- rebuildable paged Reading Leads and continuation relations
         -> ResearchRecordBrowserView (App-owned native presentation)

@@ -560,7 +560,7 @@ enum ResearchFormSaveStatus: Equatable {
     case saveFailed
 
     static func afterEvaluationMutationFailure(_ error: Error) -> Self {
-        if error is PortableResearchEvaluationMutationError {
+        if error is PortableResearcherResponseMutationError {
             return .outOfDate
         }
         if let applicationError = error as? ScholiumApplicationError,
@@ -859,10 +859,10 @@ struct ResearchMethodFeedbackView: View {
                 )
                 install(updated)
                 didUpdateRecord(updated)
-            } catch let error as PortableResearchMethodFeedbackMutationError {
-                status = error == .staleCommentRevision
-                    || error == .finalizedResultChanged
-                    || error == .sourceEvaluationChanged ? .outOfDate : .saveFailed
+            } catch let error as PortableResearcherResponseMutationError {
+                status = error == .staleMethodFeedbackRevision
+                    || error == .staleEvaluationRevision
+                    || error == .finalizedResultChanged ? .outOfDate : .saveFailed
                 message = error.localizedDescription
             } catch {
                 status = .saveFailed
@@ -887,8 +887,9 @@ struct ResearchMethodFeedbackView: View {
                 install(updated)
                 isEditing = false
                 didUpdateRecord(updated)
-            } catch let error as PortableResearchMethodFeedbackMutationError {
-                status = error == .staleCommentRevision
+            } catch let error as PortableResearcherResponseMutationError {
+                status = error == .staleMethodFeedbackRevision
+                    || error == .staleEvaluationRevision
                     || error == .finalizedResultChanged ? .outOfDate : .saveFailed
                 message = error.localizedDescription
             } catch {

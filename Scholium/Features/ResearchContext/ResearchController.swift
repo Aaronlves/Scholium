@@ -172,7 +172,7 @@ final class ResearchController: ObservableObject {
     func researchRecordComparison(
         recordID: UUID,
         noteID: UUID
-    ) async throws -> ResearchRecordComparison {
+    ) async throws -> ExactSourceComparison {
         try await requireRecords().researchRecordComparison(
             recordID: recordID,
             noteID: noteID

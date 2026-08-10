@@ -1035,6 +1035,10 @@ extension ResearchFunctionOperationsTests {
         #expect(completedManuscript.state == .complete)
         #expect(completedManuscript.childRunIDs == [revise.runID])
         #expect(completedManuscript.reusedFidelityRunID == revise.runID)
+        let records = try await handle.research.finishedResearchRecords(noteID: nil)
+        #expect(records.first(where: { $0.id == revise.runID })?.confirmedChanges.count == 1)
+        #expect(records.first(where: { $0.id == manuscript.runID })?.confirmedChanges.isEmpty
+            == true)
         await runtime.shutdown()
     }
 

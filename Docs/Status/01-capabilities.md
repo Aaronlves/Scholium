@@ -94,9 +94,19 @@
 
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
-  Recommendations, and Researcher Evaluation persist through their declared
-  portable Record owners. Credentials, prompts, absolute paths, raw transport
-  logs, and token counts are excluded.
+  Recommendations, atomic Researcher Response, and researcher Review
+  Disposition persist through their declared portable Record owners.
+  Schema-7 Records reject schema 6 rather than migrating it. Credentials,
+  prompts, absolute paths, raw transport logs, and token counts are excluded.
+- Confirmed Agent change comparison uses one exact byte-diff owner shared with
+  Document conflict input. Application can keep current Agent revisions, finish
+  a no-change/current-state review, or safely undo complete selected documents
+  from the first committed Agent baseline, including after a stable-identity
+  rename. Undo claims and invalidates the selected Review outcomes before source
+  mutation; each restore remains an independent checkpointed source transaction.
+- Workspace research snapshots derive Waiting, Running, Needs Attention, and
+  Result Ready activities without persisting a second workflow owner or
+  projecting credentials, checkpoint IDs, source bytes, or tool traces.
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.

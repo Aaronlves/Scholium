@@ -1,19 +1,13 @@
 import CryptoKit
 import Foundation
 
-public enum ResearchRecordComparisonError: LocalizedError, Sendable {
-    case participantNotFound
-    case endingRevisionUnavailable
+public enum ExactSourceComparisonError: LocalizedError, Sendable {
     case exactRevisionUnavailable(DocumentFingerprint)
     case nonUTF8Revision(DocumentFingerprint)
     case fingerprintMismatch(expected: DocumentFingerprint, observed: DocumentFingerprint)
 
     public var errorDescription: String? {
         switch self {
-        case .participantNotFound:
-            "This note is not part of the selected Research Record."
-        case .endingRevisionUnavailable:
-            "Comparison is unavailable because the record has no exact ending revision."
         case .exactRevisionUnavailable(let fingerprint):
             "Comparison is unavailable because exact revision \(fingerprint.sha256) is not retained."
         case .nonUTF8Revision(let fingerprint):
@@ -24,33 +18,33 @@ public enum ResearchRecordComparisonError: LocalizedError, Sendable {
     }
 }
 
-public enum ResearchRecordComparisonLineKind: Hashable, Sendable {
+public enum ExactSourceComparisonLineKind: Hashable, Sendable {
     case unchanged
     case startingOnly
     case endingOnly
 }
 
-public enum ResearchRecordComparisonLineEnding: String, Hashable, Sendable {
+public enum ExactSourceComparisonLineEnding: String, Hashable, Sendable {
     case lf = "LF"
     case crlf = "CRLF"
     case none = "None"
 }
 
-public struct ResearchRecordComparisonLine: Hashable, Identifiable, Sendable {
+public struct ExactSourceComparisonLine: Hashable, Identifiable, Sendable {
     public let id: Int
-    public let kind: ResearchRecordComparisonLineKind
+    public let kind: ExactSourceComparisonLineKind
     public let startingLineNumber: Int?
     public let endingLineNumber: Int?
     public let text: String
-    public let lineEnding: ResearchRecordComparisonLineEnding
+    public let lineEnding: ExactSourceComparisonLineEnding
 
     public init(
         id: Int,
-        kind: ResearchRecordComparisonLineKind,
+        kind: ExactSourceComparisonLineKind,
         startingLineNumber: Int?,
         endingLineNumber: Int?,
         text: String,
-        lineEnding: ResearchRecordComparisonLineEnding
+        lineEnding: ExactSourceComparisonLineEnding
     ) {
         self.id = id
         self.kind = kind
@@ -62,20 +56,21 @@ public struct ResearchRecordComparisonLine: Hashable, Identifiable, Sendable {
 }
 
 /// A disposable, non-Codable projection over two independently verified byte
-/// revisions. The source bytes and diff hunks are never durable record state.
-public struct ResearchRecordComparison: Sendable {
+/// revisions. Conflict and Research Record clients supply their own inputs and
+/// operations; exact byte comparison has this single owner.
+public struct ExactSourceComparison: Sendable {
     public let startingRevision: DocumentFingerprint
     public let endingRevision: DocumentFingerprint
     public let startingHasUTF8BOM: Bool
     public let endingHasUTF8BOM: Bool
-    public let lines: [ResearchRecordComparisonLine]
+    public let lines: [ExactSourceComparisonLine]
 
     public init(
         startingRevision: DocumentFingerprint,
         endingRevision: DocumentFingerprint,
         startingHasUTF8BOM: Bool,
         endingHasUTF8BOM: Bool,
-        lines: [ResearchRecordComparisonLine]
+        lines: [ExactSourceComparisonLine]
     ) {
         self.startingRevision = startingRevision
         self.endingRevision = endingRevision
@@ -85,10 +80,10 @@ public struct ResearchRecordComparison: Sendable {
     }
 }
 
-public enum ResearchRecordComparisonBuilder {
+public enum ExactSourceComparisonBuilder {
     private struct RawLine: Hashable, Sendable {
         let bytes: Data
-        let ending: ResearchRecordComparisonLineEnding
+        let ending: ExactSourceComparisonLineEnding
     }
 
     public static func build(
@@ -96,18 +91,18 @@ public enum ResearchRecordComparisonBuilder {
         endingData: Data,
         startingRevision: DocumentFingerprint,
         endingRevision: DocumentFingerprint
-    ) throws -> ResearchRecordComparison {
+    ) throws -> ExactSourceComparison {
         try Task.checkCancellation()
         guard try matches(startingData, revision: startingRevision) else {
             try Task.checkCancellation()
-            throw ResearchRecordComparisonError.fingerprintMismatch(
+            throw ExactSourceComparisonError.fingerprintMismatch(
                 expected: startingRevision,
                 observed: DocumentFingerprint(data: startingData)
             )
         }
         guard try matches(endingData, revision: endingRevision) else {
             try Task.checkCancellation()
-            throw ResearchRecordComparisonError.fingerprintMismatch(
+            throw ExactSourceComparisonError.fingerprintMismatch(
                 expected: endingRevision,
                 observed: DocumentFingerprint(data: endingData)
             )
@@ -124,18 +119,18 @@ public enum ResearchRecordComparisonBuilder {
         )
         try Task.checkCancellation()
 
-        let operations: [(ResearchRecordComparisonLineKind, RawLine, Int?, Int?)]
+        let operations: [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)]
         if starting.count + ending.count <= 4_000,
            startingData.count + endingData.count <= 512 * 1_024 {
             operations = try collectionDifference(starting: starting, ending: ending)
         } else {
             operations = try boundedDifference(starting: starting, ending: ending)
         }
-        var lines: [ResearchRecordComparisonLine] = []
+        var lines: [ExactSourceComparisonLine] = []
         lines.reserveCapacity(operations.count)
         for (offset, operation) in operations.enumerated() {
             if offset.isMultiple(of: 1_024) { try Task.checkCancellation() }
-            lines.append(ResearchRecordComparisonLine(
+            lines.append(ExactSourceComparisonLine(
                 id: offset,
                 kind: operation.0,
                 startingLineNumber: operation.2,
@@ -144,7 +139,7 @@ public enum ResearchRecordComparisonBuilder {
                 lineEnding: operation.1.ending
             ))
         }
-        return ResearchRecordComparison(
+        return ExactSourceComparison(
             startingRevision: startingRevision,
             endingRevision: endingRevision,
             startingHasUTF8BOM: startingBOM,
@@ -225,7 +220,7 @@ public enum ResearchRecordComparisonBuilder {
                 guard remaining >= 3,
                       (0xA0...0xBF).contains(data[index + 1]),
                       isContinuation(data[index + 2]) else {
-                    throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                    throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 3
                 continue
@@ -235,7 +230,7 @@ public enum ResearchRecordComparisonBuilder {
                 guard remaining >= 3,
                       (0x80...0x9F).contains(data[index + 1]),
                       isContinuation(data[index + 2]) else {
-                    throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                    throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 3
                 continue
@@ -244,7 +239,7 @@ public enum ResearchRecordComparisonBuilder {
                       (0x90...0xBF).contains(data[index + 1]),
                       isContinuation(data[index + 2]),
                       isContinuation(data[index + 3]) else {
-                    throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                    throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 4
                 continue
@@ -255,19 +250,19 @@ public enum ResearchRecordComparisonBuilder {
                       (0x80...0x8F).contains(data[index + 1]),
                       isContinuation(data[index + 2]),
                       isContinuation(data[index + 3]) else {
-                    throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                    throw ExactSourceComparisonError.nonUTF8Revision(revision)
                 }
                 index += 4
                 continue
             default:
-                throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                throw ExactSourceComparisonError.nonUTF8Revision(revision)
             }
             guard remaining >= length else {
-                throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                throw ExactSourceComparisonError.nonUTF8Revision(revision)
             }
             for continuationIndex in 1..<length where
                 !isContinuation(data[index + continuationIndex]) {
-                throw ResearchRecordComparisonError.nonUTF8Revision(revision)
+                throw ExactSourceComparisonError.nonUTF8Revision(revision)
             }
             index += length
         }
@@ -280,7 +275,7 @@ public enum ResearchRecordComparisonBuilder {
     private static func collectionDifference(
         starting: [RawLine],
         ending: [RawLine]
-    ) throws -> [(ResearchRecordComparisonLineKind, RawLine, Int?, Int?)] {
+    ) throws -> [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)] {
         try Task.checkCancellation()
         let difference = ending.difference(from: starting)
         try Task.checkCancellation()
@@ -292,7 +287,7 @@ public enum ResearchRecordComparisonBuilder {
             guard case .insert(let offset, _, _) = change else { return nil }
             return offset
         })
-        var result: [(ResearchRecordComparisonLineKind, RawLine, Int?, Int?)] = []
+        var result: [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)] = []
         var startIndex = 0
         var endIndex = 0
         while startIndex < starting.count || endIndex < ending.count {
@@ -325,7 +320,7 @@ public enum ResearchRecordComparisonBuilder {
     private static func boundedDifference(
         starting: [RawLine],
         ending: [RawLine]
-    ) throws -> [(ResearchRecordComparisonLineKind, RawLine, Int?, Int?)] {
+    ) throws -> [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)] {
         var prefix = 0
         while prefix < starting.count, prefix < ending.count,
               starting[prefix] == ending[prefix] {
@@ -338,7 +333,7 @@ public enum ResearchRecordComparisonBuilder {
             if suffix.isMultiple(of: 1_024) { try Task.checkCancellation() }
             suffix += 1
         }
-        var result: [(ResearchRecordComparisonLineKind, RawLine, Int?, Int?)] = []
+        var result: [(ExactSourceComparisonLineKind, RawLine, Int?, Int?)] = []
         for index in 0..<prefix {
             if index.isMultiple(of: 1_024) { try Task.checkCancellation() }
             result.append((.unchanged, starting[index], index + 1, index + 1))

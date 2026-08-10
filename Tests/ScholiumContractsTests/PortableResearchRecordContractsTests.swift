@@ -93,7 +93,7 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 6)
+        #expect(object["schema_version"] as? Int == 7)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -112,8 +112,8 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 6 requires a frozen title and every authoritative array")
-    func schemaSixIsStrict() throws {
+    @Test("Schema 7 requires a frozen title and rejects every retired schema")
+    func schemaSevenIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try ResearchRecordTitle(invalidTitle)
@@ -138,7 +138,7 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
 
-        for version in [1, 2, 3, 4, 5] {
+        for version in [1, 2, 3, 4, 5, 6] {
             object["schema_version"] = version
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try JSONDecoder.scholium.decode(
@@ -619,6 +619,210 @@ struct PortableResearchRecordContractsTests {
             PortableResearchRecord.self,
             from: data
         ) == evaluated)
+    }
+
+    @Test("Review disposition round trips, permits partial decisions, and stays outside result identity")
+    func researcherReviewDispositionRoundTrip() throws {
+        let original = try makeRecord(includeMaterialUse: true)
+        let second = try #require(original.participatingNotes.first {
+            $0.role == .analysis
+        })
+        let secondEnding = DocumentFingerprint(content: "# Analysis\nAgent revision\n")
+        let secondParticipant = try PortableResearchNoteRevision(
+            noteID: second.noteID,
+            note: second.note,
+            role: second.role,
+            title: second.title,
+            startingRevision: second.startingRevision,
+            endingRevision: secondEnding
+        )
+        let base = try PortableResearchRecord(
+            id: original.id,
+            triptychID: original.triptychID,
+            title: original.title,
+            kind: original.kind,
+            action: original.action,
+            method: original.method,
+            sourceReference: original.sourceReference,
+            primaryNoteID: original.primaryNoteID,
+            participatingNotes: original.participatingNotes.map {
+                $0.noteID == second.noteID ? secondParticipant : $0
+            },
+            statements: original.statements,
+            actuallyUsedMaterials: original.actuallyUsedMaterials,
+            fidelityCompletion: original.fidelityCompletion,
+            confirmedChanges: original.confirmedChanges + [
+                try PortableResearchConfirmedChange(
+                    noteID: second.noteID,
+                    actor: .agent,
+                    startingRevision: second.startingRevision,
+                    endingRevision: secondEnding
+                ),
+            ],
+            startedAt: original.startedAt,
+            finishedAt: original.finishedAt
+        )
+        let change = try #require(base.confirmedChanges.first)
+        let partial = try PortableResearcherReviewDisposition(
+            decidedAt: Date(timeIntervalSince1970: 40),
+            reviewedChanges: [try PortableResearcherReviewedChange(
+                noteID: change.noteID,
+                outcome: .keptAgentRevision,
+                observedRevision: change.endingRevision
+            )]
+        )
+        let reviewed = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            title: base.title,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            sourceReference: base.sourceReference,
+            continuationLineage: base.continuationLineage,
+            primaryNoteID: base.primaryNoteID,
+            participatingNotes: base.participatingNotes,
+            statements: base.statements,
+            resultDisposition: base.resultDisposition,
+            academicResults: base.academicResults,
+            contextUseReport: base.contextUseReport,
+            actuallyUsedMaterials: base.actuallyUsedMaterials,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: base.confirmedChanges,
+            discrepancies: base.discrepancies,
+            literatureRecommendations: base.literatureRecommendations,
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt,
+            researcherEvaluation: base.researcherEvaluation,
+            methodFeedbackComment: base.methodFeedbackComment,
+            researcherReviewDisposition: partial
+        )
+        let data = try JSONEncoder.scholium.encode(reviewed)
+        #expect(try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: data
+        ) == reviewed)
+        #expect(!reviewed.researcherReviewIsComplete)
+        #expect(try reviewed.finalizedResultFingerprint()
+            == base.finalizedResultFingerprint())
+
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try PortableResearchRecord(
+                id: base.id,
+                triptychID: base.triptychID,
+                title: base.title,
+                kind: base.kind,
+                action: base.action,
+                method: base.method,
+                sourceReference: base.sourceReference,
+                primaryNoteID: base.primaryNoteID,
+                participatingNotes: base.participatingNotes,
+                statements: base.statements,
+                actuallyUsedMaterials: base.actuallyUsedMaterials,
+                fidelityCompletion: base.fidelityCompletion,
+                confirmedChanges: base.confirmedChanges,
+                startedAt: base.startedAt,
+                finishedAt: base.finishedAt,
+                researcherReviewDisposition: try PortableResearcherReviewDisposition(
+                    reviewedChanges: [try PortableResearcherReviewedChange(
+                        noteID: change.noteID,
+                        outcome: .supersededByLaterRevision,
+                        observedRevision: change.startingRevision
+                    )]
+                )
+            )
+        }
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var disposition = try #require(
+            object["researcher_review_disposition"] as? [String: Any]
+        )
+        disposition["future"] = true
+        object["researcher_review_disposition"] = disposition
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+    }
+
+    @Test("Confirmed Agent change may begin after the participant Run-start revision")
+    func confirmedChangeBaselineMayFollowRunStart() throws {
+        let base = try makeRecord()
+        let participant = try #require(base.participatingNotes.first)
+        let externalRevision = DocumentFingerprint(content: "# Topic\nExternal edit\n")
+        let agentRevision = DocumentFingerprint(content: "# Topic\nAgent edit\n")
+        let changedParticipant = try PortableResearchNoteRevision(
+            noteID: participant.noteID,
+            note: participant.note,
+            role: participant.role,
+            title: participant.title,
+            startingRevision: participant.startingRevision,
+            endingRevision: agentRevision
+        )
+        let record = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            title: base.title,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            primaryNoteID: base.primaryNoteID,
+            participatingNotes: [changedParticipant],
+            statements: base.statements,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: [try PortableResearchConfirmedChange(
+                noteID: participant.noteID,
+                actor: .agent,
+                startingRevision: externalRevision,
+                endingRevision: agentRevision
+            )],
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt
+        )
+        #expect(record.participatingNotes[0].startingRevision
+            != record.confirmedChanges[0].startingRevision)
+        #expect(throws: PortableResearchRecordError.invalidConfirmedChange) {
+            _ = try PortableResearchConfirmedChange(
+                noteID: participant.noteID,
+                actor: .researcher,
+                startingRevision: externalRevision,
+                endingRevision: agentRevision
+            )
+        }
+    }
+
+    @Test("Discussion Records cannot acquire Researcher Response state")
+    func discussionRejectsResearcherResponse() throws {
+        let base = try makeRecord()
+        let participant = try #require(base.participatingNotes.first)
+        let evaluation = try PortableResearcherEvaluation(noIssuesObserved: true)
+        let reply = try PortableResearchStatement(
+            author: .researcher,
+            kind: .discussionTurn,
+            attribution: "Researcher",
+            text: "Keep this distinction explicit."
+        )
+        #expect(throws: PortableResearchRecordError.invalidRecord) {
+            _ = try PortableResearchRecord(
+                id: base.id,
+                triptychID: base.triptychID,
+                title: base.title,
+                kind: .discussion,
+                action: base.action,
+                method: base.method,
+                primaryNoteID: participant.noteID,
+                participatingNotes: [participant],
+                statements: [reply],
+                fidelityCompletion: .notApplicable,
+                startedAt: base.startedAt,
+                finishedAt: base.finishedAt,
+                researcherEvaluation: evaluation
+            )
+        }
     }
 
     private func makeRecord(

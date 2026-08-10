@@ -29,13 +29,18 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Implement the canonical pre-finalization return-window Evaluation draft. The
-  current Action route first exposes the form after the safely finalized Record
-  is published, so that earlier local-only state is not reachable.
-- Preserve an open unsaved Evaluation draft when another window permanently
-  deletes its Record. Current store CAS refuses the missing identity and cannot
-  redirect the draft, but snapshot reconciliation removes the presenting view
-  and its window-local draft before an unavailable-state recovery can appear.
+- Cut result processing over to Records: remove finalized Result, Evaluation,
+  and Method Feedback from the Action sheet; implement the fixed processing
+  rail, combined Response editor, Change Decision controls, shared folding
+  comparison sheet, per-document outcomes, and window-lifetime direct-undo
+  eligibility. Preserve dirty drafts across exact-Record invalidation and make
+  every in-flight operation block dismissal.
+- Implement the post-handoff transition and notification delivery: close after
+  successful Copy Handoff with exact focus return, consume the activity
+  projection in Action rows and compact status sheets, and add privacy-bounded
+  foreground/system notifications with exact Record routing, authorization,
+  deduplication, and disposition cleanup. Result arrival must not open,
+  retarget, focus, or activate a Records window by itself.
 
 ## Editor input and semantics
 

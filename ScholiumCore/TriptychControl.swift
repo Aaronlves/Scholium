@@ -150,6 +150,13 @@ public actor TriptychControlStore {
         }
     }
 
+    /// Resolves the current controlled location of one stable Note identity.
+    /// Callers must still revalidate the current source revision before a
+    /// consequential operation.
+    public func identityRecord(id: UUID) throws -> NoteIdentityRecord? {
+        try identityPayload().records.first { $0.id == id }
+    }
+
     public func moveIdentity(
         id: UUID,
         to relativePath: String,

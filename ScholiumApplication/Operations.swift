@@ -601,58 +601,60 @@ public actor ResearchOperations:
         return try await handle.finishedResearchRecords(noteID: noteID)
     }
 
-    public func saveResearcherEvaluation(
+    public func saveResearcherResponse(
         recordID: UUID,
-        draft: ResearcherEvaluationDraft,
+        draft: ResearcherResponseDraft,
         expectedEvaluationRevision: UUID?,
+        expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.saveResearcherEvaluation(
+        return try await handle.saveResearcherResponse(
             recordID: recordID,
             draft: draft,
             expectedEvaluationRevision: expectedEvaluationRevision,
+            expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
             expectedResultFingerprint: expectedResultFingerprint
         )
     }
 
-    public func clearResearcherEvaluation(
+    public func keepResearchRecordChanges(
         recordID: UUID,
-        expectedEvaluationRevision: UUID,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.clearResearcherEvaluation(
+        return try await handle.keepResearchRecordChanges(
             recordID: recordID,
-            expectedEvaluationRevision: expectedEvaluationRevision,
+            expectedReviewRevision: expectedReviewRevision,
             expectedResultFingerprint: expectedResultFingerprint
         )
     }
 
-    public func saveMethodFeedbackComment(
+    public func finishResearchRecordReviewWithCurrentState(
         recordID: UUID,
-        draft: ResearchMethodFeedbackDraft,
-        expectedCommentRevision: UUID?,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.saveMethodFeedbackComment(
+        return try await handle.finishResearchRecordReviewWithCurrentState(
             recordID: recordID,
-            draft: draft,
-            expectedCommentRevision: expectedCommentRevision,
+            expectedReviewRevision: expectedReviewRevision,
             expectedResultFingerprint: expectedResultFingerprint
         )
     }
 
-    public func clearMethodFeedbackComment(
+    public func undoResearchRecordChanges(
         recordID: UUID,
-        expectedCommentRevision: UUID,
+        selectedNoteIDs: Set<UUID>,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
+    ) async throws -> ResearchRecordChangesUndoResult {
         let handle = try await reference.requireHandle()
-        return try await handle.clearMethodFeedbackComment(
+        return try await handle.undoResearchRecordChanges(
             recordID: recordID,
-            expectedCommentRevision: expectedCommentRevision,
+            selectedNoteIDs: selectedNoteIDs,
+            expectedReviewRevision: expectedReviewRevision,
             expectedResultFingerprint: expectedResultFingerprint
         )
     }
@@ -691,7 +693,7 @@ public actor ResearchOperations:
     public func researchRecordComparison(
         recordID: UUID,
         noteID: UUID
-    ) async throws -> ResearchRecordComparison {
+    ) async throws -> ExactSourceComparison {
         let handle = try await reference.requireHandle()
         return try await handle.researchRecordComparison(
             recordID: recordID,

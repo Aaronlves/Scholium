@@ -163,28 +163,29 @@ public protocol ResearchRecordUseCases: Sendable {
     ) async throws -> PortableResearchDiscussion
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
     func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord]
-    func saveResearcherEvaluation(
+    func saveResearcherResponse(
         recordID: UUID,
-        draft: ResearcherEvaluationDraft,
+        draft: ResearcherResponseDraft,
         expectedEvaluationRevision: UUID?,
+        expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord
-    func clearResearcherEvaluation(
+    func keepResearchRecordChanges(
         recordID: UUID,
-        expectedEvaluationRevision: UUID,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord
-    func saveMethodFeedbackComment(
+    func finishResearchRecordReviewWithCurrentState(
         recordID: UUID,
-        draft: ResearchMethodFeedbackDraft,
-        expectedCommentRevision: UUID?,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord
-    func clearMethodFeedbackComment(
+    func undoResearchRecordChanges(
         recordID: UUID,
-        expectedCommentRevision: UUID,
+        selectedNoteIDs: Set<UUID>,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord
+    ) async throws -> ResearchRecordChangesUndoResult
     func issueMethodImprovementHandoff(
         recordID: UUID,
         validity: TimeInterval
@@ -203,7 +204,7 @@ public protocol ResearchRecordUseCases: Sendable {
     func researchRecordComparison(
         recordID: UUID,
         noteID: UUID
-    ) async throws -> ResearchRecordComparison
+    ) async throws -> ExactSourceComparison
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
     func setCritiqueFindingDisposition(

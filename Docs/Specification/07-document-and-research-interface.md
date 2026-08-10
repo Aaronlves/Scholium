@@ -292,8 +292,12 @@ result prose, or create a second Record-query owner. A continuation child
 Record remains searchable but appears beneath its parent Action/Record rather
 than as another peer row in the ordinary Records collection.
 
-Evidence & Judgment prioritizes scholarly legibility in this order:
-**Participants**, **Context Used**, **Effects**, then **Researcher Evaluation**.
+The Record's processing rail has one fixed, noncustomizable order:
+**Researcher Response**, **Change Decision**, **Effects**, **Context Used**,
+**Participants**, then **Technical Details**. Researcher Response shows both
+states and opens one Evaluation-then-Method Feedback editor with **Cancel** and
+**Save Response**. Change Decision persists until every change has an outcome
+or a no-change result receives **Finish Review**.
 Every section title shares one height, inset, baseline, and Apparatus heading
 style. Each fact uses one aligned monochrome symbol, title, and short provenance
 text. A fact title uses the 12pt Medium interface Row Title role, never the
@@ -322,18 +326,37 @@ Record completion, applicable Fidelity, and discrepancies without badges,
 scores, or color-only meaning.
 
 The current researcher judgment remains directly readable. Its right-chevron
-section title is the one Review/Edit control and opens a native sheet; an
-unsaved draft blocks implicit dismissal and requires explicit discard
-confirmation. One
+section title is the one Review/Edit control and opens the combined native
+Response sheet; an unsaved draft blocks implicit dismissal and requires
+explicit discard confirmation, while a save or reload blocks all dismissal.
+One
 default-closed **Technical Details** group contains only Record kind, schema,
 integrity, identifier, Method/source identity, and exact participant revisions.
 It uses the same adaptive Inspector About label/value grid rather than a local
 field layout; a narrow region stacks the complete group as one unit.
 The single confirmed permanent-delete route is a named `trash` icon in the
 single-Record header, never on collection rows or inside
-Technical Details. The Record route exposes no inline revision comparison,
-Method Feedback, or Method-improvement command. Those source-recovery and
-parent-Action workflows retain their separate owners.
+Technical Details. Change Decision offers **Finish Review** when there were no
+source changes; **Keep Agent Changes** when every unresolved document still
+matches the Agent ending revision; **Finish Review with Current State...** for
+later edits or missing documents; and **Compare Changes...** for confirmed
+changes. Method improvement begins only from the saved Method Feedback in this
+Record and remains a separate authenticated Run.
+
+Compare Changes is one shared attached single-column diff, never a left/right
+pair. Each document shows path, state, and revisions and can fold; the sole or
+first document opens initially, with **Expand All** and **Collapse All**. Three
+context lines surround changes; longer equal ranges become **N unchanged
+lines**. Record mode selects whole documents only and offers **Return to
+Result** / **Undo Selected Documents...**; Conflict mode offers **Return to
+Editing** / **Reload from Disk**. Full success returns; partial results remain
+visible per document.
+
+A `.reviewResult` request grants that exact Record direct Undo only in the
+current Records window, including after Keep. Closing erases this nonpersistent
+eligibility; later recovery uses global checkpoints, while reopening an
+incomplete Result grants a new review window. Review Disposition remains
+portable.
 There is exactly one native trailing Inspector per window, with **Overview,
 Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
@@ -491,21 +514,14 @@ title axis; trailing text states **Running**; and a separately named direct
 second line. Larger interface text or localization may grow the row rather
 than clip its title, state, or ending route.
 
-An Action sheet keeps one linear journey: request and focal context; academic
-Profile inputs and any executable availability repair; handoff or current
-Session state; Run progress and any bounded write-set decision; returned
-canonical result; then optional Researcher Evaluation. Copied Agent instructions reveal only the
-Run locator, one-time Pairing Code, local connection route, and direct steps for
-the Agent to operate the CLI itself. The one-time code appears only inside that
-complete copied handoff, never as a separate visible or accessible value the
-researcher must read, transcribe, or enter. The Agent reads it from the handoff
-and enters it only through pairing standard input. The sheet exposes one
-**Copy Handoff** action. It validates and freezes a new Action when necessary,
-then copies the complete handoff without choosing, remembering, or opening an
-Agent application. A prepared Run offers
-**Copy New Handoff** as the recovery route: it invalidates the prior pairing
-and copies the complete replacement without replacing the Run or its recovery
-state.
+An Action sheet ends at successful handoff: request/focal context, academic
+inputs or repair, then **Copy Handoff**. The copied instructions contain only
+Run locator, one-time Pairing Code, local route, and CLI steps; the code is
+never a separate field. Copy freezes when needed but never selects or opens an
+Agent app. Success closes and restores focus to the Action row; failure keeps
+the sheet and inputs. A prepared Run's compact status sheet offers Run status,
+**Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
+prior pairing without replacing the Run.
 Closing the sheet leaves an unfinished Action active; the explicit **End
 Action** route revokes Agent access and closes it while preserving confirmed
 changes, conflicts, and recovery truth. **End Discussion** also preserves the
@@ -516,12 +532,19 @@ conflict, write result unknown, and recovery each use complete text and an
 executable next route without displaying the real Session secret or internal
 fingerprints as tasks for the researcher.
 
-The evaluation appears after, never before or over, the returned result. It
-uses the same semantic fields and focus order as Record detail and exposes
-**Unsaved Draft**, **Saving**, **Saved**, **Out of Date**, and **Save Failed**
-as full accessible states rather than color or position. A closing sheet with
-unsaved evaluation input asks whether to keep the sheet open or discard the
-draft. An old evaluation revision never silently overwrites a newer save.
+The originating Action row consumes only the privacy-bounded activity
+projection and states **Waiting for Agent**, **Running**, **Needs Attention**,
+or **Result Ready**. Needs Attention includes the first executable repair.
+Multiple pending Results show a count and enter the newest unfinished Record.
+Result arrival never opens or retargets Records, activates the app, or steals
+focus; only the row or a notification action submits the exact Record request.
+
+Foreground completion sends one actionable in-app notification to the origin
+window. Authorized background delivery says only **An Agent result is ready to
+review.** Record ID plus finalized-result fingerprint deduplicates it. Clicking
+opens the exact Triptych/Record; review completion withdraws delivery. No
+notification contains research content, credentials, checkpoints, or traces;
+denial is not repeatedly requested and never weakens the Action row.
 
 Functional text is never a generic blue link or a separate **Open** button.
 Body and secondary colors, hover surface, focus ring, button semantics, and
@@ -587,10 +610,12 @@ state. Its terms are not a second cross-functional state dictionary.
 | **Fully Up to Date** | Source and named consumers share one committed revision. |
 
 Conflict actions are **Compare Changes**, **Reload from Disk**, and **Keep
-Editing**. Comparison shows exact editor/disk revisions and offers **Return to
-Editing** or **Reload from Disk**. Each exact comparison row retains one logical
-source line while soft-wrapping its visible text within the comparison width;
-wrapping never mutates either revision or creates a source line. Checkpoint restore, editor Undo, and Research
+Editing**. Comparison supplies the Document-conflict inputs and actions to the
+same single-column exact comparison used by Research Records; it offers
+**Return to Editing** or **Reload from Disk** and no source-change selection.
+Each exact comparison row retains one logical source line while soft-wrapping
+its visible text within the comparison width; wrapping never mutates either
+revision or creates a source line. Checkpoint restore, editor Undo, and Research
 Record are never interchangeable; editor `Command-Z` never means checkpoint
 restoration.
 

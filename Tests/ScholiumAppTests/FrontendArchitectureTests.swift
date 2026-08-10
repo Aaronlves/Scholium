@@ -422,7 +422,7 @@ struct FrontendArchitectureTests {
         #expect(critique.contains("metadata.isAgentAttributed ? .agentAuthorship : .attention"))
 
         let conflict = try #require(viewSources["Scholium/Views/Note/NoteContentView.swift"])
-        #expect(conflict.contains("case .editorOnly, .diskOnly: .attention"))
+        #expect(conflict.contains("case .startingOnly, .endingOnly: .attention"))
 
         let settings = try #require(viewSources["Scholium/Views/WorkspaceSettingsView.swift"])
         #expect(settings.contains("info.status == .available ? .confirmed : .attention"))

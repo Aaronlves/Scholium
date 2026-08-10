@@ -185,6 +185,15 @@ public struct ResearcherEvaluationDraft: Codable, Hashable, Sendable {
         self.note = validated.note
     }
 
+    public init(_ evaluation: PortableResearcherEvaluation) throws {
+        try self.init(
+            observedIssues: evaluation.observedIssues,
+            noIssuesObserved: evaluation.noIssuesObserved,
+            valuableDiscovery: evaluation.valuableDiscovery,
+            note: evaluation.note
+        )
+    }
+
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case observedIssues = "observed_issues"
         case noIssuesObserved = "no_issues_observed"
@@ -308,51 +317,130 @@ public struct ResearchMethodFeedbackDraft: Codable, Hashable, Sendable {
     }
 }
 
-public enum PortableResearchMethodFeedbackMutationError: LocalizedError,
-    Hashable, Sendable
-{
-    case staleCommentRevision
-    case finalizedResultChanged
-    case sourceEvaluationChanged
-    case recordUnavailable
+/// One editor payload for the researcher-owned Evaluation and Method Feedback
+/// partitions. The portable store validates and replaces both in one CAS.
+public struct ResearcherResponseDraft: Hashable, Sendable {
+    public let evaluation: ResearcherEvaluationDraft?
+    public let methodFeedbackText: String?
 
-    public var errorDescription: String? {
-        switch self {
-        case .staleCommentRevision:
-            "The Method feedback comment changed elsewhere; reload without discarding the local draft."
-        case .finalizedResultChanged:
-            "The finalized Research Result no longer matches this Method feedback form."
-        case .sourceEvaluationChanged:
-            "The Researcher Evaluation changed before this Method feedback comment could be saved."
-        case .recordUnavailable:
-            "The Research Record is no longer available for Method feedback."
+    public init(
+        evaluation: ResearcherEvaluationDraft?,
+        methodFeedbackText: String?
+    ) throws {
+        let normalizedFeedback = methodFeedbackText?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedFeedback, !normalizedFeedback.isEmpty {
+            _ = try ResearchMethodFeedbackDraft(text: normalizedFeedback)
+            self.methodFeedbackText = normalizedFeedback
+        } else {
+            self.methodFeedbackText = nil
         }
+        self.evaluation = evaluation
     }
 }
 
-public enum PortableResearchEvaluationMutationError: LocalizedError, Hashable,
-    Sendable
-{
+public enum PortableResearcherResponseMutationError: LocalizedError,
+    Hashable, Sendable {
     case staleEvaluationRevision
+    case staleMethodFeedbackRevision
     case finalizedResultChanged
     case recordUnavailable
 
     public var errorDescription: String? {
         switch self {
         case .staleEvaluationRevision:
-            "The Researcher Evaluation changed elsewhere; reload without discarding the local draft."
+            "The Researcher Evaluation changed elsewhere; reload without discarding the local response."
+        case .staleMethodFeedbackRevision:
+            "The Method Feedback changed elsewhere; reload without discarding the local response."
         case .finalizedResultChanged:
-            "The finalized Research Result no longer matches this evaluation form."
+            "The finalized Research Result no longer matches this researcher response."
         case .recordUnavailable:
-            "The Research Record is no longer available for evaluation."
+            "The Research Record is no longer available for a researcher response."
+        }
+    }
+}
+
+public enum PortableResearcherReviewMutationError: LocalizedError,
+    Hashable, Sendable {
+    case staleReviewRevision
+    case finalizedResultChanged
+    case recordUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .staleReviewRevision:
+            "The source-change decision changed elsewhere; reload before continuing."
+        case .finalizedResultChanged:
+            "The finalized Research Result no longer matches this source-change decision."
+        case .recordUnavailable:
+            "The Research Record is no longer available for source-change review."
+        }
+    }
+}
+
+public enum ResearchRecordChangeUndoStatus: Hashable, Sendable {
+    case restored
+    case alreadyAtStartingRevision
+    case conflict
+    case unavailable
+    case commitUncertain
+}
+
+public struct ResearchRecordChangeUndoDocumentResult: Hashable, Identifiable, Sendable {
+    public let noteID: UUID
+    public let status: ResearchRecordChangeUndoStatus
+    public let observedRevision: DocumentFingerprint?
+
+    public var id: UUID { noteID }
+
+    public init(
+        noteID: UUID,
+        status: ResearchRecordChangeUndoStatus,
+        observedRevision: DocumentFingerprint?
+    ) {
+        self.noteID = noteID
+        self.status = status
+        self.observedRevision = observedRevision
+    }
+}
+
+public struct ResearchRecordChangesUndoResult: Sendable {
+    public let record: PortableResearchRecord
+    public let documents: [ResearchRecordChangeUndoDocumentResult]
+
+    public init(
+        record: PortableResearchRecord,
+        documents: [ResearchRecordChangeUndoDocumentResult]
+    ) {
+        self.record = record
+        self.documents = documents
+    }
+}
+
+public enum ResearchRecordChangeReviewError: LocalizedError, Hashable, Sendable {
+    case confirmedChangeNotFound(UUID)
+    case invalidSelection
+    case executionUnavailable
+    case checkpointMismatch(UUID)
+
+    public var errorDescription: String? {
+        switch self {
+        case .confirmedChangeNotFound:
+            "The selected note is not an Agent-confirmed change in this Research Record."
+        case .invalidSelection:
+            "Select at least one unresolved Agent-confirmed document."
+        case .executionUnavailable:
+            "The protected execution evidence required for direct undo is unavailable."
+        case .checkpointMismatch:
+            "The Before Agent Work checkpoint does not match the confirmed change baseline."
         }
     }
 }
 
 public extension PortableResearchRecord {
     /// Fingerprint of the finalized Agent/Scholium result partition. Mutable
-    /// researcher-owned recommendation disposition, evaluation, and method-
-    /// comment fields are excluded by construction.
+    /// researcher-owned recommendation disposition, response, and review-
+    /// disposition fields are excluded by construction.
     func finalizedResultFingerprint() throws -> DocumentFingerprint {
         let partition = PortableResearchFinalizedResultPartition(
             schemaVersion: schemaVersion,

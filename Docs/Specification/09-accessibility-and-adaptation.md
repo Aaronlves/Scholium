@@ -121,9 +121,12 @@
 - Bounded Write Set permission lists each document, role, operation, and stale
   or unavailable state, supports exact subset selection, and never makes one
   member appear authorized because another was selected.
-- Researcher Evaluation follows the result and uses the same fields, save
-  states, error handling, draft protection, and focus order in Action and Record
-  routes.
+- Copy Handoff success closes preparation and returns focus to the originating
+  Action row. Result arrival announces no focus change; the Action row and
+  actionable notification remain explicit routes to the exact Record.
+- The combined Researcher Response editor orders Evaluation before Method
+  Feedback and exposes one atomic Save Response state. Dirty, saving, stale,
+  failed, and explicit-clear confirmation are named without relying on color.
 
 ### Research Records
 
@@ -143,6 +146,12 @@
   Used disclose totals and become controls only when a complete popover exists;
   dismissal returns focus to the heading. Unresolved provenance remains
   selectable and noninteractive.
+- The processing rail reads Researcher Response, Change Decision, Effects,
+  Context Used, Participants, and Technical Details in that order at minimum
+  width and enlarged mixed-script settings. Compare Changes exposes document
+  disclosure state, selected complete documents, changed rows, folded unchanged
+  counts, and per-document undo outcomes; focus returns to the Result or
+  Conflict owner selected by its footer action.
 - Reading Lead detail retains one order from disposition and full citation
   through bibliography, discovery, reason, uncertainty, note, source, parent,
   and technical identity. Narrow or enlarged presentation stacks complete

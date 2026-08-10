@@ -49,19 +49,16 @@
 - Action sheets expose academic inputs, target and mutation consequence,
   handoff, active Run state, result, evaluation, cancellation, and recovery
   without exposing credentials, registration keys, protocol internals, or
-  implementation hashes.
+  implementation hashes. This remains the pre-cutover result presentation;
+  Records is not yet the sole result-processing route.
 - Action, Reading Lead note, and Researcher Evaluation sheets share the same
   fixed-header, scrolling-body, fixed-action layout while retaining separate
   workflow state and dimensions.
-- The Action and Record routes reuse one Researcher Evaluation field surface.
-  Saving locks its editable controls; a stale revision retains the local draft
-  as nonmutating **Out of Date** state until the researcher confirms reload,
-  which rereads the exact Record through the existing capability. Clear
-  explicitly discloses whether it also discards a local draft. Done and implicit
-  dismissal remain blocked while save, clear, or reload is unresolved. A
-  committed-refresh failure or commit-uncertain replacement remains
-  nonmutating and requires that reload; **Save Failed** means the mutation is
-  known not to have committed.
+- The Action and Record routes still expose separate Evaluation presentation,
+  but their adapters now save through the atomic Researcher Response
+  capability and preserve the other partition. The combined Response sheet,
+  fixed result-processing rail, Change Decision, and Compare Changes UI are not
+  yet reachable.
 
 ## Search, Attention, and Research Records
 

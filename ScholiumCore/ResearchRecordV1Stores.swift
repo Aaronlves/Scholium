@@ -478,122 +478,98 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    /// Atomically replaces the one current evaluation partition after both
-    /// its own optimistic revision and the immutable finalized result have
-    /// been revalidated under the portable-record lock.
+    /// Atomically replaces both researcher-response partitions after both
+    /// optimistic revisions and the immutable finalized result have been
+    /// revalidated under the portable-record lock.
     @discardableResult
-    public func setResearcherEvaluation(
-        _ draft: ResearcherEvaluationDraft,
+    public func saveResearcherResponse(
+        _ draft: ResearcherResponseDraft,
         recordID: UUID,
         expectedEvaluationRevision: UUID?,
+        expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint,
         updatedAt: Date = Date()
     ) throws -> PortableResearchRecord {
         try replaceFinishedRecord(id: recordID) { current in
+            guard current.kind == .action else {
+                throw PortableResearcherResponseMutationError.recordUnavailable
+            }
             guard try current.finalizedResultFingerprint()
                     == expectedResultFingerprint else {
-                throw PortableResearchEvaluationMutationError.finalizedResultChanged
+                throw PortableResearcherResponseMutationError.finalizedResultChanged
             }
             guard current.researcherEvaluation?.revision
                     == expectedEvaluationRevision else {
-                throw PortableResearchEvaluationMutationError.staleEvaluationRevision
-            }
-            let evaluation = try PortableResearcherEvaluation(
-                observedIssues: draft.observedIssues,
-                noIssuesObserved: draft.noIssuesObserved,
-                valuableDiscovery: draft.valuableDiscovery,
-                note: draft.note,
-                updatedAt: updatedAt
-            )
-            return try Self.replacingEvaluation(
-                in: current,
-                evaluation: evaluation
-            )
-        }
-    }
-
-    /// Clearing is the same compare-and-swap operation as save. Absence is
-    /// represented only by nil; no tombstone or second evaluation owner is
-    /// created.
-    @discardableResult
-    public func clearResearcherEvaluation(
-        recordID: UUID,
-        expectedEvaluationRevision: UUID,
-        expectedResultFingerprint: DocumentFingerprint
-    ) throws -> PortableResearchRecord {
-        try replaceFinishedRecord(id: recordID) { current in
-            guard try current.finalizedResultFingerprint()
-                    == expectedResultFingerprint else {
-                throw PortableResearchEvaluationMutationError.finalizedResultChanged
-            }
-            guard current.researcherEvaluation?.revision
-                    == expectedEvaluationRevision else {
-                throw PortableResearchEvaluationMutationError.staleEvaluationRevision
-            }
-            return try Self.replacingEvaluation(in: current, evaluation: nil)
-        }
-    }
-
-    /// Atomically replaces the one current, still-unhandled Method feedback
-    /// comment. The optional source evaluation revision is revalidated under
-    /// the same lock; no evaluation text is copied into a second owner.
-    @discardableResult
-    public func setMethodFeedbackComment(
-        _ draft: ResearchMethodFeedbackDraft,
-        recordID: UUID,
-        expectedCommentRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint,
-        updatedAt: Date = Date()
-    ) throws -> PortableResearchRecord {
-        try replaceFinishedRecord(id: recordID) { current in
-            guard try current.finalizedResultFingerprint()
-                    == expectedResultFingerprint else {
-                throw PortableResearchMethodFeedbackMutationError
-                    .finalizedResultChanged
+                throw PortableResearcherResponseMutationError.staleEvaluationRevision
             }
             guard current.methodFeedbackComment?.revision
-                    == expectedCommentRevision else {
-                throw PortableResearchMethodFeedbackMutationError
-                    .staleCommentRevision
+                    == expectedMethodFeedbackRevision else {
+                throw PortableResearcherResponseMutationError
+                    .staleMethodFeedbackRevision
             }
-            if let sourceRevision = draft.sourceEvaluationRevision {
-                guard current.researcherEvaluation?.revision == sourceRevision else {
-                    throw PortableResearchMethodFeedbackMutationError
-                        .sourceEvaluationChanged
+            let evaluation: PortableResearcherEvaluation?
+            if let evaluationDraft = draft.evaluation {
+                if let existing = current.researcherEvaluation,
+                   Self.matches(existing, draft: evaluationDraft) {
+                    evaluation = existing
+                } else {
+                    evaluation = try PortableResearcherEvaluation(
+                        observedIssues: evaluationDraft.observedIssues,
+                        noIssuesObserved: evaluationDraft.noIssuesObserved,
+                        valuableDiscovery: evaluationDraft.valuableDiscovery,
+                        note: evaluationDraft.note,
+                        updatedAt: updatedAt
+                    )
                 }
+            } else {
+                evaluation = nil
             }
-            let comment = try PortableResearchMethodFeedbackComment(
-                text: draft.text,
-                sourceEvaluationRevision: draft.sourceEvaluationRevision,
-                updatedAt: updatedAt
-            )
-            return try Self.replacingMethodFeedbackComment(
+            let feedback: PortableResearchMethodFeedbackComment?
+            if let feedbackText = draft.methodFeedbackText {
+                if let existing = current.methodFeedbackComment,
+                   existing.text == feedbackText,
+                   existing.sourceEvaluationRevision == evaluation?.revision {
+                    feedback = existing
+                } else {
+                    feedback = try PortableResearchMethodFeedbackComment(
+                        text: feedbackText,
+                        sourceEvaluationRevision: evaluation?.revision,
+                        updatedAt: updatedAt
+                    )
+                }
+            } else {
+                feedback = nil
+            }
+            return try Self.replacingResearcherResponse(
                 in: current,
-                comment: comment
+                evaluation: evaluation,
+                methodFeedbackComment: feedback
             )
         }
     }
 
+    /// Replaces the one researcher-owned review partition. Application owns
+    /// deriving factual outcomes; the store owns only aggregate validation and
+    /// the finalized-result/review-revision CAS.
     @discardableResult
-    public func clearMethodFeedbackComment(
+    public func saveResearcherReviewDisposition(
+        _ disposition: PortableResearcherReviewDisposition,
         recordID: UUID,
-        expectedCommentRevision: UUID,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) throws -> PortableResearchRecord {
         try replaceFinishedRecord(id: recordID) { current in
             guard try current.finalizedResultFingerprint()
                     == expectedResultFingerprint else {
-                throw PortableResearchMethodFeedbackMutationError
-                    .finalizedResultChanged
+                throw PortableResearcherReviewMutationError.finalizedResultChanged
             }
-            guard current.methodFeedbackComment?.revision
-                    == expectedCommentRevision else {
-                throw PortableResearchMethodFeedbackMutationError
-                    .staleCommentRevision
+            guard current.researcherReviewDisposition?.revision
+                    == expectedReviewRevision else {
+                throw PortableResearcherReviewMutationError.staleReviewRevision
             }
-            return try Self.replacingMethodFeedbackComment(
+            return try Self.replacingResearcherReviewDisposition(
                 in: current,
-                comment: nil
+                disposition: disposition
             )
         }
     }
@@ -1619,7 +1595,8 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment
+            methodFeedbackComment: record.methodFeedbackComment,
+            researcherReviewDisposition: record.researcherReviewDisposition
         )
     }
 
@@ -1650,13 +1627,15 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment
+            methodFeedbackComment: record.methodFeedbackComment,
+            researcherReviewDisposition: record.researcherReviewDisposition
         )
     }
 
-    private static func replacingEvaluation(
+    private static func replacingResearcherResponse(
         in record: PortableResearchRecord,
-        evaluation: PortableResearcherEvaluation?
+        evaluation: PortableResearcherEvaluation?,
+        methodFeedbackComment: PortableResearchMethodFeedbackComment?
     ) throws -> PortableResearchRecord {
         try PortableResearchRecord(
             id: record.id,
@@ -1681,13 +1660,24 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: evaluation,
-            methodFeedbackComment: record.methodFeedbackComment
+            methodFeedbackComment: methodFeedbackComment,
+            researcherReviewDisposition: record.researcherReviewDisposition
         )
     }
 
-    private static func replacingMethodFeedbackComment(
+    private static func matches(
+        _ evaluation: PortableResearcherEvaluation,
+        draft: ResearcherEvaluationDraft
+    ) -> Bool {
+        evaluation.observedIssues == draft.observedIssues
+            && evaluation.noIssuesObserved == draft.noIssuesObserved
+            && evaluation.valuableDiscovery == draft.valuableDiscovery
+            && evaluation.note == draft.note
+    }
+
+    private static func replacingResearcherReviewDisposition(
         in record: PortableResearchRecord,
-        comment: PortableResearchMethodFeedbackComment?
+        disposition: PortableResearcherReviewDisposition
     ) throws -> PortableResearchRecord {
         try PortableResearchRecord(
             id: record.id,
@@ -1712,7 +1702,8 @@ public actor PortableResearchRecordStore {
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
             researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: comment
+            methodFeedbackComment: record.methodFeedbackComment,
+            researcherReviewDisposition: disposition
         )
     }
 

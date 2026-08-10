@@ -882,7 +882,7 @@ struct ResearchActionControllerTests {
             snapshot: prepared.snapshot
         )
         await #expect(
-            throws: PortableResearchEvaluationMutationError.recordUnavailable
+            throws: PortableResearcherResponseMutationError.recordUnavailable
         ) {
             _ = try await controller.reloadResearcherEvaluation()
         }
@@ -899,7 +899,7 @@ struct ResearchActionControllerTests {
         },
         reloadRecord: @escaping @MainActor (UUID) async throws
             -> PortableResearchRecord = { _ in
-                throw PortableResearchEvaluationMutationError.recordUnavailable
+                throw PortableResearcherResponseMutationError.recordUnavailable
             }
     ) -> ResearchActionClient {
         ResearchActionClient(

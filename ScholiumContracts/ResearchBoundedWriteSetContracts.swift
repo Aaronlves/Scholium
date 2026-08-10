@@ -781,7 +781,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         warning: String? = nil,
         recoveryRecordID: UUID? = nil
     ) throws {
-        guard actor != .unknown,
+        guard actor == .agent,
               ResearchBoundedWriteValidation.validFingerprint(requestFingerprint),
               ResearchBoundedWriteValidation.validFingerprint(expectedRevision),
               ResearchBoundedWriteValidation.validFingerprint(intendedRevision),

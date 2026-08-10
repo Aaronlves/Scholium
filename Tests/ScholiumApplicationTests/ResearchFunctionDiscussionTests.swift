@@ -130,6 +130,18 @@ extension ResearchFunctionOperationsTests {
         #expect(record == repeated)
         #expect(record.kind == .discussion)
         #expect(record.statements.count == 2)
+        await #expect(throws: PortableResearcherResponseMutationError.recordUnavailable) {
+            _ = try await handle.research.saveResearcherResponse(
+                recordID: record.id,
+                draft: ResearcherResponseDraft(
+                    evaluation: ResearcherEvaluationDraft(noIssuesObserved: true),
+                    methodFeedbackText: nil
+                ),
+                expectedEvaluationRevision: nil,
+                expectedMethodFeedbackRevision: nil,
+                expectedResultFingerprint: try record.finalizedResultFingerprint()
+            )
+        }
         #expect(try await handle.snapshot().research.activeDiscussions.allSatisfy {
             $0.id != preparation.runID
         })
@@ -216,7 +228,7 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Research Record deletion and exact comparison stay outside source authority")
+    @Test("Discussion source changes are not exposed as Agent-confirmed comparison")
     func researchRecordDeletionAndExactComparison() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -268,20 +280,12 @@ extension ResearchFunctionOperationsTests {
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
         let recordBytes = try Data(contentsOf: portableURL)
 
-        let comparison = try await handle.research.researchRecordComparison(
-            recordID: record.id,
-            noteID: target.noteID
-        )
-        #expect(comparison.startingRevision == original.fingerprint)
-        #expect(comparison.endingRevision == saved.document.fingerprint)
-        #expect(comparison.startingHasUTF8BOM)
-        #expect(comparison.endingHasUTF8BOM)
-        #expect(comparison.lines.contains {
-            $0.kind == .startingOnly && $0.text.contains("narrow reconstruction")
-        })
-        #expect(comparison.lines.contains {
-            $0.kind == .endingOnly && $0.text.contains("strictly bounded reconstruction")
-        })
+        await #expect(throws: ResearchRecordChangeReviewError.self) {
+            _ = try await handle.research.researchRecordComparison(
+                recordID: record.id,
+                noteID: target.noteID
+            )
+        }
         #expect(try Data(contentsOf: portableURL) == recordBytes)
 
         try await handle.research.deleteResearchRecordPermanently(id: record.id)
@@ -296,8 +300,8 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Research Record comparison refuses an unretained exact fingerprint")
-    func researchRecordComparisonRefusesMissingRevision() async throws {
+    @Test("Research Record comparison refuses a participant without a confirmed change")
+    func researchRecordComparisonRefusesUnconfirmedParticipant() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -314,24 +318,7 @@ extension ResearchFunctionOperationsTests {
             researcherMessage: "Do not approximate unavailable bytes."
         )
         let record = try await handle.research.finishDiscussion(discussionID: discussion.id)
-        let portableURL = fixture.rootURL
-            .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
-            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
-        var object = try #require(
-            JSONSerialization.jsonObject(with: Data(contentsOf: portableURL)) as? [String: Any]
-        )
-        var participants = try #require(object["participating_notes"] as? [[String: Any]])
-        participants[0]["starting_revision"] = [
-            "sha256": String(repeating: "0", count: 64),
-            "byteCount": 1,
-        ]
-        object["participating_notes"] = participants
-        try JSONSerialization.data(
-            withJSONObject: object,
-            options: [.prettyPrinted, .sortedKeys]
-        ).write(to: portableURL, options: .atomic)
-
-        await #expect(throws: ResearchRecordComparisonError.self) {
+        await #expect(throws: ResearchRecordChangeReviewError.self) {
             _ = try await handle.research.researchRecordComparison(
                 recordID: record.id,
                 noteID: target.noteID

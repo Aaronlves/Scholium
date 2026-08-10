@@ -543,6 +543,10 @@ enum WorkspaceSnapshotBuilder {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
+        let activities = researchActivities(
+            executions: localExecutionListing.records,
+            records: finishedResearchRecordListing.records
+        )
         let research = WorkspaceResearchSnapshot(
             settlements: settlements,
             activeDiscussions: activeDiscussionListing.issues.isEmpty
@@ -561,6 +565,7 @@ enum WorkspaceSnapshotBuilder {
             critiques: critiqueAssociations,
             checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,
+            activities: activities,
             healthIssues: Array(Set(healthIssues)).sorted()
         )
         let snapshot = WorkspaceSnapshot(
@@ -723,6 +728,75 @@ enum WorkspaceSnapshotBuilder {
             topicNoteID: topicNoteID,
             materialNoteID: materialNoteID
         )]?.record.id == recordID
+    }
+
+    private static func researchActivities(
+        executions: [LocalResearchExecutionRecord],
+        records: [PortableResearchRecord]
+    ) -> [WorkspaceResearchActivity] {
+        let recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+        return executions.compactMap { execution in
+            guard let action = execution.snapshot.actionSnapshot,
+                  action.actionID != .discuss else { return nil }
+            let record = recordsByID[execution.id]
+            let recordFingerprint = record.flatMap {
+                try? $0.finalizedResultFingerprint()
+            }
+            let entryStates = execution.boundedWriteSet.entries.map(\.state)
+            let state: WorkspaceResearchActivityState
+            let repairReason: WorkspaceResearchActivityRepairReason?
+
+            if entryStates.contains(.recoveryRequired) {
+                state = .needsAttention
+                repairReason = .recoveryRequired
+            } else if entryStates.contains(.conflict) {
+                state = .needsAttention
+                repairReason = .sourceConflict
+            } else if entryStates.contains(.stale)
+                || execution.completion?.state == .stale {
+                state = .needsAttention
+                repairReason = .sourceChanged
+            } else if let record, !record.researcherReviewIsComplete {
+                state = .resultReady
+                repairReason = nil
+            } else if record != nil {
+                return nil
+            } else if execution.completion.map({
+                [.complete, .unverified].contains($0.state)
+            }) == true {
+                state = .needsAttention
+                repairReason = .recordUnavailable
+            } else if execution.completion?.state == .cancelled {
+                return nil
+            } else if !execution.documentWriteRecords.isEmpty
+                || execution.resultPayload != nil
+                || execution.completion?.state == .awaitingFidelity {
+                state = .running
+                repairReason = nil
+            } else {
+                state = .waitingForAgent
+                repairReason = nil
+            }
+
+            let updatedAt = execution.documentWriteRecords.reduce(
+                execution.snapshot.preparedAt
+            ) { latest, write in
+                max(latest, write.finishedAt ?? write.startedAt)
+            }
+            return WorkspaceResearchActivity(
+                runID: execution.id,
+                actionID: action.actionID,
+                targetNoteID: action.target.noteID,
+                state: state,
+                recordID: record?.id,
+                recordFingerprint: recordFingerprint,
+                repairReason: repairReason,
+                updatedAt: max(updatedAt, execution.completion?.completedAt ?? updatedAt)
+            )
+        }.sorted {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.runID.uuidString < $1.runID.uuidString
+        }
     }
 
     /// Rebuilds the latest completed Synthesize use relationship for each

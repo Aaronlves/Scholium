@@ -5,7 +5,7 @@ import ScholiumContracts
 @Suite("Document conflict comparison")
 struct DocumentConflictTests {
     @Test("Comparison preserves insertions and removals around unchanged lines")
-    func alignedComparison() {
+    func alignedComparison() throws {
         let snapshot = DocumentConflictSnapshot(
             relativePath: "Notes/Conflict.md",
             editorSource: "alpha\nlocal\nomega\n",
@@ -13,14 +13,11 @@ struct DocumentConflictTests {
             baseRevision: DocumentFingerprint(content: "alpha\nomega\n")
         )
 
-        #expect(snapshot.comparisonLines == [
-            DocumentConflictLine(kind: .diskOnly, text: "disk"),
-            DocumentConflictLine(kind: .unchanged, text: "alpha"),
-            DocumentConflictLine(kind: .editorOnly, text: "local"),
-            DocumentConflictLine(kind: .unchanged, text: "omega"),
-            DocumentConflictLine(kind: .diskOnly, text: "external"),
-            DocumentConflictLine(kind: .unchanged, text: ""),
-        ])
+        let lines = try snapshot.exactComparison().lines
+        #expect(lines.contains { $0.kind == .endingOnly && $0.text == "disk" })
+        #expect(lines.contains { $0.kind == .startingOnly && $0.text == "local" })
+        #expect(lines.contains { $0.kind == .endingOnly && $0.text == "external" })
+        #expect(lines.filter { $0.kind == .unchanged }.map(\.text) == ["alpha", "omega"])
     }
 
     @Test("Snapshot binds the displayed sources to exact revisions")
@@ -40,7 +37,7 @@ struct DocumentConflictTests {
     }
 
     @Test("Repeated lines remain represented without dropping source text")
-    func repeatedLines() {
+    func repeatedLines() throws {
         let snapshot = DocumentConflictSnapshot(
             relativePath: "Repeated.md",
             editorSource: "same\nlocal\nsame",
@@ -48,8 +45,9 @@ struct DocumentConflictTests {
             baseRevision: DocumentFingerprint(content: "same\nsame")
         )
 
-        let editorOnly = snapshot.comparisonLines.filter { $0.kind == .editorOnly }.map(\.text)
-        let diskOnly = snapshot.comparisonLines.filter { $0.kind == .diskOnly }.map(\.text)
+        let lines = try snapshot.exactComparison().lines
+        let editorOnly = lines.filter { $0.kind == .startingOnly }.map(\.text)
+        let diskOnly = lines.filter { $0.kind == .endingOnly }.map(\.text)
         #expect(editorOnly == ["local"])
         #expect(diskOnly == ["disk"])
     }

@@ -1057,12 +1057,56 @@ public actor TriptychCheckpointStore {
         roots: TriptychRoots,
         repositories: [WorkspaceVaultSlot: VaultRepository]
     ) async throws -> TriptychCheckpointRestoreResult {
+        try await restoreNoteFile(
+            checkpointID: checkpointID,
+            sourceKey: sourceKey,
+            destinationKey: destinationKey,
+            expectedDestinationRevision: expectedDestinationRevision,
+            permitsMappedResearchContinuation: false,
+            roots: roots,
+            repositories: repositories
+        )
+    }
+
+    /// Restores an Agent change baseline after Application has independently
+    /// bound the checkpoint source and current destination to the same stable
+    /// Note identity. This is the only route that permits a renamed Note to use
+    /// a research-continuation checkpoint.
+    public func restoreResearchActionNoteFile(
+        checkpointID: UUID,
+        sourceKey: TriptychCheckpointFileKey,
+        destinationKey: TriptychCheckpointFileKey,
+        expectedDestinationRevision: DocumentFingerprint,
+        roots: TriptychRoots,
+        repositories: [WorkspaceVaultSlot: VaultRepository]
+    ) async throws -> TriptychCheckpointRestoreResult {
+        try await restoreNoteFile(
+            checkpointID: checkpointID,
+            sourceKey: sourceKey,
+            destinationKey: destinationKey,
+            expectedDestinationRevision: expectedDestinationRevision,
+            permitsMappedResearchContinuation: true,
+            roots: roots,
+            repositories: repositories
+        )
+    }
+
+    private func restoreNoteFile(
+        checkpointID: UUID,
+        sourceKey: TriptychCheckpointFileKey,
+        destinationKey: TriptychCheckpointFileKey,
+        expectedDestinationRevision: DocumentFingerprint?,
+        permitsMappedResearchContinuation: Bool,
+        roots: TriptychRoots,
+        repositories: [WorkspaceVaultSlot: VaultRepository]
+    ) async throws -> TriptychCheckpointRestoreResult {
         guard sourceKey.area == destinationKey.area else {
             throw TriptychCheckpointError.invalidRelativePath(destinationKey.relativePath)
         }
         let checkpoint = try checkpoint(id: checkpointID)
         guard checkpoint.kind != .researchContinuation
-                || sourceKey == destinationKey else {
+                || sourceKey == destinationKey
+                || permitsMappedResearchContinuation else {
             throw TriptychCheckpointError.invalidRelativePath(
                 destinationKey.relativePath
             )

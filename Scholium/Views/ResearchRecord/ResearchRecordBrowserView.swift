@@ -15,17 +15,12 @@ struct ResearchRecordBrowserContext {
             UUID,
             String?
         ) async throws -> PortableResearchRecord
-    let saveEvaluation:
+    let saveResponse:
         @MainActor (
             UUID,
-            ResearcherEvaluationDraft,
+            ResearcherResponseDraft,
             UUID?,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord
-    let clearEvaluation:
-        @MainActor (
-            UUID,
-            UUID,
+            UUID?,
             DocumentFingerprint
         ) async throws -> PortableResearchRecord
     let reloadEvaluation:
@@ -2256,29 +2251,40 @@ private struct ResearchRecordWorkspaceView: View {
                     participants: record.participatingNotes
                 )
 
-                ScholiumStructuralRule()
-                ResearchRecordResearcherEvaluationSection(
-                    record: record,
-                    save: { draft, expectedRevision, resultFingerprint in
-                        try await context.saveEvaluation(
-                            record.id,
-                            draft,
-                            expectedRevision,
-                            resultFingerprint
-                        )
-                    },
-                    clear: { expectedRevision, resultFingerprint in
-                        try await context.clearEvaluation(
-                            record.id,
-                            expectedRevision,
-                            resultFingerprint
-                        )
-                    },
-                    reload: {
-                        try await context.reloadEvaluation(record.id)
-                    },
-                    didUpdateRecord: model.acceptUpdatedRecord
-                )
+                if record.kind == .action {
+                    ScholiumStructuralRule()
+                    ResearchRecordResearcherEvaluationSection(
+                        record: record,
+                        save: { draft, expectedRevision, resultFingerprint in
+                            try await context.saveResponse(
+                                record.id,
+                                try ResearcherResponseDraft(
+                                    evaluation: draft,
+                                    methodFeedbackText: record.methodFeedbackComment?.text
+                                ),
+                                expectedRevision,
+                                record.methodFeedbackComment?.revision,
+                                resultFingerprint
+                            )
+                        },
+                        clear: { expectedRevision, resultFingerprint in
+                            try await context.saveResponse(
+                                record.id,
+                                try ResearcherResponseDraft(
+                                    evaluation: nil,
+                                    methodFeedbackText: record.methodFeedbackComment?.text
+                                ),
+                                expectedRevision,
+                                record.methodFeedbackComment?.revision,
+                                resultFingerprint
+                            )
+                        },
+                        reload: {
+                            try await context.reloadEvaluation(record.id)
+                        },
+                        didUpdateRecord: model.acceptUpdatedRecord
+                    )
+                }
 
                 ScholiumStructuralRule()
                 ResearchRecordTechnicalDetails(record: record)

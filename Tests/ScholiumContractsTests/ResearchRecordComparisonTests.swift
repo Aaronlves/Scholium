@@ -3,7 +3,7 @@ import ScholiumContracts
 import Testing
 
 @Suite("Disposable Research Record comparison")
-struct ResearchRecordComparisonTests {
+struct ExactSourceComparisonTests {
     @Test("Comparison is exact across BOM and mixed line endings")
     func exactByteComparison() throws {
         let starting = Data([0xEF, 0xBB, 0xBF]) + Data("first\r\nold\r\n".utf8)
@@ -11,7 +11,7 @@ struct ResearchRecordComparisonTests {
         let startingRevision = DocumentFingerprint(data: starting)
         let endingRevision = DocumentFingerprint(data: ending)
 
-        let comparison = try ResearchRecordComparisonBuilder.build(
+        let comparison = try ExactSourceComparisonBuilder.build(
             startingData: starting,
             endingData: ending,
             startingRevision: startingRevision,
@@ -29,7 +29,7 @@ struct ResearchRecordComparisonTests {
             $0.kind == .endingOnly && $0.text == "new" && $0.lineEnding == .lf
         })
         #expect(comparison.lines.last?.text == "last")
-        #expect(comparison.lines.last?.lineEnding == ResearchRecordComparisonLineEnding.none)
+        #expect(comparison.lines.last?.lineEnding == ExactSourceComparisonLineEnding.none)
     }
 
     @Test("Large comparison cooperatively cancels")
@@ -37,7 +37,7 @@ struct ResearchRecordComparisonTests {
         let starting = Data((0..<250_000).map { "old-\($0)\n" }.joined().utf8)
         let ending = Data((0..<250_000).map { "new-\($0)\n" }.joined().utf8)
         let task = Task.detached {
-            try ResearchRecordComparisonBuilder.build(
+            try ExactSourceComparisonBuilder.build(
                 startingData: starting,
                 endingData: ending,
                 startingRevision: DocumentFingerprint(data: starting),
@@ -53,8 +53,8 @@ struct ResearchRecordComparisonTests {
     @Test("Comparison refuses bytes that mismatch a recorded fingerprint")
     func mismatchedFingerprintRefusal() {
         let recorded = DocumentFingerprint(content: "recorded")
-        #expect(throws: ResearchRecordComparisonError.self) {
-            _ = try ResearchRecordComparisonBuilder.build(
+        #expect(throws: ExactSourceComparisonError.self) {
+            _ = try ExactSourceComparisonBuilder.build(
                 startingData: Data("different".utf8),
                 endingData: Data("recorded".utf8),
                 startingRevision: recorded,

@@ -777,19 +777,27 @@ extension ResearchFunctionCoordinator {
         let writeRecords = stored.documentWriteRecords
         var boundedWriteStartingRevisions: [UUID: DocumentFingerprint] = [:]
         for entry in stored.boundedWriteSet.entries {
-            let starting = writeRecords
-                .filter { $0.target == entry.handle }
-                .min(by: { $0.startedAt < $1.startedAt })?
-                .expectedRevision ?? entry.expectedRevision
-            boundedWriteStartingRevisions[entry.noteID] = starting
-            noteSnapshots[entry.noteID] = ResearchActionNoteSnapshot(
-                noteID: entry.noteID,
-                note: entry.note,
-                role: entry.role,
-                lifecycle: .active,
-                fingerprint: starting,
-                title: entry.title
-            )
+            let firstCommitted = writeRecords
+                .filter {
+                    $0.target == entry.handle
+                        && $0.actor == .agent
+                        && $0.state == .committed
+                }
+                .min(by: { $0.startedAt < $1.startedAt })
+            if let firstCommitted {
+                boundedWriteStartingRevisions[entry.noteID] =
+                    firstCommitted.expectedRevision
+            }
+            if noteSnapshots[entry.noteID] == nil {
+                noteSnapshots[entry.noteID] = ResearchActionNoteSnapshot(
+                    noteID: entry.noteID,
+                    note: entry.note,
+                    role: entry.role,
+                    lifecycle: .active,
+                    fingerprint: entry.expectedRevision,
+                    title: entry.title
+                )
+            }
         }
 
         var endingRevisions: [UUID: DocumentFingerprint] = [:]
@@ -824,13 +832,6 @@ extension ResearchFunctionCoordinator {
                     endingRevision: ending
                 ))
             }
-        } else if completion.targetFingerprint != actionSnapshot.target.fingerprint {
-            changes.append(try PortableResearchConfirmedChange(
-                noteID: actionSnapshot.target.noteID,
-                actor: .agent,
-                startingRevision: actionSnapshot.target.fingerprint,
-                endingRevision: completion.targetFingerprint
-            ))
         }
         let discrepancies: [PortableResearchDiscrepancy] = []
 

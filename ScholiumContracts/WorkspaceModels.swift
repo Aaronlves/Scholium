@@ -325,6 +325,56 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
 /// Research-record projection for one complete workspace generation. Durable
 /// mutations are performed only through `ResearchOperations`; this value is
 /// immutable delivery-neutral state for GUI, CLI, and future snapshot readers.
+public enum WorkspaceResearchActivityState: String, Hashable, Sendable {
+    case waitingForAgent
+    case running
+    case needsAttention
+    case resultReady
+}
+
+public enum WorkspaceResearchActivityRepairReason: String, Hashable, Sendable {
+    case sourceConflict
+    case sourceChanged
+    case recoveryRequired
+    case recordUnavailable
+}
+
+/// A privacy-bounded projection over machine-local execution and portable
+/// Record truth. It contains no handoff secret, checkpoint identity, source
+/// bytes, or tool trace and is never a durable workflow owner.
+public struct WorkspaceResearchActivity: Hashable, Identifiable, Sendable {
+    public let runID: UUID
+    public let actionID: ResearchActionID
+    public let targetNoteID: UUID
+    public let state: WorkspaceResearchActivityState
+    public let recordID: UUID?
+    public let recordFingerprint: DocumentFingerprint?
+    public let repairReason: WorkspaceResearchActivityRepairReason?
+    public let updatedAt: Date
+
+    public var id: UUID { runID }
+
+    public init(
+        runID: UUID,
+        actionID: ResearchActionID,
+        targetNoteID: UUID,
+        state: WorkspaceResearchActivityState,
+        recordID: UUID? = nil,
+        recordFingerprint: DocumentFingerprint? = nil,
+        repairReason: WorkspaceResearchActivityRepairReason? = nil,
+        updatedAt: Date
+    ) {
+        self.runID = runID
+        self.actionID = actionID
+        self.targetNoteID = targetNoteID
+        self.state = state
+        self.recordID = recordID
+        self.recordFingerprint = recordFingerprint
+        self.repairReason = repairReason
+        self.updatedAt = updatedAt
+    }
+}
+
 public struct WorkspaceResearchSnapshot: Sendable {
     public let settlements: [SettlementRecord]
     public let activeDiscussions: [PortableResearchDiscussion]
@@ -340,6 +390,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let critiques: [CritiqueAssociation]
     public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
+    public let activities: [WorkspaceResearchActivity]
     public let healthIssues: [String]
 
     public init(
@@ -352,6 +403,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
         critiques: [CritiqueAssociation],
         checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
+        activities: [WorkspaceResearchActivity] = [],
         healthIssues: [String]
     ) {
         self.settlements = settlements
@@ -364,6 +416,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.critiques = critiques
         self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords
+        self.activities = activities
         self.healthIssues = healthIssues
     }
 }

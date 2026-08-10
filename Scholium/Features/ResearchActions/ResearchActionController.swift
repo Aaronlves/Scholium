@@ -23,29 +23,14 @@ struct ResearchActionClient {
     ) async throws -> ResearchActionPreparation
     let handoff: @MainActor (UUID) async throws -> ResearchAgentHandoff
     let cancel: @MainActor (UUID) async throws -> Void
-    let saveEvaluation: @MainActor (
+    let saveResponse: @MainActor (
         UUID,
-        ResearcherEvaluationDraft,
+        ResearcherResponseDraft,
         UUID?,
-        DocumentFingerprint
-    ) async throws -> PortableResearchRecord
-    let clearEvaluation: @MainActor (
-        UUID,
-        UUID,
+        UUID?,
         DocumentFingerprint
     ) async throws -> PortableResearchRecord
     let reloadRecord: @MainActor (UUID) async throws -> PortableResearchRecord
-    let saveMethodFeedback: @MainActor (
-        UUID,
-        ResearchMethodFeedbackDraft,
-        UUID?,
-        DocumentFingerprint
-    ) async throws -> PortableResearchRecord
-    let clearMethodFeedback: @MainActor (
-        UUID,
-        UUID,
-        DocumentFingerprint
-    ) async throws -> PortableResearchRecord
     let startMethodImprovement: @MainActor (UUID) async throws
         -> ResearchAgentHandoff
     let openActiveDiscussion: @MainActor (UUID) -> Void
@@ -60,40 +45,19 @@ struct ResearchActionClient {
             throw ResearchActionExecutionContractError.staleResolution
         },
         cancel: @escaping @MainActor (UUID) async throws -> Void,
-        saveEvaluation: @escaping @MainActor (
+        saveResponse: @escaping @MainActor (
             UUID,
-            ResearcherEvaluationDraft,
+            ResearcherResponseDraft,
+            UUID?,
             UUID?,
             DocumentFingerprint
-        ) async throws -> PortableResearchRecord = { _, _, _, _ in
-            throw PortableResearchEvaluationMutationError.recordUnavailable
-        },
-        clearEvaluation: @escaping @MainActor (
-            UUID,
-            UUID,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord = { _, _, _ in
-            throw PortableResearchEvaluationMutationError.recordUnavailable
+        ) async throws -> PortableResearchRecord = { _, _, _, _, _ in
+            throw PortableResearcherResponseMutationError.recordUnavailable
         },
         reloadRecord: @escaping @MainActor (UUID) async throws
             -> PortableResearchRecord = { _ in
-                throw PortableResearchEvaluationMutationError.recordUnavailable
+                throw PortableResearcherResponseMutationError.recordUnavailable
             },
-        saveMethodFeedback: @escaping @MainActor (
-            UUID,
-            ResearchMethodFeedbackDraft,
-            UUID?,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord = { _, _, _, _ in
-            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
-        },
-        clearMethodFeedback: @escaping @MainActor (
-            UUID,
-            UUID,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord = { _, _, _ in
-            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
-        },
         startMethodImprovement: @escaping @MainActor (UUID) async throws
             -> ResearchAgentHandoff = { _ in
                 throw ResearchMethodImprovementError.runUnavailable
@@ -107,11 +71,8 @@ struct ResearchActionClient {
         self.prepare = prepare
         self.handoff = handoff
         self.cancel = cancel
-        self.saveEvaluation = saveEvaluation
-        self.clearEvaluation = clearEvaluation
+        self.saveResponse = saveResponse
         self.reloadRecord = reloadRecord
-        self.saveMethodFeedback = saveMethodFeedback
-        self.clearMethodFeedback = clearMethodFeedback
         self.startMethodImprovement = startMethodImprovement
         self.openActiveDiscussion = openActiveDiscussion
     }
@@ -244,12 +205,17 @@ final class ResearchActionController: ObservableObject {
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         guard let client, let record = resultRecord else {
-            throw PortableResearchEvaluationMutationError.recordUnavailable
+            throw PortableResearcherResponseMutationError.recordUnavailable
         }
-        let updated = try await client.saveEvaluation(
+        let response = try ResearcherResponseDraft(
+            evaluation: draft,
+            methodFeedbackText: record.methodFeedbackComment?.text
+        )
+        let updated = try await client.saveResponse(
             record.id,
-            draft,
+            response,
             expectedEvaluationRevision,
+            record.methodFeedbackComment?.revision,
             expectedResultFingerprint
         )
         resultRecord = updated
@@ -261,11 +227,17 @@ final class ResearchActionController: ObservableObject {
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         guard let client, let record = resultRecord else {
-            throw PortableResearchEvaluationMutationError.recordUnavailable
+            throw PortableResearcherResponseMutationError.recordUnavailable
         }
-        let updated = try await client.clearEvaluation(
+        let response = try ResearcherResponseDraft(
+            evaluation: nil,
+            methodFeedbackText: record.methodFeedbackComment?.text
+        )
+        let updated = try await client.saveResponse(
             record.id,
+            response,
             expectedEvaluationRevision,
+            record.methodFeedbackComment?.revision,
             expectedResultFingerprint
         )
         resultRecord = updated
@@ -274,11 +246,11 @@ final class ResearchActionController: ObservableObject {
 
     func reloadResearcherEvaluation() async throws -> PortableResearchRecord {
         guard let client, let record = resultRecord else {
-            throw PortableResearchEvaluationMutationError.recordUnavailable
+            throw PortableResearcherResponseMutationError.recordUnavailable
         }
         let updated = try await client.reloadRecord(record.id)
         guard updated.id == record.id else {
-            throw PortableResearchEvaluationMutationError.recordUnavailable
+            throw PortableResearcherResponseMutationError.recordUnavailable
         }
         resultRecord = updated
         return updated
@@ -290,11 +262,16 @@ final class ResearchActionController: ObservableObject {
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         guard let client, let record = resultRecord else {
-            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
+            throw PortableResearcherResponseMutationError.recordUnavailable
         }
-        let updated = try await client.saveMethodFeedback(
+        let response = try ResearcherResponseDraft(
+            evaluation: try record.researcherEvaluation.map(ResearcherEvaluationDraft.init),
+            methodFeedbackText: draft.text
+        )
+        let updated = try await client.saveResponse(
             record.id,
-            draft,
+            response,
+            record.researcherEvaluation?.revision,
             expectedCommentRevision,
             expectedResultFingerprint
         )
@@ -307,10 +284,16 @@ final class ResearchActionController: ObservableObject {
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         guard let client, let record = resultRecord else {
-            throw PortableResearchMethodFeedbackMutationError.recordUnavailable
+            throw PortableResearcherResponseMutationError.recordUnavailable
         }
-        let updated = try await client.clearMethodFeedback(
+        let response = try ResearcherResponseDraft(
+            evaluation: try record.researcherEvaluation.map(ResearcherEvaluationDraft.init),
+            methodFeedbackText: nil
+        )
+        let updated = try await client.saveResponse(
             record.id,
+            response,
+            record.researcherEvaluation?.revision,
             expectedCommentRevision,
             expectedResultFingerprint
         )

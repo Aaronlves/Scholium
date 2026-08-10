@@ -18,6 +18,31 @@ enum ResearchSettlementRecovery {
     }
 }
 
+private struct ResearchRecordReviewSource {
+    let note: VaultQualifiedNoteID
+    let document: NoteDocument
+}
+
+private enum ResearchRecordUndoPlan {
+    case unavailable(noteID: UUID)
+    case alreadyRestored(noteID: UUID, revision: DocumentFingerprint)
+    case conflict(noteID: UUID, revision: DocumentFingerprint)
+    case restore(
+        noteID: UUID,
+        note: VaultQualifiedNoteID,
+        startingRevision: DocumentFingerprint,
+        endingRevision: DocumentFingerprint,
+        checkpointID: UUID,
+        sourceKey: TriptychCheckpointFileKey,
+        destinationKey: TriptychCheckpointFileKey
+    )
+
+    var affectedVaultID: UUID? {
+        guard case .restore(_, let note, _, _, _, _, _) = self else { return nil }
+        return note.vaultID
+    }
+}
+
 #if DEBUG
 enum ResearchSettlementReplacementFaultPhaseForTesting: Sendable {
     case beforeRename
@@ -674,88 +699,427 @@ extension WorkspaceHandle {
         }
     }
 
-    func saveResearcherEvaluation(
+    func saveResearcherResponse(
         recordID: UUID,
-        draft: ResearcherEvaluationDraft,
+        draft: ResearcherResponseDraft,
         expectedEvaluationRevision: UUID?,
+        expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         try requireActive()
         let updated: PortableResearchRecord
         do {
             updated = try await services.portableResearchRecordStore
-                .setResearcherEvaluation(
+                .saveResearcherResponse(
                     draft,
                     recordID: recordID,
                     expectedEvaluationRevision: expectedEvaluationRevision,
+                    expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
                     expectedResultFingerprint: expectedResultFingerprint
                 )
         } catch {
-            throw researcherEvaluationMutationError(
+            throw researcherResponseMutationError(
                 error,
-                operation: "the Researcher Evaluation save"
+                operation: "the Researcher Response save"
             )
         }
-        try await refreshAfterResearchCommit("The Researcher Evaluation")
+        try await refreshAfterResearchCommit("The Researcher Response")
         return updated
     }
 
-    func clearResearcherEvaluation(
+    func keepResearchRecordChanges(
         recordID: UUID,
-        expectedEvaluationRevision: UUID,
+        expectedReviewRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         try requireActive()
-        let updated: PortableResearchRecord
+        let record = try await reviewRecord(
+            id: recordID,
+            expectedReviewRevision: expectedReviewRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+        guard !record.confirmedChanges.isEmpty else {
+            throw ResearchRecordChangeReviewError.invalidSelection
+        }
+        var reviewed: [PortableResearcherReviewedChange] = []
+        for change in record.confirmedChanges {
+            guard let current = try await currentReviewSource(noteID: change.noteID),
+                  current.document.fingerprint == change.endingRevision else {
+                throw ResearchRecordChangeReviewError.invalidSelection
+            }
+            reviewed.append(try PortableResearcherReviewedChange(
+                noteID: change.noteID,
+                outcome: .keptAgentRevision,
+                observedRevision: current.document.fingerprint
+            ))
+        }
+        return try await saveReviewDisposition(
+            try PortableResearcherReviewDisposition(reviewedChanges: reviewed),
+            recordID: recordID,
+            expectedReviewRevision: expectedReviewRevision,
+            expectedResultFingerprint: expectedResultFingerprint,
+            operation: "The Research Record change decision"
+        )
+    }
+
+    func finishResearchRecordReviewWithCurrentState(
+        recordID: UUID,
+        expectedReviewRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        try requireActive()
+        let record = try await reviewRecord(
+            id: recordID,
+            expectedReviewRevision: expectedReviewRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+        if record.confirmedChanges.isEmpty {
+            return try await saveReviewDisposition(
+                try PortableResearcherReviewDisposition(
+                    completedWithoutSourceChanges: true
+                ),
+                recordID: recordID,
+                expectedReviewRevision: expectedReviewRevision,
+                expectedResultFingerprint: expectedResultFingerprint,
+                operation: "The Research Record review completion"
+            )
+        }
+        let prior = Dictionary(uniqueKeysWithValues:
+            (record.researcherReviewDisposition?.reviewedChanges ?? []).map {
+                ($0.noteID, $0)
+            }
+        )
+        var reviewed: [PortableResearcherReviewedChange] = []
+        for change in record.confirmedChanges {
+            guard let current = try await currentReviewSource(noteID: change.noteID) else {
+                if prior[change.noteID]?.outcome == .unavailable {
+                    reviewed.append(prior[change.noteID]!)
+                } else {
+                    reviewed.append(try PortableResearcherReviewedChange(
+                        noteID: change.noteID,
+                        outcome: .unavailable,
+                        observedRevision: nil
+                    ))
+                }
+                continue
+            }
+            if let existing = prior[change.noteID],
+               existing.observedRevision == current.document.fingerprint {
+                reviewed.append(existing)
+                continue
+            }
+            let outcome: PortableResearcherReviewOutcome
+            if current.document.fingerprint == change.endingRevision {
+                outcome = .keptAgentRevision
+            } else if current.document.fingerprint == change.startingRevision {
+                outcome = .restoredStartingRevision
+            } else {
+                outcome = .supersededByLaterRevision
+            }
+            reviewed.append(try PortableResearcherReviewedChange(
+                noteID: change.noteID,
+                outcome: outcome,
+                observedRevision: current.document.fingerprint
+            ))
+        }
+        return try await saveReviewDisposition(
+            try PortableResearcherReviewDisposition(reviewedChanges: reviewed),
+            recordID: recordID,
+            expectedReviewRevision: expectedReviewRevision,
+            expectedResultFingerprint: expectedResultFingerprint,
+            operation: "The Research Record change decision"
+        )
+    }
+
+    func undoResearchRecordChanges(
+        recordID: UUID,
+        selectedNoteIDs: Set<UUID>,
+        expectedReviewRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> ResearchRecordChangesUndoResult {
+        try requireActive()
+        let record = try await reviewRecord(
+            id: recordID,
+            expectedReviewRevision: expectedReviewRevision,
+            expectedResultFingerprint: expectedResultFingerprint
+        )
+        let changesByID = Dictionary(
+            uniqueKeysWithValues: record.confirmedChanges.map { ($0.noteID, $0) }
+        )
+        guard !selectedNoteIDs.isEmpty,
+              selectedNoteIDs.allSatisfy({ changesByID[$0] != nil }) else {
+            throw ResearchRecordChangeReviewError.invalidSelection
+        }
+        let execution: LocalResearchExecutionRecord
         do {
-            updated = try await services.portableResearchRecordStore
-                .clearResearcherEvaluation(
-                    recordID: recordID,
-                    expectedEvaluationRevision: expectedEvaluationRevision,
-                    expectedResultFingerprint: expectedResultFingerprint
-                )
+            execution = try await services.localResearchExecutionStore.record(id: recordID)
         } catch {
-            throw researcherEvaluationMutationError(
-                error,
-                operation: "the Researcher Evaluation clear"
-            )
+            throw ResearchRecordChangeReviewError.executionUnavailable
         }
-        try await refreshAfterResearchCommit("The Researcher Evaluation clear")
-        return updated
-    }
+        guard execution.triptychID == record.triptychID,
+              execution.id == record.id else {
+            throw ResearchRecordChangeReviewError.executionUnavailable
+        }
 
-    func saveMethodFeedbackComment(
-        recordID: UUID,
-        draft: ResearchMethodFeedbackDraft,
-        expectedCommentRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        try requireActive()
-        let updated = try await services.portableResearchRecordStore
-            .setMethodFeedbackComment(
-                draft,
-                recordID: recordID,
-                expectedCommentRevision: expectedCommentRevision,
-                expectedResultFingerprint: expectedResultFingerprint
+        var plans: [ResearchRecordUndoPlan] = []
+        for noteID in selectedNoteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+            let change = changesByID[noteID]!
+            guard let entry = execution.boundedWriteSet.entries.first(where: {
+                $0.noteID == noteID
+            }), let firstCommitted = execution.documentWriteRecords
+                .filter({
+                    $0.target == entry.handle
+                        && $0.actor == .agent
+                        && $0.state == .committed
+                })
+                .min(by: { $0.startedAt < $1.startedAt }),
+                firstCommitted.expectedRevision == change.startingRevision,
+                firstCommitted.observedRevision == firstCommitted.intendedRevision else {
+                throw ResearchRecordChangeReviewError.checkpointMismatch(noteID)
+            }
+            guard let current = try await currentReviewSource(noteID: noteID) else {
+                plans.append(.unavailable(noteID: noteID))
+                continue
+            }
+            guard Self.vaultRole(entry.role)
+                    == (try vault(id: current.note.vaultID)).role else {
+                throw ResearchRecordChangeReviewError.checkpointMismatch(noteID)
+            }
+            if current.document.fingerprint == change.startingRevision {
+                plans.append(.alreadyRestored(
+                    noteID: noteID,
+                    revision: current.document.fingerprint
+                ))
+                continue
+            }
+            guard current.document.fingerprint == change.endingRevision else {
+                plans.append(.conflict(
+                    noteID: noteID,
+                    revision: current.document.fingerprint
+                ))
+                continue
+            }
+            let area = try checkpointArea(vaultID: current.note.vaultID)
+            let checkpoint = try await services.checkpointStore.checkpoint(
+                id: firstCommitted.checkpointID
             )
-        try await refreshAfterResearchCommit("The Method feedback comment")
-        return updated
-    }
+            let sourceKey = TriptychCheckpointFileKey(
+                area: area,
+                relativePath: entry.note.relativePath
+            )
+            guard checkpoint.triptychID == record.triptychID,
+                  checkpoint.kind == .researchContinuation,
+                  let sourceRecord = checkpoint.files.first(where: {
+                    $0.key == sourceKey
+                  }),
+                  sourceRecord.fingerprint == change.startingRevision else {
+                throw ResearchRecordChangeReviewError.checkpointMismatch(noteID)
+            }
+            let sourceBytes = try await services.checkpointStore.fileData(
+                checkpointID: checkpoint.id,
+                key: sourceKey
+            )
+            guard DocumentFingerprint(data: sourceBytes) == change.startingRevision else {
+                throw ResearchRecordChangeReviewError.checkpointMismatch(noteID)
+            }
+            plans.append(.restore(
+                noteID: noteID,
+                note: current.note,
+                startingRevision: change.startingRevision,
+                endingRevision: change.endingRevision,
+                checkpointID: checkpoint.id,
+                sourceKey: sourceKey,
+                destinationKey: TriptychCheckpointFileKey(
+                    area: area,
+                    relativePath: current.note.relativePath
+                )
+            ))
+        }
 
-    func clearMethodFeedbackComment(
-        recordID: UUID,
-        expectedCommentRevision: UUID,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        try requireActive()
-        let updated = try await services.portableResearchRecordStore
-            .clearMethodFeedbackComment(
+        // Invalidate every selected outcome before touching source. Source and
+        // portable Record replacement cannot be one filesystem transaction;
+        // this durable ordering guarantees that a later CAS or readback
+        // failure can leave the review incomplete, never falsely kept.
+        let invalidatedRecord = try await claimReviewDispositionForUndo(
+            record: record,
+            recordID: recordID,
+            selectedNoteIDs: selectedNoteIDs,
+            expectedReviewRevision: expectedReviewRevision,
+            expectedResultFingerprint: expectedResultFingerprint,
+            operation: "The Research Record undo invalidation"
+        )
+        var documents: [ResearchRecordChangeUndoDocumentResult] = []
+        var reviewedByID = Dictionary(uniqueKeysWithValues:
+            (invalidatedRecord.researcherReviewDisposition?.reviewedChanges ?? []).map {
+                ($0.noteID, $0)
+            }
+        )
+        var sourceMutationAttempted = false
+        for plan in plans {
+            switch plan {
+            case .unavailable(let noteID):
+                documents.append(ResearchRecordChangeUndoDocumentResult(
+                    noteID: noteID,
+                    status: .unavailable,
+                    observedRevision: nil
+                ))
+                reviewedByID[noteID] = try PortableResearcherReviewedChange(
+                    noteID: noteID,
+                    outcome: .unavailable,
+                    observedRevision: nil
+                )
+            case .alreadyRestored(let noteID, let revision):
+                documents.append(ResearchRecordChangeUndoDocumentResult(
+                    noteID: noteID,
+                    status: .alreadyAtStartingRevision,
+                    observedRevision: revision
+                ))
+                reviewedByID[noteID] = try PortableResearcherReviewedChange(
+                    noteID: noteID,
+                    outcome: .restoredStartingRevision,
+                    observedRevision: revision
+                )
+            case .conflict(let noteID, let revision):
+                documents.append(ResearchRecordChangeUndoDocumentResult(
+                    noteID: noteID,
+                    status: .conflict,
+                    observedRevision: revision
+                ))
+                reviewedByID.removeValue(forKey: noteID)
+            case .restore(
+                let noteID,
+                let note,
+                let startingRevision,
+                let endingRevision,
+                let checkpointID,
+                let sourceKey,
+                let destinationKey
+            ):
+                sourceMutationAttempted = true
+                do {
+                    _ = try await services.checkpointStore.restoreResearchActionNoteFile(
+                        checkpointID: checkpointID,
+                        sourceKey: sourceKey,
+                        destinationKey: destinationKey,
+                        expectedDestinationRevision: endingRevision,
+                        roots: services.roots,
+                        repositories: repositoriesBySlot()
+                    )
+                    let readback = try await repository(vaultID: note.vaultID).load(
+                        relativePath: note.relativePath
+                    )
+                    guard readback.fingerprint == startingRevision else {
+                        throw VaultRepositoryError.readbackMismatch(
+                            expected: startingRevision,
+                            current: readback.fingerprint
+                        )
+                    }
+                    documents.append(ResearchRecordChangeUndoDocumentResult(
+                        noteID: noteID,
+                        status: .restored,
+                        observedRevision: startingRevision
+                    ))
+                    reviewedByID[noteID] = try PortableResearcherReviewedChange(
+                        noteID: noteID,
+                        outcome: .restoredStartingRevision,
+                        observedRevision: startingRevision
+                    )
+                } catch {
+                    let observed = try? await repository(vaultID: note.vaultID)
+                        .load(relativePath: note.relativePath).fingerprint
+                    if observed == startingRevision {
+                        documents.append(ResearchRecordChangeUndoDocumentResult(
+                            noteID: noteID,
+                            status: .restored,
+                            observedRevision: startingRevision
+                        ))
+                        reviewedByID[noteID] = try PortableResearcherReviewedChange(
+                            noteID: noteID,
+                            outcome: .restoredStartingRevision,
+                            observedRevision: startingRevision
+                        )
+                    } else if let observed, observed != endingRevision {
+                        documents.append(ResearchRecordChangeUndoDocumentResult(
+                            noteID: noteID,
+                            status: .conflict,
+                            observedRevision: observed
+                        ))
+                        reviewedByID.removeValue(forKey: noteID)
+                    } else if let repositoryError = error as? VaultRepositoryError,
+                              case .fileDoesNotExist = repositoryError {
+                        documents.append(ResearchRecordChangeUndoDocumentResult(
+                            noteID: noteID,
+                            status: .unavailable,
+                            observedRevision: nil
+                        ))
+                        reviewedByID[noteID] = try PortableResearcherReviewedChange(
+                            noteID: noteID,
+                            outcome: .unavailable,
+                            observedRevision: nil
+                        )
+                    } else if Self.isCommitUncertainRestoreError(error) {
+                        documents.append(ResearchRecordChangeUndoDocumentResult(
+                            noteID: noteID,
+                            status: .commitUncertain,
+                            observedRevision: observed
+                        ))
+                        reviewedByID.removeValue(forKey: noteID)
+                    } else {
+                        documents.append(ResearchRecordChangeUndoDocumentResult(
+                            noteID: noteID,
+                            status: .unavailable,
+                            observedRevision: observed
+                        ))
+                        reviewedByID.removeValue(forKey: noteID)
+                    }
+                }
+            }
+        }
+
+        let selectedFacts = reviewedByID.filter { selectedNoteIDs.contains($0.key) }
+        let affectedVaultIDs = Set(plans.compactMap(\.affectedVaultID))
+        do {
+            let updated = try await reconcileReviewDisposition(
                 recordID: recordID,
-                expectedCommentRevision: expectedCommentRevision,
-                expectedResultFingerprint: expectedResultFingerprint
-            )
-        try await refreshAfterResearchCommit("The Method feedback comment clear")
-        return updated
+                expectedResultFingerprint: expectedResultFingerprint,
+                operation: "The Research Record undo disposition"
+            ) { reviewed in
+                for noteID in selectedNoteIDs {
+                    reviewed[noteID] = selectedFacts[noteID]
+                }
+            }
+            if sourceMutationAttempted {
+                try await refreshAfterCommittedOperation(
+                    "The Research Record source undo",
+                    publication: .researchRecords,
+                    affectedVaultIDs: affectedVaultIDs
+                )
+            } else if updated.researcherReviewDisposition?.revision
+                        != record.researcherReviewDisposition?.revision {
+                try await refreshAfterResearchCommit(
+                    "The Research Record undo disposition"
+                )
+            }
+            return ResearchRecordChangesUndoResult(record: updated, documents: documents)
+        } catch {
+            // A source replacement can commit before the portable disposition
+            // fails. Always attempt to publish source truth; the pre-write
+            // invalidation keeps Result Ready durable if reconciliation did
+            // not complete.
+            if sourceMutationAttempted {
+                try? await refreshAfterCommittedOperation(
+                    "The Research Record source undo",
+                    publication: .researchRecords,
+                    affectedVaultIDs: affectedVaultIDs
+                )
+            } else if invalidatedRecord.researcherReviewDisposition?.revision
+                        != record.researcherReviewDisposition?.revision {
+                try? await refreshAfterResearchCommit(
+                    "The Research Record undo invalidation"
+                )
+            }
+            throw error
+        }
     }
 
     func setResearchRecordRecommendationDisposition(
@@ -799,31 +1163,30 @@ extension WorkspaceHandle {
     func researchRecordComparison(
         recordID: UUID,
         noteID: UUID
-    ) async throws -> ResearchRecordComparison {
+    ) async throws -> ExactSourceComparison {
         try requireActive()
         let record = try await services.portableResearchRecordStore.record(id: recordID)
-        guard let participant = record.participatingNotes.first(where: {
+        guard let change = record.confirmedChanges.first(where: {
             $0.noteID == noteID
+        }), let participant = record.participatingNotes.first(where: {
+            $0.noteID == change.noteID
         }) else {
-            throw ResearchRecordComparisonError.participantNotFound
-        }
-        guard let endingRevision = participant.endingRevision else {
-            throw ResearchRecordComparisonError.endingRevisionUnavailable
+            throw ResearchRecordChangeReviewError.confirmedChangeNotFound(noteID)
         }
         let startingData = try await exactResearchRecordRevision(
-            participant.startingRevision,
+            change.startingRevision,
             participant: participant
         )
         let endingData = try await exactResearchRecordRevision(
-            endingRevision,
+            change.endingRevision,
             participant: participant
         )
         let comparisonTask = Task.detached(priority: .userInitiated) {
-            try ResearchRecordComparisonBuilder.build(
+            try ExactSourceComparisonBuilder.build(
                 startingData: startingData,
                 endingData: endingData,
-                startingRevision: participant.startingRevision,
-                endingRevision: endingRevision
+                startingRevision: change.startingRevision,
+                endingRevision: change.endingRevision
             )
         }
         return try await withTaskCancellationHandler {
@@ -1186,6 +1549,245 @@ extension WorkspaceHandle {
 
     // MARK: Helpers
 
+    private func reviewRecord(
+        id: UUID,
+        expectedReviewRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint
+    ) async throws -> PortableResearchRecord {
+        let record: PortableResearchRecord
+        do {
+            record = try await services.portableResearchRecordStore.record(id: id)
+        } catch ResearchRecordStoreV1Error.recordNotFound(_),
+                ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
+            throw PortableResearcherReviewMutationError.recordUnavailable
+        }
+        guard try record.finalizedResultFingerprint() == expectedResultFingerprint else {
+            throw PortableResearcherReviewMutationError.finalizedResultChanged
+        }
+        guard record.researcherReviewDisposition?.revision == expectedReviewRevision else {
+            throw PortableResearcherReviewMutationError.staleReviewRevision
+        }
+        guard record.kind == .action else {
+            throw ResearchRecordChangeReviewError.invalidSelection
+        }
+        return record
+    }
+
+    private func saveReviewDisposition(
+        _ disposition: PortableResearcherReviewDisposition,
+        recordID: UUID,
+        expectedReviewRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint,
+        operation: String,
+        refresh: Bool = true
+    ) async throws -> PortableResearchRecord {
+        let updated: PortableResearchRecord
+        do {
+            updated = try await services.portableResearchRecordStore
+                .saveResearcherReviewDisposition(
+                    disposition,
+                    recordID: recordID,
+                    expectedReviewRevision: expectedReviewRevision,
+                    expectedResultFingerprint: expectedResultFingerprint
+                )
+        } catch let error as ResearchRecordStoreV1Error {
+            switch error {
+            case .replacementCommitUncertain(let reason):
+                throw ScholiumApplicationError.operationCommitUncertain(
+                    operation: operation,
+                    reason: reason
+                )
+            case .recordNotFound, .recordPermanentlyDeleted:
+                throw PortableResearcherReviewMutationError.recordUnavailable
+            default:
+                throw error
+            }
+        }
+        if refresh { try await refreshAfterResearchCommit(operation) }
+        return updated
+    }
+
+    /// Advances the caller-supplied Review revision before any source write,
+    /// even when the selected outcomes were already absent. This is the
+    /// operation's durable CAS claim: a concurrent Keep/Finish between the
+    /// initial read and this point must fail stale before source can change.
+    private func claimReviewDispositionForUndo(
+        record: PortableResearchRecord,
+        recordID: UUID,
+        selectedNoteIDs: Set<UUID>,
+        expectedReviewRevision: UUID?,
+        expectedResultFingerprint: DocumentFingerprint,
+        operation: String
+    ) async throws -> PortableResearchRecord {
+        var reviewed = Dictionary(uniqueKeysWithValues:
+            (record.researcherReviewDisposition?.reviewedChanges ?? []).map {
+                ($0.noteID, $0)
+            }
+        )
+        for noteID in selectedNoteIDs {
+            reviewed.removeValue(forKey: noteID)
+        }
+        let claim = try PortableResearcherReviewDisposition(
+            reviewedChanges: Array(reviewed.values)
+        )
+        do {
+            return try await services.portableResearchRecordStore
+                .saveResearcherReviewDisposition(
+                    claim,
+                    recordID: recordID,
+                    expectedReviewRevision: expectedReviewRevision,
+                    expectedResultFingerprint: expectedResultFingerprint
+                )
+        } catch ResearchRecordStoreV1Error.replacementCommitUncertain(let reason) {
+            let readback = try await services.portableResearchRecordStore.record(
+                id: recordID
+            )
+            if readback.researcherReviewDisposition?.revision == claim.revision,
+               try readback.finalizedResultFingerprint() == expectedResultFingerprint {
+                return readback
+            }
+            throw ScholiumApplicationError.operationCommitUncertain(
+                operation: operation,
+                reason: reason
+            )
+        } catch ResearchRecordStoreV1Error.recordNotFound(_),
+                ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
+            throw PortableResearcherReviewMutationError.recordUnavailable
+        }
+    }
+
+    /// Merges source-derived review facts with the newest portable partition.
+    /// This is used only after the caller has validated the user's original
+    /// Review revision. A stale concurrent response is preserved for every
+    /// unselected Note, while selected source facts are retried against the
+    /// newest revision. Post-rename uncertainty is resolved by exact readback.
+    private func reconcileReviewDisposition(
+        recordID: UUID,
+        expectedResultFingerprint: DocumentFingerprint,
+        operation: String,
+        merge: (inout [UUID: PortableResearcherReviewedChange]) throws -> Void
+    ) async throws -> PortableResearchRecord {
+        var lastUncertainReason: String?
+        for _ in 0..<8 {
+            let current: PortableResearchRecord
+            do {
+                current = try await services.portableResearchRecordStore.record(
+                    id: recordID
+                )
+            } catch ResearchRecordStoreV1Error.recordNotFound(_),
+                    ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
+                throw PortableResearcherReviewMutationError.recordUnavailable
+            }
+            guard current.kind == .action else {
+                throw ResearchRecordChangeReviewError.invalidSelection
+            }
+            guard try current.finalizedResultFingerprint()
+                    == expectedResultFingerprint else {
+                throw PortableResearcherReviewMutationError.finalizedResultChanged
+            }
+            let existing = Dictionary(uniqueKeysWithValues:
+                (current.researcherReviewDisposition?.reviewedChanges ?? []).map {
+                    ($0.noteID, $0)
+                }
+            )
+            var merged = existing
+            try merge(&merged)
+            if merged == existing {
+                return current
+            }
+            let candidate = try PortableResearcherReviewDisposition(
+                reviewedChanges: Array(merged.values)
+            )
+            do {
+                return try await services.portableResearchRecordStore
+                    .saveResearcherReviewDisposition(
+                        candidate,
+                        recordID: recordID,
+                        expectedReviewRevision: current.researcherReviewDisposition?.revision,
+                        expectedResultFingerprint: expectedResultFingerprint
+                    )
+            } catch PortableResearcherReviewMutationError.staleReviewRevision {
+                continue
+            } catch PortableResearcherReviewMutationError.finalizedResultChanged {
+                throw PortableResearcherReviewMutationError.finalizedResultChanged
+            } catch PortableResearcherReviewMutationError.recordUnavailable {
+                throw PortableResearcherReviewMutationError.recordUnavailable
+            } catch ResearchRecordStoreV1Error.replacementCommitUncertain(let reason) {
+                lastUncertainReason = reason
+                let readback = try await services.portableResearchRecordStore.record(
+                    id: recordID
+                )
+                let readbackFacts = Dictionary(uniqueKeysWithValues:
+                    (readback.researcherReviewDisposition?.reviewedChanges ?? []).map {
+                        ($0.noteID, $0)
+                    }
+                )
+                if try readback.finalizedResultFingerprint()
+                        == expectedResultFingerprint,
+                   readbackFacts == merged {
+                    return readback
+                }
+            } catch ResearchRecordStoreV1Error.recordNotFound(_),
+                    ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
+                throw PortableResearcherReviewMutationError.recordUnavailable
+            }
+        }
+        if let lastUncertainReason {
+            throw ScholiumApplicationError.operationCommitUncertain(
+                operation: operation,
+                reason: lastUncertainReason
+            )
+        }
+        throw PortableResearcherReviewMutationError.staleReviewRevision
+    }
+
+    private func currentReviewSource(
+        noteID: UUID
+    ) async throws -> ResearchRecordReviewSource? {
+        guard let controlled = try await services.controlStore.identityRecord(id: noteID) else {
+            return nil
+        }
+        let note = VaultQualifiedNoteID(
+            vaultID: controlled.vaultID,
+            relativePath: controlled.relativePath
+        )
+        guard !note.relativePath.hasPrefix("Set Aside/"),
+              !note.relativePath.hasPrefix("Trash/") else {
+            return nil
+        }
+        let document = try await repository(vaultID: note.vaultID).load(
+            relativePath: note.relativePath
+        )
+        let identity = try await resolvedIdentity(
+            for: note,
+            expectedRevision: document.fingerprint
+        )
+        guard identity.id == noteID else {
+            throw NoteIdentityRecoveryError.targetIdentityChanged(
+                note.relativePath
+            )
+        }
+        return ResearchRecordReviewSource(note: note, document: document)
+    }
+
+    private static func vaultRole(_ role: ResearchActionTargetRole) -> VaultRole {
+        switch role {
+        case .analysis: .sourceCorpus
+        case .topic: .topicKnowledge
+        case .work: .draftProject
+        }
+    }
+
+    private static func isCommitUncertainRestoreError(_ error: Error) -> Bool {
+        guard let repositoryError = error as? VaultRepositoryError else { return false }
+        switch repositoryError {
+        case .commitUncertain, .readbackMismatch:
+            return true
+        default:
+            return false
+        }
+    }
+
     private struct ResearchContext {
         let document: NoteDocument
         let identity: NoteIdentityRecord
@@ -1289,7 +1891,7 @@ extension WorkspaceHandle {
         )
     }
 
-    private func researcherEvaluationMutationError(
+    private func researcherResponseMutationError(
         _ error: Error,
         operation: String
     ) -> Error {
@@ -1303,7 +1905,7 @@ extension WorkspaceHandle {
                 reason: reason
             )
         case .recordNotFound, .recordPermanentlyDeleted:
-            return PortableResearchEvaluationMutationError.recordUnavailable
+            return PortableResearcherResponseMutationError.recordUnavailable
         default:
             return error
         }
@@ -1396,7 +1998,7 @@ extension WorkspaceHandle {
                 if DocumentFingerprint(data: data) == revision { return data }
             }
         }
-        throw ResearchRecordComparisonError.exactRevisionUnavailable(revision)
+        throw ExactSourceComparisonError.exactRevisionUnavailable(revision)
     }
 
     private func checkpointNoteKey(
