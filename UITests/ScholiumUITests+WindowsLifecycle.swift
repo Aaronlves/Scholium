@@ -6,14 +6,9 @@ import notify
 extension ScholiumUITests {
     @MainActor
     func testLivePreviewHidesYAMLAndSourceShortcutIsUnavailable() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        mode.click()
-        let livePreview = app.menuItems
-            .matching(identifier: "text.page.badge.magnifyingglass")
-            .firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
+        selectDocumentMode("Edit")
 
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
@@ -22,12 +17,7 @@ extension ScholiumUITests {
         app.typeKey("e", modifierFlags: [.command, .shift])
         XCTAssertEqual(mode.value as? String, "Edit", "Source must be entered through the document-mode menu")
 
-        mode.click()
-        let source = app.menuItems
-            .matching(identifier: "chevron.left.forwardslash.chevron.right")
-            .firstMatch
-        XCTAssertTrue(source.waitForExistence(timeout: 3))
-        source.click()
+        selectDocumentMode("Source")
         XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
         XCTAssertEqual(mode.value as? String, "Source")
     }
@@ -305,14 +295,9 @@ extension ScholiumUITests {
         let secondMetadata = secondWindow.descendants(matching: .any)["scholium.documentNoteName"]
         XCTAssertTrue(waitUntil(timeout: 8) { secondMetadata.value as? String == "QA Autosave B" })
 
-        let secondMode = secondWindow.descendants(matching: .any)["scholium.documentModeMenu"]
+        let secondMode = secondWindow.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(secondMode.waitForExistence(timeout: 5))
-        secondMode.click()
-        let livePreview = app.menuItems
-            .matching(identifier: "text.page.badge.magnifyingglass")
-            .firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
+        selectDocumentMode("Edit", in: secondWindow)
         XCTAssertTrue(waitUntil(timeout: 8) { secondMode.value as? String == "Edit" })
 
         let sessionsDirectory = homeDirectory
@@ -354,10 +339,10 @@ extension ScholiumUITests {
                 == "QA Autosave B"
         })
         XCTAssertEqual(
-            restoredA.descendants(matching: .any)["scholium.documentModeMenu"].value as? String,
+            restoredA.descendants(matching: .any)["scholium.documentModeButton"].value as? String,
             "Review"
         )
-        let restoredBMode = restoredB.descendants(matching: .any)["scholium.documentModeMenu"]
+        let restoredBMode = restoredB.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(waitUntil(timeout: 10) { restoredBMode.value as? String == "Edit" })
 
         XCTAssertEqual(app.windows.count, 2)
@@ -986,14 +971,9 @@ extension ScholiumUITests {
 
     @MainActor
     func testCommittedWindowModeRestoresAfterRelaunch() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        mode.click()
-        let livePreview = app.menuItems
-            .matching(identifier: "text.page.badge.magnifyingglass")
-            .firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
+        selectDocumentMode("Edit")
         XCTAssertTrue(waitUntil(timeout: 5) { mode.value as? String == "Edit" })
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
@@ -1009,7 +989,7 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
 
-        let restoredMode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let restoredMode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(restoredMode.waitForExistence(timeout: 10))
         XCTAssertTrue(
             waitUntil(timeout: 8) {

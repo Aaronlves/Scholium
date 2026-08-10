@@ -48,6 +48,7 @@ final class WindowCommandObservation: ObservableObject {
             changes(documentController.$selectedDocument),
             changes(documentController.$snapshots),
             changes(documentController.$editingDocumentPath),
+            changes(documentController.$currentPresentationMode),
             changes(documentController.$noteIdentityByPath),
             changes(workspaceProjectionController.$state),
             changes(researchActionController.$availability),

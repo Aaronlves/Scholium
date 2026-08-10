@@ -501,17 +501,44 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
+    func selectDocumentMode(_ title: String, in root: XCUIElement? = nil) {
         if let root { focusWorkspaceWindow(root) }
-        let mode = root?.descendants(matching: .any)["scholium.documentModeMenu"]
-            ?? app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = root?.descendants(matching: .any)["scholium.documentModeButton"]
+            ?? app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        mode.click()
-        let livePreview = app.menuItems
-            .matching(identifier: "text.page.badge.magnifyingglass")
-            .firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
+        if mode.value as? String == title { return }
+
+        switch title {
+        case "Review":
+            app.typeKey("r", modifierFlags: [.command])
+        case "Edit":
+            if mode.value as? String == "Source" {
+                app.typeKey("r", modifierFlags: [.command])
+                XCTAssertTrue(waitUntil(timeout: 8) { mode.value as? String == "Review" })
+            }
+            app.typeKey("r", modifierFlags: [.command])
+        case "Source":
+            app.menuBars.menuBarItems["View"].click()
+            let documentModeMenu = app.menuItems["Document Mode"].firstMatch
+            XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 3))
+            documentModeMenu.hover()
+            let source = app.menuItems["Source"].firstMatch
+            XCTAssertTrue(source.waitForExistence(timeout: 3))
+            source.click()
+        default:
+            XCTFail("Unsupported Document mode: \(title)")
+            return
+        }
+
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { mode.value as? String == title },
+            "The Document mode did not become \(title)."
+        )
+    }
+
+    @MainActor
+    func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
+        selectDocumentMode("Edit", in: root)
 
         let editor = root?.descendants(matching: .any)["Markdown editor, Edit mode"]
             ?? app.descendants(matching: .any)["Markdown editor, Edit mode"]

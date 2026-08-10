@@ -78,6 +78,9 @@
   one coherent focus order. Mode changes, external updates, conflict,
   recovery, window inactivity, and container reconstruction never discard a
   dirty buffer, composition, selection, Undo, or recovery authority.
+- The Document Mode toolbar button exposes its stable label and current Review,
+  Edit, or Source value. Pointer help is supplementary; menu and keyboard routes
+  remain complete.
 - Review Comment and Edit formatting surfaces are keyboard reachable and stay
   attached to the finalized selection. The Comment field names its line range
   and Return, Shift-Return, and Escape behavior without erasing the underlying

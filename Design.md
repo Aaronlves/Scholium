@@ -261,6 +261,13 @@ continuous Navigation selection; local mode indexes use editorial-control
 selection. Standard actions and Vector Link relationships use direct SF
 Symbols with text as the primary meaning.
 
+Document Mode is one native borderless toolbar button, not a segmented control.
+Its direct monochrome SF Symbol reports the current Review, Edit, or Source
+state; concise pointer help names that state and the accessible value agrees.
+Activation switches Review/Edit and returns Source to Review, while Source
+remains selectable only from the menu. AppKit owns hover, press, disabled, and
+focus feedback; Scholium adds no capsule, tint, shadow, or custom animation.
+
 #### Metrics
 
 Equal values do not merge responsibilities: each feature consumes its named
@@ -465,7 +472,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | --- | --- | --- | --- |
 | `Workspace Shell` | Move among three retained Triptych workspaces without losing their Library, tabs, Document, or Apparatus context. | One native window and fixed split geometry; only role-partitioned content changes inside the three planes. | §§3.2, 18.1–18.3 |
 | `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §§5–7, 18.3–18.4 |
-| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One live mode per retained Triptych workspace session rather than a history keyed by Note or tab, shared measure, and distinct source and rendered typography. | §§5–7, 18.4 |
+| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One live mode per retained Triptych workspace session; the toolbar prioritizes Review/Edit while Source remains menu-accessible, without a history keyed by Note or tab. | §§5–7, 18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §§12–14, 18.3 |
 | `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §§12, 18.5 |
 | `Attention` | Enter the complete Triptych queue from one stable Sidebar control or add an exact current-Note subset from Inspector without interruption. | One native transient presentation; zero removes emphasis and count but not the Triptych route. | §14, §§18.2–18.3 |

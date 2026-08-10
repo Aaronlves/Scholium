@@ -621,7 +621,7 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("func sizeThatFits("))
         #expect(!splitSource.contains("availableSize"))
         #expect(!splitSource.contains("libraryHost.sizingOptions = []"))
-        #expect(!splitSource.contains("apparatusHost.sizingOptions = []"))
+        #expect(splitSource.contains("apparatusHost.sizingOptions = []"))
         #expect(splitSource.contains("placeholderHost.sizingOptions = []"))
         #expect(splitSource.contains("host.sizingOptions = []"))
         #expect(!splitSource.contains("sizingOptions = [.minSize]"))
@@ -874,6 +874,74 @@ struct FrontendArchitectureTests {
         #expect(!windowManagementSource.contains("preferredPresentationSlot"))
     }
 
+    @Test("Document toolbar exposes one current-state Review and Edit button")
+    @MainActor
+    func documentReviewEditToolbarButton() throws {
+        let review = ScholiumDocumentModeToolbarButtonPresentation(mode: .read)
+        let edit = ScholiumDocumentModeToolbarButtonPresentation(mode: .livePreview)
+        let source = ScholiumDocumentModeToolbarButtonPresentation(mode: .source)
+
+        #expect(review.destination == .livePreview)
+        #expect(edit.destination == .read)
+        #expect(source.destination == .read)
+        #expect(review.symbol == NotePresentationMode.read.symbol)
+        #expect(edit.symbol == NotePresentationMode.livePreview.symbol)
+        #expect(source.symbol == NotePresentationMode.source.symbol)
+        #expect(review.toolTip == NotePresentationMode.read.title)
+        #expect(NotePresentationMode.livePreview.symbol == "square.and.pencil")
+
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let toolbarSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(toolbarSource.contains("ScholiumDocumentModeToolbarButtonPresentation"))
+        #expect(toolbarSource.contains("identifier: \"scholium.documentModeButton\""))
+        #expect(toolbarSource.contains("systemImage: presentation.symbol"))
+        #expect(toolbarSource.contains("toolTip: presentation.toolTip"))
+        #expect(toolbarSource.contains("appState.requestDocumentMode(presentation.destination)"))
+        #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
+        #expect(!toolbarSource.contains("scholium.documentModeToggle"))
+        #expect(!toolbarSource.contains("scholium.documentModeMenu"))
+        #expect(!toolbarSource.contains("NotePresentationMode.allCases.map"))
+
+        let appSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let menuStart = try #require(appSource.range(of: "Menu(\"Document Mode\")"))
+        let menuEnd = try #require(
+            appSource.range(
+                of: "Divider()",
+                range: menuStart.upperBound..<appSource.endIndex
+            )
+        )
+        let documentModeMenu = appSource[
+            menuStart.lowerBound..<menuEnd.lowerBound
+        ]
+        #expect(documentModeMenu.contains("Button(\"Source\")"))
+        #expect(documentModeMenu.contains(".keyboardShortcut(\"r\", modifiers: [.command])"))
+
+        let commandObservation = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/Window/WindowCommandObservation.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(
+            commandObservation.contains(
+                "changes(documentController.$currentPresentationMode)"
+            )
+        )
+    }
+
     @Test("Native split backgrounds fill the titlebar without an extension effect")
     func nativeSurfaceContainer() throws {
         let contentController = NSViewController()
@@ -970,6 +1038,10 @@ struct FrontendArchitectureTests {
         #expect(item.canCollapse)
         #expect(item.isCollapsed)
         #expect(item.maximumThickness == NSSplitViewItem.unspecifiedDimension)
+        #expect(
+            item.collapseBehavior
+                == .preferResizingSiblingsWithFixedSplitView
+        )
     }
 
     @Test("Custom activation controls share one focus and hover policy")
@@ -3776,6 +3848,38 @@ struct FrontendArchitectureTests {
             records.components(separatedBy: "scholium.researchRecords.empty").count - 1
                 == 1
         )
+    }
+
+    @Test("Research Action launchers assign no keyboard shortcuts")
+    func researchActionLaunchersAssignNoKeyboardShortcuts() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+
+        let app = try source("Scholium/App/ScholiumApp.swift")
+        let researchMenuStart = try #require(app.range(of: "CommandMenu(\"Research\")"))
+        let researchMenuEnd = try #require(
+            app.range(
+                of: "#if DEBUG",
+                range: researchMenuStart.upperBound..<app.endIndex
+            )
+        )
+        let researchMenu = app[
+            researchMenuStart.lowerBound..<researchMenuEnd.lowerBound
+        ]
+        #expect(!researchMenu.contains(".keyboardShortcut"))
+
+        let actionPresentation = try source(
+            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift"
+        )
+        #expect(!actionPresentation.contains("interfaceKeyboardShortcut"))
     }
 
     @Test("Research-facing sheets share editorial zones and purpose-owned sizes")

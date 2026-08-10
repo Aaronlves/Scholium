@@ -20,7 +20,7 @@ enum NotePresentationMode: String, CaseIterable, Identifiable, Codable, Hashable
     var symbol: String {
         switch self {
         case .read: "book"
-        case .livePreview: "text.page.badge.magnifyingglass"
+        case .livePreview: "square.and.pencil"
         case .source: "chevron.left.forwardslash.chevron.right"
         }
     }

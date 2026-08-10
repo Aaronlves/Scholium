@@ -528,6 +528,10 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                 closeTab: closeDocumentTab
             )
             let apparatusHost = NSHostingController(rootView: apparatus)
+            // The native split item is the sole width owner. Inspector content
+            // fills the container but must not publish intrinsic, minimum, or
+            // maximum sizes back into AppKit as modes and content change.
+            apparatusHost.sizingOptions = []
             self.libraryHost = libraryHost
             self.documentTabsController = documentTabsController
             self.apparatusHost = apparatusHost
@@ -591,10 +595,16 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             // otherwise begins expanded and can briefly draw before
             // viewWillAppear applies the window-scoped visibility state.
             apparatusItem.isCollapsed = !initialApparatusVisible
-            // The system inspector defaults to a fixed 270-point column on
+            // The system Inspector defaults to a fixed 270-point column on
             // macOS 14 and later. Reset only its maximum so the researcher can
-            // resize it; retain AppKit's native minimum, collapse, and divider.
+            // resize it; retain AppKit's native minimum and divider.
             apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+            // Keep the workspace frame and the trailing edge fixed when the
+            // native Inspector collapses or returns. AppKit documents that the
+            // behavior-specific default may change across macOS releases; the
+            // Workspace contract instead lets Document absorb this transition.
+            apparatusItem.collapseBehavior =
+                .preferResizingSiblingsWithFixedSplitView
 
             addSplitViewItem(libraryItem)
             addSplitViewItem(documentItem)

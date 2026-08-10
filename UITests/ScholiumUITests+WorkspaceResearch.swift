@@ -223,7 +223,7 @@ extension ScholiumUITests {
         let documentTitle = app.staticTexts["scholium.documentNoteName"].firstMatch
         let inspectorButton = app.descendants(matching: .any)["scholium.toggleInspector"]
         let inspector = app.scrollViews["scholium.researchInspector"]
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
 
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
         XCTAssertFalse(documentTabs.exists)
@@ -347,12 +347,7 @@ extension ScholiumUITests {
 
         XCTContext.runActivity(named: "Live Preview projects the document and commits before navigation") { _ in
             XCTAssertTrue(mode.exists)
-            mode.click()
-            let livePreview = app.menuItems
-                .matching(identifier: "text.page.badge.magnifyingglass")
-                .firstMatch
-            XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-            livePreview.click()
+            selectDocumentMode("Edit")
 
             let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
             XCTAssertTrue(editor.waitForExistence(timeout: 8))
@@ -1833,17 +1828,24 @@ extension ScholiumUITests {
         let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
         XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
         XCTAssertTrue((sourceEditor.value as? String ?? "").contains("[[QA Topic]]"))
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertEqual(mode.value as? String, "Source")
     }
 
     @MainActor
     func testDocumentModesInspectorAndSearchAreKeyboardReachable() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        mode.click()
+        app.menuBars.menuBarItems["View"].click()
+        let documentModeMenu = app.menuItems["Document Mode"].firstMatch
+        XCTAssertTrue(documentModeMenu.waitForExistence(timeout: 3))
+        documentModeMenu.hover()
         XCTAssertTrue(app.menuItems["Edit"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.menuItems["Source"].exists)
         app.typeKey(.escape, modifierFlags: [])
+
+        selectDocumentMode("Edit")
+        selectDocumentMode("Review")
 
         let inspector = app.descendants(matching: .any)["scholium.toggleInspector"]
         XCTAssertTrue(inspector.exists)
@@ -1855,14 +1857,9 @@ extension ScholiumUITests {
 
     @MainActor
     func testEditorCommandsAreReachableFromNativeAndContextMenus() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        mode.click()
-        let livePreview = app.menuItems
-            .matching(identifier: "text.page.badge.magnifyingglass")
-            .firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
+        selectDocumentMode("Edit")
 
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 8))
@@ -1940,12 +1937,9 @@ extension ScholiumUITests {
         )
         XCTAssertEqual(XCTWaiter.wait(for: [referenceFocus], timeout: 5), .completed)
 
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
-        mode.click()
-        let edit = app.menuItems["Edit"].firstMatch
-        XCTAssertTrue(edit.waitForExistence(timeout: 3))
-        edit.click()
+        selectDocumentMode("Edit")
         XCTAssertTrue(
             app.descendants(matching: .any)["Markdown editor, Edit mode"]
                 .waitForExistence(timeout: 8)
@@ -1953,10 +1947,7 @@ extension ScholiumUITests {
         XCTAssertFalse(app.buttons["Footnote 1"].exists)
         XCTAssertFalse(app.buttons["Return to footnote reference 1"].exists)
 
-        mode.click()
-        let source = app.menuItems["Source"].firstMatch
-        XCTAssertTrue(source.waitForExistence(timeout: 3))
-        source.click()
+        selectDocumentMode("Source")
         XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["Footnote 1"].exists)
         XCTAssertFalse(app.buttons["Return to footnote reference 1"].exists)
@@ -2211,7 +2202,7 @@ extension ScholiumUITests {
             sourceEditor.waitForExistence(timeout: 10),
             "The selected Search result did not finish revealing its source range."
         )
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertEqual(mode.value as? String, "Source")
     }
 

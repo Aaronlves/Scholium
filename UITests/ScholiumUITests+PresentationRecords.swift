@@ -146,7 +146,7 @@ extension ScholiumUITests {
         }
 
         let sidebarToggle = loadedToolbar.buttons["Hide Sidebar"].firstMatch
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         let search = app.descendants(matching: .any)["scholium.documentSearch"]
         let history = app.descendants(matching: .any)["scholium.showResearchRecords"]
         let inspectorToggle = loadedToolbar.buttons["Show Research Inspector"].firstMatch
@@ -466,6 +466,50 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testDocumentModeButtonShowsAndSwitchesCurrentState() throws {
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        XCTAssertEqual(mode.label, "Document Mode")
+        XCTAssertEqual(mode.value as? String, "Review")
+
+        let initialWidth = mode.frame.width
+        let reviewScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        reviewScreenshot.name = "Document mode — Review state button"
+        reviewScreenshot.lifetime = .keepAlways
+        add(reviewScreenshot)
+
+        mode.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { mode.value as? String == "Edit" })
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Markdown editor, Edit mode"]
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertEqual(mode.frame.width, initialWidth, accuracy: 1)
+        let editScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        editScreenshot.name = "Document mode — Edit state button"
+        editScreenshot.lifetime = .keepAlways
+        add(editScreenshot)
+
+        mode.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { mode.value as? String == "Review" })
+        waitForDocumentSurface()
+        XCTAssertEqual(mode.frame.width, initialWidth, accuracy: 1)
+
+        selectDocumentMode("Source")
+        XCTAssertEqual(mode.value as? String, "Source")
+        XCTAssertEqual(mode.frame.width, initialWidth, accuracy: 1)
+
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        screenshot.name = "Document mode — Source state remains menu-only"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        mode.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { mode.value as? String == "Review" })
+        waitForDocumentSurface()
+    }
+
+    @MainActor
     func testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates() throws {
         exercisePeripheralVisibilityControls()
     }
@@ -473,12 +517,9 @@ extension ScholiumUITests {
     @MainActor
     func testAppearanceLineWidthVisualMatrixAndKeyboardControl() throws {
         func prepareVisualFixture(width: Int) {
-            let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+            let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
             XCTAssertTrue(mode.waitForExistence(timeout: 10))
-            mode.click()
-            let read = app.menuItems["Review"].firstMatch
-            XCTAssertTrue(read.waitForExistence(timeout: 3))
-            read.click()
+            selectDocumentMode("Review")
             waitForDocumentSurface()
             let title = app.descendants(matching: .any)["scholium.documentNoteName"]
             XCTAssertTrue(waitUntil(timeout: 10) {
@@ -545,12 +586,9 @@ extension ScholiumUITests {
         }
 
         func selectMode(_ name: String, surfaceIdentifier: String) {
-            let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+            let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
             XCTAssertTrue(mode.waitForExistence(timeout: 5))
-            mode.click()
-            let item = app.menuItems[name].firstMatch
-            XCTAssertTrue(item.waitForExistence(timeout: 3))
-            item.click()
+            selectDocumentMode(name)
             XCTAssertTrue(
                 app.descendants(matching: .any)[surfaceIdentifier]
                     .waitForExistence(timeout: 8)
@@ -666,7 +704,7 @@ extension ScholiumUITests {
             noteIdentity.value as? String == "Heading Wrap Fixture"
         })
 
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
         XCTAssertEqual(mode.value as? String, "Review")
         let renderedDocument = workspace.descendants(matching: .any)["Rendered Markdown"]
@@ -823,23 +861,15 @@ extension ScholiumUITests {
         XCTAssertTrue(twoHundredPercent.waitForExistence(timeout: 3))
         twoHundredPercent.click()
 
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
-        mode.click()
-        let livePreview = app.menuItems["Edit"].firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 3))
-        livePreview.click()
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        selectDocumentMode("Edit")
         XCTAssertTrue(app.descendants(matching: .any)["Markdown editor, Edit mode"].waitForExistence(timeout: 8))
 
-        mode.click()
-        let source = app.menuItems["Source"].firstMatch
-        XCTAssertTrue(source.waitForExistence(timeout: 3))
-        source.click()
+        selectDocumentMode("Source")
         XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
 
-        mode.click()
-        let read = app.menuItems["Review"].firstMatch
-        XCTAssertTrue(read.waitForExistence(timeout: 3))
-        read.click()
+        selectDocumentMode("Review")
         waitForDocumentSurface()
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")

@@ -76,7 +76,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testDocumentModeAndLibrarySwitchHandoffsStayBoundedWithoutSourceExposure() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         let rendered = app.descendants(matching: .any)["Rendered Markdown"]
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
@@ -91,10 +91,7 @@ extension ScholiumUITests {
         let secondSource = try Data(contentsOf: secondURL)
 
         func selectMode(_ title: String) {
-            mode.click()
-            let item = app.menuItems[title].firstMatch
-            XCTAssertTrue(item.waitForExistence(timeout: 3))
-            item.click()
+            selectDocumentMode(title)
         }
 
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
@@ -556,12 +553,9 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
 
-        let mode = app.descendants(matching: .any)["scholium.documentModeMenu"]
+        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(mode.waitForExistence(timeout: 20))
-        mode.click()
-        let livePreview = app.menuItems["Edit"].firstMatch
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 5))
-        livePreview.click()
+        selectDocumentMode("Edit")
 
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(editor.waitForExistence(timeout: 30))
@@ -600,10 +594,7 @@ extension ScholiumUITests {
         XCTAssertEqual(try Data(contentsOf: noteURL), Data(source.utf8))
 
         let saveTransitionStarted = DispatchTime.now().uptimeNanoseconds
-        mode.click()
-        let readMode = app.menuItems["Review"].firstMatch
-        XCTAssertTrue(readMode.waitForExistence(timeout: 5))
-        readMode.click()
+        selectDocumentMode("Review")
         XCTAssertTrue(app.descendants(matching: .any)["Rendered Markdown"].waitForExistence(timeout: 180))
         XCTAssertTrue(
             waitUntil(timeout: 30) {
@@ -628,14 +619,9 @@ extension ScholiumUITests {
         evidence.lifetime = .keepAlways
         add(evidence)
 
-        mode.click()
-        let sourceMode = app.menuItems["Source"].firstMatch
-        XCTAssertTrue(sourceMode.waitForExistence(timeout: 5))
-        sourceMode.click()
+        selectDocumentMode("Source")
         XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 15))
-        mode.click()
-        XCTAssertTrue(livePreview.waitForExistence(timeout: 5))
-        livePreview.click()
+        selectDocumentMode("Edit")
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
         let reopenedSource = try self.source(at: noteURL)
         XCTAssertEqual(reopenedSource.components(separatedBy: endToken).count, 2)

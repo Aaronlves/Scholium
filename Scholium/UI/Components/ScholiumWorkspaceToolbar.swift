@@ -242,6 +242,7 @@ struct ScholiumNativeToolbarButton: NSViewRepresentable {
     let title: String
     let systemImage: String
     let identifier: String
+    var toolTip: String? = nil
     var accessibilityValue: String? = nil
     var isEnabled = true
     var keyEquivalent: String? = nil
@@ -275,7 +276,7 @@ struct ScholiumNativeToolbarButton: NSViewRepresentable {
     private func update(_ button: NSButton) {
         button.image = ScholiumNativeToolbarPresentation.symbol(named: systemImage)
         button.title = ""
-        button.toolTip = title
+        button.toolTip = toolTip ?? title
         button.isEnabled = isEnabled
         button.keyEquivalent = keyEquivalent ?? ""
         button.keyEquivalentModifierMask = keyEquivalentModifierMask
@@ -380,6 +381,25 @@ private struct ScholiumNativeToolbarMenu: NSViewRepresentable {
             actions[sender.tag]()
         }
     }
+}
+
+/// The toolbar reports the current Document mode with one stable icon button.
+/// Activating it toggles Review/Edit; Source is only entered from the menu and
+/// returns to Review on activation, matching Command-R.
+struct ScholiumDocumentModeToolbarButtonPresentation: Equatable {
+    let mode: NotePresentationMode
+    let destination: NotePresentationMode
+
+    init(mode: NotePresentationMode) {
+        self.mode = mode
+        destination = switch mode {
+        case .read: .livePreview
+        case .livePreview, .source: .read
+        }
+    }
+
+    var symbol: String { mode.symbol }
+    var toolTip: String { mode.title }
 }
 
 private struct ScholiumWorkspaceSidebarToolbarView: View {
@@ -510,24 +530,20 @@ private struct ScholiumWorkspaceDocumentActionsToolbarView: View {
     }
 
     private var documentModeToolbar: some View {
-        let mode = appState.currentPresentationMode
-        return ScholiumNativeToolbarMenu(
-            title: mode.title,
-            identifier: "scholium.documentModeMenu",
-            accessibilityValue: mode.title,
-            isEnabled: appState.canEditCurrentNote && !currentEditorIsComposing,
-            entries: NotePresentationMode.allCases.map { candidate in
-                ScholiumNativeToolbarMenuEntry(
-                    title: candidate.title,
-                    systemImage: candidate.symbol,
-                    isSelected: candidate == mode,
-                    action: {
-                        appState.requestPresentationMode = candidate
-                    }
-                )
-            }
+        let presentation = ScholiumDocumentModeToolbarButtonPresentation(
+            mode: appState.currentPresentationMode
         )
-        .help("Document mode: \(mode.title)")
+        return ScholiumNativeToolbarButton(
+            title: ScholiumL10n.dynamicString("Document Mode"),
+            systemImage: presentation.symbol,
+            identifier: "scholium.documentModeButton",
+            toolTip: presentation.toolTip,
+            accessibilityValue: presentation.mode.title,
+            isEnabled: !currentEditorIsComposing
+                && (presentation.destination == .read || appState.canEditCurrentNote)
+        ) {
+            appState.requestDocumentMode(presentation.destination)
+        }
     }
 
     private var currentEditorIsComposing: Bool {

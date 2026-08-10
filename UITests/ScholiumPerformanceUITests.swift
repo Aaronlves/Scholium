@@ -157,7 +157,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.windows.firstMatch.waitForExistence(timeout: 30),
             "The retained-memory app window did not appear."
         )
-        let modeMenu = application.descendants(matching: .any)["scholium.documentModeMenu"]
+        let modeMenu = application.descendants(matching: .any)["scholium.documentModeButton"]
         XCTAssertTrue(modeMenu.waitForExistence(timeout: 30))
         selectEditorMode(
             "Edit",

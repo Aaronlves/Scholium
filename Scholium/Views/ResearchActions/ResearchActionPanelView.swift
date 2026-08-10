@@ -1026,16 +1026,6 @@ extension ResearchActionDefinition {
         }
     }
 
-    var interfaceKeyboardShortcut: KeyboardShortcut? {
-        switch id {
-        case .discuss:
-            KeyboardShortcut("r", modifiers: [.command])
-        case .analyze, .synthesize, .write:
-            KeyboardShortcut("r", modifiers: [.command, .shift])
-        default:
-            nil
-        }
-    }
 }
 
 private extension FidelityCheck {

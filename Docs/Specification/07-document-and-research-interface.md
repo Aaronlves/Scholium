@@ -150,16 +150,16 @@ researcher uses **Disable All Snippets** and re-enables selected managed copies.
 Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
 those managed copies.
 
-Window toolbar order is Sidebar visibility before the Library separator;
-Heading Outline and compact identity; mode and Search; **This Note Records**;
-Inspector visibility before the Apparatus separator. Scholium controls are
-borderless ink. No second identity row,
-Document Properties button, or More control exists.
-Complete Properties is in Research; direct controls retain menu/keyboard
-routes. The compact identity uses secondary text while the in-document H1
-remains primary. It is static during Beta scrolling; no custom H1-to-toolbar
-identity handoff or scroll-linked title animation is included. Document Text
-Size is per-window and source-neutral.
+Toolbar order is Sidebar before Library separator; Heading Outline and
+compact identity; Document Mode icon and Search; **This Note Records**;
+Inspector before Apparatus separator. Icon and pointer help report Review,
+Edit, or Source. Activating it switches Review/Edit and returns Source to Review.
+Source remains selectable only under **View > Document Mode**; `Command-R`
+performs the same switch. Controls remain borderless.
+No second identity row, Document Properties, or More; complete
+Properties remains in Research. Compact identity stays secondary and static;
+H1 stays primary without handoff or scroll animation.
+Document Text Size is per-window and source-neutral.
 
 Properties performs targeted frontmatter edits and distinguishes absent,
 empty, invalid, derived, and not-applicable. Exact YAML stays available in
@@ -378,8 +378,8 @@ switching notes, Document tabs, or Review/Edit/Source never changes the
 selected workspace's Inspector mode. Switching workspace restores its mode
 without creating another Inspector or changing native split geometry. Hiding
 the Inspector transfers only its Show route under §18.2; no Inspector content
-moves into Document. Research menu and keyboard commands may open an Action
-without revealing the Inspector or changing its mode.
+moves into Document. The Research menu opens an Action without revealing or
+changing the Inspector.
 
 Overview presents only compact current-note projections, in this order:
 
@@ -501,7 +501,8 @@ rather than becoming completed history.
 
 Each Action is one native full-row button with a direct symbol, the shortest
 accurate title, explanation only under §19.6, and only when useful a trailing
-chevron or shortcut. Its modular sheet shows the necessary scholarly inputs
+chevron. Action launchers have no assigned shortcuts; the menu and Inspector
+remain keyboard-accessible. Its modular sheet shows the necessary scholarly inputs
 and app-owned authority or recovery facts without exposing assembled prompts,
 registration keys, Session secrets, or technical mode names. The active Action and its sheet
 retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.

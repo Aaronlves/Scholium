@@ -537,6 +537,89 @@ struct WindowLifecycleTests {
         #expect(firstLibraryChanges.last == true)
     }
 
+    @Test("Research Inspector collapse resizes Document inside a fixed workspace frame")
+    func researchInspectorCollapseKeepsWorkspaceFrameFixed() throws {
+        let controller = makeWorkspaceSplit(
+            libraryChanges: { _ in },
+            inspectorChanges: { _ in }
+        )
+
+        let inspectorItem = try #require(controller.splitViewItems.last)
+        #expect(
+            inspectorItem.collapseBehavior
+                == .preferResizingSiblingsWithFixedSplitView
+        )
+        controller.setResearchInspectorVisible(true, animated: false)
+        #expect(!inspectorItem.isCollapsed)
+        controller.setResearchInspectorVisible(false, animated: false)
+        #expect(inspectorItem.isCollapsed)
+        controller.setResearchInspectorVisible(true, animated: false)
+        #expect(!inspectorItem.isCollapsed)
+    }
+
+    @Test("Research Inspector divider resizes one pane while its trailing edge stays fixed")
+    func researchInspectorDividerKeepsTrailingEdgeAnchored() throws {
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+            initialLibraryVisible: true,
+            initialApparatusVisible: true,
+            documentTabs: [],
+            selectedDocumentTabID: nil,
+            selectDocumentTab: { _ in },
+            closeDocumentTab: { _ in },
+            libraryVisibilityDidChange: { _ in },
+            researchInspectorVisibilityDidChange: { _ in },
+            splitControllerDidAttach: { _ in },
+            splitControllerDidDetach: { _ in },
+            library: Text("Library"),
+            document: Text("Document"),
+            apparatus: Text("Research")
+        )
+        _ = controller.view
+        controller.view.frame = NSRect(x: 0, y: 0, width: 1_180, height: 760)
+        controller.viewWillAppear()
+        controller.view.layoutSubtreeIfNeeded()
+
+        let inspectorItem = try #require(controller.splitViewItems.last)
+        let inspectorView = try #require(controller.splitView.arrangedSubviews.last)
+        #expect(!inspectorItem.isCollapsed)
+        #expect(inspectorView.frame.width > 0)
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
+
+        let dividerIndex = controller.splitView.arrangedSubviews.count - 2
+        controller.splitView.setPosition(
+            controller.splitView.bounds.maxX - 440,
+            ofDividerAt: dividerIndex
+        )
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(abs(inspectorView.frame.width - 440) < 1)
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
+
+        controller.splitView.setPosition(
+            controller.splitView.bounds.maxX,
+            ofDividerAt: dividerIndex
+        )
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(inspectorItem.isCollapsed)
+
+        controller.splitView.setPosition(
+            controller.splitView.bounds.maxX - 360,
+            ofDividerAt: dividerIndex
+        )
+        controller.view.layoutSubtreeIfNeeded()
+        #expect(!inspectorItem.isCollapsed)
+        #expect(abs(inspectorView.frame.width - 360) < 1)
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
+
+        let apparatusContainer = try #require(
+            inspectorItem.viewController
+                as? ScholiumSurfaceContainerViewController
+        )
+        #expect(
+            apparatusContainer.backgroundView.frame
+                == apparatusContainer.view.bounds
+        )
+    }
+
     @Test("Native hosting receives the live toolbar safe area")
     func hostingControllerReceivesLiveSafeArea() async {
         let libraryReading = SafeAreaReading()

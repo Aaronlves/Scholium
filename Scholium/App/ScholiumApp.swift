@@ -1371,9 +1371,17 @@ private struct ScholiumCommands: Commands {
                         && appState?.currentNote == nil)
             )
             Menu("Document Mode") {
-                Button("Review") { appState?.requestDocumentMode(.read) }
-                Button("Edit") { appState?.requestDocumentMode(.livePreview) }
-                    .disabled(appState?.canEditCurrentNote != true)
+                if appState?.currentPresentationMode == .read {
+                    Button("Review") { appState?.requestDocumentMode(.read) }
+                    Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                        .keyboardShortcut("r", modifiers: [.command])
+                        .disabled(appState?.canEditCurrentNote != true)
+                } else {
+                    Button("Review") { appState?.requestDocumentMode(.read) }
+                        .keyboardShortcut("r", modifiers: [.command])
+                    Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                        .disabled(appState?.canEditCurrentNote != true)
+                }
                 Button("Source") { appState?.requestDocumentMode(.source) }
                     .disabled(appState?.canEditCurrentNote != true)
             }
@@ -1434,7 +1442,6 @@ private struct ScholiumCommands: Commands {
                     } label: {
                         Text(verbatim: action.buttonName)
                     }
-                    .keyboardShortcut(action.definition.interfaceKeyboardShortcut)
                     .disabled(
                         !action.canPresentInInterface
                             || !appState.hasConfirmedCurrentResearchActionAvailability
