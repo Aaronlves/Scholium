@@ -155,23 +155,37 @@ struct ProfilesPracticesSettingsView: View {
             }
         }
         .sheet(item: $practiceEditor) { context in
-            ResearchPracticeSourceEditor(context: context) { source in
-                _ = try await settingsModel.savePhilosophicalPractice(
-                    relativePath: context.practice.relativePath,
-                    source: source,
-                    expectedRevision: context.practice.revision
-                )
-                await reload()
-            } restorePrevious: {
-                _ = try await settingsModel.restorePreviousPhilosophicalPractice(
-                    relativePath: context.practice.relativePath,
-                    expectedRevision: context.practice.revision
-                )
-                await reload()
-            }
+            ResearchGuidanceMarkdownEditSheet(
+                title: Text("Edit \(context.practice.title)"),
+                detail: Text("This is exact Markdown. Saving replaces only this Practice; one previous edit remains recoverable."),
+                sourceAccessibilityLabel: Text("Philosophical Practice Markdown"),
+                initialSource: context.practice.source,
+                save: { source in
+                    _ = try await settingsModel.savePhilosophicalPractice(
+                        relativePath: context.practice.relativePath,
+                        source: source,
+                        expectedRevision: context.practice.revision
+                    )
+                    await reload()
+                },
+                restorePrevious: {
+                    _ = try await settingsModel.restorePreviousPhilosophicalPractice(
+                        relativePath: context.practice.relativePath,
+                        expectedRevision: context.practice.revision
+                    )
+                    await reload()
+                }
+            )
         }
         .sheet(item: $newPractice) { _ in
-            NewResearchPracticeEditor { title, source in
+            ResearchGuidanceMarkdownCreationSheet(
+                title: Text("New Philosophical Practice"),
+                detail: Text("Scholium creates one ordinary Markdown document. Link its title exactly from a primary Method to include it in Research Context."),
+                nameLabel: "Practice title",
+                sourceAccessibilityLabel: Text("Philosophical Practice Markdown"),
+                initialName: "",
+                initialSource: "# Practice\n\nState the philosophical practice here.\n"
+            ) { title, source in
                 _ = try await settingsModel.createPhilosophicalPractice(
                     title: title,
                     source: source
@@ -807,120 +821,5 @@ private struct ResearchAcademicFieldDraft: Identifiable {
         }
         if result.first?.isNumber == true { result = "option-\(result)" }
         return result.isEmpty ? "option-\(fallback)" : result
-    }
-}
-
-private struct ResearchPracticeSourceEditor: View {
-    let context: ResearchPracticeEditorContext
-    let save: (String) async throws -> Void
-    let restorePrevious: () async throws -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var source: String
-    @State private var isWorking = false
-    @State private var errorMessage: String?
-
-    init(
-        context: ResearchPracticeEditorContext,
-        save: @escaping (String) async throws -> Void,
-        restorePrevious: @escaping () async throws -> Void
-    ) {
-        self.context = context
-        self.save = save
-        self.restorePrevious = restorePrevious
-        _source = State(initialValue: context.practice.source)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
-            Text("Edit \(context.practice.title)")
-                .font(ScholiumTypography.interface(.primaryTitle))
-            Text("This is exact Markdown. Saving replaces only this Practice; one previous edit remains recoverable.")
-                .scholiumForeground(.secondaryText)
-            TextEditor(text: $source)
-                .font(ScholiumTypography.exact(.body))
-                .frame(minWidth: 700, minHeight: 460)
-                .accessibilityLabel("Philosophical Practice Markdown")
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .scholiumForeground(.attention)
-            }
-            HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Restore Previous Edit") { perform(restorePrevious) }
-                    .disabled(isWorking)
-                Spacer()
-                Button("Save") { perform { try await save(source) } }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isWorking || source == context.practice.source)
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .frame(minWidth: 740, minHeight: 560)
-    }
-
-    private func perform(_ operation: @escaping () async throws -> Void) {
-        isWorking = true
-        Task { @MainActor in
-            defer { isWorking = false }
-            do {
-                try await operation()
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-}
-
-private struct NewResearchPracticeEditor: View {
-    let create: (String, String) async throws -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var source = "# Practice\n\nState the philosophical practice here.\n"
-    @State private var isCreating = false
-    @State private var errorMessage: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
-            Text("New Philosophical Practice")
-                .font(ScholiumTypography.interface(.primaryTitle))
-            Text("Scholium creates one ordinary Markdown document. Link its title exactly from a primary Method to include it in Research Context.")
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            TextField("Practice title", text: $title)
-            TextEditor(text: $source)
-                .font(ScholiumTypography.exact(.body))
-                .frame(minWidth: 700, minHeight: 410)
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .scholiumForeground(.attention)
-            }
-            HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                Spacer()
-                Button("Create") {
-                    isCreating = true
-                    Task { @MainActor in
-                        defer { isCreating = false }
-                        do {
-                            try await create(title, source)
-                            dismiss()
-                        } catch {
-                            errorMessage = error.localizedDescription
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    isCreating
-                        || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .frame(minWidth: 740, minHeight: 540)
     }
 }

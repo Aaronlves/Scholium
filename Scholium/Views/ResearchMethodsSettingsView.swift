@@ -93,7 +93,12 @@ struct ResearchMethodsSettingsView: View {
         )
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
         .sheet(item: $editor) { context in
-            ResearchMethodSourceEditor(context: context) { source in
+            ResearchGuidanceMarkdownEditSheet(
+                title: Text("Edit \(context.method.registration.displayName)"),
+                detail: Text("This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes."),
+                sourceAccessibilityLabel: Text("Primary Research Skill Markdown"),
+                initialSource: context.method.primaryMarkdownSource
+            ) { source in
                 _ = try await settingsModel.saveResearchMethod(
                     registrationKey: context.method.registration.key,
                     source: source,
@@ -103,7 +108,14 @@ struct ResearchMethodsSettingsView: View {
             }
         }
         .sheet(item: $newMethod) { context in
-            NewResearchMethodEditor(context: context) { name, source in
+            ResearchGuidanceMarkdownCreationSheet(
+                title: Text("Create Research Skill"),
+                detail: Text("Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest."),
+                nameLabel: "Display name",
+                sourceAccessibilityLabel: Text("Primary Research Skill Markdown"),
+                initialName: context.suggestedName,
+                initialSource: "# \(context.suggestedName)\n\nState the complete primary research method here.\n"
+            ) { name, source in
                 _ = try await settingsModel.createResearchMethod(
                     actionID: context.actionID,
                     displayName: name,
@@ -412,126 +424,5 @@ struct ResearchMethodsSettingsView: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         return panel.runModal() == .OK ? panel.url : nil
-    }
-}
-
-private struct ResearchMethodSourceEditor: View {
-    let context: ResearchMethodEditorContext
-    let save: (String) async throws -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var source: String
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    init(
-        context: ResearchMethodEditorContext,
-        save: @escaping (String) async throws -> Void
-    ) {
-        self.context = context
-        self.save = save
-        _source = State(initialValue: context.method.primaryMarkdownSource)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
-            Text("Edit \(context.method.registration.displayName)")
-                .font(ScholiumTypography.interface(.primaryTitle))
-            Text("This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes.")
-                .scholiumForeground(.secondaryText)
-            TextEditor(text: $source)
-                .font(ScholiumTypography.exact(.body))
-                .frame(minWidth: 700, minHeight: 480)
-                .accessibilityLabel("Primary Research Skill Markdown")
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .scholiumForeground(.attention)
-            }
-            HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                Spacer()
-                Button("Save") {
-                    isSaving = true
-                    Task { @MainActor in
-                        defer { isSaving = false }
-                        do {
-                            try await save(source)
-                            dismiss()
-                        } catch {
-                            errorMessage = error.localizedDescription
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isSaving || source == context.method.primaryMarkdownSource)
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .frame(minWidth: 740, minHeight: 580)
-    }
-}
-
-private struct NewResearchMethodEditor: View {
-    let context: NewResearchMethodContext
-    let create: (String, String) async throws -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-    @State private var source: String
-    @State private var isCreating = false
-    @State private var errorMessage: String?
-
-    init(
-        context: NewResearchMethodContext,
-        create: @escaping (String, String) async throws -> Void
-    ) {
-        self.context = context
-        self.create = create
-        _name = State(initialValue: context.suggestedName)
-        _source = State(initialValue:
-            "# \(context.suggestedName)\n\nState the complete primary research method here.\n"
-        )
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.editorSectionSpacing) {
-            Text("Create Research Skill")
-                .font(ScholiumTypography.interface(.primaryTitle))
-            Text("Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest.")
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            TextField("Display name", text: $name)
-            TextEditor(text: $source)
-                .font(ScholiumTypography.exact(.body))
-                .frame(minWidth: 700, minHeight: 430)
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .scholiumForeground(.attention)
-            }
-            HStack {
-                Button("Cancel", role: .cancel) { dismiss() }
-                Spacer()
-                Button("Create") {
-                    isCreating = true
-                    Task { @MainActor in
-                        defer { isCreating = false }
-                        do {
-                            try await create(name, source)
-                            dismiss()
-                        } catch {
-                            errorMessage = error.localizedDescription
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    isCreating
-                        || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .frame(minWidth: 740, minHeight: 560)
     }
 }

@@ -239,6 +239,77 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset == 10)
     }
 
+    @Test("Research Guidance Markdown sheets share one loss-protecting lifecycle")
+    func researchGuidanceMarkdownSheetOwnership() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let componentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchGuidanceMarkdownSheet.swift"
+            ),
+            encoding: .utf8
+        )
+        let methodsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchMethodsSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let profilesSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ProfilesPracticesSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(componentSource.contains("struct ResearchGuidanceMarkdownEditSheet"))
+        #expect(componentSource.contains("struct ResearchGuidanceMarkdownCreationSheet"))
+        #expect(componentSource.contains(".interactiveDismissDisabled(isDirty || isWorking)"))
+        #expect(componentSource.contains(".interactiveDismissDisabled(isDirty || isCreating)"))
+        #expect(componentSource.contains(".keyboardShortcut(.cancelAction)"))
+        #expect(componentSource.contains(".keyboardShortcut(.defaultAction)"))
+        #expect(componentSource.contains("@FocusState"))
+        #expect(componentSource.contains(".accessibilityAddTraits(.isModal)"))
+
+        #expect(methodsSource.contains("ResearchGuidanceMarkdownEditSheet("))
+        #expect(methodsSource.contains("ResearchGuidanceMarkdownCreationSheet("))
+        #expect(profilesSource.contains("ResearchGuidanceMarkdownEditSheet("))
+        #expect(profilesSource.contains("ResearchGuidanceMarkdownCreationSheet("))
+        for supersededOwner in [
+            "ResearchMethodSourceEditor",
+            "NewResearchMethodEditor",
+            "ResearchPracticeSourceEditor",
+            "NewResearchPracticeEditor",
+        ] {
+            #expect(!methodsSource.contains(supersededOwner))
+            #expect(!profilesSource.contains(supersededOwner))
+        }
+    }
+
+    @Test("Research Guidance Markdown drafts expose truthful local state")
+    func researchGuidanceMarkdownDraftState() {
+        var editDraft = ResearchGuidanceMarkdownEditDraft(source: "# Method\n")
+        #expect(!editDraft.isDirty)
+        editDraft.source.append("Changed\n")
+        #expect(editDraft.isDirty)
+        editDraft.source = editDraft.initialSource
+        #expect(!editDraft.isDirty)
+
+        var creationDraft = ResearchGuidanceMarkdownCreationDraft(
+            name: "",
+            source: "# Practice\n"
+        )
+        #expect(!creationDraft.isDirty)
+        #expect(!creationDraft.canCreate)
+        creationDraft.name = "Attention"
+        #expect(creationDraft.isDirty)
+        #expect(creationDraft.canCreate)
+        creationDraft.source = " \n"
+        #expect(!creationDraft.canCreate)
+    }
+
     @Test("Research Guidance exposes the current owner surfaces without package semantics")
     func researchGuidanceOwnsCurrentSkillConfiguration() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
