@@ -179,11 +179,9 @@ private struct BootstrapFlowView: View {
     }
 
     private var stepTransition: AnyTransition {
-        guard !reduceMotion else { return .opacity }
-        let offset = isMovingForward ? 14.0 : -14.0
-        return .asymmetric(
-            insertion: .offset(x: offset).combined(with: .opacity),
-            removal: .opacity
+        ScholiumMotion.bootstrapStepTransition(
+            movingForward: isMovingForward,
+            reduceMotion: reduceMotion
         )
     }
 

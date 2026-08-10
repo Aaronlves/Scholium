@@ -423,7 +423,6 @@ struct SpotlightSearchPanelView: View {
             }
 
             savedSearchesMenu
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
 
             Button {
                 context.dismiss()

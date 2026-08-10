@@ -1517,7 +1517,11 @@ private struct ResearchLiteratureRecommendationDetailView: View {
                     .hidden()
                 handledButtonLabel(isHandled: isHandled)
                     .id(isHandled)
-                    .transition(.opacity)
+                    .transition(
+                        ScholiumMotion.symbolReplacementTransition(
+                            reduceMotion: reduceMotion
+                        )
+                    )
             }
             .font(ScholiumTypography.interface(.compact, emphasis: .medium))
         }
@@ -1543,7 +1547,11 @@ private struct ResearchLiteratureRecommendationDetailView: View {
     private func handledButtonLabel(isHandled: Bool) -> some View {
         HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Image(systemName: isHandled ? "checkmark" : "clock")
-                .contentTransition(.symbolEffect(.replace))
+                .contentTransition(
+                    ScholiumMotion.symbolReplacementContentTransition(
+                        reduceMotion: reduceMotion
+                    )
+                )
             if isHandled {
                 Text("Handled")
             } else {

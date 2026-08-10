@@ -58,9 +58,9 @@ struct ScholiumSettingsView: View {
             if let message = settingsModel.toastMessage {
                 ToastView(message: message)
                     .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .move(edge: .bottom).combined(with: .opacity)
+                        ScholiumMotion.transientStatusTransition(
+                            reduceMotion: reduceMotion
+                        )
                     )
                     .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
             }

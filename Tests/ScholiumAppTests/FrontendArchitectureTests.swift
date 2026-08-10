@@ -4526,6 +4526,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
         #expect(ScholiumMotion.triptychWorkspaceSourceReveal(reduceMotion: true) == nil)
+        #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: false) != nil)
@@ -4534,7 +4535,99 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
         #expect(ScholiumMotion.triptychWorkspaceSourceReveal(reduceMotion: false) != nil)
+        #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
         #expect(ScholiumMotion.triptychWorkspaceSourceOffset == 6)
+    }
+
+    @Test("Bootstrap step motion keeps one semantic recipe owner")
+    func bootstrapStepMotionRecipeOwnership() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/WorkspaceSetupView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("ScholiumMotion.bootstrapStepTransition("))
+        #expect(source.contains("withAnimation(ScholiumMotion.bootstrapStep("))
+        #expect(!source.contains("let offset = isMovingForward"))
+        #expect(!source.contains(".asymmetric("))
+    }
+
+    @Test("Workspace motion keeps semantic transition recipe owners")
+    func workspaceMotionRecipeOwnership() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let contentSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let settingsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(contentSource.contains("ScholiumMotion.documentRevealTransition("))
+        #expect(contentSource.contains("ScholiumMotion.searchPresentationTransition("))
+        #expect(contentSource.contains("ScholiumMotion.transientStatusTransition("))
+        #expect(settingsSource.contains("ScholiumMotion.transientStatusTransition("))
+        #expect(!contentSource.contains("scale(scale: 0.985"))
+        #expect(!contentSource.contains("scale(scale: 0.995"))
+        #expect(!settingsSource.contains(".move(edge: .bottom)"))
+    }
+
+    @Test("Reachable motion paths retain their reduced-motion boundary")
+    func reachableMotionReductionContract() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+
+        let contentSource = try source("Scholium/Views/ContentView.swift")
+        let searchSource = try source("Scholium/Views/SearchWorkspaceView.swift")
+        let recordSource = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
+        )
+        let windowSource = try source(
+            "Scholium/UI/Components/ScholiumWindowManagement.swift"
+        )
+        let splitSource = try source(
+            "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
+        )
+        let reviewSource = try source(
+            "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+        )
+        let mermaidSource = try source("WebEditor/mermaid-runtime.ts")
+
+        #expect(!contentSource.contains(".transition(.opacity.combined(with: .scale(0.98)))"))
+        #expect(!searchSource.contains(".transition(.opacity.combined(with: .scale(scale: 0.9)))"))
+        #expect(recordSource.contains("ScholiumMotion.symbolReplacementTransition("))
+        #expect(
+            recordSource.contains("ScholiumMotion.symbolReplacementContentTransition("))
+        #expect(windowSource.contains("animated: !reduceMotion"))
+        #expect(splitSource.contains("accessibilityDisplayShouldReduceMotion"))
+
+        let reviewMotionProbe =
+            "matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'"
+        #expect(reviewSource.components(separatedBy: reviewMotionProbe).count == 3)
+        #expect(mermaidSource.contains("animation: none !important"))
+        #expect(mermaidSource.contains("transition: none !important"))
     }
 
     @Test("Custom interface glyphs use resolved semantic colors")

@@ -132,9 +132,9 @@ struct ContentView: View {
             if let toast = appState.toastMessage {
                 ToastView(toast: toast)
                     .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .move(edge: .bottom).combined(with: .opacity)
+                        ScholiumMotion.transientStatusTransition(
+                            reduceMotion: reduceMotion
+                        )
                     )
                     .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
             }
@@ -178,7 +178,6 @@ struct ContentView: View {
         .overlay {
             if appState.isLoading {
                 LoadingOverlay()
-                    .transition(.opacity.combined(with: .scale(0.98)))
             }
         }
         .overlay {
@@ -187,7 +186,11 @@ struct ContentView: View {
                     controller: appState.discoveryController,
                     context: spotlightSearchContext
                 )
-                    .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
+                    .transition(
+                        ScholiumMotion.searchPresentationTransition(
+                            reduceMotion: reduceMotion
+                        )
+                    )
                     .zIndex(20)
             }
         }
@@ -1072,11 +1075,21 @@ struct ContentView: View {
                 critiqueProvenanceContext: critiqueProvenanceContext
             )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.995)))
+                .transition(
+                    ScholiumMotion.documentRevealTransition(
+                        showingDocument: true,
+                        reduceMotion: reduceMotion
+                    )
+                )
                 .zIndex(0)
         } else {
             ScholiumNoDocumentDetailView()
-                .transition(.opacity)
+                .transition(
+                    ScholiumMotion.documentRevealTransition(
+                        showingDocument: false,
+                        reduceMotion: reduceMotion
+                    )
+                )
         }
     }
 

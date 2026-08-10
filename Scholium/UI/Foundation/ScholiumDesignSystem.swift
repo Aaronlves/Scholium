@@ -2879,12 +2879,39 @@ enum ScholiumMotion {
         reduceMotion ? nil : .easeInOut(duration: 0.18)
     }
 
+    static func bootstrapStepTransition(
+        movingForward: Bool,
+        reduceMotion: Bool
+    ) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        let offset = movingForward ? 14.0 : -14.0
+        return .asymmetric(
+            insertion: .offset(x: offset).combined(with: .opacity),
+            removal: .opacity
+        )
+    }
+
     static func documentReveal(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.36)
     }
 
+    static func documentRevealTransition(
+        showingDocument: Bool,
+        reduceMotion: Bool
+    ) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return showingDocument
+            ? .opacity.combined(with: .scale(scale: 0.995))
+            : .opacity
+    }
+
     static func searchPresentation(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .snappy(duration: 0.24)
+    }
+
+    static func searchPresentationTransition(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
     }
 
     static func searchExpansion(reduceMotion: Bool) -> Animation? {
@@ -2899,12 +2926,28 @@ enum ScholiumMotion {
         reduceMotion ? nil : .easeOut(duration: 0.12)
     }
 
+    static func symbolReplacementTransition(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .opacity
+    }
+
+    static func symbolReplacementContentTransition(
+        reduceMotion: Bool
+    ) -> ContentTransition {
+        reduceMotion ? .identity : .symbolEffect(.replace)
+    }
+
     static func triptychWorkspaceSourceReveal(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.18)
     }
 
     static func transientStatus(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)
+    }
+
+    static func transientStatusTransition(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .move(edge: .bottom).combined(with: .opacity)
     }
 }
 
