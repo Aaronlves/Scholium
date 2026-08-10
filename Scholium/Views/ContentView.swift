@@ -195,6 +195,36 @@ struct ContentView: View {
             ScholiumMotion.searchPresentation(reduceMotion: reduceMotion),
             value: appState.showSearchSurface
         )
+        .onChange(of: shellState.researchResultNotice) { previous, current in
+            guard current != nil, current != previous else { return }
+            AccessibilityNotification.Announcement(
+                String(
+                    localized: "An Agent result is ready to review.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            ).post()
+        }
+        .onChange(
+            of: shellState.researchNotificationPermissionNotice
+        ) { previous, current in
+            guard let current, current != previous else { return }
+            let message = switch current {
+            case .enable:
+                String(
+                    localized: "Get Notified When Results Are Ready",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            case .openSettings:
+                String(
+                    localized: "Notifications Are Off",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            }
+            AccessibilityNotification.Announcement(message).post()
+        }
         .sheet(item: presentedSheet, onDismiss: {
             let permissionController = appState
                 .researchAgentPermissionWindowController
@@ -701,13 +731,28 @@ struct ContentView: View {
                         },
                         copyInstructions: { instructions in
                             try appState.copyTextToClipboard(instructions)
-                            appState.showToast(
-                                String(
-                                    localized: "Action instructions copied.",
-                                    table: "Localizable",
-                                    bundle: .module
-                                )
+                        },
+                        didCopyHandoff: { runID in
+                            windowCoordinator.recordSuccessfulResearchHandoff(
+                                runID: runID
                             )
+                        },
+                        reviewResult: { activity in
+                            appState.presentationRouter.dismissSheet()
+                            Task { @MainActor in
+                                await Task.yield()
+                                windowCoordinator.reviewResearchResult(activity)
+                            }
+                        },
+                        retryRefresh: {
+                            Task { await appState.retryDerivedRefresh() }
+                        },
+                        openRecovery: {
+                            appState.presentationRouter.dismissSheet()
+                            Task { @MainActor in
+                                await Task.yield()
+                                appState.showTransactionRecovery = true
+                            }
                         },
                         dismiss: { appState.presentationRouter.dismissSheet() }
                     )
@@ -850,6 +895,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
+            researchNotificationBanner
             if !appState.transactionRecoveryRecords.isEmpty
                 || !appState.interruptedSaveRecoveries.isEmpty
                 || appState.transactionRecoveryError != nil
@@ -868,6 +914,40 @@ struct ContentView: View {
     }
 
     @ViewBuilder
+    private var researchNotificationBanner: some View {
+        if let destination = shellState.researchResultNotice {
+            ResearchResultNotificationView(
+                kind: .result,
+                review: {
+                    windowCoordinator.reviewResearchResult(destination)
+                },
+                dismiss: {
+                    shellState.dismissResearchResultNotice(matching: destination)
+                }
+            )
+            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+        } else if let permission = shellState.researchNotificationPermissionNotice {
+            ResearchResultNotificationView(
+                kind: permission == .enable
+                    ? .enableNotifications
+                    : .openNotificationSettings,
+                review: {
+                    switch permission {
+                    case .enable:
+                        windowCoordinator.requestResearchNotificationAuthorization()
+                    case .openSettings:
+                        windowCoordinator.openResearchNotificationSettings()
+                    }
+                },
+                dismiss: {
+                    shellState.dismissResearchNotificationPermissionNotice()
+                }
+            )
+            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+        }
+    }
+
+    @ViewBuilder
     private var apparatusRegion: some View {
         if let note = appState.currentNote {
             ResearchInspectorView(
@@ -882,7 +962,23 @@ struct ContentView: View {
                 registerResearchActionFocusOwner: {
                     pendingResearchActionFocusID = $0
                 },
-                openResearchAction: { appState.openResearchAction($0) },
+                openResearchAction: { item in
+                    if let activity = item.activity,
+                       activity.primary.state == .resultReady,
+                       let result = activity.newestResult {
+                        windowCoordinator.reviewResearchResult(result)
+                    } else if let activity = item.activity {
+                        appState.openResearchActionStatus(
+                            activity.primary,
+                            relatedResult: activity.newestResult
+                        )
+                    } else {
+                        appState.openResearchAction(item.id)
+                    }
+                },
+                endResearchActivity: { runID in
+                    researchActionController.endActivity(runID: runID)
+                },
                 retryResearchActionCancellation: { runID in
                     researchActionController.retryCancellationRecovery(runID: runID)
                 },
@@ -910,6 +1006,7 @@ struct ContentView: View {
                         focusRequest: nil,
                         registerFocusOwner: { _ in },
                         select: { _ in },
+                        endActivity: { _ in },
                         retryRefresh: {},
                         retryCancellationRecovery: { runID in
                             researchActionController
@@ -1101,6 +1198,115 @@ struct ToastView: View {
             )
         )
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ResearchResultNotificationView: View {
+    enum Kind {
+        case result
+        case enableNotifications
+        case openNotificationSettings
+    }
+
+    let kind: Kind
+    let review: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            Image(systemName: symbol)
+                .font(ScholiumTypography.interface(.body, emphasis: .strong))
+                .scholiumForeground(.secondaryText)
+                .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.labelAccessoryGap
+            ) {
+                Text(title)
+                    .font(ScholiumTypography.interface(.rowTitle))
+                Text(detail)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            actionButton
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .accessibilityLabel("Dismiss")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, ScholiumMetrics.Workspace.toastHorizontalInset)
+        .padding(.vertical, ScholiumMetrics.Workspace.toastVerticalInset)
+        .frame(maxWidth: 520, alignment: .leading)
+        .scholiumEditorialSurface(
+            .floatingControl,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var symbol: String {
+        switch kind {
+        case .result: "doc.text.magnifyingglass"
+        case .enableNotifications, .openNotificationSettings: "bell"
+        }
+    }
+
+    @ViewBuilder
+    private var actionButton: some View {
+        if kind == .result {
+            Button(actionTitle, action: review)
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+        } else {
+            Button(actionTitle, action: review)
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private var title: LocalizedStringResource {
+        switch kind {
+        case .result: "Agent Result Ready"
+        case .enableNotifications: "Get Notified When Results Are Ready"
+        case .openNotificationSettings: "Notifications Are Off"
+        }
+    }
+
+    private var detail: LocalizedStringResource {
+        switch kind {
+        case .result:
+            "Review the completed Research Record when you are ready."
+        case .enableNotifications:
+            "Scholium can notify you when the app is in the background."
+        case .openNotificationSettings:
+            "Turn on Scholium notifications in System Settings if you want background alerts."
+        }
+    }
+
+    private var actionTitle: LocalizedStringResource {
+        switch kind {
+        case .result: "Review Result"
+        case .enableNotifications: "Enable Notifications"
+        case .openNotificationSettings: "Open Settings"
+        }
+    }
+
+    private var identifier: String {
+        switch kind {
+        case .result: "scholium.researchResultNotification"
+        case .enableNotifications, .openNotificationSettings:
+            "scholium.researchNotificationPermission"
+        }
     }
 }
 

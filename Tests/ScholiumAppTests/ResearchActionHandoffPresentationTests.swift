@@ -1,8 +1,45 @@
 import Foundation
+@testable import ScholiumApp
 import Testing
 
 @Suite("Research Action handoff presentation")
 struct ResearchActionHandoffPresentationTests {
+    @Test("Copy success records the source Run before dismissal and failure preserves the sheet")
+    func handoffDeliveryTransition() throws {
+        let runID = UUID()
+        var events: [String] = []
+
+        try ResearchActionHandoffDelivery.copyAndComplete(
+            instructions: "handoff",
+            runID: runID,
+            copy: {
+                #expect($0 == "handoff")
+                events.append("copied")
+            },
+            didCopy: {
+                #expect($0 == runID)
+                events.append("registered")
+            },
+            dismiss: { events.append("dismissed") }
+        )
+        #expect(events == ["copied", "registered", "dismissed"])
+
+        events = []
+        #expect(throws: HandoffFailure.self) {
+            try ResearchActionHandoffDelivery.copyAndComplete(
+                instructions: "handoff",
+                runID: runID,
+                copy: { _ in
+                    events.append("copy failed")
+                    throw HandoffFailure()
+                },
+                didCopy: { _ in events.append("registered") },
+                dismiss: { events.append("dismissed") }
+            )
+        }
+        #expect(events == ["copy failed"])
+    }
+
     @Test("Action sheets expose researcher decisions instead of implementation boundaries")
     func researcherFacingActionStatus() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -11,6 +48,14 @@ struct ResearchActionHandoffPresentationTests {
             .deletingLastPathComponent()
         let actionPanel = try source(
             "Scholium/Views/ResearchActions/ResearchActionPanelView.swift",
+            repositoryRoot: repositoryRoot
+        )
+        let content = try source(
+            "Scholium/Views/ContentView.swift",
+            repositoryRoot: repositoryRoot
+        )
+        let app = try source(
+            "Scholium/App/ScholiumApp.swift",
             repositoryRoot: repositoryRoot
         )
 
@@ -23,6 +68,23 @@ struct ResearchActionHandoffPresentationTests {
         #expect(actionPanel.contains("Closing this sheet leaves the Action active."))
         #expect(actionPanel.contains("preparation.derivedRefreshWarning"))
         #expect(actionPanel.contains("Button(\"End Action…\", role: .destructive)"))
+        #expect(actionPanel.contains("ResearchActionHandoffDelivery.copyAndComplete"))
+        #expect(actionPanel.contains("context.dismiss()"))
+        #expect(actionPanel.contains("if controller.isStatusPresentation"))
+        #expect(actionPanel.contains("scholium.researchAction.statusSheet"))
+        #expect(actionPanel.contains("Button(\"Review Result\")"))
+        #expect(actionPanel.contains("title: \"Copy New Handoff\""))
+        #expect(actionPanel.contains("if controller.phase == .failed"))
+        #expect(actionPanel.contains("controller.retryHandoff()"))
+        #expect(content.contains("restoreResearchActionFocus(ifOwnedBy: actionID)"))
+        #expect(content.contains("reviewResult: { activity in"))
+        #expect(content.contains("appState.presentationRouter.dismissSheet()"))
+        #expect(content.contains("private var researchNotificationBanner"))
+        #expect(content.contains("researchNotificationBanner\n            if !appState.transactionRecoveryRecords"))
+        #expect(!content.contains(".overlay(alignment: .top)"))
+        #expect(content.contains("AccessibilityNotification.Announcement"))
+        #expect(app.contains("purpose: .reviewResult"))
+        #expect(app.contains("expectedFinalizedResultFingerprint:"))
 
         for implementationCopy in [
             "RUN BOUNDARY",
@@ -93,4 +155,6 @@ struct ResearchActionHandoffPresentationTests {
             encoding: .utf8
         )
     }
+
+    private struct HandoffFailure: Error {}
 }

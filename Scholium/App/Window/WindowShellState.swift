@@ -78,6 +78,10 @@ final class WindowShellState: ObservableObject {
     }
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
     @Published private(set) var toastMessage: WindowToast?
+    @Published private(set) var researchResultNotice:
+        ResearchResultReviewDestination?
+    @Published private(set) var researchNotificationPermissionNotice:
+        ResearchNotificationPermissionNotice?
     @Published private(set) var refreshStatusText: String?
     @Published private(set) var windowSessionPersistenceError: String?
 
@@ -189,6 +193,29 @@ final class WindowShellState: ObservableObject {
                 self?.toastMessage = nil
             }
         }
+    }
+
+    func presentResearchResultNotice(
+        _ destination: ResearchResultReviewDestination
+    ) {
+        researchResultNotice = destination
+    }
+
+    func dismissResearchResultNotice(
+        matching destination: ResearchResultReviewDestination? = nil
+    ) {
+        if let destination, researchResultNotice != destination { return }
+        researchResultNotice = nil
+    }
+
+    func presentResearchNotificationPermissionNotice(
+        _ notice: ResearchNotificationPermissionNotice
+    ) {
+        researchNotificationPermissionNotice = notice
+    }
+
+    func dismissResearchNotificationPermissionNotice() {
+        researchNotificationPermissionNotice = nil
     }
 
     func setRefreshStatus(_ status: String?) {

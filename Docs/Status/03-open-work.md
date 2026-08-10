@@ -29,14 +29,6 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Implement the post-handoff transition and notification delivery: close after
-  successful Copy Handoff with exact focus return, consume the activity
-  projection in Action rows and compact status sheets, and add privacy-bounded
-  foreground/system notifications with exact Record routing, authorization,
-  deduplication, and disposition cleanup. The Action row and notification click
-  must become the production `.reviewResult` request producers; ordinary
-  Records browsing must remain nonauthorizing. Result arrival must not open,
-  retarget, focus, or activate a Records window by itself.
 
 ## Editor input and semantics
 

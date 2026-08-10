@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
     let researchRecordsWindowCoordinator = ResearchRecordsWindowCoordinator()
+    let researchResultNotificationCoordinator =
+        ResearchResultNotificationCoordinator()
     private var terminationInFlight = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -122,7 +124,9 @@ struct ScholiumApp: App {
                         route: route.wrappedValue,
                         lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
                         researchRecordsWindowCoordinator:
-                            applicationDelegate.researchRecordsWindowCoordinator
+                            applicationDelegate.researchRecordsWindowCoordinator,
+                        researchResultNotificationCoordinator:
+                            applicationDelegate.researchResultNotificationCoordinator
                     )
                 }
             },
@@ -765,6 +769,8 @@ private struct ScholiumWindowRoot: View {
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
+    private let researchResultNotificationCoordinator:
+        ResearchResultNotificationCoordinator
     @StateObject private var appState: WindowModel
     @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
 
@@ -772,11 +778,16 @@ private struct ScholiumWindowRoot: View {
         workspaceStore: WorkspaceStore,
         route: TriptychWindowRoute,
         lifecycleRegistry: ScholiumWindowLifecycleRegistry,
-        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
+        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator,
+        researchResultNotificationCoordinator:
+            ResearchResultNotificationCoordinator
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
         self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
+        self.researchResultNotificationCoordinator =
+            researchResultNotificationCoordinator
+        researchResultNotificationCoordinator.bind(to: workspaceStore)
         let model = WindowModel(
             workspaceStore: workspaceStore,
             nativeWindowID: route.windowID,
@@ -788,7 +799,9 @@ private struct ScholiumWindowRoot: View {
             windowID: route.windowID,
             appState: model,
             lifecycleRegistry: lifecycleRegistry,
-            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator
+            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator,
+            researchResultNotificationCoordinator:
+                researchResultNotificationCoordinator
         ))
     }
 
@@ -798,7 +811,9 @@ private struct ScholiumWindowRoot: View {
             windowCoordinator: windowCoordinator,
             route: route,
             lifecycleRegistry: lifecycleRegistry,
-            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator
+            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator,
+            researchResultNotificationCoordinator:
+                researchResultNotificationCoordinator
         )
     }
 }
@@ -819,6 +834,8 @@ private struct ScholiumWindowObservedRoot: View {
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
+    private let researchResultNotificationCoordinator:
+        ResearchResultNotificationCoordinator
     @State private var destinationBootstrapWindowID: UUID?
 
     init(
@@ -826,7 +843,9 @@ private struct ScholiumWindowObservedRoot: View {
         windowCoordinator: WorkspaceWindowCoordinator,
         route: TriptychWindowRoute,
         lifecycleRegistry: ScholiumWindowLifecycleRegistry,
-        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
+        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator,
+        researchResultNotificationCoordinator:
+            ResearchResultNotificationCoordinator
     ) {
         self.appState = appState
         _windowCoordinator = ObservedObject(wrappedValue: windowCoordinator)
@@ -838,6 +857,8 @@ private struct ScholiumWindowObservedRoot: View {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
         self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
+        self.researchResultNotificationCoordinator =
+            researchResultNotificationCoordinator
     }
 
     var body: some View {
@@ -945,6 +966,22 @@ private struct ScholiumWindowObservedRoot: View {
                         openWindow(
                             id: "scholium-research-records",
                             value: triptychID
+                        )
+                    },
+                    reviewResearchResult: { destination in
+                        researchRecordsWindowCoordinator.submit(
+                            ResearchRecordsWindowRequest(
+                                triptychID: destination.triptychID,
+                                initialView: .records,
+                                purpose: .reviewResult,
+                                recordID: destination.recordID,
+                                expectedFinalizedResultFingerprint:
+                                    destination.finalizedResultFingerprint
+                            )
+                        )
+                        openWindow(
+                            id: "scholium-research-records",
+                            value: destination.triptychID
                         )
                     },
                     showAttention: { anchor, workspaceSlot, noteScope in
@@ -2438,8 +2475,11 @@ final class WindowModel: ObservableObject {
                 researchController.actions.retryingCancellationRecoveryIDs,
             pendingCancellationBarrierCount:
                 researchController.actions.pendingCancellationBarrierCount,
+            endingActivityRunIDs:
+                researchController.actions.endingActivityRunIDs,
             activeDiscussions: researchController.records?.activeDiscussions ?? [],
-            settlements: researchController.records?.settlements ?? []
+            settlements: researchController.records?.settlements ?? [],
+            activities: researchController.records?.activities ?? []
         )
     }
 
@@ -3290,6 +3330,32 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    func openResearchActionStatus(
+        _ activity: WorkspaceResearchActivity,
+        relatedResult: WorkspaceResearchActivity?
+    ) {
+        guard let target = currentResearchActionTarget,
+              target.noteID == activity.targetNoteID,
+              let reference = currentResearchFunctionReference,
+              !researchController.actions.hasCancellationBarrier else { return }
+        let availability = researchController.actions.availability.first {
+            $0.id == activity.actionID
+        }
+        let presentationID = UUID()
+        guard researchController.actions.beginStatus(
+            target: target,
+            availability: availability,
+            activity: activity,
+            relatedResult: relatedResult,
+            presentationID: presentationID
+        ) else { return }
+        researchController.requestPresentAction(
+            activity.actionID,
+            target: reference,
+            presentationID: presentationID
+        )
+    }
+
     func requestDiscussionPresentation(_ discussionID: UUID) {
         let requestID = UUID()
         discussionPresentationRequestID = requestID
@@ -4067,6 +4133,9 @@ final class WindowModel: ObservableObject {
                     )
                 }
                 return try await capabilities.research.actions.prepareAction(request)
+            },
+            actionRun: { runID in
+                try await capabilities.research.actions.actionRun(id: runID)
             },
             handoff: { runID in
                 try await capabilities.research.actions.issueAgentHandoff(

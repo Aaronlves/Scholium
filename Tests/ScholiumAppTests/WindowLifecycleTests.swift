@@ -386,6 +386,52 @@ struct WindowLifecycleTests {
         #expect(window.delegate === expectedDelegate)
     }
 
+    @Test("Changing a window Triptych clears its transient research notification state")
+    func triptychReassignmentClearsResearchNotificationState() throws {
+        let windowID = UUID()
+        let firstTriptychID = UUID()
+        let secondTriptychID = UUID()
+        let model = WindowModel(
+            workspaceStore: makeTestWorkspaceStore(),
+            nativeWindowID: windowID
+        )
+        let notificationCoordinator = ResearchResultNotificationCoordinator(
+            systemNotifications: WindowLifecycleNotificationSystem(),
+            userDefaults: UserDefaults(
+                suiteName: "WindowLifecycleTests.\(UUID())"
+            )!,
+            applicationIsActive: { true }
+        )
+        let coordinator = WorkspaceWindowCoordinator(
+            windowID: windowID,
+            appState: model,
+            lifecycleRegistry: ScholiumWindowLifecycleRegistry(),
+            researchResultNotificationCoordinator: notificationCoordinator
+        )
+        let activity = WorkspaceResearchActivity(
+            runID: UUID(),
+            actionID: .analyze,
+            targetNoteID: UUID(),
+            state: .resultReady,
+            recordID: UUID(),
+            recordFingerprint: DocumentFingerprint(content: "result"),
+            updatedAt: Date(timeIntervalSinceReferenceDate: 10)
+        )
+        let destination = try #require(ResearchResultReviewDestination(
+            triptychID: firstTriptychID,
+            activity: activity
+        ))
+
+        coordinator.updateResearchRecordsRouting(triptychID: firstTriptychID)
+        model.shellState.presentResearchResultNotice(destination)
+        model.shellState.presentResearchNotificationPermissionNotice(.enable)
+
+        coordinator.updateResearchRecordsRouting(triptychID: secondTriptychID)
+
+        #expect(model.shellState.researchResultNotice == nil)
+        #expect(model.shellState.researchNotificationPermissionNotice == nil)
+    }
+
     @Test("Native window close releases its Agent permission claim before teardown")
     func nativeCloseReleasesResearchAgentPermissionClaim() throws {
         let windowID = UUID()
@@ -687,6 +733,25 @@ private final class ManualLifecycleSuspension {
         self.continuation = nil
         continuation?.resume()
     }
+}
+
+@MainActor
+private final class WindowLifecycleNotificationSystem:
+    ResearchResultSystemNotificationServing
+{
+    var responseHandler: (@MainActor (ResearchResultReviewDestination) -> Void)?
+
+    func authorizationState() async -> ResearchResultNotificationAuthorizationState {
+        .denied
+    }
+
+    func requestAuthorization() async throws -> Bool { false }
+
+    func deliver(_ request: ResearchResultSystemNotificationRequest) async throws {}
+
+    func removeNotification(identifier: String) {}
+
+    func openNotificationSettings() {}
 }
 
 @MainActor

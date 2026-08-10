@@ -21,6 +21,7 @@ struct ResearchActionClient {
         ResearchActionExecutionRequest,
         MaterialChangedSinceUseAttentionContext?
     ) async throws -> ResearchActionPreparation
+    let actionRun: @MainActor (UUID) async throws -> ResearchActionPreparation
     let handoff: @MainActor (UUID) async throws -> ResearchAgentHandoff
     let cancel: @MainActor (UUID) async throws -> Void
     let openActiveDiscussion: @MainActor (UUID) -> Void
@@ -31,6 +32,9 @@ struct ResearchActionClient {
         sourceAccess: @escaping @MainActor (ResearchActionNoteSnapshot) async throws -> ResearchSourceAccessStatus,
         bindLocalSource: @escaping @MainActor (ResearchActionNoteSnapshot, URL) async throws -> ResearchSourceReference,
         prepare: @escaping @MainActor (ResearchActionExecutionRequest, MaterialChangedSinceUseAttentionContext?) async throws -> ResearchActionPreparation,
+        actionRun: @escaping @MainActor (UUID) async throws -> ResearchActionPreparation = { _ in
+            throw ResearchActionExecutionContractError.staleResolution
+        },
         handoff: @escaping @MainActor (UUID) async throws -> ResearchAgentHandoff = { _ in
             throw ResearchActionExecutionContractError.staleResolution
         },
@@ -42,6 +46,7 @@ struct ResearchActionClient {
         self.sourceAccess = sourceAccess
         self.bindLocalSource = bindLocalSource
         self.prepare = prepare
+        self.actionRun = actionRun
         self.handoff = handoff
         self.cancel = cancel
         self.openActiveDiscussion = openActiveDiscussion
@@ -97,6 +102,9 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var cancellationRecoveries: [ResearchActionCancellationRecovery] = []
     @Published private(set) var retryingCancellationRecoveryIDs: Set<UUID> = []
     @Published private(set) var pendingCancellationBarrierCount = 0
+    @Published private(set) var endingActivityRunIDs: Set<UUID> = []
+    @Published private(set) var statusActivity: WorkspaceResearchActivity?
+    @Published private(set) var statusRelatedResult: WorkspaceResearchActivity?
 
     @Published var textValues: [String: String] = [:]
     @Published var choiceValues: [String: Set<String>] = [:]
@@ -119,6 +127,7 @@ final class ResearchActionController: ObservableObject {
         isBindingSource || phase == .loading || phase == .preparing || phase == .cancelling
     }
     var passageIsAvailable: Bool { passage != nil }
+    var isStatusPresentation: Bool { statusActivity != nil }
     var hasCancellationBarrier: Bool {
         phase == .cancelling
             || pendingCancellationBarrierCount > 0
@@ -169,6 +178,28 @@ final class ResearchActionController: ObservableObject {
         }
     }
 
+    func receive(activities: [WorkspaceResearchActivity]) {
+        guard let runID = statusActivity?.runID else { return }
+        guard let activity = activities.first(where: { $0.runID == runID }) else {
+            phase = .cancelled
+            return
+        }
+        statusActivity = activity
+        statusRelatedResult = activities
+            .filter {
+                $0.targetNoteID == activity.targetNoteID
+                    && $0.actionID == activity.actionID
+                    && $0.state == .resultReady
+            }
+            .sorted {
+                if $0.updatedAt != $1.updatedAt {
+                    return $0.updatedAt > $1.updatedAt
+                }
+                return $0.runID.uuidString < $1.runID.uuidString
+            }
+            .first
+    }
+
     func unbind() {
         invalidate(clearAvailability: true)
         client = nil
@@ -208,6 +239,50 @@ final class ResearchActionController: ObservableObject {
             isRefreshingAvailability = false
             availabilityError = error.localizedDescription
         }
+    }
+
+    @discardableResult
+    func beginStatus(
+        target: ResearchActionNoteSnapshot,
+        availability: ResearchActionAvailability?,
+        activity: WorkspaceResearchActivity,
+        relatedResult: WorkspaceResearchActivity?,
+        presentationID: UUID
+    ) -> Bool {
+        guard phase != .cancelling, !hasCancellationBarrier else { return false }
+        invalidate(clearAvailability: false)
+        self.target = target
+        availabilityTarget = target
+        activeActionID = activity.actionID
+        self.presentationID = presentationID
+        presentationAvailability = availability
+        statusActivity = activity
+        statusRelatedResult = relatedResult
+        phase = .loading
+        let token = generation
+        loadingTask = Task { @MainActor [self] in
+            guard let client else { return }
+            do {
+                let loaded = try await client.actionRun(activity.runID)
+                guard accepts(token), self.presentationID == presentationID,
+                      loaded.runID == activity.runID,
+                      loaded.snapshot.actionID == activity.actionID,
+                      loaded.snapshot.target.noteID == activity.targetNoteID else {
+                    return
+                }
+                preparation = loaded
+                phase = .prepared
+            } catch is CancellationError {
+                return
+            } catch {
+                guard accepts(token), self.presentationID == presentationID else {
+                    return
+                }
+                phase = .failed
+                errorMessage = error.localizedDescription
+            }
+        }
+        return true
     }
 
     @discardableResult
@@ -504,6 +579,25 @@ final class ResearchActionController: ObservableObject {
         }
     }
 
+    func endActivity(runID: UUID) {
+        guard let client,
+              !endingActivityRunIDs.contains(runID) else { return }
+        endingActivityRunIDs.insert(runID)
+        Task { @MainActor [self] in
+            do {
+                try await client.cancel(runID)
+                endingActivityRunIDs.remove(runID)
+            } catch {
+                endingActivityRunIDs.remove(runID)
+                recordCancellationRecovery(
+                    runID: runID,
+                    error: error,
+                    cancel: client.cancel
+                )
+            }
+        }
+    }
+
     func retryHandoff() {
         guard let client, let preparation,
               phase == .failed, !isBusy else { return }
@@ -621,6 +715,7 @@ final class ResearchActionController: ObservableObject {
         cancellationRecoveries.removeAll { $0.runID == runID }
         recoveryCancellations[runID] = nil
         retryingCancellationRecoveryIDs.remove(runID)
+        endingActivityRunIDs.remove(runID)
     }
 
     private func finishPendingCancellationBarrier() {
@@ -733,6 +828,8 @@ final class ResearchActionController: ObservableObject {
         agentHandoff = nil
         resultRecord = nil
         continuationRecords = []
+        statusActivity = nil
+        statusRelatedResult = nil
         errorMessage = nil
         isBindingSource = false
         textValues = [:]

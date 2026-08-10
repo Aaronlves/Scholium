@@ -124,6 +124,7 @@ final class ResearchController: ObservableObject {
             critiques: current.critiques,
             checkpointListing: current.checkpointListing,
             recoveryRecords: current.recoveryRecords,
+            activities: current.activities,
             healthIssues: current.healthIssues
         )
         errorMessage = nil
@@ -457,6 +458,7 @@ final class ResearchController: ObservableObject {
     func receive(_ snapshot: WorkspaceSnapshot) {
         records = snapshot.research
         actions.receive(records: snapshot.research.finishedResearchRecords)
+        actions.receive(activities: snapshot.research.activities)
         errorMessage = nil
     }
 

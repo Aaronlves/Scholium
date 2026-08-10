@@ -58,10 +58,20 @@
   Context Used, Participants, Technical Details order. One combined editor
   atomically saves Evaluation and Method Feedback; Change Decision exposes
   Finish, Keep, current-state completion, and the shared folding exact
-  comparison. The validated review-result route and Records-window-lifetime
-  direct-Undo grant are implemented, but the production Action/notification
-  producer remains Stage 3; ordinary Records browsing does not receive the
-  grant.
+  comparison. Action rows and notification clicks now produce the validated
+  exact review-result route and its Records-window-lifetime direct-Undo grant;
+  ordinary Records browsing does not receive the grant.
+- Copy Handoff success closes the preparation sheet and returns focus through
+  the existing Action-row focus owner. Actions project Waiting, Running, Needs
+  Attention, Result Ready, repair text, and multiple-result count from durable
+  execution/Record truth. Waiting and Running open a compact status sheet;
+  Result Ready enters the newest unfinished exact Record.
+- Foreground completion presents a dismissible Review Result banner only in
+  the source window. Authorized background completion uses a private system
+  notification; click routing retains its exact Triptych, Record, and finalized
+  fingerprint even when no main window remains. Arrival alone never opens,
+  retargets, focuses, or activates Records, and completed review withdraws the
+  delivery.
 
 ## Search, Attention, and Research Records
 

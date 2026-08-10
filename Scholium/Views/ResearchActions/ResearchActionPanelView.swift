@@ -5,7 +5,25 @@ import SwiftUI
 struct ResearchActionPanelContext {
     let chooseLocalSource: () -> URL?
     let copyInstructions: (String) throws -> Void
+    let didCopyHandoff: (UUID) -> Void
+    let reviewResult: (WorkspaceResearchActivity) -> Void
+    let retryRefresh: () -> Void
+    let openRecovery: () -> Void
     let dismiss: () -> Void
+}
+
+enum ResearchActionHandoffDelivery {
+    static func copyAndComplete(
+        instructions: String,
+        runID: UUID,
+        copy: (String) throws -> Void,
+        didCopy: (UUID) -> Void,
+        dismiss: () -> Void
+    ) throws {
+        try copy(instructions)
+        didCopy(runID)
+        dismiss()
+    }
 }
 
 /// One native sheet for every Action. It keeps the Action, target, possible
@@ -30,6 +48,70 @@ struct ResearchActionPanelView: View {
     }
 
     var body: some View {
+        Group {
+            if controller.isStatusPresentation {
+                statusPanel
+            } else {
+                preparationPanel
+            }
+        }
+        .frame(
+            minWidth: ScholiumMetrics.ResearchSheet.Action.minimumWidth,
+            idealWidth: ScholiumMetrics.ResearchSheet.Action.idealWidth,
+            minHeight: controller.isStatusPresentation
+                ? 300
+                : ScholiumMetrics.ResearchSheet.Action.minimumHeight,
+            idealHeight: controller.isStatusPresentation
+                ? 360
+                : ScholiumMetrics.ResearchSheet.Action.idealHeight
+        )
+        .scholiumSurface(.denseEvidence)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(
+            controller.isStatusPresentation
+                ? "scholium.researchAction.statusSheet"
+                : "scholium.researchAction.sheet"
+        )
+        .interactiveDismissDisabled(
+            controller.phase == .preparing
+                || controller.phase == .cancelling
+        )
+        .onAppear {
+            if !controller.isStatusPresentation {
+                focusFirstAcademicTextField()
+            }
+        }
+        .onChange(of: controller.phase) { _, phase in
+            switch phase {
+            case .editing:
+                focusFirstAcademicTextField()
+            case .prepared:
+                completePendingHandoff()
+            case .failed:
+                pendingHandoff = nil
+            case .cancelled:
+                pendingHandoff = nil
+                context.dismiss()
+            case .idle, .loading, .preparing, .cancelling:
+                break
+            }
+        }
+        .confirmationDialog(
+            "End this Action?",
+            isPresented: $confirmsEndAction,
+            titleVisibility: .visible
+        ) {
+            Button("Keep Action", role: .cancel) {}
+            Button("End Action", role: .destructive) {
+                controller.cancelPreparedRun()
+            }
+        } message: {
+            Text("Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available.")
+        }
+    }
+
+    private var preparationPanel: some View {
         VStack(spacing: 0) {
             header
             ScholiumStructuralRule()
@@ -69,47 +151,34 @@ struct ResearchActionPanelView: View {
             }
             footer
         }
-        .frame(
-            minWidth: ScholiumMetrics.ResearchSheet.Action.minimumWidth,
-            idealWidth: ScholiumMetrics.ResearchSheet.Action.idealWidth,
-            minHeight: ScholiumMetrics.ResearchSheet.Action.minimumHeight,
-            idealHeight: ScholiumMetrics.ResearchSheet.Action.idealHeight
-        )
-        .scholiumSurface(.denseEvidence)
-        .accessibilityAddTraits(.isModal)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchAction.sheet")
-        .interactiveDismissDisabled(
-            controller.phase == .preparing
-                || controller.phase == .cancelling
-        )
-        .onAppear { focusFirstAcademicTextField() }
-        .onChange(of: controller.phase) { _, phase in
-            switch phase {
-            case .editing:
-                focusFirstAcademicTextField()
-            case .prepared:
-                completePendingHandoff()
-            case .failed:
-                pendingHandoff = nil
-            case .cancelled:
-                pendingHandoff = nil
-                context.dismiss()
-            case .idle, .loading, .preparing, .cancelling:
-                break
+    }
+
+    private var statusPanel: some View {
+        VStack(spacing: 0) {
+            statusHeader
+            ScholiumStructuralRule()
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing
+                ) {
+                    statusSheetContent
+                }
+                .padding(ScholiumMetrics.ResearchSheet.contentInset)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        .confirmationDialog(
-            "End this Action?",
-            isPresented: $confirmsEndAction,
-            titleVisibility: .visible
-        ) {
-            Button("Keep Action", role: .cancel) {}
-            Button("End Action", role: .destructive) {
-                controller.cancelPreparedRun()
+            .accessibilityIdentifier("scholium.researchAction.statusScroll")
+            ScholiumStructuralRule()
+            if let handoffErrorMessage {
+                Label(handoffErrorMessage, systemImage: "exclamationmark.triangle")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(ScholiumMetrics.ResearchSheet.contentInset)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ScholiumStructuralRule()
             }
-        } message: {
-            Text("Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available.")
+            statusFooter
         }
     }
 
@@ -145,6 +214,198 @@ struct ResearchActionPanelView: View {
             Spacer(minLength: 0)
         }
         .padding(ScholiumMetrics.ResearchSheet.contentInset)
+    }
+
+    private var statusHeader: some View {
+        HStack(
+            alignment: .firstTextBaseline,
+            spacing: ScholiumGrid.Spacing.nestedContentInset
+        ) {
+            Image(
+                systemName: controller.activeAvailability?.definition.interfaceSymbol
+                    ?? "sparkles"
+            )
+            .scholiumSymbolStyle(.emphasizedProminent)
+            .scholiumForeground(.secondaryText)
+            .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing
+            ) {
+                Text(verbatim: actionTitle)
+                    .font(ScholiumTypography.interface(.primaryTitle))
+                    .accessibilityAddTraits(.isHeader)
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: ScholiumMetrics.ResearchSheet.fieldSpacing
+                ) {
+                    Text("Target")
+                        .font(ScholiumTypography.interface(.sectionTitle))
+                    Text(verbatim: targetTitle)
+                }
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(.secondaryText)
+                .accessibilityElement(children: .combine)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(ScholiumMetrics.ResearchSheet.contentInset)
+    }
+
+    @ViewBuilder
+    private var statusSheetContent: some View {
+        if controller.phase == .loading {
+            ProgressView("Loading Action Status…")
+                .controlSize(.small)
+        } else if let activity = controller.statusActivity {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.nestedContentInset
+            ) {
+                Label(statusTitle(for: activity), systemImage: statusSymbol(for: activity))
+                    .font(ScholiumTypography.interface(.sectionTitle))
+                    .accessibilityIdentifier("scholium.researchAction.status")
+                if let reason = activity.repairReason {
+                    Text(reason.interfaceRepairDescription)
+                        .font(ScholiumTypography.interface(.body))
+                        .scholiumForeground(.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(statusDetail(for: activity))
+                        .font(ScholiumTypography.interface(.body))
+                        .scholiumForeground(.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let warning = controller.preparation?.derivedRefreshWarning {
+                    Label(warning, systemImage: "arrow.triangle.2.circlepath")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.attention)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let relatedResult = controller.statusRelatedResult,
+                   relatedResult.runID != activity.runID {
+                    Text("Another result from this Action is ready to review.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
+            }
+        }
+        if let errorMessage = controller.errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.octagon")
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(.destructive)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var statusFooter: some View {
+        HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
+            Button("Done") { context.dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .disabled(controller.isBusy)
+            if canEndStatusAction {
+                Button("End Action…", role: .destructive) {
+                    confirmsEndAction = true
+                }
+                .disabled(controller.isBusy)
+            }
+            Spacer()
+            statusRecoveryAction
+            if let result = controller.statusRelatedResult {
+                Button("Review Result") {
+                    context.reviewResult(result)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(controller.isBusy)
+                .accessibilityIdentifier("scholium.researchAction.reviewResult")
+            } else if canEndStatusAction {
+                Button {
+                    copyNewHandoff()
+                } label: {
+                    handoffButtonLabel(
+                        title: "Copy New Handoff",
+                        isPending: pendingHandoff == .copyNew
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(pendingHandoff != nil || controller.isBusy)
+                .accessibilityIdentifier(
+                    "scholium.researchAction.statusCopyNewHandoff"
+                )
+            }
+        }
+        .padding(ScholiumMetrics.ResearchSheet.contentInset)
+    }
+
+    @ViewBuilder
+    private var statusRecoveryAction: some View {
+        switch controller.statusActivity?.repairReason {
+        case .recoveryRequired:
+            Button("Open Recovery…") { context.openRecovery() }
+                .disabled(controller.isBusy)
+        case .recordUnavailable:
+            Button("Retry Refresh") { context.retryRefresh() }
+                .disabled(controller.isBusy)
+        case .sourceConflict:
+            Button("Return to Document") { context.dismiss() }
+                .disabled(controller.isBusy)
+        case .sourceChanged, .none:
+            EmptyView()
+        }
+    }
+
+    private func statusTitle(for activity: WorkspaceResearchActivity) -> String {
+        ResearchActionActivityPresentation.make(activities: [activity])?.stateTitle
+            ?? String(
+                localized: "Action Status",
+                table: "Localizable",
+                bundle: .module
+            )
+    }
+
+    private func statusDetail(for activity: WorkspaceResearchActivity) -> String {
+        switch activity.state {
+        case .waitingForAgent:
+            String(
+                localized: "The handoff is ready. Scholium is waiting for the Agent to connect.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .running:
+            String(
+                localized: "The Agent has started this Action.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .needsAttention:
+            String(
+                localized: "This Action needs recovery before it can continue.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .resultReady:
+            String(
+                localized: "The completed Research Record is ready to review.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
+
+    private func statusSymbol(for activity: WorkspaceResearchActivity) -> String {
+        switch activity.state {
+        case .waitingForAgent: "clock"
+        case .running: "arrow.triangle.2.circlepath"
+        case .needsAttention: "exclamationmark.triangle"
+        case .resultReady: "doc.text.magnifyingglass"
+        }
+    }
+
+    private var canEndStatusAction: Bool {
+        controller.canCancelPreparedRun
+            && controller.statusActivity?.state != .resultReady
     }
 
     @ViewBuilder
@@ -578,17 +839,29 @@ struct ResearchActionPanelView: View {
     }
 
     private func copyNewHandoff() {
-        guard controller.agentHandoff != nil,
-              controller.canCancelPreparedRun,
+        guard controller.canCancelPreparedRun,
               pendingHandoff == nil,
               !controller.isBusy else { return }
         pendingHandoff = .copyNew
-        controller.regenerateHandoff()
+        if controller.phase == .failed {
+            controller.retryHandoff()
+        } else {
+            controller.regenerateHandoff()
+        }
     }
 
     private func performHandoff(instructions: String) {
         do {
-            try context.copyInstructions(instructions)
+            guard let runID = controller.preparation?.runID else {
+                throw ResearchActionExecutionContractError.staleResolution
+            }
+            try ResearchActionHandoffDelivery.copyAndComplete(
+                instructions: instructions,
+                runID: runID,
+                copy: context.copyInstructions,
+                didCopy: context.didCopyHandoff,
+                dismiss: context.dismiss
+            )
         } catch {
             handoffErrorMessage = String(
                 localized: "Scholium could not copy the handoff. \(error.localizedDescription)",

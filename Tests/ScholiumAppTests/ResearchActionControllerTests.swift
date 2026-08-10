@@ -833,6 +833,126 @@ struct ResearchActionControllerTests {
         #expect(controller.continuationRecords.isEmpty)
     }
 
+    @Test("An activity opens a compact status presentation without rebuilding academic input")
+    func activityStatusPresentation() async throws {
+        let action = try availability(.synthesize, order: 100)
+        let target = target()
+        let runID = UUID()
+        let prepared = try preparation(action: action, target: target, runID: runID)
+        let waiting = researchActivity(
+            runID: runID,
+            actionID: action.id,
+            targetNoteID: target.noteID,
+            state: .waitingForAgent,
+            updatedAt: 10
+        )
+        let ready = researchActivity(
+            actionID: action.id,
+            targetNoteID: target.noteID,
+            state: .resultReady,
+            recordID: UUID(),
+            fingerprint: DocumentFingerprint(content: "result"),
+            updatedAt: 20
+        )
+        var actionRunRequests: [UUID] = []
+        var handoffRequests: [UUID] = []
+        var cancelledRunIDs: [UUID] = []
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in throw TestFailure.stopAfterCapture },
+            materialCandidates: { _, _ in throw TestFailure.stopAfterCapture },
+            sourceAccess: { _ in throw TestFailure.stopAfterCapture },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
+            actionRun: {
+                actionRunRequests.append($0)
+                return prepared
+            },
+            handoff: {
+                handoffRequests.append($0)
+                return try testHandoff(runID: $0)
+            },
+            cancel: { cancelledRunIDs.append($0) },
+            openActiveDiscussion: { _ in }
+        ))
+
+        #expect(controller.beginStatus(
+            target: target,
+            availability: action,
+            activity: waiting,
+            relatedResult: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.phase == .prepared }
+
+        #expect(controller.isStatusPresentation)
+        #expect(controller.statusActivity == waiting)
+        #expect(controller.textValues.isEmpty)
+        #expect(controller.selectedFocalNoteIDs.isEmpty)
+        #expect(actionRunRequests == [runID])
+
+        controller.receive(activities: [waiting, ready])
+        #expect(controller.statusRelatedResult == ready)
+        controller.regenerateHandoff()
+        await waitUntil { controller.agentHandoff != nil }
+        #expect(handoffRequests == [runID])
+
+        controller.endActivity(runID: runID)
+        await waitUntil { cancelledRunIDs == [runID] }
+        #expect(controller.cancellationRecoveries.isEmpty)
+    }
+
+    @Test("A failed compact-status recopy remains retryable on the same Run")
+    func activityStatusRecopyRetries() async throws {
+        let action = try availability(.synthesize, order: 100)
+        let target = target()
+        let runID = UUID()
+        let prepared = try preparation(action: action, target: target, runID: runID)
+        let waiting = researchActivity(
+            runID: runID,
+            actionID: action.id,
+            targetNoteID: target.noteID,
+            state: .waitingForAgent,
+            updatedAt: 10
+        )
+        var handoffAttempt = 0
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in [] },
+            materialCandidates: { _, _ in [] },
+            sourceAccess: { _ in .repairRequired(.missingBinding) },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
+            actionRun: { _ in prepared },
+            handoff: {
+                handoffAttempt += 1
+                if handoffAttempt == 1 { throw TestFailure.stopAfterCapture }
+                return try testHandoff(runID: $0)
+            },
+            cancel: { _ in },
+            openActiveDiscussion: { _ in }
+        ))
+        #expect(controller.beginStatus(
+            target: target,
+            availability: action,
+            activity: waiting,
+            relatedResult: nil,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.phase == .prepared }
+
+        controller.regenerateHandoff()
+        await waitUntil { controller.phase == .failed }
+        #expect(controller.canCancelPreparedRun)
+        #expect(controller.agentHandoff == nil)
+
+        controller.retryHandoff()
+        await waitUntil { controller.phase == .prepared }
+        #expect(controller.agentHandoff != nil)
+        #expect(handoffAttempt == 2)
+        #expect(controller.preparation?.runID == runID)
+    }
+
     private func client(
         actions: [ResearchActionAvailability],
         candidates: [ResearchActionNoteSnapshot] = [],
@@ -1006,6 +1126,28 @@ struct ResearchActionControllerTests {
             lifecycle: .active,
             fingerprint: DocumentFingerprint(content: title),
             title: title
+        )
+    }
+
+    private func researchActivity(
+        runID: UUID = UUID(),
+        actionID: ResearchActionID,
+        targetNoteID: UUID,
+        state: WorkspaceResearchActivityState,
+        recordID: UUID? = nil,
+        fingerprint: DocumentFingerprint? = nil,
+        repairReason: WorkspaceResearchActivityRepairReason? = nil,
+        updatedAt: TimeInterval
+    ) -> WorkspaceResearchActivity {
+        WorkspaceResearchActivity(
+            runID: runID,
+            actionID: actionID,
+            targetNoteID: targetNoteID,
+            state: state,
+            recordID: recordID,
+            recordFingerprint: fingerprint,
+            repairReason: repairReason,
+            updatedAt: Date(timeIntervalSinceReferenceDate: updatedAt)
         )
     }
 

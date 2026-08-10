@@ -27,6 +27,15 @@ struct ResearchWorkflowPreviewCatalogTests {
     @Test("Research Guidance proofs use the current researcher-governed vocabulary")
     func usesCurrentResearchGuidanceVocabulary() throws {
         let source = try previewSource()
+        let guidanceStart = try #require(
+            source.range(of: "// MARK: - Research Guidance")
+        )
+        let guidanceEnd = try #require(
+            source.range(of: "// MARK: - Bounded write-set extension")
+        )
+        let guidanceSource = source[
+            guidanceStart.lowerBound..<guidanceEnd.lowerBound
+        ]
 
         for category in [
             "Methods",
@@ -35,7 +44,7 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Sources & Integrations",
             "Recovery & Technical",
         ] {
-            #expect(source.contains(category))
+            #expect(guidanceSource.contains(category))
         }
 
         for customization in [
@@ -50,7 +59,10 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Pairing and Session are short-lived and restart-invalidated",
             "One previous primary Method edit",
         ] {
-            #expect(source.contains(customization), "Missing Skill customization proof: \(customization)")
+            #expect(
+                guidanceSource.contains(customization),
+                "Missing Skill customization proof: \(customization)"
+            )
         }
 
         for forbidden in [
@@ -67,7 +79,10 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Deny",
             " · ",
         ] {
-            #expect(!source.contains(forbidden), "Preview exposes retired vocabulary: \(forbidden)")
+            #expect(
+                !guidanceSource.contains(forbidden),
+                "Research Guidance exposes retired vocabulary: \(forbidden)"
+            )
         }
     }
 

@@ -111,6 +111,17 @@ window-lifetime direct-Undo grant. Multiple exact review requests may retain
 independent per-Record grants through navigation in that same window. They are
 neither persisted nor treated as source authority, and closing the window
 destroys all of them.
+`ResearchResultNotificationCoordinator`, owned once by the application
+delegate, observes only `WorkspaceResearchSnapshot.activities`. It retains
+process-local source-window affinity, Record/finalized-result deduplication,
+and a SwiftUI scene-opening callback for notification clicks after the last
+main window closes. Foreground delivery targets only the recorded origin
+window; authorized background delivery passes the privacy-fixed body and exact
+route identifiers through a replaceable `UNUserNotificationCenter` adapter.
+Neither delivery path opens, retargets, focuses, or activates a Records window
+until the researcher invokes its Review action. Activity disappearance removes
+the in-app and system delivery; execution and the portable Record remain the
+only durable owners.
 
 ### Runtime bootstrap, refresh, and Search
 

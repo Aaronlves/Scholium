@@ -325,7 +325,8 @@ struct ResearchInspectorView: View {
     let researchActionsPresentation: ResearchActionsPresentation
     let researchActionFocusRequest: ResearchActionFocusRequest?
     let registerResearchActionFocusOwner: (ResearchActionID) -> Void
-    let openResearchAction: (ResearchActionID) -> Void
+    let openResearchAction: (ResearchActionItemPresentation) -> Void
+    let endResearchActivity: (UUID) -> Void
     let retryResearchActionCancellation: (UUID) -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
     let settle: (String?) async throws -> Void
@@ -340,7 +341,8 @@ struct ResearchInspectorView: View {
         researchActionsPresentation: ResearchActionsPresentation,
         researchActionFocusRequest: ResearchActionFocusRequest?,
         registerResearchActionFocusOwner: @escaping (ResearchActionID) -> Void,
-        openResearchAction: @escaping (ResearchActionID) -> Void,
+        openResearchAction: @escaping (ResearchActionItemPresentation) -> Void,
+        endResearchActivity: @escaping (UUID) -> Void,
         retryResearchActionCancellation: @escaping (UUID) -> Void,
         openReference: @escaping (VaultNoteReference, Int?) -> Void,
         settle: @escaping (String?) async throws -> Void
@@ -355,6 +357,7 @@ struct ResearchInspectorView: View {
         self.researchActionFocusRequest = researchActionFocusRequest
         self.registerResearchActionFocusOwner = registerResearchActionFocusOwner
         self.openResearchAction = openResearchAction
+        self.endResearchActivity = endResearchActivity
         self.retryResearchActionCancellation = retryResearchActionCancellation
         self.openReference = openReference
         self.settle = settle
@@ -383,6 +386,7 @@ struct ResearchInspectorView: View {
                         focusRequest: researchActionFocusRequest,
                         registerFocusOwner: registerResearchActionFocusOwner,
                         select: openResearchAction,
+                        endActivity: endResearchActivity,
                         retryRefresh: researchInspectorContentContext.retryRefresh,
                         retryCancellationRecovery: retryResearchActionCancellation,
                         settle: settle

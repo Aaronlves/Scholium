@@ -342,9 +342,15 @@ supports whole-document direct Undo only when the feature model holds the
 validated window-lifetime grant. The Document conflict route supplies different
 inputs and operations to the same pure folding-diff presentation without
 sharing source or conflict state ownership.
-The route contract and grant owner are implemented, but the production
-`.reviewResult` producer remains with the Stage 3 Action-activity and
-notification cutover; ordinary Records browsing cannot manufacture this grant.
+The Action row and notification click are the production `.reviewResult`
+producers. Both submit the exact Record identifier and finalized-result
+fingerprint; ordinary Records browsing cannot manufacture this grant. Copy
+Handoff success records process-local source-window affinity and dismisses the
+preparation sheet, while failure leaves its inputs intact. The Action row
+derives Waiting, Running, Needs Attention, Result Ready, pending-result count,
+and its first repair only from the privacy-bounded activity projection. A
+compact status sheet reloads the exact Run for recopy, ending, or recovery and
+does not reconstruct the former academic-input/result surface.
 Confirmed reload rereads the exact Record ID through the existing Record use
 case and accepts no differently identified response; it adds no presentation
 cache or Evaluation owner.

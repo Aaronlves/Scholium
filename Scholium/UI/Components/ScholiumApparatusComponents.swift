@@ -343,17 +343,23 @@ struct ScholiumApparatusActionRowContent: View {
     let title: Text
     let systemImage: String
     let detail: Text?
+    let trailingState: Text?
+    let showsProgress: Bool
     let showsChevron: Bool
 
     init(
         title: Text,
         systemImage: String,
         detail: Text? = nil,
+        trailingState: Text? = nil,
+        showsProgress: Bool = false,
         showsChevron: Bool = true
     ) {
         self.title = title
         self.systemImage = systemImage
         self.detail = detail
+        self.trailingState = trailingState
+        self.showsProgress = showsProgress
         self.showsChevron = showsChevron
     }
 
@@ -362,11 +368,21 @@ struct ScholiumApparatusActionRowContent: View {
             alignment: .firstTextBaseline,
             spacing: ScholiumMetrics.Apparatus.iconToTextSpacing
         ) {
-            Image(systemName: systemImage)
-                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                .scholiumForeground(.secondaryText)
-                .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
-                .accessibilityHidden(true)
+            Group {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(ScholiumTypography.interface(
+                            .compact,
+                            emphasis: .strong
+                        ))
+                        .scholiumForeground(.secondaryText)
+                }
+            }
+            .frame(width: ScholiumMetrics.Apparatus.iconColumnWidth)
+            .accessibilityHidden(true)
 
             VStack(
                 alignment: .leading,
@@ -384,6 +400,13 @@ struct ScholiumApparatusActionRowContent: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let trailingState {
+                trailingState
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
 
             if showsChevron {
                 Image(systemName: "chevron.forward")

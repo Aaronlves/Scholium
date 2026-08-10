@@ -303,6 +303,16 @@ retryable recovery entry in Actions. One recovery can therefore never
 overwrite another. When a
 window temporarily has no current Note, a recovery-only Apparatus keeps those
 window-owned cleanup entries reachable without inventing a Target or Action.
+Successful Copy Handoff dismisses the sheet through the existing router, whose
+native dismissal callback restores the originating Action-row focus. Clipboard
+failure keeps the sheet and entered values. Thereafter the same row consumes
+the activity projection, retains a direct End route for Waiting/Running, and
+opens either the compact status sheet or the exact Result Record. Activity rows
+survive a temporary Profile-resolution failure by falling back only to the
+closed Platform Action identity; that fallback cannot prepare a new Run.
+Foreground result banners are transient window-shell overlays and background
+alerts use the application-owned notification adapter. Neither notification
+owns Result state or mutates the current Records selection on arrival.
 Protected Function mapping occurs only in Application composition. The public
 route and controller are Action-owned. Neither leaf receives `WindowModel`,
 Core, or Application authority.

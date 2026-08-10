@@ -44,8 +44,10 @@ struct ResearchActionsPresentation {
         cancellationRecoveries: [ResearchActionCancellationRecovery] = [],
         retryingCancellationRecoveryIDs: Set<UUID> = [],
         pendingCancellationBarrierCount: Int = 0,
+        endingActivityRunIDs: Set<UUID> = [],
         activeDiscussions: [PortableResearchDiscussion] = [],
-        settlements: [SettlementRecord] = []
+        settlements: [SettlementRecord] = [],
+        activities: [WorkspaceResearchActivity] = []
     ) -> Self {
         guard let target else {
             return Self(
@@ -67,14 +69,27 @@ struct ResearchActionsPresentation {
                 && $0.action != nil
                 && $0.method != nil
         }
-        let items = availability
+        var items = availability
             .sorted {
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.id.rawValue < $1.id.rawValue
             }
             .map { availability in
-                ResearchActionItemPresentation(
-                    availability: availability,
+                let actionActivities = activities.filter {
+                    $0.targetNoteID == target.noteID
+                        && $0.actionID == availability.id
+                }
+                return ResearchActionItemPresentation(
+                    actionID: availability.id,
+                    definition: availability.definition,
+                    resolvedAvailability: availability,
+                    sortOrder: availability.order,
+                    activity: ResearchActionActivityPresentation.make(
+                        activities: actionActivities
+                    ),
+                    isEndingActivity: actionActivities.contains {
+                        endingActivityRunIDs.contains($0.runID)
+                    },
                     isBlockedByCancellationRecovery:
                         hasCancellationBarrier || availabilityIsUnconfirmed,
                     reopensActiveDiscussion:
@@ -98,6 +113,37 @@ struct ResearchActionsPresentation {
                                     ?? "Unavailable for this note."
                 )
             }
+        let resolvedActionIDs = Set(items.map(\.id))
+        let fallbackDefinitions = PlatformActionCatalog.definitions.enumerated()
+            .filter { !resolvedActionIDs.contains($0.element.id) }
+        for (definitionIndex, definition) in fallbackDefinitions {
+            let actionActivities = activities.filter {
+                $0.targetNoteID == target.noteID
+                    && $0.actionID == definition.id
+            }
+            guard let activity = ResearchActionActivityPresentation.make(
+                activities: actionActivities
+            ) else { continue }
+            items.append(ResearchActionItemPresentation(
+                actionID: definition.actionID,
+                definition: definition.actionID.interfaceDefinition,
+                resolvedAvailability: nil,
+                sortOrder: 10_000 + definitionIndex,
+                activity: activity,
+                isEndingActivity: actionActivities.contains {
+                    endingActivityRunIDs.contains($0.runID)
+                },
+                isBlockedByCancellationRecovery: false,
+                reopensActiveDiscussion: false,
+                disabledReason: nil
+            ))
+        }
+        items.sort {
+            if $0.sortOrder != $1.sortOrder {
+                return $0.sortOrder < $1.sortOrder
+            }
+            return $0.id.rawValue < $1.id.rawValue
+        }
         return Self(
             items: items,
             target: target,
@@ -115,16 +161,25 @@ struct ResearchActionsPresentation {
 }
 
 struct ResearchActionItemPresentation: Identifiable {
-    let availability: ResearchActionAvailability
+    let actionID: ResearchActionID
+    let definition: ResearchActionDefinition
+    let resolvedAvailability: ResearchActionAvailability?
+    fileprivate let sortOrder: Int
+    let activity: ResearchActionActivityPresentation?
+    let isEndingActivity: Bool
     let isBlockedByCancellationRecovery: Bool
     let reopensActiveDiscussion: Bool
     let disabledReason: String?
 
-    var id: ResearchActionID { availability.id }
-    var title: String { availability.buttonName }
+    var id: ResearchActionID { actionID }
+    var title: String {
+        resolvedAvailability?.buttonName ?? actionID.interfaceFallbackTitle
+    }
     var canPresent: Bool {
-        reopensActiveDiscussion
-            || availability.canPresentInInterface && !isBlockedByCancellationRecovery
+        activity != nil
+            || reopensActiveDiscussion
+            || resolvedAvailability?.canPresentInInterface == true
+                && !isBlockedByCancellationRecovery
     }
     var detail: String? {
         if reopensActiveDiscussion {
@@ -134,9 +189,146 @@ struct ResearchActionItemPresentation: Identifiable {
                 bundle: .module
             )
         }
-        return canPresent ? nil : disabledReason
+        return activity?.detail ?? (canPresent ? nil : disabledReason)
     }
 
+}
+
+struct ResearchActionActivityPresentation: Equatable {
+    let primary: WorkspaceResearchActivity
+    let newestResult: WorkspaceResearchActivity?
+    let resultReadyCount: Int
+
+    static func make(
+        activities: [WorkspaceResearchActivity]
+    ) -> ResearchActionActivityPresentation? {
+        guard !activities.isEmpty else { return nil }
+        let ordered = activities.sorted {
+            if priority($0.state) != priority($1.state) {
+                return priority($0.state) < priority($1.state)
+            }
+            if $0.updatedAt != $1.updatedAt {
+                return $0.updatedAt > $1.updatedAt
+            }
+            return $0.runID.uuidString < $1.runID.uuidString
+        }
+        let results = activities.filter { $0.state == .resultReady }.sorted {
+            if $0.updatedAt != $1.updatedAt {
+                return $0.updatedAt > $1.updatedAt
+            }
+            return $0.runID.uuidString < $1.runID.uuidString
+        }
+        guard let primary = ordered.first else { return nil }
+        return ResearchActionActivityPresentation(
+            primary: primary,
+            newestResult: results.first,
+            resultReadyCount: results.count
+        )
+    }
+
+    var stateTitle: String {
+        if resultReadyCount > 1, primary.state == .resultReady {
+            return String(
+                localized: "\(resultReadyCount) Results Ready",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        switch primary.state {
+        case .waitingForAgent:
+            return String(
+                localized: "Waiting for Agent",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .running:
+            return String(
+                localized: "Running",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .needsAttention:
+            return String(
+                localized: "Needs Attention",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .resultReady:
+            return String(
+                localized: "Result Ready",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
+
+    var detail: String? {
+        guard primary.state == .needsAttention else { return nil }
+        let repair = primary.repairReason?.interfaceRepairDescription
+            ?? String(
+                localized: "Open the Action status to review recovery.",
+                table: "Localizable",
+                bundle: .module
+            )
+        guard resultReadyCount > 0 else { return repair }
+        if resultReadyCount == 1 {
+            return String(
+                localized: "\(repair) One result is also ready to review.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "\(repair) \(resultReadyCount) results are also ready to review.",
+            table: "Localizable",
+            bundle: .module
+        )
+    }
+
+    var showsProgress: Bool { primary.state == .running }
+    var showsDirectEnd: Bool {
+        primary.state == .waitingForAgent || primary.state == .running
+    }
+
+    private static func priority(_ state: WorkspaceResearchActivityState) -> Int {
+        switch state {
+        case .needsAttention: 0
+        case .resultReady: 1
+        case .running: 2
+        case .waitingForAgent: 3
+        }
+    }
+}
+
+extension WorkspaceResearchActivityRepairReason {
+    var interfaceRepairDescription: String {
+        switch self {
+        case .sourceConflict:
+            String(
+                localized: "Review the source conflict before continuing.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .sourceChanged:
+            String(
+                localized: "Copy a new handoff so the Agent can reload current source.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .recoveryRequired:
+            String(
+                localized: "Open Recovery to inspect the uncertain write result.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .recordUnavailable:
+            String(
+                localized: "Retry Refresh to recover the completed Research Record.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
 }
 
 /// Presentation-only grouping for Scholium's closed Platform Action matrix.
@@ -147,7 +339,7 @@ private enum BuiltInActionVisualGroup: Equatable {
 
 private extension ResearchActionItemPresentation {
     var builtInVisualGroup: BuiltInActionVisualGroup {
-        switch availability.definition.executionKind {
+        switch definition.executionKind {
         case .discussion, .analysis, .synthesis, .writing, .manuscript:
             .research
         case .critique, .checkFidelity:
@@ -172,7 +364,8 @@ struct ResearchActionsInspectorView: View {
     let freshness: ResearchProjectionFreshness
     let focusRequest: ResearchActionFocusRequest?
     let registerFocusOwner: (ResearchActionID) -> Void
-    let select: (ResearchActionID) -> Void
+    let select: (ResearchActionItemPresentation) -> Void
+    let endActivity: (UUID) -> Void
     let retryRefresh: () -> Void
     let retryCancellationRecovery: (UUID) -> Void
     let settle: (String?) async throws -> Void
@@ -181,6 +374,7 @@ struct ResearchActionsInspectorView: View {
     @State private var settlementRationale = ""
     @State private var settlementError: String?
     @State private var isSettling = false
+    @State private var activityPendingEnd: WorkspaceResearchActivity?
 
     var body: some View {
         ScrollView {
@@ -229,6 +423,25 @@ struct ResearchActionsInspectorView: View {
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityIdentifier("scholium.researchActions")
+        .confirmationDialog(
+            "End this Action?",
+            isPresented: Binding(
+                get: { activityPendingEnd != nil },
+                set: { if !$0 { activityPendingEnd = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Keep Action", role: .cancel) {
+                activityPendingEnd = nil
+            }
+            Button("End Action", role: .destructive) {
+                guard let runID = activityPendingEnd?.runID else { return }
+                activityPendingEnd = nil
+                endActivity(runID)
+            }
+        } message: {
+            Text("Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available.")
+        }
     }
 
     @ViewBuilder
@@ -241,21 +454,35 @@ struct ResearchActionsInspectorView: View {
     }
 
     private func actionRow(_ item: ResearchActionItemPresentation) -> some View {
-        ResearchActionRowButton(
-            title: item.title,
-            systemImage: item.availability.definition.interfaceSymbol,
-            detail: item.detail,
-            localizesTitle: false,
-            focusRequestToken: focusRequest?.actionID == item.id
-                ? focusRequest?.token
-                : nil
-        ) { shouldRestoreKeyboardFocus in
-            if shouldRestoreKeyboardFocus {
-                registerFocusOwner(item.id)
+        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            ResearchActionRowButton(
+                title: item.title,
+                systemImage: item.definition.interfaceSymbol,
+                detail: item.detail,
+                trailingState: item.activity?.stateTitle,
+                showsProgress: item.activity?.showsProgress == true,
+                showsChevron: item.activity?.showsDirectEnd != true,
+                localizesTitle: false,
+                focusRequestToken: focusRequest?.actionID == item.id
+                    ? focusRequest?.token
+                    : nil
+            ) { shouldRestoreKeyboardFocus in
+                if shouldRestoreKeyboardFocus {
+                    registerFocusOwner(item.id)
+                }
+                select(item)
             }
-            select(item.id)
+            .disabled(!item.canPresent)
+            if item.activity?.showsDirectEnd == true {
+                Button(item.isEndingActivity ? "Ending…" : "End Action") {
+                    activityPendingEnd = item.activity?.primary
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+                .disabled(item.isEndingActivity)
+                .accessibilityHint("Revokes Agent access while preserving confirmed changes and recovery facts.")
+            }
         }
-        .disabled(!item.canPresent)
         .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
     }
 
@@ -405,10 +632,48 @@ struct ResearchActionsInspectorView: View {
     }
 }
 
+private extension ResearchActionID {
+    var interfaceDefinition: ResearchActionDefinition {
+        switch self {
+        case .discuss: .discuss
+        case .analyze: .analyze
+        case .synthesize: .synthesize
+        case .write: .write
+        case .critique: .critique
+        case .checkFidelity: .checkFidelity
+        case .manuscript: .manuscript
+        default: .discuss
+        }
+    }
+
+    var interfaceFallbackTitle: String {
+        switch self {
+        case .discuss:
+            String(localized: "Discuss", table: "Localizable", bundle: .module)
+        case .analyze:
+            String(localized: "Analyze", table: "Localizable", bundle: .module)
+        case .synthesize:
+            String(localized: "Synthesize", table: "Localizable", bundle: .module)
+        case .write:
+            String(localized: "Write", table: "Localizable", bundle: .module)
+        case .critique:
+            String(localized: "Critique", table: "Localizable", bundle: .module)
+        case .checkFidelity:
+            String(localized: "Check Fidelity", table: "Localizable", bundle: .module)
+        case .manuscript:
+            String(localized: "Manuscript", table: "Localizable", bundle: .module)
+        default:
+            String(localized: "Research Action", table: "Localizable", bundle: .module)
+        }
+    }
+}
+
 private struct ResearchActionRowButton: View {
     let title: String
     let systemImage: String
     let detail: String?
+    let trailingState: String?
+    let showsProgress: Bool
     let showsChevron: Bool
     let localizesTitle: Bool
     let focusRequestToken: UUID?
@@ -421,6 +686,8 @@ private struct ResearchActionRowButton: View {
         title: String,
         systemImage: String,
         detail: String? = nil,
+        trailingState: String? = nil,
+        showsProgress: Bool = false,
         showsChevron: Bool = true,
         localizesTitle: Bool = true,
         focusRequestToken: UUID? = nil,
@@ -429,6 +696,8 @@ private struct ResearchActionRowButton: View {
         self.title = title
         self.systemImage = systemImage
         self.detail = detail
+        self.trailingState = trailingState
+        self.showsProgress = showsProgress
         self.showsChevron = showsChevron
         self.localizesTitle = localizesTitle
         self.focusRequestToken = focusRequestToken
@@ -444,6 +713,8 @@ private struct ResearchActionRowButton: View {
                 title: titleText,
                 systemImage: systemImage,
                 detail: detailText,
+                trailingState: trailingState.map { Text(verbatim: $0) },
+                showsProgress: showsProgress,
                 showsChevron: showsChevron
             )
         }
@@ -452,6 +723,7 @@ private struct ResearchActionRowButton: View {
             minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
             verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
+        .accessibilityValue(Text(verbatim: trailingState ?? ""))
         .scholiumActivationFocus($hasKeyboardFocus)
         .onChange(of: focusRequestToken) { _, token in
             guard token != nil else { return }

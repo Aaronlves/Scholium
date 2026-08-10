@@ -1,5 +1,4 @@
 import AppKit
-import ScholiumApplication
 import ScholiumContracts
 import ScholiumResearchRecordsFeature
 import SwiftUI
