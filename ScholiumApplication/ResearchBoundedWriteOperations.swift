@@ -48,6 +48,28 @@ private func boundedUTF8Prefix(
     return result + (maximumByteCount >= ellipsis.utf8.count ? ellipsis : "")
 }
 
+private enum ResearchCreationSourceObservation: Sendable {
+    case missing
+    case present(NoteDocument)
+    case unavailable(String)
+}
+
+private enum ResearchCreationIdentityObservation: Sendable {
+    case missing
+    case present(NoteIdentityRecord)
+    case unavailable(String)
+}
+
+private struct ResearchCreationObservation: Sendable {
+    let source: ResearchCreationSourceObservation
+    let identity: ResearchCreationIdentityObservation
+
+    var observedRevision: DocumentFingerprint? {
+        guard case .present(let document) = source else { return nil }
+        return document.fingerprint
+    }
+}
+
 extension WorkspaceRuntime {
     public func extendResearchWriteSet(
         credential: ResearchConnectionCredential,
@@ -267,7 +289,7 @@ extension WorkspaceHandle {
               platform.operations.contains(.modifyInitialNote) else {
             throw ResearchAgentConnectionError.capabilityUnavailable
         }
-        let candidates = try resolveWriteSetCandidates(
+        let candidates = try await resolveWriteSetCandidates(
             intent.targets,
             runID: authenticated.runID,
             action: action,
@@ -289,7 +311,12 @@ extension WorkspaceHandle {
                 )
             )
         }
-        guard execution.boundedWriteSet.entries.count + candidates.count
+        let newCandidateCount = candidates.filter { candidate in
+            !execution.boundedWriteSet.entries.contains {
+                $0.noteID == candidate.noteID
+            }
+        }.count
+        guard execution.boundedWriteSet.entries.count + newCandidateCount
                 <= ResearchBoundedWriteSet.maximumEntriesPerRun else {
             throw ResearchBoundedWriteSetError.limitExceeded
         }
@@ -414,6 +441,24 @@ extension WorkspaceHandle {
         }) else {
             throw ResearchBoundedWriteSetError.targetNotAuthorized
         }
+        let requestFingerprint = try Self.fingerprint(intent)
+        let baseOperationID = Self.stableOperationID(
+            material: "\(authenticated.runID.uuidString.lowercased()):write:\(intent.requestID.uuidString.lowercased())"
+        )
+        if let existing = execution.documentWriteRecords.first(where: {
+            $0.id == baseOperationID
+        }) {
+            if existing.state != .conflict
+                || intent.operation == .createNote
+                || entry.expectedRevision == existing.expectedRevision {
+                return try await reconcileOrReturn(
+                    existing,
+                    execution: execution,
+                    entry: entry,
+                    intent: intent
+                )
+            }
+        }
         guard entry.state == .ready,
               entry.expiresAt > Date(),
               entry.allowedOperations.contains(intent.operation) else {
@@ -424,26 +469,99 @@ extension WorkspaceHandle {
         }
         try await validateCurrentPolicy(
             for: entry,
-            runID: authenticated.runID
+            runID: authenticated.runID,
+            wasUsed: execution.documentWriteRecords.contains {
+                $0.target == entry.handle && $0.state == .committed
+            }
         )
-        let requestFingerprint = try Self.fingerprint(intent)
-        let intendedRevision = DocumentFingerprint(content: intent.content)
-        let baseOperationID = Self.stableOperationID(
-            material: "\(authenticated.runID.uuidString.lowercased()):write:\(intent.requestID.uuidString.lowercased())"
-        )
+        if intent.operation == .createNote {
+            return try await createResearchDocument(
+                credential: credential,
+                run: run,
+                authenticated: authenticated,
+                execution: execution,
+                entry: entry,
+                intent: intent,
+                requestFingerprint: requestFingerprint,
+                operationID: baseOperationID
+            )
+        }
+
+        guard let expectedRevision = entry.expectedRevision,
+              let checkpointID = entry.checkpointID else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+
+        let current = try await exactCurrentDocument(for: entry)
+        let changeSet: NoteChangeSet
+        switch intent.operation {
+        case .modifyMarkdown:
+            guard current.frontmatterState != .malformed else {
+                throw ResearchBoundedWriteSetError.operationNotAuthorized
+            }
+            changeSet = .body(intent.content)
+        case .modifyProperties:
+            let suppliedKeys = Set(intent.properties.map(\.key))
+            guard suppliedKeys.isSubset(of: Set(entry.allowedPropertyKeys)) else {
+                throw ResearchBoundedWriteSetError.operationNotAuthorized
+            }
+            let plans = Dictionary(
+                uniqueKeysWithValues: entry.propertyWritePlans.map { ($0.key, $0) }
+            )
+            guard intent.properties.allSatisfy({ input in
+                guard let plan = plans[input.key],
+                      PropertyContractCatalog.supportsTargetedStructuredEditing(
+                        input.value,
+                        as: plan.valueKind
+                      ) else { return false }
+                guard let allowedValues = plan.allowedValues else { return true }
+                guard case .string(let value) = input.value else { return false }
+                return allowedValues.contains(value)
+            }) else {
+                throw ResearchBoundedWriteSetError.invalidWrite
+            }
+            let edits = try Dictionary(uniqueKeysWithValues: intent.properties.map {
+                ($0.key, try Self.frontmatterEditValue($0.value))
+            })
+            changeSet = .frontmatter(edits)
+        case .createNote:
+            throw ResearchBoundedWriteSetError.invalidWrite
+        }
+        let candidate = try current.applying(changeSet, timestampKey: nil)
+        if intent.operation == .modifyMarkdown {
+            let candidateDocument = NoteDocument(
+                relativePath: entry.note.relativePath,
+                rawContent: candidate
+            )
+            guard candidateDocument.frontmatterState == current.frontmatterState else {
+                throw ResearchBoundedWriteSetError.operationNotAuthorized
+            }
+        }
+        if intent.operation == .modifyProperties {
+            let issues = PropertyContractCatalog.validate(
+                NoteDocument(
+                    relativePath: entry.note.relativePath,
+                    rawContent: candidate
+                ),
+                profile: Self.schemaProfile(for: entry.role)
+            )
+            guard issues.isEmpty else {
+                throw ResearchBoundedWriteSetError.invalidWrite
+            }
+        }
+        let intendedRevision = DocumentFingerprint(content: candidate)
         let operationID: UUID
         if let baseWrite = execution.documentWriteRecords.first(where: {
             $0.id == baseOperationID
         }), baseWrite.state == .conflict,
            entry.state == .ready,
-           entry.expectedRevision != baseWrite.expectedRevision {
+           expectedRevision != baseWrite.expectedRevision {
             operationID = Self.stableOperationID(
-                material: "\(baseOperationID.uuidString.lowercased()):retry:\(entry.expectedRevision.sha256)"
+                material: "\(baseOperationID.uuidString.lowercased()):retry:\(expectedRevision.sha256)"
             )
         } else {
             operationID = baseOperationID
         }
-
         if let existing = execution.documentWriteRecords.first(where: {
             $0.id == operationID
         }) {
@@ -454,9 +572,7 @@ extension WorkspaceHandle {
                 intent: intent
             )
         }
-
-        let current = try await exactCurrentDocument(for: entry)
-        guard current.fingerprint == entry.expectedRevision else {
+        guard current.fingerprint == expectedRevision else {
             let conflict = try ResearchDocumentWriteRecord(
                 id: operationID,
                 runID: authenticated.runID,
@@ -464,11 +580,11 @@ extension WorkspaceHandle {
                 actor: .agent,
                 operation: intent.operation,
                 requestFingerprint: requestFingerprint,
-                expectedRevision: entry.expectedRevision,
+                expectedRevision: expectedRevision,
                 intendedRevision: intendedRevision,
                 observedRevision: current.fingerprint,
                 state: .conflict,
-                checkpointID: entry.checkpointID,
+                checkpointID: checkpointID,
                 startedAt: Date(),
                 finishedAt: Date(),
                 warning: "The document changed outside this Run before the write began."
@@ -478,7 +594,7 @@ extension WorkspaceHandle {
             entry = try requiredEntry(entry.handle, in: execution)
             return writeResult(conflict, entry: entry)
         }
-        if intendedRevision == entry.expectedRevision {
+        if intendedRevision == expectedRevision {
             let unchanged = try ResearchDocumentWriteRecord(
                 id: operationID,
                 runID: authenticated.runID,
@@ -486,11 +602,11 @@ extension WorkspaceHandle {
                 actor: .agent,
                 operation: intent.operation,
                 requestFingerprint: requestFingerprint,
-                expectedRevision: entry.expectedRevision,
+                expectedRevision: expectedRevision,
                 intendedRevision: intendedRevision,
                 observedRevision: current.fingerprint,
                 state: .unchanged,
-                checkpointID: entry.checkpointID,
+                checkpointID: checkpointID,
                 startedAt: Date(),
                 finishedAt: Date()
             )
@@ -511,7 +627,7 @@ extension WorkspaceHandle {
             run: run,
             writeSetRevision: writeSetRevision,
             target: entry.handle,
-            expectedRevision: entry.expectedRevision,
+            expectedRevision: expectedRevision,
             operationID: operationID
         )
         try await sessions.consumeWriteCapability(
@@ -520,7 +636,7 @@ extension WorkspaceHandle {
             run: run,
             writeSetRevision: writeSetRevision,
             target: entry.handle,
-            expectedRevision: entry.expectedRevision,
+            expectedRevision: expectedRevision,
             operationID: operationID
         )
         let startedAt = Date()
@@ -531,22 +647,24 @@ extension WorkspaceHandle {
             actor: .agent,
             operation: intent.operation,
             requestFingerprint: requestFingerprint,
-            expectedRevision: entry.expectedRevision,
+            expectedRevision: expectedRevision,
             intendedRevision: intendedRevision,
             state: .writing,
-            checkpointID: entry.checkpointID,
+            checkpointID: checkpointID,
             startedAt: startedAt
         )
         _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
 
         let save = try await saveResearchDocument(
             entry.note,
-            changeSet: .exactContent(intent.content),
-            expectedRevision: entry.expectedRevision,
+            changeSet: changeSet,
+            expectedRevision: expectedRevision,
             transaction: ResearchDocumentSaveTransaction(
                 runID: authenticated.runID,
                 operationID: operationID,
-                target: entry.handle
+                target: entry.handle,
+                noteID: entry.noteID,
+                role: entry.role
             )
         )
         switch save {
@@ -569,13 +687,15 @@ extension WorkspaceHandle {
             let state: ResearchDocumentWriteState = switch reason {
             case .conflict:
                 .conflict
-            case .invalidFrontmatter, .atomicCommitUnsupported:
+            case .targetIdentityChanged, .invalidFrontmatter,
+                 .atomicCommitUnsupported:
                 .abandoned
             }
             let observedRevision: DocumentFingerprint? = switch reason {
             case .conflict(let current): current
-            case .invalidFrontmatter, .atomicCommitUnsupported:
-                entry.expectedRevision
+            case .targetIdentityChanged, .invalidFrontmatter,
+                 .atomicCommitUnsupported:
+                expectedRevision
             }
             execution = try await services.localResearchExecutionStore
                 .finishDocumentWrite(
@@ -587,6 +707,13 @@ extension WorkspaceHandle {
                     recoveryRecordID: nil,
                     finishedAt: Date()
                 )
+            if case .targetIdentityChanged = reason {
+                execution = try await services.localResearchExecutionStore
+                    .markWriteSetEntryStale(
+                        runID: authenticated.runID,
+                        handle: entry.handle
+                    )
+            }
         case .recoveryRequired(let recovery):
             execution = try await services.localResearchExecutionStore
                 .finishDocumentWrite(
@@ -610,6 +737,316 @@ extension WorkspaceHandle {
         )
     }
 
+    private func createResearchDocument(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        authenticated: ResearchAuthenticatedRun,
+        execution initialExecution: LocalResearchExecutionRecord,
+        entry: ResearchBoundedWriteSetEntry,
+        intent: ResearchDocumentWriteIntent,
+        requestFingerprint: DocumentFingerprint,
+        operationID: UUID
+    ) async throws -> ResearchDocumentWriteResult {
+        guard entry.allowedOperations == [.createNote],
+              entry.expectsAbsence,
+              let settingsRevision = entry.settingsRevision else {
+            throw ResearchBoundedWriteSetError.staleAuthorization
+        }
+        let request = try ManagedNoteCreationRequest(
+            vaultID: entry.note.vaultID,
+            destination: .exact(relativePath: entry.note.relativePath),
+            body: intent.content,
+            analysisMetadata: intent.analysisMetadata,
+            authority: .authenticatedAgent(
+                settingsRevision: settingsRevision,
+                reservedIdentity: entry.noteID
+            )
+        )
+        let currentSettings = try await services.controlStore.settings()
+        guard currentSettings.revision == settingsRevision else {
+            throw ResearchBoundedWriteSetError.staleAuthorization
+        }
+        let candidate = try managedCreationSource(
+            request: request,
+            slot: try requiredVaultSlot(for: entry.role),
+            settings: currentSettings.settings
+        )
+        let intendedRevision = DocumentFingerprint(content: candidate)
+        try await proveManagedCreationAbsence(
+            vaultID: entry.note.vaultID,
+            relativePath: entry.note.relativePath
+        )
+
+        guard let sessions = services.researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let writeSetRevision = try initialExecution.boundedWriteSet
+            .authorizationRevision()
+        let capability = try await sessions.issueWriteCapability(
+            credential: credential,
+            run: run,
+            writeSetRevision: writeSetRevision,
+            target: entry.handle,
+            expectedRevision: nil,
+            operationID: operationID
+        )
+        try await sessions.consumeWriteCapability(
+            capability,
+            credential: credential,
+            run: run,
+            writeSetRevision: writeSetRevision,
+            target: entry.handle,
+            expectedRevision: nil,
+            operationID: operationID
+        )
+        let writing = try ResearchDocumentWriteRecord(
+            id: operationID,
+            runID: authenticated.runID,
+            target: entry.handle,
+            actor: .agent,
+            operation: .createNote,
+            requestFingerprint: requestFingerprint,
+            expectedRevision: nil,
+            intendedRevision: intendedRevision,
+            state: .writing,
+            checkpointID: nil,
+            startedAt: Date()
+        )
+        _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
+
+        var state: ResearchDocumentWriteState
+        var observedRevision: DocumentFingerprint?
+        var warning: String?
+        var recoveryRecordID: UUID?
+        do {
+            let outcome = try await createManagedNote(request)
+            let commit = outcome.committedValue
+            observedRevision = commit.document.fingerprint
+            if commit.stableIdentity.resolvedID == entry.noteID,
+               observedRevision == intendedRevision,
+               outcome.identityRecoveryWarning == nil {
+                state = .committed
+                warning = boundedResearchDocumentWriteWarning(
+                    outcome.cleanupWarnings.map { Optional($0.message) } + [
+                        outcome.derivedRefreshWarning,
+                    ]
+                )
+            } else {
+                let observation = await observeResearchCreation(entry)
+                let classified = classifyResearchCreation(
+                    observation,
+                    intendedRevision: intendedRevision,
+                    reservedIdentity: entry.noteID
+                )
+                state = classified.state
+                observedRevision = classified.observedRevision
+                warning = boundedResearchDocumentWriteWarning([
+                    outcome.identityRecoveryWarning,
+                    "The source or reserved stable identity could not be jointly verified.",
+                ])
+                if state == .recoveryRequired {
+                    recoveryRecordID = try await persistResearchCreationRecovery(
+                        write: writing,
+                        entry: entry,
+                        observation: observation,
+                        failure: warning ?? "The created source and reserved identity require recovery."
+                    ).id
+                }
+            }
+        } catch let repositoryError as VaultRepositoryError {
+            if case .fileAlreadyExists = repositoryError {
+                state = .abandoned
+                warning = "Another filesystem participant claimed the authorized path before Scholium created the Note."
+            } else if case .pathCollision = repositoryError {
+                state = .abandoned
+                warning = "A comparison-equivalent path appeared before Scholium created the Note."
+            } else {
+                let observation = await observeResearchCreation(entry)
+                let classified = classifyResearchCreation(
+                    observation,
+                    intendedRevision: intendedRevision,
+                    reservedIdentity: entry.noteID
+                )
+                state = classified.state
+                observedRevision = classified.observedRevision
+                warning = repositoryError.localizedDescription
+                if state == .recoveryRequired {
+                    recoveryRecordID = try await persistResearchCreationRecovery(
+                        write: writing,
+                        entry: entry,
+                        observation: observation,
+                        failure: warning!
+                    ).id
+                }
+            }
+        } catch DocumentCreationError.portableIdentityAlreadyExists {
+            state = .abandoned
+            warning = "A portable Note identity claimed the authorized path before Scholium created the source."
+        } catch CreatedDocumentIdentityRollbackError.sourceRolledBack {
+            state = .abandoned
+            warning = "Portable identity setup raced another participant, and exact rollback proved that no created source remains."
+        } catch {
+            let observation = await observeResearchCreation(entry)
+            let classified = classifyResearchCreation(
+                observation,
+                intendedRevision: intendedRevision,
+                reservedIdentity: entry.noteID
+            )
+            state = classified.state
+            observedRevision = classified.observedRevision
+            warning = error.localizedDescription
+            if state == .recoveryRequired {
+                recoveryRecordID = try await persistResearchCreationRecovery(
+                    write: writing,
+                    entry: entry,
+                    observation: observation,
+                    failure: warning!
+                ).id
+            }
+        }
+        let execution = try await services.localResearchExecutionStore
+            .finishDocumentWrite(
+                runID: authenticated.runID,
+                operationID: operationID,
+                state: state,
+                observedRevision: observedRevision,
+                warning: warning,
+                recoveryRecordID: recoveryRecordID,
+                finishedAt: Date()
+            )
+        guard let completed = execution.documentWriteRecords.first(where: {
+            $0.id == operationID
+        }) else {
+            throw ResearchBoundedWriteSetError.invalidWriteRecord
+        }
+        return writeResult(
+            completed,
+            entry: try requiredEntry(entry.handle, in: execution)
+        )
+    }
+
+    private func observeResearchCreation(
+        _ entry: ResearchBoundedWriteSetEntry
+    ) async -> ResearchCreationObservation {
+        let source: ResearchCreationSourceObservation
+        do {
+            source = .present(try await repository(vaultID: entry.note.vaultID)
+                .load(relativePath: entry.note.relativePath))
+        } catch VaultRepositoryError.fileDoesNotExist {
+            source = .missing
+        } catch {
+            source = .unavailable(error.localizedDescription)
+        }
+
+        let identity: ResearchCreationIdentityObservation
+        do {
+            if let record = try await services.controlStore.identityRecord(
+                vaultID: entry.note.vaultID,
+                relativePath: entry.note.relativePath
+            ) {
+                identity = .present(record)
+            } else {
+                identity = .missing
+            }
+        } catch {
+            identity = .unavailable(error.localizedDescription)
+        }
+        return ResearchCreationObservation(source: source, identity: identity)
+    }
+
+    private func classifyResearchCreation(
+        _ observation: ResearchCreationObservation,
+        intendedRevision: DocumentFingerprint,
+        reservedIdentity: UUID
+    ) -> (state: ResearchDocumentWriteState, observedRevision: DocumentFingerprint?) {
+        if case .present(let document) = observation.source,
+           document.fingerprint == intendedRevision,
+           case .present(let identity) = observation.identity,
+           identity.id == reservedIdentity,
+           identity.fingerprint == intendedRevision {
+            return (.committed, document.fingerprint)
+        }
+        if case .missing = observation.source,
+           case .missing = observation.identity {
+            return (.abandoned, nil)
+        }
+        return (.recoveryRequired, observation.observedRevision)
+    }
+
+    private func persistResearchCreationRecovery(
+        write: ResearchDocumentWriteRecord,
+        entry: ResearchBoundedWriteSetEntry,
+        observation: ResearchCreationObservation,
+        failure: String
+    ) async throws -> TriptychMutationRecoveryRecord {
+        let sourceState: TriptychMutationRecoveryState
+        let sourceDetail: String
+        switch observation.source {
+        case .missing:
+            sourceState = .missing
+            sourceDetail = "The authorized path is currently absent."
+        case .present(let document):
+            sourceState = document.fingerprint == write.intendedRevision
+                ? .intendedBytesRemain
+                : .externallyChanged
+            sourceDetail = "The authorized path currently has revision \(document.fingerprint.sha256)."
+        case .unavailable(let reason):
+            sourceState = .unreadable
+            sourceDetail = "The authorized path could not be read: \(reason)"
+        }
+        let identityDetail: String = switch observation.identity {
+        case .missing:
+            "The reserved stable identity is absent."
+        case .present(let identity):
+            "The path is assigned identity \(identity.id.uuidString) at revision \(identity.fingerprint.sha256)."
+        case .unavailable(let reason):
+            "Portable identity state could not be read: \(reason)"
+        }
+        let recoveryID = Self.stableOperationID(
+            material: "\(write.id.uuidString.lowercased()):note-creation-recovery"
+        )
+        let record = TriptychMutationRecoveryRecord(
+            id: recoveryID,
+            triptychID: id,
+            operation: .noteCreation,
+            failure: failure,
+            files: [TriptychMutationRecoveryFile(
+                vaultID: entry.note.vaultID,
+                path: entry.note.relativePath,
+                role: .createdNote,
+                beforeRevision: nil,
+                intendedRevision: write.intendedRevision,
+                observedRevision: observation.observedRevision,
+                state: sourceState,
+                detail: sourceDetail + " " + identityDetail
+            )],
+            researchWrite: ResearchWriteRecoveryReference(
+                runID: write.runID,
+                operationID: write.id,
+                target: write.target
+            )
+        )
+        do {
+            try await services.transactionRecoveryStore.record(record)
+        } catch {
+            throw TriptychTransactionError.recoveryPersistenceFailed(
+                record,
+                error.localizedDescription
+            )
+        }
+        return record
+    }
+
+    private func requiredVaultSlot(
+        for role: ResearchActionTargetRole
+    ) throws -> WorkspaceVaultSlot {
+        switch role {
+        case .analysis: .paperAnalysis
+        case .topic: .topicKnowledge
+        case .work: .output
+        }
+    }
+
     func resolveResearchWriteConflict(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
@@ -629,6 +1066,11 @@ extension WorkspaceHandle {
             $0.role == intent.role && $0.note.relativePath == intent.relativePath
         }) else {
             throw ResearchBoundedWriteSetError.targetNotAuthorized
+        }
+        guard !entry.expectsAbsence,
+              !entry.wasCreated,
+              let priorExpectedRevision = entry.expectedRevision else {
+            throw ResearchBoundedWriteSetError.invalidConflictResolution
         }
         let requestFingerprint = try Self.fingerprint(intent)
         let matchingResolutions = execution.writeConflictResolutionRecords.filter {
@@ -671,7 +1113,10 @@ extension WorkspaceHandle {
         case .refreshAuthority:
             try await validateCurrentPolicy(
                 for: entry,
-                runID: authenticated.runID
+                runID: authenticated.runID,
+                wasUsed: execution.documentWriteRecords.contains {
+                    $0.target == entry.handle && $0.state == .committed
+                }
             )
             let current = try await exactCurrentDocument(for: entry)
             let checkpoint = try await services.checkpointStore
@@ -691,6 +1136,8 @@ extension WorkspaceHandle {
                     allowedOperations: entry.allowedOperations,
                     expectedRevision: current.fingerprint,
                     checkpointID: checkpoint.id,
+                    allowedPropertyKeys: entry.allowedPropertyKeys,
+                    propertyWritePlans: entry.propertyWritePlans,
                     authorizationBasis: entry.authorizationBasis,
                     authorizationPolicy: entry.authorizationPolicy,
                     policyRevision: entry.policyRevision,
@@ -705,7 +1152,7 @@ extension WorkspaceHandle {
                     conflictOperationID: latestConflict.id,
                     action: intent.action,
                     requestFingerprint: requestFingerprint,
-                    priorExpectedRevision: entry.expectedRevision,
+                    priorExpectedRevision: priorExpectedRevision,
                     observedRevision: current.fingerprint,
                     checkpointID: checkpoint.id,
                     state: .readyToRetry,
@@ -723,7 +1170,7 @@ extension WorkspaceHandle {
                 throw error
             }
         case .abandonWrite:
-            let observed = latestConflict.observedRevision ?? entry.expectedRevision
+            let observed = latestConflict.observedRevision ?? priorExpectedRevision
             entry.state = .abandoned
             let resolution = try ResearchWriteConflictResolutionRecord(
                 id: operationID,
@@ -733,7 +1180,7 @@ extension WorkspaceHandle {
                 conflictOperationID: latestConflict.id,
                 action: intent.action,
                 requestFingerprint: requestFingerprint,
-                priorExpectedRevision: entry.expectedRevision,
+                priorExpectedRevision: priorExpectedRevision,
                 observedRevision: observed,
                 state: .abandoned,
                 targetView: ResearchBoundedWriteSetViewEntry(entry),
@@ -790,24 +1237,137 @@ extension WorkspaceHandle {
         runID: UUID,
         action: ResearchActionSnapshot,
         existing: ResearchBoundedWriteSet
-    ) throws -> [ResearchWriteSetCandidate] {
-        let allowed = Set(action.authority.writeOperations.isEmpty
-            ? [.modifyMarkdown, .modifyProperties]
-            : action.authority.writeOperations)
+    ) async throws -> [ResearchWriteSetCandidate] {
+        let platform = try platformAction(action.actionID)
+        let allowed = Set(platform.extensionWriteOperations)
+        let settings = selectors.contains(where: { $0.operations == [.createNote] })
+            ? try await services.controlStore.settings()
+            : nil
         var candidates: [ResearchWriteSetCandidate] = []
         for selector in selectors {
             guard Set(selector.operations).isSubset(of: allowed),
                   let vault = currentSnapshot.vaults.first(where: {
                       $0.vault.role == Self.vaultRole(selector.role)
-                  }),
-                  let note = vault.documents.first(where: {
-                      $0.id.relativePath == selector.relativePath
-                  }),
-                  note.lifecycle == .active,
+                  }) else {
+                throw ResearchBoundedWriteSetError.targetUnavailable
+            }
+            if selector.operations == [.createNote] {
+                guard !existing.entries.contains(where: {
+                    $0.role == selector.role
+                        && $0.note.relativePath == selector.relativePath
+                }), let settings else {
+                    throw ResearchBoundedWriteSetError.targetUnavailable
+                }
+                try await proveManagedCreationAbsence(
+                    vaultID: vault.vault.id,
+                    relativePath: selector.relativePath
+                )
+                let reservedID = Self.stableOperationID(
+                    material: [
+                        runID.uuidString.lowercased(),
+                        "create-note",
+                        selector.role.rawValue,
+                        selector.relativePath,
+                        settings.revision.fingerprint.sha256,
+                    ].joined(separator: ":")
+                )
+                let note = VaultQualifiedNoteID(
+                    vaultID: vault.vault.id,
+                    relativePath: selector.relativePath
+                )
+                let analysisCreationPlans = selector.role == .analysis
+                    ? try Self.analysisCreationPlans(settings: settings.settings)
+                    : []
+                candidates.append(try ResearchWriteSetCandidate(
+                    handle: ResearchWriteTargetHandle(
+                        runID: runID,
+                        noteID: reservedID
+                    ),
+                    reservedNoteID: reservedID,
+                    note: note,
+                    role: selector.role,
+                    title: URL(fileURLWithPath: selector.relativePath)
+                        .deletingPathExtension().lastPathComponent,
+                    settingsRevision: settings.revision,
+                    analysisCreationPlans: analysisCreationPlans
+                ))
+                continue
+            }
+            if let existingEntry = existing.entries.first(where: {
+                $0.role == selector.role
+                    && $0.note.relativePath == selector.relativePath
+            }) {
+                guard existingEntry.state == .ready
+                        || (existingEntry.state == .consumed
+                            && existingEntry.wasCreated),
+                      !selector.operations.contains(.createNote) else {
+                    throw ResearchBoundedWriteSetError.staleAuthorization
+                }
+                let note = existingEntry.note
+                guard let identity = try await services.controlStore.identityRecord(
+                    vaultID: note.vaultID,
+                    relativePath: note.relativePath
+                ), identity.id == existingEntry.noteID,
+                      WorkspaceDocumentLifecycle(
+                          relativePath: note.relativePath
+                      ) == .active else {
+                    throw ResearchBoundedWriteSetError.targetUnavailable
+                }
+                let document = try await repository(vaultID: note.vaultID)
+                    .load(relativePath: note.relativePath)
+                guard document.fingerprint == existingEntry.expectedRevision else {
+                    throw ResearchBoundedWriteSetError.staleAuthorization
+                }
+                guard !selector.operations.contains(.modifyMarkdown)
+                        || document.frontmatterState != .malformed else {
+                    throw ResearchBoundedWriteSetError.operationNotAuthorized
+                }
+                let priorOperations = Set(
+                    existingEntry.allowedOperations.filter { $0 != .createNote }
+                )
+                let mergedOperations = priorOperations
+                    .union(selector.operations)
+                    .sorted { $0.rawValue < $1.rawValue }
+                let mergedKeys = Set(existingEntry.allowedPropertyKeys)
+                    .union(selector.propertyKeys)
+                    .sorted()
+                let propertyWritePlans = try Self.propertyWritePlans(
+                    mergedKeys,
+                    role: selector.role,
+                    document: document
+                )
+                if Set(mergedOperations) == priorOperations,
+                   Set(mergedKeys) == Set(existingEntry.allowedPropertyKeys) {
+                    continue
+                }
+                candidates.append(try ResearchWriteSetCandidate(
+                    handle: existingEntry.handle,
+                    noteID: existingEntry.noteID,
+                    note: note,
+                    role: existingEntry.role,
+                    title: existingEntry.title,
+                    operations: mergedOperations,
+                    expectedRevision: document.fingerprint,
+                    propertyKeys: mergedKeys,
+                    propertyWritePlans: propertyWritePlans
+                ))
+                continue
+            }
+            guard let note = vault.documents.first(where: {
+                $0.id.relativePath == selector.relativePath
+            }), note.lifecycle == .active,
                   let noteID = note.stableIdentity.resolvedID else {
                 throw ResearchBoundedWriteSetError.targetUnavailable
             }
-            if existing.entries.contains(where: { $0.noteID == noteID }) { continue }
+            guard !selector.operations.contains(.modifyMarkdown)
+                    || note.document.frontmatterState != .malformed else {
+                throw ResearchBoundedWriteSetError.operationNotAuthorized
+            }
+            let propertyWritePlans = try Self.propertyWritePlans(
+                selector.propertyKeys,
+                role: selector.role,
+                document: note.document
+            )
             candidates.append(try ResearchWriteSetCandidate(
                 handle: ResearchWriteTargetHandle(runID: runID, noteID: noteID),
                 noteID: noteID,
@@ -818,10 +1378,42 @@ extension WorkspaceHandle {
                     profile: note.schemaProfile
                 ).title,
                 operations: selector.operations,
-                expectedRevision: note.fingerprint
+                expectedRevision: note.fingerprint,
+                propertyKeys: selector.propertyKeys,
+                propertyWritePlans: propertyWritePlans
             ))
         }
         return candidates.sorted { $0.handle.rawValue < $1.handle.rawValue }
+    }
+
+    private func proveManagedCreationAbsence(
+        vaultID: UUID,
+        relativePath: String
+    ) async throws {
+        do {
+            guard try await services.controlStore.identityRecord(
+                vaultID: vaultID,
+                relativePath: relativePath
+            ) == nil else {
+                throw ResearchBoundedWriteSetError.targetUnavailable
+            }
+        } catch ResearchBoundedWriteSetError.targetUnavailable {
+            throw ResearchBoundedWriteSetError.targetUnavailable
+        } catch {
+            throw ResearchBoundedWriteSetError.targetUnavailable
+        }
+        do {
+            _ = try await repository(vaultID: vaultID).load(
+                relativePath: relativePath
+            )
+            throw ResearchBoundedWriteSetError.targetUnavailable
+        } catch VaultRepositoryError.fileDoesNotExist {
+            return
+        } catch ResearchBoundedWriteSetError.targetUnavailable {
+            throw ResearchBoundedWriteSetError.targetUnavailable
+        } catch {
+            throw ResearchBoundedWriteSetError.targetUnavailable
+        }
     }
 
     private func approveResearchWriteSetExtension(
@@ -840,36 +1432,67 @@ extension WorkspaceHandle {
         do {
             var entries: [ResearchBoundedWriteSetEntry] = []
             for candidate in request.candidates where allowed.contains(candidate.handle) {
-                let current = try await exactCurrentCandidate(candidate)
-                guard current.fingerprint == candidate.expectedRevision else {
-                    throw ResearchBoundedWriteSetError.staleAuthorization
-                }
-                let checkpoint = try await services.checkpointStore
-                    .createResearchContinuation(
-                        name: "Before Agent Work",
-                        key: Self.checkpointKey(candidate),
-                        expectedFingerprint: candidate.expectedRevision,
-                        roots: services.roots
+                switch candidate.expectation {
+                case .absent(let settingsRevision):
+                    let currentSettings = try await services.controlStore.settings()
+                    guard currentSettings.revision == settingsRevision else {
+                        throw ResearchBoundedWriteSetError.staleAuthorization
+                    }
+                    try await proveManagedCreationAbsence(
+                        vaultID: candidate.note.vaultID,
+                        relativePath: candidate.note.relativePath
                     )
-                checkpoints.append(checkpoint.id)
-                entries.append(try ResearchBoundedWriteSetEntry(
-                    handle: candidate.handle,
-                    noteID: candidate.noteID,
-                    note: candidate.note,
-                    role: candidate.role,
-                    title: candidate.title,
-                    allowedOperations: candidate.operations,
-                    expectedRevision: candidate.expectedRevision,
-                    checkpointID: checkpoint.id,
-                    authorizationBasis: basis,
-                    authorizationPolicy: basis == .collaborationPolicy
-                        ? request.policy
-                        : nil,
-                    policyRevision: basis == .collaborationPolicy
-                        ? request.policyRevision
-                        : nil,
-                    expiresAt: decidedAt.addingTimeInterval(24 * 60 * 60)
-                ))
+                    entries.append(try ResearchBoundedWriteSetEntry(
+                        handle: candidate.handle,
+                        reservedNoteID: candidate.noteID,
+                        note: candidate.note,
+                        role: candidate.role,
+                        title: candidate.title,
+                        settingsRevision: settingsRevision,
+                        analysisCreationPlans: candidate.analysisCreationPlans,
+                        authorizationBasis: basis,
+                        authorizationPolicy: basis == .collaborationPolicy
+                            ? request.policy
+                            : nil,
+                        policyRevision: basis == .collaborationPolicy
+                            ? request.policyRevision
+                            : nil,
+                        expiresAt: decidedAt.addingTimeInterval(24 * 60 * 60)
+                    ))
+                case .existing(let expectedRevision):
+                    let current = try await exactCurrentCandidate(candidate)
+                    guard current.fingerprint == expectedRevision else {
+                        throw ResearchBoundedWriteSetError.staleAuthorization
+                    }
+                    let checkpoint = try await services.checkpointStore
+                        .createResearchContinuation(
+                            name: "Before Agent Work",
+                            key: Self.checkpointKey(candidate),
+                            expectedFingerprint: expectedRevision,
+                            roots: services.roots
+                        )
+                    checkpoints.append(checkpoint.id)
+                    entries.append(try ResearchBoundedWriteSetEntry(
+                        handle: candidate.handle,
+                        noteID: candidate.noteID,
+                        note: candidate.note,
+                        role: candidate.role,
+                        title: candidate.title,
+                        allowedOperations: candidate.operations,
+                        expectedRevision: expectedRevision,
+                        checkpointID: checkpoint.id,
+                        allowedPropertyKeys: candidate.propertyKeys,
+                        propertyWritePlans: candidate.propertyWritePlans,
+                        authorizationBasis: basis,
+                        authorizationPolicy: basis == .collaborationPolicy
+                            ? request.policy
+                            : nil,
+                        policyRevision: basis == .collaborationPolicy
+                            ? request.policyRevision
+                            : nil,
+                        expiresAt: decidedAt.addingTimeInterval(24 * 60 * 60)
+                    ))
+                }
             }
             return try await services.localResearchExecutionStore
                 .resolveWriteSetExtension(
@@ -892,13 +1515,20 @@ extension WorkspaceHandle {
     private func exactCurrentCandidate(
         _ candidate: ResearchWriteSetCandidate
     ) async throws -> NoteDocument {
-        guard let snapshot = currentSnapshot.document(id: candidate.note),
-              snapshot.stableIdentity.resolvedID == candidate.noteID,
-              snapshot.lifecycle == .active else {
+        guard let identity = try await services.controlStore.identityRecord(
+            vaultID: candidate.note.vaultID,
+            relativePath: candidate.note.relativePath
+        ), identity.id == candidate.noteID,
+              WorkspaceDocumentLifecycle(
+                  relativePath: candidate.note.relativePath
+              ) == .active,
+              Self.vaultRole(candidate.role)
+                == (try vault(id: candidate.note.vaultID).role) else {
             throw ResearchBoundedWriteSetError.targetUnavailable
         }
-        let document = try await loadDocument(candidate.note)
-        guard document.fingerprint == snapshot.fingerprint else {
+        let document = try await repository(vaultID: candidate.note.vaultID)
+            .load(relativePath: candidate.note.relativePath)
+        guard document.fingerprint == candidate.expectedRevision else {
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
         return document
@@ -907,17 +1537,25 @@ extension WorkspaceHandle {
     private func exactCurrentDocument(
         for entry: ResearchBoundedWriteSetEntry
     ) async throws -> NoteDocument {
-        guard let snapshot = currentSnapshot.document(id: entry.note),
-              snapshot.stableIdentity.resolvedID == entry.noteID,
-              snapshot.lifecycle == .active else {
+        guard let identity = try await services.controlStore.identityRecord(
+            vaultID: entry.note.vaultID,
+            relativePath: entry.note.relativePath
+        ), identity.id == entry.noteID,
+              WorkspaceDocumentLifecycle(
+                  relativePath: entry.note.relativePath
+              ) == .active,
+              Self.vaultRole(entry.role)
+                == (try vault(id: entry.note.vaultID).role) else {
             throw ResearchBoundedWriteSetError.targetUnavailable
         }
-        return try await loadDocument(entry.note)
+        return try await repository(vaultID: entry.note.vaultID)
+            .load(relativePath: entry.note.relativePath)
     }
 
     private func validateCurrentPolicy(
         for entry: ResearchBoundedWriteSetEntry,
-        runID: UUID
+        runID: UUID,
+        wasUsed: Bool
     ) async throws {
         guard entry.authorizationBasis == .collaborationPolicy else { return }
         let current = try await currentCollaborationPolicy()
@@ -926,6 +1564,7 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
         if current.revision == revision, current.document.policy == original { return }
+        if wasUsed { return }
         let request = try ResearchCollaborationRequest(
             kind: .writeSetExtension,
             requestedWritableRoles: [entry.role]
@@ -956,24 +1595,47 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.invalidWriteRecord
         }
         if write.state == .writing {
-            let current = try await exactCurrentDocument(for: entry)
+            let observedRevision: DocumentFingerprint?
             let state: ResearchDocumentWriteState
-            if current.fingerprint == write.intendedRevision {
-                state = .committed
-            } else if current.fingerprint == write.expectedRevision {
-                state = .abandoned
+            var recoveryRecordID: UUID?
+            if write.operation == .createNote {
+                let observation = await observeResearchCreation(entry)
+                let classified = classifyResearchCreation(
+                    observation,
+                    intendedRevision: write.intendedRevision,
+                    reservedIdentity: entry.noteID
+                )
+                observedRevision = classified.observedRevision
+                state = classified.state
+                if state == .recoveryRequired {
+                    recoveryRecordID = try await persistResearchCreationRecovery(
+                        write: write,
+                        entry: entry,
+                        observation: observation,
+                        failure: "The current source and reserved identity do not jointly prove the authorized creation outcome."
+                    ).id
+                }
             } else {
-                state = .recoveryRequired
+                let current = try await exactCurrentDocument(for: entry)
+                observedRevision = current.fingerprint
+                if current.fingerprint == write.intendedRevision {
+                    state = .committed
+                } else if current.fingerprint == write.expectedRevision {
+                    state = .abandoned
+                } else {
+                    state = .recoveryRequired
+                }
             }
             let updated = try await services.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: write.runID,
                     operationID: write.id,
                     state: state,
-                    observedRevision: current.fingerprint,
+                    observedRevision: observedRevision,
                     warning: state == .recoveryRequired
-                        ? "The current bytes match neither the expected nor intended revision."
+                        ? "The current source and identity do not match the authorized expected or intended state."
                         : nil,
+                    recoveryRecordID: recoveryRecordID,
                     finishedAt: Date()
                 )
             guard let settled = updated.documentWriteRecords.first(where: {
@@ -991,6 +1653,8 @@ extension WorkspaceHandle {
         switch reason {
         case .conflict:
             nil
+        case .targetIdentityChanged:
+            "The authorized path no longer belongs to the same portable Note identity. No source was written."
         case .invalidFrontmatter(let message),
              .atomicCommitUnsupported(let message):
             message
@@ -1059,7 +1723,7 @@ extension WorkspaceHandle {
     ) throws -> ResearchWriteConflictResolutionResult {
         let message = switch record.state {
         case .readyToRetry:
-            "Fresh authority is bound to this document. Reread its current Markdown, then retry one write with the intended complete bytes."
+            "Fresh authority is bound to this document. Reread its current Markdown, then retry the intended body or exact property edits."
         case .abandoned:
             "This conflicted write was explicitly abandoned; the document was not changed by that attempt."
         }
@@ -1077,6 +1741,107 @@ extension WorkspaceHandle {
         switch role {
         case .analysis: .sourceCorpus
         case .topic: .topicKnowledge
+        case .work: .draftProject
+        }
+    }
+
+    private static func analysisCreationPlans(
+        settings: TriptychSettings
+    ) throws -> [ResearchAnalysisCreationSourcePlan] {
+        let seed = settings.properties[.paperAnalysis]?.newNoteYAML
+        let seedKeys = try TriptychSettingsValidator.seedKeys(
+            in: seed,
+            role: .paperAnalysis
+        )
+        return try AnalysisSourceType.allCases.map { sourceType in
+            let profile = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
+            let required = Set(
+                settings.analysisAgentCreation.requiredFields(for: sourceType)
+            )
+            let fields = try profile.serializationFieldOrder.compactMap {
+                key -> ResearchAnalysisCreationFieldPlan? in
+                guard key != "type", !seedKeys.contains(key),
+                      let contract = PropertyContractCatalog.contract(
+                        for: key,
+                        profile: .analysis
+                      ) else { return nil }
+                return try ResearchAnalysisCreationFieldPlan(
+                    key: key,
+                    valueKind: contract.valueKind,
+                    allowedValues: contract.allowedValues,
+                    isRequired: required.contains(key)
+                )
+            }
+            return try ResearchAnalysisCreationSourcePlan(
+                sourceType: sourceType,
+                fields: fields
+            )
+        }
+    }
+
+    private static func propertyWritePlans(
+        _ keys: [String],
+        role: ResearchActionTargetRole,
+        document: NoteDocument
+    ) throws -> [ResearchPropertyWriteFieldPlan] {
+        guard !keys.isEmpty else { return [] }
+        guard document.frontmatterState == .valid else {
+            throw ResearchBoundedWriteSetError.operationNotAuthorized
+        }
+        let profile = schemaProfile(for: role)
+        let otherProfiles = SchemaProfileID.allCases.filter { $0 != profile }
+        return try keys.sorted().map { key in
+            if let contract = PropertyContractCatalog.contract(
+                for: key,
+                profile: profile
+            ) {
+                return try ResearchPropertyWriteFieldPlan(
+                    key: key,
+                    valueKind: contract.valueKind,
+                    allowedValues: contract.allowedValues
+                )
+            }
+            let isCanonicalElsewhere = otherProfiles.contains { candidate in
+                PropertyContractCatalog.contract(for: key, profile: candidate) != nil
+            }
+            guard !isCanonicalElsewhere,
+                  let value = document.parsedFrontmatter[key],
+                  let valueKind = observedCustomPropertyKind(value) else {
+                throw ResearchBoundedWriteSetError.operationNotAuthorized
+            }
+            return try ResearchPropertyWriteFieldPlan(
+                key: key,
+                valueKind: valueKind
+            )
+        }
+    }
+
+    private static func observedCustomPropertyKind(
+        _ value: YAMLValue
+    ) -> PropertyValueKind? {
+        switch value {
+        case .string(let text):
+            text.contains("\n") ? .multilineText : .text
+        case .integer, .double:
+            .number
+        case .boolean:
+            .boolean
+        case .array(let values) where values.allSatisfy({
+            if case .string = $0 { return true }
+            return false
+        }):
+            .textList
+        case .array, .object, .null:
+            nil
+        }
+    }
+
+    private static func schemaProfile(
+        for role: ResearchActionTargetRole
+    ) -> SchemaProfileID {
+        switch role {
+        case .analysis: .analysis
+        case .topic: .topicMarkdown
         case .work: .draftProject
         }
     }

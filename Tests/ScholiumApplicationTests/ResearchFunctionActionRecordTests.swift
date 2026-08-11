@@ -4,6 +4,114 @@ import Foundation
 import Testing
 
 extension ResearchFunctionOperationsTests {
+    @Test("Completion source observation rejects same-byte path identity reuse")
+    func completionObservationRevalidatesIdentityAfterSourceRead() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let gate = ControlledObservationTestGate()
+        await handle.setResearchFunctionControlledObservationBarrierForTesting {
+            await gate.wait()
+        }
+        let observation = Task {
+            try await handle.researchFunctionControlledFingerprint(for: target)
+        }
+        #expect(await gate.waitUntilArrived())
+        _ = try await handle.services.controlStore.purgeIdentity(
+            id: target.noteID,
+            vaultID: target.note.vaultID,
+            relativePath: target.note.relativePath
+        )
+        let replacement = try #require(
+            try await handle.services.controlStore.identity(
+                forVaultID: target.note.vaultID,
+                relativePath: target.note.relativePath,
+                fingerprint: target.fingerprint
+            )
+        )
+        #expect(replacement.id != target.noteID)
+        await gate.release()
+        do {
+            _ = try await observation.value
+            Issue.record("Expected the controlled observation to reject identity reuse.")
+        } catch let error as ResearchFunctionContractError {
+            guard case .targetIdentityChanged = error else {
+                Issue.record("Unexpected controlled-observation error: \(error)")
+                await handle.setResearchFunctionControlledObservationBarrierForTesting(nil)
+                await runtime.shutdown()
+                return
+            }
+        }
+        await handle.setResearchFunctionControlledObservationBarrierForTesting(nil)
+        await runtime.shutdown()
+    }
+
+    @Test("Real Analyze submission rejects same-byte target identity reuse")
+    func analyzeSubmissionUsesControlledTargetObservation() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(target)
+            )
+        )
+        let run = try await handle.research.protectedFunctionRun(id: action.runID)
+        let client = try await connectTestResearchAgent(to: run, handle: handle)
+        let submission = try makeTestAgentResultSubmission(
+            for: run,
+            literatureRecommendations: []
+        )
+        _ = try await handle.services.controlStore.purgeIdentity(
+            id: target.noteID,
+            vaultID: target.note.vaultID,
+            relativePath: target.note.relativePath
+        )
+        let replacement = try #require(
+            try await handle.services.controlStore.identity(
+                forVaultID: target.note.vaultID,
+                relativePath: target.note.relativePath,
+                fingerprint: target.fingerprint
+            )
+        )
+        #expect(replacement.id != target.noteID)
+        do {
+            _ = try await submitTestAgentResult(
+                submission,
+                client: client,
+                handle: handle
+            )
+            Issue.record("Expected Analyze completion to reject identity reuse.")
+        } catch let error as ResearchFunctionContractError {
+            guard case .targetIdentityChanged = error else {
+                Issue.record("Unexpected Analyze completion error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+        }
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        ).completion == nil)
+        #expect(try await handle.research.finishedResearchRecords(
+            noteID: target.noteID
+        ).allSatisfy { $0.id != action.runID })
+        await runtime.shutdown()
+    }
+
     @Test("Action resolver follows the default matrix and explicit disabled Method state")
     func actionResolverDefaultMatrixAndDisabledMethod() async throws {
         let fixture = try await ResearchFixture.make()
@@ -374,7 +482,7 @@ extension ResearchFunctionOperationsTests {
         }
 
         let localURL = triptychSupport
-            .appendingPathComponent("research-execution-v8", isDirectory: true)
+            .appendingPathComponent("research-execution-v9", isDirectory: true)
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
         let portableURL = fixture.rootURL
             .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
@@ -1139,4 +1247,28 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+}
+
+private actor ControlledObservationTestGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+    private var arrived = false
+
+    func wait() async {
+        arrived = true
+        arrivalContinuation?.resume()
+        arrivalContinuation = nil
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilArrived() async -> Bool {
+        if arrived { return true }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+        return true
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
 }

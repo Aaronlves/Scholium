@@ -33,6 +33,16 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
     public let optionalSelectors: [PlatformActionSelector]
     public let operations: [PlatformActionOperation]
 
+    /// The closed mutation kinds an authenticated Run may request for a new
+    /// Bounded Write Set member. The Action's initial writable target remains
+    /// governed by `ResearchAuthorityEnvelope.writeOperations`; extension
+    /// authority is always a later researcher or policy decision.
+    public var extensionWriteOperations: [ResearchDocumentWriteOperation] {
+        guard operations.contains(.modifyInitialNote),
+              operations.contains(.extendWriteSet) else { return [] }
+        return [.createNote, .modifyMarkdown, .modifyProperties]
+    }
+
     public init(
         actionID: ResearchActionID,
         executionKind: ResearchActionExecutionKind,
@@ -144,7 +154,7 @@ public enum PlatformActionCatalog {
             executionKind: .manuscript,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes, .citationStyle, .feedback],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
         ),
     ]
 

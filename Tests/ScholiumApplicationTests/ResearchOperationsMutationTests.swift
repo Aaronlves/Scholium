@@ -1,4 +1,5 @@
 import ScholiumContracts
+import ScholiumCore
 import Foundation
 @testable import ScholiumApplication
 import Testing
@@ -137,7 +138,7 @@ struct ResearchOperationsMutationTests {
                 detail: "Fixture-only evidence"
             )]
         )
-        try fixture.writeRecoveryFixture(recovery)
+        try await fixture.writeRecoveryFixture(recovery)
         _ = try await handle.discovery.refresh()
         #expect(try await handle.research.recoveryRecords().map(\.id) == [recovery.id])
 
@@ -429,20 +430,13 @@ struct ResearchFixture: Sendable {
         )), zotero: zotero)
     }
 
-    func writeRecoveryFixture(_ record: TriptychMutationRecoveryRecord) throws {
+    func writeRecoveryFixture(_ record: TriptychMutationRecoveryRecord) async throws {
         let storageURL = applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(assignment.id.uuidString, isDirectory: true)
             .appendingPathComponent("transactions", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: storageURL,
-            withIntermediateDirectories: true
-        )
-        let data = try JSONEncoder().encode(RecoveryFixturePayload(records: [record]))
-        try data.write(
-            to: storageURL.appendingPathComponent("transaction-recovery.json"),
-            options: .atomic
-        )
+        let store = try TriptychMutationRecoveryStore(storageURL: storageURL)
+        try await store.record(record)
     }
 
     func remove() {
@@ -556,7 +550,7 @@ func createCommentExchange(
 
 func writePreparedResearchDocument(
     for preparation: ResearchFunctionPreparation,
-    content: String,
+    body: String,
     handle: WorkspaceHandle,
     requestID: UUID = UUID()
 ) async throws -> ResearchDocumentWriteResult {
@@ -580,7 +574,7 @@ func writePreparedResearchDocument(
             requestID: requestID,
             role: role,
             relativePath: target.note.relativePath,
-            content: content
+            content: body
         )
     )
 }
@@ -734,9 +728,6 @@ extension FidelityCheckOutcome {
     }
 }
 
-struct RecoveryFixturePayload: Codable {
-    let records: [TriptychMutationRecoveryRecord]
-}
 
 struct LegacyResearchFileCanary: Equatable {
     let bytes: Data

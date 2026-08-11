@@ -49,21 +49,48 @@ extension ScholiumCLI {
         }
         switch subcommand {
         case "create":
-            guard arguments.count >= 2, let input = option("--from", in: arguments) else {
+            guard arguments.count >= 2 else {
                 throw CLIError.usage(
-                    "Usage: scholium note create <vault>:<path> --from <markdown-file>"
+                    "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--analysis-from <json-file>]"
                 )
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
-            let content = try sourceContent(from: input)
-            let outcome = try await handle.documents.create(
-                VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
-                content: content
+            let body = try option("--body-from", in: arguments)
+                .map(sourceContent(from:)) ?? ""
+            let metadata = try option("--analysis-from", in: arguments).map {
+                try JSONDecoder().decode(
+                    AnalysisCreationMetadata.self,
+                    from: Data(try sourceContent(from: $0).utf8)
+                )
+            }
+            let outcome = try await handle.documents.createManagedNote(
+                try ManagedNoteCreationRequest(
+                    vaultID: vault.id,
+                    destination: .exact(relativePath: path),
+                    body: body,
+                    analysisMetadata: metadata
+                )
             )
             let document = outcome.committedValue
-            write("Created \(vault.name):\(path)\nSHA-256: \(document.fingerprint.sha256)\n")
+            write("Created \(vault.name):\(document.id.relativePath)\nSHA-256: \(document.document.fingerprint.sha256)\n")
+            writeMutationWarnings(outcome)
+        case "import":
+            guard arguments.count >= 2, let input = option("--from", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium note import <vault>:<path> --from <markdown-file>"
+                )
+            }
+            let (vault, path) = try await context.resolveTarget(arguments[1])
+            let assignment = try await context.triptych(containing: [vault.id])
+            let handle = try await context.handle(for: assignment)
+            let outcome = try await handle.documents.create(
+                VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
+                content: try sourceContent(from: input)
+            )
+            let document = outcome.committedValue
+            write("Imported \(vault.name):\(path)\nSHA-256: \(document.fingerprint.sha256)\n")
             writeMutationWarnings(outcome)
         case "replace":
             guard arguments.count >= 2,

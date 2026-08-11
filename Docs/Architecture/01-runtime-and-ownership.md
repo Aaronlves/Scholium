@@ -184,7 +184,7 @@ process connection. A failed cycle preserves the last complete snapshot and inde
 Repository save completion is deliberately earlier than this disposable
 cycle. `DocumentOperations.commit` returns the revision-checked authoritative
 `NoteDocument` as soon as the repository commit is proven. Direct untitled-note
-creation likewise returns a `WorkspaceUntitledNoteCommit` after exact source
+creation likewise returns a `WorkspaceManagedNoteCommit` after exact source
 and portable-identity setup, before complete derived publication. The owning
 `WorkspaceHandle` queues both paths into one utility-priority source-commit
 refresh task before releasing the source-mutation lease, coalesces later
@@ -245,7 +245,7 @@ canonical `PropertyContract`: it can report key/value source ranges without
 granting an unknown key semantic or judgment authority. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-8 Records,
+matcher. The portable Record store supplies exact decoded schema-9 Records,
 schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or
@@ -414,8 +414,19 @@ new stable identity without blocking on Triptych-wide identity reconciliation
 or graph construction and without creating a second source authority. The
 managed creator snapshots the current Settings revision and prepared role
 source before committing; GUI, researcher CLI, and Agent adapters never compose
-their own headers. The window selects Edit and requests the exact body offset
-after the durable source commit. Bridge initialization applies the mapped
+their own headers. A failed final source-and-identity proof persists one
+coordinated recovery record; researcher creation freezes only its exact path
+and reserved identity, while Agent creation separately links its Run operation.
+Machine-local recovery duties are independently bounded files behind one
+cross-process record-store lock, so accumulated pending duties cannot consume a
+new duty's write budget. Managed identity reconciliation and portable Zotero
+binding writes share a separate control lock; recovery may add or remove only
+its own reserved identity in one identities-file CAS. Any other identity at the
+path stops reconciliation even when its bytes match. The exact in-memory
+receipt rolls back only the reserved-identity mutation if final source or
+binding proof fails; no foreign identity preimage is displaced.
+The window selects Edit and requests the exact body offset after the durable
+source commit. Bridge initialization applies the mapped
 collapsed selection without focus and returns the exact selection with its mode
 acknowledgement; native code verifies both, converges presentation, then
 publishes readiness only after a final focus acknowledgement. Only

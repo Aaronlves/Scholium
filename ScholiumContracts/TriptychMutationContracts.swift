@@ -2,6 +2,7 @@ import Foundation
 
 public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
     case noteSave
+    case noteCreation
     case noteMove
     case folderMove
     case permanentDeletion
@@ -9,6 +10,7 @@ public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
 
 public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
     case savedNote
+    case createdNote
     case movedNote
     case movedFolder
     case incomingLinkRewrite
@@ -69,18 +71,35 @@ public struct ResearchWriteRecoveryReference: Codable, Hashable, Sendable {
     public let runID: UUID
     public let operationID: UUID
     public let target: ResearchWriteTargetHandle
-    public let sourceRecoveryID: InterruptedSaveRecoveryID
+    public let sourceRecoveryID: InterruptedSaveRecoveryID?
 
     public init(
         runID: UUID,
         operationID: UUID,
         target: ResearchWriteTargetHandle,
-        sourceRecoveryID: InterruptedSaveRecoveryID
+        sourceRecoveryID: InterruptedSaveRecoveryID? = nil
     ) {
         self.runID = runID
         self.operationID = operationID
         self.target = target
         self.sourceRecoveryID = sourceRecoveryID
+    }
+}
+
+/// Binds an interrupted researcher-managed creation to the exact path and
+/// reserved portable identity that the shared creator had already claimed.
+/// It authorizes only confirmation-time reconciliation of that one pair; it
+/// carries no Agent Run or integration authority.
+public struct ManagedCreationRecoveryReference: Codable, Hashable, Sendable {
+    public let target: VaultQualifiedNoteID
+    public let reservedIdentityID: UUID
+
+    public init(
+        target: VaultQualifiedNoteID,
+        reservedIdentityID: UUID
+    ) {
+        self.target = target
+        self.reservedIdentityID = reservedIdentityID
     }
 }
 
@@ -95,6 +114,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
     public let files: [TriptychMutationRecoveryFile]
     public let permanentDeletionBackup: PermanentDeletionRecoveryBackup?
     public let researchWrite: ResearchWriteRecoveryReference?
+    public let managedCreation: ManagedCreationRecoveryReference?
 
     public init(
         id: UUID = UUID(),
@@ -103,8 +123,10 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date = Date(),
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        researchWrite: ResearchWriteRecoveryReference? = nil
+        researchWrite: ResearchWriteRecoveryReference? = nil,
+        managedCreation: ManagedCreationRecoveryReference? = nil
     ) {
+        precondition(researchWrite == nil || managedCreation == nil)
         self.id = id
         self.triptychID = triptychID
         self.operation = operation
@@ -113,6 +135,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.files = files
         self.permanentDeletionBackup = nil
         self.researchWrite = researchWrite
+        self.managedCreation = managedCreation
     }
 
     public init(
@@ -132,6 +155,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.files = files
         self.permanentDeletionBackup = permanentDeletionBackup
         self.researchWrite = researchWrite
+        self.managedCreation = nil
     }
 }
 

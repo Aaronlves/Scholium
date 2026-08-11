@@ -210,7 +210,16 @@ extension ScholiumCLI {
             "action prepare-fidelity": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "action cancel": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "read": .init(pathLength: 1, positionalCount: 1 ... 1, options: format),
-            "note create": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--from": .value]),
+            "note create": .init(
+                pathLength: 2,
+                positionalCount: 1 ... 1,
+                options: ["--body-from": .value, "--analysis-from": .value]
+            ),
+            "note import": .init(
+                pathLength: 2,
+                positionalCount: 1 ... 1,
+                options: ["--from": .value]
+            ),
             "note replace": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--from": .value, "--expected": .value]),
             "note move": .init(pathLength: 2, positionalCount: 2 ... 2, options: ["--expected": .value]),
             "note set-aside": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),

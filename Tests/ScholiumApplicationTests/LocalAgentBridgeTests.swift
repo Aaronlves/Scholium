@@ -62,6 +62,79 @@ struct LocalAgentBridgeTests {
         #expect(!String(reflecting: response).contains(credential.secret))
     }
 
+    @Test("Bridge document-write JSON omits only operation-irrelevant fields")
+    func documentWriteIntentOperationShapes() throws {
+        let run = try #require(ResearchRunLocator(rawValue: "bridgewriteshapeabcd"))
+        let credential = try testCredential()
+        func wireObject(_ intent: ResearchDocumentWriteIntent) throws -> [String: Any] {
+            let request = try LocalAgentBridgeRequest(
+                operation: .writeDocument,
+                run: run,
+                credential: credential,
+                documentWriteIntent: intent
+            )
+            return try #require(JSONSerialization.jsonObject(
+                with: LocalAgentBridgeWireCoding.encode(request)
+            ) as? [String: Any])
+        }
+
+        var create = try wireObject(ResearchDocumentWriteIntent(
+            role: .topic,
+            relativePath: "Created.md",
+            operation: .createNote
+        ))
+        var createIntent = try #require(
+            create["document_write_intent"] as? [String: Any]
+        )
+        createIntent.removeValue(forKey: "content")
+        createIntent.removeValue(forKey: "properties")
+        create["document_write_intent"] = createIntent
+        let decodedCreate = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: JSONSerialization.data(withJSONObject: create)
+        )
+        #expect(decodedCreate.documentWriteIntent?.operation == .createNote)
+
+        var property = try wireObject(ResearchDocumentWriteIntent(
+            role: .topic,
+            relativePath: "Agency.md",
+            operation: .modifyProperties,
+            properties: [try CanonicalPropertyInput(
+                key: "summary",
+                value: .string("Exact")
+            )]
+        ))
+        var propertyIntent = try #require(
+            property["document_write_intent"] as? [String: Any]
+        )
+        propertyIntent.removeValue(forKey: "content")
+        property["document_write_intent"] = propertyIntent
+        let decodedProperty = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: JSONSerialization.data(withJSONObject: property)
+        )
+        #expect(decodedProperty.documentWriteIntent?.properties.map(\.key)
+            == ["summary"])
+
+        var markdown = try wireObject(ResearchDocumentWriteIntent(
+            role: .topic,
+            relativePath: "Agency.md",
+            operation: .modifyMarkdown,
+            content: ""
+        ))
+        var markdownIntent = try #require(
+            markdown["document_write_intent"] as? [String: Any]
+        )
+        markdownIntent.removeValue(forKey: "content")
+        markdown["document_write_intent"] = markdownIntent
+        #expect(throws: (any Error).self) {
+            _ = try LocalAgentBridgeWireCoding.decode(
+                LocalAgentBridgeRequest.self,
+                from: JSONSerialization.data(withJSONObject: markdown)
+            )
+        }
+    }
+
     @Test("A current-UID peer is accepted and bridge state persists no credential")
     func currentUIDAndSecretBoundary() throws {
         let fixture = try BridgeFixture()

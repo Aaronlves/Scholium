@@ -93,6 +93,20 @@
 - A Run owns one bounded, expandable write set. Every mutation still requires a
   nonreusable operation capability and the exact repository transaction. One
   member's conflict does not widen authority or roll back confirmed siblings.
+- Authenticated `create_note` freezes proven absence, Settings revision,
+  reserved identity, and a seed-free Analysis field/shape/required plan.
+  `modify_markdown` changes body only; `modify_properties` changes only exact
+  approved top-level keys. GUI, researcher CLI, and Agent creation use the same
+  managed creator. Agent creation is idempotent for one request and forms a
+  checkpoint-free `created` Record mutation only after source and identity
+  jointly read back; partial or unreadable outcomes retain a durable creation
+  recovery duty instead of guessing absence. Recovery may add or remove only
+  the exact reserved identity; any other identity at the path, a binding on an
+  identity that would be removed, or moved, changed, or unreadable state stops
+  for separate researcher resolution.
+  Linked reconciliation coordinates source mutation, performs a final joint
+  readback, and treats an already-settled write as cleanup-only. Unlinked
+  records never claim Agent reconciliation.
 - Result submission validates the frozen academic contract and Context Use;
   Application adds machine facts from actual transaction outcomes. Finalization
   is idempotent and waits for writes and recovery duties to converge. Continue
@@ -100,18 +114,18 @@
   current, changed, missing, or unavailable. Parent-Run Researcher State
   references are stripped from the child handoff; a typed flag requires the
   child to query current researcher-owned facts in its own Run scope.
-- Closing an Action presentation leaves unfinished work active. Explicit End
-  Action or End Discussion revokes new authority while retaining confirmed
-  changes, conflicts, Records, and recovery duties.
+- Closing an Action presentation leaves unfinished work active. End cancels a
+  no-write Action; confirmed changes require Result submission so their Record
+  and Review cannot be lost, while unresolved recovery blocks End.
 
 ## Records, guidance, and integrations
 
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-8 Records. One cumulative schema-1 portable Note Review per Note owns
+  schema-9 Records. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-8 Records reject schema 7 rather than migrating it. Credentials,
+  Schema-9 Records reject schemas 1 through 8 rather than migrating them. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected

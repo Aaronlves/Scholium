@@ -2046,7 +2046,7 @@ private struct StrictResearchRecordFingerprint: Decodable {
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 10
+    public static let currentSchemaVersion = 11
 
     public let schemaVersion: Int
     public let triptychID: UUID
@@ -2196,7 +2196,8 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               writeReport.map({ report in
                   let reportIDs = Set(report.confirmedModifiedNotes.map(\.noteID))
                     .union(report.unmodifiedNotes.map(\.noteID))
-                  return reportIDs == Set(resolvedWriteSet.entries.map(\.noteID))
+                  return reportIDs == Set(resolvedWriteSet.entries
+                    .filter { !$0.expectsAbsence }.map(\.noteID))
               }) ?? true,
               completion?.runID == snapshot.runID || completion == nil,
               completion?.function == snapshot.request.function || completion == nil,
@@ -2365,13 +2366,13 @@ public actor LocalResearchExecutionStore {
         storageURL = applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v8", isDirectory: true)
+            .appendingPathComponent("research-execution-v9", isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: applicationSupportURL,
             components: [
                 "Triptychs",
                 triptychID.uuidString,
-                "research-execution-v8",
+                "research-execution-v9",
             ],
             directoryMode: 0o700,
             fileMode: 0o600,
@@ -2381,7 +2382,7 @@ public actor LocalResearchExecutionStore {
         do {
             lock = try AdvisoryFileLock(
                 directory: storage,
-                fileName: "execution-v8.lock"
+                fileName: "execution-v9.lock"
             )
         } catch {
             throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
@@ -2525,10 +2526,35 @@ public actor LocalResearchExecutionStore {
             }
             var allEntries = current.boundedWriteSet.entries
             for entry in entries {
-                if let existing = allEntries.first(where: { $0.noteID == entry.noteID }) {
-                    guard existing == entry else {
+                if let existingIndex = allEntries.firstIndex(where: {
+                    $0.noteID == entry.noteID
+                }) {
+                    let existing = allEntries[existingIndex]
+                    let priorOperations = Set(
+                        existing.allowedOperations.filter { $0 != .createNote }
+                    )
+                    guard entry.handle == existing.handle,
+                          entry.note == existing.note,
+                          entry.role == existing.role,
+                          entry.title == existing.title,
+                          entry.state == .ready,
+                          entry.expectedRevision != nil,
+                          !entry.allowedOperations.contains(.createNote),
+                          Set(entry.allowedOperations)
+                            .isSuperset(of: priorOperations),
+                          Set(entry.allowedPropertyKeys)
+                            .isSuperset(of: Set(existing.allowedPropertyKeys)),
+                          existing.state == .ready
+                            || (existing.state == .consumed
+                                && existing.wasCreated),
+                          !current.documentWriteRecords.contains(where: {
+                              $0.target == existing.handle
+                                  && [.writing, .recoveryRequired]
+                                    .contains($0.state)
+                          }) else {
                         throw ResearchBoundedWriteSetError.invalidEntry
                     }
+                    allEntries[existingIndex] = entry
                 } else {
                     allEntries.append(entry)
                 }
@@ -2628,6 +2654,10 @@ public actor LocalResearchExecutionStore {
                       refreshedEntry.role == entry.role,
                       refreshedEntry.title == entry.title,
                       refreshedEntry.allowedOperations == entry.allowedOperations,
+                      refreshedEntry.allowedPropertyKeys
+                        == entry.allowedPropertyKeys,
+                      refreshedEntry.propertyWritePlans
+                        == entry.propertyWritePlans,
                       refreshedEntry.authorizationBasis == entry.authorizationBasis,
                       refreshedEntry.authorizationPolicy == entry.authorizationPolicy,
                       refreshedEntry.policyRevision == entry.policyRevision,
@@ -2753,11 +2783,25 @@ public actor LocalResearchExecutionStore {
             current.documentWriteRecords[writeIndex] = write
             switch state {
             case .committed, .unchanged:
-                if let observedRevision {
-                    current.boundedWriteSet.entries[entryIndex].expectedRevision
-                        = observedRevision
+                if write.operation == .createNote {
+                    guard state == .committed,
+                          let observedRevision,
+                          case .absent(let settingsRevision) = current
+                            .boundedWriteSet.entries[entryIndex].expectation else {
+                        throw ResearchBoundedWriteSetError.invalidWriteRecord
+                    }
+                    current.boundedWriteSet.entries[entryIndex].expectation = .created(
+                        settingsRevision: settingsRevision,
+                        committedRevision: observedRevision
+                    )
+                    current.boundedWriteSet.entries[entryIndex].state = .consumed
+                } else {
+                    if let observedRevision {
+                        current.boundedWriteSet.entries[entryIndex].expectedRevision
+                            = observedRevision
+                    }
+                    current.boundedWriteSet.entries[entryIndex].state = .ready
                 }
-                current.boundedWriteSet.entries[entryIndex].state = .ready
             case .conflict:
                 current.boundedWriteSet.entries[entryIndex].state = .conflict
             case .recoveryRequired:
@@ -2770,9 +2814,11 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    /// Reconciles only a write that is already durably linked to the pending
-    /// recovery record selected by the researcher. The caller supplies a fresh
-    /// exact source observation after separately checking stable identity.
+    /// Reconciles a write linked to the pending recovery record selected by the
+    /// researcher. A creation may still be `.writing` with no link when the
+    /// process stopped after persisting the stable recovery record but before
+    /// finishing the Local Execution update; the same locked mutation attaches
+    /// that deterministic record and settles the write.
     @discardableResult
     public func reconcileDocumentWriteRecovery(
         runID: UUID,
@@ -2791,10 +2837,15 @@ public actor LocalResearchExecutionStore {
                 throw ResearchBoundedWriteSetError.invalidWriteRecord
             }
             var write = current.documentWriteRecords[writeIndex]
-            guard write.recoveryRecordID == recoveryRecordID else {
+            let canAttachInterruptedCreation = write.operation == .createNote
+                && write.state == .writing
+                && write.recoveryRecordID == nil
+                && write.expectedRevision == nil
+            guard write.recoveryRecordID == recoveryRecordID
+                    || canAttachInterruptedCreation else {
                 throw ResearchBoundedWriteSetError.recoveryRequired
             }
-            if write.state != .recoveryRequired {
+            if write.state != .recoveryRequired && !canAttachInterruptedCreation {
                 guard [.committed, .abandoned].contains(write.state) else {
                     throw ResearchBoundedWriteSetError.recoveryRequired
                 }
@@ -2809,6 +2860,7 @@ public actor LocalResearchExecutionStore {
                 state = .recoveryRequired
             }
             write.state = state
+            write.recoveryRecordID = recoveryRecordID
             write.observedRevision = observedRevision
             write.finishedAt = state == .recoveryRequired ? write.finishedAt : reconciledAt
             write.warning = state == .recoveryRequired
@@ -2820,9 +2872,21 @@ public actor LocalResearchExecutionStore {
                 guard let observedRevision else {
                     throw ResearchBoundedWriteSetError.invalidWriteRecord
                 }
-                current.boundedWriteSet.entries[entryIndex].expectedRevision
-                    = observedRevision
-                current.boundedWriteSet.entries[entryIndex].state = .ready
+                if write.operation == .createNote {
+                    guard case .absent(let settingsRevision) = current
+                        .boundedWriteSet.entries[entryIndex].expectation else {
+                        throw ResearchBoundedWriteSetError.invalidWriteRecord
+                    }
+                    current.boundedWriteSet.entries[entryIndex].expectation = .created(
+                        settingsRevision: settingsRevision,
+                        committedRevision: observedRevision
+                    )
+                    current.boundedWriteSet.entries[entryIndex].state = .consumed
+                } else {
+                    current.boundedWriteSet.entries[entryIndex].expectedRevision
+                        = observedRevision
+                    current.boundedWriteSet.entries[entryIndex].state = .ready
+                }
             case .abandoned:
                 current.boundedWriteSet.entries[entryIndex].state = .ready
             case .recoveryRequired:
@@ -3222,7 +3286,7 @@ public actor LocalResearchExecutionStore {
                 records.append(record)
             } catch {
                 issues.append(PortableResearchRecordStoreIssue(
-                    location: "research-execution-v8",
+                    location: "research-execution-v9",
                     fileName: fileName,
                     reason: error.localizedDescription
                 ))

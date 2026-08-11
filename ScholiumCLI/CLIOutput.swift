@@ -82,7 +82,9 @@ extension ScholiumCLI {
           scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown
           scholium action cancel <run-id> [--triptych <selector>]
           scholium read <vault>:<relative-path> [--format json]
-          scholium note create <vault>:<path> --from <markdown-file>
+          scholium note create <vault>:<path> [--body-from <text-file>]
+              [--analysis-from <json-file>]
+          scholium note import <vault>:<path> --from <markdown-file>
           scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>
           scholium note move <vault>:<path> <new-path> --expected <sha256>
           scholium note set-aside <vault>:<path> --expected <sha256>
@@ -251,7 +253,7 @@ private extension ScholiumCLI {
             "agent extend-write-set": AgentCLICommandHelp(
                 usage: "scholium agent extend-write-set --run <locator> --from <json|->",
                 inputContract: "ResearchWriteSetExtensionIntent schema \(ResearchWriteSetExtensionIntent.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]; academic_reason explains why the current Method needs these targets.",
+                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]. Only modify_properties also requires nonempty property_keys with the exact requested top-level keys. academic_reason explains why the current Method needs these targets.",
                 output: "AgentWriteSetReport with state, the current capability-free bounded-write-set entries, and a message.",
                 nextSteps: [
                     "scholium agent reload --run <locator> after a pending researcher decision",
@@ -261,7 +263,7 @@ private extension ScholiumCLI {
             "agent write": AgentCLICommandHelp(
                 usage: "scholium agent write --run <locator> --from <json|->",
                 inputContract: "AgentDocumentWriteDraft",
-                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(writeOperations)] defaulting to modify_markdown, and content containing the complete intended UTF-8 Markdown.",
+                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(writeOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body). create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Complete Markdown is never accepted here.",
                 output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, revision, checkpoint, and retry authority.",
                 nextSteps: [
                     "scholium agent resolve-write-conflict --run <locator> --from <json|-> when the returned state is conflict",
@@ -371,7 +373,8 @@ private extension ScholiumCLI {
             "action prepare-fidelity": "Usage: scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Analyze, Synthesize, or Write Action.",
             "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
             "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
-            "note create": "Usage: scholium note create <vault>:<path> --from <markdown-file>",
+            "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--analysis-from <json-file>]\n\nCreates through the role's managed New Note YAML. Body input is UTF-8 LF text without a top-level YAML envelope, not complete Markdown source. Analysis JSON is {\"source_type\":\"journal_article\",\"properties\":[{\"key\":\"title\",\"value\":\"Example\"}]}; value is an ordinary JSON scalar, array, or object. Researcher creation does not enforce Agent-only required fields.",
+            "note import": "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML.",
             "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",
             "note move": "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>",
             "note set-aside": "Usage: scholium note set-aside <vault>:<path> --expected <sha256>",

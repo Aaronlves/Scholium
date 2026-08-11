@@ -85,6 +85,42 @@ struct ContractBoundaryTests {
         #expect(decoded.researchWrite?.sourceRecoveryID == sourceRecoveryID)
     }
 
+    @Test("Managed creation recovery freezes one reserved identity without Agent authority")
+    func managedCreationRecoveryRoundTrip() throws {
+        let target = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Topics/New.md"
+        )
+        let reference = ManagedCreationRecoveryReference(
+            target: target,
+            reservedIdentityID: UUID()
+        )
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: UUID(),
+            operation: .noteCreation,
+            failure: "Final joint readback was unavailable.",
+            files: [TriptychMutationRecoveryFile(
+                vaultID: target.vaultID,
+                path: target.relativePath,
+                role: .createdNote,
+                beforeRevision: nil,
+                intendedRevision: DocumentFingerprint(content: "created"),
+                observedRevision: nil,
+                state: .unreadable,
+                detail: "Fixture"
+            )],
+            managedCreation: reference
+        )
+
+        let decoded = try JSONDecoder().decode(
+            TriptychMutationRecoveryRecord.self,
+            from: JSONEncoder().encode(record)
+        )
+        #expect(decoded == record)
+        #expect(decoded.managedCreation == reference)
+        #expect(decoded.researchWrite == nil)
+    }
+
     @Test("Committed source outcomes remain distinct from post-commit warnings")
     func structuredErrors() {
         let revision = DocumentFingerprint(sha256: "revision", byteCount: 8)
@@ -122,14 +158,15 @@ struct ContractBoundaryTests {
 
     @Test("Contract capability values remain delivery neutral")
     func requestAndResultValues() throws {
-        let id = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "New.md")
-        let request = DocumentCreationRequest(
-            id: id,
-            title: "New"
+        let vaultID = UUID()
+        let request = try ManagedNoteCreationRequest(
+            vaultID: vaultID,
+            destination: .exact(relativePath: "New.md"),
+            body: "# New\n"
         )
 
-        #expect(request.id == id)
-        #expect(request.title == "New")
+        #expect(request.vaultID == vaultID)
+        #expect(request.body == "# New\n")
         #expect(WorkspaceRegistryError.incompleteWorkspace.localizedDescription.contains("incomplete"))
     }
 

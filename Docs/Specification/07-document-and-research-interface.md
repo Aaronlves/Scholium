@@ -91,20 +91,17 @@ modes retain the shared measure and minimum insets. Edit and Source reconfigure
 one retained editor state; window, split, theme,
 line-width, or text-size changes never replace it or create an Editor window.
 
-Each researcher-authored semantic text block owns its base writing direction.
-Review determines that direction from the block's first strong directional
-character and directionally isolates the block from adjacent content. Edit
-applies the same automatic direction to semantic lines and projected fragment
-components; Source applies automatic direction independently to each visible
-exact source line. Code, mathematics, and inert raw-HTML source remain
-left-to-right isolated technical regions. The editor's visual cursor and
-selection model must consume the same per-line direction and syntactic bidi
-isolates that produce the visible order. Automatic direction never replaces,
-locks, or reconstructs text: pointer, keyboard, selection, deletion, insertion,
-Undo, and installed input methods edit RTL content through the same exact
-source in Edit and Source. Interface language never forces the
-direction of document prose, all Scholium-owned spacing and boundaries use
-logical start/end edges, and user-authored raw HTML remains inert rather than
+Each researcher-authored semantic text block preserves its exact Unicode source
+independently of interface language. Beta and 1.0 interactive writing support
+covers English, Simplified Chinese, and mixed English/Chinese content. Other
+scripts remain byte-preserved and available in Source, but complete
+bidirectional rendering, visual cursor and selection behavior, and installed
+RTL input-method behavior are deferred under §17. Scholium never normalizes,
+reconstructs, or silently replaces unsupported source. Code, mathematics, and
+inert raw-HTML source remain left-to-right isolated technical regions. Interface
+language never forces the direction of document prose, all Scholium-owned
+spacing and boundaries use logical start/end edges so later RTL support requires
+no second layout system, and user-authored raw HTML remains inert rather than
 becoming an alternate direction-control or rendering path.
 
 Appearance is machine-local configuration and never Markdown or vault state.
@@ -670,6 +667,10 @@ Lifecycle and destructive actions use exactly **Set Aside**, **Move to Trash**,
 remains the direct reversible exception and is never styled as destructive.
 
 ## 18.7 Simplified Chinese terminology and translation boundary
+
+Beta and 1.0 localize the researcher-facing interface only in English and
+Simplified Chinese; §17 defers additional languages and RTL chrome, while §18.4
+preserves exact Unicode source.
 
 Translate researcher-facing language contextually, not by mechanical token
 replacement. Stable identifiers, enum values, command IDs, paths, exact source,

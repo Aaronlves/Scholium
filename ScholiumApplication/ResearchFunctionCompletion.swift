@@ -212,9 +212,6 @@ extension ResearchFunctionCoordinator {
 
         let targetChanged = finalTargetFingerprint
             != snapshot.request.target.fingerprint
-        let didConfirmWrite = confirmedWriteSet.map {
-            !$0.report.confirmedModifiedNotes.isEmpty
-        } ?? targetChanged
         let didConfirmTargetWrite = confirmedWriteSet.map { confirmed in
             confirmed.report.confirmedModifiedNotes.contains {
                 $0.noteID == snapshot.request.target.noteID
@@ -225,6 +222,12 @@ extension ResearchFunctionCoordinator {
                     || submission.didModifyTarget == targetChanged else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "Target modification status does not match its final fingerprint."
+                )
+            }
+        } else if snapshot.request.function == .manuscript {
+            guard !submission.didModifyTarget else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "Manuscript coordination cannot claim a child Run's Target change as its own write."
                 )
             }
         } else {
@@ -243,9 +246,9 @@ extension ResearchFunctionCoordinator {
                     "A write-capable Research Action may select at most one final Content Fidelity child run."
                 )
             }
-            guard didConfirmWrite || submittedChildRunIDs.isEmpty else {
+            guard didConfirmTargetWrite || submittedChildRunIDs.isEmpty else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "An unchanged write-capable Action cannot select final Fidelity evidence."
+                    "An Action whose Target was unchanged cannot select final Target Fidelity evidence."
                 )
             }
             if let confirmedWriteSet,
@@ -401,7 +404,7 @@ extension ResearchFunctionCoordinator {
         } else if let linkedFinalFidelity {
             state = linkedFinalFidelity.state
         } else if [.develop, .revise].contains(snapshot.request.function),
-                  !didConfirmWrite {
+                  !didConfirmTargetWrite {
             state = .complete
         } else if requiredChecks.isEmpty {
             state = .complete
@@ -455,7 +458,9 @@ extension ResearchFunctionCoordinator {
             materialFingerprints: finalMaterialFingerprints,
             actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
             summary: stored.completion?.summary ?? submission.summary,
-            didModifyTarget: didConfirmTargetWrite,
+            didModifyTarget: snapshot.request.function == .manuscript
+                ? false
+                : didConfirmTargetWrite,
             fidelityOutcomes: outcomes,
             fidelityTargetResults: fidelityTargetResults,
             literatureRecommendations: submission.literatureRecommendations,
@@ -775,8 +780,9 @@ extension ResearchFunctionCoordinator {
             noteSnapshots[note.noteID] = note
         }
         let writeRecords = stored.documentWriteRecords
-        var boundedWriteStartingRevisions: [UUID: DocumentFingerprint] = [:]
+        var firstCommittedWrites: [UUID: ResearchDocumentWriteRecord] = [:]
         for entry in stored.boundedWriteSet.entries {
+            if entry.expectsAbsence { continue }
             let firstCommitted = writeRecords
                 .filter {
                     $0.target == entry.handle
@@ -785,16 +791,26 @@ extension ResearchFunctionCoordinator {
                 }
                 .min(by: { $0.startedAt < $1.startedAt })
             if let firstCommitted {
-                boundedWriteStartingRevisions[entry.noteID] =
-                    firstCommitted.expectedRevision
+                firstCommittedWrites[entry.noteID] = firstCommitted
             }
             if noteSnapshots[entry.noteID] == nil {
+                let startingRevision: DocumentFingerprint?
+                if firstCommitted?.operation == .createNote {
+                    startingRevision = firstCommitted?.observedRevision
+                } else {
+                    startingRevision = entry.expectedRevision
+                }
+                guard let startingRevision else {
+                    throw ResearchFunctionContractError.invalidCompletion(
+                        "A created bounded-write participant has no committed revision."
+                    )
+                }
                 noteSnapshots[entry.noteID] = ResearchActionNoteSnapshot(
                     noteID: entry.noteID,
                     note: entry.note,
                     role: entry.role,
                     lifecycle: .active,
-                    fingerprint: entry.expectedRevision,
+                    fingerprint: startingRevision,
                     title: entry.title
                 )
             }
@@ -811,9 +827,13 @@ extension ResearchFunctionCoordinator {
         var changes: [PortableResearchConfirmedChange] = []
         if let confirmedWrite {
             for note in confirmedWrite.confirmedModifiedNotes {
-                guard let starting = boundedWriteStartingRevisions[note.noteID],
-                      let ending = confirmedWrite.observedFingerprints[note.noteID],
-                      starting != ending else { continue }
+                guard let firstCommitted = firstCommittedWrites[note.noteID],
+                      let ending = confirmedWrite.observedFingerprints[note.noteID]
+                else { continue }
+                let starting = firstCommitted.operation == .createNote
+                    ? nil
+                    : firstCommitted.expectedRevision
+                guard starting.map({ $0 != ending }) ?? true else { continue }
                 changes.append(try PortableResearchConfirmedChange(
                     noteID: note.noteID,
                     actor: .agent,
@@ -1406,7 +1426,7 @@ extension ResearchFunctionCoordinator {
               writeSet.triptychID == workspaceID,
               !writeSet.entries.isEmpty,
               writeSet.entries.allSatisfy({
-                  [.ready, .stale, .abandoned].contains($0.state)
+                  [.ready, .consumed, .stale, .abandoned].contains($0.state)
               }),
               writes.allSatisfy({
                   ![.writing, .recoveryRequired].contains($0.state)
@@ -1421,6 +1441,12 @@ extension ResearchFunctionCoordinator {
         var currentFingerprints: [UUID: DocumentFingerprint] = [:]
         var references: [ResearchRunWriteNoteReference] = []
         for entry in writeSet.entries {
+            if entry.expectsAbsence { continue }
+            guard let expectedRevision = entry.expectedRevision else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A bounded-write participant has no current committed revision."
+                )
+            }
             let role: ResearchFunctionTargetRole = switch entry.role {
             case .analysis: .analysis
             case .topic: .topic
@@ -1431,14 +1457,15 @@ extension ResearchFunctionCoordinator {
                 note: entry.note,
                 role: role,
                 lifecycle: .active,
-                fingerprint: entry.expectedRevision,
+                fingerprint: expectedRevision,
                 title: entry.title
             )
             let current = try await currentFingerprint(
                 for: target,
                 host: host
             )
-            guard entry.state != .ready || current == entry.expectedRevision else {
+            guard ![.ready, .consumed].contains(entry.state)
+                    || current == expectedRevision else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "A bounded write-set member changed after its last confirmed operation."
                 )
@@ -1481,18 +1508,7 @@ extension ResearchFunctionCoordinator {
         for target: ResearchFunctionTarget,
         host: isolated Host
     ) async throws -> DocumentFingerprint {
-        let currentSnapshot = host.researchFunctionCurrentSnapshot()
-        guard let note = currentSnapshot.document(id: target.note),
-              note.lifecycle == .active,
-              case .resolved(let stableID) = note.stableIdentity,
-              stableID == target.noteID,
-              ResearchFunctionTargetRole(vaultRole: note.vaultRole) == target.role else {
-            throw ResearchFunctionContractError.targetIdentityChanged
-        }
-        let document = try await repository(vaultID: target.note.vaultID).load(
-            relativePath: target.note.relativePath
-        )
-        return document.fingerprint
+        try await host.researchFunctionControlledFingerprint(for: target)
     }
 
     func validateResearchFunctionTarget<Host: ResearchFunctionCoordinatorHost>(
@@ -1500,6 +1516,10 @@ extension ResearchFunctionCoordinator {
         expected: DocumentFingerprint,
         host: isolated Host
     ) async throws -> ValidatedFunctionObject {
+        guard try await host.researchFunctionControlledFingerprint(for: target)
+                == expected else {
+            throw ResearchFunctionContractError.targetChanged
+        }
         let currentSnapshot = host.researchFunctionCurrentSnapshot()
         guard let note = currentSnapshot.document(id: target.note) else {
             throw ResearchFunctionContractError.targetUnavailable
@@ -1515,12 +1535,6 @@ extension ResearchFunctionCoordinator {
               role == target.role else {
             throw ResearchFunctionContractError.targetIdentityChanged
         }
-        let document = try await repository(vaultID: target.note.vaultID).load(
-            relativePath: target.note.relativePath
-        )
-        guard document.fingerprint == expected else {
-            throw ResearchFunctionContractError.targetChanged
-        }
         return ValidatedFunctionObject(noteID: stableID, note: note)
     }
 
@@ -1529,18 +1543,29 @@ extension ResearchFunctionCoordinator {
         expected: DocumentFingerprint,
         host: isolated Host
     ) async throws -> ValidatedFunctionObject {
+        let controlledTarget = ResearchFunctionTarget(
+            noteID: material.noteID,
+            note: material.note,
+            role: material.role,
+            lifecycle: material.lifecycle,
+            fingerprint: material.fingerprint,
+            title: material.title
+        )
+        do {
+            guard try await host.researchFunctionControlledFingerprint(
+                for: controlledTarget
+            ) == expected else {
+                throw ResearchFunctionContractError.materialChanged(material.title)
+            }
+        } catch {
+            throw ResearchFunctionContractError.materialChanged(material.title)
+        }
         let currentSnapshot = host.researchFunctionCurrentSnapshot()
         guard let note = currentSnapshot.document(id: material.note),
               note.lifecycle == .active,
               case .resolved(let stableID) = note.stableIdentity,
               stableID == material.noteID,
               ResearchFunctionTargetRole(vaultRole: note.vaultRole) == material.role else {
-            throw ResearchFunctionContractError.materialChanged(material.title)
-        }
-        let document = try await repository(vaultID: material.note.vaultID).load(
-            relativePath: material.note.relativePath
-        )
-        guard document.fingerprint == expected else {
             throw ResearchFunctionContractError.materialChanged(material.title)
         }
         return ValidatedFunctionObject(noteID: stableID, note: note)

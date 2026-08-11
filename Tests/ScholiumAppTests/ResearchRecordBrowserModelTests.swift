@@ -37,6 +37,26 @@ private final class ResearchRecordProviderState {
 @Suite("Research Record browser")
 @MainActor
 struct ResearchRecordBrowserModelTests {
+    @Test("Created changes retain provenance without entering before-source comparison")
+    func createdChangesAreNotComparable() throws {
+        let modified = try PortableResearchConfirmedChange(
+            noteID: deterministicUUID(1),
+            actor: .agent,
+            startingRevision: DocumentFingerprint(content: "before"),
+            endingRevision: DocumentFingerprint(content: "after")
+        )
+        let created = try PortableResearchConfirmedChange(
+            noteID: deterministicUUID(2),
+            actor: .agent,
+            startingRevision: nil,
+            endingRevision: DocumentFingerprint(content: "created")
+        )
+        #expect(ResearchRecordChangePresentation.modified([created, modified])
+            == [modified])
+        #expect(ResearchRecordChangePresentation.created([created, modified])
+            == [created])
+    }
+
     @Test("Review-result routing grants direct undo only to the exact live window")
     func reviewResultRoutingOwnsTransientDirectUndoEligibility() throws {
         let record = try makeChangedAction(

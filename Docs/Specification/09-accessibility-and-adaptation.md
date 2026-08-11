@@ -8,8 +8,8 @@
 
 - Support System, Light, and Dark without hard-coded inversion. Preserve
   hierarchy under Increase Contrast, Reduce Transparency, Reduce Motion,
-  inactive windows, Accent changes, right-to-left layout, 200% document text,
-  and enlarged interface text.
+  inactive windows, Accent changes, English and Simplified Chinese interface
+  text, 200% document text, and enlarged interface text.
 - Ordinary small text meets at least **4.5:1** contrast; large or bold text
   meets at least **3:1**. Audit every important custom target below 28 × 28pt.
 - Important state uses at least two suitable channels. Color, motion, sound,
@@ -70,7 +70,7 @@
   creation retain named non-drag accessibility routes.
 - The expanded Library is either at least its declared readable width or
   natively collapsed. An open but unreadably compressed Sidebar is forbidden.
-  Localized and right-to-left variants retain workspace, Location, row, and
+  English and Simplified Chinese variants retain workspace, Location, row, and
   action reachability at that boundary.
 - Attention exposes heading, filter, groups, selected task, issue, Note,
   locator, state, and actions in one linear order. Loading, stale, and
@@ -96,9 +96,12 @@
 - Edit suggestions retain document focus and one listbox selection. Up/Down
   moves, Return accepts, Escape closes, and pointer acceptance has the same
   result. Marked-text composition opens no suggestion list or forced selection.
-- Source line direction, visual cursor, selection, and installed input methods
-  use the same content direction. Code, mathematics, and inert raw HTML remain
-  isolated technical regions without forcing surrounding prose direction.
+- English, Simplified Chinese, and mixed English/Chinese Source lines keep the
+  visual cursor, selection, and installed input method consistent with visible
+  content. Other Unicode source remains exact and Source-visible without a
+  complete RTL input or bidirectional-layout promise. Code, mathematics, and
+  inert raw HTML remain isolated technical regions without forcing surrounding
+  prose direction.
 - Tables, footnotes, mathematics, Callouts, links, and Mermaid preserve semantic
   names, source navigation, focus, and selectable fallback. Generated Mermaid
   content is not itself a passage Comment target; authored accessibility text
@@ -145,8 +148,9 @@
   destination.
 - Inspector's Overview, Connect, and Actions form one horizontal single-choice
   group. Selection remains identifiable without hover. At regular, compact,
-  enlarged-text, mixed-script, and right-to-left presentations, About fields
-  adapt as one complete grid and error/recovery text remains untruncated.
+  enlarged-text, and supported English, Simplified Chinese, and mixed-script
+  presentations, About fields adapt as one complete grid and error/recovery
+  text remains untruncated.
 - Connect exposes one named Link Direction control with Incoming and Outgoing
   values. Changing direction keeps focus on the control, returns the scroll
   owner to the beginning, and announces an empty destination. Undirected rows
@@ -206,8 +210,12 @@
 
 ### Acceptance threshold
 
-Test long labels, mixed English/Chinese, right-to-left chrome, minimum width,
-every lifecycle/error state, and native/editor focus transitions. Beta and 1.0
-require complete keyboard and VoiceOver coverage for the declared core and no
-unresolved critical or high-severity accessibility defects. The release owner
-decides the acceptable medium-severity ceiling.
+Test long labels in English and Simplified Chinese, mixed English/Chinese
+content, minimum width, every lifecycle/error state, and native/editor focus
+transitions. Beta and 1.0 require complete keyboard and VoiceOver coverage for
+the declared core and no unresolved critical or high-severity accessibility
+defects. Their interface-language threshold covers only English and Simplified
+Chinese resources, layout, and accessible names. Additional translations,
+right-to-left chrome and navigation, and complete human acceptance of RTL
+document input are deferred under §17; exact Unicode source preservation remains
+mandatory. The release owner decides the acceptable medium-severity ceiling.

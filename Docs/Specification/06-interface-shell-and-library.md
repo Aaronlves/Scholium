@@ -73,9 +73,10 @@ At the Sidebar–Document edge alone, the Workspace adds §19.3's secondary
 top of the window through the titlebar/toolbar band to the bottom, falls only
 into Sidebar, and remains behind the native toolbar and tracking separator.
 It neither obscures nor intercepts system chrome, changes divider geometry, or
-creates another boundary. It is absent while Sidebar is collapsed, mirrors the
-logical edge in right-to-left presentation, and never appears between Document
-and Apparatus.
+creates another boundary. It is absent while Sidebar is collapsed, uses the
+logical Sidebar edge, remains structurally mirrorable for the deferred
+right-to-left interface scope in §18.7, and never appears between Document and
+Apparatus.
 
 New windows show Library and hide Apparatus. Initial or restored peripheral
 visibility is installed before the native split's first presentation; the

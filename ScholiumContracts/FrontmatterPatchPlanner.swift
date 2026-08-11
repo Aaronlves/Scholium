@@ -150,6 +150,33 @@ public enum FrontmatterPatchPlanner {
         return node.tag == Tag(.timestamp)
     }
 
+    /// Serializes an already validated ordered set of plain top-level fields.
+    /// Delivery adapters never call this with YAML fragments; managed creation
+    /// first resolves every value through the canonical property catalog.
+    public static func serializeTopLevelMapping(
+        _ entries: [(key: String, value: FrontmatterEditValue)]
+    ) throws -> String {
+        guard !entries.isEmpty,
+              Set(entries.map(\.key)).count == entries.count,
+              entries.allSatisfy({ entry in
+                  !entry.key.isEmpty
+                      && !entry.key.contains(":")
+                      && !entry.key.contains("#")
+                      && !entry.key.unicodeScalars.contains(where: {
+                          CharacterSet.controlCharacters.contains($0)
+                      })
+              }) else {
+            throw FrontmatterPatchRefusal.ambiguousStructure(
+                "Managed creation requires unique plain top-level property keys."
+            )
+        }
+        let source = entries.flatMap {
+            serialize(key: $0.key, value: $0.value, indent: "")
+        }.joined(separator: "\n") + "\n"
+        _ = try analyze(source, newline: "\n")
+        return source
+    }
+
     private static func analyze(_ frontmatter: String, newline: String) throws -> Analysis {
         let loaded: Any?
         do {

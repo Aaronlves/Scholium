@@ -16,15 +16,15 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
 
     public var requiresCheckpoint: Bool {
         switch self {
-        case .develop, .critique, .revise, .manuscript: true
-        case .discuss, .fidelity: false
+        case .develop, .critique, .revise: true
+        case .discuss, .fidelity, .manuscript: false
         }
     }
 
     public var writesTarget: Bool {
         switch self {
-        case .develop, .revise, .manuscript: true
-        case .discuss, .fidelity, .critique: false
+        case .develop, .revise: true
+        case .discuss, .fidelity, .critique, .manuscript: false
         }
     }
 
@@ -1309,6 +1309,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case invalidCompletion(String)
     case cancellationAfterCompletion(UUID)
     case unresolvedWriteRecovery(UUID)
+    case committedWritesRequireCompletion(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -1384,6 +1385,8 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "A completed Action run cannot be cancelled: \(id.uuidString)"
         case .unresolvedWriteRecovery(let id):
             "Action run \(id.uuidString) has an unresolved document-write recovery and cannot be cancelled or finalized."
+        case .committedWritesRequireCompletion(let id):
+            "Action run \(id.uuidString) has confirmed Agent changes. Submit its Result to preserve Research Record and Note Review provenance before ending it."
         }
     }
 }

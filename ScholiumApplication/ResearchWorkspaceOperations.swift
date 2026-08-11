@@ -755,7 +755,8 @@ extension WorkspaceHandle {
             let status: ResearchRecordChangeCurrentStatus
             if current.document.fingerprint == change.endingRevision {
                 status = .agentEndingRevision
-            } else if current.document.fingerprint == change.startingRevision {
+            } else if let startingRevision = change.startingRevision,
+                      current.document.fingerprint == startingRevision {
                 status = .startingRevision
             } else {
                 status = .superseded
@@ -867,6 +868,10 @@ extension WorkspaceHandle {
         var plans: [ResearchRecordUndoPlan] = []
         for noteID in selectedNoteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
             let change = changesByID[noteID]!
+            guard let startingRevision = change.startingRevision else {
+                throw ResearchRecordChangeRecoveryOperationError
+                    .createdNoteHasNoPreimage(noteID)
+            }
             guard let entry = execution.boundedWriteSet.entries.first(where: {
                 $0.noteID == noteID
             }), let firstCommitted = execution.documentWriteRecords
@@ -876,7 +881,7 @@ extension WorkspaceHandle {
                         && $0.state == .committed
                 })
                 .min(by: { $0.startedAt < $1.startedAt }),
-                firstCommitted.expectedRevision == change.startingRevision,
+                firstCommitted.expectedRevision == startingRevision,
                 firstCommitted.observedRevision == firstCommitted.intendedRevision else {
                 throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
             }
@@ -888,7 +893,7 @@ extension WorkspaceHandle {
                     == (try vault(id: current.note.vaultID)).role else {
                 throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
             }
-            if current.document.fingerprint == change.startingRevision {
+            if current.document.fingerprint == startingRevision {
                 plans.append(.alreadyRestored(
                     noteID: noteID,
                     revision: current.document.fingerprint
@@ -902,9 +907,12 @@ extension WorkspaceHandle {
                 ))
                 continue
             }
+            guard let checkpointID = firstCommitted.checkpointID else {
+                throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
+            }
             let area = try checkpointArea(vaultID: current.note.vaultID)
             let checkpoint = try await services.checkpointStore.checkpoint(
-                id: firstCommitted.checkpointID
+                id: checkpointID
             )
             let sourceKey = TriptychCheckpointFileKey(
                 area: area,
@@ -915,20 +923,20 @@ extension WorkspaceHandle {
                   let sourceRecord = checkpoint.files.first(where: {
                     $0.key == sourceKey
                   }),
-                  sourceRecord.fingerprint == change.startingRevision else {
+                  sourceRecord.fingerprint == startingRevision else {
                 throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
             }
             let sourceBytes = try await services.checkpointStore.fileData(
                 checkpointID: checkpoint.id,
                 key: sourceKey
             )
-            guard DocumentFingerprint(data: sourceBytes) == change.startingRevision else {
+            guard DocumentFingerprint(data: sourceBytes) == startingRevision else {
                 throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
             }
             plans.append(.restore(
                 noteID: noteID,
                 note: current.note,
-                startingRevision: change.startingRevision,
+                startingRevision: startingRevision,
                 endingRevision: change.endingRevision,
                 checkpointID: checkpoint.id,
                 sourceKey: sourceKey,
@@ -1095,8 +1103,12 @@ extension WorkspaceHandle {
         }) else {
             throw ResearchRecordChangeRecoveryOperationError.confirmedChangeNotFound(noteID)
         }
+        guard let startingRevision = change.startingRevision else {
+            throw ResearchRecordChangeRecoveryOperationError
+                .createdNoteHasNoPreimage(noteID)
+        }
         let startingData = try await exactResearchRecordRevision(
-            change.startingRevision,
+            startingRevision,
             participant: participant
         )
         let endingData = try await exactResearchRecordRevision(
@@ -1107,7 +1119,7 @@ extension WorkspaceHandle {
             try ExactSourceComparisonBuilder.build(
                 startingData: startingData,
                 endingData: endingData,
-                startingRevision: change.startingRevision,
+                startingRevision: startingRevision,
                 endingRevision: change.endingRevision
             )
         }
@@ -1275,12 +1287,42 @@ extension WorkspaceHandle {
                 "The selected recovery record is unavailable for this Triptych."
             )
         }
+        if let managedCreation = record.managedCreation {
+            guard record.researchWrite == nil else {
+                throw TriptychTransactionError.invalidPlan(
+                    "The recovery record has competing creation owners."
+                )
+            }
+            let lease = try await beginResearchControlledSourceObservation()
+            var ownsLease = true
+            defer {
+                if ownsLease { endResearchControlledSourceObservation(lease) }
+            }
+            let note = try await reconcileManagedCreationRecovery(
+                record,
+                reference: managedCreation
+            )
+            endResearchControlledSourceObservation(lease)
+            ownsLease = false
+            try await refreshAfterResearchCommit(
+                "The managed-note creation recovery"
+            )
+            _ = note
+            return
+        }
         guard let link = record.researchWrite else {
-            try await services.transactionRecoveryStore.resolve(id)
+            try await services.transactionRecoveryStore.resolve(record)
             try await refreshAfterResearchCommit("The recovery-record resolution")
             return
         }
+        let lease = try await beginResearchControlledSourceObservation()
+        var ownsLease = true
+        defer {
+            if ownsLease { endResearchControlledSourceObservation(lease) }
+        }
         let resolution = try await reconcileResearchWriteRecovery(record, link: link)
+        endResearchControlledSourceObservation(lease)
+        ownsLease = false
         if resolution.didReplaceSource {
             try await refreshAfterCommittedOperation(
                 "The Agent write recovery",
@@ -1295,11 +1337,19 @@ extension WorkspaceHandle {
         _ record: TriptychMutationRecoveryRecord,
         link: ResearchWriteRecoveryReference
     ) async throws -> (note: VaultQualifiedNoteID, didReplaceSource: Bool) {
+        if record.operation == .noteCreation {
+            return try await reconcileResearchCreationRecovery(record, link: link)
+        }
+        guard let sourceRecoveryID = link.sourceRecoveryID else {
+            throw TriptychTransactionError.invalidPlan(
+                "The Agent save recovery record has no interrupted-save identity."
+            )
+        }
         guard record.operation == .noteSave,
               record.files.count == 1,
               let file = record.files.first,
               file.role == .savedNote,
-              file.vaultID == link.sourceRecoveryID.vaultID,
+              file.vaultID == sourceRecoveryID.vaultID,
               let beforeRevision = file.beforeRevision,
               let intendedRevision = file.intendedRevision else {
             throw TriptychTransactionError.invalidPlan(
@@ -1321,14 +1371,14 @@ extension WorkspaceHandle {
               entry.note.relativePath == file.path,
               write.expectedRevision == beforeRevision,
               write.intendedRevision == intendedRevision,
-              link.sourceRecoveryID.vaultID == entry.note.vaultID else {
+              sourceRecoveryID.vaultID == entry.note.vaultID else {
             throw TriptychTransactionError.invalidPlan(
                 "The Agent write recovery record no longer matches its Run target."
             )
         }
         let repository = try repository(vaultID: entry.note.vaultID)
         let sourceRecovery = try await repository.interruptedSaveRecoveries()
-            .first(where: { $0.id == link.sourceRecoveryID })
+            .first(where: { $0.id == sourceRecoveryID })
         if sourceRecovery == nil,
            ![.committed, .abandoned].contains(write.state) {
             throw ResearchBoundedWriteSetError.recoveryRequired
@@ -1344,22 +1394,32 @@ extension WorkspaceHandle {
             vaultID: entry.note.vaultID,
             relativePath: entry.note.relativePath
         ), identity.id == entry.noteID,
-           identity.fingerprint == write.expectedRevision else {
+           WorkspaceDocumentLifecycle(
+            relativePath: entry.note.relativePath
+           ) == .active,
+           Self.vaultRole(entry.role)
+            == (try vault(id: entry.note.vaultID).role) else {
             throw ResearchBoundedWriteSetError.recoveryRequired
         }
         guard current.fingerprint == write.expectedRevision
                 || current.fingerprint == write.intendedRevision else {
             throw ResearchBoundedWriteSetError.recoveryRequired
         }
-        _ = try await services.localResearchExecutionStore
-            .reconcileDocumentWriteRecovery(
-                runID: link.runID,
-                operationID: link.operationID,
-                recoveryRecordID: record.id,
-                observedRevision: current.fingerprint,
-                reconciledAt: Date()
-            )
-        let didReplaceSource = current.fingerprint == write.intendedRevision
+        let terminal = [.committed, .abandoned].contains(write.state)
+        if terminal {
+            guard write.observedRevision == current.fingerprint else {
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+        } else {
+            _ = try await services.localResearchExecutionStore
+                .reconcileDocumentWriteRecovery(
+                    runID: link.runID,
+                    operationID: link.operationID,
+                    recoveryRecordID: record.id,
+                    observedRevision: current.fingerprint,
+                    reconciledAt: Date()
+                )
+        }
         if sourceRecovery == nil {
             // The local Run was reconciled before an earlier process stopped;
             // the source transaction has already been cleaned up.
@@ -1374,11 +1434,244 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.recoveryRequired
             }
         }
-        try await services.transactionRecoveryStore.resolve(record.id)
+        try await services.transactionRecoveryStore.resolve(record)
         return (
             note: entry.note,
-            didReplaceSource: didReplaceSource
+            didReplaceSource: !terminal
+                && current.fingerprint == write.intendedRevision
         )
+    }
+
+    private func reconcileResearchCreationRecovery(
+        _ record: TriptychMutationRecoveryRecord,
+        link: ResearchWriteRecoveryReference
+    ) async throws -> (note: VaultQualifiedNoteID, didReplaceSource: Bool) {
+        guard link.sourceRecoveryID == nil,
+              record.files.count == 1,
+              let file = record.files.first,
+              file.role == .createdNote,
+              file.beforeRevision == nil,
+              let intendedRevision = file.intendedRevision else {
+            throw TriptychTransactionError.invalidPlan(
+                "The Agent creation recovery record does not describe one exact new Note."
+            )
+        }
+        let execution = try await services.localResearchExecutionStore.record(
+            id: link.runID
+        )
+        guard execution.triptychID == self.id,
+              let write = execution.documentWriteRecords.first(where: {
+                  $0.id == link.operationID
+                      && $0.runID == link.runID
+                      && $0.target == link.target
+                      && $0.operation == .createNote
+              }),
+              let entry = execution.boundedWriteSet.entry(handle: link.target),
+              entry.note.vaultID == file.vaultID,
+              entry.note.relativePath == file.path,
+              write.expectedRevision == nil,
+              write.checkpointID == nil,
+              write.intendedRevision == intendedRevision else {
+            throw TriptychTransactionError.invalidPlan(
+                "The Agent creation recovery no longer matches its Run target."
+            )
+        }
+        if [.committed, .abandoned].contains(write.state) {
+            guard write.recoveryRecordID == record.id else {
+                throw TriptychTransactionError.invalidPlan(
+                    "The completed Agent creation does not own this recovery record."
+                )
+            }
+            try await services.transactionRecoveryStore.resolve(record)
+            return (note: entry.note, didReplaceSource: false)
+        }
+        guard (write.state == .recoveryRequired
+                && write.recoveryRecordID == record.id)
+                || (write.state == .writing
+                    && write.recoveryRecordID == nil) else {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        let repository = try repository(vaultID: entry.note.vaultID)
+        let source: NoteDocument?
+        do {
+            source = try await repository.load(
+                relativePath: entry.note.relativePath
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            source = nil
+        } catch {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+
+        if let barrier = researchCreationRecoveryObservationBarrierForTesting {
+            await barrier()
+        }
+
+        guard source == nil || source?.fingerprint == intendedRevision else {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        let identityReconciliation: ManagedCreationIdentityReconciliation
+        do {
+            identityReconciliation = try await services.controlStore
+                .reconcileManagedCreationIdentity(
+                vaultID: entry.note.vaultID,
+                relativePath: entry.note.relativePath,
+                intendedRevision: intendedRevision,
+                reservedIdentityID: entry.noteID,
+                sourceIsPresent: source != nil
+            )
+        } catch {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        let didEstablishCreatedNote = source != nil
+        let finalSource: NoteDocument?
+        do {
+            finalSource = try await repository.load(
+                relativePath: entry.note.relativePath
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            finalSource = nil
+        } catch {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        let finalIdentity: NoteIdentityRecord?
+        do {
+            finalIdentity = try await services.controlStore.identityRecord(
+                vaultID: entry.note.vaultID,
+                relativePath: entry.note.relativePath
+            )
+        } catch {
+            throw ResearchBoundedWriteSetError.recoveryRequired
+        }
+        if let finalSource {
+            guard finalSource.fingerprint == intendedRevision,
+                  finalIdentity?.id == entry.noteID,
+                  finalIdentity?.fingerprint == intendedRevision else {
+                try? await services.controlStore.rollbackManagedCreationIdentity(
+                    identityReconciliation,
+                    vaultID: entry.note.vaultID,
+                    relativePath: entry.note.relativePath
+                )
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+        } else {
+            guard finalIdentity == nil else {
+                try? await services.controlStore.rollbackManagedCreationIdentity(
+                    identityReconciliation,
+                    vaultID: entry.note.vaultID,
+                    relativePath: entry.note.relativePath
+                )
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+        }
+        _ = try await services.localResearchExecutionStore
+            .reconcileDocumentWriteRecovery(
+                runID: link.runID,
+                operationID: link.operationID,
+                recoveryRecordID: record.id,
+                observedRevision: finalSource?.fingerprint,
+                reconciledAt: Date()
+            )
+        try await services.transactionRecoveryStore.resolve(record)
+        return (
+            note: entry.note,
+            didReplaceSource: finalSource != nil && didEstablishCreatedNote
+        )
+    }
+
+    private func reconcileManagedCreationRecovery(
+        _ record: TriptychMutationRecoveryRecord,
+        reference: ManagedCreationRecoveryReference
+    ) async throws -> VaultQualifiedNoteID {
+        guard record.operation == .noteCreation,
+              record.triptychID == id,
+              record.files.count == 1,
+              let file = record.files.first,
+              file.role == .createdNote,
+              file.beforeRevision == nil,
+              file.vaultID == reference.target.vaultID,
+              file.path == reference.target.relativePath,
+              let intendedRevision = file.intendedRevision else {
+            throw TriptychTransactionError.invalidPlan(
+                "The managed creation recovery does not describe one exact new Note."
+            )
+        }
+        let repository = try repository(vaultID: reference.target.vaultID)
+        let source: NoteDocument?
+        do {
+            source = try await repository.load(
+                relativePath: reference.target.relativePath
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            source = nil
+        } catch {
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+        guard source == nil || source?.fingerprint == intendedRevision else {
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+        let identityReconciliation: ManagedCreationIdentityReconciliation
+        do {
+            identityReconciliation = try await services.controlStore
+                .reconcileManagedCreationIdentity(
+                vaultID: reference.target.vaultID,
+                relativePath: reference.target.relativePath,
+                intendedRevision: intendedRevision,
+                reservedIdentityID: reference.reservedIdentityID,
+                sourceIsPresent: source != nil
+            )
+        } catch {
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+
+        let finalSource: NoteDocument?
+        do {
+            finalSource = try await repository.load(
+                relativePath: reference.target.relativePath
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            finalSource = nil
+        } catch {
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+        let finalPathIdentity: NoteIdentityRecord?
+        let finalReservedIdentity: NoteIdentityRecord?
+        do {
+            finalPathIdentity = try await services.controlStore.identityRecord(
+                vaultID: reference.target.vaultID,
+                relativePath: reference.target.relativePath
+            )
+            finalReservedIdentity = try await services.controlStore.identityRecord(
+                id: reference.reservedIdentityID
+            )
+        } catch {
+            throw TriptychTransactionError.recoveryRequired(record)
+        }
+        if let finalSource {
+            guard finalSource.fingerprint == intendedRevision,
+                  finalPathIdentity?.id == reference.reservedIdentityID,
+                  finalPathIdentity?.fingerprint == intendedRevision,
+                  finalReservedIdentity == finalPathIdentity else {
+                try? await services.controlStore.rollbackManagedCreationIdentity(
+                    identityReconciliation,
+                    vaultID: reference.target.vaultID,
+                    relativePath: reference.target.relativePath
+                )
+                throw TriptychTransactionError.recoveryRequired(record)
+            }
+        } else {
+            guard finalPathIdentity == nil,
+                  finalReservedIdentity == nil else {
+                try? await services.controlStore.rollbackManagedCreationIdentity(
+                    identityReconciliation,
+                    vaultID: reference.target.vaultID,
+                    relativePath: reference.target.relativePath
+                )
+                throw TriptychTransactionError.recoveryRequired(record)
+            }
+        }
+        try await services.transactionRecoveryStore.resolve(record)
+        return reference.target
     }
 
     // MARK: Critique

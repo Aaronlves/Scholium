@@ -2,6 +2,20 @@ import ScholiumContracts
 import ScholiumResearchRecordsFeature
 import SwiftUI
 
+enum ResearchRecordChangePresentation {
+    static func modified(
+        _ changes: [PortableResearchConfirmedChange]
+    ) -> [PortableResearchConfirmedChange] {
+        changes.filter { $0.kind == .modified }
+    }
+
+    static func created(
+        _ changes: [PortableResearchConfirmedChange]
+    ) -> [PortableResearchConfirmedChange] {
+        changes.filter { $0.kind == .created }
+    }
+}
+
 struct ResearchRecordResearcherResponseSection: View {
     let record: PortableResearchRecord
     let model: ResearchRecordBrowserModel
@@ -846,6 +860,14 @@ struct ResearchRecordChangesSection: View {
     @State private var errorMessage: String?
     @State private var isPresentingComparison = false
 
+    private var modifiedChanges: [PortableResearchConfirmedChange] {
+        ResearchRecordChangePresentation.modified(record.confirmedChanges)
+    }
+
+    private var createdChanges: [PortableResearchConfirmedChange] {
+        ResearchRecordChangePresentation.created(record.confirmedChanges)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             ResearchRecordEvidenceSectionHeader(
@@ -855,17 +877,16 @@ struct ResearchRecordChangesSection: View {
 
             ResearchRecordEvidenceEntry(
                 symbol: record.confirmedChanges.isEmpty
-                    ? "checkmark.seal" : "doc.text.magnifyingglass",
-                title: record.confirmedChanges.isEmpty
-                    ? "No confirmed source changes"
-                    : "\(record.confirmedChanges.count) confirmed source changes",
-                body: record.confirmedChanges.isEmpty
-                    ? "This result did not change a Note."
-                    : "View the exact Agent changes. Reading or comparing them does not mark any Note reviewed.",
+                    ? "checkmark.seal"
+                    : modifiedChanges.isEmpty
+                        ? "doc.badge.plus"
+                        : "doc.text.magnifyingglass",
+                title: changesTitle,
+                body: changesBody,
                 identifier: "scholium.researchRecord.changes.status"
             )
 
-            if !record.confirmedChanges.isEmpty {
+            if !modifiedChanges.isEmpty {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     compareChangesButton
                     if isLoading || isReloading {
@@ -916,6 +937,40 @@ struct ResearchRecordChangesSection: View {
                 )
             }
         }
+    }
+
+    private var changesTitle: String {
+        if record.confirmedChanges.isEmpty {
+            return String(localized: "No confirmed source changes")
+        }
+        if modifiedChanges.isEmpty {
+            return String(localized: "\(createdChanges.count) Notes created by Agent")
+        }
+        if createdChanges.isEmpty {
+            return String(localized: "\(modifiedChanges.count) confirmed source changes")
+        }
+        return String(
+            localized: "\(modifiedChanges.count) modified, \(createdChanges.count) created"
+        )
+    }
+
+    private var changesBody: String {
+        if record.confirmedChanges.isEmpty {
+            return String(localized: "This result did not change a Note.")
+        }
+        if modifiedChanges.isEmpty {
+            return String(
+                localized: "Created Notes have visible provenance and Note Review, but no fabricated before-source comparison or direct Undo."
+            )
+        }
+        if createdChanges.isEmpty {
+            return String(
+                localized: "View the exact Agent changes. Reading or comparing them does not mark any Note reviewed."
+            )
+        }
+        return String(
+            localized: "Compare modified Notes below. Created Notes retain visible provenance and Note Review without a fabricated before-source comparison."
+        )
     }
 
     private var compareChangesButton: some View {
@@ -1052,7 +1107,8 @@ private struct ResearchRecordComparisonSheet: View {
         let statesByID = Dictionary(uniqueKeysWithValues:
             initialChangeState.documents.map { ($0.noteID, $0) }
         )
-        let mapped: [ResearchRecordComparisonDocument] = record.confirmedChanges
+        let mapped: [ResearchRecordComparisonDocument] =
+            ResearchRecordChangePresentation.modified(record.confirmedChanges)
             .compactMap { change -> ResearchRecordComparisonDocument? in
             guard let participant = record.participatingNotes.first(where: {
                 $0.noteID == change.noteID
@@ -1130,7 +1186,7 @@ private struct ResearchRecordComparisonSheet: View {
         let value = document.wrappedValue
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                if allowsDirectUndo {
+                if allowsDirectUndo, value.change.startingRevision != nil {
                     Toggle(
                         "Select \(value.participant.title)",
                         isOn: selectionBinding(for: value)
@@ -1401,7 +1457,10 @@ private struct ResearchRecordComparisonSheet: View {
             }
         }
         return switch document.current.status {
-        case .agentEndingRevision: String(localized: "Agent revision is current")
+        case .agentEndingRevision:
+            document.change.kind == .created
+                ? String(localized: "Created Agent revision is current")
+                : String(localized: "Agent revision is current")
         case .startingRevision: String(localized: "Before Agent Work is current")
         case .superseded: String(localized: "Changed after Agent work")
         case .unavailable: String(localized: "Source unavailable")

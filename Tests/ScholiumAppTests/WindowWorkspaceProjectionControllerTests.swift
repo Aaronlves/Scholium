@@ -200,7 +200,7 @@ struct WindowWorkspaceProjectionControllerTests {
         )
         let replacement = fixture.note(
             path: "Active.md",
-            source: "---\ntags: [updated]\nauthors: [Arendt]\nyear: 2024\n---\n# After\n",
+            source: "---\ntags: [updated]\nauthors:\n  - family: Arendt\npublication_date: \"2024\"\n---\n# After\n",
             lifecycle: .active,
             stableID: fixture.activeNoteID
         )
@@ -301,7 +301,7 @@ struct WindowWorkspaceProjectionControllerTests {
         )
         let document = NoteDocument(relativePath: "Untitled.md", rawContent: "")
         let noteID = UUID()
-        let commit = WorkspaceUntitledNoteCommit(
+        let commit = WorkspaceManagedNoteCommit(
             id: VaultQualifiedNoteID(
                 vaultID: fixture.vault.id,
                 relativePath: document.relativePath

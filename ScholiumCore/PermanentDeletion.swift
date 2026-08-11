@@ -263,17 +263,11 @@ public actor NotePermanentDeletionCoordinator {
 
             try await checkpointStore.applyPreparedCheckpointPurge(checkpointPurge)
             try faultPlan.trigger(.afterCheckpointPurge)
-            _ = try await controlStore.purgeIdentity(
-                id: noteID,
-                vaultID: vaultID,
-                relativePath: relativePath
-            )
+            if let identity = backup.identity {
+                _ = try await controlStore.purgeIdentity(identity)
+            }
             if let critiqueIdentity = backup.critiqueIdentity {
-                _ = try await controlStore.purgeIdentity(
-                    id: critiqueIdentity.record.id,
-                    vaultID: critiqueIdentity.record.vaultID,
-                    relativePath: critiqueIdentity.record.relativePath
-                )
+                _ = try await controlStore.purgeIdentity(critiqueIdentity)
             }
             try faultPlan.trigger(.afterIdentityPurge)
 
@@ -378,7 +372,7 @@ public actor NotePermanentDeletionCoordinator {
         try await portableRecordStore?.handlePermanentDeletion(
             noteIDs: deletedNoteIDs
         )
-        try await recoveryStore.resolve(record.id)
+        try await recoveryStore.resolve(record)
     }
 
     private func rollback(
@@ -437,7 +431,7 @@ public actor NotePermanentDeletionCoordinator {
         let restored = filesRestored && rollbackErrors.isEmpty
         if restored, rollbackErrors.isEmpty {
             do {
-                try await recoveryStore.resolve(record.id)
+                try await recoveryStore.resolve(record)
                 throw TriptychTransactionError.transactionRolledBack(cause.localizedDescription)
             } catch let transaction as TriptychTransactionError {
                 throw transaction

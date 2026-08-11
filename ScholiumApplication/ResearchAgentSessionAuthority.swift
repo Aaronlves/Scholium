@@ -41,7 +41,7 @@ struct ResearchWriteCapability: Hashable, Sendable, CustomStringConvertible,
     let sessionID: UUID
     let writeSetRevision: DocumentFingerprint
     let target: ResearchWriteTargetHandle
-    let expectedRevision: DocumentFingerprint
+    let expectedRevision: DocumentFingerprint?
     let operationID: UUID
     let expiresAt: Date
 
@@ -106,7 +106,7 @@ actor ResearchAgentSessionAuthority {
         let sessionID: UUID
         let writeSetRevision: DocumentFingerprint
         let target: ResearchWriteTargetHandle
-        let expectedRevision: DocumentFingerprint
+        let expectedRevision: DocumentFingerprint?
         let operationID: UUID
         let expiresAt: Date
     }
@@ -347,7 +347,7 @@ actor ResearchAgentSessionAuthority {
         run: ResearchRunLocator,
         writeSetRevision: DocumentFingerprint,
         target: ResearchWriteTargetHandle,
-        expectedRevision: DocumentFingerprint,
+        expectedRevision: DocumentFingerprint?,
         operationID: UUID,
         now: Date = Date(),
         validity: TimeInterval = 60,
@@ -393,7 +393,7 @@ actor ResearchAgentSessionAuthority {
         run: ResearchRunLocator,
         writeSetRevision: DocumentFingerprint,
         target: ResearchWriteTargetHandle,
-        expectedRevision: DocumentFingerprint,
+        expectedRevision: DocumentFingerprint?,
         operationID: UUID,
         now: Date = Date(),
         userID: uid_t = geteuid()

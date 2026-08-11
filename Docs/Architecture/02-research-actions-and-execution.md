@@ -185,7 +185,7 @@ complete outer envelope before it writes a frame.
 Continue Result schema 3 and authenticated Run Context schema 5 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 10 persists the same child handoff. All prior Result,
+Execution schema 11 persists the same child handoff. All prior Result,
 authenticated Context, and Local Execution schemas fail closed instead of
 interpreting expanded continuation semantics under an old version.
 
@@ -244,7 +244,9 @@ Every mutation names one set member and one idempotent operation ID. The live
 Session obtains one non-Codable short-lived write capability bound to that
 operation and the complete allowed-set digest. Application repeats containment,
 regular-file/absence, stable identity, role, operation, revision, and
-capability checks at the last safe point. The sole repository then retains
+capability checks inside the final source-operation lease. Completion likewise
+uses a coordinated identity/source observation with identity readback after
+the source read. The sole repository then retains
 displaced bytes, validates complete candidate Markdown/YAML, atomically
 replaces, and reads back. Result truth is written into the same Run operation
 entry before the response. An I/O timeout after delivery returns outcome
@@ -255,8 +257,8 @@ sibling conflicts or fails. Only Scholium-confirmed success advances that
 member's expected revision. External changes invalidate one member. The Run
 cannot finalize or safely clear the write set until every started operation is
 written, not written, explicitly abandoned before mutation, or reconciled to a
-recovery duty. Manual End blocks new calls and revokes Session access but
-retains unresolved recovery state.
+recovery duty. Manual End cancels a no-write Run; confirmed changes require
+Result finalization, while unknown writes and recovery duties block End.
 
 ## Result submission and finalization
 
@@ -281,14 +283,14 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict schema-8 Records, including the
+`PortableResearchRecordStore` owns strict schema-9 Records, including the
 frozen Record Title, exact source-byte fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
 the single cumulative portable Note Review boundary. Analyze recommendation
 mutation and atomic Response replacement use one revision-safe replacement
 primitive under portable coordination and lock, distinguish pre-commit refusal
-from post-commit uncertainty, and read back before success. Schema 7 Records
-have no decoder or mutation route; their bytes remain
+from post-commit uncertainty, and read back before success. Record schemas 1
+through 8 have no decoder or mutation route; their bytes remain
 untouched and nonauthorizing when encountered.
 
 `saveResearcherResponse` uses exact Record ID, expected Evaluation revision,
@@ -300,11 +302,15 @@ identity. Record
 deletion removes those partitions and writes the existing minimal machine-local
 tombstone; no other operation can recreate or reparent them.
 
-Action completion derives each confirmed change's starting revision from the
+Action completion derives each modified change's starting revision from the
 expected revision of its first `committed` Agent write record, not the Run-start
-participant revision or an earlier conflict/abandonment. Its ending revision is
-the last confirmed readback. Manuscript parent Records do not duplicate a
-selected child Action's change. `ExactSourceComparisonBuilder` is the single exact
+participant revision or an earlier conflict/abandonment. A created change has
+no starting revision and cannot enter checkpoint comparison or direct Undo. Its
+participant baseline is the first jointly committed source-and-identity
+revision; its ending revision is the last confirmed readback after any later
+authorized writes. Manuscript
+parent Records do not duplicate a selected child Action's change.
+`ExactSourceComparisonBuilder` is the single exact
 byte-diff owner for both Record confirmed-change pairs and Document conflict
 inputs; the projections remain disposable and non-Codable.
 
@@ -328,8 +334,8 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-10 Local Execution, exact
-schema-8 Record reads, and schema-1 Note Reviews. The projections
+`noteReviewStates`, and `resultArrivals` from schema-11 Local Execution, exact
+schema-9 Record reads, and schema-1 Note Reviews. The projections
 contains only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, checkpoint IDs, source bytes, prompts,
@@ -427,7 +433,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-10
+the one current `methodImprovementRun` in its parent Local Execution schema-11
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every

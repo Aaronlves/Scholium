@@ -255,4 +255,85 @@ struct ResearchAgentResultContractsTests {
             )
         }
     }
+
+    @Test("Public Property inputs use ordinary JSON values and non-Property selectors may omit property_keys")
+    func publicPropertyJSONIsStable() throws {
+        let input = try JSONDecoder().decode(
+            CanonicalPropertyInput.self,
+            from: Data(#"{"key":"authors","value":[{"family":"Scanlon","given":"T. M."}]}"#.utf8)
+        )
+        #expect(input.value == .array([.object([
+            "family": .string("Scanlon"),
+            "given": .string("T. M."),
+        ])]))
+        let encoded = try JSONEncoder().encode(input)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        #expect(object["value"] is [[String: Any]])
+        #expect(!String(decoding: encoded, as: UTF8.self).contains("_0"))
+
+        let selector = try JSONDecoder().decode(
+            ResearchWriteSetTargetSelector.self,
+            from: Data(#"{"role":"topic","relative_path":"Agency.md","operations":["modify_markdown"]}"#.utf8)
+        )
+        #expect(selector.propertyKeys.isEmpty)
+        #expect(selector.operations == [.modifyMarkdown])
+
+        func intentObject(
+            operation: String,
+            content: String? = nil,
+            properties: [[String: Any]]? = nil
+        ) -> [String: Any] {
+            var object: [String: Any] = [
+                "schema_version": ResearchDocumentWriteIntent.currentSchemaVersion,
+                "request_id": UUID().uuidString,
+                "role": "topic",
+                "relative_path": "Agency.md",
+                "operation": operation,
+            ]
+            if let content { object["content"] = content }
+            if let properties { object["properties"] = properties }
+            return object
+        }
+        let createIntent = try JSONDecoder().decode(
+            ResearchDocumentWriteIntent.self,
+            from: JSONSerialization.data(withJSONObject: intentObject(
+                operation: "create_note"
+            ))
+        )
+        #expect(createIntent.content.isEmpty)
+        #expect(createIntent.properties.isEmpty)
+        let propertyIntent = try JSONDecoder().decode(
+            ResearchDocumentWriteIntent.self,
+            from: JSONSerialization.data(withJSONObject: intentObject(
+                operation: "modify_properties",
+                properties: [["key": "summary", "value": "Exact"]]
+            ))
+        )
+        #expect(propertyIntent.content.isEmpty)
+        #expect(propertyIntent.properties.map(\.key) == ["summary"])
+        #expect(throws: ResearchBoundedWriteSetError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchDocumentWriteIntent.self,
+                from: JSONSerialization.data(withJSONObject: intentObject(
+                    operation: "modify_markdown"
+                ))
+            )
+        }
+        #expect(try JSONDecoder().decode(
+            ResearchDocumentWriteIntent.self,
+            from: JSONSerialization.data(withJSONObject: intentObject(
+                operation: "modify_markdown",
+                content: ""
+            ))
+        ).content.isEmpty)
+
+        let manuscript = try #require(
+            PlatformActionCatalog.definition(for: .manuscript)
+        )
+        #expect(manuscript.extensionWriteOperations.isEmpty)
+        #expect(!manuscript.operations.contains(.modifyInitialNote))
+        #expect(!manuscript.operations.contains(.extendWriteSet))
+    }
 }

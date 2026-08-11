@@ -211,6 +211,10 @@ Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
 inheritance and sharing; and Work finding overlays.
 
+Additional researcher-facing interface translations beyond English and
+Simplified Chinese, right-to-left interface chrome and navigation, and complete
+RTL document-input support and human acceptance are deferred beyond 1.0.
+
 Direct local Agent pairing is a bounded Run connection, not an embedded
 runtime, background Agent manager, auto-submission system, streamed tool-state
 viewer, general host-approval surface, relay, or cloud orchestration service.

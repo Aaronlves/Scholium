@@ -68,7 +68,7 @@ struct ResearchWriteSetExtensionView: View {
                 Text("Allow Additional Notes for This Research Run?")
                     .font(ScholiumTypography.scholarly(.title))
                     .accessibilityAddTraits(.isHeader)
-                Text("Select the requested Notes this Run may modify.")
+                Text("Select the requested Note targets this Run may create or modify.")
                     .font(ScholiumTypography.scholarly(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -127,12 +127,18 @@ struct ResearchWriteSetExtensionView: View {
                                 Text(operationTitles(candidate.operations))
                                     .font(ScholiumTypography.interface(.small))
                                     .scholiumForeground(.secondaryText)
+                                if !candidate.propertyKeys.isEmpty {
+                                    Text("Properties: \(propertyPlanDescription(candidate))")
+                                        .font(ScholiumTypography.exact(.small))
+                                        .scholiumForeground(.secondaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .toggleStyle(.checkbox)
                         .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
-                        .accessibilityHint("Selects this Note for this Run.")
+                        .accessibilityHint("Selects this exact target and operation for this Run.")
                         ScholiumStructuralRule()
                     }
                 }
@@ -194,9 +200,18 @@ struct ResearchWriteSetExtensionView: View {
     ) -> String {
         operations.map {
             switch $0 {
+            case .createNote: String(localized: "Create Note")
             case .modifyMarkdown: String(localized: "Modify Markdown")
             case .modifyProperties: String(localized: "Modify Properties")
             }
+        }.joined(separator: ", ")
+    }
+
+    private func propertyPlanDescription(
+        _ candidate: ResearchWriteSetCandidate
+    ) -> String {
+        candidate.propertyWritePlans.map {
+            "\($0.key) (\($0.valueKind.rawValue))"
         }.joined(separator: ", ")
     }
 }

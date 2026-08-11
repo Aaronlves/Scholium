@@ -170,7 +170,7 @@ extension ResearchFunctionOperationsTests {
         let original = try await handle.documents.load(fixture.analysisID)
         let write = try await writePreparedResearchDocument(
             for: develop,
-            content: original.rawContent + "\nA developed claim.\n",
+            body: original.body + "\nA developed claim.\n",
             handle: handle
         )
         #expect(write.state == .committed)
@@ -324,7 +324,7 @@ extension ResearchFunctionOperationsTests {
         let original = try await handle.documents.load(fixture.analysisID)
         let write = try await writePreparedResearchDocument(
             for: parent,
-            content: original.rawContent + "\nA source-bound claim.\n",
+            body: original.body + "\nA source-bound claim.\n",
             handle: handle
         )
         #expect(write.state == .committed)
@@ -371,7 +371,7 @@ extension ResearchFunctionOperationsTests {
         let localURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v8", isDirectory: true)
+            .appendingPathComponent("research-execution-v9", isDirectory: true)
             .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
         let recordsURL = fixture.rootURL.appendingPathComponent(
             ".scholium/research-records/v1/records",
@@ -541,7 +541,7 @@ extension ResearchFunctionOperationsTests {
         let original = try await handle.documents.load(fixture.analysisID)
         _ = try await writePreparedResearchDocument(
             for: develop,
-            content: original.rawContent + "\nA developed claim.\n",
+            body: original.body + "\nA developed claim.\n",
             handle: handle
         )
         let finalTarget = try await researchFunctionTarget(
@@ -636,7 +636,7 @@ extension ResearchFunctionOperationsTests {
         let original = try await handle.documents.load(fixture.analysisID)
         _ = try await writePreparedResearchDocument(
             for: develop,
-            content: original.rawContent + "\nA bounded developed claim.\n",
+            body: original.body + "\nA bounded developed claim.\n",
             handle: handle
         )
         #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
@@ -954,6 +954,9 @@ extension ResearchFunctionOperationsTests {
         let manuscript = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
         )
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: manuscript.runID
+        ).boundedWriteSet.entries.isEmpty)
         #expect(manuscript.snapshot.requiredChildFunctions.isEmpty)
         #expect(!manuscript.instructions.contains("Critique, then Revise, then Fidelity"))
         let revise = try await handle.research.prepareProtectedFunction(
@@ -962,7 +965,7 @@ extension ResearchFunctionOperationsTests {
         let workDocument = try await handle.documents.load(fixture.workID)
         _ = try await writePreparedResearchDocument(
             for: revise,
-            content: workDocument.rawContent
+            body: workDocument.body
                 + "\nAn explicit premise now supports the inference.\n",
             handle: handle
         )
@@ -1028,7 +1031,7 @@ extension ResearchFunctionOperationsTests {
                 recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: work.fingerprint,
                 summary: "Coordinated the selected manuscript activities.",
-                didModifyTarget: true,
+                didModifyTarget: false,
                 childRunIDs: [revise.runID]
             )
         )

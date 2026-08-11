@@ -67,7 +67,7 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, checkpoints/restore, Trash/purge, external rename, and derived failures pass fixture journeys. |
 | **G5 Scholarly transparency** | Authoritative Markdown, Discussion turns, Action outputs, Settle, Critique, Fidelity, provenance, authority, agent feedback, and uncertainty remain visibly distinct. |
-| **G6 Accessibility/i18n** | Section 20's declared threshold is met. |
+| **G6 Accessibility/localization** | Section 20's English and Simplified Chinese interface and declared accessibility threshold is met. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |

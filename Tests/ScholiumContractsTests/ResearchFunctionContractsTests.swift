@@ -107,7 +107,7 @@ struct ResearchFunctionContractsTests {
 
         #expect(ResearchFunctionID.develop.writesTarget)
         #expect(ResearchFunctionID.revise.writesTarget)
-        #expect(ResearchFunctionID.manuscript.writesTarget)
+        #expect(!ResearchFunctionID.manuscript.writesTarget)
         #expect(!ResearchFunctionID.discuss.writesTarget)
         #expect(!ResearchFunctionID.fidelity.writesTarget)
         #expect(!ResearchFunctionID.critique.writesTarget)
@@ -115,7 +115,7 @@ struct ResearchFunctionContractsTests {
         #expect(ResearchFunctionID.develop.requiresCheckpoint)
         #expect(ResearchFunctionID.critique.requiresCheckpoint)
         #expect(ResearchFunctionID.revise.requiresCheckpoint)
-        #expect(ResearchFunctionID.manuscript.requiresCheckpoint)
+        #expect(!ResearchFunctionID.manuscript.requiresCheckpoint)
         #expect(!ResearchFunctionID.discuss.requiresCheckpoint)
         #expect(!ResearchFunctionID.fidelity.requiresCheckpoint)
     }

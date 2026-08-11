@@ -50,7 +50,8 @@ private struct RetainedCreatedDocument: Sendable {
     let identityRecoveryWarning: String
 }
 
-private enum CreatedDocumentIdentityRollbackError: LocalizedError, Sendable {
+enum CreatedDocumentIdentityRollbackError: LocalizedError, Sendable {
+    case sourceRolledBack(path: String, identityFailure: String)
     case sourcePresenceUncertain(
         path: String,
         identityFailure: String,
@@ -60,6 +61,8 @@ private enum CreatedDocumentIdentityRollbackError: LocalizedError, Sendable {
 
     var errorDescription: String? {
         switch self {
+        case .sourceRolledBack(let path, let identityFailure):
+            "Scholium removed the newly created source at \(path) after portable identity setup failed. No new Note remains. Identity: \(identityFailure)"
         case .sourcePresenceUncertain(
             let path,
             let identityFailure,
@@ -67,6 +70,17 @@ private enum CreatedDocumentIdentityRollbackError: LocalizedError, Sendable {
             let observationFailure
         ):
             "Scholium could not determine whether the newly created note at \(path) remains after stable identity setup and rollback both failed. Do not repeat creation until the vault has been refreshed and inspected. Identity: \(identityFailure) Rollback: \(rollbackFailure) Observation: \(observationFailure)"
+        }
+    }
+}
+
+enum ManagedCreationFinalVerificationError: LocalizedError, Sendable {
+    case sourceAndIdentityNotJointlyProven(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .sourceAndIdentityNotJointlyProven(let path):
+            "Scholium created \(path) but could not jointly prove its final source and reserved portable identity. Recovery must reconcile the creation before it can be reported as complete."
         }
     }
 }
@@ -83,6 +97,8 @@ struct ResearchDocumentSaveTransaction: Sendable {
     let runID: UUID
     let operationID: UUID
     let target: ResearchWriteTargetHandle
+    let noteID: UUID
+    let role: ResearchActionTargetRole
 }
 
 enum ResearchDocumentSaveOutcome: Sendable {
@@ -378,6 +394,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     private var researchRecoveryMutationIsActive = false
     var sourceOperationGate = WorkspaceSourceOperationGate()
+    private var managedCreationPreLeaseBarrierForTesting:
+        (@Sendable () async -> Void)?
+    private var managedCreationPostSourceBarrierForTesting:
+        (@Sendable () async -> Void)?
+    var researchCreationRecoveryObservationBarrierForTesting:
+        (@Sendable () async -> Void)?
+    private var researchDocumentSavePreflightBarrierForTesting:
+        (@Sendable () async -> Void)?
+    var researchFunctionControlledObservationBarrierForTesting:
+        (@Sendable () async -> Void)?
     private var didCompleteActivationReconciliation = false
 
     func beginResearchRecoveryMutation() throws {
@@ -389,6 +415,36 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func endResearchRecoveryMutation() {
         researchRecoveryMutationIsActive = false
+    }
+
+    func setManagedCreationPreLeaseBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        managedCreationPreLeaseBarrierForTesting = barrier
+    }
+
+    func setManagedCreationPostSourceBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        managedCreationPostSourceBarrierForTesting = barrier
+    }
+
+    func setResearchCreationRecoveryObservationBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        researchCreationRecoveryObservationBarrierForTesting = barrier
+    }
+
+    func setResearchDocumentSavePreflightBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        researchDocumentSavePreflightBarrierForTesting = barrier
+    }
+
+    func setResearchFunctionControlledObservationBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        researchFunctionControlledObservationBarrierForTesting = barrier
     }
     private init(
         assignment: TriptychAssignment,
@@ -479,11 +535,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 leases.append(portable)
             }
 
-            let controlStore = TriptychControlStore(worksVaultURL: worksURL)
-            let controlURL = await controlStore.controlURL
             let triptychStorage = applicationSupportURL
                 .appendingPathComponent("Triptychs", isDirectory: true)
                 .appendingPathComponent(assignment.id.uuidString, isDirectory: true)
+            let controlStore = try TriptychControlStore(
+                worksVaultURL: worksURL,
+                coordinationURL: triptychStorage
+            )
+            let controlURL = await controlStore.controlURL
             let manifestURL = controlURL.appendingPathComponent("manifest.json")
             let manifestExists = FileManager.default.fileExists(atPath: manifestURL.path)
             if manifestExists {
@@ -865,114 +924,184 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    func createDocument(
-        _ request: DocumentCreationRequest
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
-        try requireActive()
-        let registeredVault = try vault(id: request.id.vaultID)
-        let title = request.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let frontmatter: [String: YAMLValue] = [:]
-        let profile: SchemaProfileID = switch registeredVault.role {
-        case .sourceCorpus: .analysis
-        case .topicKnowledge: .topicMarkdown
-        case .draftProject: .draftProject
-        case .other: .genericMarkdown
-        }
-        let issues = PropertyContractCatalog.validate(
-            frontmatter: frontmatter,
-            profile: profile
-        )
-        guard issues.isEmpty else { throw DocumentCreationError.invalidMetadata(issues) }
-
-        let content = title.isEmpty ? "" : "# \(title)\n"
-        return try await createDocument(request.id, content: content)
-    }
-
-    /// The Application-owned managed creator snapshots one validated Settings
-    /// revision, composes the complete role source once, then claims the first
-    /// available default name through the repository's atomic no-replace
-    /// create. A collision can race any earlier inventory, so only the
-    /// authoritative create result decides whether to advance.
-    func createUntitledNote(
-        inVault vaultID: UUID,
-        folderRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
+    /// The sole managed creator for GUI, researcher CLI, and authenticated
+    /// Agent delivery. It snapshots one valid Settings revision, composes one
+    /// complete candidate, atomically claims the path, and then commits the
+    /// portable stable identity before publishing a source-ahead result.
+    func createManagedNote(
+        _ request: ManagedNoteCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
         try requireActive()
         guard let slot = services.manifest.vaultIDs.first(where: {
-            $0.value == vaultID
+            $0.value == request.vaultID
         })?.key else {
-            throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
+            throw ScholiumApplicationError.vaultNotInWorkspace(request.vaultID)
         }
-        let settingsSnapshot = try await services.controlStore.settings()
-        let seed = settingsSnapshot.settings.properties[slot]?.newNoteYAML
-        let initialSource = seed.map { "---\n" + $0 + "---\n" } ?? ""
+        if let barrier = managedCreationPreLeaseBarrierForTesting {
+            await barrier()
+        }
+        // Settings mutation and source creation share this lease. Reading the
+        // revision after acquisition closes the reentrant gap between the
+        // frozen Agent authorization and the no-replace filesystem claim.
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
-        let repository = try repository(vaultID: vaultID)
-        let registeredVault = try vault(id: vaultID)
-        let profile: SchemaProfileID = switch registeredVault.role {
-        case .sourceCorpus: .analysis
-        case .topicKnowledge: .topicMarkdown
-        case .draftProject: .draftProject
-        case .other: .genericMarkdown
+        let settingsSnapshot = try await services.controlStore.settings()
+        let reservedIdentity: UUID
+        switch request.authority {
+        case .researcher:
+            reservedIdentity = UUID()
+        case .authenticatedAgent(let expectedRevision, let identity):
+            guard expectedRevision == settingsSnapshot.revision else {
+                throw DocumentCreationError.settingsRevisionChanged
+            }
+            reservedIdentity = identity
         }
-        let issues = PropertyContractCatalog.validate(
-            frontmatter: [:],
-            profile: profile
+        let initialSource = try managedCreationSource(
+            request: request,
+            slot: slot,
+            settings: settingsSnapshot.settings
         )
-        guard issues.isEmpty else {
-            throw DocumentCreationError.invalidMetadata(issues)
-        }
+        let repository = try repository(vaultID: request.vaultID)
+        let registeredVault = try vault(id: request.vaultID)
 
         var ordinal = 1
         while true {
             try Task.checkCancellation()
-            let filename = ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md"
-            let relativePath = if let folderRelativePath, !folderRelativePath.isEmpty {
-                "\(folderRelativePath)/\(filename)"
-            } else {
-                filename
+            let relativePath: String = switch request.destination {
+            case .exact(let path):
+                path
+            case .untitled(let folderRelativePath):
+                if let folderRelativePath, !folderRelativePath.isEmpty {
+                    "\(folderRelativePath)/\(ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md")"
+                } else {
+                    ordinal == 1 ? "Untitled.md" : "Untitled \(ordinal).md"
+                }
             }
             let id = VaultQualifiedNoteID(
-                vaultID: vaultID,
+                vaultID: request.vaultID,
                 relativePath: relativePath
             )
             if registeredVault.role.allowsCritique,
                CritiquePlacement.isManagedCritiquePath(relativePath) {
                 throw CritiquePlacementError.directCreationRequiresRequestCritique
             }
+            if try await services.controlStore.identityRecord(
+                vaultID: request.vaultID,
+                relativePath: relativePath
+            ) != nil {
+                switch request.destination {
+                case .exact:
+                    throw DocumentCreationError.portableIdentityAlreadyExists
+                case .untitled:
+                    ordinal += 1
+                    continue
+                }
+            }
             do {
                 let document = try await repository.create(
                     relativePath: relativePath,
                     content: initialSource
                 )
+                if let barrier = managedCreationPostSourceBarrierForTesting {
+                    await barrier()
+                }
                 var committedDocument = document
                 var stableIdentity = WorkspaceNoteIdentityState.unresolved
                 var createdIdentityRecord: NoteIdentityRecord?
                 var identityRecoveryWarning: String?
                 do {
                     guard let identity = try await services.controlStore.identity(
-                        forVaultID: vaultID,
+                        forVaultID: request.vaultID,
                         relativePath: relativePath,
-                        fingerprint: document.fingerprint
+                        fingerprint: document.fingerprint,
+                        preferredID: reservedIdentity
                     ) else {
                         throw NoteIdentityRecoveryError.identityUnresolved(relativePath)
+                    }
+                    if identity.id != reservedIdentity {
+                        throw DocumentCreationError.reservedIdentityMismatch
                     }
                     stableIdentity = .resolved(identity.id)
                     createdIdentityRecord = identity
                 } catch let identityError {
-                    guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
-                        repository: repository,
-                        document: document,
-                        identityError: identityError
-                    ) else {
-                        throw identityError
+                    let retained: RetainedCreatedDocument
+                    do {
+                        guard let result = try await retainedCreatedDocumentAfterIdentityFailure(
+                            repository: repository,
+                            document: document,
+                            identityError: identityError
+                        ) else {
+                            throw identityError
+                        }
+                        retained = result
+                    } catch let rollbackError as CreatedDocumentIdentityRollbackError {
+                        if case .researcher = request.authority,
+                           case .sourcePresenceUncertain = rollbackError {
+                            let record = try await recordManagedCreationRecovery(
+                                vaultID: request.vaultID,
+                                relativePath: relativePath,
+                                reservedIdentityID: reservedIdentity,
+                                intendedRevision: document.fingerprint,
+                                repository: repository,
+                                failure: rollbackError.localizedDescription
+                            )
+                            throw TriptychTransactionError.recoveryRequired(record)
+                        }
+                        throw rollbackError
                     }
                     committedDocument = retained.document
                     identityRecoveryWarning = retained.identityRecoveryWarning
+                    if case .researcher = request.authority {
+                        let record = try await recordManagedCreationRecovery(
+                            vaultID: request.vaultID,
+                            relativePath: relativePath,
+                            reservedIdentityID: reservedIdentity,
+                            intendedRevision: document.fingerprint,
+                            repository: repository,
+                            failure: retained.identityRecoveryWarning
+                        )
+                        throw TriptychTransactionError.recoveryRequired(record)
+                    }
+                }
+
+                if identityRecoveryWarning == nil {
+                    do {
+                        let finalDocument = try await repository.load(
+                            relativePath: relativePath
+                        )
+                        let finalIdentity = try await services.controlStore
+                            .identityRecord(
+                                vaultID: request.vaultID,
+                                relativePath: relativePath
+                            )
+                        guard finalDocument.fingerprint == document.fingerprint,
+                              finalIdentity?.id == reservedIdentity,
+                              finalIdentity?.fingerprint == document.fingerprint else {
+                            throw ManagedCreationFinalVerificationError
+                                .sourceAndIdentityNotJointlyProven(relativePath)
+                        }
+                        committedDocument = finalDocument
+                        stableIdentity = .resolved(reservedIdentity)
+                        createdIdentityRecord = finalIdentity
+                    } catch {
+                        let verification = ManagedCreationFinalVerificationError
+                            .sourceAndIdentityNotJointlyProven(relativePath)
+                        if case .researcher = request.authority {
+                            let record = try await recordManagedCreationRecovery(
+                                vaultID: request.vaultID,
+                                relativePath: relativePath,
+                                reservedIdentityID: reservedIdentity,
+                                intendedRevision: document.fingerprint,
+                                repository: repository,
+                                failure: verification.localizedDescription
+                            )
+                            throw TriptychTransactionError.recoveryRequired(record)
+                        }
+                        throw verification
+                    }
                 }
 
                 sourceAheadIdentityRecords[id] = createdIdentityRecord
@@ -983,7 +1112,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 endSourceMutation(mutationLease)
                 ownsMutation = false
                 return WorkspaceMutationOutcome(
-                    committedValue: WorkspaceUntitledNoteCommit(
+                    committedValue: WorkspaceManagedNoteCommit(
                         id: id,
                         vaultRole: registeredVault.role,
                         stableIdentity: stableIdentity,
@@ -991,11 +1120,227 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     ),
                     identityRecoveryWarning: identityRecoveryWarning
                 )
-            } catch VaultRepositoryError.fileAlreadyExists {
-                ordinal += 1
-            } catch VaultRepositoryError.pathCollision {
-                ordinal += 1
+            } catch let error as VaultRepositoryError {
+                switch error {
+                case .fileAlreadyExists, .pathCollision:
+                    guard case .untitled = request.destination else { throw error }
+                    ordinal += 1
+                default:
+                    throw error
+                }
             }
+        }
+    }
+
+    func managedCreationSource(
+        request: ManagedNoteCreationRequest,
+        slot: WorkspaceVaultSlot,
+        settings: TriptychSettings
+    ) throws -> String {
+        let seed = settings.properties[slot]?.newNoteYAML
+        let seedKeys = try TriptychSettingsValidator.seedKeys(in: seed, role: slot)
+        let dynamic: String
+        if let metadata = request.analysisMetadata {
+            guard slot == .paperAnalysis else {
+                throw DocumentCreationError.analysisMetadataRoleMismatch
+            }
+            let profile = AnalysisSourceTypeProfileCatalog.profile(
+                for: metadata.sourceType
+            )
+            let applicable = Set(profile.applicableFields)
+            var values: [String: YAMLValue] = [
+                "type": .string(metadata.sourceType.rawValue),
+            ]
+            for input in metadata.properties {
+                guard applicable.contains(input.key),
+                      PropertyContractCatalog.contract(
+                        for: input.key,
+                        profile: .analysis
+                      ) != nil else {
+                    throw DocumentCreationError.inapplicableAnalysisProperty(
+                        input.key,
+                        metadata.sourceType
+                    )
+                }
+                guard !seedKeys.contains(input.key) else {
+                    throw DocumentCreationError.analysisSeedCollision(input.key)
+                }
+                values[input.key] = input.value
+            }
+            let issues = PropertyContractCatalog.validate(
+                frontmatter: values,
+                profile: .analysis
+            )
+            guard issues.isEmpty,
+                  metadata.properties.allSatisfy({
+                      Self.isNonemptyManagedValue($0.value)
+                  }) else {
+                throw DocumentCreationError.invalidMetadata(issues)
+            }
+            if case .authenticatedAgent = request.authority {
+                let required = Set(
+                    settings.analysisAgentCreation.requiredFields(
+                        for: metadata.sourceType
+                    )
+                )
+                let supplied = Set(metadata.properties.map(\.key))
+                let missing = required.subtracting(supplied).sorted()
+                guard missing.isEmpty else {
+                    throw DocumentCreationError.missingRequiredAgentFields(missing)
+                }
+            }
+            let order = ["type"] + profile.serializationFieldOrder.filter {
+                values[$0] != nil && $0 != "type"
+            }
+            dynamic = try FrontmatterPatchPlanner.serializeTopLevelMapping(
+                try order.map { key in
+                    guard let value = values[key] else {
+                        throw DocumentCreationError.invalidMetadata([])
+                    }
+                    return (key, try Self.frontmatterEditValue(value))
+                }
+            )
+        } else {
+            if slot == .paperAnalysis,
+               case .authenticatedAgent = request.authority {
+                throw DocumentCreationError.missingAgentAnalysisMetadata
+            }
+            dynamic = ""
+        }
+
+        let frontmatter = dynamic + (seed ?? "")
+        let source = frontmatter.isEmpty
+            ? request.body
+            : "---\n" + frontmatter + "---\n" + request.body
+        let document = NoteDocument(relativePath: "Managed Creation.md", rawContent: source)
+        guard document.frontmatterState != .malformed else {
+            throw DocumentCreationError.invalidMetadata(
+                PropertyContractCatalog.validate(
+                    document,
+                    profile: Self.schemaProfile(for: slot)
+                )
+            )
+        }
+        let issues = PropertyContractCatalog.validate(
+            document,
+            profile: Self.schemaProfile(for: slot)
+        )
+        guard issues.isEmpty else {
+            throw DocumentCreationError.invalidMetadata(issues)
+        }
+        return source
+    }
+
+    private func recordManagedCreationRecovery(
+        vaultID: UUID,
+        relativePath: String,
+        reservedIdentityID: UUID,
+        intendedRevision: DocumentFingerprint,
+        repository: VaultRepository,
+        failure: String
+    ) async throws -> TriptychMutationRecoveryRecord {
+        let observed: DocumentFingerprint?
+        let state: TriptychMutationRecoveryState
+        let sourceDetail: String
+        do {
+            let document = try await repository.load(relativePath: relativePath)
+            observed = document.fingerprint
+            state = document.fingerprint == intendedRevision
+                ? .intendedBytesRemain
+                : .externallyChanged
+            sourceDetail = "The managed path currently has revision \(document.fingerprint.sha256)."
+        } catch VaultRepositoryError.fileDoesNotExist {
+            observed = nil
+            state = .missing
+            sourceDetail = "The managed path is currently absent."
+        } catch {
+            observed = nil
+            state = .unreadable
+            sourceDetail = "The managed path could not be read: \(error.localizedDescription)"
+        }
+        let identityDetail: String
+        do {
+            if let identity = try await services.controlStore.identityRecord(
+                vaultID: vaultID,
+                relativePath: relativePath
+            ) {
+                identityDetail = " Portable identity \(identity.id.uuidString) remains at revision \(identity.fingerprint.sha256)."
+            } else {
+                identityDetail = " No portable identity is currently assigned to the path."
+            }
+        } catch {
+            identityDetail = " Portable identity state is unreadable: \(error.localizedDescription)"
+        }
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: id,
+            operation: .noteCreation,
+            failure: failure,
+            files: [TriptychMutationRecoveryFile(
+                vaultID: vaultID,
+                path: relativePath,
+                role: .createdNote,
+                beforeRevision: nil,
+                intendedRevision: intendedRevision,
+                observedRevision: observed,
+                state: state,
+                detail: sourceDetail + identityDetail
+            )],
+            managedCreation: ManagedCreationRecoveryReference(
+                target: VaultQualifiedNoteID(
+                    vaultID: vaultID,
+                    relativePath: relativePath
+                ),
+                reservedIdentityID: reservedIdentityID
+            )
+        )
+        do {
+            try await services.transactionRecoveryStore.record(record)
+        } catch {
+            throw TriptychTransactionError.recoveryPersistenceFailed(
+                record,
+                error.localizedDescription
+            )
+        }
+        return record
+    }
+
+    private static func schemaProfile(for slot: WorkspaceVaultSlot) -> SchemaProfileID {
+        switch slot {
+        case .paperAnalysis: .analysis
+        case .topicKnowledge: .topicMarkdown
+        case .output: .draftProject
+        }
+    }
+
+    static func isNonemptyManagedValue(_ value: YAMLValue) -> Bool {
+        switch value {
+        case .string(let value):
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .integer, .double, .boolean:
+            true
+        case .array(let values):
+            !values.isEmpty && values.allSatisfy(isNonemptyManagedValue)
+        case .object(let values):
+            !values.isEmpty && values.values.allSatisfy(isNonemptyManagedValue)
+        case .null:
+            false
+        }
+    }
+
+    static func frontmatterEditValue(
+        _ value: YAMLValue
+    ) throws -> FrontmatterEditValue {
+        switch value {
+        case .string(let value): .string(value)
+        case .integer(let value): .integer(value)
+        case .double(let value): .double(value)
+        case .boolean(let value): .boolean(value)
+        case .array(let values):
+            .sequence(try values.map(frontmatterEditValue))
+        case .object(let values):
+            .mapping(try values.mapValues(frontmatterEditValue))
+        case .null:
+            throw DocumentCreationError.invalidMetadata([])
         }
     }
 
@@ -1170,47 +1515,50 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     /// Creation and duplication first commit a no-replace source and then
     /// establish portable identity. If identity setup fails, rollback is
-    /// revision checked. A failed rollback is never ignored: a proven retained
-    /// source becomes a committed outcome with an identity-recovery warning;
-    /// an unreadable presence state becomes an explicit uncertain error that
-    /// forbids blind recreation.
+    /// revision checked. A failed rollback is never ignored: this helper
+    /// distinguishes a proven retained source from unreadable presence so the
+    /// managed researcher creator can persist one recovery duty, while older
+    /// import and duplication callers keep their existing warning boundary.
     private func retainedCreatedDocumentAfterIdentityFailure(
         repository: VaultRepository,
         document: NoteDocument,
         identityError: any Error
     ) async throws -> RetainedCreatedDocument? {
-        let rollbackError: any Error
         do {
             try await repository.removeCreatedFileForRollback(
                 relativePath: document.relativePath,
                 createdRevision: document.fingerprint
             )
-            return nil
         } catch {
-            rollbackError = error
+            let rollbackError = error
+            do {
+                let retained = try await repository.load(
+                    relativePath: document.relativePath
+                )
+                return RetainedCreatedDocument(
+                    document: retained,
+                    identityRecoveryWarning: "The source remains at \(document.relativePath) because stable identity setup failed and exact rollback was refused. Do not create or import it again; recover its identity instead. Identity: \(identityError.localizedDescription) Rollback: \(rollbackError.localizedDescription)"
+                )
+            } catch VaultRepositoryError.fileDoesNotExist {
+                // The delete may have committed before its own verification
+                // failed. A direct read now proves there is no retained source.
+                throw CreatedDocumentIdentityRollbackError.sourceRolledBack(
+                    path: document.relativePath,
+                    identityFailure: identityError.localizedDescription
+                )
+            } catch {
+                throw CreatedDocumentIdentityRollbackError.sourcePresenceUncertain(
+                    path: document.relativePath,
+                    identityFailure: identityError.localizedDescription,
+                    rollbackFailure: rollbackError.localizedDescription,
+                    observationFailure: error.localizedDescription
+                )
+            }
         }
-
-        do {
-            let retained = try await repository.load(
-                relativePath: document.relativePath
-            )
-            return RetainedCreatedDocument(
-                document: retained,
-                identityRecoveryWarning: "The source remains at \(document.relativePath) because stable identity setup failed and exact rollback was refused. Do not create or import it again; recover its identity instead. Identity: \(identityError.localizedDescription) Rollback: \(rollbackError.localizedDescription)"
-            )
-        } catch VaultRepositoryError.fileDoesNotExist {
-            // The delete may have committed before its own verification
-            // failed. A direct read now proves there is no retained source, so
-            // the original identity failure remains the correct result.
-            return nil
-        } catch {
-            throw CreatedDocumentIdentityRollbackError.sourcePresenceUncertain(
-                path: document.relativePath,
-                identityFailure: identityError.localizedDescription,
-                rollbackFailure: rollbackError.localizedDescription,
-                observationFailure: error.localizedDescription
-            )
-        }
+        throw CreatedDocumentIdentityRollbackError.sourceRolledBack(
+            path: document.relativePath,
+            identityFailure: identityError.localizedDescription
+        )
     }
 
     private func finishCreatedDocumentMutation(
@@ -1321,6 +1669,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
+        if let researchWrite {
+            if let barrier = researchDocumentSavePreflightBarrierForTesting {
+                await barrier()
+            }
+            guard WorkspaceDocumentLifecycle(
+                relativePath: id.relativePath
+            ) == .active,
+                  Self.vaultRole(for: researchWrite.role)
+                    == (try vault(id: id.vaultID).role),
+                  let identity = try await services.controlStore.identityRecord(
+                    vaultID: id.vaultID,
+                    relativePath: id.relativePath
+                  ), identity.id == researchWrite.noteID else {
+                return .notWritten(.targetIdentityChanged)
+            }
+        }
         let save = try await repository.saveOutcome(
             relativePath: id.relativePath,
             changeSet: changeSet,
@@ -1440,10 +1804,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         switch reason {
         case .conflict(let current):
             .conflict(expected: expectedRevision, current: current)
+        case .targetIdentityChanged:
+            .notRegularFile("The Note path no longer belongs to the authorized portable identity.")
         case .invalidFrontmatter(let message):
             .invalidFrontmatter(message)
         case .atomicCommitUnsupported(let message):
             .atomicCommitUnsupported(message)
+        }
+    }
+
+    private static func vaultRole(
+        for role: ResearchActionTargetRole
+    ) -> VaultRole {
+        switch role {
+        case .analysis: .sourceCorpus
+        case .topic: .topicKnowledge
+        case .work: .draftProject
         }
     }
 
@@ -2227,6 +2603,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try await beginSourceMutation()
     }
 
+    func beginResearchControlledSourceObservation() async throws
+        -> WorkspaceSourceOperationLease
+    {
+        try await beginSourceMutation()
+    }
+
     private func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
         releaseWorkspaceSourceOperation(lease)
         startLiveIndexRefreshIfNeeded()
@@ -2239,6 +2621,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         Task {
             await events.publishResearchConfigurationInvalidated(snapshot: snapshot)
         }
+    }
+
+    func endResearchControlledSourceObservation(
+        _ lease: WorkspaceSourceOperationLease
+    ) {
+        endSourceMutation(lease)
     }
 
     private func beginRefreshCycle() async throws -> WorkspaceSourceOperationLease {
@@ -2737,6 +3125,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         expectedRevision: SettingsRevision
     ) async throws -> WorkspaceMutationOutcome<TriptychSettingsSnapshot> {
         try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationLease) }
+        }
         let snapshot: TriptychSettingsSnapshot
         do {
             snapshot = try await services.controlStore.saveSettings(
@@ -2772,6 +3165,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             }
         }
+        endSourceMutation(mutationLease)
+        ownsMutation = false
         do {
             try await refreshAfterCommittedOperation(
                 "The Triptych settings",

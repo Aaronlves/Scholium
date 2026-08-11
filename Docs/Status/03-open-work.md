@@ -8,17 +8,17 @@
   loading, unavailable, error, conflict, and recovery states at ordinary and
   minimum widths in Light and Dark.
 - Exercise genuine VoiceOver, physical Full Keyboard Access, Voice Control,
-  Dictation, installed CJK and RTL input methods, 200% interface text, Increase
-  Contrast, Reduce Transparency, Reduce Motion, inactive windows, localization
-  expansion, and deterministic RTL navigation.
+  Dictation, installed CJK input methods, 200% interface text, Increase
+  Contrast, Reduce Transparency, Reduce Motion, inactive windows, and complete
+  English and Simplified Chinese localization.
 - Recheck fullscreen, native Sidebar/Inspector collapse and restoration,
   scenes, Dock/New Window behavior, last-tab closure, auxiliary windows, and
   focus restoration after lifecycle and recovery operations.
 - Complete direct acceptance for long Connect clusters, Attention queue sizes,
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.
-- Complete direct keyboard, VoiceOver, localization-expansion, ordinary/minimum
-  width, and source-conflict acceptance for the Properties Settings seed editor,
+- Complete direct keyboard, VoiceOver, English and Simplified Chinese,
+  ordinary/minimum-width, and source-conflict acceptance for the Properties Settings seed editor,
   per-type Agent requirements, Complete Properties chooser, CreatorList editor,
   YAML-free first insertion, removal/Undo, and Source recovery routes.
 
@@ -33,11 +33,18 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
+- Complete the separately authorized `set_zotero_binding` and
+  `clear_zotero_binding` Agent operations. Current creation, body, and property
+  authority cannot mutate portable Zotero bindings.
+- Decide whether finished Local Execution should compact the nonauthorizing
+  Bounded Write Set after copying every target fact needed by historical
+  recovery into self-describing transaction evidence. Completion already
+  revokes Session authority; compaction must not weaken direct Undo or recovery.
 
 ## Editor input and semantics
 
-- Recheck physical English, installed Chinese IME, and RTL input across Review,
-  Edit, and Source, including composition, bidi cursor/selection, selection
+- Recheck physical English and installed Chinese IME across Review, Edit, and
+  Source, including composition, mixed-script cursor/selection, selection
   replacement, Undo, autosave, mode switching, window inactivity, conflict, and
   recovery.
 - Exercise pointer and keyboard behavior for construct-scoped syntax, completed-

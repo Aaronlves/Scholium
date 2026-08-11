@@ -303,19 +303,24 @@ Session, Run, complete allowed document set, and each member's expected
 revision. Each call names one member and has one hidden idempotent operation
 identity. Before writing, Scholium revalidates Session, Run, membership,
 identity, role, operation, containment, current revision, and policy facts that
-can revoke unused Full Access authority. It then establishes **Before Agent
-Work** exact-byte recovery, builds and validates complete candidate bytes,
-atomically replaces, and reads back. A confirmed Scholium write advances only
-that member's expected revision.
+can revoke unused Full Access authority. Existing-note source writes then
+establish **Before Agent Work** exact-byte recovery, build and validate the
+bounded body or property candidate, atomically replace, and read back. Creation
+instead re-proves absence and the frozen Settings revision, claims the exact
+path without fallback naming, and must jointly read back both source and its
+reserved stable identity. It has no fabricated empty-source revision or
+checkpoint. A confirmed Scholium write advances only that member's expected
+revision; a confirmed creation consumes that one-use new-identity authority.
 
 The set is not a batch transaction. One member's conflict, external change,
 failure, or abandonment does not roll back confirmed siblings, revoke
 unchanged references, or create a child Run. An external change makes only the
 affected member stale. Already-submitted file transactions must reach a known
 written/not-written/recovery-needed result; policy tightening or manual End
-cannot pretend to cancel them. Manual End may block new operations and revoke
-Session access, but cannot safely finalize the Result or clear the write set
-while a started write is unknown or required recovery remains. Run cleanup
+cannot pretend to cancel them. Manual End cancels only a Run without confirmed
+writes. A confirmed change requires Result submission so Record and Review
+provenance cannot be discarded; unknown writes and recovery duties block End.
+Run cleanup
 removes the write set only after every transaction converges; transaction recovery may outlive it only as
 the existing machine-owned recovery duty.
 
@@ -436,14 +441,16 @@ not need Review. A no-change Action finalizes, ends, and emits one deduplicated
 Result-arrived notice without another decision.
 
 Agent edits are already authoritative source when the Result arrives. A
-confirmed change begins at the expected revision of that document's first
+modified change begins at the expected revision of that document's first
 successfully committed Agent write and ends at the last confirmed readback;
 conflicted, abandoned, or uncommitted attempts never move that baseline. Thus
 an external edit made after Run preparation but before the first Agent commit
-is preserved by direct undo. Comparison accepts only these confirmed revision
-pairs and never labels Discussion, researcher, or external changes as Agent
-work. A Manuscript coordination Record does not copy a selected child Run's
-change; the child Action Record remains that write and checkpoint's owner.
+is preserved by direct undo. A created change instead has no starting revision;
+its participant baseline is its first committed created revision. Comparison
+accepts only confirmed modified revision pairs and never labels Discussion,
+researcher, or external changes as Agent work. A Manuscript coordination Record
+does not copy a selected child Run's change; the child Action Record remains
+that write and checkpoint's owner.
 
 Direct undo is a recovery action, not Review or delayed authorization. Application alone
 resolves the first committed write's **Before Agent Work** checkpoint, current
@@ -455,6 +462,11 @@ stable identity. A later edit, missing Note, failed readback, or uncertain
 commit remains explicit and never triggers an approximate or hunk-level
 restore. Restore facts stay with the recovery boundary and never become Review
 judgments.
+
+An Agent-created Note still creates Note Review work and visible Record
+provenance, but the first version offers no direct Undo or exact Before Agent
+Work comparison because no source preimage existed. Scholium never fabricates
+an empty revision or silently deletes or trashes the created Note as recovery.
 
 Portable Records remain one strict closed schema under
 `.scholium/research-records/v1/`; unknown schema/fields fail closed. The same

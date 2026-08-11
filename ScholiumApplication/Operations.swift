@@ -71,22 +71,11 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.createDocument(id, content: content)
     }
 
-    public func create(
-        _ request: DocumentCreationRequest
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
+    public func createManagedNote(
+        _ request: ManagedNoteCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
         let handle = try await reference.requireHandle()
-        return try await handle.createDocument(request)
-    }
-
-    public func createUntitledNote(
-        inVault vaultID: UUID,
-        folderRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.createUntitledNote(
-            inVault: vaultID,
-            folderRelativePath: folderRelativePath
-        )
+        return try await handle.createManagedNote(request)
     }
 
     public func createUntitledFolder(

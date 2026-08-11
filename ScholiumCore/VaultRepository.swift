@@ -1090,6 +1090,8 @@ public actor VaultRepository {
         switch reason {
         case .conflict(let current):
             .conflict(expected: expectedRevision, current: current)
+        case .targetIdentityChanged:
+            .notRegularFile("The path no longer belongs to the authorized portable Note identity.")
         case .invalidFrontmatter(let message):
             .invalidFrontmatter(message)
         case .atomicCommitUnsupported(let message):

@@ -222,7 +222,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
 /// The exact result of direct untitled-note creation before disposable
 /// Workspace projections necessarily catch up. The source and portable
 /// identity state are authoritative; graph counts are intentionally absent.
-public struct WorkspaceUntitledNoteCommit: Sendable {
+public struct WorkspaceManagedNoteCommit: Sendable {
     public let id: VaultQualifiedNoteID
     public let vaultRole: VaultRole
     public let stableIdentity: WorkspaceNoteIdentityState

@@ -462,6 +462,7 @@ public struct ResearchRecordChangesUndoResult: Sendable {
 
 public enum ResearchRecordChangeRecoveryOperationError: LocalizedError, Hashable, Sendable {
     case confirmedChangeNotFound(UUID)
+    case createdNoteHasNoPreimage(UUID)
     case invalidSelection
     case executionUnavailable
     case checkpointMismatch(UUID)
@@ -470,6 +471,8 @@ public enum ResearchRecordChangeRecoveryOperationError: LocalizedError, Hashable
         switch self {
         case .confirmedChangeNotFound:
             "The selected note is not an Agent-confirmed change in this Research Record."
+        case .createdNoteHasNoPreimage:
+            "A Note created by the Agent has no Before Agent Work source to compare or restore."
         case .invalidSelection:
             "Select at least one unresolved Agent-confirmed document."
         case .executionUnavailable:

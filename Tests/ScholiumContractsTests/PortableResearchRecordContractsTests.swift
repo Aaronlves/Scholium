@@ -93,11 +93,12 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 8)
+        #expect(object["schema_version"] as? Int == 9)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
         #expect(changes.first?["actor"] as? String == "agent")
+        #expect(changes.first?["kind"] as? String == "modified")
         let source = String(decoding: data, as: UTF8.self)
         for forbidden in [
             "function", "execution_kind", "prepared_instructions", "prompt",
@@ -112,7 +113,7 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 8 requires a frozen title and rejects every retired schema")
+    @Test("Schema 9 requires a frozen title and rejects every retired schema")
     func schemaSevenIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
@@ -138,7 +139,7 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
 
-        for version in [1, 2, 3, 4, 5, 6] {
+        for version in 1 ... 8 {
             object["schema_version"] = version
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try JSONDecoder.scholium.decode(
@@ -725,6 +726,73 @@ struct PortableResearchRecordContractsTests {
                 endingRevision: agentRevision
             )
         }
+    }
+
+    @Test("Created change keeps the first created revision as its participant baseline")
+    func createdParticipantKeepsFirstCreatedRevision() throws {
+        let base = try makeRecord()
+        let participant = try #require(base.participatingNotes.first)
+        let createdRevision = DocumentFingerprint(content: "# Newly created\n")
+        let finalRevision = DocumentFingerprint(content: "# Newly created\n\nWith properties\n")
+        let createdParticipant = try PortableResearchNoteRevision(
+            noteID: participant.noteID,
+            note: participant.note,
+            role: participant.role,
+            title: participant.title,
+            startingRevision: createdRevision,
+            endingRevision: finalRevision
+        )
+        let record = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            title: base.title,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            primaryNoteID: participant.noteID,
+            participatingNotes: [createdParticipant],
+            statements: base.statements,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: [try PortableResearchConfirmedChange(
+                noteID: participant.noteID,
+                actor: .agent,
+                startingRevision: nil,
+                endingRevision: finalRevision
+            )],
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt
+        )
+        #expect(record.participatingNotes[0].startingRevision == createdRevision)
+        #expect(record.confirmedChanges[0].startingRevision == nil)
+        #expect(record.confirmedChanges[0].endingRevision == finalRevision)
+
+        let tombstone = try PortableResearchNoteRevision(
+            noteID: participant.noteID,
+            note: participant.note,
+            role: participant.role,
+            title: participant.title,
+            startingRevision: createdRevision,
+            endingRevision: nil,
+            isTombstone: true
+        )
+        let deleted = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            title: base.title,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            primaryNoteID: participant.noteID,
+            participatingNotes: [tombstone],
+            statements: base.statements,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: record.confirmedChanges,
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt
+        )
+        #expect(deleted.participatingNotes[0].isTombstone)
+        #expect(deleted.participatingNotes[0].startingRevision == createdRevision)
+        #expect(deleted.confirmedChanges == record.confirmedChanges)
     }
 
     @Test("Discussion Records cannot acquire Researcher Response state")

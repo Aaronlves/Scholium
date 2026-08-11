@@ -220,12 +220,16 @@ struct DocumentLifecycleOperationsTests {
             vaultID: fixture.targetID.vaultID,
             relativePath: "New/Optional.md"
         )
-        let optional = try await handle.documents.create(DocumentCreationRequest(
-            id: optionalID,
-            title: "Optional"
-        )).committedValue
+        let optional = try await handle.documents.createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: optionalID.vaultID,
+                destination: .exact(relativePath: optionalID.relativePath),
+                body: "# Optional\n"
+            )
+        ).committedValue.document
         #expect(optional.rawContent == "# Optional\n")
         #expect(!optional.rawContent.contains("research_unit"))
+        _ = try await handle.refresh()
 
         let settlement = try await handle.research.settle(
             optionalID,
@@ -250,17 +254,22 @@ struct DocumentLifecycleOperationsTests {
         ).committedValue
         #expect(declared.document.fingerprint != settlement.fingerprint)
 
-        let created = try await handle.documents.create(DocumentCreationRequest(
-            id: analysesID,
-            title: "Analysis"
-        )).committedValue
+        let created = try await handle.documents.createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: analysesID.vaultID,
+                destination: .exact(relativePath: analysesID.relativePath),
+                body: "# Analysis\n"
+            )
+        ).committedValue.document
         #expect(created.rawContent == "# Analysis\n")
 
         let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
-        let untitledWork = try await handle.documents.create(DocumentCreationRequest(
-            id: VaultQualifiedNoteID(vaultID: worksID, relativePath: "Untitled.md"),
-            title: ""
-        )).committedValue
+        let untitledWork = try await handle.documents.createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: worksID,
+                destination: .exact(relativePath: "Untitled.md")
+            )
+        ).committedValue.document
         #expect(untitledWork.rawContent.isEmpty)
         await runtime.shutdown()
     }
@@ -312,6 +321,62 @@ struct DocumentLifecycleOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Managed creation treats a source-absent portable identity as an occupied path")
+    func managedCreationDoesNotReusePortableIdentity() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let vaultID = fixture.targetID.vaultID
+        let occupiedPath = "Sources/Untitled.md"
+        let oldRevision = DocumentFingerprint(content: "# Previously deleted\n")
+        let oldIdentity = try #require(
+            try await handle.services.controlStore.identity(
+                forVaultID: vaultID,
+                relativePath: occupiedPath,
+                fingerprint: oldRevision
+            )
+        )
+        let bindings = try await handle.services.controlStore.zoteroBindings()
+        let oldBinding = try AnalysisZoteroBinding(
+            noteID: oldIdentity.id,
+            library: .group(42),
+            itemKey: "ABCD1234"
+        )
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            oldBinding,
+            expectedRevision: bindings.revision
+        )
+
+        let created = try await handle.documents.createUntitledNote(
+            inVault: vaultID,
+            folderRelativePath: "Sources"
+        ).committedValue
+        #expect(created.id.relativePath == "Sources/Untitled 2.md")
+        #expect(!FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: try #require(
+                fixture.assignment.vaults.values.first { $0.id == vaultID }
+            ).canonicalPath).appendingPathComponent(occupiedPath).path
+        ))
+        await #expect(
+            throws: DocumentCreationError.portableIdentityAlreadyExists
+        ) {
+            _ = try await handle.documents.createManagedNote(
+                ManagedNoteCreationRequest(
+                    vaultID: vaultID,
+                    destination: .exact(relativePath: occupiedPath)
+                )
+            )
+        }
+        #expect(try await handle.services.controlStore.identityRecord(
+            vaultID: vaultID,
+            relativePath: occupiedPath
+        ) == oldIdentity)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: oldIdentity.id) == oldBinding)
+        await runtime.shutdown()
+    }
+
     @Test("Managed creation copies exactly one role seed and leaves the body empty")
     func managedCreationUsesExactRoleSeed() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -358,6 +423,106 @@ struct DocumentLifecycleOperationsTests {
                 ) == Data(expectedSource.utf8)
             )
         }
+        await runtime.shutdown()
+    }
+
+    @Test("Typed managed creation shares the seed while Agent policy freezes requirements and identity")
+    func typedManagedCreationUsesOneCreator() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analyses = try #require(fixture.assignment.vault(for: .paperAnalysis))
+
+        let saved = try await handle.research.settings()
+        var settings = saved.settings
+        settings.properties[.paperAnalysis]?.newNoteYAML =
+            "# researcher seed\ntags: [configured]\n"
+        settings.analysisAgentCreation.requiredFieldsBySourceType[.journalArticle] = [
+            "authors",
+        ]
+        let configured = try await handle.research.saveSettings(
+            settings,
+            expectedRevision: saved.revision
+        )
+
+        let title = try CanonicalPropertyInput(
+            key: "title",
+            value: .string("Reasons and Persons")
+        )
+        let authors = try CanonicalPropertyInput(
+            key: "authors",
+            value: .array([.object([
+                "family": .string("Scanlon"),
+                "given": .string("T. M."),
+            ])])
+        )
+        let metadata = try AnalysisCreationMetadata(
+            sourceType: .journalArticle,
+            properties: [authors, title]
+        )
+        let reservedIdentity = UUID()
+        let created = try await handle.documents.createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: analyses.id,
+                destination: .exact(relativePath: "Agent/Created.md"),
+                body: "# Working body\n",
+                analysisMetadata: metadata,
+                authority: .authenticatedAgent(
+                    settingsRevision: configured.revision,
+                    reservedIdentity: reservedIdentity
+                )
+            )
+        ).committedValue
+
+        #expect(created.stableIdentity.resolvedID == reservedIdentity)
+        #expect(created.document.parsedFrontmatter["type"] == .string("journal_article"))
+        #expect(created.document.parsedFrontmatter["title"] == .string("Reasons and Persons"))
+        #expect(created.document.parsedFrontmatter["authors"] == authors.value)
+        #expect(created.document.parsedFrontmatter["tags"] == .array([.string("configured")]))
+        #expect(created.document.body == "# Working body\n")
+        let source = created.document.rawContent
+        let typeRange = try #require(source.range(of: "type: journal_article"))
+        let titleRange = try #require(source.range(of: "title: Reasons and Persons"))
+        let seedRange = try #require(source.range(of: "# researcher seed"))
+        #expect(typeRange.lowerBound < titleRange.lowerBound)
+        #expect(titleRange.lowerBound < seedRange.lowerBound)
+
+        await #expect(throws: DocumentCreationError.missingRequiredAgentFields(["authors"])) {
+            _ = try await handle.documents.createManagedNote(
+                try ManagedNoteCreationRequest(
+                    vaultID: analyses.id,
+                    destination: .exact(relativePath: "Agent/Missing.md"),
+                    analysisMetadata: try AnalysisCreationMetadata(
+                        sourceType: .journalArticle,
+                        properties: [title]
+                    ),
+                    authority: .authenticatedAgent(
+                        settingsRevision: configured.revision,
+                        reservedIdentity: UUID()
+                    )
+                )
+            )
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: analyses.canonicalPath)
+                .appendingPathComponent("Agent/Missing.md").path
+        ))
+
+        // The same typed request through researcher CLI policy is not subject
+        // to Agent-only requiredness.
+        let researcher = try await handle.documents.createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: analyses.id,
+                destination: .exact(relativePath: "Researcher/Created.md"),
+                analysisMetadata: try AnalysisCreationMetadata(
+                    sourceType: .journalArticle,
+                    properties: [title]
+                )
+            )
+        ).committedValue
+        #expect(researcher.document.parsedFrontmatter["authors"] == nil)
+
         await runtime.shutdown()
     }
 
@@ -474,6 +639,309 @@ struct DocumentLifecycleOperationsTests {
                     .appendingPathComponent("Untitled.md").path
             )
         )
+        await runtime.shutdown()
+    }
+
+    @Test("Managed body text cannot introduce a top-level YAML envelope")
+    func managedBodyCannotCarryFrontmatter() throws {
+        let vaultID = UUID()
+        for body in [
+            "---\nsecret: value\n---\n# Body\n",
+            "---\nsecret: value\n",
+        ] {
+            #expect(throws: DocumentCreationError.invalidBody) {
+                _ = try ManagedNoteCreationRequest(
+                    vaultID: vaultID,
+                    destination: .exact(relativePath: "Created.md"),
+                    body: body
+                )
+            }
+            #expect(throws: DocumentCreationError.invalidBody) {
+                _ = try ManagedNoteCreationRequest(
+                    vaultID: vaultID,
+                    destination: .exact(relativePath: "Analysis.md"),
+                    body: body,
+                    analysisMetadata: try AnalysisCreationMetadata(
+                        sourceType: .journalArticle
+                    )
+                )
+            }
+        }
+        #expect(try ManagedNoteCreationRequest(
+            vaultID: vaultID,
+            destination: .exact(relativePath: "Safe.md"),
+            body: "# Body\n\n---\nNested thematic break.\n"
+        ).body.hasPrefix("# Body"))
+    }
+
+    @Test("Agent managed creation revalidates Settings after a concurrent save")
+    func managedCreationRejectsChangedSettingsBeforeClaim() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try #require(fixture.assignment.vault(for: .topicKnowledge))
+        let saved = try await handle.research.settings()
+        let reservedID = UUID()
+        let request = try ManagedNoteCreationRequest(
+            vaultID: topic.id,
+            destination: .exact(relativePath: "Stale Settings.md"),
+            body: "# Must not commit\n",
+            authority: .authenticatedAgent(
+                settingsRevision: saved.revision,
+                reservedIdentity: reservedID
+            )
+        )
+        let gate = ManagedCreationTestGate()
+        await handle.setManagedCreationPreLeaseBarrierForTesting {
+            await gate.wait()
+        }
+        let creation = Task {
+            try await handle.documents.createManagedNote(request)
+        }
+        #expect(await gate.waitUntilArrived())
+
+        var changed = saved.settings
+        changed.properties[.topicKnowledge]?.newNoteYAML = "summary: newer\n"
+        _ = try await handle.research.saveSettings(
+            changed,
+            expectedRevision: saved.revision
+        )
+        await gate.release()
+        await #expect(throws: DocumentCreationError.settingsRevisionChanged) {
+            _ = try await creation.value
+        }
+        await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: topic.canonicalPath)
+                .appendingPathComponent("Stale Settings.md").path
+        ))
+        #expect(try await handle.services.controlStore.identityRecord(
+            id: reservedID
+        ) == nil)
+        await runtime.shutdown()
+    }
+
+    @Test("Researcher managed creation retains visible recovery after final source loss")
+    func researcherCreationFinalFailureIsDurable() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try #require(fixture.assignment.vault(for: .topicKnowledge))
+        let path = "Researcher Final Recovery.md"
+        let gate = ManagedCreationTestGate()
+        await handle.setManagedCreationPostSourceBarrierForTesting {
+            await gate.wait()
+        }
+        let creation = Task {
+            try await handle.documents.createManagedNote(
+                ManagedNoteCreationRequest(
+                    vaultID: topic.id,
+                    destination: .exact(relativePath: path),
+                    body: "# Intended\n"
+                )
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        let repositories = await handle.services.repositories
+        let repository = try #require(repositories[topic.id])
+        let current = try await repository.load(relativePath: path)
+        try await repository.removeCreatedFileForRollback(
+            relativePath: path,
+            createdRevision: current.fingerprint
+        )
+        await gate.release()
+        var recoveryID: UUID?
+        do {
+            _ = try await creation.value
+            Issue.record("Expected final managed-creation recovery.")
+        } catch let error as TriptychTransactionError {
+            guard case .recoveryRequired(let record) = error else {
+                Issue.record("Unexpected managed-creation error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            #expect(record.operation == .noteCreation)
+            #expect(record.researchWrite == nil)
+            #expect(record.managedCreation?.reservedIdentityID != nil)
+            #expect(record.files.first?.state == .missing)
+            recoveryID = record.id
+        }
+        await handle.setManagedCreationPostSourceBarrierForTesting(nil)
+        #expect(try await handle.research.recoveryRecords().count == 1)
+        try await handle.research.resolveRecoveryRecord(try #require(recoveryID))
+        #expect(try await handle.research.recoveryRecords().isEmpty)
+        #expect(try await handle.services.controlStore.identityRecord(
+            vaultID: topic.id,
+            relativePath: path
+        ) == nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: topic.canonicalPath)
+                .appendingPathComponent(path).path
+        ))
+        await runtime.shutdown()
+    }
+
+    @Test("Researcher managed creation durably records retained and unreadable identity failures")
+    func researcherCreationIdentityFailureIsDurable() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try #require(fixture.assignment.vault(for: .topicKnowledge))
+        let cases: [(path: String, unreadable: Bool)] = [
+            ("Recovery/Externally Changed.md", false),
+            ("Recovery/Unreadable.md", true),
+        ]
+        var recoveryIDs: Set<UUID> = []
+        var foreignIdentities: [String: NoteIdentityRecord] = [:]
+
+        for item in cases {
+            let gate = ManagedCreationTestGate()
+            await handle.setManagedCreationPostSourceBarrierForTesting {
+                await gate.wait()
+            }
+            let creation = Task {
+                try await handle.documents.createManagedNote(
+                    ManagedNoteCreationRequest(
+                        vaultID: topic.id,
+                        destination: .exact(relativePath: item.path),
+                        body: "# Intended\n"
+                    )
+                )
+            }
+            #expect(await gate.waitUntilArrived())
+            let repositories = await handle.services.repositories
+            let repository = try #require(repositories[topic.id])
+            let created = try await repository.load(relativePath: item.path)
+            let foreign = try #require(try await handle.services.controlStore.identity(
+                forVaultID: topic.id,
+                relativePath: item.path,
+                fingerprint: created.fingerprint
+            ))
+            foreignIdentities[item.path] = foreign
+            let sourceURL = URL(fileURLWithPath: topic.canonicalPath)
+                .appendingPathComponent(item.path)
+            if item.unreadable {
+                try FileManager.default.removeItem(at: sourceURL)
+                try FileManager.default.createDirectory(
+                    at: sourceURL,
+                    withIntermediateDirectories: false
+                )
+            } else {
+                try Data("# Externally changed\n".utf8).write(
+                    to: sourceURL,
+                    options: .atomic
+                )
+            }
+            await gate.release()
+
+            do {
+                _ = try await creation.value
+                Issue.record("Expected managed-creation recovery for \(item.path).")
+            } catch let error as TriptychTransactionError {
+                guard case .recoveryRequired(let record) = error else {
+                    Issue.record("Unexpected managed-creation error for \(item.path): \(error)")
+                    continue
+                }
+                #expect(record.researchWrite == nil)
+                #expect(record.managedCreation?.target.relativePath == item.path)
+                #expect(record.managedCreation?.reservedIdentityID != foreign.id)
+                #expect(record.files.first?.state
+                    == (item.unreadable ? .unreadable : .externallyChanged))
+                recoveryIDs.insert(record.id)
+            }
+            await handle.setManagedCreationPostSourceBarrierForTesting(nil)
+        }
+
+        #expect(Set(try await handle.research.recoveryRecords().map(\.id))
+            == recoveryIDs)
+        await runtime.shutdown()
+
+        let reopenedRuntime = fixture.runtime()
+        let reopened = try await reopenedRuntime.openWorkspace(
+            id: fixture.assignment.id
+        )
+        #expect(Set(try await reopened.research.recoveryRecords().map(\.id))
+            == recoveryIDs)
+        for item in cases {
+            #expect(try await reopened.services.controlStore.identityRecord(
+                vaultID: topic.id,
+                relativePath: item.path
+            )?.id == foreignIdentities[item.path]?.id)
+        }
+        await reopenedRuntime.shutdown()
+    }
+
+    @Test("Managed creation recovery cannot remove a Zotero-bound reserved identity")
+    func researcherCreationRecoveryPreservesBinding() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try #require(fixture.assignment.vault(for: .topicKnowledge))
+        let path = "Bound Final Recovery.md"
+        let gate = ManagedCreationTestGate()
+        await handle.setManagedCreationPostSourceBarrierForTesting {
+            await gate.wait()
+        }
+        let creation = Task {
+            try await handle.documents.createManagedNote(
+                ManagedNoteCreationRequest(
+                    vaultID: topic.id,
+                    destination: .exact(relativePath: path),
+                    body: "# Intended\n"
+                )
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        let repositories = await handle.services.repositories
+        let repository = try #require(repositories[topic.id])
+        let current = try await repository.load(relativePath: path)
+        try await repository.removeCreatedFileForRollback(
+            relativePath: path,
+            createdRevision: current.fingerprint
+        )
+        await gate.release()
+        let recovery: TriptychMutationRecoveryRecord
+        do {
+            _ = try await creation.value
+            Issue.record("Expected final managed-creation recovery.")
+            await runtime.shutdown()
+            return
+        } catch let error as TriptychTransactionError {
+            guard case .recoveryRequired(let record) = error else {
+                Issue.record("Unexpected managed-creation error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            recovery = record
+        }
+        await handle.setManagedCreationPostSourceBarrierForTesting(nil)
+        let reservedID = try #require(
+            recovery.managedCreation?.reservedIdentityID
+        )
+        let binding = try AnalysisZoteroBinding(
+            noteID: reservedID,
+            library: .group(42),
+            itemKey: "ABCD"
+        )
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            binding,
+            expectedRevision: try await handle.services.controlStore
+                .zoteroBindings().revision
+        )
+
+        await #expect(throws: (any Error).self) {
+            try await handle.research.resolveRecoveryRecord(recovery.id)
+        }
+        #expect(try await handle.research.recoveryRecords().map(\.id) == [recovery.id])
+        #expect(try await handle.services.controlStore.identityRecord(
+            id: reservedID
+        ) != nil)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: reservedID) == binding)
         await runtime.shutdown()
     }
 
@@ -1033,6 +1501,30 @@ private struct InterruptedSaveManifestFixture: Codable {
     let candidate: DocumentFingerprint
     let createdAt: Date
     let retainedReason: String?
+}
+
+private actor ManagedCreationTestGate {
+    private var arrived = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        arrived = true
+        arrivalContinuation?.resume()
+        arrivalContinuation = nil
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilArrived() async -> Bool {
+        if arrived { return true }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+        return true
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
 }
 
 private struct LifecycleFixture: Sendable {

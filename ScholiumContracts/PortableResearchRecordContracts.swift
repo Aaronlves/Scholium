@@ -451,10 +451,16 @@ public struct PortableResearchMaterialUse: Codable, Hashable, Identifiable, Send
     }
 }
 
+public enum PortableResearchConfirmedChangeKind: String, Codable, Hashable, Sendable {
+    case created
+    case modified
+}
+
 public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let actor: ResearchContextActorClass
-    public let startingRevision: DocumentFingerprint
+    public let kind: PortableResearchConfirmedChangeKind
+    public let startingRevision: DocumentFingerprint?
     public let endingRevision: DocumentFingerprint
 
     public var id: UUID { noteID }
@@ -462,24 +468,30 @@ public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, 
     public init(
         noteID: UUID,
         actor: ResearchContextActorClass,
-        startingRevision: DocumentFingerprint,
+        startingRevision: DocumentFingerprint?,
         endingRevision: DocumentFingerprint
     ) throws {
+        let kind: PortableResearchConfirmedChangeKind = startingRevision == nil
+            ? .created
+            : .modified
         guard actor == .agent,
-              startingRevision != endingRevision,
-              PortableResearchRecordValidation.isValidFingerprint(startingRevision),
+              startingRevision.map({ $0 != endingRevision }) ?? true,
+              startingRevision.map(
+                PortableResearchRecordValidation.isValidFingerprint
+              ) ?? true,
               PortableResearchRecordValidation.isValidFingerprint(endingRevision) else {
             throw PortableResearchRecordError.invalidConfirmedChange
         }
         self.noteID = noteID
         self.actor = actor
+        self.kind = kind
         self.startingRevision = startingRevision
         self.endingRevision = endingRevision
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case noteID = "note_id"
-        case actor
+        case actor, kind
         case startingRevision = "starting_revision"
         case endingRevision = "ending_revision"
     }
@@ -496,15 +508,21 @@ public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, 
                 ResearchContextActorClass.self,
                 forKey: .actor
             ),
-            startingRevision: container.decode(
+            startingRevision: container.decodeIfPresent(
                 PortableResearchStrictFingerprint.self,
                 forKey: .startingRevision
-            ).value,
+            )?.value,
             endingRevision: container.decode(
                 PortableResearchStrictFingerprint.self,
                 forKey: .endingRevision
             ).value
         )
+        guard kind == (try container.decode(
+            PortableResearchConfirmedChangeKind.self,
+            forKey: .kind
+        )) else {
+            throw PortableResearchRecordError.invalidConfirmedChange
+        }
     }
 }
 
@@ -583,7 +601,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 8
+    public static let currentSchemaVersion = 9
 
     public let schemaVersion: Int
     public let id: UUID
@@ -683,8 +701,11 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   guard let participant = participatingByID[change.noteID] else {
                       return false
                   }
-                  return participant.isTombstone
-                      || participant.endingRevision == change.endingRevision
+                  guard participant.isTombstone
+                        || participant.endingRevision == change.endingRevision else {
+                      return false
+                  }
+                  return true
               }),
               discrepancies.allSatisfy({ discrepancy in
                   participatingByID[discrepancy.noteID] != nil

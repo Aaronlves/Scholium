@@ -567,11 +567,15 @@ struct DerivedRefreshStatusTests {
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
 
         let original = try await handle.documents.load(workID)
-        let revisedSource = original.rawContent
+        let revisedBody = original.body
             + "\nAn explicit premise now supports the inference.\n"
+        let revisedSource = try original.applying(
+            .body(revisedBody),
+            timestampKey: nil
+        )
         let write = try await writePreparedResearchDocument(
             for: revise,
-            content: revisedSource,
+            body: revisedBody,
             handle: handle
         )
         #expect(write.state == .committed)
@@ -627,7 +631,7 @@ struct DerivedRefreshStatusTests {
                 confirmationToken: revise.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
                 summary: "Revised the Work and linked final Fidelity evidence.",
-                didModifyTarget: true,
+                didModifyTarget: false,
                 childRunIDs: [fidelity.runID]
             )
         )
@@ -646,7 +650,7 @@ struct DerivedRefreshStatusTests {
                 recordTitle: try ResearchRecordTitle("Test research result"),
                 finalTargetFingerprint: revisedFingerprint,
                 summary: "Coordinated the selected manuscript activity.",
-                didModifyTarget: true,
+                didModifyTarget: false,
                 childRunIDs: [revise.runID]
             )
         )

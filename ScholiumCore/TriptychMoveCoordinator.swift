@@ -1,50 +1,295 @@
 import ScholiumContracts
+import CryptoKit
 import Foundation
 
 public actor TriptychMutationRecoveryStore {
-    private struct Payload: Codable {
-        var records: [TriptychMutationRecoveryRecord]
-    }
+    private static let recordsDirectory = "records"
+    private static let lockName = "transaction-recovery.lock"
+    private static let maximumByteCount = 8 * 1024 * 1024
 
     public nonisolated let storageURL: URL
-    private let fileURL: URL
-    private let fileManager: FileManager
+    private let triptychID: UUID
+    private let storage: SecureRecordDirectory
+    private let lock: AdvisoryFileLock
 
     public init(storageURL: URL, fileManager: FileManager = .default) throws {
         self.storageURL = storageURL.standardizedFileURL
-        self.fileURL = self.storageURL.appendingPathComponent("transaction-recovery.json")
-        self.fileManager = fileManager
+        triptychID = UUID(uuidString: self.storageURL
+            .deletingLastPathComponent().lastPathComponent)
+            ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
         try fileManager.createDirectory(at: self.storageURL, withIntermediateDirectories: true)
+        let storage = SecureRecordDirectory(
+            trustedRootURL: self.storageURL.deletingLastPathComponent(),
+            components: [self.storageURL.lastPathComponent],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: Self.maximumByteCount
+        )
+        try storage.ensureDirectories([Self.recordsDirectory])
+        let lock = try AdvisoryFileLock(
+            directory: storage,
+            fileName: Self.lockName
+        )
+        try lock.withExclusiveLock {
+            try storage.recoverAbandonedDeletionFiles(in: Self.recordsDirectory)
+            try storage.removeAbandonedStagingFiles(in: [Self.recordsDirectory])
+        }
+        self.storage = storage
+        self.lock = lock
+    }
+
+    init(
+        storageURL: URL,
+        fileManager: FileManager = .default,
+        postCommitFault: @escaping @Sendable (String) throws -> Void
+    ) throws {
+        self.storageURL = storageURL.standardizedFileURL
+        triptychID = UUID(uuidString: self.storageURL
+            .deletingLastPathComponent().lastPathComponent)
+            ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        try fileManager.createDirectory(at: self.storageURL, withIntermediateDirectories: true)
+        let storage = SecureRecordDirectory(
+            trustedRootURL: self.storageURL.deletingLastPathComponent(),
+            components: [self.storageURL.lastPathComponent],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: Self.maximumByteCount,
+            postCommitFault: postCommitFault
+        )
+        try storage.ensureDirectories([Self.recordsDirectory])
+        let lock = try AdvisoryFileLock(
+            directory: storage,
+            fileName: Self.lockName
+        )
+        try lock.withExclusiveLock {
+            try storage.recoverAbandonedDeletionFiles(in: Self.recordsDirectory)
+            try storage.removeAbandonedStagingFiles(in: [Self.recordsDirectory])
+        }
+        self.storage = storage
+        self.lock = lock
+    }
+
+    init(
+        storageURL: URL,
+        fileManager: FileManager = .default,
+        preCommitFault: @escaping @Sendable (String) throws -> Void
+    ) throws {
+        self.storageURL = storageURL.standardizedFileURL
+        triptychID = UUID(uuidString: self.storageURL
+            .deletingLastPathComponent().lastPathComponent)
+            ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        try fileManager.createDirectory(at: self.storageURL, withIntermediateDirectories: true)
+        let storage = SecureRecordDirectory(
+            trustedRootURL: self.storageURL.deletingLastPathComponent(),
+            components: [self.storageURL.lastPathComponent],
+            directoryMode: 0o700,
+            fileMode: 0o600,
+            maximumByteCount: Self.maximumByteCount,
+            preCommitFault: preCommitFault
+        )
+        try storage.ensureDirectories([Self.recordsDirectory])
+        let lock = try AdvisoryFileLock(
+            directory: storage,
+            fileName: Self.lockName
+        )
+        try lock.withExclusiveLock {
+            try storage.recoverAbandonedDeletionFiles(in: Self.recordsDirectory)
+            try storage.removeAbandonedStagingFiles(in: [Self.recordsDirectory])
+        }
+        self.storage = storage
+        self.lock = lock
     }
 
     public func pending() throws -> [TriptychMutationRecoveryRecord] {
-        try load().records.sorted { $0.createdAt > $1.createdAt }
+        try lock.withSharedLock {
+            try loadRecords().sorted { $0.createdAt > $1.createdAt }
+        }
     }
 
     public func record(_ record: TriptychMutationRecoveryRecord) throws {
-        var payload = try load()
-        payload.records.removeAll { $0.id == record.id }
-        payload.records.append(record)
-        try persist(payload)
-    }
-
-    public func resolve(_ id: UUID) throws {
-        var payload = try load()
-        payload.records.removeAll { $0.id == id }
-        try persist(payload)
-    }
-
-    private func load() throws -> Payload {
-        guard fileManager.fileExists(atPath: fileURL.path) else {
-            return Payload(records: [])
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                try persist(record)
+            }
         }
-        return try JSONDecoder().decode(Payload.self, from: Data(contentsOf: fileURL))
     }
 
-    private func persist(_ payload: Payload) throws {
+    public func resolve(_ record: TriptychMutationRecoveryRecord) throws {
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                guard let current = try loadRecords().first(where: { $0.id == record.id }) else {
+                    return
+                }
+                guard current == record else {
+                    throw SecureRecordDirectoryError.replacementNotCommitted(
+                        "The transaction recovery evidence changed before deletion."
+                    )
+                }
+                let fileName = Self.fileName(record.id)
+                guard try storage.readIfPresent(
+                    directory: Self.recordsDirectory,
+                    fileName: fileName
+                ) != nil else {
+                    throw SecureRecordDirectoryError.unsafe(
+                        "An unreadable transaction recovery entry is not a resolvable record."
+                    )
+                }
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                try storage.remove(
+                    directory: Self.recordsDirectory,
+                    fileName: fileName,
+                    expected: encoder.encode(record)
+                )
+            }
+        }
+    }
+
+    private func loadRecords() throws -> [TriptychMutationRecoveryRecord] {
+        try storage.fileNames(in: Self.recordsDirectory).map { fileName in
+            guard fileName.hasSuffix(".json"),
+                  let id = UUID(uuidString: String(fileName.dropLast(5))),
+                  fileName == Self.fileName(id) else {
+                return unreadableRecord(
+                    id: Self.unreadableRecordID(
+                        triptychID: triptychID,
+                        fileName: fileName
+                    ),
+                    fileName: fileName,
+                    error: SecureRecordDirectoryError.unsafe(
+                        "The transaction recovery directory contains an invalid record name."
+                    )
+                )
+            }
+            do {
+                let data = try storage.read(
+                    directory: Self.recordsDirectory,
+                    fileName: fileName
+                )
+                let record = try JSONDecoder().decode(
+                    TriptychMutationRecoveryRecord.self,
+                    from: data
+                )
+                guard record.id == id else {
+                    throw SecureRecordDirectoryError.unsafe(
+                        "A transaction recovery record has the wrong identity."
+                    )
+                }
+                return record
+            } catch {
+                return unreadableRecord(
+                    id: id,
+                    fileName: fileName,
+                    error: error
+                )
+            }
+        }
+    }
+
+    private func unreadableRecord(
+        id: UUID,
+        fileName: String,
+        error: any Error
+    ) -> TriptychMutationRecoveryRecord {
+        TriptychMutationRecoveryRecord(
+            id: id,
+            triptychID: triptychID,
+            operation: .noteSave,
+            createdAt: Date(timeIntervalSince1970: 0),
+            failure: "Recovery record \(fileName) is unreadable and remains unchanged: \(error.localizedDescription)",
+            files: [TriptychMutationRecoveryFile(
+                vaultID: nil,
+                path: "records/\(fileName)",
+                role: .savedNote,
+                beforeRevision: nil,
+                intendedRevision: nil,
+                observedRevision: nil,
+                state: .unreadable,
+                detail: "Reveal the operation records in Finder and preserve this file for manual recovery."
+            )]
+        )
+    }
+
+    private func persist(_ record: TriptychMutationRecoveryRecord) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(payload).write(to: fileURL, options: .atomic)
+        let data = try encoder.encode(record)
+        let fileName = Self.fileName(record.id)
+        let readback: Data
+        if try storage.readIfPresent(
+            directory: Self.recordsDirectory,
+            fileName: fileName
+        ) == nil {
+            readback = try storage.createExclusive(
+                data,
+                directory: Self.recordsDirectory,
+                fileName: fileName
+            )
+        } else {
+            readback = try storage.replace(
+                data,
+                directory: Self.recordsDirectory,
+                fileName: fileName
+            )
+        }
+        guard try JSONDecoder().decode(
+            TriptychMutationRecoveryRecord.self,
+            from: readback
+        ) == record else {
+            throw SecureRecordDirectoryError.replacementCommitUncertain(
+                "The transaction recovery readback did not match the requested record."
+            )
+        }
+    }
+
+    private static func fileName(_ id: UUID) -> String {
+        id.uuidString.lowercased() + ".json"
+    }
+
+    private static func unreadableRecordID(
+        triptychID: UUID,
+        fileName: String
+    ) -> UUID {
+        let seed = "transaction-recovery-unreadable\u{1F}\(triptychID.uuidString.lowercased())\u{1F}\(fileName)"
+        var hexadecimal = Array(SHA256.hash(data: Data(seed.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+            .prefix(32))
+        hexadecimal[12] = "5"
+        hexadecimal[16] = "8"
+        let value = String(hexadecimal[0..<8]) + "-" + String(hexadecimal[8..<12]) + "-"
+            + String(hexadecimal[12..<16]) + "-" + String(hexadecimal[16..<20]) + "-"
+            + String(hexadecimal[20..<32])
+        return UUID(uuidString: value)!
+    }
+
+    private static func coordinateWrite<T>(
+        at url: URL,
+        _ operation: () throws -> T
+    ) throws -> T {
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordinationError: NSError?
+        var result: Result<T, Error>?
+        coordinator.coordinate(
+            writingItemAt: url,
+            options: .forMerging,
+            error: &coordinationError
+        ) { coordinatedURL in
+            guard coordinatedURL.standardizedFileURL == url.standardizedFileURL else {
+                result = .failure(SecureRecordDirectoryError.unsafe(
+                    "The transaction recovery directory moved during coordination."
+                ))
+                return
+            }
+            result = Result { try operation() }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else {
+            throw SecureRecordDirectoryError.unsafe(
+                "The transaction recovery coordinator did not execute the write."
+            )
+        }
+        return try result.get()
     }
 }
 

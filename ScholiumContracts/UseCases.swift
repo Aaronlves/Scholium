@@ -11,15 +11,10 @@ public protocol DocumentUseCases: Sendable {
         _ id: VaultQualifiedNoteID,
         content: String
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
-    func create(
-        _ request: DocumentCreationRequest
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
-    /// Creates one managed note from the role's exact Settings seed at the
-    /// first unoccupied default path in `folderRelativePath`.
-    func createUntitledNote(
-        inVault vaultID: UUID,
-        folderRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit>
+    /// Creates one note through the sole role-seed and typed-metadata owner.
+    func createManagedNote(
+        _ request: ManagedNoteCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>
     /// Creates the first unoccupied default folder in `parentRelativePath`.
     func createUntitledFolder(
         inVault vaultID: UUID,
@@ -114,6 +109,16 @@ public protocol DocumentUseCases: Sendable {
 }
 
 public extension DocumentUseCases {
+    func createUntitledNote(
+        inVault vaultID: UUID,
+        folderRelativePath: String?
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
+        try await createManagedNote(try ManagedNoteCreationRequest(
+            vaultID: vaultID,
+            destination: .untitled(folderRelativePath: folderRelativePath)
+        ))
+    }
+
     func documentPreviewCatalog(
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,

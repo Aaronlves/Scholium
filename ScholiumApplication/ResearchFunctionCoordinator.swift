@@ -81,6 +81,9 @@ protocol ResearchFunctionCoordinatorHost: Actor {
 
     func requireActive() throws
     func researchFunctionCurrentSnapshot() -> WorkspaceSnapshot
+    func researchFunctionControlledFingerprint(
+        for target: ResearchFunctionTarget
+    ) async throws -> DocumentFingerprint
     func resolveDefaultResearchActionContext(
         for request: ResearchFunctionRequest
     ) async throws -> ResolvedResearchActionContext
@@ -237,6 +240,17 @@ final class ResearchFunctionCoordinator: Sendable {
         }), !hasPendingWriteRecovery else {
             throw ResearchFunctionContractError.unresolvedWriteRecovery(runID)
         }
+        guard !stored.documentWriteRecords.contains(where: {
+            $0.state == .committed
+        }) else {
+            // A lightweight cancelled completion cannot carry the canonical
+            // Result payload required by a portable Research Record. Refuse
+            // the lossy terminal transition instead of orphaning confirmed
+            // source changes from Review, comparison, and recovery provenance.
+            throw ResearchFunctionContractError.committedWritesRequireCompletion(
+                runID
+            )
+        }
         let snapshot = stored.snapshot
         let completion = ResearchFunctionCompletion(
             runID: runID,
@@ -274,6 +288,38 @@ final class ResearchFunctionCoordinator: Sendable {
 extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
     func researchFunctionCurrentSnapshot() -> WorkspaceSnapshot {
         currentSnapshot
+    }
+
+    func researchFunctionControlledFingerprint(
+        for target: ResearchFunctionTarget
+    ) async throws -> DocumentFingerprint {
+        let lease = try await beginResearchControlledSourceObservation()
+        defer { endResearchControlledSourceObservation(lease) }
+        guard WorkspaceDocumentLifecycle(
+            relativePath: target.note.relativePath
+        ) == .active,
+              ResearchFunctionTargetRole(
+                vaultRole: try vault(id: target.note.vaultID).role
+              ) == target.role,
+              let identityBefore = try await services.controlStore.identityRecord(
+                vaultID: target.note.vaultID,
+                relativePath: target.note.relativePath
+              ), identityBefore.id == target.noteID else {
+            throw ResearchFunctionContractError.targetIdentityChanged
+        }
+        if let barrier = researchFunctionControlledObservationBarrierForTesting {
+            await barrier()
+        }
+        let document = try await repository(vaultID: target.note.vaultID).load(
+            relativePath: target.note.relativePath
+        )
+        guard let identityAfter = try await services.controlStore.identityRecord(
+            vaultID: target.note.vaultID,
+            relativePath: target.note.relativePath
+        ), identityAfter.id == target.noteID else {
+            throw ResearchFunctionContractError.targetIdentityChanged
+        }
+        return document.fingerprint
     }
 
     func resolveDefaultResearchActionContext(

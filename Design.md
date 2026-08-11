@@ -247,8 +247,9 @@ adaptation continue to follow §20.
   **floating control**, **bounded panel**, or **search overlay**. Structural
   depth is limited to the Workspace **document-navigation boundary** and Record
   detail **reading-evidence boundary**. Each is noninteractive, motionless,
-  right-to-left aware, absent with its receiving plane, and secondary to the
-  semantic surface and 1pt divider. Active Light uses **0.04** opacity,
+  defined with logical edges, structurally mirrorable for §17's deferred
+  right-to-left interface scope, absent with its receiving plane, and secondary
+  to the semantic surface and 1pt divider. Active Light uses **0.04** opacity,
   **8pt** blur, **2pt** logical offset into the receiving plane, zero vertical
   offset, and no spread; Dark, inactive, or Reduce Transparency uses **0.02**
   without compounding. Increase Contrast removes the shadow and strengthens
@@ -429,8 +430,8 @@ Visible supporting copy is optional. Add it only when the label and immediate
 context cannot communicate a necessary research boundary, unfamiliar result,
 or first executable repair. Use one short sentence or fragment authored to fit
 within two lines at the component's ordinary supported width and default text
-size. Localization, mixed scripts, and 200% text may reflow rather than
-truncate, but the source wording does not expand to compensate. An unavailable
+size. English and Simplified Chinese localization, mixed scripts, and 200% text
+may reflow rather than truncate, but the source wording does not expand to compensate. An unavailable
 Action replaces its ordinary explanation with only the first executable
 repair; it does not show both.
 

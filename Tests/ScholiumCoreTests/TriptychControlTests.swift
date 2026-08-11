@@ -420,7 +420,13 @@ struct TriptychControlTests {
         let store = TriptychControlStore(worksVaultURL: fixture.works)
         let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
         _ = try await store.bootstrap(vaultIDs: ids)
-        let noteID = UUID()
+        let analysesID = try #require(ids[.paperAnalysis])
+        let note = try #require(try await store.identity(
+            forVaultID: analysesID,
+            relativePath: "Bound.md",
+            fingerprint: DocumentFingerprint(content: "Bound")
+        ))
+        let noteID = note.id
         let initial = try await store.zoteroBindings()
         let binding = try AnalysisZoteroBinding(
             noteID: noteID,
@@ -495,14 +501,333 @@ struct TriptychControlTests {
             vaultID: analysesID,
             relativePath: "A.md"
         )
-        _ = try await store.purgeIdentity(
-            id: original.id,
-            vaultID: analysesID,
-            relativePath: "A.md"
-        )
+        _ = try await store.purgeIdentity(try #require(backup))
         #expect(try await store.zoteroBindings().binding(for: original.id) == nil)
         try await store.restorePurgedIdentity(backup)
         #expect(try await store.zoteroBindings().binding(for: original.id)?.itemKey == "ABCD")
+    }
+
+    @Test("Creation recovery cannot purge an identity with a Zotero binding")
+    func ordinaryIdentityPurgePreservesBoundIdentity() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let analysesID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: analysesID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let fingerprint = DocumentFingerprint(content: "Analysis")
+        let identity = try #require(try await store.identity(
+            forVaultID: analysesID,
+            relativePath: "Bound.md",
+            fingerprint: fingerprint
+        ))
+        let binding = try AnalysisZoteroBinding(
+            noteID: identity.id,
+            library: .group(42),
+            itemKey: "ABCD"
+        )
+        _ = try await store.setZoteroBinding(
+            binding,
+            expectedRevision: try await store.zoteroBindings().revision
+        )
+
+        await #expect(throws: TriptychControlError.self) {
+            try await store.purgeIdentity(
+                id: identity.id,
+                vaultID: analysesID,
+                relativePath: "Bound.md"
+            )
+        }
+        #expect(try await store.identityRecord(
+            vaultID: analysesID,
+            relativePath: "Bound.md"
+        ) == identity)
+        #expect(try await store.zoteroBindings().binding(for: identity.id) == binding)
+    }
+
+    @Test("Permanent purge refuses identity ambiguity added after its durable preimage")
+    func permanentPurgeFreezesIdentitySubstate() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: UUID(),
+            .topicKnowledge: UUID(),
+            .output: vaultID,
+        ])
+        let fingerprint = DocumentFingerprint(content: "ambiguous bytes")
+        let first = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "First.md",
+            fingerprint: fingerprint
+        ))
+        _ = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "Second.md",
+            fingerprint: fingerprint
+        ))
+        let backup = try #require(try await store.prepareIdentityPurge(
+            id: first.id,
+            vaultID: vaultID,
+            relativePath: "First.md"
+        ))
+        #expect(backup.ambiguities.isEmpty)
+
+        let concurrent = try await store.reconcileIdentityInventory(
+            vaultID: vaultID,
+            documents: [("Moved.md", fingerprint)]
+        )
+        #expect(concurrent.ambiguities.first?.candidates.count == 2)
+        await #expect(throws: TriptychControlError.self) {
+            try await store.purgeIdentity(backup)
+        }
+
+        #expect(try await store.identityRecord(
+            vaultID: vaultID,
+            relativePath: "First.md"
+        )?.id == first.id)
+        let retained = try await store.reconcileIdentityInventory(
+            vaultID: vaultID,
+            documents: [("Moved.md", fingerprint)]
+        )
+        #expect(retained.ambiguities.first?.candidates.count == 2)
+        #expect(retained.ambiguities.first?.candidates.contains(where: {
+            $0.id == first.id
+        }) == true)
+    }
+
+    @Test("Managed creation orphan removal fences a concurrent Zotero bind")
+    func managedCreationIdentityRemovalFencesBinding() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
+        let store = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL
+        )
+        let vaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: vaultID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let intended = DocumentFingerprint(content: "intended")
+        let reservedID = UUID()
+        _ = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "Created.md",
+            fingerprint: intended,
+            preferredID: reservedID
+        ))
+        let barrier = PortableControlWriteBarrier()
+        let reconciling = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL,
+            controlWriteHook: { url in
+                guard url.lastPathComponent == "identities.json" else { return }
+                barrier.pause()
+            }
+        )
+        let removal = Task {
+            try await reconciling.reconcileManagedCreationIdentity(
+                vaultID: vaultID,
+                relativePath: "Created.md",
+                intendedRevision: intended,
+                reservedIdentityID: reservedID,
+                sourceIsPresent: false
+            )
+        }
+        #expect(barrier.waitUntilPaused())
+        let bindingRevision = try await store.zoteroBindings().revision
+        let binding = try AnalysisZoteroBinding(
+            noteID: reservedID,
+            library: .group(42),
+            itemKey: "ABCD"
+        )
+        let bindingWrite = Task {
+            try await store.setZoteroBinding(
+                binding,
+                expectedRevision: bindingRevision
+            )
+        }
+        barrier.resume()
+        #expect(try await removal.value.identity == nil)
+        await #expect(throws: TriptychControlError.self) {
+            _ = try await bindingWrite.value
+        }
+        #expect(try await store.identityRecord(
+            vaultID: vaultID,
+            relativePath: "Created.md"
+        ) == nil)
+        #expect(try await store.identityRecord(id: reservedID) == nil)
+        #expect(try await store.zoteroBindings().binding(for: reservedID) == nil)
+    }
+
+    @Test("Managed creation replacement cannot overwrite a final-window reserved identity")
+    func managedCreationIdentityReplacementRejectsReservedRace() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
+        let store = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL
+        )
+        let vaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: vaultID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let intended = DocumentFingerprint(content: "intended")
+        let reserved = NoteIdentityRecord(
+            id: UUID(),
+            vaultID: vaultID,
+            relativePath: "Elsewhere.md",
+            fingerprint: DocumentFingerprint(content: "elsewhere")
+        )
+        let racing = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL,
+            controlWriteHook: { url in
+                guard url.lastPathComponent == "identities.json" else { return }
+                let data = try Data(contentsOf: url)
+                var object = try #require(
+                    JSONSerialization.jsonObject(with: data) as? [String: Any]
+                )
+                var records = try #require(object["records"] as? [[String: Any]])
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let encoded = try encoder.encode(reserved)
+                records.append(try #require(
+                    JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+                ))
+                object["records"] = records
+                try JSONSerialization.data(withJSONObject: object)
+                    .write(to: url, options: .atomic)
+            }
+        )
+
+        await #expect(throws: TriptychControlError.self) {
+            try await racing.reconcileManagedCreationIdentity(
+                vaultID: vaultID,
+                relativePath: "Created.md",
+                intendedRevision: intended,
+                reservedIdentityID: reserved.id,
+                sourceIsPresent: true
+            )
+        }
+        #expect(try await store.identityRecord(
+            vaultID: vaultID,
+            relativePath: "Created.md"
+        ) == nil)
+        let retainedReserved = try #require(try await store.identityRecord(
+            id: reserved.id
+        ))
+        #expect(retainedReserved.vaultID == reserved.vaultID)
+        #expect(retainedReserved.relativePath == reserved.relativePath)
+        #expect(retainedReserved.fingerprint == reserved.fingerprint)
+    }
+
+    @Test("Managed creation recovery never replaces another same-revision identity")
+    func managedCreationIdentityRejectsForeignPathIdentity() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
+        let store = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL
+        )
+        let vaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: vaultID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let intended = DocumentFingerprint(content: "identical intended bytes")
+
+        for sourceIsPresent in [true, false] {
+            let path = sourceIsPresent ? "Present.md" : "Absent.md"
+            let foreign = try #require(try await store.identity(
+                forVaultID: vaultID,
+                relativePath: path,
+                fingerprint: intended
+            ))
+            await #expect(throws: TriptychControlError.self) {
+                try await store.reconcileManagedCreationIdentity(
+                    vaultID: vaultID,
+                    relativePath: path,
+                    intendedRevision: intended,
+                    reservedIdentityID: UUID(),
+                    sourceIsPresent: sourceIsPresent
+                )
+            }
+            #expect(try await store.identityRecord(
+                vaultID: vaultID,
+                relativePath: path
+            ) == foreign)
+        }
+    }
+
+    @Test("Managed creation rolls identity back after an uncoordinated binding change")
+    func managedCreationIdentityRollsBackBindingRace() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let coordinationURL = fixture.root.appendingPathComponent("Application Support/Triptych")
+        let store = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL
+        )
+        let vaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: vaultID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let other = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "Other.md",
+            fingerprint: DocumentFingerprint(content: "other")
+        ))
+        let externalBinding = try AnalysisZoteroBinding(
+            noteID: other.id,
+            library: .group(42),
+            itemKey: "ABCD"
+        )
+        let bindingsURL = fixture.root
+            .appendingPathComponent(".scholium/analysis-zotero-bindings.json")
+        let reservedID = UUID()
+        let intended = DocumentFingerprint(content: "intended")
+        let racing = try TriptychControlStore(
+            worksVaultURL: fixture.works,
+            coordinationURL: coordinationURL,
+            controlWriteHook: { url in
+                guard url.lastPathComponent == "identities.json" else { return }
+                let bindingObject = try #require(
+                    JSONSerialization.jsonObject(
+                        with: JSONEncoder().encode(externalBinding)
+                    ) as? [String: Any]
+                )
+                try JSONSerialization.data(withJSONObject: [
+                    "schemaVersion": 1,
+                    "bindings": [bindingObject],
+                ]).write(to: bindingsURL, options: .atomic)
+            }
+        )
+
+        await #expect(throws: TriptychControlError.self) {
+            try await racing.reconcileManagedCreationIdentity(
+                vaultID: vaultID,
+                relativePath: "Created.md",
+                intendedRevision: intended,
+                reservedIdentityID: reservedID,
+                sourceIsPresent: true
+            )
+        }
+        #expect(try await store.identityRecord(
+            vaultID: vaultID,
+            relativePath: "Created.md"
+        ) == nil)
+        #expect(try await store.identityRecord(id: reservedID) == nil)
+        #expect(try await store.zoteroBindings().binding(for: other.id)
+            == externalBinding)
     }
 
     @Test("Bootstrap writes only portable state beside Works")
@@ -913,5 +1238,23 @@ struct TriptychControlTests {
         func remove() {
             try? FileManager.default.removeItem(at: root)
         }
+    }
+}
+
+private final class PortableControlWriteBarrier: @unchecked Sendable {
+    private let paused = DispatchSemaphore(value: 0)
+    private let release = DispatchSemaphore(value: 0)
+
+    func pause() {
+        paused.signal()
+        release.wait()
+    }
+
+    func waitUntilPaused() -> Bool {
+        paused.wait(timeout: .now() + 2) == .success
+    }
+
+    func resume() {
+        release.signal()
     }
 }

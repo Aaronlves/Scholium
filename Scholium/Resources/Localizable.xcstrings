@@ -8307,6 +8307,22 @@
         }
       }
     },
+    "Create Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建笔记"
+          }
+        }
+      }
+    },
     "Create Research Skill" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8450,6 +8466,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已创建 %lld 个独立配置副本。"
+          }
+        }
+      }
+    },
+    "Created Agent revision is current" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Created Agent revision is current"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前为 Agent 创建的版本"
+          }
+        }
+      }
+    },
+    "Created revision" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Created revision"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建时修订"
           }
         }
       }
@@ -20146,6 +20194,22 @@
         }
       }
     },
+    "Properties: %arg" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Properties: %arg"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "属性：%arg"
+          }
+        }
+      }
+    },
     "Properties configuration saved" : {
       "localizations" : {
         "en" : {
@@ -21073,6 +21137,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "恢复问题（%lld）"
+          }
+        }
+      }
+    },
+    "Reconciliation completed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "协调恢复已完成。"
+          }
+        }
+      }
+    },
+    "Reconciliation completed. Derived workspace views could not refresh yet; the recovery list has been reloaded from durable records." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "协调恢复已完成。派生工作区视图暂时无法刷新；恢复列表已从持久记录重新载入。"
           }
         }
       }
@@ -26003,18 +26087,18 @@
         }
       }
     },
-    "Select the requested Notes this Run may modify." : {
+    "Select the requested Note targets this Run may create or modify." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Select the requested Notes this Run may modify."
+            "value" : "Select the requested Note targets this Run may create or modify."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择本次运行可以修改的笔记。"
+            "value" : "选择本次运行可以创建或修改的笔记目标。"
           }
         }
       }
@@ -26111,18 +26195,18 @@
         }
       }
     },
-    "Selects this Note for this Run." : {
+    "Selects this exact target and operation for this Run." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Selects this Note for this Run."
+            "value" : "Selects this exact target and operation for this Run."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "为本次运行选择此笔记。"
+            "value" : "为本次运行选择此精确目标与操作。"
           }
         }
       }
@@ -34199,7 +34283,142 @@
           }
         }
       }
-    }
+    },
+    "%arg Notes created by Agent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%arg Notes created by Agent"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%arg 篇笔记由 Agent 创建"
+          }
+        }
+      }
+    },
+    "%arg confirmed source changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%arg confirmed source changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%arg 项已确认的源文本修改"
+          }
+        }
+      }
+    },
+    "%arg modified, %arg created" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$arg modified, %2$arg created"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$arg 项修改，%2$arg 篇创建"
+          }
+        }
+      }
+    },
+    "Compare modified Notes below. Created Notes retain visible provenance and Note Review without a fabricated before-source comparison." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compare modified Notes below. Created Notes retain visible provenance and Note Review without a fabricated before-source comparison."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在下方比较被修改的笔记。新建笔记仍保留可见来源记录与笔记审阅，但不会虚构修改前的源文本比较。"
+          }
+        }
+      }
+    },
+    "Created Notes have visible provenance and Note Review, but no fabricated before-source comparison or direct Undo." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Created Notes have visible provenance and Note Review, but no fabricated before-source comparison or direct Undo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建笔记具有可见来源记录与笔记审阅，但不会虚构修改前的源文本比较，也不提供直接撤销。"
+          }
+        }
+      }
+    },
+    "No confirmed source changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No confirmed source changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有已确认的源文本修改"
+          }
+        }
+      }
+    },
+    "This result did not change a Note." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This result did not change a Note."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此结果没有修改任何笔记。"
+          }
+        }
+      }
+    },
+    "View the exact Agent changes. Reading or comparing them does not mark any Note reviewed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "View the exact Agent changes. Reading or comparing them does not mark any Note reviewed."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Agent 的精确修改。阅读或比较这些修改不会将任何笔记标记为已审阅。"
+          }
+        }
+      }
+    },
+    "Reconcile Interrupted Agent Save?" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"核对中断的 Agent 保存？"}}}},
+    "Reconcile Agent Save" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"核对 Agent 保存"}}}},
+    "Scholium will recheck the exact Markdown source and portable identity. It will stop without changing either unless the source proves the authorized created revision or proves that no Note was created." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"Scholium 会重新检查精确的 Markdown 源文本与可携带身份。除非源文本能证明获授权的新建版本，或证明笔记并未创建，否则它会停止且不更改二者。"}}}},
+    "Scholium will recheck the exact current source, reconcile the Run with the interrupted save evidence, and clear completed machine-local recovery records. It will not replace Markdown source." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"Scholium 会重新检查当前精确源文本，依据中断的保存证据核对该 Run，并清理已完成的本机恢复记录；它不会替换 Markdown 源文本。"}}}},
+    "Reconcile Created Note?" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"核对新建笔记？"}}}},
+    "Reconcile Created Note" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"核对新建笔记"}}}},
+    "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, any Zotero binding on an identity that would be removed, or changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"Scholium 会重新检查精确的 Markdown 源文本与可携带身份。它只会为精确的新建源文本添加预留身份，或在源文本不存在时移除同一个预留身份。若路径上存在任何其他身份、待移除身份已绑定 Zotero，或状态已变化或不可读，恢复都会停止并等待研究者另行处理。Markdown 源文本绝不会被创建、替换或移除，任何其他可携带身份也不会被更改。"}}}}
   },
   "version" : "1.0"
 }

@@ -330,6 +330,351 @@ struct TriptychMoveCoordinatorTests {
         #expect(try await fixture.repository(.paperAnalysis).load(relativePath: "B.md").fingerprint == target.fingerprint)
     }
 
+    @Test("Independent recovery stores merge concurrent record and resolve mutations")
+    func recoveryStoreSerializesAcrossRuntimes() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Store-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = try TriptychMutationRecoveryStore(storageURL: root)
+        let second = try TriptychMutationRecoveryStore(storageURL: root)
+        let triptychID = UUID()
+        let vaultID = UUID()
+        func record(_ path: String) -> TriptychMutationRecoveryRecord {
+            TriptychMutationRecoveryRecord(
+                triptychID: triptychID,
+                operation: .noteSave,
+                failure: "Fixture",
+                files: [TriptychMutationRecoveryFile(
+                    vaultID: vaultID,
+                    path: path,
+                    role: .savedNote,
+                    beforeRevision: DocumentFingerprint(content: "before"),
+                    intendedRevision: DocumentFingerprint(content: "after"),
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: "Fixture"
+                )]
+            )
+        }
+        let a = record("A.md")
+        let b = record("B.md")
+
+        async let firstRecord: Void = first.record(a)
+        async let secondRecord: Void = second.record(b)
+        _ = try await (firstRecord, secondRecord)
+        #expect(Set(try await first.pending().map(\.id)) == [a.id, b.id])
+
+        let c = record("C.md")
+        async let resolveA: Void = first.resolve(a)
+        async let recordC: Void = second.record(c)
+        _ = try await (resolveA, recordC)
+        #expect(Set(try await second.pending().map(\.id)) == [b.id, c.id])
+    }
+
+    @Test("A second store cannot clean another writer's live staging file")
+    func recoveryStoreInitializationWaitsForWriter() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Init-Lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stagingReady = BlockingTestSignal()
+        let releaseWriter = BlockingTestSignal()
+        let writer = try TriptychMutationRecoveryStore(
+            storageURL: root,
+            preCommitFault: { fileName in
+                guard fileName.hasSuffix(".json") else { return }
+                stagingReady.signal()
+                _ = releaseWriter.wait(seconds: 10)
+            }
+        )
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: UUID(),
+            operation: .noteSave,
+            failure: "Fixture",
+            files: []
+        )
+        let write = Task { try await writer.record(record) }
+        #expect(stagingReady.wait(seconds: 2))
+
+        let initializerStarted = BlockingTestSignal()
+        let initializerFinished = BlockingTestSignal()
+        let second = Task.detached {
+            initializerStarted.signal()
+            defer { initializerFinished.signal() }
+            return try TriptychMutationRecoveryStore(storageURL: root)
+        }
+        #expect(initializerStarted.wait(seconds: 2))
+        #expect(!initializerFinished.wait(seconds: 0.05))
+        releaseWriter.signal()
+
+        try await write.value
+        let reopened = try await second.value
+        #expect(try await reopened.pending() == [record])
+    }
+
+    @Test("A stale resolver cannot delete newer evidence for the same recovery ID")
+    func recoveryStoreResolveIsExact() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Exact-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = try TriptychMutationRecoveryStore(storageURL: root)
+        let second = try TriptychMutationRecoveryStore(storageURL: root)
+        let triptychID = UUID()
+        let vaultID = UUID()
+        let id = UUID()
+        func record(state: TriptychMutationRecoveryState) -> TriptychMutationRecoveryRecord {
+            TriptychMutationRecoveryRecord(
+                id: id,
+                triptychID: triptychID,
+                operation: .noteCreation,
+                failure: "Fixture \(state.rawValue)",
+                files: [TriptychMutationRecoveryFile(
+                    vaultID: vaultID,
+                    path: "Created.md",
+                    role: .createdNote,
+                    beforeRevision: nil,
+                    intendedRevision: DocumentFingerprint(content: "created"),
+                    observedRevision: nil,
+                    state: state,
+                    detail: "Fixture"
+                )]
+            )
+        }
+        let old = record(state: .missing)
+        let updated = record(state: .externallyChanged)
+        try await first.record(old)
+        try await second.record(updated)
+
+        await #expect(throws: (any Error).self) {
+            try await first.resolve(old)
+        }
+        #expect(try await second.pending() == [updated])
+    }
+
+    @Test("Recovery-store post-replace uncertainty preserves authoritative readback")
+    func recoveryStorePostReplaceUncertaintyIsDurable() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Uncertain-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let normal = try TriptychMutationRecoveryStore(storageURL: root)
+        let triptychID = UUID()
+        let vaultID = UUID()
+        func record(_ path: String) -> TriptychMutationRecoveryRecord {
+            TriptychMutationRecoveryRecord(
+                triptychID: triptychID,
+                operation: .noteSave,
+                failure: "Fixture",
+                files: [TriptychMutationRecoveryFile(
+                    vaultID: vaultID,
+                    path: path,
+                    role: .savedNote,
+                    beforeRevision: DocumentFingerprint(content: "before"),
+                    intendedRevision: DocumentFingerprint(content: "after"),
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: "Fixture"
+                )]
+            )
+        }
+        let first = record("First.md")
+        try await normal.record(first)
+        let uncertain = try TriptychMutationRecoveryStore(
+            storageURL: root,
+            postCommitFault: { fileName in
+                guard fileName.hasSuffix(".json") else { return }
+                throw CocoaError(.fileWriteUnknown)
+            }
+        )
+        let second = record("Second.md")
+        await #expect(throws: (any Error).self) {
+            try await uncertain.record(second)
+        }
+
+        let reopened = try TriptychMutationRecoveryStore(storageURL: root)
+        #expect(Set(try await reopened.pending().map(\.id)) == [first.id, second.id])
+    }
+
+    @Test("Recovery deletion uncertainty retries from authoritative absence")
+    func recoveryStoreDeleteUncertaintyIsIdempotent() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Delete-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let normal = try TriptychMutationRecoveryStore(storageURL: root)
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: UUID(),
+            operation: .noteSave,
+            failure: "Fixture",
+            files: [TriptychMutationRecoveryFile(
+                vaultID: UUID(),
+                path: "Note.md",
+                role: .savedNote,
+                beforeRevision: DocumentFingerprint(content: "before"),
+                intendedRevision: DocumentFingerprint(content: "after"),
+                observedRevision: nil,
+                state: .unreadable,
+                detail: "Fixture"
+            )]
+        )
+        try await normal.record(record)
+        let uncertain = try TriptychMutationRecoveryStore(
+            storageURL: root,
+            postCommitFault: { fileName in
+                guard fileName.hasSuffix(".json") else { return }
+                throw CocoaError(.fileWriteUnknown)
+            }
+        )
+        await #expect(throws: (any Error).self) {
+            try await uncertain.resolve(record)
+        }
+
+        let reopened = try TriptychMutationRecoveryStore(storageURL: root)
+        #expect(try await reopened.pending().isEmpty)
+        try await reopened.resolve(record)
+        #expect(try await reopened.pending().isEmpty)
+    }
+
+    @Test("Reopening restores a recovery record isolated by an interrupted deletion")
+    func recoveryStoreRestoresInterruptedDeletionIsolation() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Delete-Crash-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try TriptychMutationRecoveryStore(storageURL: root)
+        let record = TriptychMutationRecoveryRecord(
+            triptychID: UUID(),
+            operation: .noteSave,
+            failure: "Fixture",
+            files: []
+        )
+        try await store.record(record)
+        let fileName = record.id.uuidString.lowercased() + ".json"
+        let recordsURL = root.appendingPathComponent("records", isDirectory: true)
+        try FileManager.default.moveItem(
+            at: recordsURL.appendingPathComponent(fileName),
+            to: recordsURL.appendingPathComponent(".scholium-deleting-\(fileName)")
+        )
+
+        let reopened = try TriptychMutationRecoveryStore(storageURL: root)
+        #expect(try await reopened.pending() == [record])
+        try await reopened.resolve(record)
+        #expect(try await reopened.pending().isEmpty)
+    }
+
+    @Test("One corrupt recovery record does not hide valid pending duties")
+    func recoveryStoreIsolatesCorruptRecord() async throws {
+        let triptychID = UUID()
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Corrupt-\(UUID().uuidString)")
+        let root = base
+            .appendingPathComponent(triptychID.uuidString)
+            .appendingPathComponent("transactions")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = try TriptychMutationRecoveryStore(storageURL: root)
+        let valid = TriptychMutationRecoveryRecord(
+            triptychID: triptychID,
+            operation: .noteSave,
+            failure: "Valid",
+            files: []
+        )
+        try await store.record(valid)
+        let corruptID = UUID()
+        let corruptURL = root
+            .appendingPathComponent("records", isDirectory: true)
+            .appendingPathComponent(corruptID.uuidString.lowercased() + ".json")
+        try Data("not json".utf8).write(to: corruptURL)
+
+        let pending = try await store.pending()
+        #expect(pending.contains { $0.id == valid.id })
+        let issue = try #require(pending.first { $0.id == corruptID })
+        #expect(issue.triptychID == triptychID)
+        #expect(issue.files.first?.state == .unreadable)
+        await #expect(throws: (any Error).self) {
+            try await store.resolve(issue)
+        }
+        #expect(try Data(contentsOf: corruptURL) == Data("not json".utf8))
+        #expect(try await store.pending().contains { $0.id == valid.id })
+    }
+
+    @Test("A non-record directory entry does not hide valid pending duties")
+    func recoveryStoreIsolatesInvalidRecordName() async throws {
+        let triptychID = UUID()
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Invalid-Name-\(UUID().uuidString)")
+        let root = base
+            .appendingPathComponent(triptychID.uuidString)
+            .appendingPathComponent("transactions")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = try TriptychMutationRecoveryStore(storageURL: root)
+        let valid = TriptychMutationRecoveryRecord(
+            triptychID: triptychID,
+            operation: .noteSave,
+            failure: "Valid",
+            files: []
+        )
+        try await store.record(valid)
+        let invalidURL = root
+            .appendingPathComponent("records", isDirectory: true)
+            .appendingPathComponent(".DS_Store")
+        try Data("finder metadata".utf8).write(to: invalidURL)
+
+        let pending = try await store.pending()
+        #expect(pending.contains { $0.id == valid.id })
+        let issue = try #require(pending.first { $0.files.first?.path == "records/.DS_Store" })
+        #expect(issue.triptychID == triptychID)
+        #expect(issue.files.first?.state == .unreadable)
+        await #expect(throws: (any Error).self) {
+            try await store.resolve(issue)
+        }
+        #expect(try Data(contentsOf: invalidURL) == Data("finder metadata".utf8))
+        #expect(try await store.pending().contains { $0.id == valid.id })
+    }
+
+    @Test("Many pending recovery records cannot consume a new record's byte budget")
+    func recoveryStoreBudgetsEachRecordIndependently() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Scholium-Recovery-Budget-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try TriptychMutationRecoveryStore(storageURL: root)
+        let triptychID = UUID()
+        let vaultID = UUID()
+        let detail = String(repeating: "x", count: 100_000)
+        for index in 0..<90 {
+            try await store.record(TriptychMutationRecoveryRecord(
+                triptychID: triptychID,
+                operation: .noteSave,
+                failure: "Fixture",
+                files: [TriptychMutationRecoveryFile(
+                    vaultID: vaultID,
+                    path: "\(index).md",
+                    role: .savedNote,
+                    beforeRevision: DocumentFingerprint(content: "before"),
+                    intendedRevision: DocumentFingerprint(content: "after"),
+                    observedRevision: nil,
+                    state: .unreadable,
+                    detail: detail
+                )]
+            ))
+        }
+        let final = TriptychMutationRecoveryRecord(
+            triptychID: triptychID,
+            operation: .noteCreation,
+            failure: "Small final duty",
+            files: [TriptychMutationRecoveryFile(
+                vaultID: vaultID,
+                path: "Final.md",
+                role: .createdNote,
+                beforeRevision: nil,
+                intendedRevision: DocumentFingerprint(content: "created"),
+                observedRevision: nil,
+                state: .unreadable,
+                detail: "small"
+            )]
+        )
+        try await store.record(final)
+
+        let records = try await store.pending()
+        #expect(records.count == 91)
+        #expect(records.contains { $0.id == final.id })
+    }
+
     private struct Fixture {
         let root: URL
         let appSupport: URL
@@ -438,5 +783,17 @@ struct TriptychMoveCoordinatorTests {
                 faultPlan: faults
             )
         }
+    }
+}
+
+private final class BlockingTestSignal: @unchecked Sendable {
+    private let semaphore = DispatchSemaphore(value: 0)
+
+    func signal() {
+        semaphore.signal()
+    }
+
+    func wait(seconds: TimeInterval) -> Bool {
+        semaphore.wait(timeout: .now() + seconds) == .success
     }
 }

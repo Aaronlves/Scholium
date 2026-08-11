@@ -5,6 +5,7 @@ import Foundation
 public enum ResearchDocumentWriteOperation: String, Codable, CaseIterable,
     Hashable, Sendable
 {
+    case createNote = "create_note"
     case modifyMarkdown = "modify_markdown"
     case modifyProperties = "modify_properties"
 }
@@ -39,10 +40,186 @@ public enum ResearchWriteSetAuthorizationBasis: String, Codable, Hashable, Senda
 public enum ResearchWriteSetEntryState: String, Codable, Hashable, Sendable {
     case ready
     case writing
+    case consumed
     case stale
     case conflict
     case recoveryRequired = "recovery_required"
     case abandoned
+}
+
+public enum ResearchWriteSetTargetExpectation: Codable, Hashable, Sendable {
+    case existing(
+        expectedRevision: DocumentFingerprint,
+        checkpointID: UUID
+    )
+    case absent(settingsRevision: SettingsRevision)
+    case created(
+        settingsRevision: SettingsRevision,
+        committedRevision: DocumentFingerprint
+    )
+
+    public var expectedRevision: DocumentFingerprint? {
+        switch self {
+        case .existing(let revision, _): revision
+        case .created(_, let revision): revision
+        case .absent: nil
+        }
+    }
+
+    public var checkpointID: UUID? {
+        guard case .existing(_, let checkpointID) = self else { return nil }
+        return checkpointID
+    }
+
+    public var settingsRevision: SettingsRevision? {
+        switch self {
+        case .absent(let revision), .created(let revision, _): revision
+        case .existing: nil
+        }
+    }
+}
+
+/// One canonical field the Agent may supply while creating an Analysis of a
+/// particular source type. This projection deliberately excludes seed bytes,
+/// Settings revisions, reserved identities, and values already supplied by
+/// the researcher-owned seed.
+public struct ResearchAnalysisCreationFieldPlan: Codable, Hashable, Sendable {
+    public let key: String
+    public let valueKind: PropertyValueKind
+    public let allowedValues: [String]?
+    public let isRequired: Bool
+
+    public init(
+        key: String,
+        valueKind: PropertyValueKind,
+        allowedValues: [String]? = nil,
+        isRequired: Bool
+    ) throws {
+        guard let contract = PropertyContractCatalog.contract(
+            for: key,
+            profile: .analysis
+        ), contract.valueKind == valueKind,
+              contract.allowedValues == allowedValues else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+        self.key = key
+        self.valueKind = valueKind
+        self.allowedValues = allowedValues
+        self.isRequired = isRequired
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case key
+        case valueKind = "value_kind"
+        case allowedValues = "allowed_values"
+        case isRequired = "is_required"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchBoundedWriteCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue),
+            error: .invalidEntry
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            key: container.decode(String.self, forKey: .key),
+            valueKind: container.decode(PropertyValueKind.self, forKey: .valueKind),
+            allowedValues: container.decodeIfPresent(
+                [String].self,
+                forKey: .allowedValues
+            ),
+            isRequired: container.decode(Bool.self, forKey: .isRequired)
+        )
+    }
+}
+
+public struct ResearchAnalysisCreationSourcePlan: Codable, Hashable, Sendable {
+    public let sourceType: AnalysisSourceType
+    public let fields: [ResearchAnalysisCreationFieldPlan]
+
+    public init(
+        sourceType: AnalysisSourceType,
+        fields: [ResearchAnalysisCreationFieldPlan]
+    ) throws {
+        let applicable = Set(
+            AnalysisSourceTypeProfileCatalog.profile(for: sourceType).applicableFields
+        )
+        guard fields.count <= PropertyContractCatalog.analysisCanonicalKeys.count,
+              Set(fields.map(\.key)).count == fields.count,
+              fields.allSatisfy({ $0.key != "type" && applicable.contains($0.key) }) else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+        self.sourceType = sourceType
+        self.fields = fields
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case sourceType = "source_type"
+        case fields
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchBoundedWriteCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue),
+            error: .invalidEntry
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            sourceType: container.decode(AnalysisSourceType.self, forKey: .sourceType),
+            fields: container.decode(
+                [ResearchAnalysisCreationFieldPlan].self,
+                forKey: .fields
+            )
+        )
+    }
+}
+
+public struct ResearchPropertyWriteFieldPlan: Codable, Hashable, Sendable {
+    public let key: String
+    public let valueKind: PropertyValueKind
+    public let allowedValues: [String]?
+
+    public init(
+        key: String,
+        valueKind: PropertyValueKind,
+        allowedValues: [String]? = nil
+    ) throws {
+        guard ResearchBoundedWriteValidation.validPropertyKey(key),
+              allowedValues.map({ values in
+                  !values.isEmpty && Set(values).count == values.count
+                      && values.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 256 })
+              }) ?? true else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+        self.key = key
+        self.valueKind = valueKind
+        self.allowedValues = allowedValues
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case key
+        case valueKind = "value_kind"
+        case allowedValues = "allowed_values"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchBoundedWriteCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue),
+            error: .invalidEntry
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            key: container.decode(String.self, forKey: .key),
+            valueKind: container.decode(PropertyValueKind.self, forKey: .valueKind),
+            allowedValues: container.decodeIfPresent(
+                [String].self,
+                forKey: .allowedValues
+            )
+        )
+    }
 }
 
 /// One current document member. It contains no source bytes or academic
@@ -56,8 +233,10 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
     public let role: ResearchActionTargetRole
     public let title: String
     public let allowedOperations: [ResearchDocumentWriteOperation]
-    public var expectedRevision: DocumentFingerprint
-    public let checkpointID: UUID
+    public let allowedPropertyKeys: [String]
+    public let propertyWritePlans: [ResearchPropertyWriteFieldPlan]
+    public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
+    public var expectation: ResearchWriteSetTargetExpectation
     public let authorizationBasis: ResearchWriteSetAuthorizationBasis
     public let authorizationPolicy: ResearchCollaborationPolicy?
     public let policyRevision: DocumentFingerprint?
@@ -73,6 +252,8 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         allowedOperations: [ResearchDocumentWriteOperation],
         expectedRevision: DocumentFingerprint,
         checkpointID: UUID,
+        allowedPropertyKeys: [String] = [],
+        propertyWritePlans: [ResearchPropertyWriteFieldPlan] = [],
         authorizationBasis: ResearchWriteSetAuthorizationBasis,
         authorizationPolicy: ResearchCollaborationPolicy? = nil,
         policyRevision: DocumentFingerprint? = nil,
@@ -82,8 +263,13 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         let operations = Array(Set(allowedOperations)).sorted {
             $0.rawValue < $1.rawValue
         }
+        let propertyKeys = Array(Set(allowedPropertyKeys)).sorted()
+        let propertyPlans = propertyWritePlans.sorted { $0.key < $1.key }
         guard !operations.isEmpty,
               operations.count == allowedOperations.count,
+              operations.contains(.createNote) == false,
+              operations.contains(.modifyProperties) == !propertyKeys.isEmpty,
+              propertyKeys == propertyPlans.map(\.key),
               ResearchBoundedWriteValidation.validPath(note.relativePath),
               ResearchBoundedWriteValidation.validFingerprint(expectedRevision),
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -91,7 +277,8 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
               expiresAt.timeIntervalSinceReferenceDate.isFinite,
               (authorizationBasis == .collaborationPolicy)
                 == (authorizationPolicy != nil && policyRevision != nil),
-              policyRevision.map(ResearchBoundedWriteValidation.validFingerprint) ?? true else {
+              policyRevision.map(ResearchBoundedWriteValidation.validFingerprint) ?? true,
+              state != .consumed else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
         self.handle = handle
@@ -100,8 +287,13 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.role = role
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.allowedOperations = operations
-        self.expectedRevision = expectedRevision
-        self.checkpointID = checkpointID
+        self.allowedPropertyKeys = propertyKeys
+        self.propertyWritePlans = propertyPlans
+        analysisCreationPlans = []
+        expectation = .existing(
+            expectedRevision: expectedRevision,
+            checkpointID: checkpointID
+        )
         self.authorizationBasis = authorizationBasis
         self.authorizationPolicy = authorizationPolicy
         self.policyRevision = policyRevision
@@ -109,13 +301,86 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.state = state
     }
 
+    public init(
+        handle: ResearchWriteTargetHandle,
+        reservedNoteID: UUID,
+        note: VaultQualifiedNoteID,
+        role: ResearchActionTargetRole,
+        title: String,
+        settingsRevision: SettingsRevision,
+        analysisCreationPlans: [ResearchAnalysisCreationSourcePlan] = [],
+        authorizationBasis: ResearchWriteSetAuthorizationBasis,
+        authorizationPolicy: ResearchCollaborationPolicy? = nil,
+        policyRevision: DocumentFingerprint? = nil,
+        expiresAt: Date,
+        state: ResearchWriteSetEntryState = .ready
+    ) throws {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ResearchBoundedWriteValidation.validPath(note.relativePath),
+              !title.isEmpty,
+              title.utf8.count <= 1_024,
+              expiresAt.timeIntervalSinceReferenceDate.isFinite,
+              (authorizationBasis == .collaborationPolicy)
+                == (authorizationPolicy != nil && policyRevision != nil),
+              policyRevision.map(ResearchBoundedWriteValidation.validFingerprint) ?? true,
+              state != .consumed,
+              (role == .analysis)
+                == (Set(analysisCreationPlans.map(\.sourceType))
+                    == Set(AnalysisSourceType.allCases)) else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+        self.handle = handle
+        noteID = reservedNoteID
+        self.note = note
+        self.role = role
+        self.title = title
+        allowedOperations = [.createNote]
+        allowedPropertyKeys = []
+        propertyWritePlans = []
+        self.analysisCreationPlans = analysisCreationPlans.sorted {
+            $0.sourceType.rawValue < $1.sourceType.rawValue
+        }
+        expectation = .absent(settingsRevision: settingsRevision)
+        self.authorizationBasis = authorizationBasis
+        self.authorizationPolicy = authorizationPolicy
+        self.policyRevision = policyRevision
+        self.expiresAt = expiresAt
+        self.state = state
+    }
+
+    public var expectedRevision: DocumentFingerprint? {
+        get { expectation.expectedRevision }
+        set {
+            guard let newValue,
+                  case .existing(_, let checkpointID) = expectation else { return }
+            expectation = .existing(
+                expectedRevision: newValue,
+                checkpointID: checkpointID
+            )
+        }
+    }
+
+    public var checkpointID: UUID? { expectation.checkpointID }
+    public var settingsRevision: SettingsRevision? { expectation.settingsRevision }
+    public var expectsAbsence: Bool {
+        if case .absent = expectation { return true }
+        return false
+    }
+
+    public var wasCreated: Bool {
+        if case .created = expectation { return true }
+        return false
+    }
+
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case handle
         case noteID = "note_id"
         case note, role, title
         case allowedOperations = "allowed_operations"
-        case expectedRevision = "expected_revision"
-        case checkpointID = "checkpoint_id"
+        case allowedPropertyKeys = "allowed_property_keys"
+        case propertyWritePlans = "property_write_plans"
+        case analysisCreationPlans = "analysis_creation_plans"
+        case expectation
         case authorizationBasis = "authorization_basis"
         case authorizationPolicy = "authorization_policy"
         case policyRevision = "policy_revision"
@@ -130,44 +395,120 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             error: .invalidEntry
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            handle: container.decode(
+        let handle = try container.decode(
                 ResearchWriteTargetHandle.self,
                 forKey: .handle
-            ),
-            noteID: container.decode(UUID.self, forKey: .noteID),
-            note: container.decode(VaultQualifiedNoteID.self, forKey: .note),
-            role: container.decode(ResearchActionTargetRole.self, forKey: .role),
-            title: container.decode(String.self, forKey: .title),
-            allowedOperations: container.decode(
-                [ResearchDocumentWriteOperation].self,
-                forKey: .allowedOperations
-            ),
-            expectedRevision: container.decode(
-                DocumentFingerprint.self,
-                forKey: .expectedRevision
-            ),
-            checkpointID: container.decode(UUID.self, forKey: .checkpointID),
-            authorizationBasis: container.decode(
+            )
+        let noteID = try container.decode(UUID.self, forKey: .noteID)
+        let note = try container.decode(VaultQualifiedNoteID.self, forKey: .note)
+        let role = try container.decode(ResearchActionTargetRole.self, forKey: .role)
+        let title = try container.decode(String.self, forKey: .title)
+        let operations = try container.decode(
+            [ResearchDocumentWriteOperation].self,
+            forKey: .allowedOperations
+        )
+        let propertyKeys = try container.decode(
+            [String].self,
+            forKey: .allowedPropertyKeys
+        )
+        let propertyWritePlans = try container.decode(
+            [ResearchPropertyWriteFieldPlan].self,
+            forKey: .propertyWritePlans
+        )
+        let analysisCreationPlans = try container.decode(
+            [ResearchAnalysisCreationSourcePlan].self,
+            forKey: .analysisCreationPlans
+        )
+        let expectation = try container.decode(
+            ResearchWriteSetTargetExpectation.self,
+            forKey: .expectation
+        )
+        let basis = try container.decode(
                 ResearchWriteSetAuthorizationBasis.self,
                 forKey: .authorizationBasis
-            ),
-            authorizationPolicy: container.decodeIfPresent(
+            )
+        let policy = try container.decodeIfPresent(
                 ResearchCollaborationPolicy.self,
                 forKey: .authorizationPolicy
-            ),
-            policyRevision: container.decodeIfPresent(
+            )
+        let policyRevision = try container.decodeIfPresent(
                 DocumentFingerprint.self,
                 forKey: .policyRevision
-            ),
-            expiresAt: container.decode(Date.self, forKey: .expiresAt),
-            state: container.decode(ResearchWriteSetEntryState.self, forKey: .state)
-        )
+            )
+        let expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+        let state = try container.decode(ResearchWriteSetEntryState.self, forKey: .state)
+        switch expectation {
+        case .existing(let revision, let checkpointID):
+            guard analysisCreationPlans.isEmpty else {
+                throw ResearchBoundedWriteSetError.invalidEntry
+            }
+            try self.init(
+                handle: handle,
+                noteID: noteID,
+                note: note,
+                role: role,
+                title: title,
+                allowedOperations: operations,
+                expectedRevision: revision,
+                checkpointID: checkpointID,
+                allowedPropertyKeys: propertyKeys,
+                propertyWritePlans: propertyWritePlans,
+                authorizationBasis: basis,
+                authorizationPolicy: policy,
+                policyRevision: policyRevision,
+                expiresAt: expiresAt,
+                state: state
+            )
+        case .absent(let settingsRevision):
+            guard operations == [.createNote], propertyKeys.isEmpty,
+                  propertyWritePlans.isEmpty else {
+                throw ResearchBoundedWriteSetError.invalidEntry
+            }
+            try self.init(
+                handle: handle,
+                reservedNoteID: noteID,
+                note: note,
+                role: role,
+                title: title,
+                settingsRevision: settingsRevision,
+                analysisCreationPlans: analysisCreationPlans,
+                authorizationBasis: basis,
+                authorizationPolicy: policy,
+                policyRevision: policyRevision,
+                expiresAt: expiresAt,
+                state: state
+            )
+        case .created(let settingsRevision, let committedRevision):
+            guard operations == [.createNote], propertyKeys.isEmpty,
+                  propertyWritePlans.isEmpty,
+                  state == .consumed else {
+                throw ResearchBoundedWriteSetError.invalidEntry
+            }
+            try self.init(
+                handle: handle,
+                reservedNoteID: noteID,
+                note: note,
+                role: role,
+                title: title,
+                settingsRevision: settingsRevision,
+                analysisCreationPlans: analysisCreationPlans,
+                authorizationBasis: basis,
+                authorizationPolicy: policy,
+                policyRevision: policyRevision,
+                expiresAt: expiresAt,
+                state: .ready
+            )
+            self.expectation = .created(
+                settingsRevision: settingsRevision,
+                committedRevision: committedRevision
+            )
+            self.state = .consumed
+        }
     }
 }
 
 public struct ResearchBoundedWriteSet: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let maximumEntriesPerRequest = 16
     public static let maximumEntriesPerRun = 64
     public static let maximumWritesPerRun = 256
@@ -242,28 +583,38 @@ public struct ResearchWriteSetTargetSelector: Codable, Hashable, Sendable {
     public let role: ResearchActionTargetRole
     public let relativePath: String
     public let operations: [ResearchDocumentWriteOperation]
+    public let propertyKeys: [String]
 
     public init(
         role: ResearchActionTargetRole,
         relativePath: String,
-        operations: [ResearchDocumentWriteOperation]
+        operations: [ResearchDocumentWriteOperation],
+        propertyKeys: [String] = []
     ) throws {
         let providedCount = operations.count
         let operations = Array(Set(operations)).sorted { $0.rawValue < $1.rawValue }
+        let keys = Array(Set(propertyKeys)).sorted()
         guard ResearchBoundedWriteValidation.validPath(relativePath),
               !operations.isEmpty,
-              operations.count == providedCount else {
+              operations.count == providedCount,
+              operations.contains(.createNote) == (operations == [.createNote]),
+              operations.contains(.modifyProperties) == !keys.isEmpty,
+              keys.count == propertyKeys.count,
+              keys.count <= ResearchAuthorityEnvelope.maximumEditablePropertyKeyCount,
+              keys.allSatisfy(ResearchBoundedWriteValidation.validPropertyKey) else {
             throw ResearchBoundedWriteSetError.invalidIntent
         }
         self.role = role
         self.relativePath = relativePath
         self.operations = operations
+        self.propertyKeys = keys
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case role
         case relativePath = "relative_path"
         case operations
+        case propertyKeys = "property_keys"
     }
 
     public init(from decoder: Decoder) throws {
@@ -279,7 +630,11 @@ public struct ResearchWriteSetTargetSelector: Codable, Hashable, Sendable {
             operations: container.decode(
                 [ResearchDocumentWriteOperation].self,
                 forKey: .operations
-            )
+            ),
+            propertyKeys: container.decodeIfPresent(
+                [String].self,
+                forKey: .propertyKeys
+            ) ?? []
         )
     }
 }
@@ -346,6 +701,11 @@ public struct ResearchWriteSetExtensionIntent: Codable, Hashable, Sendable {
     }
 }
 
+public enum ResearchWriteSetCandidateExpectation: Codable, Hashable, Sendable {
+    case existing(expectedRevision: DocumentFingerprint)
+    case absent(settingsRevision: SettingsRevision)
+}
+
 public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendable {
     public var id: ResearchWriteTargetHandle { handle }
 
@@ -355,7 +715,10 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
     public let role: ResearchActionTargetRole
     public let title: String
     public let operations: [ResearchDocumentWriteOperation]
-    public let expectedRevision: DocumentFingerprint
+    public let propertyKeys: [String]
+    public let propertyWritePlans: [ResearchPropertyWriteFieldPlan]
+    public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
+    public let expectation: ResearchWriteSetCandidateExpectation
 
     public init(
         handle: ResearchWriteTargetHandle,
@@ -364,16 +727,23 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         role: ResearchActionTargetRole,
         title: String,
         operations: [ResearchDocumentWriteOperation],
-        expectedRevision: DocumentFingerprint
+        expectedRevision: DocumentFingerprint,
+        propertyKeys: [String] = [],
+        propertyWritePlans: [ResearchPropertyWriteFieldPlan] = []
     ) throws {
         let canonicalOperations = Array(Set(operations)).sorted {
             $0.rawValue < $1.rawValue
         }
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let propertyKeys = Array(Set(propertyKeys)).sorted()
+        let propertyPlans = propertyWritePlans.sorted { $0.key < $1.key }
         guard ResearchBoundedWriteValidation.validPath(note.relativePath),
               ResearchBoundedWriteValidation.validFingerprint(expectedRevision),
               !canonicalOperations.isEmpty,
               canonicalOperations.count == operations.count,
+              !canonicalOperations.contains(.createNote),
+              canonicalOperations.contains(.modifyProperties) == !propertyKeys.isEmpty,
+              propertyKeys == propertyPlans.map(\.key),
               !title.isEmpty,
               title.utf8.count <= 1_024 else {
             throw ResearchBoundedWriteSetError.invalidEntry
@@ -384,14 +754,64 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         self.role = role
         self.title = title
         self.operations = canonicalOperations
-        self.expectedRevision = expectedRevision
+        self.propertyKeys = propertyKeys
+        self.propertyWritePlans = propertyPlans
+        analysisCreationPlans = []
+        expectation = .existing(expectedRevision: expectedRevision)
     }
+
+    public init(
+        handle: ResearchWriteTargetHandle,
+        reservedNoteID: UUID,
+        note: VaultQualifiedNoteID,
+        role: ResearchActionTargetRole,
+        title: String,
+        settingsRevision: SettingsRevision,
+        analysisCreationPlans: [ResearchAnalysisCreationSourcePlan] = []
+    ) throws {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ResearchBoundedWriteValidation.validPath(note.relativePath),
+              !title.isEmpty,
+              title.utf8.count <= 1_024,
+              (role == .analysis)
+                == (Set(analysisCreationPlans.map(\.sourceType))
+                    == Set(AnalysisSourceType.allCases)) else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+        self.handle = handle
+        noteID = reservedNoteID
+        self.note = note
+        self.role = role
+        self.title = title
+        operations = [.createNote]
+        propertyKeys = []
+        propertyWritePlans = []
+        self.analysisCreationPlans = analysisCreationPlans.sorted {
+            $0.sourceType.rawValue < $1.sourceType.rawValue
+        }
+        expectation = .absent(settingsRevision: settingsRevision)
+    }
+
+    public var expectedRevision: DocumentFingerprint? {
+        guard case .existing(let revision) = expectation else { return nil }
+        return revision
+    }
+
+    public var settingsRevision: SettingsRevision? {
+        guard case .absent(let revision) = expectation else { return nil }
+        return revision
+    }
+
+    public var expectsAbsence: Bool { settingsRevision != nil }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case handle
         case noteID = "note_id"
         case note, role, title, operations
-        case expectedRevision = "expected_revision"
+        case propertyKeys = "property_keys"
+        case propertyWritePlans = "property_write_plans"
+        case analysisCreationPlans = "analysis_creation_plans"
+        case expectation
     }
 
     public init(from decoder: Decoder) throws {
@@ -401,24 +821,64 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
             error: .invalidEntry
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            handle: container.decode(
+        let handle = try container.decode(
                 ResearchWriteTargetHandle.self,
                 forKey: .handle
-            ),
-            noteID: container.decode(UUID.self, forKey: .noteID),
-            note: container.decode(VaultQualifiedNoteID.self, forKey: .note),
-            role: container.decode(ResearchActionTargetRole.self, forKey: .role),
-            title: container.decode(String.self, forKey: .title),
-            operations: container.decode(
-                [ResearchDocumentWriteOperation].self,
-                forKey: .operations
-            ),
-            expectedRevision: container.decode(
-                DocumentFingerprint.self,
-                forKey: .expectedRevision
             )
+        let noteID = try container.decode(UUID.self, forKey: .noteID)
+        let note = try container.decode(VaultQualifiedNoteID.self, forKey: .note)
+        let role = try container.decode(ResearchActionTargetRole.self, forKey: .role)
+        let title = try container.decode(String.self, forKey: .title)
+        let operations = try container.decode(
+            [ResearchDocumentWriteOperation].self,
+            forKey: .operations
         )
+        let propertyKeys = try container.decode(
+            [String].self,
+            forKey: .propertyKeys
+        )
+        let propertyWritePlans = try container.decode(
+            [ResearchPropertyWriteFieldPlan].self,
+            forKey: .propertyWritePlans
+        )
+        let analysisCreationPlans = try container.decode(
+            [ResearchAnalysisCreationSourcePlan].self,
+            forKey: .analysisCreationPlans
+        )
+        switch try container.decode(
+            ResearchWriteSetCandidateExpectation.self,
+            forKey: .expectation
+        ) {
+        case .existing(let revision):
+            guard analysisCreationPlans.isEmpty else {
+                throw ResearchBoundedWriteSetError.invalidEntry
+            }
+            try self.init(
+                handle: handle,
+                noteID: noteID,
+                note: note,
+                role: role,
+                title: title,
+                operations: operations,
+                expectedRevision: revision,
+                propertyKeys: propertyKeys,
+                propertyWritePlans: propertyWritePlans
+            )
+        case .absent(let settingsRevision):
+            guard operations == [.createNote], propertyKeys.isEmpty,
+                  propertyWritePlans.isEmpty else {
+                throw ResearchBoundedWriteSetError.invalidEntry
+            }
+            try self.init(
+                handle: handle,
+                reservedNoteID: noteID,
+                note: note,
+                role: role,
+                title: title,
+                settingsRevision: settingsRevision,
+                analysisCreationPlans: analysisCreationPlans
+            )
+        }
     }
 }
 
@@ -562,14 +1022,22 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
     public let relativePath: String
     public let role: ResearchActionTargetRole
     public let operations: [ResearchDocumentWriteOperation]
+    public let propertyKeys: [String]
+    public let propertyWritePlans: [ResearchPropertyWriteFieldPlan]
+    public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
     public let state: ResearchWriteSetEntryState
+    public let expectsAbsence: Bool
 
     public init(_ entry: ResearchBoundedWriteSetEntry) {
         title = entry.title
         relativePath = entry.note.relativePath
         role = entry.role
         operations = entry.allowedOperations
+        propertyKeys = entry.allowedPropertyKeys
+        propertyWritePlans = entry.propertyWritePlans
+        analysisCreationPlans = entry.analysisCreationPlans
         state = entry.state
+        expectsAbsence = entry.expectsAbsence
     }
 
     private init(
@@ -577,27 +1045,49 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
         relativePath: String,
         role: ResearchActionTargetRole,
         operations: [ResearchDocumentWriteOperation],
-        state: ResearchWriteSetEntryState
+        propertyKeys: [String],
+        propertyWritePlans: [ResearchPropertyWriteFieldPlan],
+        analysisCreationPlans: [ResearchAnalysisCreationSourcePlan],
+        state: ResearchWriteSetEntryState,
+        expectsAbsence: Bool
     ) throws {
         let canonical = Array(Set(operations)).sorted { $0.rawValue < $1.rawValue }
+        let keys = Array(Set(propertyKeys)).sorted()
+        let propertyPlans = propertyWritePlans.sorted { $0.key < $1.key }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.utf8.count <= 1_024,
               ResearchBoundedWriteValidation.validPath(relativePath),
               !canonical.isEmpty,
-              canonical.count == operations.count else {
+              canonical.count == operations.count,
+              keys.count == propertyKeys.count,
+              canonical.contains(.modifyProperties) == !keys.isEmpty,
+              keys == propertyPlans.map(\.key),
+              (role == .analysis && canonical == [.createNote])
+                == (Set(analysisCreationPlans.map(\.sourceType))
+                    == Set(AnalysisSourceType.allCases)),
+              expectsAbsence == (canonical == [.createNote] && state != .consumed) else {
             throw ResearchBoundedWriteSetError.invalidWriteSet
         }
         self.title = title
         self.relativePath = relativePath
         self.role = role
         self.operations = canonical
+        self.propertyKeys = keys
+        self.propertyWritePlans = propertyPlans
+        self.analysisCreationPlans = analysisCreationPlans
         self.state = state
+        self.expectsAbsence = expectsAbsence
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case title
         case relativePath = "relative_path"
-        case role, operations, state
+        case role, operations
+        case propertyKeys = "property_keys"
+        case propertyWritePlans = "property_write_plans"
+        case analysisCreationPlans = "analysis_creation_plans"
+        case state
+        case expectsAbsence = "expects_absence"
     }
 
     public init(from decoder: Decoder) throws {
@@ -615,7 +1105,17 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
                 [ResearchDocumentWriteOperation].self,
                 forKey: .operations
             ),
-            state: container.decode(ResearchWriteSetEntryState.self, forKey: .state)
+            propertyKeys: container.decode([String].self, forKey: .propertyKeys),
+            propertyWritePlans: container.decode(
+                [ResearchPropertyWriteFieldPlan].self,
+                forKey: .propertyWritePlans
+            ),
+            analysisCreationPlans: container.decode(
+                [ResearchAnalysisCreationSourcePlan].self,
+                forKey: .analysisCreationPlans
+            ),
+            state: container.decode(ResearchWriteSetEntryState.self, forKey: .state),
+            expectsAbsence: container.decode(Bool.self, forKey: .expectsAbsence)
         )
     }
 }
@@ -674,7 +1174,7 @@ public struct ResearchWriteSetExtensionResult: Codable, Hashable, Sendable {
 }
 
 public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     /// One client-generated attempt identity. Retrying the same intent keeps
@@ -683,19 +1183,35 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
     public let role: ResearchActionTargetRole
     public let relativePath: String
     public let operation: ResearchDocumentWriteOperation
+    /// Body text for `modify_markdown` and `create_note`. It is never complete
+    /// document source and cannot carry frontmatter authority.
     public let content: String
+    public let properties: [CanonicalPropertyInput]
+    public let analysisMetadata: AnalysisCreationMetadata?
 
     public init(
         requestID: UUID = UUID(),
         role: ResearchActionTargetRole,
         relativePath: String,
         operation: ResearchDocumentWriteOperation = .modifyMarkdown,
-        content: String
+        content: String = "",
+        properties: [CanonicalPropertyInput] = [],
+        analysisMetadata: AnalysisCreationMetadata? = nil
     ) throws {
+        let shapeIsValid = switch operation {
+        case .createNote:
+            properties.isEmpty
+        case .modifyMarkdown:
+            properties.isEmpty && analysisMetadata == nil
+        case .modifyProperties:
+            content.isEmpty && !properties.isEmpty && analysisMetadata == nil
+        }
         guard ResearchBoundedWriteValidation.validPath(relativePath),
+              shapeIsValid,
               !content.unicodeScalars.contains(where: { $0.value == 0 }),
               content.utf8.count <= ResearchBoundedWriteSet
-                .maximumDocumentUTF8ByteCount else {
+                .maximumDocumentUTF8ByteCount,
+              Set(properties.map(\.key)).count == properties.count else {
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         schemaVersion = Self.currentSchemaVersion
@@ -704,6 +1220,8 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         self.relativePath = relativePath
         self.operation = operation
         self.content = content
+        self.properties = properties.sorted { $0.key < $1.key }
+        self.analysisMetadata = analysisMetadata
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -711,7 +1229,8 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         case requestID = "request_id"
         case role
         case relativePath = "relative_path"
-        case operation, content
+        case operation, content, properties
+        case analysisMetadata = "analysis_metadata"
     }
 
     public init(from decoder: Decoder) throws {
@@ -725,15 +1244,37 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
                 == Self.currentSchemaVersion else {
             throw ResearchBoundedWriteSetError.invalidWrite
         }
+        let operation = try container.decode(
+            ResearchDocumentWriteOperation.self,
+            forKey: .operation
+        )
+        let content: String
+        switch operation {
+        case .modifyMarkdown:
+            guard container.contains(.content) else {
+                throw ResearchBoundedWriteSetError.invalidWrite
+            }
+            content = try container.decode(String.self, forKey: .content)
+        case .createNote, .modifyProperties:
+            content = try container.decodeIfPresent(
+                String.self,
+                forKey: .content
+            ) ?? ""
+        }
         try self.init(
             requestID: container.decode(UUID.self, forKey: .requestID),
             role: container.decode(ResearchActionTargetRole.self, forKey: .role),
             relativePath: container.decode(String.self, forKey: .relativePath),
-            operation: container.decode(
-                ResearchDocumentWriteOperation.self,
-                forKey: .operation
-            ),
-            content: container.decode(String.self, forKey: .content)
+            operation: operation,
+            content: content,
+            properties: container.decodeIfPresent(
+                [CanonicalPropertyInput].self,
+                forKey: .properties
+            ) ?? [],
+            analysisMetadata: container.decodeIfPresent(
+                AnalysisCreationMetadata.self,
+                forKey: .analysisMetadata
+            )
         )
     }
 }
@@ -754,11 +1295,11 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
     public let actor: ResearchContextActorClass
     public let operation: ResearchDocumentWriteOperation
     public let requestFingerprint: DocumentFingerprint
-    public let expectedRevision: DocumentFingerprint
+    public let expectedRevision: DocumentFingerprint?
     public let intendedRevision: DocumentFingerprint
     public var observedRevision: DocumentFingerprint?
     public var state: ResearchDocumentWriteState
-    public let checkpointID: UUID
+    public let checkpointID: UUID?
     public let startedAt: Date
     public var finishedAt: Date?
     public var warning: String?
@@ -771,19 +1312,22 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         actor: ResearchContextActorClass,
         operation: ResearchDocumentWriteOperation,
         requestFingerprint: DocumentFingerprint,
-        expectedRevision: DocumentFingerprint,
+        expectedRevision: DocumentFingerprint?,
         intendedRevision: DocumentFingerprint,
         observedRevision: DocumentFingerprint? = nil,
         state: ResearchDocumentWriteState,
-        checkpointID: UUID,
+        checkpointID: UUID?,
         startedAt: Date,
         finishedAt: Date? = nil,
         warning: String? = nil,
         recoveryRecordID: UUID? = nil
     ) throws {
+        let expectationShapeIsValid = operation == .createNote
+            ? (expectedRevision == nil && checkpointID == nil)
+            : (expectedRevision != nil && checkpointID != nil)
         guard actor == .agent,
               ResearchBoundedWriteValidation.validFingerprint(requestFingerprint),
-              ResearchBoundedWriteValidation.validFingerprint(expectedRevision),
+              expectedRevision.map(ResearchBoundedWriteValidation.validFingerprint) ?? true,
               ResearchBoundedWriteValidation.validFingerprint(intendedRevision),
               observedRevision.map(ResearchBoundedWriteValidation.validFingerprint)
                 ?? true,
@@ -795,7 +1339,8 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
               recoveryRecordID == nil
                 || state == .recoveryRequired
                 || (finishedAt != nil && [.committed, .abandoned].contains(state)),
-              warning.map({ $0.utf8.count <= 4_096 }) ?? true else {
+              warning.map({ $0.utf8.count <= 4_096 }) ?? true,
+              expectationShapeIsValid else {
             throw ResearchBoundedWriteSetError.invalidWriteRecord
         }
         self.id = id
@@ -857,7 +1402,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
                 DocumentFingerprint.self,
                 forKey: .requestFingerprint
             ),
-            expectedRevision: container.decode(
+            expectedRevision: container.decodeIfPresent(
                 DocumentFingerprint.self,
                 forKey: .expectedRevision
             ),
@@ -873,7 +1418,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
                 ResearchDocumentWriteState.self,
                 forKey: .state
             ),
-            checkpointID: container.decode(UUID.self, forKey: .checkpointID),
+            checkpointID: container.decodeIfPresent(UUID.self, forKey: .checkpointID),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decodeIfPresent(Date.self, forKey: .finishedAt),
             warning: container.decodeIfPresent(String.self, forKey: .warning),
@@ -1259,6 +1804,15 @@ private enum ResearchBoundedWriteValidation {
         return !components.isEmpty && components.allSatisfy {
             !$0.isEmpty && $0 != "." && $0 != ".."
         }
+    }
+
+    static func validPropertyKey(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.utf8.count
+                <= ResearchAuthorityEnvelope.maximumPropertyKeyUTF8ByteCount
+            && !value.unicodeScalars.contains(where: {
+                CharacterSet.controlCharacters.contains($0)
+            })
     }
 }
 

@@ -253,6 +253,7 @@ public enum VaultSaveOutcome: Sendable {
 
 public enum VaultSaveNotWrittenReason: Hashable, Sendable {
     case conflict(DocumentFingerprint)
+    case targetIdentityChanged
     case invalidFrontmatter(String)
     case atomicCommitUnsupported(String)
 }

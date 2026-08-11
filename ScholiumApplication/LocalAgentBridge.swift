@@ -63,7 +63,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 9
+    public static let currentSchemaVersion = 10
 
     public let schemaVersion: Int
     public let correlationID: UUID

@@ -110,24 +110,36 @@ struct TransactionRecoveryView: View {
         }
         .frame(minWidth: 0, idealWidth: 820, minHeight: 520, idealHeight: 640)
         .task { await refresh() }
-        .alert("Mark Recovery Complete?", isPresented: Binding(
+        .alert(selectedRecoveryAction.alertTitle, isPresented: Binding(
             get: { selectedRecord != nil },
             set: { if !$0 { selectedRecord = nil } }
         )) {
             Button("Cancel", role: .cancel) { selectedRecord = nil }
-            Button("Mark Recovery Complete") {
+            Button(selectedRecoveryAction.buttonTitle) {
                 guard let record = selectedRecord else { return }
                 selectedRecord = nil
                 Task {
                     do {
                         try await markResolved(record.id)
+                        operationError = nil
+                        completionMessage = String(
+                            localized: "Reconciliation completed.",
+                            table: "Localizable",
+                            bundle: .module
+                        )
+                    } catch let committed as ScholiumApplicationError
+                        where committed.durableMutationWasCommitted {
+                        operationError = nil
+                        completionMessage = TransactionRecoveryActionPresentation
+                            .committedRefreshMessage
+                        await refresh()
                     } catch {
                         operationError = error.localizedDescription
                     }
                 }
             }
         } message: {
-            Text("Use this only after you have inspected every listed path and completed any checkpoint or Finder recovery. This removes the recovery record; it does not change research files.")
+            Text(selectedRecoveryAction.message)
         }
         .alert("Restore Interrupted Save?", isPresented: Binding(
             get: { selectedInterruptedSave != nil },
@@ -198,7 +210,10 @@ struct TransactionRecoveryView: View {
             }
             HStack {
                 Spacer()
-                Button("Mark Recovery Complete…") { selectedRecord = record }
+                Button(
+                    TransactionRecoveryActionPresentation(record: record)
+                        .buttonTitle + "…"
+                ) { selectedRecord = record }
             }
         } header: {
             Text(operationName(record.operation))
@@ -263,6 +278,11 @@ struct TransactionRecoveryView: View {
         )
     }
 
+    private var selectedRecoveryAction: TransactionRecoveryActionPresentation {
+        selectedRecord.map(TransactionRecoveryActionPresentation.init(record:))
+            ?? .generic
+    }
+
     private var interruptedSaveConfirmationMessage: String {
         guard selectedInterruptedSave?.sourceState == .candidateRevision else {
             return String(
@@ -286,6 +306,7 @@ struct TransactionRecoveryView: View {
     private func operationName(_ operation: TriptychMutationOperation) -> String {
         switch operation {
         case .noteSave: "Save Note"
+        case .noteCreation: "Create Note"
         case .noteMove: "Move or Rename Note"
         case .folderMove:
             String(
@@ -295,6 +316,54 @@ struct TransactionRecoveryView: View {
             )
         case .permanentDeletion: "Permanent Deletion"
         }
+    }
+}
+
+/// Linked Agent recovery and shared managed-creation recovery are consequential
+/// reconciliation, not generic record dismissal. This presentation keeps the
+/// confirmation aligned with the exact operation and durable source evidence;
+/// reconciliation rechecks both source and portable identity before applying
+/// the described control-state repair.
+struct TransactionRecoveryActionPresentation: Equatable {
+    let alertTitle: String
+    let buttonTitle: String
+    let message: String
+
+    static let committedRefreshMessage = String(
+        localized: "Reconciliation completed. Derived workspace views could not refresh yet; the recovery list has been reloaded from durable records.",
+        table: "Localizable",
+        bundle: .module
+    )
+
+    init(record: TriptychMutationRecoveryRecord) {
+        guard record.researchWrite != nil || record.managedCreation != nil else {
+            self = .generic
+            return
+        }
+        switch record.operation {
+        case .noteCreation:
+            alertTitle = String(localized: "Reconcile Created Note?")
+            buttonTitle = String(localized: "Reconcile Created Note")
+            message = String(localized: "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, any Zotero binding on an identity that would be removed, or changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed.")
+        case .noteSave:
+            alertTitle = String(localized: "Reconcile Interrupted Agent Save?")
+            buttonTitle = String(localized: "Reconcile Agent Save")
+            message = String(localized: "Scholium will recheck the exact current source, reconcile the Run with the interrupted save evidence, and clear completed machine-local recovery records. It will not replace Markdown source.")
+        case .noteMove, .folderMove, .permanentDeletion:
+            self = .generic
+        }
+    }
+
+    static let generic = TransactionRecoveryActionPresentation(
+        alertTitle: String(localized: "Mark Recovery Complete?"),
+        buttonTitle: String(localized: "Mark Recovery Complete"),
+        message: String(localized: "Use this only after you have inspected every listed path and completed any checkpoint or Finder recovery. This removes the recovery record; it does not change research files.")
+    )
+
+    private init(alertTitle: String, buttonTitle: String, message: String) {
+        self.alertTitle = alertTitle
+        self.buttonTitle = buttonTitle
+        self.message = message
     }
 }
 
@@ -618,6 +687,7 @@ private struct RecoveryFileRow: View {
     private var roleName: String {
         switch file.role {
         case .savedNote: "Saved note"
+        case .createdNote: "Created note"
         case .movedNote: "Moved note"
         case .movedFolder:
             String(localized: "Moved folder", table: "Localizable", bundle: .module)

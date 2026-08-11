@@ -50,6 +50,1243 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(oversized.contains("i"))
     }
 
+    @Test("Authenticated Analysis creation freezes a safe field plan and records one created mutation")
+    func authenticatedAnalysisCreationIsIdempotentAndPortable() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+
+        let savedSettings = try await handle.research.settings()
+        var settings = savedSettings.settings
+        settings.properties[.paperAnalysis]?.newNoteYAML =
+            "# researcher seed\ntags: [configured]\n"
+        settings.analysisAgentCreation.requiredFieldsBySourceType[.journalArticle] = [
+            "authors",
+        ]
+        _ = try await handle.research.saveSettings(
+            settings,
+            expectedRevision: savedSettings.revision
+        )
+        let savedPolicy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: savedPolicy.revision
+        )
+
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: "Created/Journal Analysis.md",
+                    operations: [.createNote]
+                )],
+                academicReason: "Create the Analysis required by this source-focused Action."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
+        let creationView = try #require(extensionResult.entries.first(where: {
+            $0.relativePath == "Created/Journal Analysis.md"
+        }))
+        #expect(creationView.expectsAbsence)
+        let journalPlan = try #require(creationView.analysisCreationPlans.first {
+            $0.sourceType == .journalArticle
+        })
+        #expect(journalPlan.fields.first { $0.key == "authors" }?.isRequired == true)
+        #expect(journalPlan.fields.allSatisfy { $0.key != "tags" })
+        let exposed = String(
+            decoding: try JSONEncoder().encode(creationView),
+            as: UTF8.self
+        )
+        for forbidden in [
+            "settings_revision", "reserved", "note_id", "researcher seed",
+            "configured",
+        ] {
+            #expect(!exposed.contains(forbidden))
+        }
+
+        let metadata = try AnalysisCreationMetadata(
+            sourceType: .journalArticle,
+            properties: [
+                try CanonicalPropertyInput(
+                    key: "title",
+                    value: .string("Created Analysis")
+                ),
+                try CanonicalPropertyInput(
+                    key: "authors",
+                    value: .array([.object([
+                        "family": .string("Scanlon"),
+                        "given": .string("T. M."),
+                    ])])
+                ),
+            ]
+        )
+        let requestID = UUID(uuidString: "00000000-0000-4000-8000-000000000601")!
+        let intent = try ResearchDocumentWriteIntent(
+            requestID: requestID,
+            role: .analysis,
+            relativePath: "Created/Journal Analysis.md",
+            operation: .createNote,
+            content: "# Analysis body\n",
+            analysisMetadata: metadata
+        )
+        // Keep the catalog projection stale throughout create -> same-Note
+        // augmentation -> write. Authoritative control/source state must own
+        // every consequential decision in this sequence.
+        let invalidDerivedSource = fixture.rootURL
+            .appendingPathComponent("Topics", isDirectory: true)
+            .appendingPathComponent("Invalid UTF-8.md")
+        try Data([0xFF, 0xFE, 0xFD]).write(
+            to: invalidDerivedSource,
+            options: .atomic
+        )
+        let created = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(created.state == .committed)
+        #expect(try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        ) == created)
+
+        let execution = try await handle.services.localResearchExecutionStore.record(
+            id: connection.preparation.runID
+        )
+        let createdEntry = try #require(execution.boundedWriteSet.entries.first {
+            $0.note.relativePath == "Created/Journal Analysis.md"
+        })
+        #expect(createdEntry.state == .consumed)
+        #expect(createdEntry.wasCreated)
+        #expect(createdEntry.checkpointID == nil)
+        let document = try await handle.documents.load(createdEntry.note)
+        #expect(document.body == "# Analysis body\n")
+        #expect(document.parsedFrontmatter["type"] == .string("journal_article"))
+        #expect(document.parsedFrontmatter["tags"] == .array([.string("configured")]))
+        #expect(try await handle.services.controlStore.identityRecord(
+            vaultID: createdEntry.note.vaultID,
+            relativePath: createdEntry.note.relativePath
+        )?.id == createdEntry.noteID)
+        let firstCreatedRevision = document.fingerprint
+
+        await #expect(throws: ResearchBoundedWriteSetError.staleAuthorization) {
+            try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: try ResearchDocumentWriteIntent(
+                    requestID: UUID(),
+                    role: .analysis,
+                    relativePath: createdEntry.note.relativePath,
+                    operation: .createNote,
+                    content: "# Duplicate\n",
+                    analysisMetadata: metadata
+                )
+            )
+        }
+
+        let propertyExtension = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: createdEntry.note.relativePath,
+                    operations: [.modifyProperties],
+                    propertyKeys: ["summary"]
+                )],
+                academicReason: "Add one exact field under fresh existing-Note authority."
+            )
+        )
+        #expect(propertyExtension.state == .allowedSubset)
+        let augmented = try #require(propertyExtension.entries.first {
+            $0.relativePath == createdEntry.note.relativePath
+        })
+        #expect(!augmented.expectsAbsence)
+        #expect(augmented.operations == [.modifyProperties])
+        #expect(augmented.propertyKeys == ["summary"])
+        let propertyWrite = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: createdEntry.note.relativePath,
+                operation: .modifyProperties,
+                properties: [try CanonicalPropertyInput(
+                    key: "summary",
+                    value: .string("Fresh authority after managed creation.")
+                )]
+            )
+        )
+        #expect(propertyWrite.state == .committed)
+        let finalDocument = try await handle.documents.load(createdEntry.note)
+        #expect(finalDocument.fingerprint != firstCreatedRevision)
+        #expect(finalDocument.parsedFrontmatter["summary"]
+            == .string("Fresh authority after managed creation."))
+        let cancelError = await #expect(
+            throws: ResearchFunctionContractError.self
+        ) {
+            try await handle.research.cancelAction(
+                runID: connection.preparation.runID
+            )
+        }
+        if case .committedWritesRequireCompletion(let runID) = cancelError {
+            #expect(runID == connection.preparation.runID)
+        } else {
+            Issue.record("Committed creation returned the wrong End refusal.")
+        }
+        #expect(try await handle.services.localResearchExecutionStore.record(
+            id: connection.preparation.runID
+        ).completion == nil)
+
+        let run = try await handle.research.protectedFunctionRun(
+            id: connection.preparation.runID
+        )
+        let submission = try makeTestAgentResultSubmission(
+            for: run,
+            literatureRecommendations: []
+        )
+        let firstReceipt = try await handle.research.submitAgentResult(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            submission: submission
+        )
+        let sourceConfirmed = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        #expect(sourceConfirmed.writeReport?.observedFingerprints[
+            createdEntry.noteID
+        ] == finalDocument.fingerprint)
+        try FileManager.default.removeItem(at: invalidDerivedSource)
+        _ = try await handle.refresh()
+        if !firstReceipt.recordFormed {
+            try await completeAutomaticFidelity(
+                parentRunID: connection.preparation.runID,
+                handle: handle
+            )
+            _ = try await handle.research.submitAgentResult(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                submission: submission
+            )
+        }
+        let record = try #require(
+            try await handle.research.finishedResearchRecords(noteID: createdEntry.noteID)
+                .first(where: { $0.id == connection.preparation.runID })
+        )
+        let change = try #require(record.confirmedChanges.first {
+            $0.noteID == createdEntry.noteID
+        })
+        #expect(change.kind == .created)
+        #expect(change.startingRevision == nil)
+        #expect(change.endingRevision == finalDocument.fingerprint)
+        let participant = try #require(record.participatingNotes.first {
+            $0.noteID == createdEntry.noteID
+        })
+        #expect(participant.startingRevision == firstCreatedRevision)
+        #expect(participant.endingRevision == finalDocument.fingerprint)
+        await #expect(
+            throws: ResearchRecordChangeRecoveryOperationError
+                .createdNoteHasNoPreimage(createdEntry.noteID)
+        ) {
+            _ = try await handle.research.researchRecordComparison(
+                recordID: record.id,
+                noteID: createdEntry.noteID
+            )
+        }
+        let trashed = try await handle.documents.moveToTrash(
+            createdEntry.note,
+            expectedRevision: finalDocument.fingerprint
+        ).committedValue
+        let trashedDocument = try await handle.documents.load(trashed.destination)
+        _ = try await handle.documents.deletePermanently(
+            trashed.destination,
+            expectedRevision: trashedDocument.fingerprint
+        )
+        let tombstonedRecord = try #require(
+            try await handle.research.finishedResearchRecords(
+                noteID: createdEntry.noteID
+            ).first { $0.id == record.id }
+        )
+        let tombstone = try #require(tombstonedRecord.participatingNotes.first {
+            $0.noteID == createdEntry.noteID
+        })
+        #expect(tombstone.isTombstone)
+        #expect(tombstone.startingRevision == firstCreatedRevision)
+        #expect(tombstone.endingRevision == nil)
+        #expect(tombstonedRecord.confirmedChanges.first {
+            $0.noteID == createdEntry.noteID
+        } == change)
+        #expect(try await handle.research.recoveryRecords().isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Property authority changes only the exact approved YAML keys")
+    func propertyWritePreservesBodyAndRejectsExtraKeys() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let savedPolicy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: savedPolicy.revision
+        )
+        let before = try await handle.documents.load(fixture.topicID)
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [
+                    try ResearchWriteSetTargetSelector(
+                        role: .analysis,
+                        relativePath: "Analysis.md",
+                        operations: [.modifyProperties],
+                        propertyKeys: ["tags"]
+                    ),
+                    try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: "Agency.md",
+                        operations: [.modifyProperties],
+                        propertyKeys: ["aliases", "summary"]
+                    ),
+                ],
+                academicReason: "Update two researcher-approved Topic properties."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
+        let initialTarget = try #require(extensionResult.entries.first {
+            $0.relativePath == "Analysis.md"
+        })
+        #expect(initialTarget.operations == [.modifyMarkdown, .modifyProperties])
+        #expect(initialTarget.propertyKeys == ["tags"])
+        #expect(extensionResult.entries.first {
+            $0.relativePath == "Agency.md"
+        }?.propertyKeys == ["aliases", "summary"])
+        let propertyPlans = try #require(extensionResult.entries.first {
+            $0.relativePath == "Agency.md"
+        }?.propertyWritePlans)
+        #expect(propertyPlans.first { $0.key == "aliases" }?.valueKind == .textList)
+        #expect(propertyPlans.first { $0.key == "summary" }?.valueKind == .multilineText)
+
+        let initialBefore = try await handle.documents.load(fixture.analysisID)
+        let initialPropertyWrite = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .modifyProperties,
+                properties: [try CanonicalPropertyInput(
+                    key: "tags",
+                    value: .array([.string("bounded")])
+                )]
+            )
+        )
+        #expect(initialPropertyWrite.state == .committed)
+        let initialAfter = try await handle.documents.load(fixture.analysisID)
+        #expect(initialAfter.body == initialBefore.body)
+        #expect(initialAfter.parsedFrontmatter["tags"]
+            == .array([.string("bounded")]))
+
+        let write = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                requestID: UUID(),
+                role: .topic,
+                relativePath: "Agency.md",
+                operation: .modifyProperties,
+                properties: [
+                    try CanonicalPropertyInput(
+                        key: "summary",
+                        value: .string("A bounded account of agency.")
+                    ),
+                    try CanonicalPropertyInput(
+                        key: "aliases",
+                        value: .array([
+                            .string("Freedom"),
+                            .string("Practical agency"),
+                        ])
+                    ),
+                ]
+            )
+        )
+        #expect(write.state == .committed)
+        let after = try await handle.documents.load(fixture.topicID)
+        #expect(after.body == before.body)
+        #expect(after.parsedFrontmatter["summary"]
+            == .string("A bounded account of agency."))
+        #expect(after.parsedFrontmatter["aliases"] == .array([
+            .string("Freedom"), .string("Practical agency"),
+        ]))
+
+        let topicURL = fixture.rootURL
+            .appendingPathComponent("Topics", isDirectory: true)
+            .appendingPathComponent("Agency.md")
+        try Data((after.rawContent + "\nExternal body addition.\n").utf8)
+            .write(to: topicURL, options: .atomic)
+        let conflictIntent = try ResearchDocumentWriteIntent(
+            requestID: UUID(),
+            role: .topic,
+            relativePath: "Agency.md",
+            operation: .modifyProperties,
+            properties: [try CanonicalPropertyInput(
+                key: "summary",
+                value: .string("Refreshed bounded summary.")
+            )]
+        )
+        let conflict = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: conflictIntent
+        )
+        #expect(conflict.state == .conflict)
+        let refreshed = try await handle.research.resolveAgentWriteConflict(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteConflictResolutionIntent(
+                role: .topic,
+                relativePath: "Agency.md",
+                action: .refreshAuthority
+            )
+        )
+        #expect(refreshed.state == .readyToRetry)
+        #expect(refreshed.target.propertyKeys == ["aliases", "summary"])
+        #expect(refreshed.target.propertyWritePlans == propertyPlans)
+        #expect(try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: conflictIntent
+        ).state == .committed)
+        #expect(try await handle.documents.load(fixture.topicID).body
+            .contains("External body addition."))
+
+        await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
+            try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: try ResearchDocumentWriteIntent(
+                    requestID: UUID(),
+                    role: .topic,
+                    relativePath: "Agency.md",
+                    operation: .modifyProperties,
+                    properties: [try CanonicalPropertyInput(
+                        key: "tags",
+                        value: .array([.string("unauthorized")])
+                    )]
+                )
+            )
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("Agent creation recovery reconciles owned state and preserves a foreign restart identity")
+    func creationRecoverySurvivesRestart() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let cases: [(path: String, source: Bool, identity: Bool, linked: Bool)] = [
+            ("Recovery/Source Only.md", true, false, false),
+            ("Recovery/Identity Only.md", false, true, true),
+            ("Recovery/Both Intended.md", true, true, true),
+            ("Recovery/Both Absent.md", false, false, true),
+        ]
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: try cases.map { item in
+                    try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: item.path,
+                        operations: [.createNote]
+                    )
+                },
+                academicReason: "Exercise every durable managed-creation recovery state."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
+
+        var recoveryIDs: [String: UUID] = [:]
+        for item in cases {
+            let execution = try await handle.services.localResearchExecutionStore
+                .record(id: connection.preparation.runID)
+            let entry = try #require(execution.boundedWriteSet.entries.first {
+                $0.note.relativePath == item.path
+            })
+            let source = "# \(URL(fileURLWithPath: item.path).deletingPathExtension().lastPathComponent)\n"
+            let revision = DocumentFingerprint(content: source)
+            let operationID = UUID()
+            let write = try ResearchDocumentWriteRecord(
+                id: operationID,
+                runID: connection.preparation.runID,
+                target: entry.handle,
+                actor: .agent,
+                operation: .createNote,
+                requestFingerprint: DocumentFingerprint(content: item.path),
+                expectedRevision: nil,
+                intendedRevision: revision,
+                state: .writing,
+                checkpointID: nil,
+                startedAt: Date()
+            )
+            _ = try await handle.services.localResearchExecutionStore
+                .beginDocumentWrite(write)
+            if item.source {
+                let repositories = await handle.services.repositories
+                let repository = try #require(
+                    repositories[entry.note.vaultID]
+                )
+                _ = try await repository.create(
+                    relativePath: item.path,
+                    content: source
+                )
+            }
+            if item.identity {
+                _ = try await handle.services.controlStore.identity(
+                    forVaultID: entry.note.vaultID,
+                    relativePath: item.path,
+                    fingerprint: revision,
+                    preferredID: entry.noteID
+                )
+            }
+            let recoveryID = UUID()
+            let recovery = TriptychMutationRecoveryRecord(
+                id: recoveryID,
+                triptychID: fixture.assignment.id,
+                operation: .noteCreation,
+                failure: "Injected mixed creation state",
+                files: [TriptychMutationRecoveryFile(
+                    vaultID: entry.note.vaultID,
+                    path: item.path,
+                    role: .createdNote,
+                    beforeRevision: nil,
+                    intendedRevision: revision,
+                    observedRevision: item.source ? revision : nil,
+                    state: item.source ? .intendedBytesRemain : .missing,
+                    detail: "Deterministic restart fixture"
+                )],
+                researchWrite: ResearchWriteRecoveryReference(
+                    runID: connection.preparation.runID,
+                    operationID: operationID,
+                    target: entry.handle
+                )
+            )
+            try await handle.services.transactionRecoveryStore.record(recovery)
+            if item.linked {
+                _ = try await handle.services.localResearchExecutionStore
+                    .finishDocumentWrite(
+                        runID: connection.preparation.runID,
+                        operationID: operationID,
+                        state: .recoveryRequired,
+                        observedRevision: item.source ? revision : nil,
+                        warning: recovery.failure,
+                        recoveryRecordID: recoveryID,
+                        finishedAt: Date()
+                    )
+            }
+            recoveryIDs[item.path] = recoveryID
+        }
+        await runtime.shutdown()
+
+        let reopenedRuntime = fixture.runtime()
+        let reopened = try await reopenedRuntime.openWorkspace(
+            id: fixture.assignment.id
+        )
+        let reopenedExecution = try await reopened.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+
+        // External source changes after the durable observation cannot be
+        // settled from stale evidence. Both directions retain the recovery
+        // record, then converge on a fresh retry.
+        for (path, makePresent) in [
+            ("Recovery/Identity Only.md", true),
+            ("Recovery/Source Only.md", false),
+        ] {
+            let entry = try #require(reopenedExecution.boundedWriteSet.entries.first {
+                $0.note.relativePath == path
+            })
+            let write = try #require(reopenedExecution.documentWriteRecords.first {
+                $0.target == entry.handle
+            })
+            let gate = ResearchCreationTestGate()
+            await reopened.setResearchCreationRecoveryObservationBarrierForTesting {
+                await gate.wait()
+            }
+            let recoveryID = try #require(recoveryIDs[path])
+            let resolution = Task {
+                try await reopened.research.resolveRecoveryRecord(recoveryID)
+            }
+            #expect(await gate.waitUntilArrived())
+            let repositories = await reopened.services.repositories
+            let repository = try #require(repositories[entry.note.vaultID])
+            if makePresent {
+                _ = try await repository.create(
+                    relativePath: path,
+                    content: "# Identity Only\n"
+                )
+            } else {
+                try await repository.removeCreatedFileForRollback(
+                    relativePath: path,
+                    createdRevision: write.intendedRevision
+                )
+            }
+            await gate.release()
+            await #expect(throws: ResearchBoundedWriteSetError.recoveryRequired) {
+                try await resolution.value
+            }
+            await reopened.setResearchCreationRecoveryObservationBarrierForTesting(nil)
+            #expect(try await reopened.research.recoveryRecords().contains {
+                $0.id == recoveryIDs[path]
+            })
+            let identity = try await reopened.services.controlStore.identityRecord(
+                vaultID: entry.note.vaultID,
+                relativePath: path
+            )
+            if makePresent {
+                #expect(identity?.id == entry.noteID)
+                #expect(identity?.fingerprint == write.intendedRevision)
+            }
+        }
+
+        // A crash after Local Execution settles but before the recovery record
+        // is removed must make the next click cleanup-only. A later external
+        // identity and binding are not reinterpreted or replaced.
+        let terminalPath = "Recovery/Both Intended.md"
+        let terminalEntry = try #require(
+            reopenedExecution.boundedWriteSet.entries.first {
+                $0.note.relativePath == terminalPath
+            }
+        )
+        let terminalWrite = try #require(
+            reopenedExecution.documentWriteRecords.first {
+                $0.target == terminalEntry.handle
+            }
+        )
+        _ = try await reopened.services.localResearchExecutionStore
+            .reconcileDocumentWriteRecovery(
+                runID: connection.preparation.runID,
+                operationID: terminalWrite.id,
+                recoveryRecordID: try #require(recoveryIDs[terminalPath]),
+                observedRevision: terminalWrite.intendedRevision,
+                reconciledAt: Date()
+            )
+        _ = try await reopened.services.controlStore.purgeIdentity(
+            id: terminalEntry.noteID,
+            vaultID: terminalEntry.note.vaultID,
+            relativePath: terminalPath
+        )
+        let externalTerminalIdentity = try #require(
+            try await reopened.services.controlStore.identity(
+                forVaultID: terminalEntry.note.vaultID,
+                relativePath: terminalPath,
+                fingerprint: terminalWrite.intendedRevision
+            )
+        )
+        let terminalBindings = try await reopened.services.controlStore.zoteroBindings()
+        let externalTerminalBinding = try AnalysisZoteroBinding(
+            noteID: externalTerminalIdentity.id,
+            library: .group(77),
+            itemKey: "TERMINAL"
+        )
+        _ = try await reopened.services.controlStore.setZoteroBinding(
+            externalTerminalBinding,
+            expectedRevision: terminalBindings.revision
+        )
+
+        let sourceOnlyPath = "Recovery/Source Only.md"
+        let sourceOnlyEntry = try #require(
+            reopenedExecution.boundedWriteSet.entries.first {
+                $0.note.relativePath == sourceOnlyPath
+            }
+        )
+        let foreignSourceOnlyIdentity = try #require(
+            try await reopened.services.controlStore.identityRecord(
+                vaultID: sourceOnlyEntry.note.vaultID,
+                relativePath: sourceOnlyPath
+            )
+        )
+        #expect(foreignSourceOnlyIdentity.id != sourceOnlyEntry.noteID)
+        await #expect(throws: ResearchBoundedWriteSetError.recoveryRequired) {
+            try await reopened.research.resolveRecoveryRecord(
+                try #require(recoveryIDs[sourceOnlyPath])
+            )
+        }
+
+        for item in cases where item.path != sourceOnlyPath {
+            try await reopened.research.resolveRecoveryRecord(
+                try #require(recoveryIDs[item.path])
+            )
+        }
+        let reconciled = try await reopened.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        for item in cases {
+            let entry = try #require(reconciled.boundedWriteSet.entries.first {
+                $0.note.relativePath == item.path
+            })
+            let write = try #require(reconciled.documentWriteRecords.first {
+                $0.target == entry.handle
+            })
+            let expectedState: ResearchDocumentWriteState = switch item.path {
+            case "Recovery/Identity Only.md", "Recovery/Both Intended.md":
+                .committed
+            case "Recovery/Both Absent.md":
+                .abandoned
+            case let path where path == sourceOnlyPath:
+                .writing
+            default:
+                fatalError("Unexpected recovery fixture")
+            }
+            #expect(write.state == expectedState)
+            let identity = try await reopened.services.controlStore.identityRecord(
+                vaultID: entry.note.vaultID,
+                relativePath: item.path
+            )
+            if item.path == terminalPath {
+                #expect(identity == externalTerminalIdentity)
+                #expect(try await reopened.services.controlStore.zoteroBindings()
+                    .binding(for: externalTerminalIdentity.id)
+                    == externalTerminalBinding)
+            } else if item.path == sourceOnlyPath {
+                #expect(identity == foreignSourceOnlyIdentity)
+            } else {
+                #expect((identity?.id == entry.noteID)
+                    == (expectedState == .committed))
+            }
+        }
+        #expect(try await reopened.research.recoveryRecords().map(\.id)
+            == [try #require(recoveryIDs[sourceOnlyPath])])
+        await reopenedRuntime.shutdown()
+    }
+
+    @Test("Agent create authorization requires both source and portable identity absence")
+    func creationRefusesOrphanedPortableIdentity() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let path = "Created/Occupied Identity.md"
+        let oldIdentity = try #require(
+            try await handle.services.controlStore.identity(
+                forVaultID: fixture.topicID.vaultID,
+                relativePath: path,
+                fingerprint: DocumentFingerprint(content: "# Old\n")
+            )
+        )
+        let bindings = try await handle.services.controlStore.zoteroBindings()
+        let oldBinding = try AnalysisZoteroBinding(
+            noteID: oldIdentity.id,
+            library: .user,
+            itemKey: "OLDKEY01"
+        )
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            oldBinding,
+            expectedRevision: bindings.revision
+        )
+
+        await #expect(throws: ResearchBoundedWriteSetError.targetUnavailable) {
+            _ = try await handle.research.extendAgentWriteSet(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: ResearchWriteSetExtensionIntent(
+                    targets: [ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: path,
+                        operations: [.createNote]
+                    )],
+                    academicReason: "Attempt an exact new Note identity."
+                )
+            )
+        }
+        let topicVault = try #require(
+            fixture.assignment.vaults.values.first { $0.id == fixture.topicID.vaultID }
+        )
+        #expect(!FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: topicVault.canonicalPath)
+                .appendingPathComponent(path).path
+        ))
+        #expect(try await handle.services.controlStore.identityRecord(
+            vaultID: fixture.topicID.vaultID,
+            relativePath: path
+        ) == oldIdentity)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: oldIdentity.id) == oldBinding)
+        await runtime.shutdown()
+    }
+
+    @Test("Exact retry settles a created source and identity after Local Execution stopped at writing")
+    func creationRetrySettlesPostCommitWritingSeam() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let path = "Created/Post Commit Retry.md"
+        _ = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: ResearchWriteSetExtensionIntent(
+                targets: [ResearchWriteSetTargetSelector(
+                    role: .topic,
+                    relativePath: path,
+                    operations: [.createNote]
+                )],
+                academicReason: "Create one retry-stable Note."
+            )
+        )
+        let execution = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        let entry = try #require(execution.boundedWriteSet.entries.first {
+            $0.note.relativePath == path
+        })
+        let intent = try ResearchDocumentWriteIntent(
+            requestID: UUID(),
+            role: .topic,
+            relativePath: path,
+            operation: .createNote,
+            content: "# Durable creation\n"
+        )
+        let settings = try await handle.research.settings()
+        let source = try await handle.managedCreationSource(
+            request: ManagedNoteCreationRequest(
+                vaultID: entry.note.vaultID,
+                destination: .exact(relativePath: path),
+                body: intent.content,
+                authority: .authenticatedAgent(
+                    settingsRevision: try #require(entry.settingsRevision),
+                    reservedIdentity: entry.noteID
+                )
+            ),
+            slot: .topicKnowledge,
+            settings: settings.settings
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let requestFingerprint = DocumentFingerprint(
+            data: try encoder.encode(intent)
+        )
+        let operationDigest = DocumentFingerprint(content: [
+            connection.preparation.runID.uuidString.lowercased(),
+            "write",
+            intent.requestID.uuidString.lowercased(),
+        ].joined(separator: ":")).sha256
+        let operationID = try #require(UUID(uuidString: [
+            String(operationDigest.prefix(8)),
+            String(operationDigest.dropFirst(8).prefix(4)),
+            String(operationDigest.dropFirst(12).prefix(4)),
+            String(operationDigest.dropFirst(16).prefix(4)),
+            String(operationDigest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")))
+        _ = try await handle.services.localResearchExecutionStore.beginDocumentWrite(
+            ResearchDocumentWriteRecord(
+                id: operationID,
+                runID: connection.preparation.runID,
+                target: entry.handle,
+                actor: .agent,
+                operation: .createNote,
+                requestFingerprint: requestFingerprint,
+                expectedRevision: nil,
+                intendedRevision: DocumentFingerprint(content: source),
+                state: .writing,
+                checkpointID: nil,
+                startedAt: Date()
+            )
+        )
+        _ = try await handle.documents.createManagedNote(
+            ManagedNoteCreationRequest(
+                vaultID: entry.note.vaultID,
+                destination: .exact(relativePath: path),
+                body: intent.content,
+                authority: .authenticatedAgent(
+                    settingsRevision: try #require(entry.settingsRevision),
+                    reservedIdentity: entry.noteID
+                )
+            )
+        )
+
+        let retried = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(retried.state == .committed)
+        let settled = try #require(
+            try await handle.services.localResearchExecutionStore.record(
+                id: connection.preparation.runID
+            ).documentWriteRecords.first { $0.id == operationID }
+        )
+        #expect(settled.state == .committed)
+        #expect(settled.observedRevision == DocumentFingerprint(content: source))
+        await runtime.shutdown()
+    }
+
+    @Test("Identity claim race rolls source back without disturbing the other identity")
+    func creationIdentityRaceIsProvenAbandoned() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let path = "Created/Identity Race.md"
+        _ = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: ResearchWriteSetExtensionIntent(
+                targets: [ResearchWriteSetTargetSelector(
+                    role: .topic,
+                    relativePath: path,
+                    operations: [.createNote]
+                )],
+                academicReason: "Exercise the final identity claim race."
+            )
+        )
+        let gate = ResearchCreationTestGate()
+        await handle.setManagedCreationPostSourceBarrierForTesting {
+            await gate.wait()
+        }
+        let intent = try ResearchDocumentWriteIntent(
+            role: .topic,
+            relativePath: path,
+            operation: .createNote,
+            content: "# Raced source\n"
+        )
+        let creation = Task {
+            try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: intent
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        let entry = try #require(
+            try await handle.services.localResearchExecutionStore.record(
+                id: connection.preparation.runID
+            ).boundedWriteSet.entries.first { $0.note.relativePath == path }
+        )
+        let currentSource = try Data(
+            contentsOf: URL(fileURLWithPath: try #require(
+                fixture.assignment.vaults.values.first {
+                    $0.id == entry.note.vaultID
+                }
+            ).canonicalPath).appendingPathComponent(path)
+        )
+        let otherIdentity = try #require(
+            try await handle.services.controlStore.identity(
+                forVaultID: entry.note.vaultID,
+                relativePath: path,
+                fingerprint: DocumentFingerprint(data: currentSource)
+            )
+        )
+        #expect(otherIdentity.id != entry.noteID)
+        let bindings = try await handle.services.controlStore.zoteroBindings()
+        let otherBinding = try AnalysisZoteroBinding(
+            noteID: otherIdentity.id,
+            library: .user,
+            itemKey: "RACEKEY1"
+        )
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            otherBinding,
+            expectedRevision: bindings.revision
+        )
+        await gate.release()
+        let result = try await creation.value
+        await handle.setManagedCreationPostSourceBarrierForTesting(nil)
+        #expect(result.state == .abandoned)
+        #expect(result.recoveryRecordID == nil)
+        let vault = try #require(
+            fixture.assignment.vaults.values.first { $0.id == entry.note.vaultID }
+        )
+        #expect(!FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: vault.canonicalPath)
+                .appendingPathComponent(path).path
+        ))
+        #expect(try await handle.services.controlStore.identityRecord(
+            vaultID: entry.note.vaultID,
+            relativePath: path
+        ) == otherIdentity)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: otherIdentity.id) == otherBinding)
+        #expect(try await handle.research.recoveryRecords().isEmpty)
+        await runtime.shutdown()
+    }
+
+    @Test("Managed creator requires final joint source and reserved identity readback")
+    func creationFinalReadbackRetainsRecoveryForMissingOrChangedSource() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let cases = [
+            (path: "Created/Missing Final Source.md", replacement: nil as String?),
+            (path: "Created/Changed Final Source.md", replacement: "# External replacement\n"),
+        ]
+        _ = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: ResearchWriteSetExtensionIntent(
+                targets: try cases.map {
+                    try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: $0.path,
+                        operations: [.createNote]
+                    )
+                },
+                academicReason: "Prove final source and identity jointly."
+            )
+        )
+        for item in cases {
+            let gate = ResearchCreationTestGate()
+            await handle.setManagedCreationPostSourceBarrierForTesting {
+                await gate.wait()
+            }
+            let creation = Task {
+                try await handle.research.writeAgentDocument(
+                    credential: connection.credential,
+                    run: connection.handoff.run,
+                    intent: ResearchDocumentWriteIntent(
+                        role: .topic,
+                        relativePath: item.path,
+                        operation: .createNote,
+                        content: "# Intended\n"
+                    )
+                )
+            }
+            #expect(await gate.waitUntilArrived())
+            let execution = try await handle.services.localResearchExecutionStore
+                .record(id: connection.preparation.runID)
+            let entry = try #require(execution.boundedWriteSet.entries.first {
+                $0.note.relativePath == item.path
+            })
+            let repositories = await handle.services.repositories
+            let repository = try #require(repositories[entry.note.vaultID])
+            let current = try await repository.load(relativePath: item.path)
+            try await repository.removeCreatedFileForRollback(
+                relativePath: item.path,
+                createdRevision: current.fingerprint
+            )
+            if let replacement = item.replacement {
+                _ = try await repository.create(
+                    relativePath: item.path,
+                    content: replacement
+                )
+            }
+            await gate.release()
+            let result = try await creation.value
+            await handle.setManagedCreationPostSourceBarrierForTesting(nil)
+            #expect(result.state == .recoveryRequired)
+            #expect(result.recoveryRecordID != nil)
+        }
+        #expect(try await handle.research.recoveryRecords().count == cases.count)
+        await runtime.shutdown()
+    }
+
+    @Test("Final Agent save preflight rejects a same-byte path reused by another identity")
+    func existingWriteRevalidatesIdentityInsideSourceLease() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let execution = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        let entry = try #require(execution.boundedWriteSet.entries.first)
+        let original = try await handle.documents.load(entry.note)
+        let gate = ResearchCreationTestGate()
+        await handle.setResearchDocumentSavePreflightBarrierForTesting {
+            await gate.wait()
+        }
+        let writing = Task {
+            try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: ResearchDocumentWriteIntent(
+                    role: entry.role,
+                    relativePath: entry.note.relativePath,
+                    operation: .modifyMarkdown,
+                    content: "# Unauthorized replacement write\n"
+                )
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        _ = try await handle.services.controlStore.purgeIdentity(
+            id: entry.noteID,
+            vaultID: entry.note.vaultID,
+            relativePath: entry.note.relativePath
+        )
+        let replacementIdentity = try #require(
+            try await handle.services.controlStore.identity(
+                forVaultID: entry.note.vaultID,
+                relativePath: entry.note.relativePath,
+                fingerprint: original.fingerprint
+            )
+        )
+        #expect(replacementIdentity.id != entry.noteID)
+        await gate.release()
+        let result = try await writing.value
+        await handle.setResearchDocumentSavePreflightBarrierForTesting(nil)
+        #expect(result.state == .abandoned)
+        #expect(result.target.state == .stale)
+        #expect(try await handle.documents.load(entry.note).rawContent
+            == original.rawContent)
+        #expect(try await handle.services.controlStore.identityRecord(
+            vaultID: entry.note.vaultID,
+            relativePath: entry.note.relativePath
+        )?.id == replacementIdentity.id)
+        await runtime.shutdown()
+    }
+
+    @Test("Property authority requires a researcher-established valid YAML envelope")
+    func propertyAuthorityRequiresValidFrontmatter() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let plainID = VaultQualifiedNoteID(
+            vaultID: fixture.topicID.vaultID,
+            relativePath: "Property Plain.md"
+        )
+        let malformedID = VaultQualifiedNoteID(
+            vaultID: fixture.topicID.vaultID,
+            relativePath: "Property Malformed.md"
+        )
+        let plain = try await handle.documents.create(
+            plainID,
+            content: "# Plain\n"
+        ).committedValue
+        _ = try await handle.documents.create(
+            malformedID,
+            content: "---\nsummary: incomplete\n"
+        )
+        _ = try await handle.refresh()
+        let checkpointCount = try await handle.research.checkpoints()
+            .checkpoints.count
+
+        for path in [plainID.relativePath, malformedID.relativePath] {
+            await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
+                _ = try await handle.research.extendAgentWriteSet(
+                    credential: connection.credential,
+                    run: connection.handoff.run,
+                    intent: try ResearchWriteSetExtensionIntent(
+                        targets: [try ResearchWriteSetTargetSelector(
+                            role: .topic,
+                            relativePath: path,
+                            operations: [.modifyProperties],
+                            propertyKeys: ["summary"]
+                        )],
+                        academicReason: "Properties require a valid researcher-owned envelope."
+                    )
+                )
+            }
+        }
+        #expect(try await handle.research.checkpoints().checkpoints.count
+            == checkpointCount)
+        #expect(try await handle.documents.load(plainID).sourceBytes
+            == plain.sourceBytes)
+        #expect(try await handle.documents.load(malformedID).rawContent
+            == "---\nsummary: incomplete\n")
+
+        let inserted = try await handle.documents.save(
+            plainID,
+            changeSet: .insertFrontmatter([
+                "summary": .string("Researcher established YAML")
+            ]),
+            expectedRevision: plain.fingerprint
+        ).committedValue.document
+        #expect(inserted.frontmatterState == .valid)
+        let allowed = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .topic,
+                    relativePath: plainID.relativePath,
+                    operations: [.modifyProperties],
+                    propertyKeys: ["summary"]
+                )],
+                academicReason: "Update the now explicit Property."
+            )
+        )
+        #expect(allowed.state == .allowedSubset)
+        #expect(try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .topic,
+                relativePath: plainID.relativePath,
+                operation: .modifyProperties,
+                properties: [try CanonicalPropertyInput(
+                    key: "summary",
+                    value: .string("Agent bounded update")
+                )]
+            )
+        ).state == .committed)
+        await runtime.shutdown()
+    }
+
     @Test("Full Access extends one Run to two documents and writes them sequentially with idempotent retry")
     func fullAccessMultiDocumentWrite() async throws {
         let fixture = try await ResearchFixture.make()
@@ -104,7 +1341,7 @@ struct ResearchBoundedWriteOperationsTests {
             requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000101")!,
             role: .topic,
             relativePath: "Agency.md",
-            content: topic.rawContent + "\nAgent-bounded topic addition.\n"
+            content: topic.body + "\nAgent-bounded topic addition.\n"
         )
         let topicWrite = try await handle.research.writeAgentDocument(
             credential: connection.credential,
@@ -127,7 +1364,7 @@ struct ResearchBoundedWriteOperationsTests {
                 requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000102")!,
                 role: .work,
                 relativePath: "Draft Argument.md",
-                content: work.rawContent + "\nAgent-bounded work addition.\n"
+                content: work.body + "\nAgent-bounded work addition.\n"
             )
         )
         #expect(workWrite.state == .committed)
@@ -145,6 +1382,114 @@ struct ResearchBoundedWriteOperationsTests {
             $0.runID == connection.preparation.runID && $0.state == .running
         })
 
+        await runtime.shutdown()
+    }
+
+    @Test("Body authority preserves valid frontmatter and cannot create or erase an envelope")
+    func bodyAuthorityPreservesFrontmatterState() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let policy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: policy.revision
+        )
+        let plainID = VaultQualifiedNoteID(
+            vaultID: fixture.topicID.vaultID,
+            relativePath: "Plain.md"
+        )
+        let malformedID = VaultQualifiedNoteID(
+            vaultID: fixture.topicID.vaultID,
+            relativePath: "Malformed.md"
+        )
+        _ = try await handle.documents.create(
+            plainID,
+            content: "# Plain\n\nBody only.\n"
+        )
+        _ = try await handle.documents.create(
+            malformedID,
+            content: "---\nkey: value\n"
+        )
+        _ = try await handle.refresh()
+
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [
+                    try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: "Agency.md",
+                        operations: [.modifyMarkdown]
+                    ),
+                    try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: "Plain.md",
+                        operations: [.modifyMarkdown]
+                    ),
+                ],
+                academicReason: "Exercise exact body-only authority."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
+
+        let frontmatterLikeBody = "---\nsecret: value\n---\n# Body\n"
+        let validWrite = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .topic,
+                relativePath: "Agency.md",
+                content: frontmatterLikeBody
+            )
+        )
+        #expect(validWrite.state == .committed)
+        let valid = try await handle.documents.load(fixture.topicID)
+        #expect(valid.frontmatterState == .valid)
+        #expect(valid.parsedFrontmatter["secret"] == nil)
+        #expect(valid.body == frontmatterLikeBody)
+
+        let plainBefore = try await handle.documents.load(plainID)
+        await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
+            _ = try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: try ResearchDocumentWriteIntent(
+                    role: .topic,
+                    relativePath: "Plain.md",
+                    content: frontmatterLikeBody
+                )
+            )
+        }
+        #expect(try await handle.documents.load(plainID).sourceBytes
+            == plainBefore.sourceBytes)
+
+        let checkpointCount = try await handle.research.checkpoints()
+            .checkpoints.count
+        await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
+            _ = try await handle.research.extendAgentWriteSet(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: try ResearchWriteSetExtensionIntent(
+                    targets: [try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: "Malformed.md",
+                        operations: [.modifyMarkdown]
+                    )],
+                    academicReason: "This malformed source must remain Source-only."
+                )
+            )
+        }
+        #expect(try await handle.research.checkpoints().checkpoints.count
+            == checkpointCount)
+        #expect(try await handle.documents.load(malformedID).rawContent
+            == "---\nkey: value\n")
         await runtime.shutdown()
     }
 
@@ -209,7 +1554,7 @@ struct ResearchBoundedWriteOperationsTests {
             intent: try ResearchDocumentWriteIntent(
                 role: .analysis,
                 relativePath: "Analysis.md",
-                content: analysis.rawContent + "\r\nAgent-bounded analysis addition.\r\n"
+                content: analysis.body + "\r\nAgent-bounded analysis addition.\r\n"
             )
         )
         #expect(unaffected.state == .committed)
@@ -358,11 +1703,15 @@ struct ResearchBoundedWriteOperationsTests {
         let externalURL = fixture.analysesURL.appendingPathComponent("Analysis.md")
         try Data(externalSource.utf8).write(to: externalURL, options: .atomic)
         let agentSource = externalSource + "\nAgent addition.\n"
+        let agentBody = NoteDocument(
+            relativePath: "Analysis.md",
+            rawContent: agentSource
+        ).body
         let intent = try ResearchDocumentWriteIntent(
             requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000501")!,
             role: .analysis,
             relativePath: "Analysis.md",
-            content: agentSource
+            content: agentBody
         )
         let conflict = try await handle.research.writeAgentDocument(
             credential: connection.credential,
@@ -386,6 +1735,18 @@ struct ResearchBoundedWriteOperationsTests {
             intent: intent
         )
         #expect(write.state == .committed)
+        let cancelError = await #expect(
+            throws: ResearchFunctionContractError.self
+        ) {
+            try await handle.research.cancelAction(
+                runID: connection.preparation.runID
+            )
+        }
+        if case .committedWritesRequireCompletion(let runID) = cancelError {
+            #expect(runID == connection.preparation.runID)
+        } else {
+            Issue.record("Committed modification returned the wrong End refusal.")
+        }
 
         let resultSubmission = try makeTestAgentResultSubmission(
             for: run,
@@ -412,12 +1773,13 @@ struct ResearchBoundedWriteOperationsTests {
                 .first(where: { $0.id == connection.preparation.runID })
         )
         let change = try #require(record.confirmedChanges.first)
+        let changeStartingRevision = try #require(change.startingRevision)
         let participant = try #require(record.participatingNotes.first(where: {
             $0.noteID == change.noteID
         }))
         let externalRevision = DocumentFingerprint(content: externalSource)
         #expect(participant.startingRevision == initial.fingerprint)
-        #expect(change.startingRevision == externalRevision)
+        #expect(changeStartingRevision == externalRevision)
         #expect(change.endingRevision == DocumentFingerprint(content: agentSource))
         let completedSnapshot = try await handle.snapshot()
         #expect(completedSnapshot.research.activities.allSatisfy {
@@ -471,7 +1833,7 @@ struct ResearchBoundedWriteOperationsTests {
         let restoredState = try await handle.research
             .researchRecordChangeState(recordID: record.id)
         #expect(restoredState.documents.map(\.status) == [.startingRevision])
-        #expect(restoredState.documents.first?.observedRevision == change.startingRevision)
+        #expect(restoredState.documents.first?.observedRevision == changeStartingRevision)
         let reconciled = try await handle.research.undoResearchRecordChanges(
             recordID: record.id,
             selectedNoteIDs: [change.noteID],
@@ -496,7 +1858,7 @@ struct ResearchBoundedWriteOperationsTests {
         ) {
             _ = try await handle.research.markCurrentNoteReviewed(
                 noteID: change.noteID,
-                expectedRevision: change.startingRevision,
+                expectedRevision: changeStartingRevision,
                 expectedRecordSourceManifestHash: "stale-record-projection"
             )
         }
@@ -506,7 +1868,7 @@ struct ResearchBoundedWriteOperationsTests {
         }
         _ = try await handle.research.markCurrentNoteReviewed(
             noteID: change.noteID,
-            expectedRevision: change.startingRevision,
+            expectedRevision: changeStartingRevision,
             expectedRecordSourceManifestHash: noteReviewSnapshot.research
                 .finishedResearchRecordSourceManifestHash
         )
@@ -582,11 +1944,12 @@ struct ResearchBoundedWriteOperationsTests {
             .write(to: topicURL, options: .atomic)
         let writeRequestID = UUID(uuidString: "00000000-0000-4000-8000-000000000301")!
         let intendedContent = "---\ntitle: Agency\n---\n# Agency\n\nReconciled Agent revision.\n"
+        let intendedBody = "# Agency\n\nReconciled Agent revision.\n"
         let writeIntent = try ResearchDocumentWriteIntent(
             requestID: writeRequestID,
             role: .topic,
             relativePath: "Agency.md",
-            content: intendedContent
+            content: intendedBody
         )
         let conflict = try await handle.research.writeAgentDocument(
             credential: connection.credential,
@@ -632,7 +1995,7 @@ struct ResearchBoundedWriteOperationsTests {
                 requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000303")!,
                 role: .topic,
                 relativePath: "Agency.md",
-                content: intendedContent + "Another Agent attempt.\n"
+                content: intendedBody + "Another Agent attempt.\n"
             )
         )
         #expect(secondConflict.state == .conflict)
@@ -662,7 +2025,7 @@ struct ResearchBoundedWriteOperationsTests {
         ])
         let checkpointIDs = await handle.services.checkpointStore.checkpoints().map(\.id)
         #expect(checkpointIDs.contains(originalCheckpoint))
-        #expect(checkpointIDs.contains(currentEntry.checkpointID))
+        #expect(checkpointIDs.contains(try #require(currentEntry.checkpointID)))
         await runtime.shutdown()
     }
 
@@ -728,7 +2091,7 @@ struct ResearchBoundedWriteOperationsTests {
                 intent: try ResearchDocumentWriteIntent(
                     role: .topic,
                     relativePath: "Agency.md",
-                    content: topic.rawContent + "\nThis write must not proceed.\n"
+                    content: topic.body + "\nThis write must not proceed.\n"
                 )
             )
         }
@@ -872,6 +2235,30 @@ struct ResearchBoundedWriteOperationsTests {
             targets: targets,
             academicReason: "Update the directly relevant topic and draft while preserving source attribution."
         )
+    }
+}
+
+private actor ResearchCreationTestGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+    private var arrived = false
+
+    func wait() async {
+        arrived = true
+        arrivalContinuation?.resume()
+        arrivalContinuation = nil
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilArrived() async -> Bool {
+        if arrived { return true }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+        return true
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
     }
 }
 

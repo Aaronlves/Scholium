@@ -103,13 +103,15 @@ extension ScholiumCLI {
                 AgentDocumentWriteDraft.self,
                 from: agentInput(input)
             )
-            let requestID = stableAgentWriteRequestID(run: run, draft: draft)
+            let requestID = try stableAgentWriteRequestID(run: run, draft: draft)
             let intent = try ResearchDocumentWriteIntent(
                 requestID: requestID,
                 role: draft.role,
                 relativePath: draft.relativePath,
                 operation: draft.operation,
-                content: draft.content
+                content: draft.content,
+                properties: draft.properties,
+                analysisMetadata: draft.analysisMetadata
             )
             let credential = try credentialStore.load(for: run)
             let result = try await operations.writeDocument(
@@ -324,15 +326,11 @@ extension ScholiumCLI {
     private static func stableAgentWriteRequestID(
         run: ResearchRunLocator,
         draft: AgentDocumentWriteDraft
-    ) -> UUID {
+    ) throws -> UUID {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let fingerprint = DocumentFingerprint(
-            content: [
-                run.rawValue,
-                draft.role.rawValue,
-                draft.relativePath,
-                draft.operation.rawValue,
-                draft.content,
-            ].joined(separator: "\u{001F}")
+            data: try encoder.encode(AgentDocumentWriteDigest(run: run, draft: draft))
         ).sha256
         return UUID(uuidString: [
             String(fingerprint.prefix(8)),
@@ -398,16 +396,19 @@ private struct AgentPairingReport: Encodable {
     }
 }
 
-private struct AgentDocumentWriteDraft: Decodable {
+private struct AgentDocumentWriteDraft: Codable {
     let role: ResearchActionTargetRole
     let relativePath: String
     let operation: ResearchDocumentWriteOperation
     let content: String
+    let properties: [CanonicalPropertyInput]
+    let analysisMetadata: AnalysisCreationMetadata?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case role
         case relativePath = "relative_path"
-        case operation, content
+        case operation, content, properties
+        case analysisMetadata = "analysis_metadata"
     }
 
     init(from decoder: Decoder) throws {
@@ -423,8 +424,42 @@ private struct AgentDocumentWriteDraft: Decodable {
             ResearchDocumentWriteOperation.self,
             forKey: .operation
         ) ?? .modifyMarkdown
-        content = try container.decode(String.self, forKey: .content)
+        switch operation {
+        case .modifyMarkdown:
+            guard container.contains(.content) else {
+                throw CLIError.usage(
+                    "modify_markdown requires an explicit content string; use an explicit empty string only to intentionally clear the body."
+                )
+            }
+            content = try container.decode(String.self, forKey: .content)
+        case .createNote, .modifyProperties:
+            content = try container.decodeIfPresent(
+                String.self,
+                forKey: .content
+            ) ?? ""
+        }
+        properties = try container.decodeIfPresent(
+            [CanonicalPropertyInput].self,
+            forKey: .properties
+        )?.sorted { $0.key < $1.key } ?? []
+        analysisMetadata = try container.decodeIfPresent(
+            AnalysisCreationMetadata.self,
+            forKey: .analysisMetadata
+        )
+        _ = try ResearchDocumentWriteIntent(
+            role: role,
+            relativePath: relativePath,
+            operation: operation,
+            content: content,
+            properties: properties,
+            analysisMetadata: analysisMetadata
+        )
     }
+}
+
+private struct AgentDocumentWriteDigest: Encodable {
+    let run: ResearchRunLocator
+    let draft: AgentDocumentWriteDraft
 }
 
 private struct AgentWriteConflictResolutionDraft: Decodable {

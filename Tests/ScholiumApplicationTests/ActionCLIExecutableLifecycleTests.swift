@@ -347,24 +347,62 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: Data((code.rawValue + "\n").utf8),
             environment: environment
         )
-        let extensionIntent = try ResearchWriteSetExtensionIntent(
-            targets: [try ResearchWriteSetTargetSelector(
-                role: .topic,
-                relativePath: "Agency.md",
-                operations: [.modifyMarkdown]
-            )],
-            academicReason: "Update the relevant topic note."
-        )
-        let encoder = JSONEncoder()
+        let extensionJSON = try JSONSerialization.data(withJSONObject: [
+            "schema_version": ResearchWriteSetExtensionIntent.currentSchemaVersion,
+            "targets": [[
+                "role": "topic",
+                "relative_path": "Agency.md",
+                "operations": ["modify_markdown"],
+            ]],
+            "academic_reason": "Update the relevant topic note.",
+        ])
         let extended = try cli.run(
             ["agent", "extend-write-set", "--run", run.rawValue, "--from", "-"],
-            stdin: try encoder.encode(extensionIntent),
+            stdin: extensionJSON,
             environment: environment
         )
         let extensionOutput = String(decoding: extended.stdout, as: UTF8.self)
         #expect(extensionOutput.contains("Agency.md"))
         #expect(!extensionOutput.contains(hiddenRequestID.uuidString))
         #expect(!extensionOutput.contains("request_id"))
+
+        try cli.expectFailure(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: try JSONSerialization.data(withJSONObject: [
+                "role": "topic",
+                "relative_path": "Agency.md",
+            ]),
+            environment: environment,
+            contains: "content"
+        )
+
+        let emptyBody = try cli.run(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: try JSONSerialization.data(withJSONObject: [
+                "role": "topic",
+                "relative_path": "Agency.md",
+                "content": "",
+            ]),
+            environment: environment
+        )
+        #expect(String(decoding: emptyBody.stdout, as: UTF8.self).contains("committed"))
+
+        let propertyJSON = try JSONSerialization.data(withJSONObject: [
+            "role": "topic",
+            "relative_path": "Agency.md",
+            "operation": "modify_properties",
+            "properties": [[
+                "key": "summary",
+                "value": "Ordinary JSON value",
+            ]],
+        ])
+        let propertyWrite = try cli.run(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: propertyJSON,
+            environment: environment
+        )
+        #expect(String(decoding: propertyWrite.stdout, as: UTF8.self)
+            .contains("committed"))
 
         let writeJSON = try JSONSerialization.data(withJSONObject: [
             "role": "topic",
@@ -386,8 +424,8 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(writeOutput.contains("committed"))
         #expect(!writeOutput.contains(hiddenOperationID.uuidString))
         #expect(!writeOutput.contains("operation_id"))
-        #expect(observedIDs.values.count == 2)
-        #expect(Set(observedIDs.values).count == 1)
+        #expect(observedIDs.values.count == 4)
+        #expect(Set(observedIDs.values).count == 3)
     }
 
     @Test("The real CLI exposes the provider-discriminated Search v7 text and JSONL contracts")

@@ -302,20 +302,14 @@ final class DocumentController: ObservableObject {
         try await requireOperations().create(id, content: content)
     }
 
-    func create(
-        _ request: DocumentCreationRequest
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
-        try await requireOperations().create(request)
-    }
-
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceUntitledNoteCommit> {
-        try await requireOperations().createUntitledNote(
-            inVault: vaultID,
-            folderRelativePath: folderRelativePath
-        )
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
+        try await requireOperations().createManagedNote(try ManagedNoteCreationRequest(
+            vaultID: vaultID,
+            destination: .untitled(folderRelativePath: folderRelativePath)
+        ))
     }
 
     func createUntitledFolder(

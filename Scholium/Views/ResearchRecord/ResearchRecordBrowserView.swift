@@ -3563,7 +3563,12 @@ private struct ResearchRecordTechnicalDetails: View {
             ) {
                 ScholiumApparatusFactGrid(facts: facts)
                 ForEach(record.participatingNotes) { participant in
-                    ResearchRecordRevisionDetails(participant: participant)
+                    ResearchRecordRevisionDetails(
+                        participant: participant,
+                        wasCreated: record.confirmedChanges.contains {
+                            $0.noteID == participant.noteID && $0.kind == .created
+                        }
+                    )
                 }
             }
         }
@@ -3618,13 +3623,21 @@ private struct ResearchRecordTechnicalDetails: View {
 
 private struct ResearchRecordRevisionDetails: View {
     let participant: PortableResearchNoteRevision
+    let wasCreated: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(participant.title)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .scholiumForeground(.secondaryText)
-            ScholiumApparatusFactGrid(facts: [
+            ScholiumApparatusFactGrid(facts: wasCreated ? [
+                ScholiumApparatusFact(
+                    id: "\(participant.id)-created",
+                    label: String(localized: "Created revision"),
+                    value: participant.startingRevision.sha256,
+                    valueStyle: .revisionIdentity
+                ),
+            ] : [
                 ScholiumApparatusFact(
                     id: "\(participant.id)-starting",
                     label: String(localized: "Starting revision"),
