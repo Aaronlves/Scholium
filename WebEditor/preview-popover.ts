@@ -4,6 +4,7 @@ import {announceEditorMessage} from "./accessibility";
 import {floatingSurfacePosition} from "./floating-surface-geometry";
 import {recordEditorMetric} from "./performance";
 import type {LinkPreview} from "./previews";
+import {localized} from "./localization";
 
 type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
 
@@ -143,7 +144,10 @@ export function createPreviewPopoverController(
       show(preview, coords, startedAt);
       return true;
     }
-    announceEditorMessage(editor.contentDOM, "No preview is available at the insertion point.");
+    announceEditorMessage(
+      editor.contentDOM,
+      localized("No preview is available at the insertion point."),
+    );
     return false;
   }
 
@@ -221,7 +225,7 @@ export function createPreviewPopoverController(
     body = document.createElement("div");
     body.className = "scholium-preview-body scholium-document";
     body.setAttribute("role", "group");
-    body.setAttribute("aria-label", "Preview content");
+    body.setAttribute("aria-label", localized("Preview content"));
     root.append(title, metadata, body);
     document.body.append(root);
     root.addEventListener("pointerenter", handlePreviewPointerEnter);

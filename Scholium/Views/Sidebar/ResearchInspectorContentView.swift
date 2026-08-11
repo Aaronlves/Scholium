@@ -460,17 +460,7 @@ private struct AboutTagsView: View {
     var body: some View {
         FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
             ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
-                Text(tag)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                    .padding(.vertical, ScholiumMetrics.Properties.tagVerticalInset)
-                    .background(
-                        ScholiumColorRole.raisedSurfaceBackground.color,
-                        in: Capsule()
-                    )
-                    .overlay(Capsule().stroke(ScholiumColorRole.separator.color, lineWidth: 1))
+                ScholiumTagCapsuleLabel(tag)
                     .accessibilityLabel(tag)
             }
         }

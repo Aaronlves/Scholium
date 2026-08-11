@@ -3,6 +3,7 @@ import {EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
 import {floatingSurfacePosition} from "./floating-surface-geometry";
 import type {MarkdownEditorCommand} from "./protocol";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
+import {localized, localizedTemplate} from "./localization";
 
 export const selectionActionCommands = [
   "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
@@ -474,41 +475,45 @@ export function createSelectionActionsController(options: {
     const commandBar = document.createElement("div");
     commandBar.className = "scholium-selection-toolbar";
     commandBar.setAttribute("role", "toolbar");
-    commandBar.setAttribute("aria-label", "Formatting actions");
+    commandBar.setAttribute("aria-label", localized("Formatting actions"));
     commandBar.addEventListener("keydown", handleToolbarKeydown);
     root.append(commandBar);
 
-    const styleButton = createToolbarButton("Text Style", "Text Style", "scholium-selection-style-trigger");
+    const styleButton = createToolbarButton(
+      localized("Text Style"),
+      localized("Text Style"),
+      "scholium-selection-style-trigger",
+    );
     styleButton.append(
       selectionSymbol("textformat", "scholium-selection-icon-style"),
       chevronIcon("scholium-selection-chevron"),
     );
     commandBar.append(styleButton);
     const styleMenu = createMenu(styleButton, "scholium-selection-style-menu");
-    addMenuItem(styleMenu, "Paragraph", "paragraph", "", true);
+    addMenuItem(styleMenu, localized("Paragraph"), "paragraph", "", true);
     for (let level = 1; level <= 6; level += 1) {
       addMenuItem(
         styleMenu,
-        `Heading ${level}`,
+        localizedTemplate("Heading {level}", {level}),
         `heading${level}` as SelectionActionCommand,
         "",
         true,
       );
     }
 
-    const bold = createToolbarButton("Bold", "Bold (⌘B)");
+    const bold = createToolbarButton(localized("Bold"), localized("Bold (⌘B)"));
     bold.append(selectionSymbol("bold", "scholium-selection-icon-bold"));
     bindCommand(bold, "bold");
     commandBar.append(bold);
 
-    const italic = createToolbarButton("Italic", "Italic (⌘I)");
+    const italic = createToolbarButton(localized("Italic"), localized("Italic (⌘I)"));
     italic.append(selectionSymbol("italic", "scholium-selection-icon-italic"));
     bindCommand(italic, "emphasis");
     commandBar.append(italic);
 
     const strike = createToolbarButton(
-      "Strikethrough",
-      "Strikethrough",
+      localized("Strikethrough"),
+      localized("Strikethrough"),
       "scholium-selection-wide-only",
     );
     strike.append(selectionSymbol("strikethrough", "scholium-selection-icon-strike"));
@@ -516,8 +521,8 @@ export function createSelectionActionsController(options: {
     commandBar.append(strike);
 
     const highlight = createToolbarButton(
-      "Highlight",
-      "Highlight",
+      localized("Highlight"),
+      localized("Highlight"),
       "scholium-selection-wide-only",
     );
     highlight.append(selectionSymbol("highlighter", "scholium-selection-highlight-icon"));
@@ -529,7 +534,7 @@ export function createSelectionActionsController(options: {
     firstSeparator.setAttribute("role", "separator");
     commandBar.append(firstSeparator);
 
-    const link = createToolbarButton("Link", "Link (⌘K)");
+    const link = createToolbarButton(localized("Link"), localized("Link (⌘K)"));
     link.append(selectionSymbol("link", "scholium-selection-link-icon"));
     bindCommand(link, "standardLink");
     commandBar.append(link);
@@ -537,38 +542,38 @@ export function createSelectionActionsController(options: {
     const wikiGroup = document.createElement("div");
     wikiGroup.className = "scholium-selection-wiki-group";
     wikiGroup.setAttribute("role", "group");
-    wikiGroup.setAttribute("aria-label", "Wiki links");
-    const wiki = createToolbarButton("Wiki", null, "scholium-selection-wiki-primary");
+    wikiGroup.setAttribute("aria-label", localized("Wiki links"));
+    const wiki = createToolbarButton(localized("Wiki"), null, "scholium-selection-wiki-primary");
     const wikiLabel = document.createElement("span");
     wikiLabel.className = "scholium-selection-label";
-    wikiLabel.textContent = "Wiki";
+    wikiLabel.textContent = localized("Wiki");
     wiki.append(wikiLabel);
     bindCommand(wiki, "wikilink");
     const vector = createToolbarButton(
-      "Vector Link Options",
-      "Vector Link",
+      localized("Vector Link Options"),
+      localized("Vector Link"),
       "scholium-selection-wiki-menu-trigger",
     );
     vector.append(chevronIcon("scholium-selection-chevron"));
     wikiGroup.append(wiki, vector);
     commandBar.append(wikiGroup);
     const vectorMenu = createMenu(vector, "scholium-selection-vector-menu");
-    addMenuItem(vectorMenu, "Supports", "vectorSupports", "", false, "plus-circle");
-    addMenuItem(vectorMenu, "Opposes", "vectorOpposes", "", false, "minus-circle");
-    addMenuItem(vectorMenu, "Incompatible", "vectorIncompatible", "", false, "xmark-circle");
+    addMenuItem(vectorMenu, localized("Supports"), "vectorSupports", "", false, "plus-circle");
+    addMenuItem(vectorMenu, localized("Opposes"), "vectorOpposes", "", false, "minus-circle");
+    addMenuItem(vectorMenu, localized("Incompatible"), "vectorIncompatible", "", false, "xmark-circle");
 
     const secondSeparator = document.createElement("span");
     secondSeparator.className = "scholium-selection-separator";
     secondSeparator.setAttribute("role", "separator");
     commandBar.append(secondSeparator);
 
-    const more = createToolbarButton("More Formatting", "More Formatting");
+    const more = createToolbarButton(localized("More Formatting"), localized("More Formatting"));
     more.append(selectionSymbol("ellipsis", "scholium-selection-more-icon"));
     commandBar.append(more);
     const moreMenu = createMenu(more, "scholium-selection-more-menu");
     addMenuItem(
       moreMenu,
-      "Strikethrough",
+      localized("Strikethrough"),
       "strikethrough",
       "scholium-selection-compact-only",
       false,
@@ -576,21 +581,21 @@ export function createSelectionActionsController(options: {
     );
     addMenuItem(
       moreMenu,
-      "Highlight",
+      localized("Highlight"),
       "highlight",
       "scholium-selection-compact-only",
       false,
       "highlighter",
     );
-    addMenuItem(moreMenu, "Inline Code", "inlineCode", "", false, "curlybraces");
-    addMenuItem(moreMenu, "Code Block", "fencedCode", "", false, "curlybraces-square");
-    const lists = addSubmenuItem(moreMenu, "Lists", "list-bullet");
+    addMenuItem(moreMenu, localized("Inline Code"), "inlineCode", "", false, "curlybraces");
+    addMenuItem(moreMenu, localized("Code Block"), "fencedCode", "", false, "curlybraces-square");
+    const lists = addSubmenuItem(moreMenu, localized("Lists"), "list-bullet");
     const listsMenu = createMenu(lists, "scholium-selection-lists-menu", moreMenu);
-    addMenuItem(listsMenu, "Bullet List", "bulletList", "", false, "list-bullet");
-    addMenuItem(listsMenu, "Numbered List", "numberedList", "", false, "list-number");
-    addMenuItem(listsMenu, "Checkbox List", "taskList", "", false, "checklist");
-    addMenuItem(moreMenu, "Blockquote", "blockQuotation", "", false, "text-quote");
-    addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash");
+    addMenuItem(listsMenu, localized("Bullet List"), "bulletList", "", false, "list-bullet");
+    addMenuItem(listsMenu, localized("Numbered List"), "numberedList", "", false, "list-number");
+    addMenuItem(listsMenu, localized("Checkbox List"), "taskList", "", false, "checklist");
+    addMenuItem(moreMenu, localized("Blockquote"), "blockQuotation", "", false, "text-quote");
+    addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash");
 
     const handleDocumentMouseDown = (event: MouseEvent) => {
       if (root && event.target instanceof Node && !root.contains(event.target)) closeMenus();

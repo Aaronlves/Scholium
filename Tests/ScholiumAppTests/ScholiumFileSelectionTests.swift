@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import UniformTypeIdentifiers
@@ -108,6 +109,58 @@ struct ScholiumFileSelectionTests {
                 separatedBy: "ScholiumFileSelectionWindowAttachment("
             ).count == 4
         )
+    }
+
+    @Test("A stale attachment cannot detach the current scene window")
+    func staleAttachmentCannotDetachCurrentWindow() {
+        let presenter = ScholiumFileSelectionPresenter()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let firstAttachment = ScholiumFileSelectionAttachmentView()
+        firstAttachment.presenter = presenter
+        window.contentView?.addSubview(firstAttachment)
+        #expect(presenter.presentationWindow === window)
+
+        let replacementAttachment = ScholiumFileSelectionAttachmentView()
+        replacementAttachment.presenter = presenter
+        window.contentView?.addSubview(replacementAttachment)
+        #expect(presenter.presentationWindow === window)
+
+        firstAttachment.removeFromSuperview()
+        #expect(
+            presenter.presentationWindow === window,
+            "Removing an obsolete SwiftUI attachment must not clear the replacement binding."
+        )
+
+        replacementAttachment.removeFromSuperview()
+        #expect(presenter.presentationWindow == nil)
+    }
+
+    @Test("Replacing a presenter detaches only the attachment's former owner")
+    func replacingPresenterTransfersWindowOwnership() {
+        let originalPresenter = ScholiumFileSelectionPresenter()
+        let replacementPresenter = ScholiumFileSelectionPresenter()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let attachment = ScholiumFileSelectionAttachmentView()
+        attachment.presenter = originalPresenter
+        window.contentView?.addSubview(attachment)
+        #expect(originalPresenter.presentationWindow === window)
+
+        attachment.presenter = replacementPresenter
+        #expect(originalPresenter.presentationWindow == nil)
+        #expect(replacementPresenter.presentationWindow === window)
+
+        attachment.removeFromSuperview()
+        #expect(replacementPresenter.presentationWindow == nil)
     }
 
     private func makeFixtureRoot() throws -> URL {

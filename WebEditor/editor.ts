@@ -140,6 +140,7 @@ import {
   mermaidPresentation,
   type MermaidPresentation,
 } from "./mermaid-presentation";
+import {localized, localizedCallout, localizedTemplate} from "./localization";
 import {
   appendMarkdownBlocks,
   createTableDOM,
@@ -268,15 +269,16 @@ function overlaps(ranges: {from: number; to: number}[], from: number, to: number
 const neutralCallout = {
   identifier: "neutral",
   aliases: [] as string[],
-  label: "Note",
-  meaning: "Preserves an unsupported callout without assigning a research role.",
+  label: localized("Note"),
+  meaning: localized("Preserves an unsupported callout without assigning a research role."),
 };
 
 function calloutDefinition(rawKind: string) {
   const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-  return editingDialect?.callouts.find((callout) =>
+  const definition = editingDialect?.callouts.find((callout) =>
     callout.identifier === kind || callout.aliases.includes(kind),
   ) ?? neutralCallout;
+  return {...definition, ...localizedCallout(definition.identifier, definition)};
 }
 
 /** @param {string} text */
@@ -366,7 +368,7 @@ class ListMarkerWidget extends WidgetType {
     checkbox.className = "cm-live-task-checkbox";
     checkbox.checked = this.taskChecked;
     checkbox.tabIndex = -1;
-    checkbox.setAttribute("aria-label", "Task item");
+    checkbox.setAttribute("aria-label", localized("Task item"));
     checkbox.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -463,7 +465,10 @@ class EmbeddedNoteWidget extends WidgetType {
     shell.dataset.scholiumProtected = "embedded-note";
     shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
     shell.setAttribute("role", "group");
-    shell.setAttribute("aria-label", `Embedded note ${this.preview.title}`);
+    shell.setAttribute(
+      "aria-label",
+      localizedTemplate("Embedded note {title}", {title: this.preview.title}),
+    );
 
     const header = document.createElement("header");
     header.className = "scholium-embedded-note-header";
@@ -472,7 +477,10 @@ class EmbeddedNoteWidget extends WidgetType {
     open.dir = "auto";
     open.dataset.scholiumLinkTarget = this.target;
     open.dataset.scholiumSourceCaret = String(this.sourceCaret);
-    open.setAttribute("aria-label", `Open embedded note ${this.preview.title}`);
+    open.setAttribute(
+      "aria-label",
+      localizedTemplate("Open embedded note {title}", {title: this.preview.title}),
+    );
     open.append(document.createTextNode(this.preview.title));
     header.append(open);
 
@@ -480,7 +488,10 @@ class EmbeddedNoteWidget extends WidgetType {
     viewport.className = "scholium-embedded-note-viewport";
     viewport.tabIndex = 0;
     viewport.setAttribute("role", "region");
-    viewport.setAttribute("aria-label", `Embedded note content for ${this.preview.title}`);
+    viewport.setAttribute(
+      "aria-label",
+      localizedTemplate("Embedded note content for {title}", {title: this.preview.title}),
+    );
     const body = document.createElement("div");
     body.className = "scholium-embedded-note-body scholium-document";
     populatePreviewDocument(body, this.preview);
@@ -533,7 +544,10 @@ class MathWidget extends WidgetType {
         ? `${delimiter}\n${this.expression.content}\n${delimiter}`
         : `${delimiter}${this.expression.content}${delimiter}`;
       element.classList.add("scholium-math-error");
-      element.setAttribute("aria-label", "Mathematics could not be rendered. Source is shown.");
+      element.setAttribute(
+        "aria-label",
+        localized("Mathematics could not be rendered. Source is shown."),
+      );
       element.append(source);
     }
     if (this.expression.kind === "display") {
@@ -837,7 +851,10 @@ class MermaidWidget extends WidgetType {
       if (abortController.signal.aborted || !slot.isConnected) return;
       if (!runtime) {
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "Diagram rendering is unavailable. Mermaid source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("Diagram rendering is unavailable. Mermaid source is shown."),
+        );
         view.requestMeasure();
         return;
       }
@@ -851,7 +868,10 @@ class MermaidWidget extends WidgetType {
           || (!result.ok && result.reason === "cancelled")) return;
       if (!result.ok) {
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "This Mermaid diagram is unsupported or could not be rendered. Source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("This Mermaid diagram is unsupported or could not be rendered. Source is shown."),
+        );
         view.requestMeasure();
         return;
       }
@@ -859,7 +879,10 @@ class MermaidWidget extends WidgetType {
       output.className = "scholium-mermaid-output";
       if (!runtime.mount(output, result.svg)) {
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be isolated safely. Source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("This Mermaid diagram could not be isolated safely. Source is shown."),
+        );
         view.requestMeasure();
         return;
       }
@@ -868,15 +891,24 @@ class MermaidWidget extends WidgetType {
       if (result.accessibilityWarning) {
         const accessibleSource = document.createElement("span");
         accessibleSource.className = "scholium-mermaid-accessible-source";
-        accessibleSource.textContent = `Mermaid source: ${this.presentation.content}`;
+        accessibleSource.textContent = localizedTemplate(
+          "Mermaid source: {source}",
+          {source: this.presentation.content},
+        );
         wrapper.append(accessibleSource);
-        appendMermaidDiagnostic(wrapper, "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("Add accTitle and accDescr to provide a concise nonvisual account of this diagram."),
+        );
       }
       view.requestMeasure();
     }).catch(() => {
       if (abortController.signal.aborted || !slot.isConnected) return;
       wrapper.classList.add("scholium-mermaid-error");
-      appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be rendered. Source is shown.");
+      appendMermaidDiagnostic(
+        wrapper,
+        localized("This Mermaid diagram could not be rendered. Source is shown."),
+      );
       view.requestMeasure();
     });
     return slot;
@@ -1346,7 +1378,10 @@ class FootnoteReferenceWidget extends WidgetType {
     marker.className = "footnote-reference";
     marker.dataset.footnote = String(this.reference.ordinal);
     marker.dataset.scholiumProtected = "footnote-marker";
-    marker.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
+    marker.setAttribute(
+      "aria-label",
+      localizedTemplate("Footnote {ordinal}", {ordinal: this.reference.ordinal}),
+    );
     marker.textContent = String(this.reference.ordinal);
     if (this.reference.definitionFrom === null) {
       marker.setAttribute("aria-disabled", "true");
@@ -2470,13 +2505,15 @@ class UnclosedFrontmatterWidget extends WidgetType {
     notice.setAttribute("role", "note");
     notice.setAttribute(
       "aria-label",
-      "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
+      localized("Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."),
     );
 
     const title = document.createElement("strong");
-    title.textContent = "Edit mode unavailable";
+    title.textContent = localized("Edit mode unavailable");
     const detail = document.createElement("span");
-    detail.textContent = "Close the YAML frontmatter in Source mode to restore the visual projection.";
+    detail.textContent = localized(
+      "Close the YAML frontmatter in Source mode to restore the visual projection.",
+    );
     notice.append(title, detail);
     return notice;
   }
@@ -2623,7 +2660,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
     if (!exactSourceMirror.apply(mirrorChanges)) {
       post({
         type: "editorError",
-        message: "The editor could not preserve the exact source line endings.",
+        message: localized("The editor could not preserve the exact source line endings."),
       });
       return;
     }
@@ -3439,8 +3476,8 @@ editor.contentDOM.addEventListener("compositionstart", () => {
 function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
   if (Array.from(transfer.files).length > 0
       || Array.from(transfer.items).some((item) => item.kind === "file")) {
-    post({type: "failure", message: unsupportedFilePasteMessage});
-    announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage);
+    post({type: "failure", message: unsupportedFilePasteMessage()});
+    announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
     return true;
   }
   const text = transfer.getData("text/plain");

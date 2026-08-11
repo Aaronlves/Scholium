@@ -30441,11 +30441,166 @@ ${fence}
     return endLine < doc2.lines ? doc2.line(endLine + 1).from : doc2.line(endLine).to;
   }
 
+  // localization.ts
+  var webInterfaceLocalizationKeys = [
+    "File and image paste is not supported in Editor 1.0.",
+    "Markdown editor, Edit mode",
+    "Markdown source editor",
+    "Heading level {level}",
+    "Link",
+    "Callout",
+    "Quotation",
+    "Table",
+    "Bulleted list",
+    "Numbered list",
+    "Bold text",
+    "Emphasized text",
+    "Inline code",
+    "Exact Markdown and YAML source",
+    "Task item",
+    "Related note",
+    "Supports",
+    "Opposes",
+    "Incompatible",
+    "Markdown table",
+    "Embedded note {title}",
+    "Open embedded note {title}",
+    "Embedded note content for {title}",
+    "Embedded note",
+    "Mathematics could not be rendered. Source is shown.",
+    "Diagram rendering is unavailable. Mermaid source is shown.",
+    "This Mermaid diagram is unsupported or could not be rendered. Source is shown.",
+    "This Mermaid diagram could not be isolated safely. Source is shown.",
+    "Mermaid source: {source}",
+    "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
+    "This Mermaid diagram could not be rendered. Source is shown.",
+    "Footnote {ordinal}",
+    "Referenced footnote",
+    "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
+    "Edit mode unavailable",
+    "Close the YAML frontmatter in Source mode to restore the visual projection.",
+    "The editor could not preserve the exact source line endings.",
+    "The Markdown editor could not start.",
+    "The Review renderer stopped unexpectedly.",
+    "No preview is available at the insertion point.",
+    "Preview content",
+    "Formatting actions",
+    "Text Style",
+    "Paragraph",
+    "Heading {level}",
+    "Bold",
+    "Bold (\u2318B)",
+    "Italic",
+    "Italic (\u2318I)",
+    "Strikethrough",
+    "Highlight",
+    "Link (\u2318K)",
+    "Wiki links",
+    "Wiki",
+    "Vector Link Options",
+    "Vector Link",
+    "More Formatting",
+    "Inline Code",
+    "Code Block",
+    "Lists",
+    "Bullet List",
+    "Numbered List",
+    "Checkbox List",
+    "Blockquote",
+    "Comment",
+    "Date",
+    "Inline Math",
+    "Display Math",
+    "Mermaid",
+    "Footnote",
+    "Divider",
+    "Orientation",
+    "Introduces the note's purpose, scope, and route.",
+    "Source",
+    "Records sources that anchor the note without implying that they support every claim.",
+    "Connections",
+    "Routes the reader to a curated set of neighboring knowledge objects.",
+    "Statement",
+    "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it.",
+    "Illustration",
+    "Presents a scenario, example, thought experiment, or test case used in reasoning.",
+    "Preserves source-specific wording with attribution.",
+    "Caution",
+    "Marks a limitation, unresolved dependency, source restriction, or interpretive warning.",
+    "Note",
+    "Preserves an unsupported callout without assigning a research role.",
+    "Selection actions",
+    "Return saves \xB7 Shift-Return adds a line \xB7 Escape cancels",
+    "Submit Comment for QA",
+    "Comment for line {start}",
+    "Comment for lines {start} through {end}",
+    "Could not save. Your Comment is still here.",
+    "This Comment is too long to save here.",
+    "Saving\u2026"
+  ];
+  var fallbackPayload = {
+    languageTag: "en",
+    strings: {}
+  };
+  function payloadFromDocument() {
+    if (typeof document === "undefined") return fallbackPayload;
+    const encoded = document.querySelector(
+      'meta[name="scholium-interface-localization"]'
+    )?.content;
+    if (!encoded) return fallbackPayload;
+    try {
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      const candidate = JSON.parse(new TextDecoder().decode(bytes));
+      if (typeof candidate.languageTag !== "string" || !candidate.strings || typeof candidate.strings !== "object") return fallbackPayload;
+      const strings = {};
+      for (const key of webInterfaceLocalizationKeys) {
+        const value = candidate.strings[key];
+        if (typeof value === "string" && value.length <= 4096) strings[key] = value;
+      }
+      return { languageTag: candidate.languageTag.slice(0, 32), strings };
+    } catch {
+      return fallbackPayload;
+    }
+  }
+  var activePayload = payloadFromDocument();
+  function localized(key) {
+    return localizedFrom(activePayload, key);
+  }
+  function localizedTemplate(key, replacements) {
+    return localizedTemplateFrom(activePayload, key, replacements);
+  }
+  function localizedFrom(payload, key) {
+    return payload.strings[key] ?? key;
+  }
+  function localizedTemplateFrom(payload, key, replacements) {
+    return localizedFrom(payload, key).replace(
+      /\{([A-Za-z]+)\}/g,
+      (placeholder, name2) => Object.hasOwn(replacements, name2) ? String(replacements[name2]) : placeholder
+    );
+  }
+  var calloutLocalizationKeys = {
+    orient: ["Orientation", "Introduces the note's purpose, scope, and route."],
+    cite: ["Source", "Records sources that anchor the note without implying that they support every claim."],
+    connect: ["Connections", "Routes the reader to a curated set of neighboring knowledge objects."],
+    state: ["Statement", "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."],
+    illustrate: ["Illustration", "Presents a scenario, example, thought experiment, or test case used in reasoning."],
+    quote: ["Quotation", "Preserves source-specific wording with attribution."],
+    flag: ["Caution", "Marks a limitation, unresolved dependency, source restriction, or interpretive warning."],
+    neutral: ["Note", "Preserves an unsupported callout without assigning a research role."]
+  };
+  function localizedCallout(identifier4, fallback) {
+    if (activePayload.languageTag !== "zh-Hans") return fallback;
+    const keys = calloutLocalizationKeys[identifier4];
+    return keys ? { label: localized(keys[0]), meaning: localized(keys[1]) } : fallback;
+  }
+
   // accessibility.ts
-  var unsupportedFilePasteMessage = "File and image paste is not supported in Editor 1.0.";
+  function unsupportedFilePasteMessage() {
+    return localized("File and image paste is not supported in Editor 1.0.");
+  }
   function editorAccessibilityAttributes(mode) {
     return {
-      "aria-label": mode === "livePreview" ? "Markdown editor, Edit mode" : "Markdown source editor",
+      "aria-label": mode === "livePreview" ? localized("Markdown editor, Edit mode") : localized("Markdown source editor"),
       role: "textbox",
       "aria-multiline": "true",
       spellcheck: "true",
@@ -30454,16 +30609,16 @@ ${fence}
   }
   function activeConstructAccessibilityDescription(context) {
     const heading2 = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
-    if (heading2) return `Heading level ${heading2.at(-1)}`;
-    if (context.activeInlineConstructs.includes("Link")) return "Link";
-    if (context.activeBlockConstructs.includes("Callout")) return "Callout";
-    if (context.activeBlockConstructs.includes("Blockquote")) return "Quotation";
-    if (context.activeBlockConstructs.includes("Table")) return "Table";
-    if (context.activeBlockConstructs.includes("BulletList")) return "Bulleted list";
-    if (context.activeBlockConstructs.includes("OrderedList")) return "Numbered list";
-    if (context.activeInlineConstructs.includes("StrongEmphasis")) return "Bold text";
-    if (context.activeInlineConstructs.includes("Emphasis")) return "Emphasized text";
-    if (context.activeInlineConstructs.includes("InlineCode")) return "Inline code";
+    if (heading2) return localizedTemplate("Heading level {level}", { level: heading2.at(-1) ?? "" });
+    if (context.activeInlineConstructs.includes("Link")) return localized("Link");
+    if (context.activeBlockConstructs.includes("Callout")) return localized("Callout");
+    if (context.activeBlockConstructs.includes("Blockquote")) return localized("Quotation");
+    if (context.activeBlockConstructs.includes("Table")) return localized("Table");
+    if (context.activeBlockConstructs.includes("BulletList")) return localized("Bulleted list");
+    if (context.activeBlockConstructs.includes("OrderedList")) return localized("Numbered list");
+    if (context.activeInlineConstructs.includes("StrongEmphasis")) return localized("Bold text");
+    if (context.activeInlineConstructs.includes("Emphasis")) return localized("Emphasized text");
+    if (context.activeInlineConstructs.includes("InlineCode")) return localized("Inline code");
     return void 0;
   }
   function updateEditorAccessibility(content2, mode, context) {
@@ -30471,7 +30626,7 @@ ${fence}
     for (const [name2, value] of Object.entries(attributes)) {
       if (content2.getAttribute(name2) !== value) content2.setAttribute(name2, value);
     }
-    const description = mode === "livePreview" && context ? activeConstructAccessibilityDescription(context) : mode === "source" ? "Exact Markdown and YAML source" : void 0;
+    const description = mode === "livePreview" && context ? activeConstructAccessibilityDescription(context) : mode === "source" ? localized("Exact Markdown and YAML source") : void 0;
     if (description) {
       if (content2.getAttribute("aria-description") !== description) {
         content2.setAttribute("aria-description", description);
@@ -30721,7 +30876,10 @@ ${fence}
         show(preview, coords, startedAt);
         return true;
       }
-      announceEditorMessage(editor2.contentDOM, "No preview is available at the insertion point.");
+      announceEditorMessage(
+        editor2.contentDOM,
+        localized("No preview is available at the insertion point.")
+      );
       return false;
     }
     function showAtPoint(x, y) {
@@ -30794,7 +30952,7 @@ ${fence}
       body = document.createElement("div");
       body.className = "scholium-preview-body scholium-document";
       body.setAttribute("role", "group");
-      body.setAttribute("aria-label", "Preview content");
+      body.setAttribute("aria-label", localized("Preview content"));
       root.append(title, metadata, body);
       document.body.append(root);
       root.addEventListener("pointerenter", handlePreviewPointerEnter);
@@ -31124,40 +31282,40 @@ ${fence}
   function slashCommandOptions(options, blockContext, query) {
     const commands = [
       {
-        label: "Callout",
+        label: localized("Callout"),
         type: "scholium-command-callout",
         apply: replaceSlashWithText("> [!", "Insert Callout", options.didApply),
         boost: 20,
         blockOnly: true
       },
       {
-        label: "Date",
+        label: localized("Date"),
         type: "scholium-command-date",
         apply: replaceSlashWithText(localISODate, "Insert Date", options.didApply),
         boost: 18
       },
       {
-        label: "Inline Math",
+        label: localized("Inline Math"),
         type: "scholium-command-math",
         apply: replaceSlashWithSnippet("$${}$", "Insert Inline Math", options.didApply),
         boost: 16
       },
       {
-        label: "Display Math",
+        label: localized("Display Math"),
         type: "scholium-command-math",
         apply: replaceSlashWithSnippet("$$\n${}\n$$", "Insert Display Math", options.didApply),
         boost: 14,
         blockOnly: true
       },
       {
-        label: "Mermaid",
+        label: localized("Mermaid"),
         type: "scholium-command-mermaid",
         apply: replaceSlashWithSnippet("```mermaid\n${}\n```", "Insert Mermaid", options.didApply),
         boost: 12,
         blockOnly: true
       },
       {
-        label: "Table",
+        label: localized("Table"),
         type: "scholium-command-table",
         apply: replaceSlashWithSnippet(
           "| ${1:Column 1} | ${2:Column 2} |\n| --- | --- |\n| ${3} | ${4} |",
@@ -31168,13 +31326,13 @@ ${fence}
         blockOnly: true
       },
       {
-        label: "Footnote",
+        label: localized("Footnote"),
         type: "scholium-command-footnote",
         apply: replaceSlashWithFootnote(options),
         boost: 8
       },
       {
-        label: "Code Block",
+        label: localized("Code Block"),
         type: "scholium-command-code",
         apply: replaceSlashWithSnippet(
           "```${1:language}\n${2}\n```",
@@ -31185,7 +31343,7 @@ ${fence}
         blockOnly: true
       },
       {
-        label: "Divider",
+        label: localized("Divider"),
         type: "scholium-command-divider",
         apply: replaceSlashWithText("---", "Insert Divider", options.didApply),
         boost: 4,
@@ -31194,7 +31352,12 @@ ${fence}
     ];
     const available = commands.filter((command2) => blockContext || !command2.blockOnly);
     if (!query) {
-      const featured = blockContext ? /* @__PURE__ */ new Set(["Callout", "Date", "Inline Math", "Mermaid"]) : /* @__PURE__ */ new Set(["Date", "Inline Math", "Footnote"]);
+      const featured = blockContext ? /* @__PURE__ */ new Set([
+        localized("Callout"),
+        localized("Date"),
+        localized("Inline Math"),
+        localized("Mermaid")
+      ]) : /* @__PURE__ */ new Set([localized("Date"), localized("Inline Math"), localized("Footnote")]);
       return available.filter((command2) => featured.has(command2.label));
     }
     return available.filter((command2) => fuzzyCommandMatch(command2.label, query)).slice(0, 7);
@@ -31294,7 +31457,7 @@ ${fence}
       return {
         from: context.pos - match[2].length,
         options: dialectCallouts.filter((callout) => !typed || callout.identifier.startsWith(typed)).map((callout) => ({
-          label: callout.label,
+          label: localizedCallout(callout.identifier, callout).label,
           type: "scholium-callout-role",
           apply: (view, completion, from, to) => {
             const insert2 = `${callout.identifier}] `;
@@ -31738,45 +31901,49 @@ ${fence}
       const commandBar = document.createElement("div");
       commandBar.className = "scholium-selection-toolbar";
       commandBar.setAttribute("role", "toolbar");
-      commandBar.setAttribute("aria-label", "Formatting actions");
+      commandBar.setAttribute("aria-label", localized("Formatting actions"));
       commandBar.addEventListener("keydown", handleToolbarKeydown);
       root.append(commandBar);
-      const styleButton = createToolbarButton("Text Style", "Text Style", "scholium-selection-style-trigger");
+      const styleButton = createToolbarButton(
+        localized("Text Style"),
+        localized("Text Style"),
+        "scholium-selection-style-trigger"
+      );
       styleButton.append(
         selectionSymbol("textformat", "scholium-selection-icon-style"),
         chevronIcon("scholium-selection-chevron")
       );
       commandBar.append(styleButton);
       const styleMenu = createMenu(styleButton, "scholium-selection-style-menu");
-      addMenuItem(styleMenu, "Paragraph", "paragraph", "", true);
+      addMenuItem(styleMenu, localized("Paragraph"), "paragraph", "", true);
       for (let level = 1; level <= 6; level += 1) {
         addMenuItem(
           styleMenu,
-          `Heading ${level}`,
+          localizedTemplate("Heading {level}", { level }),
           `heading${level}`,
           "",
           true
         );
       }
-      const bold = createToolbarButton("Bold", "Bold (\u2318B)");
+      const bold = createToolbarButton(localized("Bold"), localized("Bold (\u2318B)"));
       bold.append(selectionSymbol("bold", "scholium-selection-icon-bold"));
       bindCommand(bold, "bold");
       commandBar.append(bold);
-      const italic = createToolbarButton("Italic", "Italic (\u2318I)");
+      const italic = createToolbarButton(localized("Italic"), localized("Italic (\u2318I)"));
       italic.append(selectionSymbol("italic", "scholium-selection-icon-italic"));
       bindCommand(italic, "emphasis");
       commandBar.append(italic);
       const strike = createToolbarButton(
-        "Strikethrough",
-        "Strikethrough",
+        localized("Strikethrough"),
+        localized("Strikethrough"),
         "scholium-selection-wide-only"
       );
       strike.append(selectionSymbol("strikethrough", "scholium-selection-icon-strike"));
       bindCommand(strike, "strikethrough");
       commandBar.append(strike);
       const highlight = createToolbarButton(
-        "Highlight",
-        "Highlight",
+        localized("Highlight"),
+        localized("Highlight"),
         "scholium-selection-wide-only"
       );
       highlight.append(selectionSymbol("highlighter", "scholium-selection-highlight-icon"));
@@ -31786,43 +31953,43 @@ ${fence}
       firstSeparator.className = "scholium-selection-separator";
       firstSeparator.setAttribute("role", "separator");
       commandBar.append(firstSeparator);
-      const link = createToolbarButton("Link", "Link (\u2318K)");
+      const link = createToolbarButton(localized("Link"), localized("Link (\u2318K)"));
       link.append(selectionSymbol("link", "scholium-selection-link-icon"));
       bindCommand(link, "standardLink");
       commandBar.append(link);
       const wikiGroup = document.createElement("div");
       wikiGroup.className = "scholium-selection-wiki-group";
       wikiGroup.setAttribute("role", "group");
-      wikiGroup.setAttribute("aria-label", "Wiki links");
-      const wiki = createToolbarButton("Wiki", null, "scholium-selection-wiki-primary");
+      wikiGroup.setAttribute("aria-label", localized("Wiki links"));
+      const wiki = createToolbarButton(localized("Wiki"), null, "scholium-selection-wiki-primary");
       const wikiLabel = document.createElement("span");
       wikiLabel.className = "scholium-selection-label";
-      wikiLabel.textContent = "Wiki";
+      wikiLabel.textContent = localized("Wiki");
       wiki.append(wikiLabel);
       bindCommand(wiki, "wikilink");
       const vector = createToolbarButton(
-        "Vector Link Options",
-        "Vector Link",
+        localized("Vector Link Options"),
+        localized("Vector Link"),
         "scholium-selection-wiki-menu-trigger"
       );
       vector.append(chevronIcon("scholium-selection-chevron"));
       wikiGroup.append(wiki, vector);
       commandBar.append(wikiGroup);
       const vectorMenu = createMenu(vector, "scholium-selection-vector-menu");
-      addMenuItem(vectorMenu, "Supports", "vectorSupports", "", false, "plus-circle");
-      addMenuItem(vectorMenu, "Opposes", "vectorOpposes", "", false, "minus-circle");
-      addMenuItem(vectorMenu, "Incompatible", "vectorIncompatible", "", false, "xmark-circle");
+      addMenuItem(vectorMenu, localized("Supports"), "vectorSupports", "", false, "plus-circle");
+      addMenuItem(vectorMenu, localized("Opposes"), "vectorOpposes", "", false, "minus-circle");
+      addMenuItem(vectorMenu, localized("Incompatible"), "vectorIncompatible", "", false, "xmark-circle");
       const secondSeparator = document.createElement("span");
       secondSeparator.className = "scholium-selection-separator";
       secondSeparator.setAttribute("role", "separator");
       commandBar.append(secondSeparator);
-      const more = createToolbarButton("More Formatting", "More Formatting");
+      const more = createToolbarButton(localized("More Formatting"), localized("More Formatting"));
       more.append(selectionSymbol("ellipsis", "scholium-selection-more-icon"));
       commandBar.append(more);
       const moreMenu = createMenu(more, "scholium-selection-more-menu");
       addMenuItem(
         moreMenu,
-        "Strikethrough",
+        localized("Strikethrough"),
         "strikethrough",
         "scholium-selection-compact-only",
         false,
@@ -31830,21 +31997,21 @@ ${fence}
       );
       addMenuItem(
         moreMenu,
-        "Highlight",
+        localized("Highlight"),
         "highlight",
         "scholium-selection-compact-only",
         false,
         "highlighter"
       );
-      addMenuItem(moreMenu, "Inline Code", "inlineCode", "", false, "curlybraces");
-      addMenuItem(moreMenu, "Code Block", "fencedCode", "", false, "curlybraces-square");
-      const lists = addSubmenuItem(moreMenu, "Lists", "list-bullet");
+      addMenuItem(moreMenu, localized("Inline Code"), "inlineCode", "", false, "curlybraces");
+      addMenuItem(moreMenu, localized("Code Block"), "fencedCode", "", false, "curlybraces-square");
+      const lists = addSubmenuItem(moreMenu, localized("Lists"), "list-bullet");
       const listsMenu = createMenu(lists, "scholium-selection-lists-menu", moreMenu);
-      addMenuItem(listsMenu, "Bullet List", "bulletList", "", false, "list-bullet");
-      addMenuItem(listsMenu, "Numbered List", "numberedList", "", false, "list-number");
-      addMenuItem(listsMenu, "Checkbox List", "taskList", "", false, "checklist");
-      addMenuItem(moreMenu, "Blockquote", "blockQuotation", "", false, "text-quote");
-      addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash");
+      addMenuItem(listsMenu, localized("Bullet List"), "bulletList", "", false, "list-bullet");
+      addMenuItem(listsMenu, localized("Numbered List"), "numberedList", "", false, "list-number");
+      addMenuItem(listsMenu, localized("Checkbox List"), "taskList", "", false, "checklist");
+      addMenuItem(moreMenu, localized("Blockquote"), "blockQuotation", "", false, "text-quote");
+      addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash");
       const handleDocumentMouseDown = (event) => {
         if (root && event.target instanceof Node && !root.contains(event.target)) closeMenus();
       };
@@ -32082,10 +32249,10 @@ ${fence}
 
   // markdown-fragment.ts
   var vectorLinkSemantics = {
-    neutral: { label: "Related note", symbol: "link" },
-    supports: { label: "Supports", symbol: "plus" },
-    opposes: { label: "Opposes", symbol: "minus" },
-    incompatible: { label: "Incompatible", symbol: "xmark" }
+    neutral: { label: localized("Related note"), symbol: "link" },
+    supports: { label: localized("Supports"), symbol: "plus" },
+    opposes: { label: localized("Opposes"), symbol: "minus" },
+    incompatible: { label: localized("Incompatible"), symbol: "xmark" }
   };
   var inlineMarkerNodes = /* @__PURE__ */ new Set([
     "EmphasisMark",
@@ -32284,7 +32451,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     scroller.dataset.scholiumProtected = "table";
     const table = document2.createElement("table");
     table.className = "scholium-table";
-    table.setAttribute("aria-label", "Markdown table");
+    table.setAttribute("aria-label", localized("Markdown table"));
     const head = document2.createElement("thead");
     const headRow = document2.createElement("tr");
     headRow.append(...presentation.header.map((cell) => tableCellDOM(cell, true, document2, options)));
@@ -33176,14 +33343,15 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   var neutralCallout = {
     identifier: "neutral",
     aliases: [],
-    label: "Note",
-    meaning: "Preserves an unsupported callout without assigning a research role."
+    label: localized("Note"),
+    meaning: localized("Preserves an unsupported callout without assigning a research role.")
   };
   function calloutDefinition(rawKind) {
     const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-    return editingDialect?.callouts.find(
+    const definition = editingDialect?.callouts.find(
       (callout) => callout.identifier === kind || callout.aliases.includes(kind)
     ) ?? neutralCallout;
+    return { ...definition, ...localizedCallout(definition.identifier, definition) };
   }
   function calloutHeader(text) {
     return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
@@ -33248,7 +33416,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       checkbox.className = "cm-live-task-checkbox";
       checkbox.checked = this.taskChecked;
       checkbox.tabIndex = -1;
-      checkbox.setAttribute("aria-label", "Task item");
+      checkbox.setAttribute("aria-label", localized("Task item"));
       checkbox.addEventListener("mousedown", (event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -33342,7 +33510,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       shell.dataset.scholiumProtected = "embedded-note";
       shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
       shell.setAttribute("role", "group");
-      shell.setAttribute("aria-label", `Embedded note ${this.preview.title}`);
+      shell.setAttribute(
+        "aria-label",
+        localizedTemplate("Embedded note {title}", { title: this.preview.title })
+      );
       const header = document.createElement("header");
       header.className = "scholium-embedded-note-header";
       const open = document.createElement("span");
@@ -33350,14 +33521,20 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       open.dir = "auto";
       open.dataset.scholiumLinkTarget = this.target;
       open.dataset.scholiumSourceCaret = String(this.sourceCaret);
-      open.setAttribute("aria-label", `Open embedded note ${this.preview.title}`);
+      open.setAttribute(
+        "aria-label",
+        localizedTemplate("Open embedded note {title}", { title: this.preview.title })
+      );
       open.append(document.createTextNode(this.preview.title));
       header.append(open);
       const viewport = document.createElement("div");
       viewport.className = "scholium-embedded-note-viewport";
       viewport.tabIndex = 0;
       viewport.setAttribute("role", "region");
-      viewport.setAttribute("aria-label", `Embedded note content for ${this.preview.title}`);
+      viewport.setAttribute(
+        "aria-label",
+        localizedTemplate("Embedded note content for {title}", { title: this.preview.title })
+      );
       const body = document.createElement("div");
       body.className = "scholium-embedded-note-body scholium-document";
       populatePreviewDocument(body, this.preview);
@@ -33400,7 +33577,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
 ${this.expression.content}
 ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         element.classList.add("scholium-math-error");
-        element.setAttribute("aria-label", "Mathematics could not be rendered. Source is shown.");
+        element.setAttribute(
+          "aria-label",
+          localized("Mathematics could not be rendered. Source is shown.")
+        );
         element.append(source);
       }
       if (this.expression.kind === "display") {
@@ -33671,7 +33851,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (abortController.signal.aborted || !slot.isConnected) return;
         if (!runtime) {
           wrapper.classList.add("scholium-mermaid-error");
-          appendMermaidDiagnostic(wrapper, "Diagram rendering is unavailable. Mermaid source is shown.");
+          appendMermaidDiagnostic(
+            wrapper,
+            localized("Diagram rendering is unavailable. Mermaid source is shown.")
+          );
           view.requestMeasure();
           return;
         }
@@ -33683,7 +33866,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (abortController.signal.aborted || !slot.isConnected || !result.ok && result.reason === "cancelled") return;
         if (!result.ok) {
           wrapper.classList.add("scholium-mermaid-error");
-          appendMermaidDiagnostic(wrapper, "This Mermaid diagram is unsupported or could not be rendered. Source is shown.");
+          appendMermaidDiagnostic(
+            wrapper,
+            localized("This Mermaid diagram is unsupported or could not be rendered. Source is shown.")
+          );
           view.requestMeasure();
           return;
         }
@@ -33691,7 +33877,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         output.className = "scholium-mermaid-output";
         if (!runtime.mount(output, result.svg)) {
           wrapper.classList.add("scholium-mermaid-error");
-          appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be isolated safely. Source is shown.");
+          appendMermaidDiagnostic(
+            wrapper,
+            localized("This Mermaid diagram could not be isolated safely. Source is shown.")
+          );
           view.requestMeasure();
           return;
         }
@@ -33700,15 +33889,24 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (result.accessibilityWarning) {
           const accessibleSource = document.createElement("span");
           accessibleSource.className = "scholium-mermaid-accessible-source";
-          accessibleSource.textContent = `Mermaid source: ${this.presentation.content}`;
+          accessibleSource.textContent = localizedTemplate(
+            "Mermaid source: {source}",
+            { source: this.presentation.content }
+          );
           wrapper.append(accessibleSource);
-          appendMermaidDiagnostic(wrapper, "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.");
+          appendMermaidDiagnostic(
+            wrapper,
+            localized("Add accTitle and accDescr to provide a concise nonvisual account of this diagram.")
+          );
         }
         view.requestMeasure();
       }).catch(() => {
         if (abortController.signal.aborted || !slot.isConnected) return;
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be rendered. Source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("This Mermaid diagram could not be rendered. Source is shown.")
+        );
         view.requestMeasure();
       });
       return slot;
@@ -34101,7 +34299,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       marker.className = "footnote-reference";
       marker.dataset.footnote = String(this.reference.ordinal);
       marker.dataset.scholiumProtected = "footnote-marker";
-      marker.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
+      marker.setAttribute(
+        "aria-label",
+        localizedTemplate("Footnote {ordinal}", { ordinal: this.reference.ordinal })
+      );
       marker.textContent = String(this.reference.ordinal);
       if (this.reference.definitionFrom === null) {
         marker.setAttribute("aria-disabled", "true");
@@ -34970,12 +35171,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       notice.setAttribute("role", "note");
       notice.setAttribute(
         "aria-label",
-        "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."
+        localized("Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.")
       );
       const title = document.createElement("strong");
-      title.textContent = "Edit mode unavailable";
+      title.textContent = localized("Edit mode unavailable");
       const detail = document.createElement("span");
-      detail.textContent = "Close the YAML frontmatter in Source mode to restore the visual projection.";
+      detail.textContent = localized(
+        "Close the YAML frontmatter in Source mode to restore the visual projection."
+      );
       notice.append(title, detail);
       return notice;
     }
@@ -35102,7 +35305,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (!exactSourceMirror.apply(mirrorChanges)) {
         post({
           type: "editorError",
-          message: "The editor could not preserve the exact source line endings."
+          message: localized("The editor could not preserve the exact source line endings.")
         });
         return;
       }
@@ -35875,8 +36078,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   function pasteTransfer(transfer, dropPosition) {
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
-      post({ type: "failure", message: unsupportedFilePasteMessage });
-      announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage);
+      post({ type: "failure", message: unsupportedFilePasteMessage() });
+      announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
       return true;
     }
     const text = transfer.getData("text/plain");

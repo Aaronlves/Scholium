@@ -31,6 +31,46 @@ struct ScholiumStructuralRule: View {
     }
 }
 
+/// One neutral tag presentation shared by read-only About and the editable
+/// Properties surface. An optional trailing symbol extends the capsule without
+/// changing its height or text rhythm.
+struct ScholiumTagCapsuleLabel: View {
+    let text: String
+    let trailingSystemImage: String?
+
+    init(
+        _ text: String,
+        trailingSystemImage: String? = nil
+    ) {
+        self.text = text
+        self.trailingSystemImage = trailingSystemImage
+    }
+
+    var body: some View {
+        HStack(spacing: ScholiumMetrics.Properties.tagContentSpacing) {
+            Text(text)
+                .font(ScholiumTypography.interface(.small))
+                .fixedSize(horizontal: false, vertical: true)
+            if let trailingSystemImage {
+                Image(systemName: trailingSystemImage)
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                    .scholiumForeground(.secondaryText)
+            }
+        }
+        .scholiumForeground(.primaryText)
+        .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+        .padding(.vertical, ScholiumMetrics.Properties.tagVerticalInset)
+        .background(
+            ScholiumColorRole.raisedSurfaceBackground.color,
+            in: Capsule()
+        )
+        .overlay(
+            Capsule()
+                .stroke(ScholiumColorRole.separator.color, lineWidth: 1)
+        )
+    }
+}
+
 /// The single presentation owner for matching icon controls in a content-owned
 /// header. Its native Button or Menu child retains only activation, focus,
 /// menu tracking, and accessibility semantics; this component owns the exact

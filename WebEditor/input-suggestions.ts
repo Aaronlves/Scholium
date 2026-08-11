@@ -19,6 +19,7 @@ import {
 } from "./protocol";
 import {applySourceChanges, transformMarkdown} from "./transformations";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
+import {localized, localizedCallout} from "./localization";
 
 export interface EditorLinkCompletionCandidate {
   label: string;
@@ -201,40 +202,40 @@ function slashCommandOptions(
 ) {
   const commands: Array<Completion & {blockOnly?: boolean}> = [
     {
-      label: "Callout",
+      label: localized("Callout"),
       type: "scholium-command-callout" satisfies SuggestionType,
       apply: replaceSlashWithText("> [!", "Insert Callout", options.didApply),
       boost: 20,
       blockOnly: true,
     },
     {
-      label: "Date",
+      label: localized("Date"),
       type: "scholium-command-date" satisfies SuggestionType,
       apply: replaceSlashWithText(localISODate, "Insert Date", options.didApply),
       boost: 18,
     },
     {
-      label: "Inline Math",
+      label: localized("Inline Math"),
       type: "scholium-command-math" satisfies SuggestionType,
       apply: replaceSlashWithSnippet("$${}$", "Insert Inline Math", options.didApply),
       boost: 16,
     },
     {
-      label: "Display Math",
+      label: localized("Display Math"),
       type: "scholium-command-math" satisfies SuggestionType,
       apply: replaceSlashWithSnippet("$$\n${}\n$$", "Insert Display Math", options.didApply),
       boost: 14,
       blockOnly: true,
     },
     {
-      label: "Mermaid",
+      label: localized("Mermaid"),
       type: "scholium-command-mermaid" satisfies SuggestionType,
       apply: replaceSlashWithSnippet("```mermaid\n${}\n```", "Insert Mermaid", options.didApply),
       boost: 12,
       blockOnly: true,
     },
     {
-      label: "Table",
+      label: localized("Table"),
       type: "scholium-command-table" satisfies SuggestionType,
       apply: replaceSlashWithSnippet(
         "| ${1:Column 1} | ${2:Column 2} |\n| --- | --- |\n| ${3} | ${4} |",
@@ -245,13 +246,13 @@ function slashCommandOptions(
       blockOnly: true,
     },
     {
-      label: "Footnote",
+      label: localized("Footnote"),
       type: "scholium-command-footnote" satisfies SuggestionType,
       apply: replaceSlashWithFootnote(options),
       boost: 8,
     },
     {
-      label: "Code Block",
+      label: localized("Code Block"),
       type: "scholium-command-code" satisfies SuggestionType,
       apply: replaceSlashWithSnippet(
         "```${1:language}\n${2}\n```",
@@ -262,7 +263,7 @@ function slashCommandOptions(
       blockOnly: true,
     },
     {
-      label: "Divider",
+      label: localized("Divider"),
       type: "scholium-command-divider" satisfies SuggestionType,
       apply: replaceSlashWithText("---", "Insert Divider", options.didApply),
       boost: 4,
@@ -272,8 +273,10 @@ function slashCommandOptions(
   const available = commands.filter((command) => blockContext || !command.blockOnly);
   if (!query) {
     const featured = blockContext
-      ? new Set(["Callout", "Date", "Inline Math", "Mermaid"])
-      : new Set(["Date", "Inline Math", "Footnote"]);
+      ? new Set([
+        localized("Callout"), localized("Date"), localized("Inline Math"), localized("Mermaid"),
+      ])
+      : new Set([localized("Date"), localized("Inline Math"), localized("Footnote")]);
     return available.filter((command) => featured.has(command.label));
   }
   return available
@@ -402,7 +405,7 @@ export function createEditorInputSuggestions(
       options: dialectCallouts
         .filter((callout) => !typed || callout.identifier.startsWith(typed))
         .map((callout): Completion => ({
-          label: callout.label,
+          label: localizedCallout(callout.identifier, callout).label,
           type: "scholium-callout-role" satisfies SuggestionType,
           apply: (view, completion, from, to) => {
             const insert = `${callout.identifier}] `;

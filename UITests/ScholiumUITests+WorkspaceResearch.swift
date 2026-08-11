@@ -844,6 +844,52 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testBootstrapFolderSelectionPresentsNativePanelAfterRootReplacement() throws {
+        app.terminate()
+
+        let cleanHome = testDirectory.appendingPathComponent(
+            "file-selection-home",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: cleanHome,
+            withIntermediateDirectories: true
+        )
+
+        app = XCUIApplication(bundleIdentifier: "com.scholium.qa")
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
+        app.launchEnvironment["SCHOLIUM_HOME"] = cleanHome.path
+        app.launchEnvironment["CFFIXED_USER_HOME"] = cleanHome.path
+        app.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = UUID().uuidString
+        app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"] = triptychDirectory.path
+        app.launch()
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        let getStarted = app.buttons["Get Started"]
+        XCTAssertTrue(getStarted.waitForExistence(timeout: 10))
+        getStarted.click()
+
+        let connectExisting = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Connect Existing Folders")
+        ).firstMatch
+        XCTAssertTrue(connectExisting.waitForExistence(timeout: 5))
+        connectExisting.click()
+        app.buttons["Continue"].click()
+
+        XCTAssertTrue(app.staticTexts["Choose Analyses"].waitForExistence(timeout: 5))
+        let chooseFolder = app.buttons["Choose Folder…"]
+        XCTAssertTrue(chooseFolder.waitForExistence(timeout: 5))
+        chooseFolder.click()
+
+        let panel = app.descendants(matching: .any)["open-panel"]
+        XCTAssertTrue(
+            panel.waitForExistence(timeout: 5),
+            "Bootstrap must present one standard Open panel from its current native window."
+        )
+        XCTAssertFalse(app.staticTexts["File selection is unavailable in this window."].exists)
+    }
+
+    @MainActor
     func testCleanAccountConfiguresAndRestoresACompleteTriptych() throws {
         app.terminate()
 

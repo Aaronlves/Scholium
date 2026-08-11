@@ -20194,6 +20194,22 @@
         }
       }
     },
+    "Property Actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Property Actions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "属性操作"
+          }
+        }
+      }
+    },
     "Properties: %arg" : {
       "localizations" : {
         "en" : {
@@ -27011,6 +27027,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "来源或归属"
+          }
+        }
+      }
+    },
+    "Source only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Source only"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅限源文本"
           }
         }
       }

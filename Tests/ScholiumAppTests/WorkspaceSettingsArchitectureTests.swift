@@ -411,6 +411,22 @@ struct WorkspaceSettingsArchitectureTests {
         }
         #expect(source.contains("PropertyChooserView"))
         #expect(source.contains("creatorListEditor"))
+        #expect(source.contains("readOnlyFieldValue(for: field)"))
+        #expect(source.contains("Text(\"Source only\")"))
+        #expect(source.contains("Label(\"Property Actions\""))
+        #expect(source.contains("groupHeadingIsRedundant(group)"))
+        #expect(source.contains(".help(Text(verbatim: field.key))"))
+        #expect(source.contains("ScholiumTagCapsuleLabel("))
+        #expect(!source.contains("Text(\"Researcher Properties\")"))
+        #expect(!source.contains("This value's source shape or the role allowlist does not permit a targeted edit."))
+
+        let fieldHeaderStart = try #require(source.range(of: "private func fieldHeader("))
+        let fieldHeaderRemainder = source[fieldHeaderStart.lowerBound...]
+        let fieldHeaderEnd = try #require(
+            fieldHeaderRemainder.range(of: "private func readOnlyFieldValue")
+        )
+        let fieldHeaderSource = fieldHeaderRemainder[..<fieldHeaderEnd.lowerBound]
+        #expect(!fieldHeaderSource.contains("Text(field.key)"))
         #expect(source.contains("removedFieldKeys"))
         #expect(source.contains("List(selection: $selectionKey)"))
         #expect(source.contains("Discard Properties Draft?"))

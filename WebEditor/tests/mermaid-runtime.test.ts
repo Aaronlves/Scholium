@@ -1,4 +1,6 @@
 import {DOMParser as LinkedomDOMParser, parseHTML} from "linkedom";
+import {readFileSync} from "node:fs";
+import {fileURLToPath} from "node:url";
 import {describe, expect, it} from "vitest";
 import {
   mermaidThemeFromStyle,
@@ -8,6 +10,25 @@ import {
 } from "../mermaid-runtime";
 
 describe("shared Mermaid runtime boundary", () => {
+  it("pins the patched runtime and sanitizer for admitted upstream security fixtures", () => {
+    const installedVersion = (packageName: string) => {
+      const packageDefinition = JSON.parse(readFileSync(fileURLToPath(
+        new URL(`../node_modules/${packageName}/package.json`, import.meta.url),
+      ), "utf8")) as {version?: unknown};
+      return packageDefinition.version;
+    };
+    expect(installedVersion("mermaid")).toBe("11.16.1");
+    expect(installedVersion("dompurify")).toBe("3.4.13");
+
+    for (const source of [
+      "architecture-beta\n  group mermaidPrototypePollutionMarker(cloud)[Marker]\n  service a(server)[A] in __proto__\n  service b(server)[B] in mermaidPrototypePollutionMarker\n  a:R -- L:b",
+      "xychart\n  x-axis 1 --> 1\n  line [1, 2]",
+      "radar-beta\n  axis a, b\n  curve c {1, 1}\n  ticks 1000000000",
+    ]) {
+      expect(validateMermaidSource(source).ok).toBe(true);
+    }
+  });
+
   it("admits every static built-in diagram family without a product-maintained type whitelist", () => {
     for (const source of [
       "flowchart LR\nA --> B",

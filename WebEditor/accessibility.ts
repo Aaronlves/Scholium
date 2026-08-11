@@ -1,10 +1,15 @@
 import type {EditorContext, EditorMode} from "./protocol";
+import {localized, localizedTemplate} from "./localization";
 
-export const unsupportedFilePasteMessage = "File and image paste is not supported in Editor 1.0.";
+export function unsupportedFilePasteMessage() {
+  return localized("File and image paste is not supported in Editor 1.0.");
+}
 
 export function editorAccessibilityAttributes(mode: EditorMode) {
   return {
-    "aria-label": mode === "livePreview" ? "Markdown editor, Edit mode" : "Markdown source editor",
+    "aria-label": mode === "livePreview"
+      ? localized("Markdown editor, Edit mode")
+      : localized("Markdown source editor"),
     role: "textbox",
     "aria-multiline": "true",
     spellcheck: "true",
@@ -14,16 +19,16 @@ export function editorAccessibilityAttributes(mode: EditorMode) {
 
 export function activeConstructAccessibilityDescription(context: EditorContext): string | undefined {
   const heading = context.activeBlockConstructs.find((construct) => /^ATXHeading[1-6]$/.test(construct));
-  if (heading) return `Heading level ${heading.at(-1)}`;
-  if (context.activeInlineConstructs.includes("Link")) return "Link";
-  if (context.activeBlockConstructs.includes("Callout")) return "Callout";
-  if (context.activeBlockConstructs.includes("Blockquote")) return "Quotation";
-  if (context.activeBlockConstructs.includes("Table")) return "Table";
-  if (context.activeBlockConstructs.includes("BulletList")) return "Bulleted list";
-  if (context.activeBlockConstructs.includes("OrderedList")) return "Numbered list";
-  if (context.activeInlineConstructs.includes("StrongEmphasis")) return "Bold text";
-  if (context.activeInlineConstructs.includes("Emphasis")) return "Emphasized text";
-  if (context.activeInlineConstructs.includes("InlineCode")) return "Inline code";
+  if (heading) return localizedTemplate("Heading level {level}", {level: heading.at(-1) ?? ""});
+  if (context.activeInlineConstructs.includes("Link")) return localized("Link");
+  if (context.activeBlockConstructs.includes("Callout")) return localized("Callout");
+  if (context.activeBlockConstructs.includes("Blockquote")) return localized("Quotation");
+  if (context.activeBlockConstructs.includes("Table")) return localized("Table");
+  if (context.activeBlockConstructs.includes("BulletList")) return localized("Bulleted list");
+  if (context.activeBlockConstructs.includes("OrderedList")) return localized("Numbered list");
+  if (context.activeInlineConstructs.includes("StrongEmphasis")) return localized("Bold text");
+  if (context.activeInlineConstructs.includes("Emphasis")) return localized("Emphasized text");
+  if (context.activeInlineConstructs.includes("InlineCode")) return localized("Inline code");
   return undefined;
 }
 
@@ -39,7 +44,7 @@ export function updateEditorAccessibility(
   const description = mode === "livePreview" && context
     ? activeConstructAccessibilityDescription(context)
     : mode === "source"
-      ? "Exact Markdown and YAML source"
+      ? localized("Exact Markdown and YAML source")
       : undefined;
   if (description) {
     if (content.getAttribute("aria-description") !== description) {

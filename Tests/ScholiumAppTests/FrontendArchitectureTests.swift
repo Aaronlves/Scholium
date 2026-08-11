@@ -3733,7 +3733,7 @@ struct FrontendArchitectureTests {
         }
 
         #expect(matchCount(preferredTargetFrame, in: search) == 3)
-        #expect(matchCount(preferredTargetFrame, in: frontmatter) == 3)
+        #expect(matchCount(preferredTargetFrame, in: frontmatter) == 2)
         #expect(
             search.contains(
                 ".frame(height: ScholiumGrid.Dimension.regionHeaderHeight)"

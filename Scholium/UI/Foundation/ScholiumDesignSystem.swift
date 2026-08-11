@@ -1531,13 +1531,11 @@ enum ScholiumMetrics {
 
     enum Properties {
         static let headerDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
         static let groupSpacing = ScholiumGrid.foundationUnit * 2.5
+        static let fieldVerticalInset = ScholiumGrid.foundationUnit * 2.5
         static let optionSpacing = ScholiumGrid.foundationUnit * 1.25
         static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
         static let labelSpacing = ScholiumGrid.foundationUnit * 1.25
-        static let badgeHorizontalInset = ScholiumGrid.foundationUnit * 1.25
-        static let badgeVerticalInset = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         static let tagContentSpacing = ScholiumGrid.foundationUnit * 0.75
         static let tagVerticalInset = ScholiumGrid.foundationUnit * 0.75
     }

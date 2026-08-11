@@ -335,9 +335,6 @@ struct FrontmatterEditorView: View {
         case .absent, .valid:
             ScrollView {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                    Text("Researcher Properties")
-                        .font(ScholiumTypography.interface(.sectionTitle))
-
                     if allFields.isEmpty {
                         Text("No fields are enabled for structured editing. Change the role allowlist in Settings, or edit the exact YAML in Source.")
                             .font(ScholiumTypography.interface(.body))
@@ -345,13 +342,22 @@ struct FrontmatterEditorView: View {
                     }
 
                     ForEach(groupedPresentFields, id: \.group) { group in
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.sectionSpacing) {
-                            Text(group.group.label)
-                                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                                .scholiumForeground(.secondaryText)
-                                .accessibilityHeading(.h2)
-                            ForEach(group.fields) { field in
-                                fieldEditor(for: field)
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.groupSpacing) {
+                            if !groupHeadingIsRedundant(group) {
+                                Text(group.group.label)
+                                    .font(ScholiumTypography.interface(.sectionTitle))
+                                    .scholiumForeground(.secondaryText)
+                                    .accessibilityHeading(.h2)
+                            }
+
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(group.fields) { field in
+                                    fieldEditor(for: field)
+                                        .padding(.vertical, ScholiumMetrics.Properties.fieldVerticalInset)
+                                    if field.id != group.fields.last?.id {
+                                        Divider()
+                                    }
+                                }
                             }
                         }
                     }
@@ -529,31 +535,7 @@ struct FrontmatterEditorView: View {
         let isRemoved = removedFieldKeys.contains(field.key)
 
         VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.fieldSpacing) {
-            // Label
-            HStack(spacing: ScholiumMetrics.Properties.labelSpacing) {
-                Text(field.label)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                if field.isRecommended {
-                    Text("Recommended")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                }
-                if field.isReadOnly {
-                    Text("Read only")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .padding(.horizontal, ScholiumMetrics.Properties.badgeHorizontalInset)
-                        .padding(.vertical, ScholiumMetrics.Properties.badgeVerticalInset)
-                        .background(
-                            ScholiumColorRole.raisedSurfaceBackground.color,
-                            in: Capsule()
-                        )
-                }
-            }
-
-            Text(field.key)
-                .font(ScholiumTypography.exact(.small))
-                .scholiumForeground(.mutedText)
+            fieldHeader(for: field, isRemoved: isRemoved)
 
             if !field.isTypicalForSourceType,
                let sourceType = editorModel.analysisSourceType {
@@ -569,15 +551,9 @@ struct FrontmatterEditorView: View {
             }
 
             if isRemoved {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    Text("This property will be removed when Save succeeds.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                    Spacer()
-                    Button("Undo Removal") {
-                        removedFieldKeys.remove(field.key)
-                    }
-                }
+                Text("This property will be removed when Save succeeds.")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
             } else {
                 if let desc = field.help {
                     Text(desc)
@@ -585,36 +561,17 @@ struct FrontmatterEditorView: View {
                         .scholiumForeground(.mutedText)
                 }
                 if field.isReadOnly {
-                    Text("This value's source shape or the role allowlist does not permit a targeted edit. Its exact YAML remains available in Source.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                }
-
-                let binding = Binding(
-                    get: { fieldValues[field.key] ?? "" },
-                    set: { newValue in
-                        fieldValues[field.key] = newValue
-                        fieldErrors.removeValue(forKey: field.key)
-                    }
-                )
-
-                editorContent(for: field, binding: binding, hasError: hasError)
-
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    if field.isReadOnly {
-                        Button("Edit in Source", action: openSource)
-                            .buttonStyle(.borderless)
-                    } else {
-                        Button(
-                            selectedNewFieldKeys.contains(field.key)
-                                ? "Discard Added Property"
-                                : "Remove Property",
-                            role: .destructive
-                        ) {
-                            removeField(field)
+                    readOnlyFieldValue(for: field)
+                } else {
+                    let binding = Binding(
+                        get: { fieldValues[field.key] ?? "" },
+                        set: { newValue in
+                            fieldValues[field.key] = newValue
+                            fieldErrors.removeValue(forKey: field.key)
                         }
-                        .buttonStyle(.borderless)
-                    }
+                    )
+
+                    editorContent(for: field, binding: binding, hasError: hasError)
                 }
 
                 if let error = displayedError {
@@ -628,6 +585,84 @@ struct FrontmatterEditorView: View {
                 }
             }
         }
+    }
+
+    private func fieldHeader(
+        for field: PropertyEditorField,
+        isRemoved: Bool
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Properties.labelSpacing) {
+            Text(field.label)
+                .font(ScholiumTypography.interface(.rowTitle))
+                .layoutPriority(1)
+                .help(Text(verbatim: field.key))
+                .accessibilityValue(Text(verbatim: field.key))
+            if field.isReadOnly, !isRemoved {
+                Text("Source only")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+            }
+            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+            if isRemoved {
+                Button("Undo Removal") {
+                    removedFieldKeys.remove(field.key)
+                }
+                .buttonStyle(.borderless)
+            } else if field.isReadOnly {
+                Button("Edit in Source", action: openSource)
+                    .buttonStyle(.borderless)
+            } else {
+                Menu {
+                    Button(
+                        selectedNewFieldKeys.contains(field.key)
+                            ? "Discard Added Property"
+                            : "Remove Property",
+                        role: .destructive
+                    ) {
+                        removeField(field)
+                    }
+                } label: {
+                    Label("Property Actions", systemImage: "ellipsis.circle")
+                }
+                .labelStyle(.iconOnly)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Property Actions")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func readOnlyFieldValue(for field: PropertyEditorField) -> some View {
+        let value = fieldValues[field.key].flatMap { $0.isEmpty ? nil : $0 } ?? "—"
+        Text(value)
+            .font(readOnlyValueFont(for: field))
+            .scholiumForeground(.secondaryText)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func readOnlyValueFont(
+        for field: PropertyEditorField
+    ) -> Font {
+        switch field.controlStyle {
+        case .multilineText:
+            ScholiumTypography.scholarly(.body)
+        case .creatorListEditor, .textListEditor, .tagEditor:
+            ScholiumTypography.exact(.body)
+        default:
+            ScholiumTypography.interface(.body)
+        }
+    }
+
+    private func groupHeadingIsRedundant(
+        _ group: (group: PropertyPresentationGroup, fields: [PropertyEditorField])
+    ) -> Bool {
+        guard group.fields.count == 1, let field = group.fields.first else {
+            return false
+        }
+        return group.group.label.localizedCaseInsensitiveCompare(field.label) == .orderedSame
     }
 
     @ViewBuilder
@@ -841,46 +876,24 @@ struct FrontmatterEditorView: View {
             if !tags.isEmpty {
                 FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
                     ForEach(Array(tags.enumerated()), id: \.offset) { index, tag in
-                        HStack(spacing: ScholiumMetrics.Properties.tagContentSpacing) {
-                            Text(tag)
-                                .font(ScholiumTypography.interface(.small))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button {
-                                var updated = listValues[field.key] ?? []
-                                guard updated.indices.contains(index) else { return }
-                                updated.remove(at: index)
-                                if updated.isEmpty {
-                                    removeField(field)
-                                } else {
-                                    listValues[field.key] = updated
-                                }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        Button {
+                            var updated = listValues[field.key] ?? []
+                            guard updated.indices.contains(index) else { return }
+                            updated.remove(at: index)
+                            if updated.isEmpty {
+                                removeField(field)
+                            } else {
+                                listValues[field.key] = updated
                             }
-                            .buttonStyle(.plain)
-                            .scholiumForeground(.secondaryText)
-                            .frame(
-                                minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                        } label: {
+                            ScholiumTagCapsuleLabel(
+                                tag,
+                                trailingSystemImage: "xmark"
                             )
-                            .contentShape(Rectangle())
-                            .help("Remove tag \(tag)")
-                            .accessibilityLabel("Remove tag \(tag)")
                         }
-                        .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                        .padding(.vertical, ScholiumMetrics.Properties.tagVerticalInset)
-                        .background(
-                            ScholiumColorRole.raisedSurfaceBackground.color,
-                            in: Capsule()
-                        )
-                        .overlay(
-                            Capsule()
-                                .stroke(
-                                    ScholiumColorRole.separator.color,
-                                    lineWidth: 1
-                                )
-                        )
+                        .buttonStyle(.plain)
+                        .help("Remove tag \(tag)")
+                        .accessibilityLabel("Remove tag \(tag)")
                     }
                 }
             }

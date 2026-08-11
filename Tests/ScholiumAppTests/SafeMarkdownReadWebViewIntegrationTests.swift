@@ -52,11 +52,27 @@ extension MarkdownEditorWebViewIntegrationTests {
               const rendered = await window.scholiumMermaid.render({source});
               if (rendered.ok) staticFamilyCount += 1;
             }
+            const architectureSecurityResult = await window.scholiumMermaid.render({
+              source: [
+                'architecture-beta',
+                '  group mermaidPrototypePollutionMarker(cloud)[Marker]',
+                '  service a(server)[A] in __proto__',
+                '  service b(server)[B] in mermaidPrototypePollutionMarker',
+                '  a:R -- L:b'
+              ].join('\\n')
+            });
+            const prototypePolluted = Object.prototype.hasOwnProperty.call(
+              Object.prototype,
+              'mermaidPrototypePollutionMarker'
+            );
+            delete Object.prototype.mermaidPrototypePollutionMarker;
             const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
             const shadowRoots = outputs.map(output => output.shadowRoot).filter(Boolean);
             return {
               runtime: window.scholiumMermaid?.version || 0,
               staticFamilyCount,
+              architectureSecuritySettled: typeof architectureSecurityResult?.ok === 'boolean',
+              prototypePolluted,
               rendered: shadowRoots.filter(root => root.querySelector('svg')).length,
               errors: document.querySelectorAll('.scholium-mermaid-error').length,
               links: shadowRoots.reduce((count, root) => count + root.querySelectorAll('a').length, 0),
@@ -69,6 +85,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         ) as? [String: Any])
         #expect(result["runtime"] as? Int == 2)
         #expect(result["staticFamilyCount"] as? Int == 5)
+        #expect(result["architectureSecuritySettled"] as? Bool == true)
+        #expect(result["prototypePolluted"] as? Bool == false)
         #expect(result["rendered"] as? Int == 1)
         #expect(result["errors"] as? Int == 1)
         #expect(result["visibleFallbacks"] as? Int == 1)

@@ -41,12 +41,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         )
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: "scholium")
+        let interfaceLocalization = WebKitInterfaceLocalization.current()
+        let editorStartFailure = Self.jsonLiteral(
+            interfaceLocalization.string("The Markdown editor could not start.")
+        )
         contentController.addUserScript(WKUserScript(
             source: """
             window.addEventListener('error', function(event) {
                 window.webkit.messageHandlers.scholium.postMessage({
                     type: 'editorError',
-                    message: event.message || 'The Markdown editor could not start.'
+                    message: event.message || \(editorStartFailure)
                 });
             });
             """,
@@ -101,7 +105,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         session.attach(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
 
-        guard let editorHTML = Self.editorHTML,
+        guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
               Self.editorScript != nil else {
             session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
             return webView
@@ -191,6 +195,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     }
 
     static var editorHTML: String? {
+        editorHTML(localization: .current())
+    }
+
+    static func editorHTML(
+        localization: WebKitInterfaceLocalization
+    ) -> String? {
         guard let directory = editorResourceDirectory,
               let css = try? String(
                 contentsOf: directory.appendingPathComponent("editor.css"),
@@ -199,10 +209,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
               !ScholiumCalloutStyles.css.isEmpty else { return nil }
         return """
         <!doctype html>
-        <html lang="en">
+        <html lang="\(localization.languageTag)">
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta name="scholium-interface-localization" content="\(localization.base64JSON())">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; img-src data:; font-src data:">
             <style>\(ScholiumWebFonts.css)\n\(css)\n\(ScholiumCalloutStyles.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(ScholiumWebSymbolAssets.cssVariables)\n\(ScholiumWebDesignTokens.documentPresentationCSS)</style>
             <style id="scholium-presentation-css"></style>
@@ -211,6 +222,12 @@ struct MarkdownEditorWebView: NSViewRepresentable {
           <body><main id="editor"></main></body>
         </html>
         """
+    }
+
+    private static func jsonLiteral(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let literal = String(data: data, encoding: .utf8) else { return "\"\"" }
+        return literal
     }
 
     @MainActor
@@ -298,7 +315,11 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     session.reportError(String(localized: "The Markdown editor script did not initialize.", table: "Localizable", bundle: .module))
                 }
             case "editorError":
-                session.reportError(payload.message ?? "The Markdown editor could not start.")
+                session.reportError(
+                    payload.message
+                        ?? WebKitInterfaceLocalization.current()
+                        .string("The Markdown editor could not start.")
+                )
             case "interactionChanged":
                 guard validEnvelope(payload),
                       let selections = payload.selections,
