@@ -60,7 +60,7 @@ function matchingRanges(state: EditorState, query: SearchQuery): DocumentFindMat
   const matches: DocumentFindMatch[] = [];
   const cursor = query.getCursor(state);
   for (let next = cursor.next(); !next.done; next = cursor.next()) {
-    matches.push(next.value);
+    matches.push({from: next.value.from, to: next.value.to});
   }
   return matches;
 }

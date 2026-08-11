@@ -11,7 +11,7 @@ struct WebKitInterfaceLocalizationTests {
 
         #expect(english.languageTag == "en")
         #expect(simplifiedChinese.languageTag == "zh-Hans")
-        #expect(english.strings.count == 94)
+        #expect(english.strings.count == 96)
         #expect(simplifiedChinese.strings.keys == english.strings.keys)
         #expect(english.string("Markdown editor, Edit mode") == "Markdown editor, Edit mode")
         #expect(

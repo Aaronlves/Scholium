@@ -34486,7 +34486,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const matches = [];
     const cursor = query.getCursor(state);
     for (let next = cursor.next(); !next.done; next = cursor.next()) {
-      matches.push(next.value);
+      matches.push({ from: next.value.from, to: next.value.to });
     }
     return matches;
   }
