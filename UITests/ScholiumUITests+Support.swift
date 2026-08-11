@@ -1446,7 +1446,6 @@ extension ScholiumUITests {
         }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: stagedFixtures, to: triptychDirectory)
-        try installCurrentSettingsFixture()
 
         if name.contains("testCanonicalAcceptanceJourney")
             || name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
@@ -1618,77 +1617,6 @@ extension ScholiumUITests {
             Synthetic QA fixture only.
             """ + "\n",
             to: critiques.appendingPathComponent("QA Critique.md")
-        )
-    }
-
-    /// The static TestVaults source deliberately remains untouched. Its
-    /// pre-production Settings bytes predate the clean-sheet Properties
-    /// contract, so each disposable QA copy receives a current-schema profile
-    /// before the app opens it. This is fixture preparation, not a product
-    /// migration or compatibility path.
-    private func installCurrentSettingsFixture() throws {
-        let settingsURL = triptychDirectory
-            .appendingPathComponent(".scholium", isDirectory: true)
-            .appendingPathComponent("settings.json")
-        let data = try Data(contentsOf: settingsURL)
-        guard var settings = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            throw NSError(
-                domain: "ScholiumUITests.Configuration",
-                code: 5,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "The disposable Settings fixture is not a JSON object.",
-                ]
-            )
-        }
-
-        settings["schemaVersion"] = 2
-        settings["analysisAgentCreation"] = ["requiredFieldsBySourceType": []]
-        settings["properties"] = [
-            "paper_analysis",
-            [
-                "visibleFields": [
-                    "type", "publication_date", "limitations", "summary",
-                    "source_basis", "tags",
-                ],
-                "editableFields": [
-                    "type", "title", "short_title", "original_title", "reviewed_title",
-                    "genre", "medium", "version", "language", "authors", "editors",
-                    "translators", "collection_editors", "container_authors",
-                    "original_authors", "reviewed_authors", "publication_date",
-                    "publication_status", "original_publication_date", "accessed_date",
-                    "event_date", "container_title", "container_title_short",
-                    "series_title", "series_number", "volume", "volume_title", "issue",
-                    "pages", "chapter_number", "edition", "number_of_volumes",
-                    "publisher", "publisher_place", "original_publisher",
-                    "original_publisher_place", "institution", "report_number",
-                    "event_title", "event_place", "doi", "isbn", "issn", "url",
-                    "pmid", "pmcid", "arxiv_id", "archive", "archive_collection",
-                    "archive_location", "archive_place", "call_number", "source_basis",
-                    "limitations", "tags", "summary",
-                ],
-            ],
-            "topic_knowledge",
-            [
-                "visibleFields": ["summary", "aliases", "limitations", "tags"],
-                "editableFields": ["aliases", "summary", "limitations", "tags"],
-            ],
-            "output",
-            [
-                "visibleFields": ["work_type", "coauthors", "summary", "limitations", "tags"],
-                "editableFields": ["work_type", "coauthors", "summary", "limitations", "tags"],
-            ],
-        ]
-
-        let encoded = try JSONSerialization.data(
-            withJSONObject: settings,
-            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        )
-        try encoded.write(to: settingsURL, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o600)],
-            ofItemAtPath: settingsURL.path
         )
     }
 
