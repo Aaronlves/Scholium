@@ -170,9 +170,13 @@ private struct AttentionSettingsView: View {
             do {
                 var settings = settingsModel.triptychSettings
                 settings.attentionDismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
-                try await settingsModel.saveTriptychSettings(settings)
+                let result = try await settingsModel.saveTriptychSettings(settings)
                 dismissalDays = settings.attentionDismissalDays
-                settingsModel.showToast(String(localized: "Attention settings saved", table: "Localizable", bundle: .module))
+                settingsModel.showToast(
+                    result.targetIsCurrent
+                        ? String(localized: "Attention settings saved", table: "Localizable", bundle: .module)
+                        : result.warning ?? String(localized: "Settings saved to the previously active Triptych.", table: "Localizable", bundle: .module)
+                )
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -185,10 +189,23 @@ private struct PropertiesSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var selectedSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var configurations = TriptychSettings.defaultProperties
+    @State private var savedConfigurations = TriptychSettings.defaultProperties
+    @State private var seedDrafts: [WorkspaceVaultSlot: String] = [:]
+    @State private var savedSeedDrafts: [WorkspaceVaultSlot: String] = [:]
+    @State private var agentCreation = AnalysisAgentCreationConfiguration()
+    @State private var savedAgentCreation = AnalysisAgentCreationConfiguration()
+    @State private var savedTriptychSettings = TriptychSettings()
+    @State private var savedSettingsRevision: SettingsRevision?
+    @State private var savedTriptychID: UUID?
+    @State private var selectedSourceType: AnalysisSourceType = .journalArticle
     @State private var customField = ""
     @State private var customFieldMessage: String?
     @State private var isSaving = false
+    @State private var hasLoaded = false
+    @State private var revisionConflict = false
     @State private var errorMessage: String?
+    @State private var seedSelection: TextSelection?
+    @FocusState private var seedEditorIsFocused: Bool
 
     private var selectedProfile: SchemaProfileID {
         switch selectedSlot {
@@ -225,34 +242,197 @@ private struct PropertiesSettingsView: View {
         return configuration
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
-            Text("Vault-Wide Properties")
-                .font(ScholiumTypography.interface(.primaryTitle))
-            Text("Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. Existing custom YAML remains visible in Complete Properties; Source mode always exposes the exact source.")
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
-            Picker("Vault", selection: $selectedSlot) {
-                ForEach(WorkspaceVaultSlot.allCases) { slot in
-                    Text(ScholiumL10n.dynamicString(slot.displayName)).tag(slot)
+    private var roleName: String {
+        switch selectedSlot {
+        case .paperAnalysis: "Analysis"
+        case .topicKnowledge: "Topic"
+        case .output: "Work"
+        }
+    }
+
+    private var candidateSettings: TriptychSettings {
+        PropertiesSettingsCandidateBuilder.build(
+            from: savedTriptychSettings,
+            configurations: configurations,
+            seedDrafts: seedDrafts,
+            agentCreation: agentCreation
+        )
+    }
+
+    private var validationMessage: String? {
+        validationDiagnostic?.displayMessage
+    }
+
+    private struct SettingsDiagnostic {
+        enum Section {
+            case newNoteYAML
+            case agentRequirements
+            case configuration
+            case other
+        }
+
+        let section: Section
+        let role: WorkspaceVaultSlot?
+        let sourceType: AnalysisSourceType?
+        let key: String?
+        let line: Int?
+        let column: Int?
+        let reason: String
+        let repair: String
+
+        var displayMessage: String {
+            var context: [String] = []
+            if let role {
+                switch role {
+                case .paperAnalysis: context.append(String(localized: "Analysis", table: "Localizable", bundle: .module))
+                case .topicKnowledge: context.append(String(localized: "Topic", table: "Localizable", bundle: .module))
+                case .output: context.append(String(localized: "Work", table: "Localizable", bundle: .module))
                 }
             }
-            .pickerStyle(.segmented)
-
-            HStack(alignment: .top, spacing: ScholiumMetrics.Settings.columnSpacing) {
-                displayOrderColumn
-                editableFieldsColumn
+            if let sourceType { context.append(sourceType.propertyDisplayName) }
+            if let key { context.append(key) }
+            if let line, let column {
+                context.append(String(localized: "Line \(line), column \(column)", table: "Localizable", bundle: .module))
             }
-            .frame(maxHeight: .infinity)
+            return (context.isEmpty ? "" : context.joined(separator: " · ") + ": ")
+                + reason + " " + repair
+        }
+    }
 
-            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                TextField("Custom top-level YAML field", text: $customField)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { addCustomFieldToDisplay() }
-                Button("Add to Display") { addCustomFieldToDisplay() }
-                    .disabled(normalizedCustomField == nil)
-                Button("Allow Editing") { addCustomFieldToEditableFields() }
-                    .disabled(!customFieldCanBeEdited)
+    private var validationDiagnostic: SettingsDiagnostic? {
+        do {
+            try TriptychSettingsValidator.validate(candidateSettings)
+            return nil
+        } catch let error as TriptychSettingsValidationError {
+            return diagnostic(for: error)
+        } catch {
+            return SettingsDiagnostic(
+                section: .other,
+                role: nil,
+                sourceType: nil,
+                key: nil,
+                line: nil,
+                column: nil,
+                reason: String(localized: "The complete Properties candidate could not be validated.", table: "Localizable", bundle: .module),
+                repair: String(localized: "Review the complete Properties candidate before saving.", table: "Localizable", bundle: .module)
+            )
+        }
+    }
+
+    private var currentSeedDiagnostic: SettingsDiagnostic? {
+        guard let diagnostic = validationDiagnostic,
+              diagnostic.section == .newNoteYAML,
+              diagnostic.role == selectedSlot,
+              diagnostic.sourceType == nil else { return nil }
+        return diagnostic
+    }
+
+    private var currentAgentDiagnostic: SettingsDiagnostic? {
+        guard let diagnostic = validationDiagnostic,
+              diagnostic.section == .agentRequirements,
+              diagnostic.role == .paperAnalysis,
+              diagnostic.sourceType == selectedSourceType else { return nil }
+        return diagnostic
+    }
+
+    private var isDirty: Bool {
+        candidateSettings != savedTriptychSettings
+    }
+
+    private var selectedSeed: Binding<String> {
+        Binding(
+            get: { seedDrafts[selectedSlot] ?? "" },
+            set: { seedDrafts[selectedSlot] = $0 }
+        )
+    }
+
+    var body: some View {
+        Group {
+            if settingsModel.hasWritableTriptychSettings {
+                writableSettingsContent
+            } else {
+                unavailableSettingsContent
+            }
+        }
+        .task { loadSavedSettingsIfNeeded() }
+        .onChange(of: selectedSlot) { _, _ in
+            customField = ""
+            customFieldMessage = nil
+            seedSelection = nil
+        }
+        .onChange(of: settingsModel.snapshot) { _, snapshot in
+            if isDirty {
+                if snapshot.activeTriptychID != savedTriptychID
+                    || snapshot.portableSettingsState.editableRevision
+                        != savedSettingsRevision {
+                    revisionConflict = true
+                }
+                return
+            }
+            installSavedDraft(snapshot)
+        }
+    }
+
+    private var writableSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
+            Text("Properties")
+                .font(ScholiumTypography.interface(.primaryTitle))
+            Text("Manage future New Note YAML, Agent creation requirements, About, and structured editing for each Triptych role.")
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(.secondaryText)
+            if case .needsReview = settingsModel.portableSettingsState {
+                Label(
+                    "These current-schema settings need review before managed creation can resume.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.attention)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            if let refreshError = settingsModel.errorMessage {
+                Label(
+                    "Settings refresh failed. The last confirmed settings remain visible. \(refreshError)",
+                    systemImage: "arrow.clockwise.circle"
+                )
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.attention)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            Picker("Role", selection: $selectedSlot) {
+                Text("Analysis").tag(WorkspaceVaultSlot.paperAnalysis)
+                Text("Topic").tag(WorkspaceVaultSlot.topicKnowledge)
+                Text("Work").tag(WorkspaceVaultSlot.output)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Properties role")
+
+            ScrollView {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                ) {
+                    newNotesSection
+                    if selectedSlot == .paperAnalysis {
+                        Divider()
+                        agentRequirementsSection
+                    }
+                    Divider()
+                    displayOrderColumn
+                    Divider()
+                    editableFieldsColumn
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    customFieldInput
+                    customFieldButtons
+                }
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    customFieldInput
+                    customFieldButtons
+                }
             }
             if let customFieldMessage {
                 Text(customFieldMessage)
@@ -260,55 +440,294 @@ private struct PropertiesSettingsView: View {
                     .scholiumForeground(.secondaryText)
             }
 
-            HStack {
-                Button("Restore Defaults") {
-                    configurations[selectedSlot] = TriptychSettings.defaultProperties[selectedSlot]
-                    customFieldMessage = nil
+            if let diagnostic = validationDiagnostic {
+                settingsValidationSummary(diagnostic)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    restoreAndClearActions
+                    Spacer()
+                    revertAndSaveActions
                 }
-                Spacer()
-                Button("Save Properties") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isSaving)
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    restoreAndClearActions
+                    revertAndSaveActions
+                }
             }
         }
         .padding(ScholiumMetrics.Settings.editorContentInset)
-        .task { configurations = settingsModel.triptychSettings.properties.isEmpty
-            ? TriptychSettings.defaultProperties
-            : settingsModel.triptychSettings.properties }
-        .onChange(of: selectedSlot) { _, _ in
-            customField = ""
-            customFieldMessage = nil
+        .disabled(isSaving)
+    }
+
+    private var unavailableSettingsContent: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            ScholiumContentStateView(
+                unavailableSettingsTitle,
+                detail: settingsModel.errorMessage.map(Text.init(verbatim:))
+                    ?? Text(unavailableSettingsDetail),
+                indicator: .symbol("slider.horizontal.3", role: .attention)
+            )
+            Button("Retry Properties Settings") {
+                Task { await settingsModel.refresh() }
+            }
+            .disabled(settingsModel.isRefreshing)
         }
-        .alert("Could Not Save Properties", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("Dismiss", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
+        .padding(ScholiumMetrics.Settings.editorContentInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var unavailableSettingsTitle: LocalizedStringResource {
+        switch settingsModel.portableSettingsState {
+        case .unavailable: "Properties Require a Complete Triptych"
+        case .missing: "Portable Properties Settings Are Missing"
+        case .oldSchema: "Properties Settings Use an Older Schema"
+        case .futureSchema: "Properties Settings Use a Newer Schema"
+        case .corrupted: "Properties Settings Are Damaged"
+        case .current, .needsReview: "Properties Settings Need Attention"
         }
     }
 
+    private var unavailableSettingsDetail: LocalizedStringResource {
+        switch settingsModel.portableSettingsState {
+        case .unavailable:
+            "Open or configure a complete Triptych before changing portable Properties settings."
+        case .missing:
+            "The settings file is missing. Existing research notes remain unchanged, and managed creation stays unavailable until the file is restored."
+        case .oldSchema(let version):
+            "The exact settings bytes were preserved, but schema \(version.map(String.init) ?? "without a version") is not supported."
+        case .futureSchema(let version):
+            "The exact settings bytes were preserved. This Scholium build cannot edit future schema \(version)."
+        case .corrupted:
+            "The exact settings bytes were preserved for recovery. Scholium will not replace them with defaults."
+        case .current, .needsReview:
+            "Reload the portable settings before editing."
+        }
+    }
+
+    private var newNotesSection: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("YAML Added to New Notes")
+                .font(ScholiumTypography.interface(.sectionTitle))
+            Text("Every key here is written to every future \(roleName) note. Empty values remain present properties.")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.secondaryText)
+
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                Text("---")
+                    .font(ScholiumTypography.exact(.body))
+                    .scholiumForeground(.mutedText)
+                    .accessibilityLabel("Opening YAML boundary added by Scholium")
+                TextEditor(text: selectedSeed, selection: $seedSelection)
+                    .font(ScholiumTypography.exact(.body))
+                    .environment(\.layoutDirection, .leftToRight)
+                    .frame(minHeight: 128)
+                    .scrollContentBackground(.hidden)
+                    .padding(ScholiumGrid.Spacing.labelAccessoryGap)
+                    .background(
+                        ScholiumColorRole.documentBackground.color,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialTextEditorCornerRadius,
+                            style: .continuous
+                        )
+                        .stroke(
+                            currentSeedDiagnostic == nil
+                                ? ScholiumColorRole.separator.color
+                                : ScholiumColorRole.destructive.color,
+                            lineWidth: 1
+                        )
+                    )
+                    .accessibilityLabel("YAML added to new \(roleName) notes without boundaries")
+                    .focused($seedEditorIsFocused)
+                Text("---")
+                    .font(ScholiumTypography.exact(.body))
+                    .scholiumForeground(.mutedText)
+                    .accessibilityLabel("Closing YAML boundary added by Scholium")
+            }
+
+            Text("This source becomes part of every new note and may sync with the Triptych. Do not store passwords, access tokens, or machine-local paths here.")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.secondaryText)
+            if let diagnostic = currentSeedDiagnostic {
+                Label(diagnostic.displayMessage, systemImage: "exclamationmark.circle")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("scholium.propertiesSettings.validation")
+            }
+            if revisionConflict {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text("The saved Properties settings changed after this draft was loaded. The saved version and this draft were both preserved.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                    Button("Reload Saved Settings") {
+                        Task { await reloadSavedSettings() }
+                    }
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.destructive)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } else if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var agentRequirementsSection: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Agent-Created Analyses")
+                .font(ScholiumTypography.interface(.sectionTitle))
+            Text("Choose fields an authenticated Agent must provide when it creates this source type. Source Type is always required.")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.secondaryText)
+            Picker("Source Type", selection: $selectedSourceType) {
+                ForEach(AnalysisSourceType.allCases, id: \.self) { sourceType in
+                    Text(sourceType.propertyDisplayName).tag(sourceType)
+                }
+            }
+            .frame(maxWidth: 320)
+
+            ForEach(agentRequirementGroups, id: \.group) { group in
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(group.group.label)
+                        .font(ScholiumTypography.interface(.compact, emphasis: .strong))
+                        .scholiumForeground(.secondaryText)
+                        .accessibilityHeading(.h3)
+                    ForEach(group.fields, id: \.key) { field in
+                        agentRequirementRow(field)
+                    }
+                }
+            }
+
+            Button("Clear Requirements for This Source Type") {
+                agentCreation.requiredFieldsBySourceType.removeValue(forKey: selectedSourceType)
+            }
+            .disabled(agentCreation.requiredFields(for: selectedSourceType).isEmpty)
+
+            if let diagnostic = currentAgentDiagnostic {
+                Label(diagnostic.displayMessage, systemImage: "exclamationmark.circle")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.destructive)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var agentRequirementGroups: [(
+        group: PropertyPresentationGroup,
+        fields: [PropertyPresentation]
+    )] {
+        let sourceProfile = AnalysisSourceTypeProfileCatalog.profile(for: selectedSourceType)
+        let applicable = Set(sourceProfile.applicableFields).subtracting(["type"])
+        let recommended = Set(sourceProfile.recommendedFieldOrder)
+        let fields = PropertyPresentationCatalog.presentations(for: .analysis)
+            .filter { applicable.contains($0.key) }
+        let grouped = Dictionary(grouping: fields, by: \.group)
+        return PropertyPresentationCatalog.orderedGroups(for: .analysis).compactMap { group in
+            guard let values = grouped[group], !values.isEmpty else { return nil }
+            return (
+                group,
+                values.sorted {
+                    (recommended.contains($0.key) ? 0 : 1, $0.order)
+                        < (recommended.contains($1.key) ? 0 : 1, $1.order)
+                }
+            )
+        }
+    }
+
+    private func agentRequirementRow(_ field: PropertyPresentation) -> some View {
+        let required = agentCreation.requiredFields(for: selectedSourceType).contains(field.key)
+        let seedCollision = analysisSeedKeys.contains(field.key)
+        return Toggle(isOn: Binding(
+            get: { required },
+            set: { enabled in
+                var fields = agentCreation.requiredFields(for: selectedSourceType)
+                if enabled {
+                    if !fields.contains(field.key) { fields.append(field.key) }
+                } else {
+                    fields.removeAll { $0 == field.key }
+                }
+                agentCreation.requiredFieldsBySourceType[selectedSourceType] = fields
+            }
+        )) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(field.label)
+                    if AnalysisSourceTypeProfileCatalog.profile(
+                        for: selectedSourceType
+                    ).recommendedFieldOrder.contains(field.key) {
+                        Text("Recommended")
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                    }
+                }
+                Text(field.key)
+                    .font(ScholiumTypography.exact(.small))
+                    .scholiumForeground(.mutedText)
+                if seedCollision {
+                    Text("Already supplied by the Analysis New Note YAML; remove one requirement before saving.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.destructive)
+                } else if let help = field.help {
+                    Text(help)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
+            }
+        }
+        .toggleStyle(.checkbox)
+        .accessibilityLabel("\(selectedSourceType.propertyDisplayName), \(field.label), \(field.key), required from Agent")
+        .accessibilityValue(required ? "Required" : "Not required")
+    }
+
+    private var analysisSeedKeys: Set<String> {
+        let source = candidateSettings.properties[.paperAnalysis]?.newNoteYAML
+        return (try? TriptychSettingsValidator.seedKeys(
+            in: source,
+            role: .paperAnalysis
+        )) ?? []
+    }
+
     private var displayOrderColumn: some View {
-        GroupBox("Shown in This Order") {
+        GroupBox("About") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if selectedConfiguration.visibleFields.isEmpty {
-                    Text("No fields are shown when Properties is opened.")
+                    Text("No fields are shown in About.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: ScholiumMetrics.Settings.listRowSpacing) {
-                            ForEach(Array(selectedConfiguration.visibleFields.enumerated()), id: \.element) { index, key in
+                    LazyVStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
+                        ForEach(aboutConfigurationGroups, id: \.group) { group in
+                            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.listRowSpacing) {
+                                Text(group.group.label)
+                                    .font(ScholiumTypography.interface(.compact, emphasis: .strong))
+                                    .scholiumForeground(.secondaryText)
+                                    .accessibilityHeading(.h3)
+                                ForEach(Array(group.keys.enumerated()), id: \.element) { index, key in
                                 HStack(spacing: ScholiumMetrics.Settings.rowControlSpacing) {
-                                    Text(displayName(for: key))
-                                        .font(ScholiumTypography.interface(.body))
-                                        .lineLimit(1)
-                                        .help(key)
+                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                                        Text(displayName(for: key))
+                                            .font(ScholiumTypography.interface(.body))
+                                        Text(key)
+                                            .font(ScholiumTypography.exact(.small))
+                                            .scholiumForeground(.mutedText)
+                                    }
                                     Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
                                     Button {
-                                        moveVisibleField(key, to: index - 1)
+                                        moveVisibleField(key, within: group.keys, to: index - 1)
                                     } label: {
                                         Image(systemName: "chevron.up")
                                             .scholiumForeground(.secondaryText)
@@ -319,13 +738,13 @@ private struct PropertiesSettingsView: View {
                                     .accessibilityLabel("Move \(displayName(for: key)) up")
 
                                     Button {
-                                        moveVisibleField(key, to: index + 1)
+                                        moveVisibleField(key, within: group.keys, to: index + 1)
                                     } label: {
                                         Image(systemName: "chevron.down")
                                             .scholiumForeground(.secondaryText)
                                     }
                                     .buttonStyle(.borderless)
-                                    .disabled(index == selectedConfiguration.visibleFields.count - 1)
+                                    .disabled(index == group.keys.count - 1)
                                     .help("Move \(displayName(for: key)) down")
                                     .accessibilityLabel("Move \(displayName(for: key)) down")
 
@@ -343,18 +762,21 @@ private struct PropertiesSettingsView: View {
                         }
                     }
                 }
+                }
 
                 Menu("Add Visible Field") {
-                    let hidden = availableKeys.filter {
-                        AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
-                            && !selectedConfiguration.visibleFields.contains($0)
-                    }
-                    if hidden.isEmpty {
+                    if hiddenAboutConfigurationGroups.isEmpty {
                         Text("All available fields are shown")
                     } else {
-                        ForEach(hidden, id: \.self) { key in
-                            Button(displayName(for: key)) {
-                                updateSelectedConfiguration { $0.setVisible(true, field: key) }
+                        ForEach(hiddenAboutConfigurationGroups, id: \.group) { group in
+                            Section(group.group.label) {
+                                ForEach(group.keys, id: \.self) { key in
+                                    Button(displayName(for: key)) {
+                                        updateSelectedConfiguration {
+                                            $0.setVisible(true, field: key)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -366,37 +788,153 @@ private struct PropertiesSettingsView: View {
     }
 
     private var editableFieldsColumn: some View {
-        GroupBox("Human-Editable Fields") {
-            ScrollView {
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.explanationSpacing) {
-                    ForEach(availableKeys, id: \.self) { key in
-                        HStack {
-                            Toggle(isOn: Binding(
-                            get: { selectedConfiguration.editableFields.contains(key) },
-                            set: { enabled in
-                                updateSelectedConfiguration {
-                                    $0.setHumanEditable(enabled, field: key)
+        GroupBox("Structured Editing") {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
+                ForEach(editableConfigurationGroups, id: \.group) { group in
+                    VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.explanationSpacing) {
+                        Text(group.group.label)
+                            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
+                            .scholiumForeground(.secondaryText)
+                            .accessibilityHeading(.h3)
+                        ForEach(group.keys, id: \.self) { key in
+                            HStack {
+                                Toggle(isOn: Binding(
+                                    get: { selectedConfiguration.editableFields.contains(key) },
+                                    set: { enabled in
+                                        updateSelectedConfiguration {
+                                            $0.setHumanEditable(enabled, field: key)
+                                        }
+                                    }
+                                )) {
+                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                                        Text(displayName(for: key))
+                                        Text(key)
+                                            .font(ScholiumTypography.exact(.small))
+                                            .scholiumForeground(.mutedText)
+                                        if PropertyPresentationCatalog.presentation(
+                                            for: key,
+                                            in: selectedProfile
+                                        ) == nil {
+                                            Text("Editable When Present")
+                                                .font(ScholiumTypography.interface(.small))
+                                                .scholiumForeground(.secondaryText)
+                                        }
+                                    }
                                 }
-                            }
-                        )) {
-                            Text(displayName(for: key))
-                        }
-                        .toggleStyle(.checkbox)
-                        .disabled(!ResearcherPropertyPolicy.isHumanEditable(key))
-                        .help(key)
+                                .toggleStyle(.checkbox)
+                                .disabled(!ResearcherPropertyPolicy.isHumanEditable(key))
+                                .help(key)
 
-                            if !ResearcherPropertyPolicy.isHumanEditable(key) {
-                                Text("Protected")
-                                    .font(ScholiumTypography.interface(.small))
-                                    .scholiumForeground(.secondaryText)
+                                if !ResearcherPropertyPolicy.isHumanEditable(key) {
+                                    Text("Protected")
+                                        .font(ScholiumTypography.interface(.small))
+                                        .scholiumForeground(.secondaryText)
+                                }
                             }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var customFieldInput: some View {
+        TextField("Custom top-level YAML field", text: $customField)
+            .textFieldStyle(.roundedBorder)
+            .onSubmit { addCustomFieldToDisplay() }
+    }
+
+    private var customFieldButtons: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Button("Add to Display") { addCustomFieldToDisplay() }
+                .disabled(normalizedCustomField == nil)
+            Button("Editable When Present") { addCustomFieldToEditableFields() }
+                .disabled(!customFieldCanBeEdited)
+        }
+    }
+
+    private var restoreAndClearActions: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Button("Restore About & Editing Defaults") {
+                guard let defaults = TriptychSettings.defaultProperties[selectedSlot] else {
+                    return
+                }
+                var configuration = selectedConfiguration
+                configuration.visibleFields = defaults.visibleFields
+                configuration.editableFields = defaults.editableFields
+                configurations[selectedSlot] = configuration
+                customFieldMessage = nil
+            }
+            Button("Clear New Note YAML") {
+                seedDrafts[selectedSlot] = ""
+            }
+        }
+    }
+
+    private var revertAndSaveActions: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Button("Revert to Saved") { revertToSaved() }
+                .disabled(!isDirty)
+            Button("Save Properties") { save() }
+                .buttonStyle(.borderedProminent)
+                    .disabled(
+                        isSaving || !isDirty || validationMessage != nil
+                            || revisionConflict
+                            || settingsModel.requiresSettingsReconciliation(
+                                for: savedTriptychID
+                            )
+                    )
+        }
+    }
+
+    private func settingsValidationSummary(
+        _ diagnostic: SettingsDiagnostic
+    ) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Label(diagnostic.displayMessage, systemImage: "exclamationmark.circle")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.destructive)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("scholium.propertiesSettings.validation")
+            if diagnostic.role != nil || diagnostic.sourceType != nil {
+                Button("Review Invalid Setting") {
+                    reveal(diagnostic)
+                }
+            }
+        }
+    }
+
+    private var aboutConfigurationGroups: [AboutProfileGroup] {
+        AboutProfileCatalog.groupedEntries(
+            for: selectedProfile,
+            visibleFields: selectedConfiguration.visibleFields
+        )
+    }
+
+    private var editableConfigurationGroups: [AboutProfileGroup] {
+        let grouped = Dictionary(grouping: availableKeys) { key in
+            PropertyPresentationCatalog.presentation(
+                for: key,
+                in: selectedProfile
+            )?.group ?? .other
+        }
+        return PropertyPresentationCatalog.orderedGroups(for: selectedProfile).compactMap { group in
+            guard let keys = grouped[group], !keys.isEmpty else { return nil }
+            return AboutProfileGroup(group: group, keys: keys)
+        }
+    }
+
+    private var hiddenAboutConfigurationGroups: [AboutProfileGroup] {
+        let hidden = availableKeys.filter {
+            AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
+                && !selectedConfiguration.visibleFields.contains($0)
+        }
+        return AboutProfileCatalog.groupedEntries(
+            for: selectedProfile,
+            visibleFields: hidden
+        )
     }
 
     private var normalizedCustomField: String? {
@@ -408,7 +946,6 @@ private struct PropertiesSettingsView: View {
     private var customFieldCanBeEdited: Bool {
         guard let field = normalizedCustomField else { return false }
         return ResearcherPropertyPolicy.isHumanEditable(field)
-            && field.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil
     }
 
     private func updateSelectedConfiguration(
@@ -419,8 +956,17 @@ private struct PropertiesSettingsView: View {
         configurations[selectedSlot] = configuration
     }
 
-    private func moveVisibleField(_ field: String, to index: Int) {
-        updateSelectedConfiguration { $0.moveVisibleField(field, to: index) }
+    private func moveVisibleField(_ field: String, within group: [String], to index: Int) {
+        guard group.contains(field), group.indices.contains(index) else {
+            return
+        }
+        let destinationKey = group[index]
+        updateSelectedConfiguration { configuration in
+            guard let sourceIndex = configuration.visibleFields.firstIndex(of: field),
+                  let destinationIndex = configuration.visibleFields.firstIndex(of: destinationKey)
+            else { return }
+            configuration.visibleFields.swapAt(sourceIndex, destinationIndex)
+        }
     }
 
     private func addCustomFieldToDisplay() {
@@ -436,7 +982,7 @@ private struct PropertiesSettingsView: View {
 
     private func addCustomFieldToEditableFields() {
         guard let field = normalizedCustomField, customFieldCanBeEdited else {
-            customFieldMessage = "Structured editing supports simple, non-protected top-level YAML keys."
+            customFieldMessage = "Structured editing supports non-protected top-level YAML keys."
             return
         }
         updateSelectedConfiguration { $0.setHumanEditable(true, field: field) }
@@ -445,38 +991,294 @@ private struct PropertiesSettingsView: View {
     }
 
     private func displayName(for key: String) -> String {
-        key.replacingOccurrences(of: "_", with: " ")
+        if let presentation = PropertyPresentationCatalog.presentation(
+            for: key,
+            in: selectedProfile
+        ) {
+            return presentation.label
+        }
+        return key.replacingOccurrences(of: "_", with: " ")
             .split(separator: " ")
             .map { $0.capitalized }
             .joined(separator: " ")
     }
 
     private func save() {
+        guard validationMessage == nil,
+              let triptychID = savedTriptychID,
+              let revision = savedSettingsRevision,
+              settingsModel.snapshot.activeTriptychID == triptychID,
+              settingsModel.settingsRevision == revision else {
+            revisionConflict = true
+            return
+        }
         isSaving = true
+        revisionConflict = settingsModel.settingsRevision != savedSettingsRevision
+        errorMessage = nil
         Task {
             do {
-                var settings = settingsModel.triptychSettings
-                var sanitized: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [:]
-                for (slot, configuration) in configurations {
-                    var result = configuration
-                    let profile: SchemaProfileID = switch slot {
-                    case .paperAnalysis: .analysis
-                    case .topicKnowledge: .topicMarkdown
-                    case .output: .draftProject
-                    }
-                    result.visibleFields.removeAll {
-                        !AboutProfileCatalog.allowsOptionalField($0, profile: profile)
-                    }
-                    result.editableFields.removeAll { !ResearcherPropertyPolicy.isHumanEditable($0) }
-                    sanitized[slot] = result
+                let result = try await settingsModel.saveTriptychSettings(
+                    candidateSettings,
+                    targetTriptychID: triptychID,
+                    expectedRevision: revision
+                )
+                if result.targetIsCurrent {
+                    installSavedDraft(settingsModel.snapshot)
+                } else {
+                    revisionConflict = true
+                    errorMessage = result.warning
                 }
-                settings.properties = sanitized
-                try await settingsModel.saveTriptychSettings(settings)
-                settingsModel.showToast(String(localized: "Properties configuration saved", table: "Localizable", bundle: .module))
+                let message = if result.warning == nil {
+                    String(localized: "Properties configuration saved", table: "Localizable", bundle: .module)
+                } else {
+                    result.warning ?? String(localized: "Properties configuration saved", table: "Localizable", bundle: .module)
+                }
+                settingsModel.showToast(message)
+            } catch TriptychControlError.settingsRevisionConflict {
+                revisionConflict = true
+            } catch WorkspaceSettingsMutationError.triptychChanged {
+                revisionConflict = true
+            } catch WorkspaceSettingsMutationError.commitRequiresReview {
+                revisionConflict = true
+                errorMessage = String(localized: "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.", table: "Localizable", bundle: .module)
+            } catch WorkspaceSettingsMutationError.reconciliationRequired {
+                revisionConflict = true
+                errorMessage = String(localized: "Portable settings must be reread successfully before another save can be attempted.", table: "Localizable", bundle: .module)
             } catch {
                 errorMessage = error.localizedDescription
             }
             isSaving = false
+        }
+    }
+
+    private func loadSavedSettingsIfNeeded() {
+        guard !hasLoaded else { return }
+        installSavedDraft(settingsModel.snapshot)
+        hasLoaded = true
+    }
+
+    private func installSavedDraft(_ snapshot: WorkspaceSettingsSnapshot) {
+        let settings = snapshot.triptychSettings
+        let properties = settings.properties.isEmpty
+            ? TriptychSettings.defaultProperties
+            : settings.properties
+        let seeds = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
+            ($0, properties[$0]?.newNoteYAML ?? "")
+        })
+        configurations = properties
+        savedConfigurations = properties
+        seedDrafts = seeds
+        savedSeedDrafts = seeds
+        agentCreation = settings.analysisAgentCreation
+        savedAgentCreation = settings.analysisAgentCreation
+        savedTriptychSettings = settings
+        savedTriptychID = snapshot.activeTriptychID
+        savedSettingsRevision = snapshot.portableSettingsState.editableRevision
+        revisionConflict = settingsModel.snapshot.activeTriptychID != savedTriptychID
+            || settingsModel.settingsRevision != savedSettingsRevision
+        errorMessage = nil
+    }
+
+    private func revertToSaved() {
+        configurations = savedConfigurations
+        seedDrafts = savedSeedDrafts
+        agentCreation = savedAgentCreation
+        revisionConflict = settingsModel.snapshot.activeTriptychID != savedTriptychID
+            || settingsModel.settingsRevision != savedSettingsRevision
+        errorMessage = nil
+    }
+
+    private func reloadSavedSettings() async {
+        guard await settingsModel.refresh() else {
+            errorMessage = settingsModel.errorMessage
+            return
+        }
+        installSavedDraft(settingsModel.snapshot)
+    }
+
+    private func diagnostic(
+        for error: TriptychSettingsValidationError
+    ) -> SettingsDiagnostic {
+        let role: WorkspaceVaultSlot?
+        let sourceType: AnalysisSourceType?
+        let key: String?
+        let section: SettingsDiagnostic.Section
+        let diagnosticReason: String
+        let repair: String
+        var explicitPosition: FrontmatterSourcePosition?
+        switch error {
+        case .incompleteRoleConfiguration:
+            role = nil; sourceType = nil; key = nil
+            section = .configuration
+            diagnosticReason = String(localized: "The Properties candidate is missing a Triptych role.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Restore the missing role configuration.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .noncanonicalConfigurationField(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .configuration
+            diagnosticReason = String(localized: "This configuration field is blank, duplicated, or unnormalized.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Remove the blank or duplicate field entry.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .seedTooLarge(let value, let count):
+            role = value; sourceType = nil; key = nil
+            section = .newNoteYAML
+            diagnosticReason = String(localized: "This New Note YAML is \(count) bytes and exceeds the 64 KiB limit.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Shorten this role's New Note YAML to 64 KiB or less.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .invalidSeed(let value, let field, let reason, let position):
+            role = value; sourceType = nil; key = field
+            section = .newNoteYAML
+            diagnosticReason = localizedSeedReason(reason)
+            repair = String(localized: "Repair the delimiter-free YAML source in this role.", table: "Localizable", bundle: .module)
+            explicitPosition = position
+        case .reservedSeedKey(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .newNoteYAML
+            diagnosticReason = String(localized: "This key is reserved for a portable or machine-owned identity.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Remove this reserved key from the New Note YAML.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .canonicalSeedRoleMismatch(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .newNoteYAML
+            diagnosticReason = String(localized: "This canonical key belongs to another Triptych role.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Remove the key or edit the role where it is canonical.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .invalidRequiredField(let type, let field):
+            role = .paperAnalysis; sourceType = type; key = field
+            section = .agentRequirements
+            diagnosticReason = String(localized: "This is not a shape-known field that an Agent may create.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Clear this Agent requirement.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .requiredFieldNotApplicable(let type, let field):
+            role = .paperAnalysis; sourceType = type; key = field
+            section = .agentRequirements
+            diagnosticReason = String(localized: "This required field does not apply to the selected Source Type.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Clear it or choose a source type where it applies.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .requiredFieldCollidesWithSeed(let type, let field):
+            role = .paperAnalysis; sourceType = type; key = field
+            section = .agentRequirements
+            diagnosticReason = String(localized: "This field is supplied both by New Note YAML and as an Agent requirement.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Remove it from the seed or clear the Agent requirement.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .invalidAttentionDismissalDays:
+            role = nil; sourceType = nil; key = nil
+            section = .other
+            diagnosticReason = String(localized: "Attention dismissal days must be positive.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Repair Attention settings before saving Properties.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        case .invalidPromptConfiguration:
+            role = nil; sourceType = nil; key = nil
+            section = .other
+            diagnosticReason = String(localized: "The active Research Guidance template selection is incomplete or inconsistent.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Repair Research Guidance settings before saving Properties.", table: "Localizable", bundle: .module)
+            explicitPosition = nil
+        }
+        let position = explicitPosition.map { (line: $0.line, column: $0.column) }
+            ?? role.flatMap { role in
+            key.flatMap { seedPosition(of: $0, role: role) }
+        }
+        return SettingsDiagnostic(
+            section: section,
+            role: role,
+            sourceType: sourceType,
+            key: key,
+            line: position?.line,
+            column: position?.column,
+            reason: diagnosticReason,
+            repair: repair
+        )
+    }
+
+    private func localizedSeedReason(
+        _ reason: TriptychSeedValidationReason
+    ) -> String {
+        switch reason {
+        case .sourceNormalization:
+            String(localized: "The seed uses unsupported newlines or lacks its terminating newline.", table: "Localizable", bundle: .module)
+        case .patchRefusal(let refusal):
+            switch refusal {
+            case .invalidYAML:
+                String(localized: "The YAML syntax is invalid.", table: "Localizable", bundle: .module)
+            case .nonBlockMappingRoot:
+                String(localized: "The seed must be a top-level YAML block mapping.", table: "Localizable", bundle: .module)
+            case .ambiguousStructure:
+                String(localized: "The YAML uses a structure that cannot be edited safely as Properties.", table: "Localizable", bundle: .module)
+            case .unsupportedExistingValue:
+                String(localized: "An existing YAML value cannot be bounded for a safe Properties edit.", table: "Localizable", bundle: .module)
+            case .semanticMismatch:
+                String(localized: "The encoded YAML did not preserve the requested Property value.", table: "Localizable", bundle: .module)
+            }
+        case .topLevelMappingRequired:
+            String(localized: "The seed must contain at least one top-level mapping entry.", table: "Localizable", bundle: .module)
+        case .propertyIssue(let code):
+            switch code {
+            case .malformedFrontmatter:
+                String(localized: "The YAML frontmatter is malformed.", table: "Localizable", bundle: .module)
+            case .invalidValueKind:
+                String(localized: "A canonical property has the wrong value shape.", table: "Localizable", bundle: .module)
+            case .valueNotAllowed:
+                String(localized: "A canonical property contains a value that is not allowed.", table: "Localizable", bundle: .module)
+            case .invalidCreator:
+                String(localized: "A creator entry is incomplete or malformed.", table: "Localizable", bundle: .module)
+            }
+        }
+    }
+
+    private func reveal(_ diagnostic: SettingsDiagnostic) {
+        if let role = diagnostic.role { selectedSlot = role }
+        if let sourceType = diagnostic.sourceType {
+            selectedSlot = .paperAnalysis
+            selectedSourceType = sourceType
+        }
+        guard diagnostic.section == .newNoteYAML,
+              let role = diagnostic.role,
+              let line = diagnostic.line else { return }
+        Task { @MainActor in
+            await Task.yield()
+            selectSeedLine(line, role: role)
+        }
+    }
+
+    private func selectSeedLine(_ line: Int, role: WorkspaceVaultSlot) {
+        guard role == selectedSlot, line > 0 else { return }
+        let source = seedDrafts[role] ?? ""
+        var start = source.startIndex
+        if line > 1 {
+            for _ in 1..<line {
+                guard let newline = source[start...].firstIndex(of: "\n") else { return }
+                start = source.index(after: newline)
+            }
+        }
+        let end = source[start...].firstIndex(of: "\n") ?? source.endIndex
+        seedSelection = TextSelection(range: start..<end)
+        seedEditorIsFocused = true
+    }
+
+    private func seedPosition(
+        of key: String,
+        role: WorkspaceVaultSlot
+    ) -> (line: Int, column: Int)? {
+        let lines = (seedDrafts[role] ?? "").split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        )
+        for (index, line) in lines.enumerated() {
+            let source = String(line)
+            let leading = source.prefix { $0 == " " || $0 == "\t" }
+            let remainder = source.dropFirst(leading.count)
+            if remainder.hasPrefix("\(key):") {
+                return (index + 1, leading.count + 1)
+            }
+        }
+        return nil
+    }
+
+    private func profile(for slot: WorkspaceVaultSlot) -> SchemaProfileID {
+        switch slot {
+        case .paperAnalysis: .analysis
+        case .topicKnowledge: .topicMarkdown
+        case .output: .draftProject
         }
     }
 }

@@ -81,7 +81,7 @@ enum ResearcherPropertyPolicy {
   }
 
   static func isHumanEditable(_ key: String) -> Bool {
-    !key.contains(".")
+    true
   }
 }
 
@@ -211,6 +211,21 @@ extension WindowDocumentLocation {
   }
   var created: Date? { property(at: "created")?.appDateValue }
   var modified: Date? { property(at: "updated")?.appDateValue }
+
+  /// Exact top-level YAML lookup. Custom keys may contain dots, so Properties
+  /// and About must not reinterpret their authored spelling as a key path.
+  func topLevelProperty(named key: String) -> YAMLValue? {
+    frontmatter[key]
+  }
+
+  func authoredTopLevelScalarToken(named key: String) -> String? {
+    guard let frontmatter = document.rawFrontmatter else { return nil }
+    return try? FrontmatterPatchPlanner.authoredScalarToken(
+      frontmatter: frontmatter,
+      key: key,
+      newline: document.newlineStyle.sequence
+    )
+  }
 
   var fileModifiedAt: Date {
     workspaceSnapshot?.fileMetadata.modificationDate ?? .distantPast

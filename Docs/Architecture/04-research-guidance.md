@@ -121,6 +121,19 @@ complete candidate and expected revision, rechecks current bytes inside the
 store actor, atomically replaces, readbacks, decodes, and returns the new
 revision. It never value-compares decoded settings, falls back to defaults for
 an existing invalid file, or ships an old-schema decoder.
+`settingsLoadState()` keeps current, repairable current-schema, missing, old,
+future, and corrupted files distinct. A repairable state retains its decoded
+candidate and exact revision for Settings, while ordinary `settings()` and
+managed creation continue to fail closed until the candidate validates.
+The Settings draft freezes both Triptych identity and exact revision. A
+confirmed commit installs its returned revision even if derived refresh fails;
+an uncertain replacement is authoritatively reread before another save can be
+attempted, and a failed reread keeps that Triptych mutation-blocked. A commit
+that began in one Triptych remains truthfully attributed there if the active
+Triptych changes while it is in flight; its snapshot is never installed into
+the new target. Only a validated current state authorizes About or structured
+Note editing; every other state supplies an explicit empty display/edit
+allowlist, never default authority.
 Current bundled prompt bodies are app projections selected by stable IDs; load
 may replace or supply those in memory without writing the portable file. It
 does not repair researcher templates or invalid active-template IDs.

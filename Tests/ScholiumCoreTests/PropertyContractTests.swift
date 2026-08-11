@@ -72,6 +72,30 @@ struct PropertyContractTests {
         }
     }
 
+    @Test("Structured editing accepts repairable empty shapes but rejects shape guessing")
+    func targetedStructuredEditingShapes() {
+        #expect(PropertyContractCatalog.supportsTargetedStructuredEditing(
+            .string(""),
+            as: .date
+        ))
+        #expect(PropertyContractCatalog.supportsTargetedStructuredEditing(
+            .array([]),
+            as: .textList
+        ))
+        #expect(PropertyContractCatalog.supportsTargetedStructuredEditing(
+            .array([.object(["family": .string("")])]),
+            as: .creatorList
+        ))
+        #expect(!PropertyContractCatalog.supportsTargetedStructuredEditing(
+            .array([.string("Legacy Author")]),
+            as: .creatorList
+        ))
+        #expect(!PropertyContractCatalog.supportsTargetedStructuredEditing(
+            .object(["nested": .string("exact")]),
+            as: .text
+        ))
+    }
+
     @Test("Dates remain source-safe strings and are not parsed or normalized")
     func dateShape() {
         for value in ["2026", "circa 1920", "forthcoming?", "1990/1992"] {
@@ -114,5 +138,36 @@ struct PropertyContractTests {
             profile: .analysis
         )
         #expect(issues.isEmpty)
+    }
+
+    @Test("Managed seed refusals carry structured source positions")
+    func seedRefusalPositions() throws {
+        let fixtures: [(String, Int)] = [
+            ("custom: &base value\nother: *base\n", 1),
+            ("duplicate: one\nduplicate: two\n", 1),
+            ("\"quoted\": value\n", 1),
+            ("root: value\n\tchild: value\n", 2),
+        ]
+
+        for (source, expectedLine) in fixtures {
+            var settings = TriptychSettings()
+            settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
+                newNoteYAML: source,
+                visibleFields: [],
+                editableFields: []
+            )
+            do {
+                try TriptychSettingsValidator.validate(settings)
+                Issue.record("Expected seed refusal for \(source)")
+            } catch let error as TriptychSettingsValidationError {
+                guard case .invalidSeed(_, _, _, let position) = error else {
+                    Issue.record("Unexpected validation error: \(error)")
+                    continue
+                }
+                let resolved = try #require(position)
+                #expect(resolved.line == expectedLine)
+                #expect(resolved.column > 0)
+            }
+        }
     }
 }

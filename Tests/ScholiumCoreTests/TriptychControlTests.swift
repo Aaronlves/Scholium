@@ -255,6 +255,43 @@ struct TriptychControlTests {
         await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
     }
 
+    @Test("Typed Settings load preserves repairable data and distinguishes unavailable states")
+    func typedSettingsLoadState() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        _ = try await store.bootstrap(vaultIDs: Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        ))
+        let url = fixture.root.appendingPathComponent(".scholium/settings.json")
+        #expect((try await store.settingsLoadState()).authorizesPropertyEditing)
+
+        var reviewable = TriptychSettings()
+        reviewable.activePromptTemplateIDs[.dialogue] = UUID()
+        let reviewableBytes = try JSONEncoder().encode(reviewable)
+        try reviewableBytes.write(to: url, options: .atomic)
+        guard case .needsReview(let decoded, let revision, let reason) =
+            try await store.settingsLoadState() else {
+            Issue.record("Expected a repairable current-schema state.")
+            return
+        }
+        #expect(decoded == reviewable)
+        #expect(revision.fingerprint == DocumentFingerprint(data: reviewableBytes))
+        #expect(!reason.isEmpty)
+        #expect(!(try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect(try Data(contentsOf: url) == reviewableBytes)
+
+        try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
+        #expect(try await store.settingsLoadState() == .oldSchema(nil))
+
+        try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
+        #expect(try await store.settingsLoadState() == .futureSchema(999))
+
+        try Data(#"{"schemaVersion":2,"properties":"damaged"}"#.utf8)
+            .write(to: url, options: .atomic)
+        #expect(try await store.settingsLoadState() == .corrupted)
+        #expect(!(try await store.settingsLoadState()).authorizesPropertyEditing)
+    }
+
     @Test("An uncoordinated final-window replacement is preserved instead of overwritten")
     func settingsFinalWindowConflict() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
@@ -274,6 +311,42 @@ struct TriptychControlTests {
             try await store.saveSettings(candidate, expectedRevision: initial.revision)
         }
         #expect(try Data(contentsOf: fixture.root.appendingPathComponent(".scholium/settings.json")) == external)
+    }
+
+    @Test("Every post-swap Settings failure is commit-uncertain and rereadable")
+    func settingsPostSwapFailureIsTyped() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(
+            worksVaultURL: fixture.works,
+            controlWriteHook: { _ in },
+            controlPostSwapHook: { _ in throw POSIXError(.EIO) }
+        )
+        _ = try await store.bootstrap(vaultIDs: Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        ))
+        let initial = try await store.settings()
+        var candidate = initial.settings
+        candidate.attentionDismissalDays = 30
+
+        do {
+            _ = try await store.saveSettings(
+                candidate,
+                expectedRevision: initial.revision
+            )
+            Issue.record("Expected a typed commit-uncertain outcome.")
+        } catch let error as TriptychControlError {
+            guard case .controlFileCommitUncertain = error else {
+                Issue.record("Unexpected control error: \(error)")
+                return
+            }
+        }
+
+        guard case .current(let reread) = try await store.settingsLoadState() else {
+            Issue.record("The authoritative Settings file was not rereadable.")
+            return
+        }
+        #expect(reread.settings == candidate)
+        #expect(reread.revision != initial.revision)
     }
 
     @Test("An identity final-window replacement is preserved instead of publishing a false record")

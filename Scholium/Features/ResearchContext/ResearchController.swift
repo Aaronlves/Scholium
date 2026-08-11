@@ -371,6 +371,10 @@ final class ResearchController: ObservableObject {
         try await requireRecords().settings()
     }
 
+    func settingsLoadState() async throws -> TriptychSettingsLoadState {
+        try await requireRecords().settingsLoadState()
+    }
+
     func saveSettings(
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision

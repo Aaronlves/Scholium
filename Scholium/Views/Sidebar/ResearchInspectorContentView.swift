@@ -362,8 +362,16 @@ struct ResearchOverviewView: View {
     }
 
     private func propertyFact(for key: String) -> ScholiumApparatusFact? {
-        guard let raw = note.property(at: key),
-              let value = propertyDisplayValue(raw, key: key) else { return nil }
+        guard let raw = note.topLevelProperty(named: key) else { return nil }
+        let value: String
+        if case .string = raw,
+           let token = note.authoredTopLevelScalarToken(named: key),
+           FrontmatterPatchPlanner.isTimestampScalarToken(token) {
+            value = token
+        } else {
+            guard let displayValue = propertyDisplayValue(raw, key: key) else { return nil }
+            value = displayValue
+        }
         let label = PropertyPresentationCatalog.presentation(
             for: key,
             in: note.schemaProfile
@@ -372,7 +380,8 @@ struct ResearchOverviewView: View {
     }
 
     private func readingBlocks(for key: String) -> [ReadingBlock] {
-        guard isLongResearchField(key), let value = note.property(at: key) else { return [] }
+        guard isLongResearchField(key),
+              let value = note.topLevelProperty(named: key) else { return [] }
         let label = PropertyPresentationCatalog.presentation(
             for: key,
             in: note.schemaProfile

@@ -124,6 +124,19 @@ separately owns applicable, recommended, and deterministic serialization order.
 Workspace, Search, Link Graph, and Research Actions. App's independent
 `AboutProfileCatalog` owns researcher-configured display choices and order;
 `PropertyPresentation` adds label, help, one group, and control style only.
+The app's Properties feature composes those owners without creating another
+schema: Settings edits exact role seeds, per-source-type Agent requirements,
+About order, and structured-edit allowlists as one revision-bound candidate;
+the Note sheet lists every present safe top-level value and offers only
+applicable canonical missing keys. Unsupported shapes remain read-only with a
+Source route. Creator controls produce the canonical ordered mapping sequence.
+Quoted strings remain structured-editable. Any YAML scalar resolved as a
+timestamp, whether implicit or explicitly tagged and regardless of its field,
+is shown as its exact authored token and remains Source-only, so no text value
+is parsed and then silently normalized by the Properties surface.
+Custom top-level keys, including Unicode and dotted spellings, use an exact
+top-level accessor in Properties and About; dots are never reinterpreted as a
+nested path at that boundary.
 Property edits are validated through Contracts and applied by Application as targeted
 `NoteDocument` changes. `FrontmatterPatchPlanner` first validates complete YAML
 with Yams, then proves a unique bounded plain key. Ordinary scalar edits replace
@@ -135,6 +148,10 @@ and ambiguous indentation return a typed refusal that directs the researcher
 to Source. Refusal leaves every Markdown byte unchanged; successful patches
 preserve BOM, newline/final-newline style, comments, unknown YAML, formatting,
 and all bytes outside the proven range.
+String edits use YAML-safe scalar encoding for literal quotes, leading
+indicators, controls, Unicode, and surrounding whitespace. The planner reparses
+the complete candidate and compares every requested edit with its semantic
+readback; any mismatch refuses the whole replacement.
 
 YAML-free Notes have a distinct explicit `insertFrontmatter` change set. It
 requires at least one concrete Property edit, preserves a leading BOM and the

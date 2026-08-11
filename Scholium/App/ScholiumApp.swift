@@ -1644,6 +1644,7 @@ final class WindowModel: ObservableObject {
     @Published private(set) var isCreatingNote = false
     @Published private(set) var isMutatingFolder = false
     @Published var triptychSettings = TriptychSettings()
+    @Published private(set) var triptychPropertiesAreAuthoritative = false
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
@@ -4075,14 +4076,18 @@ final class WindowModel: ObservableObject {
     private func activateTriptychServices(
         assignment: TriptychAssignment
     ) async throws {
+        triptychPropertiesAreAuthoritative = false
         let capabilities = try await workspaceStore.workspaceCapabilities(id: assignment.id)
         bindApplicationCapabilities(to: capabilities)
         let researchSnapshot = try await researchController.researchSnapshot()
-        triptychSettings = try await researchController.settings().settings
-        if !researchSnapshot.healthIssues.isEmpty {
+        var activationIssues = researchSnapshot.healthIssues
+        if let settingsIssue = try await loadTriptychSettingsProjection() {
+            activationIssues.append(settingsIssue)
+        }
+        if !activationIssues.isEmpty {
             vaultError = ([
                 "Some Scholium research history could not be loaded. The affected files remain unchanged and edits to those records are blocked.",
-            ] + researchSnapshot.healthIssues).joined(separator: "\n\n")
+            ] + activationIssues).joined(separator: "\n\n")
         }
         let recoveryIssues = try await documentController.recoverInterruptedTransactions()
         if !recoveryIssues.isEmpty {
@@ -4092,6 +4097,31 @@ final class WindowModel: ObservableObject {
         }
         await refreshTransactionRecoveryRecords()
         activeTriptychServicesID = assignment.id
+    }
+
+    private func loadTriptychSettingsProjection() async throws -> String? {
+        let state = try await researchController.settingsLoadState()
+        triptychPropertiesAreAuthoritative = state.authorizesPropertyEditing
+        switch state {
+        case .current(let snapshot):
+            triptychSettings = snapshot.settings
+            return nil
+        case .needsReview(let settings, _, let reason):
+            triptychSettings = settings
+            return TriptychControlError.settingsNeedsReview(reason).localizedDescription
+        case .missing:
+            triptychSettings = TriptychSettings()
+            return TriptychControlError.settingsMissing.localizedDescription
+        case .oldSchema(let version):
+            triptychSettings = TriptychSettings()
+            return TriptychControlError.settingsOldSchema(version).localizedDescription
+        case .futureSchema(let version):
+            triptychSettings = TriptychSettings()
+            return TriptychControlError.settingsFutureSchema(version).localizedDescription
+        case .corrupted:
+            triptychSettings = TriptychSettings()
+            return TriptychControlError.settingsCorrupted.localizedDescription
+        }
     }
 
     private func bindApplicationCapabilities(
@@ -4265,7 +4295,11 @@ final class WindowModel: ObservableObject {
               let slot = WorkspaceVaultSlot.allCases.first(where: {
                   workspaceAssignment?.vault(for: $0)?.id == vault.id
               }) else { return nil }
-        return triptychSettings.properties[slot] ?? TriptychSettings.defaultProperties[slot]
+        return WorkspacePropertyAuthorization.configuration(
+            settings: triptychSettings,
+            slot: slot,
+            isAuthoritative: triptychPropertiesAreAuthoritative
+        )
     }
 
     func createCheckpoint(name: String, kind: TriptychCheckpointKind = .manual) async throws -> TriptychCheckpoint {
@@ -4369,8 +4403,11 @@ final class WindowModel: ObservableObject {
             selection: selection
         )
         do {
-            triptychSettings = try await researchController.settings().settings
+            let settingsIssue = try await loadTriptychSettingsProjection()
             try await rescanVault()
+            if let settingsIssue {
+                workspaceProjectionController.reportCatalogError(settingsIssue)
+            }
         } catch {
             refreshStatusText = "Triptych refresh failed after restore"
             workspaceProjectionController.reportCatalogError(
@@ -6671,10 +6708,24 @@ final class WindowModel: ObservableObject {
             from: original.frontmatter,
             to: proposedFrontmatter
         )
+        let sourceDocument = NoteDocument(
+            relativePath: original.relativePath,
+            rawContent: original.rawContent
+        )
+        let changeSet: NoteChangeSet = switch sourceDocument.frontmatterState {
+        case .valid:
+            .frontmatter(edits)
+        case .absent:
+            .insertFrontmatter(edits)
+        case .malformed:
+            throw VaultRepositoryError.invalidFrontmatter(
+                "This note's YAML frontmatter is incomplete or malformed. Open Source to repair it."
+            )
+        }
         do {
             let outcome = try await documentController.save(
                 VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: note.relativePath),
-                changeSet: .frontmatter(edits),
+                changeSet: changeSet,
                 expectedRevision: expectedRevision
             )
             let result = outcome.committedValue
@@ -6708,6 +6759,16 @@ final class WindowModel: ObservableObject {
         return try await documentController.load(
             VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path)
         )
+    }
+
+    func reloadProperties(
+        for path: String
+    ) async throws -> (note: WindowDocumentLocation, revision: DocumentFingerprint) {
+        let document = try await diskDocument(for: path)
+        guard let refreshed = await replaceSavedDocument(document) else {
+            throw VaultRepositoryError.fileDoesNotExist(path)
+        }
+        return (refreshed, document.fingerprint)
     }
 
     func showToast(_ message: String, kind: WindowToast.Kind = .success) {

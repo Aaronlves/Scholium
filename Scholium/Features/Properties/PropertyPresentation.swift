@@ -99,6 +99,19 @@ enum PropertyPresentationCatalog {
         presentations(for: profile).first { $0.key == key }
     }
 
+    static func orderedGroups(for profile: SchemaProfileID) -> [PropertyPresentationGroup] {
+        switch profile {
+        case .analysis:
+            [.source, .publication, .accessAndIdentifiers, .research, .other, .tags]
+        case .topicMarkdown:
+            [.topicDescription, .research, .other, .tags]
+        case .draftProject:
+            [.workDescription, .research, .other, .tags]
+        case .genericMarkdown:
+            [.other]
+        }
+    }
+
     private static let analysisSourceKeys: Set<String> = [
         "type", "title", "short_title", "original_title", "reviewed_title",
         "genre", "medium", "version", "language", "authors", "editors",
@@ -153,14 +166,14 @@ enum PropertyPresentationCatalog {
             "type": "Source Type", "title": "Title", "short_title": "Short Title",
             "original_title": "Original Title", "reviewed_title": "Reviewed Title",
             "genre": "Genre", "medium": "Medium", "version": "Version",
-            "language": "Language", "authors": "Authors", "editors": "Editors",
+            "language": "Language", "authors": "Source Authors", "editors": "Editors",
             "translators": "Translators", "collection_editors": "Collection Editors",
             "container_authors": "Container Authors", "original_authors": "Original Authors",
             "reviewed_authors": "Reviewed Authors", "publication_date": "Publication Date",
             "publication_status": "Publication Status",
             "original_publication_date": "Original Publication Date",
             "accessed_date": "Accessed Date", "event_date": "Event Date",
-            "container_title": "Container Title", "container_title_short": "Short Container Title",
+            "container_title": "Publication / Container", "container_title_short": "Short Container Title",
             "series_title": "Series Title", "series_number": "Series Number",
             "volume": "Volume", "volume_title": "Volume Title", "issue": "Issue",
             "pages": "Pages", "chapter_number": "Chapter Number", "edition": "Edition",
@@ -173,7 +186,7 @@ enum PropertyPresentationCatalog {
             "archive": "Archive", "archive_collection": "Archive Collection",
             "archive_location": "Archive Location", "archive_place": "Archive Place",
             "call_number": "Call Number", "source_basis": "Source Basis",
-            "limitations": "Limitations", "tags": "Tags", "summary": "Summary",
+            "limitations": "Limitations", "tags": "Tags", "summary": "Note Summary",
             "aliases": "Aliases", "work_type": "Work Type", "coauthors": "Co-authors",
         ]
         return ScholiumL10n.dynamicString(
@@ -184,6 +197,10 @@ enum PropertyPresentationCatalog {
     private static func help(for key: String) -> String? {
         let text: String? = switch key {
         case "title": "Title of the analyzed source."
+        case "type": "Broad source type used to select applicable bibliographic fields."
+        case "publication_date": "Publication date as authored text; publication status belongs in Publication Status."
+        case "publication_status": "Publication state such as forthcoming, in press, retracted, or withdrawn."
+        case "authors": "Ordered structured names of the analyzed source's authors."
         case "summary": "Short navigation description of this Note; open the current Note and sources before relying on it."
         case "source_basis": "Consulted material, version, range, or locator conditions."
         case "limitations": "Material boundaries of this Note."
@@ -192,5 +209,15 @@ enum PropertyPresentationCatalog {
         default: nil
         }
         return text.map(ScholiumL10n.dynamicString)
+    }
+}
+
+extension AnalysisSourceType {
+    var propertyDisplayName: String {
+        let label = rawValue.replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+        return ScholiumL10n.dynamicString(label)
     }
 }

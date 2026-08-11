@@ -743,6 +743,13 @@ struct ContentView: View {
                     expectedRevision: appState.currentDocumentRevisions[note.relativePath],
                     onClose: {
                         finishFrontmatter(route)
+                    },
+                    onOpenSource: {
+                        finishFrontmatter(route)
+                        appState.requestPresentationMode = .source
+                    },
+                    reload: {
+                        try await appState.reloadProperties(for: note.relativePath)
                     }
                 ) { proposedFrontmatter, revision in
                     _ = try await appState.saveProperties(

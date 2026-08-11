@@ -17,6 +17,10 @@
 - Complete direct acceptance for long Connect clusters, Attention queue sizes,
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.
+- Complete direct keyboard, VoiceOver, localization-expansion, ordinary/minimum
+  width, and source-conflict acceptance for the Properties Settings seed editor,
+  per-type Agent requirements, Complete Properties chooser, CreatorList editor,
+  YAML-free first insertion, removal/Undo, and Source recovery routes.
 
 ## Agent collaboration and research quality
 

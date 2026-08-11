@@ -70,8 +70,17 @@ public indirect enum FrontmatterEditValue: Hashable, Sendable {
     case double(Double)
     case boolean(Bool)
     case array([String])
+    /// A heterogeneous or nested YAML sequence. Scalar string lists retain
+    /// the dedicated `array` case so ordinary tag/list edits stay simple.
+    case sequence([FrontmatterEditValue])
     case mapping([String: FrontmatterEditValue])
     case remove
+}
+
+public enum NoteFrontmatterState: Hashable, Sendable {
+    case absent
+    case valid
+    case malformed
 }
 
 public enum NoteChangeSet: Sendable {
@@ -121,6 +130,19 @@ public struct NoteDocument: Sendable {
     /// Empty Note presentation is body-aware, not a raw-file byte-count test.
     public var hasExactEmptyBody: Bool {
         body.isEmpty && validationWarnings.isEmpty
+    }
+
+    /// A source-boundary classification for Properties. Incomplete opening
+    /// delimiters are malformed, never YAML-free insertion candidates.
+    public var frontmatterState: NoteFrontmatterState {
+        if rawFrontmatter != nil {
+            return validationWarnings.isEmpty ? .valid : .malformed
+        }
+        if Self.hasFrontmatterOpeningDelimiter(rawContent)
+            || !validationWarnings.isEmpty {
+            return .malformed
+        }
+        return .absent
     }
 
     private let prefix: String

@@ -98,6 +98,7 @@ public actor TriptychControlStore {
     private let analysisZoteroBindingsURL: URL
     private let fileManager: FileManager
     private let controlWriteHook: (@Sendable (URL) throws -> Void)?
+    private let controlPostSwapHook: (@Sendable (URL) throws -> Void)?
     private let controlCreateHook: (@Sendable (URL) throws -> Void)?
 
     public init(worksVaultURL: URL, fileManager: FileManager = .default) {
@@ -110,6 +111,7 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         self.fileManager = fileManager
         controlWriteHook = nil
+        controlPostSwapHook = nil
         controlCreateHook = nil
     }
 
@@ -117,7 +119,8 @@ public actor TriptychControlStore {
         worksVaultURL: URL,
         fileManager: FileManager = .default,
         controlWriteHook: @escaping @Sendable (URL) throws -> Void,
-        controlCreateHook: (@Sendable (URL) throws -> Void)? = nil
+        controlCreateHook: (@Sendable (URL) throws -> Void)? = nil,
+        controlPostSwapHook: (@Sendable (URL) throws -> Void)? = nil
     ) {
         controlURL = worksVaultURL.standardizedFileURL
             .deletingLastPathComponent()
@@ -128,6 +131,7 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
+        self.controlPostSwapHook = controlPostSwapHook
         self.controlCreateHook = controlCreateHook
     }
 
@@ -204,15 +208,28 @@ public actor TriptychControlStore {
     }
 
     public func settings() throws -> TriptychSettingsSnapshot {
-        guard fileManager.fileExists(atPath: settingsURL.path) else {
+        switch try settingsLoadState() {
+        case .current(let snapshot):
+            return snapshot
+        case .needsReview(_, _, let reason):
+            throw TriptychControlError.settingsNeedsReview(reason)
+        case .missing:
             throw TriptychControlError.settingsMissing
+        case .oldSchema(let version):
+            throw TriptychControlError.settingsOldSchema(version)
+        case .futureSchema(let version):
+            throw TriptychControlError.settingsFutureSchema(version)
+        case .corrupted:
+            throw TriptychControlError.settingsCorrupted
+        }
+    }
+
+    public func settingsLoadState() throws -> TriptychSettingsLoadState {
+        guard fileManager.fileExists(atPath: settingsURL.path) else {
+            return .missing
         }
         let data = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
-        let settings = try decodeValidatedSettings(data)
-        return TriptychSettingsSnapshot(
-            settings: settings,
-            revision: SettingsRevision(fingerprint: DocumentFingerprint(data: data))
-        )
+        return decodeSettingsLoadState(data)
     }
 
     @discardableResult
@@ -1044,36 +1061,58 @@ public actor TriptychControlStore {
     }
 
     private func decodeValidatedSettings(_ data: Data) throws -> TriptychSettings {
+        switch decodeSettingsLoadState(data) {
+        case .current(let snapshot): return snapshot.settings
+        case .needsReview(_, _, let reason):
+            throw TriptychControlError.settingsNeedsReview(reason)
+        case .missing: throw TriptychControlError.settingsMissing
+        case .oldSchema(let version): throw TriptychControlError.settingsOldSchema(version)
+        case .futureSchema(let version): throw TriptychControlError.settingsFutureSchema(version)
+        case .corrupted: throw TriptychControlError.settingsCorrupted
+        }
+    }
+
+    private func decodeSettingsLoadState(_ data: Data) -> TriptychSettingsLoadState {
         guard let object = try? JSONSerialization.jsonObject(with: data),
               let envelope = object as? [String: Any] else {
-            throw TriptychControlError.settingsCorrupted
+            return .corrupted
         }
         guard let rawVersion = envelope["schemaVersion"] else {
-            throw TriptychControlError.settingsOldSchema(nil)
+            return .oldSchema(nil)
         }
         guard let number = rawVersion as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID() else {
-            throw TriptychControlError.settingsCorrupted
+            return .corrupted
         }
         let version = number.intValue
         guard version >= TriptychSettings.currentSchemaVersion else {
-            throw TriptychControlError.settingsOldSchema(version)
+            return .oldSchema(version)
         }
         guard version <= TriptychSettings.currentSchemaVersion else {
-            throw TriptychControlError.settingsFutureSchema(version)
+            return .futureSchema(version)
         }
         let settings: TriptychSettings
         do {
             settings = try decoder().decode(TriptychSettings.self, from: data)
         } catch {
-            throw TriptychControlError.settingsCorrupted
+            return .corrupted
         }
+        let revision = SettingsRevision(
+            fingerprint: DocumentFingerprint(data: data)
+        )
         do {
             try TriptychSettingsValidator.validate(settings)
         } catch {
-            throw TriptychControlError.settingsNeedsReview(error.localizedDescription)
+            return .needsReview(
+                settings: settings,
+                revision: revision,
+                reason: error.localizedDescription
+            )
         }
-        return settings
+        return .current(TriptychSettingsSnapshot(
+            settings: settings,
+            revision: revision
+        ))
     }
 
     /// Replaces a portable control file only if the exact authorized preimage
@@ -1089,6 +1128,7 @@ public actor TriptychControlStore {
         let coordinator = NSFileCoordinator(filePresenter: nil)
         var coordinationError: NSError?
         var outcome: Result<Data, Error>?
+        var swapOccurred = false
         coordinator.coordinate(
             writingItemAt: url,
             options: .forReplacing,
@@ -1132,40 +1172,69 @@ public actor TriptychControlStore {
                 ) == 0 else {
                     throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
                 }
+                swapOccurred = true
 
-                let canonical = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
-                let displaced = try Data(contentsOf: stagingURL, options: [.mappedIfSafe])
-                guard canonical == candidate, displaced == expected else {
-                    if canonical == candidate {
-                        _ = renameatx_np(
+                do {
+                    try self.controlPostSwapHook?(coordinatedURL)
+                    let canonical = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
+                    let displaced = try Data(contentsOf: stagingURL, options: [.mappedIfSafe])
+                    guard canonical == candidate, displaced == expected else {
+                        if canonical == candidate,
+                           renameatx_np(
                             AT_FDCWD,
                             stagingURL.path,
                             AT_FDCWD,
                             coordinatedURL.path,
                             UInt32(RENAME_SWAP)
-                        )
+                           ) == 0 {
+                            swapOccurred = false
+                            throw conflict()
+                        }
+                        throw conflict()
                     }
-                    throw conflict()
+                    try self.fileManager.removeItem(at: stagingURL)
+                    stagingExists = false
+                    let directoryDescriptor = Darwin.open(
+                        coordinatedURL.deletingLastPathComponent().path,
+                        O_RDONLY | O_DIRECTORY
+                    )
+                    if directoryDescriptor >= 0 {
+                        defer { Darwin.close(directoryDescriptor) }
+                        guard fsync(directoryDescriptor) == 0 else { throw POSIXError(.EIO) }
+                    }
+                    let readback = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
+                    guard readback == candidate else {
+                        throw CocoaError(.fileWriteUnknown)
+                    }
+                    return readback
+                } catch {
+                    if !swapOccurred { throw error }
+                    if let controlError = error as? TriptychControlError,
+                       case .controlFileCommitUncertain = controlError {
+                        throw controlError
+                    }
+                    throw TriptychControlError.controlFileCommitUncertain(
+                        error.localizedDescription
+                    )
                 }
-                try self.fileManager.removeItem(at: stagingURL)
-                stagingExists = false
-                let directoryDescriptor = Darwin.open(
-                    coordinatedURL.deletingLastPathComponent().path,
-                    O_RDONLY | O_DIRECTORY
-                )
-                if directoryDescriptor >= 0 {
-                    defer { Darwin.close(directoryDescriptor) }
-                    guard fsync(directoryDescriptor) == 0 else { throw POSIXError(.EIO) }
-                }
-                let readback = try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe])
-                guard readback == candidate else {
-                    throw CocoaError(.fileWriteUnknown)
-                }
-                return readback
             }
         }
-        if let coordinationError { throw coordinationError }
-        guard let outcome else { throw CocoaError(.fileWriteUnknown) }
+        if let coordinationError {
+            if swapOccurred {
+                throw TriptychControlError.controlFileCommitUncertain(
+                    coordinationError.localizedDescription
+                )
+            }
+            throw coordinationError
+        }
+        guard let outcome else {
+            if swapOccurred {
+                throw TriptychControlError.controlFileCommitUncertain(
+                    CocoaError(.fileWriteUnknown).localizedDescription
+                )
+            }
+            throw CocoaError(.fileWriteUnknown)
+        }
         return try outcome.get()
     }
 

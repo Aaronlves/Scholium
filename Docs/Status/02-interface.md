@@ -45,6 +45,12 @@
   source-preserving semantic projection, formatting, suggestions, and task
   interaction. Source exposes the complete exact text. Conflict comparison and
   recovery remain Document-owned.
+- Complete Properties is a grouped Note sheet with raw YAML keys, structured
+  controls, a searchable source-type-aware Add a Property chooser, reversible
+  pending removal, and an Edit in Source route for unsupported or malformed
+  source. A YAML-free Note first presents Add YAML Properties… and Keep Without
+  YAML; choosing insertion opens only a draft and Save remains unavailable
+  until at least one concrete canonical value is valid.
 - Inspector presents Overview, Connect, and Actions as one mutually exclusive
   index. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
@@ -108,6 +114,18 @@
 
 ## Appearance, adaptation, and localization
 
+- Settings → Properties uses one role selector and the ordered New Notes,
+  Agent-Created Analyses, About, and Structured Editing sections. Exact seed
+  delimiters are visible but not editable; source errors stay inline; Agent
+  requirements remain source-type-specific; reset, clear, revert, reload after
+  conflict, and atomic Save are separate actions. Current-schema repair keeps
+  the decoded candidate and frozen exact-byte revision; unsupported or damaged
+  schema states preserve their source and do not expose editable defaults.
+  Seed refusals identify their role and structured line/column; choosing the
+  diagnostic returns focus and selection to that source line.
+- Settings Properties and Complete Properties disable their complete editing
+  surface while a save is pending, so no post-submit keystroke can be silently
+  overwritten or discarded when the acknowledged result arrives.
 - System, Light, and Dark use one semantic resolver across native and document surfaces. Accent and
   Paper are the only configurable color inputs; Interface, Scholarly, and Exact
   are the native text families.

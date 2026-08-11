@@ -808,12 +808,28 @@ public actor ResearchOperations:
         return try await handle.triptychSettings()
     }
 
+    public func settingsLoadState() async throws -> TriptychSettingsLoadState {
+        let handle = try await reference.requireHandle()
+        return try await handle.triptychSettingsLoadState()
+    }
+
     public func saveSettings(
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision
     ) async throws -> TriptychSettingsSnapshot {
         let handle = try await reference.requireHandle()
         return try await handle.saveTriptychSettings(
+            settings,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    public func saveSettingsOutcome(
+        _ settings: TriptychSettings,
+        expectedRevision: SettingsRevision
+    ) async throws -> WorkspaceMutationOutcome<TriptychSettingsSnapshot> {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveTriptychSettingsOutcome(
             settings,
             expectedRevision: expectedRevision
         )

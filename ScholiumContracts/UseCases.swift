@@ -220,12 +220,22 @@ public protocol ResearchRecordUseCases: Sendable {
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation
     func settings() async throws -> TriptychSettingsSnapshot
+    func settingsLoadState() async throws -> TriptychSettingsLoadState
     func saveSettings(
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision
     ) async throws -> TriptychSettingsSnapshot
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
+}
+
+public extension ResearchRecordUseCases {
+    /// Test and preview adapters that only model valid current settings may
+    /// inherit this projection. Production owners implement the typed load
+    /// state so damaged or unsupported source is never flattened.
+    func settingsLoadState() async throws -> TriptychSettingsLoadState {
+        .current(try await settings())
+    }
 }
 
 public protocol ResearchCheckpointUseCases: Sendable {

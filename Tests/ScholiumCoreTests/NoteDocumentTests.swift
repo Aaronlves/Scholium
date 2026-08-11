@@ -68,6 +68,44 @@ struct NoteDocumentTests {
         #expect(result == "---\ntitle: Existing\ncustom:\n  nested: true\nstatus: candidate\n---\nBody\n")
     }
 
+    @Test("Scalar encoding preserves literal quotes, indicators, Unicode, and whitespace")
+    func scalarEncodingPreservesRequestedSemantics() throws {
+        let values = [
+            "\"Theory\"",
+            "'practice'",
+            "@archive",
+            "%TAG",
+            "!important",
+            "&anchor-like",
+            "*alias-like",
+            "| block-like",
+            "> folded-like",
+            "`code-like`",
+            "- list-like",
+            "? question-like",
+            "2025-01-01",
+            "2025-01-01T14:30:45Z",
+            "2025-1-1 9:30:45+08:00",
+            "yes",
+            "ON",
+            "  理论 😀  ",
+            "line one\nline two\tend",
+        ]
+
+        for value in values {
+            let document = NoteDocument(
+                relativePath: "scalar.md",
+                rawContent: "---\ncustom: old\n---\n"
+            )
+            let result = try document.applying(
+                .frontmatter(["custom": .string(value)]),
+                timestampKey: nil
+            )
+            #expect(NoteDocument(relativePath: "scalar.md", rawContent: result)
+                .parsedFrontmatter["custom"] == .string(value))
+        }
+    }
+
     @Test("Ambiguous YAML constructs refuse without producing replacement bytes", arguments: [
         "\"title\": Old\n",
         "title: One\ntitle: Two\n",
@@ -233,6 +271,46 @@ struct NoteDocumentTests {
             }
             #expect(malformedDocument.rawContent == malformed)
         }
+    }
+
+    @Test("Frontmatter state distinguishes YAML-free source from malformed boundaries")
+    func frontmatterStateDistinguishesInsertionSafety() {
+        #expect(NoteDocument(relativePath: "plain.md", rawContent: "Body\n").frontmatterState == .absent)
+        #expect(NoteDocument(
+            relativePath: "valid.md",
+            rawContent: "---\ntags: [one]\n---\nBody\n"
+        ).frontmatterState == .valid)
+        #expect(NoteDocument(
+            relativePath: "unclosed.md",
+            rawContent: "---\ntags: [one]\n"
+        ).frontmatterState == .malformed)
+        #expect(NoteDocument(
+            relativePath: "closed-invalid.md",
+            rawContent: "---\ntags: [\n---\n"
+        ).frontmatterState == .malformed)
+    }
+
+    @Test("Creator sequences serialize as mappings without changing neighboring bytes")
+    func creatorSequenceTargetedEdit() throws {
+        let source = "---\n# keep\ntitle: Exact\nauthors:\n  - family: Old\ncustom: 'literal'\n---\nBody\n"
+        let document = NoteDocument(relativePath: "analysis.md", rawContent: source)
+        let result = try document.applying(.frontmatter([
+            "authors": .sequence([
+                .mapping([
+                    "family": .string("Tappolet"),
+                    "given": .string("Christine"),
+                ]),
+                .mapping(["literal": .string("World Health Organization")]),
+            ]),
+        ]), timestampKey: nil)
+
+        #expect(result.contains("# keep\n"))
+        #expect(result.contains("custom: 'literal'\n"))
+        #expect(result.contains("authors:\n  -\n    family: Tappolet\n    given: Christine\n"))
+        #expect(result.contains("  -\n    literal: World Health Organization\n"))
+        let reparsed = NoteDocument(relativePath: "analysis.md", rawContent: result)
+        #expect(reparsed.validationWarnings.isEmpty)
+        #expect(reparsed.body == "Body\n")
     }
 
     @Test("Source mode edits the complete document and targets only the save timestamp")

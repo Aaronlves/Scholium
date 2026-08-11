@@ -18,6 +18,411 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentSession") })
         #expect(model.selectedPane == .properties)
         #expect(model.snapshot.propertyKeysBySlot.isEmpty)
+        #expect(!model.hasWritableTriptychSettings)
+
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(
+            settingsRevision: SettingsRevision(
+                fingerprint: DocumentFingerprint(content: "settings")
+            )
+        ))
+        #expect(model.hasWritableTriptychSettings)
+    }
+
+    @Test("Explicit Settings save keeps the draft's frozen revision")
+    func explicitSaveUsesFrozenRevision() async throws {
+        let first = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "revision-one")
+        )
+        let second = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "revision-two")
+        )
+        let committed = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "committed")
+        )
+        let triptychID = UUID()
+        var observedRevision: SettingsRevision?
+        let model = WorkspaceSettingsModel(
+            snapshot: WorkspaceSettingsSnapshot(
+                activeTriptychID: triptychID,
+                settingsRevision: first
+            ),
+            saveSettings: { targetID, settings, expectedRevision in
+                #expect(targetID == triptychID)
+                observedRevision = expectedRevision
+                return WorkspaceSettingsCommit(
+                    triptychID: targetID,
+                    snapshot: TriptychSettingsSnapshot(
+                        settings: settings,
+                        revision: committed
+                    ),
+                    derivedRefreshWarning: nil
+                )
+            }
+        )
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(
+            activeTriptychID: triptychID,
+            settingsRevision: second
+        ))
+
+        var candidate = TriptychSettings()
+        candidate.attentionDismissalDays = 14
+        try await model.saveTriptychSettings(
+            candidate,
+            targetTriptychID: triptychID,
+            expectedRevision: first
+        )
+
+        #expect(observedRevision == first)
+        #expect(model.settingsRevision == committed)
+        #expect(model.triptychSettings.attentionDismissalDays == 14)
+    }
+
+    @Test("A Properties draft cannot cross into another Triptych with identical bytes")
+    func saveTargetIncludesTriptychIdentity() async {
+        let firstID = UUID()
+        let secondID = UUID()
+        let sharedRevision = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "identical-default-settings")
+        )
+        var saverWasCalled = false
+        let model = WorkspaceSettingsModel(
+            snapshot: WorkspaceSettingsSnapshot(
+                activeTriptychID: firstID,
+                settingsRevision: sharedRevision
+            ),
+            saveSettings: { id, settings, revision in
+                saverWasCalled = true
+                return WorkspaceSettingsCommit(
+                    triptychID: id,
+                    snapshot: TriptychSettingsSnapshot(
+                        settings: settings,
+                        revision: revision
+                    ),
+                    derivedRefreshWarning: nil
+                )
+            }
+        )
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(
+            activeTriptychID: secondID,
+            settingsRevision: sharedRevision
+        ))
+
+        await #expect(throws: WorkspaceSettingsMutationError.self) {
+            try await model.saveTriptychSettings(
+                TriptychSettings(),
+                targetTriptychID: firstID,
+                expectedRevision: sharedRevision
+            )
+        }
+        #expect(!saverWasCalled)
+        #expect(model.snapshot.activeTriptychID == secondID)
+    }
+
+    @Test("An uncertain Settings commit is authoritatively reread before retry")
+    func uncertainCommitReconcilesAuthoritativeSettings() async throws {
+        let triptychID = UUID()
+        let initial = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "initial")
+        )
+        let committed = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "reread-committed")
+        )
+        var candidate = TriptychSettings()
+        candidate.attentionDismissalDays = 30
+        let model = WorkspaceSettingsModel(
+            snapshot: WorkspaceSettingsSnapshot(
+                activeTriptychID: triptychID,
+                settingsRevision: initial
+            ),
+            loadPortableSettings: { id in
+                WorkspacePortableSettingsRead(
+                    triptychID: id,
+                    settings: candidate,
+                    state: .current(committed)
+                )
+            },
+            saveSettings: { _, _, _ in
+                throw ScholiumApplicationError.operationCommitUncertain(
+                    operation: "fixture settings",
+                    reason: "fixture final window"
+                )
+            }
+        )
+
+        let result = try await model.saveTriptychSettings(
+            candidate,
+            targetTriptychID: triptychID,
+            expectedRevision: initial
+        )
+
+        #expect(result.warning != nil)
+        #expect(result.targetIsCurrent)
+        #expect(model.triptychSettings == candidate)
+        #expect(model.settingsRevision == committed)
+    }
+
+    @Test("Committed Settings remain saved when only derived refresh fails")
+    func committedSettingsPublishNewRevisionWithWarning() async throws {
+        let triptychID = UUID()
+        let initial = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "before")
+        )
+        let committed = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "after")
+        )
+        var candidate = TriptychSettings()
+        candidate.attentionDismissalDays = 14
+        let model = WorkspaceSettingsModel(
+            snapshot: WorkspaceSettingsSnapshot(
+                activeTriptychID: triptychID,
+                settingsRevision: initial
+            ),
+            saveSettings: { id, settings, _ in
+                WorkspaceSettingsCommit(
+                    triptychID: id,
+                    snapshot: TriptychSettingsSnapshot(
+                        settings: settings,
+                        revision: committed
+                    ),
+                    derivedRefreshWarning: "fixture derived refresh"
+                )
+            }
+        )
+
+        let result = try await model.saveTriptychSettings(
+            candidate,
+            targetTriptychID: triptychID,
+            expectedRevision: initial
+        )
+
+        #expect(result.warning != nil)
+        #expect(result.targetIsCurrent)
+        #expect(model.triptychSettings == candidate)
+        #expect(model.settingsRevision == committed)
+    }
+
+    @Test("An in-flight save reports a proven commit to its original Triptych")
+    func inFlightTriptychSwitchPreservesCommitTruth() async throws {
+        let entered = SettingsTestSignal()
+        let release = SettingsTestSignal()
+        let firstID = UUID()
+        let secondID = UUID()
+        let revision = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "shared")
+        )
+        let committed = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "first-committed")
+        )
+        var candidate = TriptychSettings()
+        candidate.attentionDismissalDays = 30
+        let model = WorkspaceSettingsModel(
+            snapshot: WorkspaceSettingsSnapshot(
+                activeTriptychID: firstID,
+                settingsRevision: revision
+            ),
+            saveSettings: { id, settings, _ in
+                await entered.signal()
+                await release.wait()
+                return WorkspaceSettingsCommit(
+                    triptychID: id,
+                    snapshot: TriptychSettingsSnapshot(
+                        settings: settings,
+                        revision: committed
+                    ),
+                    derivedRefreshWarning: nil
+                )
+            }
+        )
+
+        let save = Task { @MainActor in
+            try await model.saveTriptychSettings(
+                candidate,
+                targetTriptychID: firstID,
+                expectedRevision: revision
+            )
+        }
+        await entered.wait()
+        model.replaceSnapshot(WorkspaceSettingsSnapshot(
+            activeTriptychID: secondID,
+            settingsRevision: revision
+        ))
+        await release.signal()
+        let result = try await save.value
+
+        #expect(!result.targetIsCurrent)
+        #expect(result.warning != nil)
+        #expect(model.snapshot.activeTriptychID == secondID)
+        #expect(model.settingsRevision == revision)
+    }
+
+    @Test("Failed authoritative reread blocks every Settings retry")
+    func rereadFailureMaintainsReconciliationBlock() async {
+        struct RereadFailure: Error {}
+        let triptychID = UUID()
+        let revision = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "before-uncertain")
+        )
+        var saveCount = 0
+        let model = WorkspaceSettingsModel(
+            snapshot: WorkspaceSettingsSnapshot(
+                activeTriptychID: triptychID,
+                settingsRevision: revision
+            ),
+            loadPortableSettings: { _ in throw RereadFailure() },
+            saveSettings: { _, _, _ in
+                saveCount += 1
+                throw ScholiumApplicationError.operationCommitUncertain(
+                    operation: "fixture settings",
+                    reason: "fixture uncertainty"
+                )
+            }
+        )
+
+        for _ in 0..<2 {
+            await #expect(throws: WorkspaceSettingsMutationError.self) {
+                try await model.saveTriptychSettings(
+                    TriptychSettings(),
+                    targetTriptychID: triptychID,
+                    expectedRevision: revision
+                )
+            }
+        }
+        #expect(saveCount == 1)
+        #expect(model.requiresSettingsReconciliation(for: triptychID))
+    }
+
+    @Test("Failed Settings refresh preserves the last confirmed snapshot")
+    func failedRefreshDoesNotInstallStaleState() async {
+        struct RefreshFailure: LocalizedError {
+            var errorDescription: String? { "fixture refresh failed" }
+        }
+        let revision = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "confirmed")
+        )
+        var confirmed = TriptychSettings()
+        confirmed.attentionDismissalDays = 14
+        let snapshot = WorkspaceSettingsSnapshot(
+            triptychSettings: confirmed,
+            settingsRevision: revision
+        )
+        let model = WorkspaceSettingsModel(
+            snapshot: snapshot,
+            loadSnapshot: { throw RefreshFailure() }
+        )
+
+        #expect(await model.refresh() == false)
+        #expect(model.snapshot == snapshot)
+        #expect(model.errorMessage == "fixture refresh failed")
+    }
+
+    @Test("A normalized Needs Review candidate is dirty and directly saveable")
+    func repairableCandidateDiffersFromRawSettings() throws {
+        let raw = Data(#"{"newNoteYAML":"tags: [draft]\r\n","visibleFields":[" tags ","tags"],"editableFields":[" tags ","tags"]}"#.utf8)
+        let decoded = try JSONDecoder().decode(
+            VaultPropertiesConfiguration.self,
+            from: raw
+        )
+        var saved = TriptychSettings()
+        saved.properties[.paperAnalysis] = decoded
+        let seeds = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
+            ($0, saved.properties[$0]?.newNoteYAML ?? "")
+        })
+
+        let candidate = PropertiesSettingsCandidateBuilder.build(
+            from: saved,
+            configurations: saved.properties,
+            seedDrafts: seeds,
+            agentCreation: saved.analysisAgentCreation
+        )
+
+        #expect(candidate != saved)
+        #expect(candidate.properties[.paperAnalysis]?.newNoteYAML == "tags: [draft]\n")
+        #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["tags"])
+        #expect(candidate.properties[.paperAnalysis]?.editableFields == ["tags"])
+        try TriptychSettingsValidator.validate(candidate)
+    }
+
+    @Test("Properties Settings keeps seed, Agent, About, and editing contracts separate")
+    func propertiesSettingsSurface() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(source.range(of: "private struct PropertiesSettingsView"))
+        let end = try #require(source.range(
+            of: "struct AgentCLISettingsView",
+            range: start.upperBound..<source.endIndex
+        ))
+        let properties = String(source[start.lowerBound..<end.lowerBound])
+
+        for section in [
+            "YAML Added to New Notes",
+            "Agent-Created Analyses",
+            "GroupBox(\"About\")",
+            "GroupBox(\"Structured Editing\")",
+        ] {
+            #expect(properties.contains(section))
+        }
+        #expect(properties.contains("Restore About & Editing Defaults"))
+        #expect(properties.contains("Clear New Note YAML"))
+        #expect(properties.contains("TriptychSettingsValidator.validate(candidateSettings)"))
+        #expect(properties.contains("settingsRevisionConflict"))
+        #expect(properties.contains("hasWritableTriptychSettings"))
+        #expect(properties.contains("Retry Properties Settings"))
+        #expect(properties.contains("savedSettingsRevision"))
+        #expect(properties.contains("currentSeedDiagnostic"))
+        #expect(properties.contains("currentAgentDiagnostic"))
+        #expect(properties.contains("ViewThatFits(in: .horizontal)"))
+        #expect(properties.contains(".disabled(isSaving)"))
+        #expect(properties.contains("candidateSettings != savedTriptychSettings"))
+        #expect(properties.contains("savedTriptychID"))
+        #expect(properties.contains("TextEditor(text: selectedSeed, selection: $seedSelection)"))
+        #expect(!properties.contains("reason: error.localizedDescription"))
+    }
+
+    @Test("Complete Properties exposes explicit insertion, chooser, deletion, and Source recovery")
+    func completePropertiesSurface() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for action in [
+            "Add YAML Properties…",
+            "Keep Without YAML",
+            "Add a Property…",
+            "Remove Property",
+            "Undo Removal",
+            "Edit in Source",
+        ] {
+            #expect(source.contains(action))
+        }
+        #expect(source.contains("PropertyChooserView"))
+        #expect(source.contains("creatorListEditor"))
+        #expect(source.contains("removedFieldKeys"))
+        #expect(source.contains("List(selection: $selectionKey)"))
+        #expect(source.contains("Discard Properties Draft?"))
+        #expect(source.contains("reloadCurrentNote()"))
+        #expect(source.contains("displayedFieldErrors.isEmpty"))
+        #expect(source.components(
+            separatedBy: ".focused($focusedFieldKey, equals: field.key)"
+        ).count >= 9)
+        #expect(source.contains("measuredSizes(subviews, maximumWidth: bounds.width)"))
+        #expect(source.contains(".disabled(isSaving)"))
+        #expect(!source.contains("errors[key] = issue.message"))
+        #expect(!source.contains("DatePicker("))
     }
 
     @Test("Settings success feedback replaces stale messages and dismisses by identity")

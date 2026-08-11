@@ -1,10 +1,35 @@
 import Foundation
 
+public enum TriptychSeedValidationReason: Equatable, Sendable {
+    case sourceNormalization
+    case patchRefusal(FrontmatterPatchRefusal)
+    case topLevelMappingRequired
+    case propertyIssue(PropertyValidationIssue.Code)
+
+    var description: String {
+        switch self {
+        case .sourceNormalization:
+            "configuration newlines or the final newline are not normalized"
+        case .patchRefusal(let refusal):
+            refusal.localizedDescription
+        case .topLevelMappingRequired:
+            "the seed must contain at least one top-level mapping entry"
+        case .propertyIssue(let code):
+            "a canonical property has an invalid \(code.rawValue) value"
+        }
+    }
+}
+
 public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable {
     case incompleteRoleConfiguration
     case noncanonicalConfigurationField(WorkspaceVaultSlot, String)
     case seedTooLarge(WorkspaceVaultSlot, Int)
-    case invalidSeed(WorkspaceVaultSlot, String)
+    case invalidSeed(
+        WorkspaceVaultSlot,
+        key: String?,
+        reason: TriptychSeedValidationReason,
+        position: FrontmatterSourcePosition?
+    )
     case reservedSeedKey(WorkspaceVaultSlot, String)
     case canonicalSeedRoleMismatch(WorkspaceVaultSlot, String)
     case invalidRequiredField(AnalysisSourceType, String)
@@ -21,8 +46,8 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
             "The \(role.rawValue) Properties configuration contains a blank, duplicate, or unnormalized field: \(field)."
         case .seedTooLarge(let role, let count):
             "The \(role.rawValue) New Note YAML is \(count) bytes; the maximum is \(TriptychSettingsValidator.maximumSeedUTF8Bytes)."
-        case .invalidSeed(let role, let reason):
-            "The \(role.rawValue) New Note YAML is invalid: \(reason)"
+        case .invalidSeed(let role, _, let reason, _):
+            "The \(role.rawValue) New Note YAML is invalid: \(reason.description)"
         case .reservedSeedKey(let role, let key):
             "The \(role.rawValue) New Note YAML cannot contain the reserved key \(key)."
         case .canonicalSeedRoleMismatch(let role, let key):
@@ -116,7 +141,9 @@ public enum TriptychSettingsValidator {
         guard source == normalizedSeed(source) else {
             throw TriptychSettingsValidationError.invalidSeed(
                 role,
-                "configuration newlines or the final newline are not normalized"
+                key: nil,
+                reason: .sourceNormalization,
+                position: nil
             )
         }
         do {
@@ -125,10 +152,19 @@ public enum TriptychSettingsValidator {
                 edits: [:],
                 newline: "\n"
             )
+        } catch let refusal as FrontmatterPatchRefusal {
+            throw TriptychSettingsValidationError.invalidSeed(
+                role,
+                key: nil,
+                reason: .patchRefusal(refusal),
+                position: refusal.sourcePosition
+            )
         } catch {
             throw TriptychSettingsValidationError.invalidSeed(
                 role,
-                error.localizedDescription
+                key: nil,
+                reason: .patchRefusal(.invalidYAML(error.localizedDescription)),
+                position: nil
             )
         }
 
@@ -141,7 +177,9 @@ public enum TriptychSettingsValidator {
               !document.parsedFrontmatter.isEmpty else {
             throw TriptychSettingsValidationError.invalidSeed(
                 role,
-                "the seed must contain at least one top-level mapping entry"
+                key: nil,
+                reason: .topLevelMappingRequired,
+                position: FrontmatterSourcePosition(line: 1, column: 1)
             )
         }
         let keys = Set(document.parsedFrontmatter.keys)
@@ -165,7 +203,12 @@ public enum TriptychSettingsValidator {
                 frontmatter: [key: value],
                 profile: profile
             ).first {
-                throw TriptychSettingsValidationError.invalidSeed(role, issue.message)
+                throw TriptychSettingsValidationError.invalidSeed(
+                    role,
+                    key: issue.propertyKey,
+                    reason: .propertyIssue(issue.code),
+                    position: nil
+                )
             }
         }
         return keys

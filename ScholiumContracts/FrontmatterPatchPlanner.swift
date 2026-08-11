@@ -1,22 +1,46 @@
 import Foundation
 import Yams
 
+public struct FrontmatterSourcePosition: Equatable, Sendable {
+    public let line: Int
+    public let column: Int
+
+    public init(line: Int, column: Int) {
+        self.line = line
+        self.column = column
+    }
+}
+
 public enum FrontmatterPatchRefusal: Error, LocalizedError, Equatable, Sendable {
-    case invalidYAML(String)
+    case invalidYAML(String, position: FrontmatterSourcePosition? = nil)
     case nonBlockMappingRoot
-    case ambiguousStructure(String)
+    case ambiguousStructure(String, position: FrontmatterSourcePosition? = nil)
     case unsupportedExistingValue(String)
+    case semanticMismatch(String)
+
+    public var sourcePosition: FrontmatterSourcePosition? {
+        switch self {
+        case .invalidYAML(_, let position), .ambiguousStructure(_, let position):
+            position
+        case .nonBlockMappingRoot:
+            FrontmatterSourcePosition(line: 1, column: 1)
+        case .unsupportedExistingValue, .semanticMismatch:
+            nil
+        }
+    }
 
     public var errorDescription: String? {
         switch self {
-        case .invalidYAML(let message):
+        case .invalidYAML(let message, _):
             "The complete YAML frontmatter is invalid: \(message)"
         case .nonBlockMappingRoot:
             "Properties can only patch a YAML block mapping. Open Source to edit this frontmatter."
-        case .ambiguousStructure(let message):
+        case .ambiguousStructure(let message, _):
             "Properties refused an ambiguous YAML edit: \(message) Open Source to edit it directly."
         case .unsupportedExistingValue(let key):
             "Properties can only replace or remove a uniquely bounded ordinary value for ‘\(key)’. Open Source to edit this value."
+        case .semanticMismatch(let key):
+            "Properties could not prove that the encoded YAML preserves the requested value for ‘\(key)’. No replacement source was accepted."
         }
     }
 }
@@ -92,11 +116,38 @@ public enum FrontmatterPatchPlanner {
             }
         }
 
-        _ = try analyze(patched, newline: newline)
+        let finalAnalysis = try analyze(patched, newline: newline)
+        for (key, edit) in edits {
+            let actual = finalAnalysis.mapping[key].flatMap(projectedYAMLValue)
+            guard semanticValue(for: edit) == actual else {
+                throw FrontmatterPatchRefusal.semanticMismatch(key)
+            }
+        }
         return FrontmatterPatchPlan(
             patchedFrontmatter: patched,
             editedKeys: edits.keys.sorted()
         )
+    }
+
+    public static func authoredScalarToken(
+        frontmatter: String,
+        key: String,
+        newline: String
+    ) throws -> String? {
+        let analysis = try analyze(frontmatter, newline: newline)
+        guard let entry = analysis.entries[key],
+              isOrdinaryScalar(analysis.mapping[key]) else { return nil }
+        let range = try scalarTokenRange(
+            in: frontmatter,
+            key: key,
+            entry: entry
+        )
+        return String(frontmatter[range])
+    }
+
+    public static func isTimestampScalarToken(_ scalarToken: String) -> Bool {
+        guard let node = try? compose(yaml: scalarToken) else { return false }
+        return node.tag == Tag(.timestamp)
     }
 
     private static func analyze(_ frontmatter: String, newline: String) throws -> Analysis {
@@ -104,7 +155,10 @@ public enum FrontmatterPatchPlanner {
         do {
             loaded = try Yams.load(yaml: frontmatter)
         } catch {
-            throw FrontmatterPatchRefusal.invalidYAML(error.localizedDescription)
+            throw FrontmatterPatchRefusal.invalidYAML(
+                error.localizedDescription,
+                position: sourcePosition(for: error, source: frontmatter)
+            )
         }
         guard loaded == nil || loaded is [String: Any] else {
             throw FrontmatterPatchRefusal.nonBlockMappingRoot
@@ -136,49 +190,60 @@ public enum FrontmatterPatchPlanner {
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
             if containsAliasOrAnchorSyntax(text) {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "anchors and aliases are not patchable"
+                    "anchors and aliases are not patchable",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             if text.first == "\t" {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "tab-indented YAML cannot be bounded reliably"
+                    "tab-indented YAML cannot be bounded reliably",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             guard text.first?.isWhitespace != true else { continue }
             guard !trimmed.hasPrefix("?"), !trimmed.hasPrefix("---"),
                   !trimmed.hasPrefix("...") else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "complex keys and nested YAML documents are not patchable"
+                    "complex keys and nested YAML documents are not patchable",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             guard let colonOffset = firstMappingColon(in: text) else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "a top-level line is not a bounded mapping entry"
+                    "a top-level line is not a bounded mapping entry",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             let colon = text.index(text.startIndex, offsetBy: colonOffset)
             let rawKey = text[..<colon].trimmingCharacters(in: .whitespaces)
             guard !rawKey.isEmpty else {
-                throw FrontmatterPatchRefusal.ambiguousStructure("an empty key is present")
+                throw FrontmatterPatchRefusal.ambiguousStructure(
+                    "an empty key is present",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
+                )
             }
             guard rawKey.first != "\"", rawKey.first != "'" else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "quoted keys can be semantically equivalent to plain keys"
+                    "quoted keys can be semantically equivalent to plain keys",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             guard rawKey != "<<" else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "a YAML merge key can change the root mapping"
+                    "a YAML merge key can change the root mapping",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             guard isPlainBoundedKey(rawKey) else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "the key ‘\(rawKey)’ is not a bounded plain key"
+                    "the key ‘\(rawKey)’ is not a bounded plain key",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             guard seenKeys.insert(rawKey).inserted else {
                 throw FrontmatterPatchRefusal.ambiguousStructure(
-                    "the key ‘\(rawKey)’ occurs more than once"
+                    "the key ‘\(rawKey)’ occurs more than once",
+                    position: FrontmatterSourcePosition(line: lineIndex + 1, column: 1)
                 )
             }
             let absoluteColon = frontmatter.index(
@@ -208,6 +273,45 @@ public enum FrontmatterPatchPlanner {
             )
         }
         return Analysis(mapping: mapping, entries: entries)
+    }
+
+    private static func sourcePosition(
+        for error: Error,
+        source: String
+    ) -> FrontmatterSourcePosition? {
+        guard let yamlError = error as? YamlError else { return nil }
+        switch yamlError {
+        case .scanner(_, _, let mark, _),
+             .parser(_, _, let mark, _),
+             .composer(_, _, let mark, _):
+            return FrontmatterSourcePosition(line: mark.line, column: mark.column)
+        case .duplicatedKeysInMapping(_, let context):
+            return FrontmatterSourcePosition(
+                line: context.mark.line,
+                column: context.mark.column
+            )
+        case .reader(_, let offset, _, _):
+            guard let offset,
+                  let index = source.index(
+                    source.startIndex,
+                    offsetBy: offset,
+                    limitedBy: source.endIndex
+                  ) else { return nil }
+            let prefix = source[..<index]
+            let line = prefix.reduce(into: 1) { count, character in
+                if character == "\n" { count += 1 }
+            }
+            let lineStart = prefix.lastIndex(of: "\n").map {
+                source.index(after: $0)
+            } ?? source.startIndex
+            return FrontmatterSourcePosition(
+                line: line,
+                column: source[lineStart..<index].unicodeScalars.count + 1
+            )
+        case .no, .memory, .writer, .emitter, .representer,
+             .dataCouldNotBeDecoded:
+            return nil
+        }
     }
 
     private static func patchExisting(
@@ -249,7 +353,7 @@ public enum FrontmatterPatchPlanner {
                 newline: newline
             )
         }
-        if semanticValue is [Any], case .array = edit {
+        if semanticValue is [Any], edit.isSequenceEdit {
             let replacement = serialize(
                 key: key,
                 value: edit,
@@ -374,7 +478,7 @@ public enum FrontmatterPatchPlanner {
                 ))
                 continue
             }
-            if existing is [Any], case .array = requested {
+            if existing is [Any], requested.isSequenceEdit {
                 let serialized = serialize(
                     key: childKey,
                     value: requested,
@@ -578,6 +682,13 @@ public enum FrontmatterPatchPlanner {
                 && zip(existing, values).allSatisfy { item, value in
                     item as? String == value
                 }
+        case .sequence(let values):
+            guard let existing = existing as? [Any], existing.count == values.count else {
+                return false
+            }
+            return zip(existing, values).allSatisfy { item, value in
+                semanticMatches(item, value)
+            }
         case .mapping(let values):
             guard let existing = existing as? [String: Any] else { return false }
             let retained = values.filter { $0.value != .remove }
@@ -688,7 +799,7 @@ public enum FrontmatterPatchPlanner {
         case .integer(let value): String(value)
         case .double(let value): String(value)
         case .boolean(let value): value ? "true" : "false"
-        case .array, .mapping, .remove: nil
+        case .array, .sequence, .mapping, .remove: nil
         }
     }
 
@@ -711,6 +822,11 @@ public enum FrontmatterPatchPlanner {
             return values.isEmpty
                 ? ["\(prefix): []"]
                 : ["\(prefix):"] + values.map { "\(indent)  - \(quote($0))" }
+        case .sequence(let values):
+            guard !values.isEmpty else { return ["\(prefix): []"] }
+            return ["\(prefix):"] + values.flatMap {
+                serializeSequenceItem($0, indent: indent + "  ")
+            }
         case .mapping(let values):
             if values.isEmpty { return ["\(prefix): {}"] }
             return ["\(prefix):"] + orderedMappingKeys(values).flatMap {
@@ -732,19 +848,116 @@ public enum FrontmatterPatchPlanner {
             + values.keys.filter { !preferred.contains($0) }.sorted()
     }
 
+    private static func serializeSequenceItem(
+        _ value: FrontmatterEditValue,
+        indent: String
+    ) -> [String] {
+        if let scalar = scalar(value) { return ["\(indent)- \(scalar)"] }
+        switch value {
+        case .mapping(let values):
+            if values.isEmpty { return ["\(indent)- {}"] }
+            let children: [String] = orderedMappingKeys(values).flatMap { key -> [String] in
+                guard let child = values[key], child != .remove else { return [] }
+                return serialize(key: key, value: child, indent: indent + "  ")
+            }
+            return ["\(indent)-"] + children
+        case .array(let values):
+            return ["\(indent)-"] + values.map { "\(indent)  - \(quote($0))" }
+        case .sequence(let values):
+            return ["\(indent)-"] + values.flatMap {
+                serializeSequenceItem($0, indent: indent + "  ")
+            }
+        case .remove:
+            return []
+        case .string, .integer, .double, .boolean:
+            return []
+        }
+    }
+
     private static func quote(_ value: String) -> String {
         guard !value.isEmpty else { return "\"\"" }
         let lower = value.lowercased()
-        let ambiguous = ["true", "false", "null", "~"].contains(lower)
+        let leadingIndicators = CharacterSet(charactersIn: "-?:,[]{}#&*!|>'\"%@`")
+        let containsControl = value.unicodeScalars.contains {
+            CharacterSet.controlCharacters.contains($0)
+        }
+        let ambiguous = matchesImplicitNonString(value)
+            || ["true", "false", "null", "~", ".nan", ".inf", "-.inf", "+.inf"].contains(lower)
             || Int(value) != nil || Double(value) != nil
             || value.contains(":") || value.contains("#") || value.contains("[")
             || value.contains("]") || value.contains("{") || value.contains("}")
             || value.contains(",") || value.contains("\n")
+            || value.unicodeScalars.first.map(leadingIndicators.contains) == true
+            || containsControl
             || value.first?.isWhitespace == true || value.last?.isWhitespace == true
         guard ambiguous else { return value }
-        return "\"" + value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n") + "\""
+        guard let encoded = try? JSONEncoder().encode(value) else { return "\"\"" }
+        return String(decoding: encoded, as: UTF8.self)
+    }
+
+    private static func matchesImplicitNonString(_ value: String) -> Bool {
+        return [
+            Resolver.Rule.bool,
+            Resolver.Rule.int,
+            Resolver.Rule.float,
+            Resolver.Rule.merge,
+            Resolver.Rule.null,
+            Resolver.Rule.timestamp,
+            Resolver.Rule.value,
+        ].contains { matches(value, rule: $0) }
+    }
+
+    private static func matches(_ value: String, rule: Resolver.Rule) -> Bool {
+        let range = NSRange(value.startIndex..., in: value)
+        guard let expression = try? NSRegularExpression(
+            pattern: rule.pattern
+        ) else { return false }
+        return expression.firstMatch(in: value, range: range) != nil
+    }
+
+    private static func semanticValue(
+        for edit: FrontmatterEditValue
+    ) -> YAMLValue? {
+        switch edit {
+        case .string(let value): .string(value)
+        case .integer(let value): .integer(value)
+        case .double(let value): .double(value)
+        case .boolean(let value): .boolean(value)
+        case .array(let values): .array(values.map(YAMLValue.string))
+        case .sequence(let values): .array(values.compactMap(semanticValue))
+        case .mapping(let values):
+            .object(values.reduce(into: [:]) { result, entry in
+                if let value = semanticValue(for: entry.value) {
+                    result[entry.key] = value
+                }
+            })
+        case .remove: nil
+        }
+    }
+
+    private static func projectedYAMLValue(_ value: Any) -> YAMLValue? {
+        switch value {
+        case let value as String: .string(value)
+        case let value as Bool: .boolean(value)
+        case let value as Int: .integer(value)
+        case let value as Double: .double(value)
+        case let values as [Any]: .array(values.compactMap(projectedYAMLValue))
+        case let values as [String: Any]:
+            .object(values.reduce(into: [:]) { result, entry in
+                if let value = projectedYAMLValue(entry.value) {
+                    result[entry.key] = value
+                }
+            })
+        default: nil
+        }
+    }
+}
+
+private extension FrontmatterEditValue {
+    var isSequenceEdit: Bool {
+        switch self {
+        case .array, .sequence: true
+        case .string, .integer, .double, .boolean, .mapping, .remove: false
+        }
     }
 }

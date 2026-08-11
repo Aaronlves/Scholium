@@ -3,19 +3,99 @@ import SwiftUI
 
 // MARK: - Properties Editor
 
+private struct CreatorDraft: Identifiable, Hashable {
+    enum Kind: String, CaseIterable, Hashable {
+        case person
+        case organization
+    }
+
+    let id: UUID
+    var kind: Kind
+    var family: String
+    var given: String
+    var suffix: String
+    var nonDroppingParticle: String
+    var droppingParticle: String
+    var literal: String
+
+    init(
+        id: UUID = UUID(),
+        kind: Kind = .person,
+        family: String = "",
+        given: String = "",
+        suffix: String = "",
+        nonDroppingParticle: String = "",
+        droppingParticle: String = "",
+        literal: String = ""
+    ) {
+        self.id = id
+        self.kind = kind
+        self.family = family
+        self.given = given
+        self.suffix = suffix
+        self.nonDroppingParticle = nonDroppingParticle
+        self.droppingParticle = droppingParticle
+        self.literal = literal
+    }
+
+    init?(value: YAMLValue) {
+        guard case .object(let mapping) = value else { return nil }
+        id = UUID()
+        if case .string(let literal)? = mapping["literal"] {
+            kind = .organization
+            self.literal = literal
+            family = ""; given = ""; suffix = ""
+            nonDroppingParticle = ""; droppingParticle = ""
+        } else {
+            kind = .person
+            literal = ""
+            family = mapping["family"]?.displayScalar ?? ""
+            given = mapping["given"]?.displayScalar ?? ""
+            suffix = mapping["suffix"]?.displayScalar ?? ""
+            nonDroppingParticle = mapping["non_dropping_particle"]?.displayScalar ?? ""
+            droppingParticle = mapping["dropping_particle"]?.displayScalar ?? ""
+        }
+    }
+
+    var yamlValue: YAMLValue {
+        switch kind {
+        case .organization:
+            return .object(["literal": .string(literal)])
+        case .person:
+            var value: [String: YAMLValue] = [
+                "family": .string(family)
+            ]
+            for (key, text) in [
+                ("given", given),
+                ("suffix", suffix),
+                ("non_dropping_particle", nonDroppingParticle),
+                ("dropping_particle", droppingParticle),
+            ] {
+                if !text.isEmpty { value[key] = .string(text) }
+            }
+            return .object(value)
+        }
+    }
+}
+
 /// Schema-aware sheet for editing a note's frontmatter.
 struct FrontmatterEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let note: WindowDocumentLocation
     let configuredEditableFields: Set<String>?
     let initialExpectedRevision: DocumentFingerprint?
     let onClose: (@MainActor () -> Void)?
+    let onOpenSource: (@MainActor () -> Void)?
+    let reload: (@MainActor () async throws -> (
+        note: WindowDocumentLocation,
+        revision: DocumentFingerprint
+    ))?
     let save: @MainActor (
         [String: YAMLValue],
         DocumentFingerprint
     ) async throws -> Void
 
+    @State private var note: WindowDocumentLocation
     @State private var fieldValues: [String: String] = [:]
     @State private var originalFieldValues: [String: String] = [:]
     @State private var fieldErrors: [String: String] = [:]
@@ -24,28 +104,50 @@ struct FrontmatterEditorView: View {
     @State private var expectedRevision: DocumentFingerprint?
     @State private var saveError: String?
     @State private var showAvailableProperties = false
+    @State private var selectedNewFieldKeys: Set<String> = []
+    @State private var removedFieldKeys: Set<String> = []
+    @State private var yamlFreeInsertionEnabled = false
+    @State private var creatorValues: [String: [CreatorDraft]] = [:]
+    @State private var originalCreatorValues: [String: [CreatorDraft]] = [:]
+    @State private var listValues: [String: [String]] = [:]
+    @State private var originalListValues: [String: [String]] = [:]
+    @State private var pendingChooserFieldFocus: String?
+    @State private var confirmsDiscardForSource = false
+    @State private var revisionConflict = false
+    @State private var isReloading = false
+    @FocusState private var focusedFieldKey: String?
+    @FocusState private var addPropertyButtonIsFocused: Bool
 
     init(
         note: WindowDocumentLocation,
         configuredEditableFields: Set<String>? = nil,
         expectedRevision: DocumentFingerprint? = nil,
         onClose: (@MainActor () -> Void)? = nil,
+        onOpenSource: (@MainActor () -> Void)? = nil,
+        reload: (@MainActor () async throws -> (
+            note: WindowDocumentLocation,
+            revision: DocumentFingerprint
+        ))? = nil,
         save: @escaping @MainActor (
             [String: YAMLValue],
             DocumentFingerprint
         ) async throws -> Void
     ) {
         self.note = note
+        _note = State(initialValue: note)
         self.configuredEditableFields = configuredEditableFields
         self.initialExpectedRevision = expectedRevision
         self.onClose = onClose
+        self.onOpenSource = onOpenSource
+        self.reload = reload
         self.save = save
     }
 
     private var editorModel: PropertyEditorModel {
         PropertyEditorModel(
             note: note,
-            configuredEditableFields: configuredEditableFields
+            configuredEditableFields: configuredEditableFields,
+            analysisSourceTypeOverride: fieldValues["type"].flatMap(AnalysisSourceType.init)
         )
     }
 
@@ -53,10 +155,28 @@ struct FrontmatterEditorView: View {
 
     private var availableFields: [PropertyEditorField] { editorModel.availableFields }
 
-    private var allFields: [PropertyEditorField] { editorModel.allFields }
+    private var allFields: [PropertyEditorField] {
+        let selected = selectedNewFieldKeys.compactMap {
+            editorModel.canonicalField(for: $0)
+        }
+            .sorted {
+                ($0.group.order, $0.presentation.order)
+                    < ($1.group.order, $1.presentation.order)
+            }
+        return presentFields + selected
+    }
 
     private var groupedPresentFields: [(group: PropertyPresentationGroup, fields: [PropertyEditorField])] {
-        editorModel.groupedPresentFields
+        let grouped = Dictionary(grouping: allFields, by: \.group)
+        return PropertyPresentationCatalog.orderedGroups(for: note.schemaProfile).compactMap {
+            group in
+            guard let fields = grouped[group], !fields.isEmpty else { return nil }
+            return (group, fields)
+        }
+    }
+
+    private var frontmatterState: NoteFrontmatterState {
+        NoteDocument(relativePath: note.relativePath, rawContent: note.rawContent).frontmatterState
     }
 
     var body: some View {
@@ -91,67 +211,44 @@ struct FrontmatterEditorView: View {
                     .controlSize(.small)
                     .tint(ScholiumColorRole.accent.color)
                     .keyboardShortcut(.return, modifiers: [.command])
-                    .disabled(isSaving)
+                    .disabled(isSaving || !canSaveDraft || revisionConflict)
                 }
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
 
             Divider()
 
-            // Form fields
-            ScrollView {
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                    Text("Researcher Properties")
-                        .font(ScholiumTypography.interface(.sectionTitle))
+            propertiesContent
 
-                    if allFields.isEmpty {
-                        Label(
-                            "No other fields are enabled for structured editing in this vault. Change the vault-wide allowlist in Settings, or use Source mode to edit exact YAML.",
-                            systemImage: "lock"
-                        )
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                    }
-
-                    ForEach(groupedPresentFields, id: \.group) { group in
-                        GroupBox(group.group.label) {
-                            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.sectionSpacing) {
-                                ForEach(group.fields) { field in
-                                    fieldEditor(for: field)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
+            if revisionConflict {
+                Divider()
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text("This note changed on disk. The Properties draft was preserved and cannot be saved against the older revision.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.attention)
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Button("Discard Draft and Reload Current Note") {
+                            reloadCurrentNote()
                         }
-                    }
-
-                    if !availableFields.isEmpty {
-                        Divider()
-                            .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-
-                        DisclosureGroup("Add a Property", isExpanded: $showAvailableProperties) {
-                            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                                ForEach(availableFields) { field in
-                                    fieldEditor(for: field)
-                                }
-                            }
-                            .padding(.top, ScholiumGrid.Spacing.nestedContentInset)
+                        .disabled(isReloading || reload == nil)
+                        Button("Review Current Note in Source") {
+                            openSource()
                         }
-                        .font(ScholiumTypography.interface(.sectionTitle))
                     }
                 }
-                .padding(ScholiumGrid.Spacing.regionContentInset)
+                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
 
             // Footer with validation summary
-            if !fieldErrors.isEmpty {
+            if !displayedFieldErrors.isEmpty {
                 Divider()
 
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .scholiumForeground(.destructive)
                         .font(ScholiumTypography.interface(.small))
-                    Text("\(fieldErrors.count) validation error\(fieldErrors.count == 1 ? "" : "s")")
+                    Text("\(displayedFieldErrors.count) validation error\(displayedFieldErrors.count == 1 ? "" : "s")")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.destructive)
                     Spacer()
@@ -161,21 +258,17 @@ struct FrontmatterEditorView: View {
             }
         }
         .scholiumSurface(.boundedPanel)
+        .disabled(isSaving)
         .accessibilityIdentifier("scholium.propertiesEditor")
         .task {
-            // Initialize field values from existing frontmatter
-            for (key, value) in note.frontmatter {
-                let stringValue = frontmatterToString(value)
-                fieldValues[key] = stringValue
-                originalFieldValues[key] = stringValue
-            }
-            for field in allFields where fieldValues[field.key] == nil {
-                guard let value = note.property(at: field.key) else { continue }
-                let stringValue = frontmatterToString(value)
-                fieldValues[field.key] = stringValue
-                originalFieldValues[field.key] = stringValue
-            }
-            expectedRevision = initialExpectedRevision
+            installDraft(note: note, revision: initialExpectedRevision)
+        }
+        .sheet(isPresented: $showAvailableProperties, onDismiss: restoreChooserFocus) {
+            PropertyChooserView(
+                model: editorModel,
+                excludedKeys: selectedNewFieldKeys,
+                select: selectNewField
+            )
         }
         .alert("Could Not Save", isPresented: Binding(
             get: { saveError != nil },
@@ -185,19 +278,266 @@ struct FrontmatterEditorView: View {
         } message: {
             Text(saveError ?? "")
         }
+        .interactiveDismissDisabled(hasDraftChanges || isSaving)
+        .confirmationDialog(
+            "Discard Properties Draft?",
+            isPresented: $confirmsDiscardForSource
+        ) {
+            Button("Discard Draft and Open Source", role: .destructive) {
+                performOpenSource()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("Opening Source closes Complete Properties. The unsaved structured draft will be discarded; the note on disk will not change.")
+        }
+    }
+
+    @ViewBuilder
+    private var propertiesContent: some View {
+        switch frontmatterState {
+        case .malformed:
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                ScholiumContentStateView(
+                    "YAML Properties Need Source",
+                    detail: Text("This note's frontmatter is incomplete or malformed. Its exact source was left unchanged."),
+                    indicator: .symbol("exclamationmark.triangle", role: .attention)
+                )
+                Button("Edit in Source", action: openSource)
+            }
+            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        case .absent where !yamlFreeInsertionEnabled:
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("This note has no YAML properties.")
+                    .font(ScholiumTypography.interface(.sectionTitle))
+                if availableFields.isEmpty {
+                    Text("No structured fields are currently authorized for this role. Review portable Properties settings, or keep this note without YAML.")
+                        .font(ScholiumTypography.interface(.body))
+                        .scholiumForeground(.secondaryText)
+                    Button("Keep Without YAML") { closeEditor() }
+                } else {
+                    Text("Adding the first property will insert a YAML frontmatter block and preserve the note body exactly.")
+                        .font(ScholiumTypography.interface(.body))
+                        .scholiumForeground(.secondaryText)
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Button("Add YAML Properties…") {
+                            yamlFreeInsertionEnabled = true
+                            showAvailableProperties = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Keep Without YAML") { closeEditor() }
+                    }
+                }
+            }
+            .padding(ScholiumGrid.Spacing.regionContentInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityIdentifier("scholium.propertiesEditor.yamlFree")
+        case .absent, .valid:
+            ScrollView {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                    Text("Researcher Properties")
+                        .font(ScholiumTypography.interface(.sectionTitle))
+
+                    if allFields.isEmpty {
+                        Text("No fields are enabled for structured editing. Change the role allowlist in Settings, or edit the exact YAML in Source.")
+                            .font(ScholiumTypography.interface(.body))
+                            .scholiumForeground(.secondaryText)
+                    }
+
+                    ForEach(groupedPresentFields, id: \.group) { group in
+                        VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.sectionSpacing) {
+                            Text(group.group.label)
+                                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
+                                .scholiumForeground(.secondaryText)
+                                .accessibilityHeading(.h2)
+                            ForEach(group.fields) { field in
+                                fieldEditor(for: field)
+                            }
+                        }
+                    }
+
+                    if !availableFields.isEmpty {
+                        Button("Add a Property…") {
+                            showAvailableProperties = true
+                        }
+                        .focused($addPropertyButtonIsFocused)
+                        .accessibilityIdentifier("scholium.propertiesEditor.addProperty")
+                        .accessibilityHint("Chooses a supported field without changing the note until Save succeeds")
+                    }
+                }
+                .padding(ScholiumGrid.Spacing.regionContentInset)
+            }
+        }
+    }
+
+    private struct DraftCandidate {
+        let frontmatter: [String: YAMLValue]
+        let changedKeys: Set<String>
+    }
+
+    private var hasDraftChanges: Bool {
+        !removedFieldKeys.isEmpty || !selectedNewFieldKeys.isEmpty
+            || allFields.contains(where: fieldHasDraftChange)
+    }
+
+    private var draftCandidate: DraftCandidate {
+        var proposed = note.frontmatter
+        var changedKeys = removedFieldKeys
+        for key in removedFieldKeys { proposed.removeValue(forKey: key) }
+
+        for field in allFields where fieldHasDraftChange(field) {
+            changedKeys.insert(field.key)
+            if field.valueKind == .creatorList {
+                proposed = editorModel.updating(
+                    proposed,
+                    field: field,
+                    value: .array((creatorValues[field.key] ?? []).map(\.yamlValue))
+                )
+            } else if field.valueKind == .textList || field.valueKind == .tags {
+                proposed = editorModel.updating(
+                    proposed,
+                    field: field,
+                    value: .array((listValues[field.key] ?? []).map(YAMLValue.string))
+                )
+            } else if let text = fieldValues[field.key] {
+                proposed = editorModel.updating(proposed, field: field, text: text)
+            }
+        }
+        return DraftCandidate(frontmatter: proposed, changedKeys: changedKeys)
+    }
+
+    private var liveFieldErrors: [String: String] {
+        var errors: [String: String] = [:]
+        for field in allFields where selectedNewFieldKeys.contains(field.key)
+            && !field.isTypicalForSourceType {
+            errors[field.key] = String(
+                localized: "This field is not applicable to the selected Source Type.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        let candidate = draftCandidate
+        for issue in editorModel.validationIssues(
+            proposedFrontmatter: candidate.frontmatter,
+            changedKeys: candidate.changedKeys
+        ) {
+            if let key = issue.propertyKey {
+                errors[key] = localizedValidationMessage(for: issue)
+            }
+        }
+        return errors
+    }
+
+    private func localizedValidationMessage(
+        for issue: PropertyValidationIssue
+    ) -> String {
+        switch issue.code {
+        case .malformedFrontmatter:
+            String(localized: "The note's YAML frontmatter is malformed. Edit it in Source.", table: "Localizable", bundle: .module)
+        case .invalidValueKind:
+            String(localized: "This value does not match the field's required shape.", table: "Localizable", bundle: .module)
+        case .valueNotAllowed:
+            String(localized: "Choose an allowed value for this field.", table: "Localizable", bundle: .module)
+        case .invalidCreator:
+            String(localized: "Each creator needs a family name or an organization name.", table: "Localizable", bundle: .module)
+        }
+    }
+
+    private var displayedFieldErrors: [String: String] {
+        liveFieldErrors.merging(fieldErrors) { _, savedError in savedError }
+    }
+
+    private var canSaveDraft: Bool {
+        hasDraftChanges
+            && expectedRevision != nil
+            && !revisionConflict
+            && displayedFieldErrors.isEmpty
+    }
+
+    private func fieldHasDraftChange(_ field: PropertyEditorField) -> Bool {
+        guard !removedFieldKeys.contains(field.key), !field.isReadOnly else { return false }
+        if selectedNewFieldKeys.contains(field.key) { return true }
+        if field.valueKind == .creatorList {
+            return creatorValues[field.key] != originalCreatorValues[field.key]
+        }
+        if field.valueKind == .textList || field.valueKind == .tags {
+            return (listValues[field.key] ?? []) != (originalListValues[field.key] ?? [])
+        }
+        return fieldValues[field.key] != originalFieldValues[field.key]
+    }
+
+    private func selectNewField(_ field: PropertyEditorField) {
+        selectedNewFieldKeys.insert(field.key)
+        if field.valueKind == .creatorList {
+            creatorValues[field.key] = [CreatorDraft()]
+        } else if field.valueKind == .textList {
+            listValues[field.key] = [""]
+        } else if field.valueKind == .tags {
+            listValues[field.key] = []
+        } else {
+            fieldValues[field.key] = ""
+        }
+        showAvailableProperties = false
+        pendingChooserFieldFocus = field.key
+    }
+
+    private func restoreChooserFocus() {
+        if let key = pendingChooserFieldFocus {
+            pendingChooserFieldFocus = nil
+            focusedFieldKey = key
+        } else {
+            addPropertyButtonIsFocused = true
+        }
+    }
+
+    private func removeField(_ field: PropertyEditorField) {
+        guard !field.isReadOnly else { return }
+        fieldErrors.removeValue(forKey: field.key)
+        if selectedNewFieldKeys.remove(field.key) != nil {
+            fieldValues.removeValue(forKey: field.key)
+            creatorValues.removeValue(forKey: field.key)
+            listValues.removeValue(forKey: field.key)
+            addPropertyButtonIsFocused = true
+        } else {
+            removedFieldKeys.insert(field.key)
+        }
+        focusedFieldKey = nil
+    }
+
+    private func openSource() {
+        if hasDraftChanges {
+            confirmsDiscardForSource = true
+            return
+        }
+        performOpenSource()
+    }
+
+    private func performOpenSource() {
+        if let onOpenSource {
+            onOpenSource()
+        } else {
+            closeEditor()
+        }
     }
 
     // MARK: - Field Editors
 
     @ViewBuilder
     private func fieldEditor(for field: PropertyEditorField) -> some View {
-        let hasError = fieldErrors[field.key] != nil
+        let displayedError = displayedFieldErrors[field.key]
+        let hasError = displayedError != nil
+        let isRemoved = removedFieldKeys.contains(field.key)
 
         VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.fieldSpacing) {
             // Label
             HStack(spacing: ScholiumMetrics.Properties.labelSpacing) {
                 Text(field.label)
                     .font(ScholiumTypography.interface(.rowTitle))
+                if field.isRecommended {
+                    Text("Recommended")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
                 if field.isReadOnly {
                     Text("Read only")
                         .font(ScholiumTypography.interface(.small))
@@ -211,33 +551,81 @@ struct FrontmatterEditorView: View {
                 }
             }
 
-            // Description
-            if let desc = field.help {
-                Text(desc)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
+            Text(field.key)
+                .font(ScholiumTypography.exact(.small))
+                .scholiumForeground(.mutedText)
+
+            if !field.isTypicalForSourceType,
+               let sourceType = editorModel.analysisSourceType {
+                if selectedNewFieldKeys.contains(field.key) {
+                    Text("This draft field does not apply to \(sourceType.propertyDisplayName). Discard it or choose its source type before saving.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                } else {
+                    Text("Not typical for \(sourceType.propertyDisplayName). The existing value remains authoritative and can be kept or removed.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
             }
 
-            // Editor
-            let binding = Binding(
-                get: { fieldValues[field.key] ?? "" },
-                set: { newValue in
-                    fieldValues[field.key] = newValue
-                    fieldErrors.removeValue(forKey: field.key)
+            if isRemoved {
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Text("This property will be removed when Save succeeds.")
+                        .font(ScholiumTypography.interface(.body))
+                        .scholiumForeground(.secondaryText)
+                    Spacer()
+                    Button("Undo Removal") {
+                        removedFieldKeys.remove(field.key)
+                    }
                 }
-            )
-
-            editorContent(for: field, binding: binding, hasError: hasError)
-
-            // Error message
-            if let error = fieldErrors[field.key] {
-                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Image(systemName: "exclamationmark.circle.fill")
+            } else {
+                if let desc = field.help {
+                    Text(desc)
                         .font(ScholiumTypography.interface(.small))
-                    Text(error)
-                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.mutedText)
                 }
-                .scholiumForeground(.destructive)
+                if field.isReadOnly {
+                    Text("This value's source shape or the role allowlist does not permit a targeted edit. Its exact YAML remains available in Source.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
+
+                let binding = Binding(
+                    get: { fieldValues[field.key] ?? "" },
+                    set: { newValue in
+                        fieldValues[field.key] = newValue
+                        fieldErrors.removeValue(forKey: field.key)
+                    }
+                )
+
+                editorContent(for: field, binding: binding, hasError: hasError)
+
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    if field.isReadOnly {
+                        Button("Edit in Source", action: openSource)
+                            .buttonStyle(.borderless)
+                    } else {
+                        Button(
+                            selectedNewFieldKeys.contains(field.key)
+                                ? "Discard Added Property"
+                                : "Remove Property",
+                            role: .destructive
+                        ) {
+                            removeField(field)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+
+                if let error = displayedError {
+                    HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(ScholiumTypography.interface(.small))
+                        Text(error)
+                            .font(ScholiumTypography.interface(.small))
+                    }
+                    .scholiumForeground(.destructive)
+                }
             }
         }
     }
@@ -253,6 +641,7 @@ struct FrontmatterEditorView: View {
             TextField(field.label, text: binding)
                 .textFieldStyle(.roundedBorder)
                 .disabled(field.isReadOnly)
+                .focused($focusedFieldKey, equals: field.key)
 
         case .multilineText:
             TextEditor(text: binding)
@@ -280,33 +669,19 @@ struct FrontmatterEditorView: View {
                         )
                 )
                 .disabled(field.isReadOnly)
+                .focused($focusedFieldKey, equals: field.key)
 
         case .numberField:
             TextField(field.label, text: binding)
                 .textFieldStyle(.roundedBorder)
                 .disabled(field.isReadOnly)
+                .focused($focusedFieldKey, equals: field.key)
 
         case .dateField:
-            if field.isReadOnly {
-                Text(fieldValues[field.key] ?? "—")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-            } else {
-                if let value = fieldValues[field.key], let date = parseDate(value) {
-                    DatePicker("", selection: Binding(
-                        get: { date },
-                        set: { fieldValues[field.key] = formatDate($0) }
-                    ), displayedComponents: .date)
-                    .datePickerStyle(.field)
-                } else {
-                    DatePicker("", selection: Binding(
-                        get: { Date() },
-                        set: { fieldValues[field.key] = formatDate($0) }
-                    ), displayedComponents: .date)
-                    .datePickerStyle(.field)
-                }
-            }
+            TextField(field.label, text: binding)
+                .textFieldStyle(.roundedBorder)
+                .disabled(field.isReadOnly)
+                .focused($focusedFieldKey, equals: field.key)
 
         case .toggle:
             Toggle(isOn: Binding(
@@ -317,6 +692,7 @@ struct FrontmatterEditorView: View {
                     .font(ScholiumTypography.interface(.body))
             }
             .disabled(field.isReadOnly)
+            .focused($focusedFieldKey, equals: field.key)
 
         case .tagEditor:
             tagEditor(for: field)
@@ -335,14 +711,124 @@ struct FrontmatterEditorView: View {
                 .pickerStyle(.menu)
                 .disabled(field.isReadOnly)
                 .frame(maxWidth: 240)
+                .focused($focusedFieldKey, equals: field.key)
             }
 
         case .creatorListEditor:
-            Text(fieldValues[field.key] ?? "—")
-                .font(ScholiumTypography.scholarly(.body))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            creatorListEditor(for: field)
         }
+    }
+
+    // MARK: - Creator List Editor
+
+    @ViewBuilder
+    private func creatorListEditor(for field: PropertyEditorField) -> some View {
+        if field.isReadOnly {
+            Text(fieldValues[field.key] ?? "—")
+                .font(ScholiumTypography.exact(.body))
+                .scholiumForeground(.secondaryText)
+                .textSelection(.enabled)
+        } else {
+            let creators = creatorValues[field.key] ?? []
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
+                ForEach(Array(creators.enumerated()), id: \.element.id) { index, creator in
+                    let binding = creatorBinding(
+                        field: field.key,
+                        index: index,
+                        fallback: creator
+                    )
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        HStack {
+                            Picker("Creator Kind", selection: binding.kind) {
+                                Text("Person").tag(CreatorDraft.Kind.person)
+                                Text("Organization").tag(CreatorDraft.Kind.organization)
+                            }
+                            .pickerStyle(.segmented)
+                            Spacer()
+                            Button {
+                                var updated = creatorValues[field.key] ?? []
+                                if updated.count == 1 {
+                                    removeField(field)
+                                } else {
+                                    updated.remove(at: index)
+                                    creatorValues[field.key] = updated
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove creator \(index + 1)")
+                        }
+
+                        if creator.kind == .organization {
+                            TextField(
+                                "Organization or group name",
+                                text: binding.literal
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .focused($focusedFieldKey, equals: field.key)
+                        } else {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                                    TextField("Family name", text: binding.family)
+                                        .focused($focusedFieldKey, equals: field.key)
+                                    TextField("Given name", text: binding.given)
+                                }
+                                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                                    TextField("Family name", text: binding.family)
+                                        .focused($focusedFieldKey, equals: field.key)
+                                    TextField("Given name", text: binding.given)
+                                }
+                            }
+                            .textFieldStyle(.roundedBorder)
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                                    TextField("Non-dropping particle", text: binding.nonDroppingParticle)
+                                    TextField("Dropping particle", text: binding.droppingParticle)
+                                    TextField("Suffix", text: binding.suffix)
+                                }
+                                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                                    TextField("Non-dropping particle", text: binding.nonDroppingParticle)
+                                    TextField("Dropping particle", text: binding.droppingParticle)
+                                    TextField("Suffix", text: binding.suffix)
+                                }
+                            }
+                            .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                }
+
+                Button {
+                    creatorValues[field.key, default: []].append(CreatorDraft())
+                } label: {
+                    Label("Add Creator", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    private func creatorBinding(
+        field: String,
+        index: Int,
+        fallback: CreatorDraft
+    ) -> Binding<CreatorDraft> {
+        Binding(
+            get: {
+                guard let creators = creatorValues[field], creators.indices.contains(index) else {
+                    return fallback
+                }
+                return creators[index]
+            },
+            set: { value in
+                guard var creators = creatorValues[field], creators.indices.contains(index) else {
+                    return
+                }
+                creators[index] = value
+                creatorValues[field] = creators
+                fieldErrors.removeValue(forKey: field)
+            }
+        )
     }
 
     // MARK: - Tag Editor
@@ -351,16 +837,23 @@ struct FrontmatterEditorView: View {
     private func tagEditor(for field: PropertyEditorField) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             // Current tags
-            let tags = parseArray(fieldValues[field.key])
+            let tags = listValues[field.key] ?? []
             if !tags.isEmpty {
                 FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
-                    ForEach(tags, id: \.self) { tag in
+                    ForEach(Array(tags.enumerated()), id: \.offset) { index, tag in
                         HStack(spacing: ScholiumMetrics.Properties.tagContentSpacing) {
                             Text(tag)
                                 .font(ScholiumTypography.interface(.small))
+                                .fixedSize(horizontal: false, vertical: true)
                             Button {
-                                let updated = tags.filter { $0 != tag }
-                                fieldValues[field.key] = updated.joined(separator: "; ")
+                                var updated = listValues[field.key] ?? []
+                                guard updated.indices.contains(index) else { return }
+                                updated.remove(at: index)
+                                if updated.isEmpty {
+                                    removeField(field)
+                                } else {
+                                    listValues[field.key] = updated
+                                }
                             } label: {
                                 Image(systemName: "xmark")
                                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
@@ -396,6 +889,7 @@ struct FrontmatterEditorView: View {
             HStack(spacing: ScholiumMetrics.Properties.fieldSpacing) {
                 TextField("Add tag...", text: $tagInput)
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedFieldKey, equals: field.key)
                     .onSubmit {
                         addTag(field: field)
                     }
@@ -425,24 +919,36 @@ struct FrontmatterEditorView: View {
     @ViewBuilder
     private func arrayEditor(for field: PropertyEditorField) -> some View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.fieldSpacing) {
-            let items = parseArray(fieldValues[field.key])
+            let items = listValues[field.key] ?? []
 
             ForEach(items.indices, id: \.self) { idx in
                 HStack(spacing: ScholiumMetrics.Properties.fieldSpacing) {
                     TextField("Item \(idx + 1)", text: Binding(
-                        get: { items[idx] },
+                        get: {
+                            guard let current = listValues[field.key],
+                                  current.indices.contains(idx) else { return "" }
+                            return current[idx]
+                        },
                         set: { newVal in
-                            var updated = items
+                            guard var updated = listValues[field.key],
+                                  updated.indices.contains(idx) else { return }
                             updated[idx] = newVal
-                            fieldValues[field.key] = updated.joined(separator: "; ")
+                            listValues[field.key] = updated
+                            fieldErrors.removeValue(forKey: field.key)
                         }
                     ))
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedFieldKey, equals: field.key)
 
                     Button {
-                        var updated = items
-                        updated.remove(at: idx)
-                        fieldValues[field.key] = updated.joined(separator: "; ")
+                        guard var updated = listValues[field.key],
+                              updated.indices.contains(idx) else { return }
+                        if updated.count == 1 {
+                            removeField(field)
+                        } else {
+                            updated.remove(at: idx)
+                            listValues[field.key] = updated
+                        }
                     } label: {
                         Image(systemName: "minus.circle.fill")
                             .scholiumForeground(.secondaryText)
@@ -459,9 +965,7 @@ struct FrontmatterEditorView: View {
             }
 
             Button {
-                var updated = items
-                updated.append("")
-                fieldValues[field.key] = updated.joined(separator: "; ")
+                listValues[field.key, default: []].append("")
             } label: {
                 Label("Add item", systemImage: "plus.circle")
                     .font(ScholiumTypography.interface(.small))
@@ -476,50 +980,19 @@ struct FrontmatterEditorView: View {
     private func addTag(field: PropertyEditorField) {
         let trimmed = tagInput.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        var tags = parseArray(fieldValues[field.key])
-        if !tags.contains(trimmed) {
-            tags.append(trimmed)
-            fieldValues[field.key] = tags.joined(separator: "; ")
-        }
+        var tags = listValues[field.key] ?? []
+        tags.append(trimmed)
+        listValues[field.key] = tags
         tagInput = ""
     }
 
     // MARK: - Save
 
     private func saveChanges() {
-        let changedFields = allFields.filter { field in
-            !field.isReadOnly && fieldValues[field.key] != originalFieldValues[field.key]
-        }
-
-        guard !changedFields.isEmpty else {
-            closeEditor()
-            return
-        }
-
-        var proposedFrontmatter = note.frontmatter
-        for field in changedFields {
-            guard let text = fieldValues[field.key] else { continue }
-            proposedFrontmatter = editorModel.updating(
-                proposedFrontmatter,
-                field: field,
-                text: text
-            )
-        }
-
-        fieldErrors = [:]
         saveError = nil
-        let issues = editorModel.validationIssues(
-            proposedFrontmatter: proposedFrontmatter,
-            changedKeys: Set(changedFields.map(\.key))
-        )
-        for issue in issues {
-            if let key = issue.propertyKey {
-                fieldErrors[key] = issue.message
-            } else {
-                saveError = issue.message
-            }
-        }
-        guard fieldErrors.isEmpty, saveError == nil else { return }
+        fieldErrors = liveFieldErrors
+        guard canSaveDraft else { return }
+        let candidate = draftCandidate
 
         guard let revision = expectedRevision else {
             saveError = "The editing revision is unavailable. Close and reopen the editor."
@@ -529,14 +1002,101 @@ struct FrontmatterEditorView: View {
         isSaving = true
         Task {
             do {
-                try await save(proposedFrontmatter, revision)
+                try await save(candidate.frontmatter, revision)
                 isSaving = false
                 closeEditor()
+            } catch let error as VaultRepositoryError {
+                if case .conflict = error {
+                    revisionConflict = true
+                    saveError = nil
+                } else {
+                    saveError = error.localizedDescription
+                }
+                isSaving = false
             } catch {
                 saveError = error.localizedDescription
                 isSaving = false
             }
         }
+    }
+
+    private func reloadCurrentNote() {
+        guard let reload else { return }
+        isReloading = true
+        saveError = nil
+        Task {
+            do {
+                let refreshed = try await reload()
+                installDraft(note: refreshed.note, revision: refreshed.revision)
+            } catch {
+                saveError = error.localizedDescription
+            }
+            isReloading = false
+        }
+    }
+
+    private func installDraft(
+        note refreshedNote: WindowDocumentLocation,
+        revision: DocumentFingerprint?
+    ) {
+        note = refreshedNote
+        fieldValues = [:]
+        originalFieldValues = [:]
+        fieldErrors = [:]
+        creatorValues = [:]
+        originalCreatorValues = [:]
+        listValues = [:]
+        originalListValues = [:]
+        selectedNewFieldKeys = []
+        removedFieldKeys = []
+        yamlFreeInsertionEnabled = false
+        revisionConflict = false
+        saveError = nil
+
+        for (key, value) in refreshedNote.frontmatter {
+            let stringValue = frontmatterToString(value)
+            fieldValues[key] = stringValue
+            originalFieldValues[key] = stringValue
+        }
+        let model = PropertyEditorModel(
+            note: refreshedNote,
+            configuredEditableFields: configuredEditableFields
+        )
+        for field in model.presentFields {
+            switch field.valueKind {
+            case .text, .multilineText, .date, .choice:
+                break
+            case .number, .boolean, .textList, .tags, .mapping, .creatorList:
+                continue
+            }
+            guard let token = refreshedNote.authoredTopLevelScalarToken(named: field.key),
+                  FrontmatterPatchPlanner.isTimestampScalarToken(token) else {
+                continue
+            }
+            fieldValues[field.key] = token
+            originalFieldValues[field.key] = token
+        }
+        for field in model.presentFields where field.valueKind == .creatorList {
+            guard case .array(let values)? = refreshedNote.topLevelProperty(named: field.key) else {
+                continue
+            }
+            let drafts = values.compactMap(CreatorDraft.init(value:))
+            creatorValues[field.key] = drafts
+            originalCreatorValues[field.key] = drafts
+        }
+        for field in model.presentFields where field.valueKind == .textList
+            || field.valueKind == .tags {
+            guard case .array(let values)? = refreshedNote.topLevelProperty(named: field.key) else {
+                continue
+            }
+            let items = values.compactMap { value -> String? in
+                guard case .string(let item) = value else { return nil }
+                return item
+            }
+            listValues[field.key] = items
+            originalListValues[field.key] = items
+        }
+        expectedRevision = revision
     }
 
     private func closeEditor() {
@@ -562,24 +1122,137 @@ struct FrontmatterEditorView: View {
         }
     }
 
-    private func parseArray(_ value: String?) -> [String] {
-        guard let value = value, !value.isEmpty else { return [] }
-        return value.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+}
+
+private struct PropertyChooserView: View {
+    @Environment(\.dismiss) private var dismiss
+    let model: PropertyEditorModel
+    let excludedKeys: Set<String>
+    let select: (PropertyEditorField) -> Void
+    @State private var query = ""
+    @State private var selectionKey: String?
+    @FocusState private var searchIsFocused: Bool
+    @FocusState private var listIsFocused: Bool
+
+    private var groups: [(group: PropertyPresentationGroup, fields: [PropertyEditorField])] {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.groupedAvailableFields.compactMap { group in
+            let fields = group.fields.filter { field in
+                guard !excludedKeys.contains(field.key) else { return false }
+                guard !normalized.isEmpty else { return true }
+                return field.label.localizedStandardContains(normalized)
+                    || field.key.localizedStandardContains(normalized)
+                    || (field.help?.localizedStandardContains(normalized) ?? false)
+            }
+            return fields.isEmpty ? nil : (group.group, fields)
+        }
     }
 
-    private func parseDate(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-        if let date = formatter.date(from: string) { return date }
-        let fallback = DateFormatter()
-        fallback.dateFormat = "yyyy-MM-dd"
-        return fallback.date(from: string)
+    private var fields: [PropertyEditorField] { groups.flatMap(\.fields) }
+
+    private var selectedField: PropertyEditorField? {
+        guard let selectionKey else { return nil }
+        return fields.first { $0.key == selectionKey }
     }
 
-    private func formatDate(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
-        return formatter.string(from: date)
+    var body: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                    Text("Add a Property")
+                        .font(ScholiumTypography.interface(.primaryTitle))
+                    if model.profile == .analysis {
+                        Text(model.analysisSourceType.map {
+                            "Recommended fields for \($0.propertyDisplayName)"
+                        } ?? "Choose Source Type first, or add a field shared by all source types")
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                    }
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.escape)
+            }
+
+            TextField("Search fields", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .focused($searchIsFocused)
+                .accessibilityIdentifier("scholium.propertyChooser.search")
+                .onKeyPress(.downArrow) {
+                    guard let first = fields.first else { return .ignored }
+                    selectionKey = first.key
+                    listIsFocused = true
+                    return .handled
+                }
+                .onSubmit { addSelectedField(preferFirst: true) }
+
+            if groups.isEmpty {
+                ScholiumContentStateView(
+                    "No Matching Properties",
+                    detail: Text("Try a field label or exact YAML key."),
+                    indicator: .symbol("magnifyingglass", role: .secondaryText)
+                )
+            } else {
+                List(selection: $selectionKey) {
+                    ForEach(groups, id: \.group) { group in
+                        Section(group.group.label) {
+                            ForEach(group.fields) { field in
+                                VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                                    HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                                        Text(field.label)
+                                            .font(ScholiumTypography.interface(.body))
+                                        if field.isRecommended {
+                                            Text("Recommended")
+                                                .font(ScholiumTypography.interface(.small))
+                                                .scholiumForeground(.secondaryText)
+                                        }
+                                    }
+                                    Text(field.key)
+                                        .font(ScholiumTypography.exact(.small))
+                                        .scholiumForeground(.mutedText)
+                                    if let help = field.help {
+                                        Text(help)
+                                            .font(ScholiumTypography.interface(.small))
+                                            .scholiumForeground(.secondaryText)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .tag(field.key)
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    selectionKey = field.key
+                                    addSelectedField()
+                                }
+                                .accessibilityHint("Adds an empty draft editor; the note changes only after a valid Save")
+                            }
+                        }
+                    }
+                }
+                .focused($listIsFocused)
+                .accessibilityIdentifier("scholium.propertyChooser.list")
+            }
+
+            HStack {
+                Spacer()
+                Button("Add Selected Property") { addSelectedField() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(selectedField == nil)
+            }
+        }
+        .padding(ScholiumGrid.Spacing.regionContentInset)
+        .frame(minWidth: 440, minHeight: 480)
+        .task { searchIsFocused = true }
+        .onChange(of: query) { _, _ in
+            if selectedField == nil { selectionKey = nil }
+        }
+    }
+
+    private func addSelectedField(preferFirst: Bool = false) {
+        if preferFirst, selectionKey == nil { selectionKey = fields.first?.key }
+        guard let field = selectedField else { return }
+        select(field)
     }
 }
 
@@ -589,18 +1262,22 @@ struct FlowLayout: Layout {
     var spacing: CGFloat = 4
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let sized = subviews.map { $0.sizeThatFits(.unspecified) }
+        let sized = measuredSizes(subviews, maximumWidth: proposal.width)
         let rows = computeRows(proposal: proposal, sizes: sized)
         let height = rows.reduce(0) { $0 + ($1.map { $0.height }.max() ?? 0) } + CGFloat(max(0, rows.count - 1)) * spacing
-        return CGSize(width: proposal.width ?? 0, height: height)
+        let contentWidth = rows.map { row in
+            row.reduce(0) { $0 + $1.width }
+                + CGFloat(max(0, row.count - 1)) * spacing
+        }.max() ?? 0
+        return CGSize(width: proposal.width ?? contentWidth, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var sized: [(CGSize, Int)] = []
-        for (i, sv) in subviews.enumerated() {
-            sized.append((sv.sizeThatFits(.unspecified), i))
-        }
-        let rows = computeRows(proposal: proposal, sizes: sized.map { $0.0 })
+        let sizes = measuredSizes(subviews, maximumWidth: bounds.width)
+        let rows = computeRows(
+            proposal: ProposedViewSize(width: bounds.width, height: proposal.height),
+            sizes: sizes
+        )
         var y = bounds.minY
         var idx = 0
         for row in rows {
@@ -614,6 +1291,27 @@ struct FlowLayout: Layout {
                 }
             }
             y += rowHeight + spacing
+        }
+    }
+
+    private func measuredSizes(
+        _ subviews: Subviews,
+        maximumWidth: CGFloat?
+    ) -> [CGSize] {
+        subviews.map { subview in
+            let intrinsic = subview.sizeThatFits(.unspecified)
+            guard let maximumWidth, maximumWidth.isFinite,
+                  maximumWidth > 0, intrinsic.width > maximumWidth else {
+                return intrinsic
+            }
+            let bounded = subview.sizeThatFits(ProposedViewSize(
+                width: maximumWidth,
+                height: nil
+            ))
+            return CGSize(
+                width: min(maximumWidth, bounded.width),
+                height: bounded.height
+            )
         }
     }
 

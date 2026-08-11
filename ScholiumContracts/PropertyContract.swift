@@ -121,6 +121,61 @@ public enum PropertyContractCatalog {
         }
     }
 
+    /// Returns whether a present semantic value can be changed by one of the
+    /// targeted structured controls without guessing or replacing an
+    /// unsupported source shape. Empty values remain editable so the
+    /// researcher can repair or remove them; validation still rejects saving
+    /// an invalid nonempty-property candidate.
+    public static func supportsTargetedStructuredEditing(
+        _ value: YAMLValue,
+        as kind: PropertyValueKind
+    ) -> Bool {
+        switch kind {
+        case .text, .date, .choice:
+            guard case .string(let text) = value else { return false }
+            return isStructurallySafeText(text, allowsNewlines: false)
+        case .multilineText:
+            guard case .string(let text) = value else { return false }
+            return isStructurallySafeText(text, allowsNewlines: true)
+        case .number:
+            if case .integer = value { return true }
+            if case .double = value { return true }
+            return false
+        case .boolean:
+            if case .boolean = value { return true }
+            return false
+        case .tags, .textList:
+            guard case .array(let values) = value else { return false }
+            return values.allSatisfy {
+                guard case .string(let text) = $0 else { return false }
+                return isStructurallySafeText(text, allowsNewlines: false)
+            }
+        case .mapping:
+            if case .object = value { return true }
+            return false
+        case .creatorList:
+            guard case .array(let entries) = value else { return false }
+            let personKeys: Set<String> = [
+                "family", "given", "suffix", "non_dropping_particle", "dropping_particle",
+            ]
+            return entries.allSatisfy { entry in
+                guard case .object(let members) = entry else { return false }
+                let keys = Set(members.keys)
+                if keys.contains("literal") {
+                    guard keys == ["literal"], case .string(let text)? = members["literal"] else {
+                        return false
+                    }
+                    return isStructurallySafeText(text, allowsNewlines: false)
+                }
+                return keys.isSubset(of: personKeys)
+                    && members.values.allSatisfy {
+                        guard case .string(let text) = $0 else { return false }
+                        return isStructurallySafeText(text, allowsNewlines: false)
+                    }
+            }
+        }
+    }
+
     /// Validates a parsed document without changing its exact source or
     /// reconstructing YAML. Unknown YAML remains authored custom source.
     public static func validate(
@@ -366,6 +421,10 @@ public enum PropertyContractCatalog {
     private static func isSourceSafeText(_ text: String, allowsNewlines: Bool) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
+        return isStructurallySafeText(text, allowsNewlines: allowsNewlines)
+    }
+
+    private static func isStructurallySafeText(_ text: String, allowsNewlines: Bool) -> Bool {
         return text.unicodeScalars.allSatisfy { scalar in
             if scalar == "\n" || scalar == "\r" { return allowsNewlines }
             return !CharacterSet.controlCharacters.contains(scalar)

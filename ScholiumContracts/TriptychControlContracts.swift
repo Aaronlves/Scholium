@@ -543,6 +543,7 @@ public enum TriptychControlError: LocalizedError, Sendable {
     case settingsCorrupted
     case settingsNeedsReview(String)
     case settingsRevisionConflict
+    case controlFileCommitUncertain(String)
     case invalidZoteroBindings
     case zoteroBindingsRevisionConflict
     case invalidIdentities
@@ -568,6 +569,8 @@ public enum TriptychControlError: LocalizedError, Sendable {
             return "The current-schema portable Triptych settings need review before managed creation can continue: \(reason)"
         case .settingsRevisionConflict:
             return "The Triptych settings changed after they were loaded. Reload the saved settings before trying again."
+        case .controlFileCommitUncertain(let reason):
+            return "Scholium could not prove the final state of a portable control-file replacement. Reread the authoritative file before retrying: \(reason)"
         case .invalidZoteroBindings:
             return "The portable Zotero bindings are missing, damaged, or use an unsupported schema."
         case .zoteroBindingsRevisionConflict:
