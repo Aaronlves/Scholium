@@ -26,8 +26,11 @@ export interface EditorLinkCompletionCandidate {
   insertion: string;
   detail: string;
   path: string;
+  displayText?: string;
   isAmbiguous: boolean;
 }
+
+export type EditorLinkCompletionKind = "wikilink" | "analysisReference";
 
 interface SourceRange {
   readonly from: number;
@@ -39,13 +42,18 @@ interface InputSuggestionOptions {
   dialect(): MarkdownEditingDialect | null;
   isComposing(): boolean;
   protectedRanges(state: EditorState): readonly SourceRange[];
-  requestLinkCompletions(requestID: string, query: string): void;
+  requestLinkCompletions(
+    requestID: string,
+    kind: EditorLinkCompletionKind,
+    query: string,
+  ): void;
   didApply(undoLabel: string): void;
 }
 
 export interface EditorInputSuggestionsController {
   readonly extension: Extension;
   readonly wikilinkCompletionSource: CompletionSource;
+  readonly analysisReferenceCompletionSource: CompletionSource;
   readonly slashCompletionSource: CompletionSource;
   readonly calloutCompletionSource: CompletionSource;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
@@ -53,6 +61,7 @@ export interface EditorInputSuggestionsController {
 
 type SuggestionType =
   | "scholium-note"
+  | "scholium-analysis-reference"
   | "scholium-callout-role"
   | "scholium-command-callout"
   | "scholium-command-date"
@@ -65,6 +74,7 @@ type SuggestionType =
 
 const suggestionSymbolByType: Record<SuggestionType, WebSystemSymbolKey> = {
   "scholium-note": "doc-text",
+  "scholium-analysis-reference": "doc-text",
   "scholium-callout-role": "text-quote",
   "scholium-command-callout": "text-quote",
   "scholium-command-date": "calendar",
@@ -294,7 +304,8 @@ function applyWikilinkCandidate(
       && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
       closingLength += 1;
     }
-    const insert = `${candidate.insertion}]]`;
+    const display = candidate.displayText ? `|${candidate.displayText}` : "";
+    const insert = `${candidate.insertion}${display}]]`;
     view.dispatch({
       changes: {from, to: to + closingLength, insert},
       selection: {anchor: from + insert.length},
@@ -307,6 +318,25 @@ function applyWikilinkCandidate(
   };
 }
 
+function applyAnalysisReferenceCandidate(
+  candidate: EditorLinkCompletionCandidate,
+  didApply: (undoLabel: string) => void,
+): NonNullable<Completion["apply"]> {
+  return (view, completion, from, to) => {
+    const display = candidate.displayText ? `|${candidate.displayText}` : "";
+    const insert = `[[${candidate.insertion}${display}]]`;
+    view.dispatch({
+      changes: {from, to, insert},
+      selection: {anchor: from + insert.length},
+      annotations: [
+        pickedCompletion.of(completion),
+        Transaction.userEvent.of("input.complete.scholium.analysis-reference"),
+      ],
+    });
+    didApply("Insert Analysis Reference");
+  };
+}
+
 function validLinkCandidate(value: unknown): value is EditorLinkCompletionCandidate {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<EditorLinkCompletionCandidate>;
@@ -314,6 +344,7 @@ function validLinkCandidate(value: unknown): value is EditorLinkCompletionCandid
     && typeof candidate.insertion === "string"
     && typeof candidate.detail === "string"
     && typeof candidate.path === "string"
+    && (candidate.displayText === undefined || typeof candidate.displayText === "string")
     && typeof candidate.isAmbiguous === "boolean";
 }
 
@@ -353,7 +384,7 @@ export function createEditorInputSuggestions(
       context.addEventListener("abort", cancel, {onDocChange: true});
       const timeout = globalThis.setTimeout(cancel, 3_000);
       pendingLinkQueries.set(requestID, {resolve, timeout});
-      options.requestLinkCompletions(requestID, typed);
+      options.requestLinkCompletions(requestID, "wikilink", typed);
     });
     return candidates.then((resolved) => ({
       from,
@@ -362,9 +393,53 @@ export function createEditorInputSuggestions(
         .slice(0, 100)
         .map((candidate): Completion => ({
           label: candidate.label,
-          detail: candidate.path,
+          detail: candidate.detail,
           type: "scholium-note" satisfies SuggestionType,
           apply: applyWikilinkCandidate(candidate, options.didApply),
+        })),
+      filter: false,
+    }));
+  };
+
+  const analysisReferenceCompletionSource: CompletionSource = (
+    context: CompletionContext,
+  ) => {
+    if (!isLiveSuggestionContext(options, context.state)) return null;
+    const line = context.state.doc.lineAt(context.pos);
+    const scanFrom = Math.max(line.from, context.pos - 512);
+    const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
+    const match = /(^|[\s([{])@([^\n@|\]]{0,510})$/u.exec(beforeCursor);
+    if (!match) return null;
+    const typed = match[2];
+    const from = scanFrom + match.index + match[1].length;
+    if (positionIsProtected(options, context.state, from)) return null;
+
+    const requestID = boundedUUID();
+    const candidates = new Promise<EditorLinkCompletionCandidate[]>((resolve) => {
+      const cancel = () => {
+        const pending = pendingLinkQueries.get(requestID);
+        if (!pending) return;
+        pendingLinkQueries.delete(requestID);
+        globalThis.clearTimeout(pending.timeout);
+        resolve([]);
+      };
+      context.addEventListener("abort", cancel, {onDocChange: true});
+      const timeout = globalThis.setTimeout(cancel, 3_000);
+      pendingLinkQueries.set(requestID, {resolve, timeout});
+      options.requestLinkCompletions(requestID, "analysisReference", typed);
+    });
+    return candidates.then((resolved) => ({
+      from,
+      options: resolved
+        .filter((candidate) => !candidate.isAmbiguous
+          && candidate.insertion.length > 0
+          && Boolean(candidate.displayText))
+        .slice(0, 100)
+        .map((candidate): Completion => ({
+          label: candidate.label,
+          detail: candidate.detail,
+          type: "scholium-analysis-reference" satisfies SuggestionType,
+          apply: applyAnalysisReferenceCandidate(candidate, options.didApply),
         })),
       filter: false,
     }));
@@ -426,7 +501,12 @@ export function createEditorInputSuggestions(
 
   return {
     extension: autocompletion({
-      override: [calloutCompletionSource, wikilinkCompletionSource, slashCompletionSource],
+      override: [
+        calloutCompletionSource,
+        wikilinkCompletionSource,
+        analysisReferenceCompletionSource,
+        slashCompletionSource,
+      ],
       activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
       maxRenderedOptions: 7,
       icons: false,
@@ -434,6 +514,7 @@ export function createEditorInputSuggestions(
       addToOptions: [{render: suggestionSymbol, position: 20}],
     }),
     wikilinkCompletionSource,
+    analysisReferenceCompletionSource,
     slashCompletionSource,
     calloutCompletionSource,
     resolveLinkCompletionQuery(requestID: string, value: unknown) {

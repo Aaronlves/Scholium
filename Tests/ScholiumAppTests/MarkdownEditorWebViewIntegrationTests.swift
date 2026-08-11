@@ -4288,7 +4288,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     mode: sourceBox.mode,
                     presentationCSS: sourceBox.presentationCSS,
                     userCSS: sourceBox.userCSS,
-                    linkCompletionQuery: { _ in [] },
+                    linkCompletionQuery: { _, _ in [] },
                     linkPreviews: linkPreviews,
                     initialScrollFraction: 0,
                     initialScrollAnchor: sourceBox.scrollAnchor,

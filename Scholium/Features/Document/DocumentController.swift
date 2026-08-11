@@ -263,6 +263,7 @@ final class DocumentController: ObservableObject {
     }
 
     func editorLinkCompletions(
+        kind: EditorLinkCompletionKind,
         matching query: String,
         sourcePath: String,
         currentVaultID: UUID,
@@ -274,6 +275,7 @@ final class DocumentController: ObservableObject {
             generation: graphGeneration
         )
         return (try? await linkCompletionIndex.query(
+            kind: kind,
             query,
             sourcePath: sourcePath,
             currentVaultID: currentVaultID,

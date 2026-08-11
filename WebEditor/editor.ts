@@ -3076,8 +3076,8 @@ const inputSuggestions = createEditorInputSuggestions({
   dialect: () => editingDialect,
   isComposing: () => editor.composing,
   protectedRanges: protectedCommandRanges,
-  requestLinkCompletions: (requestID, query) => {
-    post({type: "linkCompletionQuery", requestID, query});
+  requestLinkCompletions: (requestID, completionKind, query) => {
+    post({type: "linkCompletionQuery", requestID, completionKind, query});
   },
   didApply: (undoLabel) => {
     lastUndoLabel = undoLabel;

@@ -1774,6 +1774,7 @@ struct NoteContentView: View {
 
     @MainActor
     private func queryEditorLinkCompletions(
+        _ kind: EditorLinkCompletionKind,
         _ query: String
     ) async -> [EditorLinkCompletion] {
         guard let currentVaultID = state.currentVaultID,
@@ -1782,6 +1783,7 @@ struct NoteContentView: View {
             return []
         }
         return await controller.editorLinkCompletions(
+            kind: kind,
             matching: query,
             sourcePath: note.relativePath,
             currentVaultID: currentVaultID,

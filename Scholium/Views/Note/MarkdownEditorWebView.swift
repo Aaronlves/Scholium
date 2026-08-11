@@ -11,7 +11,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let mode: MarkdownEditorMode
     let presentationCSS: String
     let userCSS: String
-    let linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
+    let linkCompletionQuery: @MainActor (
+        EditorLinkCompletionKind,
+        String
+    ) async -> [EditorLinkCompletion]
     let linkPreviews: [DocumentLinkPreview]
     let initialScrollFraction: Double
     let initialScrollAnchor: EditorScrollAnchor?
@@ -247,7 +250,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
         var onRequestFind: (DocumentFindShortcut) -> Void
-        var linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
+        var linkCompletionQuery: @MainActor (
+            EditorLinkCompletionKind,
+            String
+        ) async -> [EditorLinkCompletion]
         var onLinkActivation: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
@@ -278,7 +284,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestFind: @escaping (DocumentFindShortcut) -> Void,
-            linkCompletionQuery: @escaping @MainActor (String) async -> [EditorLinkCompletion],
+            linkCompletionQuery: @escaping @MainActor (
+                EditorLinkCompletionKind,
+                String
+            ) async -> [EditorLinkCompletion],
             onLinkActivation: @escaping (String) -> Void,
             onScrollFractionChange: @escaping (Double) -> Void,
             onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
@@ -375,6 +384,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 guard validEnvelope(payload),
                       let requestID = payload.requestID,
                       UUID(uuidString: requestID) != nil,
+                      let completionKind = payload.completionKind,
                       let query = payload.query,
                       query.utf16.count <= 512 else { return }
                 let requestedDocumentID = documentID
@@ -391,20 +401,24 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                             self.linkCompletionQueryTaskID = nil
                         }
                     }
-                    let candidates = await linkCompletionQuery(query)
+                    let candidates = await linkCompletionQuery(completionKind, query)
                     guard !Task.isCancelled,
                           requestedDocumentID == documentID,
                           requestedFingerprint == startingFingerprint,
                           requestedVersion == lastDocumentVersion,
                           webView.navigationDelegate === self else { return }
                     let payload = candidates.prefix(100).map { candidate in
-                        [
+                        var value = [
                             "label": candidate.label,
                             "insertion": candidate.insertion,
                             "detail": candidate.detail,
                             "path": candidate.path,
                             "isAmbiguous": candidate.isAmbiguous,
                         ] as [String: Any]
+                        if let displayText = candidate.displayText {
+                            value["displayText"] = displayText
+                        }
+                        return value
                     }
                     _ = try? await webView.callAsyncJavaScript(
                         "window.scholiumEditor.resolveLinkCompletionQuery(requestID, candidates)",

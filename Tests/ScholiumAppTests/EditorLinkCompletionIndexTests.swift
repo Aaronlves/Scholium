@@ -18,6 +18,7 @@ struct EditorLinkCompletionIndexTests {
         await index.replace(notes: notes, generation: 7)
 
         let results = try await index.query(
+            kind: .wikilink,
             "Foo",
             sourcePath: "Folder/Source.md",
             currentVaultID: firstVault,
@@ -39,9 +40,9 @@ struct EditorLinkCompletionIndexTests {
             note(vaultID: vaultID, path: "中文/价值.md", title: "价值理论"),
         ], generation: 3)
 
-        #expect(try await index.query("cafe", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
-        #expect(try await index.query("istanbul", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
-        #expect(try await index.query("价值", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
+        #expect(try await index.query(kind: .wikilink, "cafe", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
+        #expect(try await index.query(kind: .wikilink, "istanbul", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
+        #expect(try await index.query(kind: .wikilink, "价值", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
     }
 
     @Test("Top-K is globally ordered, input-order independent, bounded, and generation-safe")
@@ -54,6 +55,7 @@ struct EditorLinkCompletionIndexTests {
         await index.replace(notes: Array(notes.reversed()), generation: 9)
 
         let reversed = try await index.query(
+            kind: .wikilink,
             "Item",
             sourcePath: "Source.md",
             currentVaultID: vaultID,
@@ -61,6 +63,7 @@ struct EditorLinkCompletionIndexTests {
             limit: 1_000
         )
         let stale = try await index.query(
+            kind: .wikilink,
             "Item",
             sourcePath: "Source.md",
             currentVaultID: vaultID,
@@ -71,6 +74,7 @@ struct EditorLinkCompletionIndexTests {
             generation: 10
         )
         let rotated = try await index.query(
+            kind: .wikilink,
             "Item",
             sourcePath: "Source.md",
             currentVaultID: vaultID,
@@ -95,6 +99,7 @@ struct EditorLinkCompletionIndexTests {
         await index.replace(notes: notes, generation: 1)
 
         let result = try await index.query(
+            kind: .wikilink,
             "Same",
             sourcePath: "Source.md",
             currentVaultID: vaultID,
@@ -105,21 +110,100 @@ struct EditorLinkCompletionIndexTests {
         #expect(result.map(\.path) == ["Topics/Able/Same.md"])
     }
 
+    @Test("Alias matches preserve the canonical target and insert the selected display alias")
+    func aliasInsertion() async throws {
+        let vaultID = UUID()
+        let index = EditorLinkCompletionIndex()
+        await index.replace(notes: [
+            note(
+                vaultID: vaultID,
+                path: "Value.md",
+                title: "Axiology",
+                aliases: ["Value Theory"]
+            ),
+        ], generation: 4)
+
+        let aliasResults = try await index.query(
+            kind: .wikilink,
+            "value theory",
+            sourcePath: "Source.md",
+            currentVaultID: vaultID,
+            generation: 4
+        )
+        let alias = try #require(aliasResults.first)
+        #expect(alias.insertion == "Value")
+        #expect(alias.displayText == "Value Theory")
+        #expect(alias.label == "Value Theory")
+
+        let canonicalResults = try await index.query(
+            kind: .wikilink,
+            "axiology",
+            sourcePath: "Source.md",
+            currentVaultID: vaultID,
+            generation: 4
+        )
+        let canonical = try #require(canonicalResults.first)
+        #expect(canonical.displayText == nil)
+    }
+
+    @Test("Analysis references search only Analysis academic fields")
+    func analysisReferences() async throws {
+        let analysisVaultID = UUID()
+        let topicVaultID = UUID()
+        let index = EditorLinkCompletionIndex()
+        await index.replace(notes: [
+            note(
+                vaultID: analysisVaultID,
+                vaultName: "Analyses",
+                role: .sourceCorpus,
+                path: "What We Owe.md",
+                title: "What We Owe to Each Other",
+                authors: ["T. M. Scanlon"],
+                publicationDate: "1998-01-01"
+            ),
+            note(
+                vaultID: topicVaultID,
+                path: "Scanlon.md",
+                title: "Scanlon"
+            ),
+        ], generation: 5)
+
+        let results = try await index.query(
+            kind: .analysisReference,
+            "Scanlon 1998",
+            sourcePath: "Draft.md",
+            currentVaultID: analysisVaultID,
+            generation: 5
+        )
+        let result = try #require(results.first)
+        #expect(results.count == 1)
+        #expect(result.insertion == "What We Owe")
+        #expect(result.displayText == "T. M. Scanlon 1998")
+        #expect(result.detail.contains("What We Owe to Each Other"))
+    }
+
     private func note(
         vaultID: UUID,
         vaultName: String = "Topics",
+        role: VaultRole = .topicKnowledge,
         path: String,
-        title: String
+        title: String,
+        aliases: [String] = [],
+        authors: [String] = [],
+        publicationDate: String? = nil
     ) -> WorkspaceCatalogNote {
         WorkspaceCatalogNote(
             reference: VaultNoteReference(
                 vaultID: vaultID,
                 vaultName: vaultName,
-                vaultRole: .topicKnowledge,
+                vaultRole: role,
                 relativePath: path,
                 stableNoteID: UUID().uuidString
             ),
             title: title,
+            aliases: aliases,
+            authors: authors,
+            publicationDate: publicationDate,
             fingerprint: DocumentFingerprint(content: "# \(title)\n"),
             validationWarnings: []
         )

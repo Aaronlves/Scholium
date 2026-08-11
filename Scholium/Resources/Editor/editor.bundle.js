@@ -21040,7 +21040,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 12;
+  var EDITOR_PROTOCOL_VERSION = 13;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -31373,6 +31373,7 @@ ${fence}
   // input-suggestions.ts
   var suggestionSymbolByType = {
     "scholium-note": "doc-text",
+    "scholium-analysis-reference": "doc-text",
     "scholium-callout-role": "text-quote",
     "scholium-command-callout": "text-quote",
     "scholium-command-date": "calendar",
@@ -31566,7 +31567,8 @@ ${fence}
       while (closingLength < 2 && view.state.sliceDoc(to + closingLength, to + closingLength + 1) === "]") {
         closingLength += 1;
       }
-      const insert2 = `${candidate.insertion}]]`;
+      const display = candidate.displayText ? `|${candidate.displayText}` : "";
+      const insert2 = `${candidate.insertion}${display}]]`;
       view.dispatch({
         changes: { from, to: to + closingLength, insert: insert2 },
         selection: { anchor: from + insert2.length },
@@ -31578,10 +31580,25 @@ ${fence}
       didApply("Insert Wikilink");
     };
   }
+  function applyAnalysisReferenceCandidate(candidate, didApply) {
+    return (view, completion, from, to) => {
+      const display = candidate.displayText ? `|${candidate.displayText}` : "";
+      const insert2 = `[[${candidate.insertion}${display}]]`;
+      view.dispatch({
+        changes: { from, to, insert: insert2 },
+        selection: { anchor: from + insert2.length },
+        annotations: [
+          pickedCompletion.of(completion),
+          Transaction.userEvent.of("input.complete.scholium.analysis-reference")
+        ]
+      });
+      didApply("Insert Analysis Reference");
+    };
+  }
   function validLinkCandidate(value) {
     if (!value || typeof value !== "object") return false;
     const candidate = value;
-    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && typeof candidate.isAmbiguous === "boolean";
+    return typeof candidate.label === "string" && typeof candidate.insertion === "string" && typeof candidate.detail === "string" && typeof candidate.path === "string" && (candidate.displayText === void 0 || typeof candidate.displayText === "string") && typeof candidate.isAmbiguous === "boolean";
   }
   function suggestionSymbol(completion) {
     const key = suggestionSymbolByType[completion.type];
@@ -31611,15 +31628,50 @@ ${fence}
         context.addEventListener("abort", cancel, { onDocChange: true });
         const timeout = globalThis.setTimeout(cancel, 3e3);
         pendingLinkQueries.set(requestID, { resolve, timeout });
-        options.requestLinkCompletions(requestID, typed);
+        options.requestLinkCompletions(requestID, "wikilink", typed);
       });
       return candidates.then((resolved) => ({
         from,
         options: resolved.filter((candidate) => !candidate.isAmbiguous && candidate.insertion.length > 0).slice(0, 100).map((candidate) => ({
           label: candidate.label,
-          detail: candidate.path,
+          detail: candidate.detail,
           type: "scholium-note",
           apply: applyWikilinkCandidate(candidate, options.didApply)
+        })),
+        filter: false
+      }));
+    };
+    const analysisReferenceCompletionSource = (context) => {
+      if (!isLiveSuggestionContext(options, context.state)) return null;
+      const line = context.state.doc.lineAt(context.pos);
+      const scanFrom = Math.max(line.from, context.pos - 512);
+      const beforeCursor = context.state.doc.sliceString(scanFrom, context.pos);
+      const match = /(^|[\s([{])@([^\n@|\]]{0,510})$/u.exec(beforeCursor);
+      if (!match) return null;
+      const typed = match[2];
+      const from = scanFrom + match.index + match[1].length;
+      if (positionIsProtected(options, context.state, from)) return null;
+      const requestID = boundedUUID();
+      const candidates = new Promise((resolve) => {
+        const cancel = () => {
+          const pending = pendingLinkQueries.get(requestID);
+          if (!pending) return;
+          pendingLinkQueries.delete(requestID);
+          globalThis.clearTimeout(pending.timeout);
+          resolve([]);
+        };
+        context.addEventListener("abort", cancel, { onDocChange: true });
+        const timeout = globalThis.setTimeout(cancel, 3e3);
+        pendingLinkQueries.set(requestID, { resolve, timeout });
+        options.requestLinkCompletions(requestID, "analysisReference", typed);
+      });
+      return candidates.then((resolved) => ({
+        from,
+        options: resolved.filter((candidate) => !candidate.isAmbiguous && candidate.insertion.length > 0 && Boolean(candidate.displayText)).slice(0, 100).map((candidate) => ({
+          label: candidate.label,
+          detail: candidate.detail,
+          type: "scholium-analysis-reference",
+          apply: applyAnalysisReferenceCandidate(candidate, options.didApply)
         })),
         filter: false
       }));
@@ -31675,7 +31727,12 @@ ${fence}
     };
     return {
       extension: autocompletion({
-        override: [calloutCompletionSource, wikilinkCompletionSource, slashCompletionSource],
+        override: [
+          calloutCompletionSource,
+          wikilinkCompletionSource,
+          analysisReferenceCompletionSource,
+          slashCompletionSource
+        ],
         activateOnCompletion: (completion) => completion.type === "scholium-command-callout",
         maxRenderedOptions: 7,
         icons: false,
@@ -31683,6 +31740,7 @@ ${fence}
         addToOptions: [{ render: suggestionSymbol, position: 20 }]
       }),
       wikilinkCompletionSource,
+      analysisReferenceCompletionSource,
       slashCompletionSource,
       calloutCompletionSource,
       resolveLinkCompletionQuery(requestID, value) {
@@ -36828,8 +36886,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     dialect: () => editingDialect,
     isComposing: () => editor.composing,
     protectedRanges: protectedCommandRanges,
-    requestLinkCompletions: (requestID, query) => {
-      post({ type: "linkCompletionQuery", requestID, query });
+    requestLinkCompletions: (requestID, completionKind, query) => {
+      post({ type: "linkCompletionQuery", requestID, completionKind, query });
     },
     didApply: (undoLabel) => {
       lastUndoLabel = undoLabel;

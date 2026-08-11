@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 12;
+export const EDITOR_PROTOCOL_VERSION = 13;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 

@@ -45,14 +45,14 @@ function controller(
   mode: EditorMode = "livePreview",
   protectedRanges: readonly {from: number; to: number}[] = [],
 ) {
-  let request: {id: string; query: string} | null = null;
+  let request: {id: string; kind: string; query: string} | null = null;
   const undoLabels: string[] = [];
   const suggestions = createEditorInputSuggestions({
     mode: () => mode,
     dialect: () => dialect,
     isComposing: () => false,
     protectedRanges: () => protectedRanges,
-    requestLinkCompletions: (id, query) => { request = {id, query}; },
+    requestLinkCompletions: (id, kind, query) => { request = {id, kind, query}; },
     didApply: (label) => { undoLabels.push(label); },
   });
   return {suggestions, request: () => request, undoLabels};
@@ -176,6 +176,7 @@ describe("Edit input suggestions", () => {
       new CompletionContext(state, 4, false),
     ) as Promise<CompletionResult>;
     const query = request();
+    expect(query?.kind).toBe("wikilink");
     expect(query?.query).toBe("价值");
     suggestions.resolveLinkCompletionQuery(query!.id, [{
       label: "价值理论",
@@ -186,7 +187,7 @@ describe("Edit input suggestions", () => {
     }]);
     const result = await pending;
     expect(result.options.map((option) => option.label)).toEqual(["价值理论"]);
-    expect(result.options[0].detail).toBe("Topics/价值理论.md");
+    expect(result.options[0].detail).toBe("Topics — 价值理论.md");
 
     const mutable = mutableView(state);
     const apply = result.options[0].apply;
@@ -196,6 +197,62 @@ describe("Edit input suggestions", () => {
     }
     expect(mutable.state().doc.toString()).toBe("[[价值理论]]");
     expect(undoLabels).toEqual(["Insert Wikilink"]);
+  });
+
+  it("inserts a stored alias as canonical target plus display text", async () => {
+    const {suggestions, request} = controller();
+    const text = "[[Value Theory]]";
+    const state = EditorState.create({doc: text, selection: {anchor: 14}});
+    const pending = suggestions.wikilinkCompletionSource(
+      new CompletionContext(state, 14, false),
+    ) as Promise<CompletionResult>;
+    const query = request()!;
+    suggestions.resolveLinkCompletionQuery(query.id, [{
+      label: "Value Theory",
+      insertion: "Axiology",
+      detail: "Axiology — Topics/Value.md",
+      path: "Topics/Value.md",
+      displayText: "Value Theory",
+      isAmbiguous: false,
+    }]);
+    const result = await pending;
+    const mutable = mutableView(state);
+    const apply = result.options[0].apply;
+    if (typeof apply === "function") {
+      apply(mutable.view, result.options[0], result.from, 14);
+    }
+    expect(mutable.state().doc.toString()).toBe("[[Axiology|Value Theory]]");
+  });
+
+  it("turns an Analysis-only at completion into a neutral Wikilink reference", async () => {
+    const {suggestions, request, undoLabels} = controller();
+    const text = "According to @Scanlon";
+    const state = EditorState.create({doc: text, selection: {anchor: text.length}});
+    const pending = suggestions.analysisReferenceCompletionSource(
+      new CompletionContext(state, text.length, false),
+    ) as Promise<CompletionResult>;
+    const query = request()!;
+    expect(query.kind).toBe("analysisReference");
+    expect(query.query).toBe("Scanlon");
+    suggestions.resolveLinkCompletionQuery(query.id, [{
+      label: "T. M. Scanlon 1998",
+      insertion: "What We Owe",
+      detail: "What We Owe to Each Other — T. M. Scanlon — 1998",
+      path: "Analyses/What We Owe.md",
+      displayText: "T. M. Scanlon 1998",
+      isAmbiguous: false,
+    }]);
+    const result = await pending;
+    const mutable = mutableView(state);
+    const apply = result.options[0].apply;
+    if (typeof apply === "function") {
+      apply(mutable.view, result.options[0], result.from, text.length);
+    }
+    expect(mutable.state().doc.toString())
+      .toBe("According to [[What We Owe|T. M. Scanlon 1998]]");
+    expect(undoLabels).toEqual(["Insert Analysis Reference"]);
+    expect(synchronousResult(suggestions.analysisReferenceCompletionSource, "mail@example"))
+      .toBeNull();
   });
 
   it("keeps completion active inside an empty auto-closed Wikilink", async () => {
