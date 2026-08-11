@@ -343,7 +343,10 @@ def verify(output: Path) -> dict[str, object]:
         tree_rows.append(f"{entry['vault']}:{entry['relative_path']}:{entry['sha256']}")
 
     actual_paths = {
-        path.relative_to(output) for path in output.rglob("*.md") if path.is_file()
+        path.relative_to(output)
+        for _, vault_directory, _, _ in ROLE_SPECS
+        for path in (output / vault_directory).rglob("*.md")
+        if path.is_file()
     }
     if actual_paths != listed_paths:
         missing = sorted(str(path) for path in listed_paths - actual_paths)

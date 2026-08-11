@@ -113,7 +113,12 @@ import {
 } from "./accessibility";
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
 import {createMarkdownEditor} from "./bootstrap";
-import {editorPerformanceSamples, recordEditorMetric, sampleEditorMemory} from "./performance";
+import {
+  editorPerformanceSamples,
+  recordEditorMetric,
+  sampleEditorMemory,
+  scheduleAfterNextPaint,
+} from "./performance";
 import {createPreviewPopoverController, populatePreviewDocument} from "./preview-popover";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
@@ -164,6 +169,7 @@ const editorStartupStartedAt = performance.now();
 interface ScholiumWindow extends Window {
   webkit?: { messageHandlers?: { scholium?: { postMessage(message: unknown): void } } };
   scholiumEditor?: ScholiumEditorAPI;
+  scholiumPerformanceMetric?: "editor_key_to_paint";
 }
 interface SourceDelta { from: number; to: number; insert: string }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
@@ -2589,7 +2595,8 @@ function mergedChangedLineRanges(transaction: Transaction) {
 }
 
 let dirty = false;
-let pendingKeyStartedAt: number | null = null;
+let pendingKeyDownStartedAt: number | null = null;
+let pendingCommittedKeyStartedAt: number | null = null;
 let pendingInputStartedAt: {startedAt: number; composing: boolean} | null = null;
 let forceNextInteractionContext = true;
 let lastInteractionAvailabilitySignature: string | null = null;
@@ -2618,25 +2625,18 @@ const stateReporter = EditorView.updateListener.of((update) => {
   if (!update.docChanged && !update.selectionSet) return;
 
   if (update.docChanged) {
-    if (pendingInputStartedAt !== null) {
-      const input = pendingInputStartedAt;
-      pendingInputStartedAt = null;
+    const input = pendingInputStartedAt;
+    pendingInputStartedAt = null;
+    if (input !== null) {
       recordEditorMetric("input-to-state", input.startedAt, {
         composing: input.composing ? 1 : 0,
         documentLength: update.state.doc.length,
       });
-      window.requestAnimationFrame(() => recordEditorMetric("input-to-paint", input.startedAt, {
-        composing: input.composing ? 1 : 0,
-        documentLength: update.state.doc.length,
-      }));
     }
-    if (pendingKeyStartedAt !== null) {
-      const keyStartedAt = pendingKeyStartedAt;
-      pendingKeyStartedAt = null;
+    const keyStartedAt = pendingCommittedKeyStartedAt;
+    pendingCommittedKeyStartedAt = null;
+    if (keyStartedAt !== null) {
       recordEditorMetric("key-to-state", keyStartedAt, {documentLength: update.state.doc.length});
-      window.requestAnimationFrame(() => recordEditorMetric("key-to-paint", keyStartedAt, {
-        documentLength: update.state.doc.length,
-      }));
     }
     const baseGeneration = documentVersion;
     documentVersion += 1;
@@ -2668,6 +2668,47 @@ const stateReporter = EditorView.updateListener.of((update) => {
       changeCount: mirrorChanges.length,
       documentLength: update.state.doc.length,
     });
+    // Register the paint endpoint before handing the delta to native
+    // reconciliation. Messages remain ordered because documentChanged posts in
+    // this task and the performance sample cannot post until a later frame and
+    // task.
+    if (input !== null || keyStartedAt !== null) {
+      const paintedSessionID = bridgeSessionID;
+      const paintedDocumentID = bridgeDocumentID;
+      const paintedFingerprint = bridgeFingerprint;
+      const paintedDocumentVersion = documentVersion;
+      const paintedDocumentLength = update.state.doc.length;
+      scheduleAfterNextPaint(() => {
+        if (input !== null) {
+          recordEditorMetric("input-to-paint", input.startedAt, {
+            composing: input.composing ? 1 : 0,
+            documentLength: paintedDocumentLength,
+          });
+        }
+        if (keyStartedAt !== null) {
+          recordEditorMetric("key-to-paint", keyStartedAt, {
+            documentLength: paintedDocumentLength,
+          });
+        }
+        // CodeMirror may commit deletion directly from keydown, while macOS
+        // text services may commit text without a DOM keydown. Prefer the
+        // physical-key boundary and fall back to non-composing beforeinput.
+        const committedKeyStartedAt = keyStartedAt
+          ?? (input !== null && !input.composing ? input.startedAt : null);
+        if (committedKeyStartedAt !== null
+            && webkitWindow.scholiumPerformanceMetric === "editor_key_to_paint"
+            && bridgeSessionID === paintedSessionID
+            && bridgeDocumentID === paintedDocumentID
+            && bridgeFingerprint === paintedFingerprint
+            && documentVersion === paintedDocumentVersion) {
+          post({
+            type: "performanceSample",
+            metric: "editor_key_to_paint",
+            durationMilliseconds: Math.max(0, performance.now() - committedKeyStartedAt),
+          });
+        }
+      });
+    }
     post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
   }
 
@@ -3093,9 +3134,25 @@ const editorExtensions = [
       }),
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
-editor.contentDOM.addEventListener("keydown", () => { pendingKeyStartedAt = performance.now(); }, {capture: true});
+editor.contentDOM.addEventListener("keydown", (event) => {
+  const key = event.key;
+  const canCommitText = !event.isComposing
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.altKey
+    && (key.length === 1 || key === "Backspace" || key === "Delete" || key === "Enter");
+  pendingKeyDownStartedAt = canCommitText ? performance.now() : null;
+  pendingCommittedKeyStartedAt = pendingKeyDownStartedAt;
+}, {capture: true});
+editor.contentDOM.addEventListener("keyup", () => {
+  pendingKeyDownStartedAt = null;
+  pendingCommittedKeyStartedAt = null;
+}, {capture: true});
 editor.contentDOM.addEventListener("beforeinput", (event) => {
   const input = event as InputEvent;
+  pendingCommittedKeyStartedAt = input.isComposing || editor.composing
+    ? null
+    : pendingKeyDownStartedAt;
   pendingInputStartedAt = {
     startedAt: performance.now(),
     composing: input.isComposing || editor.composing,

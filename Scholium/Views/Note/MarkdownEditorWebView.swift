@@ -6,6 +6,7 @@ import WebKit
 struct MarkdownEditorWebView: NSViewRepresentable {
     @ObservedObject var session: MarkdownEditorSession
     let documentID: String
+    let performanceDocumentID: String
     let source: String
     let mode: MarkdownEditorMode
     let presentationCSS: String
@@ -24,6 +25,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             session: session,
+            performanceDocumentID: performanceDocumentID,
             onDocumentActivity: onDocumentActivity,
             onRequestSave: onRequestSave,
             onRequestSearch: onRequestSearch,
@@ -57,6 +59,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
+        if PerformanceProbe.shared.measuresEditorKeyToPaint {
+            contentController.addUserScript(WKUserScript(
+                source: "window.scholiumPerformanceMetric = 'editor_key_to_paint';",
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            ))
+        }
         if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
             contentController.addUserScript(WKUserScript(
                 source: ScholiumMathAssets.runtimeJavaScript,
@@ -100,6 +109,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.linkPreviews = linkPreviews
         context.coordinator.initialScrollFraction = initialScrollFraction
         context.coordinator.initialScrollAnchor = initialScrollAnchor
+        context.coordinator.performanceDocumentID = performanceDocumentID
         session.setPresentationCSS(presentationCSS)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
@@ -121,6 +131,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
         }
+        context.coordinator.performanceDocumentID = performanceDocumentID
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
         context.coordinator.onRequestSearch = onRequestSearch
@@ -241,6 +252,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var documentID = ""
+        var performanceDocumentID: String
         var source = ""
         /// Diff cache for the last SwiftUI input delivered to the session.
         /// It never supplies initialization or recovery state and never writes
@@ -262,6 +274,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         init(
             session: MarkdownEditorSession,
+            performanceDocumentID: String,
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestSearch: @escaping () -> Void,
@@ -271,6 +284,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onScrollAnchorChange: @escaping (EditorScrollAnchor) -> Void
         ) {
             self.session = session
+            self.performanceDocumentID = performanceDocumentID
             self.onDocumentActivity = onDocumentActivity
             self.onRequestSave = onRequestSave
             self.onRequestSearch = onRequestSearch
@@ -338,6 +352,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "documentChanged":
                 guard validEnvelope(payload, allowingFutureVersion: true) else { return }
                 applyEditorChanges(from: payload)
+            case "performanceSample":
+                guard validEnvelope(payload),
+                      payload.metric == "editor_key_to_paint",
+                      let duration = payload.durationMilliseconds,
+                      duration.isFinite,
+                      duration > 0 else { return }
+                PerformanceProbe.shared.recordEditorKeyToPaint(
+                    documentID: performanceDocumentID,
+                    durationMilliseconds: duration
+                )
             case "requestSave":
                 guard validEnvelope(payload) else { return }
                 onRequestSave()

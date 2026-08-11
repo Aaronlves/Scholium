@@ -11,6 +11,8 @@ final class PerformanceProbe {
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
         case coldReadActivation = "cold_read_activation"
+        case editorKeyToPaint = "editor_key_to_paint"
+        case editorModeTransition = "editor_mode_transition"
         case editorRetainedMemory = "editor_retained_memory"
     }
 
@@ -29,13 +31,26 @@ final class PerformanceProbe {
     }
 
     private let configuration: Configuration?
+    private let now: () -> UInt64
     private var searchStartNanoseconds: UInt64?
     private var readStartNanoseconds: UInt64?
+    private var editorModeTransition: (
+        documentID: String,
+        mode: MarkdownEditorMode,
+        startNanoseconds: UInt64,
+        bridgeStartedNanoseconds: UInt64?,
+        acknowledgedNanoseconds: UInt64?
+    )?
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
 
-    private init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+    init(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleID: String? = Bundle.main.bundleIdentifier,
+        now: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+    ) {
+        self.now = now
         let requestedSampleCount = environment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"]
             .flatMap(Int.init) ?? 1
         guard let rawURL = environment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"],
@@ -43,7 +58,7 @@ final class PerformanceProbe {
               let metric = Metric(rawValue: rawMetric),
               let rawRunID = environment["SCHOLIUM_PERFORMANCE_RUN_ID"],
               Self.isSafeRunID(rawRunID),
-              let bundleID = Bundle.main.bundleIdentifier,
+              let bundleID,
               let resultURL = Self.safeResultURL(rawURL, runID: rawRunID, bundleID: bundleID),
               let rawSample = environment["SCHOLIUM_PERFORMANCE_SAMPLE"],
               let sample = Int(rawSample),
@@ -68,6 +83,15 @@ final class PerformanceProbe {
     }
 
     var isEnabled: Bool { configuration != nil }
+    var measuresWarmLibraryLaunch: Bool {
+        configuration?.metric == .warmLibraryLaunch
+    }
+    var measuresEditorModeTransition: Bool {
+        configuration?.metric == .editorModeTransition
+    }
+    var measuresEditorKeyToPaint: Bool {
+        configuration?.metric == .editorKeyToPaint
+    }
 
     func beginSearch(query: String) {
         guard let configuration, configuration.metric == .indexedSearch else { return }
@@ -78,7 +102,7 @@ final class PerformanceProbe {
         }
         guard searchIsArmed else { return }
         searchIsArmed = false
-        searchStartNanoseconds = DispatchTime.now().uptimeNanoseconds
+        searchStartNanoseconds = now()
     }
 
     func markSearchResultsReady(query: String, resultCount: Int) {
@@ -99,7 +123,7 @@ final class PerformanceProbe {
         }
         guard readIsArmed else { return }
         readIsArmed = false
-        readStartNanoseconds = DispatchTime.now().uptimeNanoseconds
+        readStartNanoseconds = now()
     }
 
     func markReadReady(documentID: String) {
@@ -115,6 +139,115 @@ final class PerformanceProbe {
         default:
             return
         }
+    }
+
+    func beginEditorModeTransition(
+        documentID: String,
+        mode: MarkdownEditorMode
+    ) {
+        guard let configuration,
+              configuration.metric == .editorModeTransition,
+              documentID == configuration.expectedDocument,
+              recordedSampleCount < configuration.sampleCount else {
+            editorModeTransition = nil
+            return
+        }
+        editorModeTransition = (
+            documentID: documentID,
+            mode: mode,
+            startNanoseconds: now(),
+            bridgeStartedNanoseconds: nil,
+            acknowledgedNanoseconds: nil
+        )
+    }
+
+    func markEditorModeBridgeStarted(mode: MarkdownEditorMode) {
+        guard let configuration,
+              configuration.metric == .editorModeTransition,
+              var transition = editorModeTransition,
+              transition.mode == mode,
+              transition.bridgeStartedNanoseconds == nil else { return }
+        transition.bridgeStartedNanoseconds = now()
+        editorModeTransition = transition
+    }
+
+    func markEditorModeAcknowledged(
+        documentID: String,
+        mode: MarkdownEditorMode
+    ) {
+        guard let configuration,
+              configuration.metric == .editorModeTransition,
+              documentID == configuration.expectedDocument,
+              var transition = editorModeTransition,
+              transition.documentID == documentID,
+              transition.mode == mode,
+              transition.acknowledgedNanoseconds == nil else { return }
+        transition.acknowledgedNanoseconds = now()
+        editorModeTransition = transition
+    }
+
+    /// Completes only after the acknowledged editor mode has crossed the
+    /// native layout boundary that exposes it to accessibility. The bridge
+    /// acknowledgment alone is intentionally not a visible-latency endpoint.
+    func markEditorModeVisible(
+        documentID: String,
+        mode: MarkdownEditorMode
+    ) {
+        guard let configuration,
+              configuration.metric == .editorModeTransition,
+              documentID == configuration.expectedDocument,
+              let transition = editorModeTransition,
+              transition.documentID == documentID,
+              transition.mode == mode,
+              let bridgeStarted = transition.bridgeStartedNanoseconds,
+              let acknowledged = transition.acknowledgedNanoseconds else { return }
+        let completed = now()
+        guard bridgeStarted >= transition.startNanoseconds,
+              acknowledged >= bridgeStarted,
+              completed >= acknowledged else { return }
+        editorModeTransition = nil
+        record(
+            startNanoseconds: transition.startNanoseconds,
+            observedCount: nil,
+            observedMode: mode == .livePreview ? "live_preview" : "source",
+            completedNanoseconds: completed,
+            phaseDurations: [
+                "acknowledged_duration_ms": Double(
+                    acknowledged - transition.startNanoseconds
+                ) / 1_000_000,
+                "bridge_started_duration_ms": Double(
+                    bridgeStarted - transition.startNanoseconds
+                ) / 1_000_000,
+                "bridge_roundtrip_duration_ms": Double(
+                    acknowledged - bridgeStarted
+                ) / 1_000_000,
+                "layout_duration_ms": Double(completed - acknowledged) / 1_000_000,
+            ]
+        )
+    }
+
+    func recordEditorKeyToPaint(
+        documentID: String,
+        durationMilliseconds: Double
+    ) {
+        guard let configuration,
+              configuration.metric == .editorKeyToPaint,
+              documentID == configuration.expectedDocument,
+              durationMilliseconds.isFinite,
+              durationMilliseconds > 0,
+              durationMilliseconds < 600_000,
+              recordedSampleCount < configuration.sampleCount else { return }
+        let completed = now()
+        let object: [String: Any] = [
+            "schema": "scholium-performance-v1",
+            "run_id": configuration.runID,
+            "sample": configuration.firstSample + recordedSampleCount,
+            "metric": configuration.metric.rawValue,
+            "duration_ms": durationMilliseconds,
+            "completed_uptime_ns": completed,
+        ]
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount += 1
     }
 
     func markLibraryReady(noteCount: Int) {
@@ -147,10 +280,16 @@ final class PerformanceProbe {
         recordedSampleCount += 1
     }
 
-    private func record(startNanoseconds: UInt64, observedCount: Int?) {
+    private func record(
+        startNanoseconds: UInt64,
+        observedCount: Int?,
+        observedMode: String? = nil,
+        completedNanoseconds: UInt64? = nil,
+        phaseDurations: [String: Double] = [:]
+    ) {
         guard let configuration,
               recordedSampleCount < configuration.sampleCount else { return }
-        let end = DispatchTime.now().uptimeNanoseconds
+        let end = completedNanoseconds ?? now()
         guard end >= startNanoseconds else { return }
         let elapsed = end - startNanoseconds
         guard elapsed < 600_000_000_000 else { return }
@@ -163,6 +302,8 @@ final class PerformanceProbe {
             "completed_uptime_ns": end,
         ]
         if let observedCount { object["observed_count"] = observedCount }
+        if let observedMode { object["observed_mode"] = observedMode }
+        object.merge(phaseDurations) { _, phaseDuration in phaseDuration }
         guard append(object, to: configuration.resultURL) else { return }
         recordedSampleCount += 1
         searchStartNanoseconds = nil

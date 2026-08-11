@@ -5660,7 +5660,11 @@ struct FrontendArchitectureTests {
             userCSS: ""
         )
 
-        #expect(readHTML.contains("Return saves · Shift-Return adds a line · Escape cancels"))
+        #expect(
+            readBridge.contains(
+                "localized('Return saves · Shift-Return adds a line · Escape cancels')"
+            )
+        )
         #expect(readBridge.contains("commentSubmitted"))
         #expect(readBridge.contains("Comment for"))
         #expect(readHTML.contains(#"class="scholium-selection-actions""#))
@@ -5669,7 +5673,8 @@ struct FrontendArchitectureTests {
             readHTML.contains(
                 #"id="comment-selection" class="scholium-selection-control""#
             ))
-        #expect(readHTML.contains(#"class="scholium-selection-label">Comment"#))
+        #expect(readHTML.contains(#"class="scholium-selection-label"></span>"#))
+        #expect(readBridge.contains("textContent = localized('Comment')"))
         #expect(readBridge.contains("scholium-selection-keyboard-focus"))
         #expect(readBridge.contains("ResolveCommentSubmission"))
         #expect(readBridge.contains("Your Comment is still here"))
@@ -5714,7 +5719,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             selectionActionsSource.contains(
-                #"addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash")"#
+                #"addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash")"#
             ))
         #expect(selectionActionsSource.contains("systemSymbolElement"))
         #expect(selectionActionsSource.contains("synchronizeKeyboardFocusFeedback"))
@@ -5764,7 +5769,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(!editorSource.contains("commentSubmitted"))
         #expect(!editorSource.contains("showCommentComposer"))
-        #expect(selectionActionsSource.contains(#"wikiLabel.textContent = "Wiki""#))
+        #expect(selectionActionsSource.contains(#"wikiLabel.textContent = localized("Wiki")"#))
         #expect(!editorMenuSource.contains("Comment on Selection"))
         #expect(!editorMenuSource.contains("commentSubmitted"))
         #expect(!editorMenuSource.contains("onRequestComment"))

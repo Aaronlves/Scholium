@@ -4283,6 +4283,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             MarkdownEditorWebView(
                     session: session,
                     documentID: documentID,
+                    performanceDocumentID: documentID,
                     source: sourceBox.source,
                     mode: sourceBox.mode,
                     presentationCSS: sourceBox.presentationCSS,

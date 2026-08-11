@@ -1118,8 +1118,18 @@ struct NoteContentView: View {
                 PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
             }
         }
-        .onChange(of: editorSession.presentedMode) { _, _ in
+        .onChange(of: editorSession.presentedMode) { _, presentedMode in
             focusEditorIfPresented()
+            if let presentedMode {
+                PerformanceProbe.shared.markEditorModeAcknowledged(
+                    documentID: note.relativePath,
+                    mode: presentedMode
+                )
+                PerformanceProbe.shared.markEditorModeReady(
+                    documentID: note.relativePath,
+                    mode: presentedMode
+                )
+            }
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
@@ -1457,6 +1467,7 @@ struct NoteContentView: View {
         AnyView(MarkdownEditorWebView(
             session: editorSession,
             documentID: editorSession.bridgeDocumentID,
+            performanceDocumentID: note.relativePath,
             source: editingSource,
             mode: documentSession.retainedEditorMode,
             presentationCSS: documentPresentationCSS,
@@ -1517,6 +1528,24 @@ struct NoteContentView: View {
             bodyEditor
         }
         .scholiumSurface(.document)
+        .overlay(alignment: .topLeading) {
+            if PerformanceProbe.shared.measuresEditorModeTransition,
+               isEditing,
+               editorSession.isLoaded,
+               let presentedMode = editorSession.presentedMode,
+               presentedMode == documentSession.activeEditorMode {
+                PerformanceReadyBoundary(
+                    generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
+                ) {
+                    PerformanceProbe.shared.markEditorModeVisible(
+                        documentID: note.relativePath,
+                        mode: presentedMode
+                    )
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+        }
     }
 
     @ViewBuilder

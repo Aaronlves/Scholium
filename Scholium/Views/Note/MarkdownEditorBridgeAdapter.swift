@@ -41,6 +41,8 @@ struct EditorBridgeMessage: Codable {
     let clientX: Double?
     let clientY: Double?
     let mode: MarkdownEditorMode?
+    let metric: String?
+    let durationMilliseconds: Double?
 }
 
 @MainActor

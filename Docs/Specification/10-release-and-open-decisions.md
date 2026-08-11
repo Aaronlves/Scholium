@@ -93,9 +93,9 @@ Performance evidence has three noninterchangeable classes:
 Only the third class can satisfy G7. Debug builds, unit tests, internal timers,
 human stopwatches, and partial memory series are never substitutes.
 
-The candidate Beta thresholds remain subject to explicit release-owner
-approval. Once approved, use nearest-rank p95 over exactly 30 valid samples
-after five excluded warm-ups:
+The non-Editor candidate Beta thresholds remain subject to explicit
+release-owner approval. If approved, use nearest-rank p95 over exactly 30 valid
+samples after five excluded warm-ups:
 
 | Interaction | Candidate p95 limit |
 | --- | ---: |
@@ -104,13 +104,26 @@ after five excluded warm-ups:
 | Warm Review-note activation to interactive rendering | `< 300 ms` |
 | Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
 
-Editor candidate limits remain separately unapproved: `< 100 ms` for key to
-first painted edit, visible Edit/Source transition, and cached preview;
-`< 300 ms` for warm Edit activation; `< 1,000 ms` for application-cold
-5,000-word Edit activation; and `< 5 ms` for one visible-range projection.
-Continuous scrolling must add no uninterrupted Editor task longer than one
-display refresh interval, and neither native nor Web UI work may add an
-uninterrupted task over 100 ms.
+The release owner has approved these Editor Beta limits. Each p95 uses the same
+five-warm-up/30-retained-sample nearest-rank protocol; every retained sample
+must also remain below its maximum:
+
+| Editor interaction | p95 limit | Every-sample maximum |
+| --- | ---: | ---: |
+| Committed key input to first painted edit | `< 100 ms` | `< 200 ms` |
+| Edit/Source request to visible and accessible requested mode | `< 100 ms` | `< 200 ms` |
+| Cached-preview request to visible and accessible preview | `< 100 ms` | `< 200 ms` |
+| Warm Edit activation to visible, accessible, interactive editor | `< 200 ms` | `< 300 ms` |
+| Application-cold 5,000-word Edit activation to visible, accessible, interactive editor | `< 750 ms` | `< 1,000 ms` |
+| One visible-range projection | `< 3 ms` | `< 5 ms` |
+
+An interaction that cannot complete within 100 ms must expose nonblocking,
+accessible progress feedback within `< 100 ms`; feedback does not convert an
+unfinished interaction into a latency pass. During input and scrolling,
+Editor work on the main thread targets `< 5 ms` per callback and must yield
+before one display-refresh interval. A product-gate report that omits any
+approved Editor latency metric, its every-sample maximum, correctness, or the
+retained-memory series fails closed.
 
 RDF-1 is the frozen deterministic 800-Note fixture for Library, Search, Review,
 Edit, large CJK source, folders, links, and malformed-frontmatter coverage.
@@ -199,7 +212,8 @@ Only questions that can still change the target remain here:
 
 - promote or revise provisional interface metrics only after the complete
   adaptation and human visual-acceptance matrix; and
-- approve the packaged G7 p95 thresholds before they become release limits.
+- approve the remaining non-Editor packaged G7 p95 thresholds before they
+  become release limits.
 
 Resolving an item updates its owning canonical section and removes the item
 from this list in the same patch.

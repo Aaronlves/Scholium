@@ -13,9 +13,14 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
         case coldReadActivation = "cold_read_activation"
+        case editorKeyToPaint = "editor_key_to_paint"
+        case editorModeTransition = "editor_mode_transition"
 
         var usesBatchedWarmProcess: Bool {
-            self == .indexedSearch || self == .warmReadActivation
+            self == .indexedSearch
+                || self == .warmReadActivation
+                || self == .editorKeyToPaint
+                || self == .editorModeTransition
         }
     }
 
@@ -207,6 +212,11 @@ final class ScholiumPerformanceUITests: XCTestCase {
             url: URL(fileURLWithPath: applicationPath, isDirectory: true)
         )
         application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        if metric == .editorModeTransition {
+            application.launchArguments.append(
+                "--scholium-performance-editor-mode-notifications"
+            )
+        }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
@@ -235,6 +245,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
+        case .editorKeyToPaint, .editorModeTransition:
+            application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
+            application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
+            application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
+        }
+        if metric == .editorKeyToPaint {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"] = "300000"
         }
         return application
     }
@@ -250,6 +267,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
             setupDocument = "Cluster-00/analysis-note-001.md"
         case .warmReadActivation:
             setupDocument = "Cluster-01/analysis-note-002.md"
+        case .editorKeyToPaint, .editorModeTransition:
+            setupDocument = "Long/Canonical-5000-Word-Work.md"
         case .warmLibraryLaunch, .coldReadActivation:
             return
         }
@@ -259,6 +278,37 @@ final class ScholiumPerformanceUITests: XCTestCase {
         )
         if metric == .warmReadActivation {
             try prepareWarmReadLibraryTargets(in: application)
+            return
+        }
+        if metric == .editorModeTransition || metric == .editorKeyToPaint {
+            application.typeKey("r", modifierFlags: [.command])
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            XCTAssertTrue(
+                waitUntil(timeout: 20) {
+                    (modeMenu.value as? String) == "Edit"
+                        && application.descendants(matching: .any)[
+                            "Markdown editor, Edit mode"
+                        ].exists
+                },
+                "The Editor transition setup did not reach accessible Edit mode."
+            )
+            if metric == .editorKeyToPaint {
+                let editor = application.descendants(matching: .any)[
+                    "Markdown editor, Edit mode"
+                ]
+                XCTAssertTrue(editor.waitForExistence(timeout: 10))
+                let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+                XCTAssertTrue(
+                    waitUntil(timeout: 10) {
+                        keyboardFocus.evaluate(with: editor)
+                    },
+                    "The key-to-paint setup did not receive the Editor's native focus handoff."
+                )
+                application.typeKey(.end, modifierFlags: [.command])
+            }
             return
         }
         application.typeKey("f", modifierFlags: [.command])
@@ -348,6 +398,50 @@ final class ScholiumPerformanceUITests: XCTestCase {
                     "Sample \(sample): navigation did not restore the alternate warm document."
                 )
             }
+        case .editorKeyToPaint:
+            let editor = application.descendants(matching: .any)[
+                "Markdown editor, Edit mode"
+            ]
+            XCTAssertTrue(editor.waitForExistence(timeout: 10))
+            if sample.isMultiple(of: 2) {
+                application.typeKey("x", modifierFlags: [])
+            } else {
+                application.typeKey(.delete, modifierFlags: [])
+            }
+            let recordPublished = waitUntil(timeout: 30) {
+                self.lineCount(at: resultsPath) == sample + 1
+            }
+            if !recordPublished {
+                XCTFail(
+                    "Sample \(sample): painted key input did not publish exactly one performance record."
+                )
+                return
+            }
+        case .editorModeTransition:
+            let sourceMode = sample.isMultiple(of: 2)
+            requestMeasuredEditorMode(
+                sourceMode ? "Source" : "Edit"
+            )
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): Editor mode transition did not publish exactly one performance record."
+            )
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            let accessibilityLabel = sourceMode
+                ? "Markdown source editor"
+                : "Markdown editor, Edit mode"
+            XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            XCTAssertTrue(
+                waitUntil(timeout: 20) {
+                    (modeMenu.value as? String) == (sourceMode ? "Source" : "Edit")
+                        && application.descendants(matching: .any)[accessibilityLabel].exists
+                },
+                "Sample \(sample): the measured Editor mode was not accessible after publication."
+            )
         }
     }
 
@@ -410,6 +504,20 @@ final class ScholiumPerformanceUITests: XCTestCase {
         } while Date() < deadline
         XCTFail(
             "The \(title) editor surface for \(documentID) did not become accessible."
+        )
+    }
+
+    @MainActor
+    private func requestMeasuredEditorMode(
+        _ title: String
+    ) {
+        let notificationName = title == "Edit"
+            ? "com.scholium.qa.performance-editor-mode.live-preview"
+            : "com.scholium.qa.performance-editor-mode.source"
+        XCTAssertEqual(
+            notify_post(notificationName),
+            UInt32(NOTIFY_STATUS_OK),
+            "The measured QA Editor mode request could not be posted."
         )
     }
 

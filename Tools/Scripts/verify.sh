@@ -249,6 +249,7 @@ fi
 if rg -n --glob '*.swift' \
   --glob '!**/Services/WindowSession.swift' \
   --glob '!**/Services/PerformanceProbe.swift' \
+  --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
   --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
   --glob '!**/Styling/ScholiumCalloutStyles.swift' \
@@ -343,6 +344,7 @@ PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
 python3 "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py" self-test
 python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
+python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test
 "${ROOT}/Tools/Scripts/verify-editor-bundle.sh"
 "${ROOT}/Tools/Scripts/verify-rdf1-fixture.sh"
 # Xcode beta's Swift Testing helper can crash while multiple test products

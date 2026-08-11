@@ -158,6 +158,7 @@ struct ArchitectureBoundaryTests {
         let allowedFiles: Set<String> = [
             "Scholium/Services/WindowSession.swift",
             "Scholium/Services/PerformanceProbe.swift",
+            "Scholium/Localization/WebKitInterfaceLocalization.swift",
             "Scholium/Views/Note/MarkdownEditorWebView.swift",
             "Scholium/Styling/ScholiumWebFonts.swift",
             "Scholium/Styling/ScholiumCalloutStyles.swift",

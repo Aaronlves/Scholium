@@ -409,7 +409,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let transitionID = UUID()
         let intendedModeTransitionEpoch = modeTransitionEpoch
         modeTransitionID = transitionID
-        modeTransitionTask = Task { [weak self, weak webView] in
+        modeTransitionTask = Task.immediate { [weak self, weak webView] in
             guard let self, let webView else { return }
             defer {
                 if self.modeTransitionID == transitionID {
@@ -426,6 +426,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                           self.webView === webView else { return }
                     let targetMode = self.pendingMode
                     guard self.presentedMode != targetMode else { return }
+                    PerformanceProbe.shared.markEditorModeBridgeStarted(
+                        mode: targetMode
+                    )
                     // A mode request is idempotent and source-preserving. One
                     // bounded retry safely resolves a transient transport
                     // failure or an acknowledgement lost after the Web side
@@ -443,10 +446,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
                           self.webView === webView else { return }
                     self.updatePresentation { $0.complete(targetMode) }
-                    PerformanceProbe.shared.markEditorModeReady(
-                        documentID: self.documentID,
-                        mode: targetMode
-                    )
                     if self.pendingMode == targetMode { return }
                 }
             } catch is CancellationError {
@@ -1190,10 +1189,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     }
                 }
                 updatePresentation { $0.complete(appliedMode) }
-                PerformanceProbe.shared.markEditorModeReady(
-                    documentID: documentID,
-                    mode: appliedMode
-                )
                 flushPendingLine()
             } catch {
                 guard intendedRequestEpoch == requestEpoch,
@@ -1309,7 +1304,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             webView: webView
         )
         let trackingID = UUID()
-        let task = Task { @MainActor in
+        let task = Task.immediate { @MainActor in
             await previous?.value
             guard isCurrentIdentity(context) else {
                 throw SessionError.staleRequest

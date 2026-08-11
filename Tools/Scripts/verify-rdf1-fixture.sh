@@ -12,7 +12,11 @@ trap cleanup EXIT
 
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIRST}"
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIRST}" --verify
+mkdir -p "${FIRST}/.scholium/practices"
+cp "${ROOT}/ScholiumCore/Resources/Skills/Philosophical Practices/Reviewer.md" \
+  "${FIRST}/.scholium/practices/Reviewer.md"
+python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIRST}" --verify
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${SECOND}"
 cmp "${FIRST}/manifest.json" "${SECOND}/manifest.json"
 
-print "RDF-1 generation is deterministic and its manifest verifies."
+print "RDF-1 generation is deterministic; portable control Markdown does not alter its Note inventory."

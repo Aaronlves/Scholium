@@ -6,15 +6,15 @@
 
 **Environment:** 2026-08-11, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on the managed YAML/Properties and
-Agent-creation integration. It validated the closed documentation manifests
-and shipped resources; TypeScript checking and 187 Web editor tests;
+The latest complete repository gate passed on the Editor performance-evidence
+integration. It validated the closed documentation manifests and shipped
+resources; TypeScript checking and 190 Web editor tests;
 reproducible editor, mathematics, and Mermaid bundles; 485 Core tests plus 3
 Search performance tests; 130 Contracts tests; 217 Application tests, 10 bridge
-tests, and 1 serialized architecture measurement; 574 App tests; 7 executable
+tests, and 1 serialized architecture measurement; 581 App tests; 7 executable
 Research Action CLI lifecycles; the sandboxed local bridge probe;
 symbol/import/residue guards; and Debug and Release builds. The Release build
-completed in 206.59 seconds.
+completed in 174.97 seconds.
 
 This proves deterministic repository conformance for that checkout and toolchain.
 It is not a packaged release, complete UI-suite result, human accessibility
@@ -200,6 +200,31 @@ The latest isolated Search v7 regression report recorded a cold rebuild of
 21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
 144,310,272 bytes on the deterministic 800-Note fixture. These are regression
 measurements, not the packaged G7 gate or approved release limits.
+
+On 2026-08-11, two scenario-only Debug QA samples initially reported 155.325
+and 160.609 ms, but the driver queried the accessibility tree before the app
+published its latency record and therefore interfered with the measured path.
+After removing that observer effect, the same focused RDF-1 journey measured
+88.346 ms. Immediate main-actor bridge-task startup then produced one 78.073 ms
+sample: 1.589 ms request-to-bridge, 73.362 ms bridge roundtrip, and 3.123 ms
+acknowledgement-to-layout. A subsequent focused Debug run retained ten samples
+after three warm-ups: 80.350 ms p50, 102.832 ms nearest-rank p95/maximum, and
+82.172 ms mean. Correctness and the `< 200 ms` maximum passed, while the
+`< 100 ms` p95 limit was missed by 2.832 ms; the largest bridge roundtrip was
+91.231 ms. A later scenario-only Debug QA run exercised one inserted character
+and one deletion through the connected key-to-paint collector. The samples were
+18 and 8 ms (8 ms p50, 18 ms nearest-rank p95/maximum, 13 ms mean); each record
+was emitted only after the matching delta generation was accepted and the Web
+surface crossed an animation-frame opportunity plus the following task. This
+two-sample result confirms collector reachability and sequence correctness, not
+packaged Beta acceptance. The last complete retained-memory run kept one exact
+app, GPU, networking, and two
+Web Content processes through 50 mode transitions; 51 RSS samples converged
+with 0.213% final-tail growth. Its report correctly remained `not_applicable`
+for G7 and historically identified five missing required Editor collectors.
+Key-to-paint is now connected; cached preview, warm Edit, cold Edit, and
+visible-range projection remain unimplemented. No real research vault or
+research text entered the evidence.
 
 ## Upgrade and distribution evidence
 

@@ -3224,6 +3224,10 @@ final class WindowModel: ObservableObject {
         guard session.editorSession.context?.composing != true else { return }
 
         guard let editorMode = mode.editorMode else { return }
+        PerformanceProbe.shared.beginEditorModeTransition(
+            documentID: descriptor.reference.relativePath,
+            mode: editorMode
+        )
         session.switchEditorMode(to: editorMode)
         documentController.rememberPresentationMode(mode)
     }

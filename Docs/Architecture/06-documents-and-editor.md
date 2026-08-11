@@ -301,31 +301,35 @@ Its dirty-path publication changes only when the path changes. Document toolbar
 navigation consumes the fingerprint-bound heading projection already carried
 by `WorkspaceNoteSnapshot`; no SwiftUI `body` reparses Markdown.
 
-The retained-memory scenario uses an app-owned, run-specific handshake rather
-than inferring readiness from XCUITest timing. The initial editor load and each
-requested Live Preview/Source transition append one progress record only after
-the typed JavaScript bridge acknowledges the mode. The external sampler
-attributes and records the complete app/WebKit process set, appends an
-acknowledgment, and the UI driver advances only after that acknowledgment.
-Its QA-only mode-request transport updates the active retained document
-session directly so repeated transitions cannot be coalesced by SwiftUI's
-one-shot presentation request; the normal WebView update, CodeMirror
-transition, and bridge acknowledgment remain the measured implementation.
+The retained-memory journey uses a run-specific app handshake. Initial load
+and each typed Live Preview/Source transition publish progress after bridge
+acknowledgement; the external sampler records the attributed app/WebKit process
+set and acknowledges before the driver advances. Its QA transport addresses
+the retained session directly to prevent SwiftUI request coalescing. A separate
+attached-WKWebView journey drives 50 transitions and checks the dirty buffer,
+accessibility chrome, and diagnostic ring; it cannot establish memory
+convergence or visible p95.
 
-The retained-state correctness layer is deliberately separate from that
-external authority. A real WKWebView integration journey drives 50 typed
-Source/Live mode transitions through one attached session and requires the
-dirty buffer, accessibility mode chrome, and bounded performance ring to remain
-coherent. It does not infer process-memory convergence or visible p95 latency.
+The QA-only Edit/Source collector excludes Command-R and completes when matching
+bridge acknowledgement crosses layout to the accessible surface. It records
+bridge phases, layout, total, sample, and mode; mismatch writes nothing, and a
+focused scenario never weakens the complete gate.
+
+Key-to-paint uses `keydown`, falling back to non-composing `beforeinput`.
+Registered before native delta delivery, it publishes after frame-plus-task for
+the native-accepted session/generation. Note and bridge identities stay
+separate.
 
 Performance verification keeps target, mechanism, and evidence separate.
-`Tools/Scripts/generate-rdf1.py` owns the deterministic RDF-1 bytes and
-manifest; repository verification regenerates and verifies it beneath ignored
-`.build/` state. `Tools/Scripts/run-performance-benchmarks.sh` owns the external
-visible-boundary driver, five-warm-up/30-sample protocol, strict result
-validation, scenario-versus-gate mode, and output inventory. Gate mode accepts
-only the packaged app, requires release-owner threshold approval, and verifies
-`ScholiumBuildProvenance.plist` against a clean exact tag and commit.
+`Tools/Scripts/generate-rdf1.py` owns manifest-listed RDF-1 Note bytes;
+verification regenerates them under `.build/` and rechecks the three vaults
+after runs. Authorized portable control remains outside that Note inventory.
+`Tools/Scripts/run-performance-benchmarks.sh` owns visible-boundary driving,
+the five-warm-up/30-sample protocol, validation, evidence class, and inventory.
+Gate mode accepts only the packaged app, approved thresholds, and build
+provenance matching a clean exact tag and commit. The summarizer fails a gate
+when any required Editor metric or complete series is missing; scenario reports
+expose omissions without claiming a gate result.
 
 Metric runs use isolated app state and metric-specific processes. Warm Search
 and Review reuse their post-setup process; launch and cold Review relaunch per

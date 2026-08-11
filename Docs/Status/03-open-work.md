@@ -50,8 +50,17 @@
 - Exercise pointer and keyboard behavior for construct-scoped syntax, completed-
   selection toolbar timing, context menus, Callouts, footnotes, lists, tables,
   suggestions, previews, and source-return navigation.
-- Measure retained editor memory and visible latency during sustained input and
-  repeated Note/mode switching. Extend shared source-range fixtures before
+- Run the connected Edit/Source request-to-accessible-layout collector against
+  the exact packaged artifact. A corrected focused Debug 3-warm-up/10-sample
+  scenario recorded 80.350 ms p50, 102.832 ms nearest-rank p95/maximum, and
+  82.172 ms mean: it met the Beta `< 200 ms` maximum but exceeded the `< 100 ms`
+  p95 limit by 2.832 ms; the largest bridge roundtrip was 91.231 ms. The
+  connected key-to-paint collector now covers inserted text and deletion; a
+  focused Debug two-sample scenario measured 8 and 18 ms, but is not packaged
+  acceptance. Still implement and verify cached-preview, warm/cold Edit
+  activation, and visible-range projection collectors; measure sustained input
+  across repeated Note/mode switching, and run the complete Editor series on
+  the exact packaged artifact. Extend shared source-range fixtures before
   changing parser or syntax rules.
 - The disposable Debug QA journey now proves direct Edit presentation, exact
   body focus, first-keystroke persistence, and source fidelity with and without
@@ -67,9 +76,11 @@
   remain keyboard and VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
-- Approve packaged performance thresholds, freeze the exact source/artifact and
-  fixture, then run the complete warm-up/sample protocol for Search, large
-  Library, cold start, editor latency, and retained memory.
+- The Editor p95 and every-sample limits are approved. Approve the remaining
+  non-Editor packaged thresholds, finish the missing Editor collectors, freeze
+  the exact source/artifact and fixture, then run the complete warm-up/sample
+  protocol for Search, large Library, cold start, Editor latency, and retained
+  memory.
 
 ## Source coordination, recovery, and external locators
 

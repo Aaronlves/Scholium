@@ -20856,7 +20856,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 10;
+  var EDITOR_PROTOCOL_VERSION = 11;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -30716,6 +30716,11 @@ ${fence}
       }
     }
   }
+  function scheduleAfterNextPaint(callback, requestFrame = window.requestAnimationFrame.bind(window), scheduleTask = (task) => window.setTimeout(task, 0)) {
+    requestFrame(() => {
+      scheduleTask(callback);
+    });
+  }
   function sampleEditorMemory(documentLength) {
     const memory = performance.memory;
     const usedBytes = memory?.usedJSHeapSize;
@@ -35242,7 +35247,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     return ranges;
   }
   var dirty = false;
-  var pendingKeyStartedAt = null;
+  var pendingKeyDownStartedAt = null;
+  var pendingCommittedKeyStartedAt = null;
   var pendingInputStartedAt = null;
   var forceNextInteractionContext = true;
   var lastInteractionAvailabilitySignature = null;
@@ -35264,25 +35270,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     if (update.docChanged) dirty = true;
     if (!update.docChanged && !update.selectionSet) return;
     if (update.docChanged) {
-      if (pendingInputStartedAt !== null) {
-        const input = pendingInputStartedAt;
-        pendingInputStartedAt = null;
+      const input = pendingInputStartedAt;
+      pendingInputStartedAt = null;
+      if (input !== null) {
         recordEditorMetric("input-to-state", input.startedAt, {
           composing: input.composing ? 1 : 0,
           documentLength: update.state.doc.length
         });
-        window.requestAnimationFrame(() => recordEditorMetric("input-to-paint", input.startedAt, {
-          composing: input.composing ? 1 : 0,
-          documentLength: update.state.doc.length
-        }));
       }
-      if (pendingKeyStartedAt !== null) {
-        const keyStartedAt = pendingKeyStartedAt;
-        pendingKeyStartedAt = null;
+      const keyStartedAt = pendingCommittedKeyStartedAt;
+      pendingCommittedKeyStartedAt = null;
+      if (keyStartedAt !== null) {
         recordEditorMetric("key-to-state", keyStartedAt, { documentLength: update.state.doc.length });
-        window.requestAnimationFrame(() => recordEditorMetric("key-to-paint", keyStartedAt, {
-          documentLength: update.state.doc.length
-        }));
       }
       const baseGeneration = documentVersion;
       documentVersion += 1;
@@ -35313,6 +35312,34 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         changeCount: mirrorChanges.length,
         documentLength: update.state.doc.length
       });
+      if (input !== null || keyStartedAt !== null) {
+        const paintedSessionID = bridgeSessionID;
+        const paintedDocumentID = bridgeDocumentID;
+        const paintedFingerprint = bridgeFingerprint;
+        const paintedDocumentVersion = documentVersion;
+        const paintedDocumentLength = update.state.doc.length;
+        scheduleAfterNextPaint(() => {
+          if (input !== null) {
+            recordEditorMetric("input-to-paint", input.startedAt, {
+              composing: input.composing ? 1 : 0,
+              documentLength: paintedDocumentLength
+            });
+          }
+          if (keyStartedAt !== null) {
+            recordEditorMetric("key-to-paint", keyStartedAt, {
+              documentLength: paintedDocumentLength
+            });
+          }
+          const committedKeyStartedAt = keyStartedAt ?? (input !== null && !input.composing ? input.startedAt : null);
+          if (committedKeyStartedAt !== null && webkitWindow.scholiumPerformanceMetric === "editor_key_to_paint" && bridgeSessionID === paintedSessionID && bridgeDocumentID === paintedDocumentID && bridgeFingerprint === paintedFingerprint && documentVersion === paintedDocumentVersion) {
+            post({
+              type: "performanceSample",
+              metric: "editor_key_to_paint",
+              durationMilliseconds: Math.max(0, performance.now() - committedKeyStartedAt)
+            });
+          }
+        });
+      }
       post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
     }
     scheduleEditorInteractionReport();
@@ -35661,11 +35688,19 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     })
   ];
   var editor = createMarkdownEditor(document.getElementById("editor"), editorExtensions);
-  editor.contentDOM.addEventListener("keydown", () => {
-    pendingKeyStartedAt = performance.now();
+  editor.contentDOM.addEventListener("keydown", (event) => {
+    const key = event.key;
+    const canCommitText = !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && (key.length === 1 || key === "Backspace" || key === "Delete" || key === "Enter");
+    pendingKeyDownStartedAt = canCommitText ? performance.now() : null;
+    pendingCommittedKeyStartedAt = pendingKeyDownStartedAt;
+  }, { capture: true });
+  editor.contentDOM.addEventListener("keyup", () => {
+    pendingKeyDownStartedAt = null;
+    pendingCommittedKeyStartedAt = null;
   }, { capture: true });
   editor.contentDOM.addEventListener("beforeinput", (event) => {
     const input = event;
+    pendingCommittedKeyStartedAt = input.isComposing || editor.composing ? null : pendingKeyDownStartedAt;
     pendingInputStartedAt = {
       startedAt: performance.now(),
       composing: input.isComposing || editor.composing

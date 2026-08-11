@@ -12,10 +12,12 @@ SAMPLES=1
 RELAUNCH_COOLDOWN_MS=0
 METRIC_COOLDOWN_SECONDS=0
 MEMORY_WATCH_PID=""
+ONLY_METRIC=""
 usage() {
   cat <<'EOF'
 Usage:
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR [--scenario]
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric NAME
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate
 
 Scenario mode defaults to 0 warm-ups and 1 retained sample per metric and is
@@ -42,6 +44,7 @@ while (( $# > 0 )); do
       ;;
     --warmups) WARMUPS="$2"; shift 2 ;;
     --samples) SAMPLES="$2"; shift 2 ;;
+    --metric) ONLY_METRIC="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) print -u2 "Unknown argument: $1"; usage >&2; exit 64 ;;
   esac
@@ -62,6 +65,38 @@ fi
 if [[ "${MODE}" == product_gate && ( "${WARMUPS}" != 5 || "${SAMPLES}" != 30 ) ]]; then
   print -u2 "A product gate is fixed at 5 warm-ups and 30 retained samples."
   exit 64
+fi
+LATENCY_METRICS=(
+  warm_library_launch
+  indexed_search
+  warm_read_activation
+  cold_read_activation
+  editor_key_to_paint
+  editor_mode_transition
+)
+RUN_MEMORY=1
+if [[ -n "${ONLY_METRIC}" ]]; then
+  [[ "${MODE}" == scenario_only ]] || {
+    print -u2 "A focused metric is available only in scenario mode."
+    exit 64
+  }
+  case "${ONLY_METRIC}" in
+    warm_library_launch|indexed_search|warm_read_activation|cold_read_activation|editor_key_to_paint|editor_mode_transition)
+      LATENCY_METRICS=("${ONLY_METRIC}")
+      RUN_MEMORY=0
+      ;;
+    editor_retained_memory)
+      LATENCY_METRICS=()
+      ;;
+    *)
+      print -u2 "Unknown performance metric: ${ONLY_METRIC}"
+      exit 64
+      ;;
+  esac
+fi
+SUMMARY_METRICS=("${LATENCY_METRICS[@]}")
+if (( RUN_MEMORY )); then
+  SUMMARY_METRICS+=(editor_retained_memory)
 fi
 
 APP="${APP:P}"
@@ -202,11 +237,7 @@ set_test_environment() {
     "${plist}"
 }
 
-for metric in \
-  warm_library_launch \
-  indexed_search \
-  warm_read_activation \
-  cold_read_activation; do
+for metric in "${LATENCY_METRICS[@]}"; do
   results="${RAW}/${metric}.jsonl"
   home="${APP_SCRATCH}/home-${metric}"
   run_file="${DERIVED}/Build/Products/ScholiumPerformance-${metric}.xctestrun"
@@ -238,6 +269,7 @@ done
 # Retained Editor memory is sampled through the exact app originator's launchd
 # service map rather than PPID or process-name matching. The UI journey owns
 # the real mode transitions; the external sampler owns attribution and RSS.
+if (( RUN_MEMORY )); then
 memory_handoff="${RAW}/editor-retained-memory-handoff"
 memory_results="${memory_handoff}/editor_retained_memory.jsonl"
 memory_progress="${memory_handoff}/editor_retained_memory_progress.jsonl"
@@ -285,6 +317,7 @@ fi
 wait "${MEMORY_WATCH_PID}"
 MEMORY_WATCH_PID=""
 cp "${memory_results}" "${RAW}/editor_retained_memory.jsonl"
+fi
 
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   --output "${FIXTURE_COPY}" \
@@ -299,7 +332,8 @@ python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
   --run-id "${RUN_ID}" \
   --warmups "${WARMUPS}" \
   --samples "${SAMPLES}" \
-  --evidence-class "${MODE}"
+  --evidence-class "${MODE}" \
+  --metrics "${SUMMARY_METRICS[@]}"
 
 print "Evidence class: ${MODE}"
 print "Report: ${OUTPUT}/report.json"
