@@ -34464,7 +34464,21 @@
     "Replace" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Replace"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"替换"}}}},
     "Replace All" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Replace All"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全部替换"}}}},
     "Use Selection for Find" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Use Selection for Find"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"使用所选文本查找"}}}},
-    "Whole Word" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Whole Word"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全词匹配"}}}}
+    "Whole Word" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Whole Word"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"全词匹配"}}}},
+    "%@. English words: %lld. Chinese characters: %lld. Characters: %lld." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"%1$@. English words: %2$lld. Chinese characters: %3$lld. Characters: %4$lld."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%1$@。英文词数：%2$lld。汉字数：%3$lld。字符数：%4$lld。"}}}},
+    "Body statistics" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Body statistics"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正文统计"}}}},
+    "Characters %lld" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Characters %lld"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"字符 %lld"}}}},
+    "Chinese %lld" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Chinese %lld"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"汉字 %lld"}}}},
+    "Document Statistics" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Document Statistics"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"文档统计"}}}},
+    "English %lld" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"English %lld"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"英文 %lld"}}}},
+    "Selection" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Selection"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"所选文本"}}}},
+    "Selection statistics" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Selection statistics"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"所选文本统计"}}}},
+    "Spelling and Grammar" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Spelling and Grammar"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"拼写和语法"}}}},
+    "Show Spelling and Grammar" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Show Spelling and Grammar"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"显示拼写和语法"}}}},
+    "Check Document Now" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Check Document Now"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"立即检查文档"}}}},
+    "Check Spelling While Typing" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Check Spelling While Typing"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"输入时检查拼写"}}}},
+    "Check Grammar With Spelling" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Check Grammar With Spelling"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"随拼写检查语法"}}}},
+    "Correct Spelling Automatically" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Correct Spelling Automatically"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"自动更正拼写"}}}}
   },
   "version" : "1.0"
 }

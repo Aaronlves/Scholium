@@ -3048,6 +3048,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == true)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == true)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == true)
+        let spelling = selectedMenu.item(
+            withTitle: ScholiumL10n.string("Spelling and Grammar")
+        )?.submenu
+        #expect(spelling?.item(withTitle: ScholiumL10n.string("Show Spelling and Grammar"))?.action == NSSelectorFromString("showGuessPanel:"))
+        #expect(spelling?.item(withTitle: ScholiumL10n.string("Check Spelling While Typing"))?.action == NSSelectorFromString("toggleContinuousSpellChecking:"))
         #expect(selectedMenu.item(withTitle: "Autofill") == nil)
         #expect(selectedMenu.item(withTitle: "Services") == nil)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Bold")) == nil)

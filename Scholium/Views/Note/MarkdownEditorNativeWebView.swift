@@ -85,6 +85,8 @@ final class WindowAttachedWebView: WKWebView {
             identifier: "selectAll",
             isEnabled: !context.composing
         ))
+        menu.addItem(.separator())
+        menu.addItem(spellingAndGrammarItem())
 
         // System edit actions are always first. Scholium adds only commands
         // whose meaning depends on one collapsed, clicked Edit construct.
@@ -142,6 +144,35 @@ final class WindowAttachedWebView: WKWebView {
         item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.\(identifier)")
         item.target = nil
         item.isEnabled = isEnabled
+        return item
+    }
+
+    private func spellingAndGrammarItem() -> NSMenuItem {
+        let submenu = NSMenu(title: ScholiumL10n.string("Spelling and Grammar"))
+        submenu.autoenablesItems = true
+        let commands: [(String, String)] = [
+            (ScholiumL10n.string("Show Spelling and Grammar"), "showGuessPanel:"),
+            (ScholiumL10n.string("Check Document Now"), "checkSpelling:"),
+            (ScholiumL10n.string("Check Spelling While Typing"), "toggleContinuousSpellChecking:"),
+            (ScholiumL10n.string("Check Grammar With Spelling"), "toggleGrammarChecking:"),
+            (ScholiumL10n.string("Correct Spelling Automatically"), "toggleAutomaticSpellingCorrection:"),
+        ]
+        for (title, selector) in commands {
+            let item = NSMenuItem(
+                title: title,
+                action: NSSelectorFromString(selector),
+                keyEquivalent: ""
+            )
+            item.target = nil
+            submenu.addItem(item)
+        }
+        let item = NSMenuItem(
+            title: ScholiumL10n.string("Spelling and Grammar"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.spellingAndGrammar")
+        item.submenu = submenu
         return item
     }
 

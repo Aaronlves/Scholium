@@ -1094,6 +1094,7 @@ struct ScholiumFocusedEditorActions {
     let findNext: () -> Void
     let findPrevious: () -> Void
     let useSelectionForFind: () -> Void
+    let announceDocumentStatistics: () -> Void
 }
 
 struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
@@ -1230,6 +1231,10 @@ private struct ScholiumCommands: Commands {
                     .disabled(editorActions == nil)
             }
             .disabled(appState?.currentNote == nil)
+            Button("Document Statistics") {
+                editorActions?.announceDocumentStatistics()
+            }
+            .disabled(editorActions == nil || appState?.currentNote == nil)
             Button("Edit Properties…") { appState?.showFrontmatterEditor = true }
                 .disabled(appState?.canEditCurrentNote != true)
         }

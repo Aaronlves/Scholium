@@ -878,6 +878,7 @@ struct NoteContentView: View {
     @State private var noteReviewError: String?
     @State private var noteReviewRequiresReload = false
     @StateObject private var documentFind = DocumentFindPresentationModel()
+    @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
 
     init(
         controller: DocumentController,
@@ -992,6 +993,8 @@ struct NoteContentView: View {
             documentBodySurface
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+
+            DocumentStatisticsStatus(statistics: currentDocumentStatistics)
         }
         .scholiumSurface(.document)
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
@@ -1035,7 +1038,8 @@ struct NoteContentView: View {
                 presentFind: documentFind.present,
                 findNext: documentFind.next,
                 findPrevious: documentFind.previous,
-                useSelectionForFind: useSelectionForDocumentFind
+                useSelectionForFind: useSelectionForDocumentFind,
+                announceDocumentStatistics: announceDocumentStatistics
             )
         ))
         .overlay(alignment: .bottom) {
@@ -1114,6 +1118,7 @@ struct NoteContentView: View {
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
             openRequestedDiscussion(state.requestedDiscussionID)
+            updateReviewDocumentStatistics(selection: nil)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -1125,6 +1130,7 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
+            updateReviewDocumentStatistics(selection: nil)
             documentFind.refresh()
             focusEditorIfPresented()
             if !isEditing,
@@ -1162,6 +1168,7 @@ struct NoteContentView: View {
         .task(id: readProjectionTaskIdentity) {
             failedReadFingerprint = nil
             documentSession.renderedReadReadyFingerprint = ""
+            updateReviewDocumentStatistics(selection: nil)
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint
@@ -1679,6 +1686,7 @@ struct NoteContentView: View {
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
+                updateReviewDocumentStatistics(selection: selection)
             },
             selectionSurfaceIsActive: !isEditing,
             onRenderingFailure: { reason in
@@ -1794,6 +1802,28 @@ struct NoteContentView: View {
 
     private var editorIsComposing: Bool {
         isEditing && editorSession.context?.composing == true
+    }
+
+    private var currentDocumentStatistics: DocumentStatistics {
+        isEditing
+            ? editorSession.documentStatistics
+            : reviewDocumentStatistics.value
+    }
+
+    private func updateReviewDocumentStatistics(
+        selection: MarkdownReviewSelection?
+    ) {
+        reviewDocumentStatistics.update(
+            markdownSource: note.rawContent,
+            revision: noteFingerprint.sha256,
+            selection: selection
+        )
+    }
+
+    private func announceDocumentStatistics() {
+        AccessibilityNotification.Announcement(
+            DocumentStatisticsFormatter.accessibilityValue(currentDocumentStatistics)
+        ).post()
     }
 
     private func handleDocumentFindShortcut(_ shortcut: DocumentFindShortcut) {

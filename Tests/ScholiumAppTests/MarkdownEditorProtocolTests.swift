@@ -359,6 +359,34 @@ struct MarkdownEditorProtocolTests {
         #expect(session.column == 3)
     }
 
+    @MainActor
+    @Test("Editor statistics follow the unsaved selection without publishing cursor movement")
+    func editorStatistics() async throws {
+        let session = MarkdownEditorSession()
+        let source = "Hello world 价值"
+        session.loadDocument(source, documentID: "statistics-test", mode: .livePreview)
+        try await Task.sleep(for: .milliseconds(90))
+        #expect(session.documentStatistics.englishWords == 2)
+        #expect(session.documentStatistics.chineseCharacters == 2)
+        #expect(session.documentStatistics.scope == .body)
+
+        session.updateInteraction(
+            selections: [MarkdownEditorSelectionRange(anchor: 12, head: 14)],
+            line: 1,
+            column: 15,
+            lineCount: 1,
+            documentVersion: 0,
+            context: nil
+        )
+        try await Task.sleep(for: .milliseconds(90))
+        #expect(session.documentStatistics == DocumentStatistics(
+            englishWords: 0,
+            chineseCharacters: 2,
+            characters: 2,
+            scope: .selection
+        ))
+    }
+
     @Test("Semantic scroll anchors are revision-bound and bounded")
     func scrollAnchorValidationAndRoundTrip() throws {
         let anchor = EditorScrollAnchor(
