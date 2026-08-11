@@ -1133,6 +1133,12 @@ struct FrontendArchitectureTests {
             designSystemSource.contains(
                 "ScholiumContentControlButtonFeedbackModifier"
             ))
+        #expect(designSystemSource.contains("let tracksHover: Bool"))
+        #expect(
+            designSystemSource.contains(
+                "let effectiveIsHovering = tracksHover && isHovering"
+            ))
+        #expect(designSystemSource.contains("if tracksHover {"))
         #expect(designSystemSource.contains("ScholiumPointerInteractionReader"))
         #expect(designSystemSource.contains("ScholiumPointerTrackingView"))
         #expect(designSystemSource.contains("override func hitTest"))
@@ -1157,6 +1163,13 @@ struct FrontendArchitectureTests {
                 isFocused: true,
                 increasedContrast: false
             ) == 0.42)
+        #expect(
+            ScholiumContentInteractionSurface.opacity(
+                isHovering: false,
+                isFocused: false,
+                isPressed: true,
+                increasedContrast: false
+            ) == 0.05)
         #expect(
             ScholiumContentInteractionSurface.opacity(
                 isHovering: true,
@@ -1809,12 +1822,24 @@ struct FrontendArchitectureTests {
             ))
         let treeRowEnd = try #require(
             treeRowsSource.range(
-                of: "private struct SidebarNavigationButtonStyle",
+                of: "struct SidebarNoteRow: View",
                 range: treeRowStart.upperBound..<treeRowsSource.endIndex
             ))
-        let treeRowSource = treeRowsSource[
-            treeRowStart.lowerBound..<treeRowEnd.lowerBound
-        ]
+        let treeRowSource = String(
+            treeRowsSource[treeRowStart.lowerBound..<treeRowEnd.lowerBound]
+        )
+        #expect(
+            treeRowSource.components(
+                separatedBy: "ScholiumContentControlButtonStyle("
+            ).count == 3
+        )
+        #expect(
+            treeRowSource.components(
+                separatedBy: "tracksHover: false"
+            ).count == 3
+        )
+        #expect(treeRowSource.contains("in: Rectangle()"))
+        #expect(!treeRowsSource.contains("SidebarNavigationButtonStyle"))
         #expect(treeRowSource.contains("surface: .contextMenu"))
         #expect(treeRowSource.contains("surface: .accessibility"))
         #expect(treeRowSource.contains("noteCommandButton(command"))

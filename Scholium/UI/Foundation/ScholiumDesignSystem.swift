@@ -2515,8 +2515,9 @@ private struct ScholiumContentControlInkModifier: ViewModifier {
 
 /// The shared transient-state owner for custom SwiftUI Buttons. Native Menu
 /// labels use the AppKit tracking adapter below because SwiftUI does not
-/// reliably forward their pointer state; ordinary Buttons stay on SwiftUI's
-/// lightweight hover and ButtonStyle press path.
+/// reliably forward their pointer state. Ordinary Buttons use SwiftUI's
+/// lightweight hover and ButtonStyle press path; native-container call sites
+/// may leave hover to AppKit while retaining the shared press path.
 private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
@@ -2525,24 +2526,33 @@ private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModif
     let isSelected: Bool
     let isFocused: Bool
     let isPressed: Bool
+    let tracksHover: Bool
     let pressedOpacity: Double
     let shape: S
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        let hasTransientEmphasis = isEnabled && (isHovering || isFocused || isPressed)
+        let effectiveIsHovering = tracksHover && isHovering
+        let hasTransientEmphasis =
+            isEnabled && (effectiveIsHovering || isFocused || isPressed)
         let isEmphasized = isActive || isSelected || hasTransientEmphasis
 
-        content
+        let feedback = content
             .environment(\.scholiumContentControlIsEmphasized, isEmphasized)
             .scholiumContentInteractionSurface(
                 isSelected: isSelected,
-                isHovering: isHovering,
+                isHovering: effectiveIsHovering,
                 isFocused: isFocused,
                 isPressed: isPressed,
                 in: shape
             )
             .opacity(isEnabled && isPressed ? pressedOpacity : 1)
-            .onHover { isHovering = $0 }
+
+        if tracksHover {
+            feedback.onHover { isHovering = $0 }
+        } else {
+            feedback
+        }
     }
 }
 
@@ -2550,6 +2560,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
     let isActive: Bool
     let isSelected: Bool
     let isFocused: Bool
+    let tracksHover: Bool
     let pressedOpacity: Double
     let shape: S
 
@@ -2557,12 +2568,14 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
         isActive: Bool = false,
         isSelected: Bool = false,
         isFocused: Bool = false,
+        tracksHover: Bool = true,
         pressedOpacity: Double = 0.78,
         in shape: S
     ) {
         self.isActive = isActive
         self.isSelected = isSelected
         self.isFocused = isFocused
+        self.tracksHover = tracksHover
         self.pressedOpacity = pressedOpacity
         self.shape = shape
     }
@@ -2574,6 +2587,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
                 isSelected: isSelected,
                 isFocused: isFocused,
                 isPressed: configuration.isPressed,
+                tracksHover: tracksHover,
                 pressedOpacity: pressedOpacity,
                 in: shape
             )
@@ -3009,6 +3023,7 @@ extension View {
         isSelected: Bool = false,
         isFocused: Bool = false,
         isPressed: Bool,
+        tracksHover: Bool = true,
         pressedOpacity: Double = 0.78,
         in shape: S
     ) -> some View {
@@ -3018,6 +3033,7 @@ extension View {
                 isSelected: isSelected,
                 isFocused: isFocused,
                 isPressed: isPressed,
+                tracksHover: tracksHover,
                 pressedOpacity: pressedOpacity,
                 shape: shape
             )

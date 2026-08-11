@@ -105,9 +105,12 @@ focus rings while retaining native keyboard traversal and return behavior.
 `ScholiumContentControlButtonFeedbackModifier` is the single transient-state
 owner for custom SwiftUI Buttons. The generic
 `ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both
-delegate to it. It owns one lightweight SwiftUI hover state, consumes
+delegate to it. It normally owns one lightweight SwiftUI hover state, consumes
 `ButtonStyle.Configuration.isPressed`, and resolves semantic ink, one
-continuous surface, and immediate press dimming. Borderless native Menus
+continuous surface, and immediate press dimming. A Button hosted inside the
+native Source List suppresses that SwiftUI hover tracker while retaining the
+shared press path, so the AppKit row remains the sole hover and selection
+owner. Borderless native Menus
 instead use `scholiumContentControlPointerFeedback`: a zero-hit-test AppKit
 adapter observes the complete Menu frame because the host does not reliably
 forward pointer state into its label. The enclosing Button or Menu retains
