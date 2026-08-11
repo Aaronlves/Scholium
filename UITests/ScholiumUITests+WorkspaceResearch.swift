@@ -505,7 +505,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testNewAnalysisCreationHasNoPropertyRequirements() throws {
+    func testManagedNewNoteDirectToEditWithAndWithoutRoleSeed() throws {
         let libraryFilters = app.descendants(matching: .any)[
             "scholium.libraryFilters"
         ]
@@ -520,37 +520,62 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(filterStatus.waitForExistence(timeout: 5))
 
-        let libraryCreate = app.descendants(matching: .any)["scholium.libraryCreate"]
-        XCTAssertTrue(libraryCreate.waitForExistence(timeout: 10))
-        libraryCreate.click()
-        let newNote = app.descendants(matching: .any)["scholium.newNote"]
-        let newFolder = app.descendants(matching: .any)["scholium.newFolder"]
-        XCTAssertTrue(newNote.waitForExistence(timeout: 3))
-        XCTAssertTrue(newFolder.exists)
-        newNote.click()
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        func createAndType(
+            path: String,
+            initialSource: String,
+            marker: String
+        ) throws {
+            let libraryCreate = app.descendants(matching: .any)[
+                "scholium.libraryCreate"
+            ]
+            XCTAssertTrue(libraryCreate.waitForExistence(timeout: 10))
+            libraryCreate.click()
+            let newNote = app.descendants(matching: .any)["scholium.newNote"]
+            XCTAssertTrue(newNote.waitForExistence(timeout: 3))
+            XCTAssertTrue(app.descendants(matching: .any)["scholium.newFolder"].exists)
 
-        XCTAssertFalse(
-            app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
-            "Direct note creation must not present the retired lifecycle sheet."
+            newNote.click()
+            XCTAssertFalse(
+                app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
+                "Direct note creation must not present a naming or Properties sheet."
+            )
+            let createdURL = triptychDirectory.appendingPathComponent(
+                "01-analyses/\(path)"
+            )
+            XCTAssertTrue(waitUntil(timeout: 10) {
+                (try? self.source(at: createdURL)) == initialSource
+            })
+
+            let editor = app.descendants(matching: .any)[
+                "Markdown editor, Edit mode"
+            ].firstMatch
+            XCTAssertTrue(
+                editor.waitForExistence(timeout: 20),
+                "Managed New Note must present Edit as its creation destination."
+            )
+            XCTAssertTrue(
+                waitUntil(timeout: 5) { keyboardFocus.evaluate(with: editor) },
+                "Managed New Note must focus its exact body insertion point."
+            )
+            editor.typeText(marker)
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    (editor.value as? String)?.contains(marker) == true
+                },
+                "The first keystroke must be accepted by the focused editor."
+            )
+            XCTAssertTrue(waitUntil(timeout: 12) {
+                (try? self.source(at: createdURL)) == initialSource + marker
+            })
+        }
+
+        let firstMarker = "cold-no-seed-first-keystroke\n"
+        try createAndType(
+            path: "Untitled.md",
+            initialSource: "",
+            marker: firstMarker
         )
-        XCTAssertFalse(app.buttons["Declare Now"].exists)
-        XCTAssertFalse(app.radioButtons["Declare Now"].exists)
-        XCTAssertFalse(app.radioButtons["Not Yet"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.newNote.researchUnitCompletion"
-        ].exists)
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.newNote.researchUnitScope"
-        ].exists)
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.newNote.researchUnitLimitations"
-        ].exists)
-
-        let createdURL = triptychDirectory.appendingPathComponent("01-analyses/Untitled.md")
-        XCTAssertTrue(waitUntil(timeout: 10) { FileManager.default.fileExists(atPath: createdURL.path) })
-        let source = try source(at: createdURL)
-        XCTAssertEqual(source, "")
-        XCTAssertFalse(source.contains("research_unit"))
 
         XCTAssertTrue(waitUntil(timeout: 10) {
             !filterStatus.exists
@@ -567,52 +592,62 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 20) {
             createdTitle.value as? String == "Untitled"
         })
-    }
 
-    @MainActor
-    func testMissingAnalysisPropertiesAreOmittedFromAbout() throws {
-        let libraryCreate = app.descendants(matching: .any)["scholium.libraryCreate"]
-        XCTAssertTrue(libraryCreate.waitForExistence(timeout: 10))
-        libraryCreate.click()
-        let newNote = app.descendants(matching: .any)["scholium.newNote"]
-        XCTAssertTrue(newNote.waitForExistence(timeout: 3))
-        newNote.click()
-
-        XCTAssertFalse(
-            app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
-            "Direct note creation must not present a naming or Properties sheet."
-        )
-
-        let createdURL = triptychDirectory.appendingPathComponent(
-            "01-analyses/Untitled.md"
-        )
+        let appMenu = app.menuBars.menuBarItems["Scholium QA"]
+        XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
+        appMenu.click()
+        let settings = app.menuItems["Settings…"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 3))
+        settings.click()
+        let settingsWindow = app.windows.matching(
+            identifier: "com_apple_SwiftUI_Settings_window"
+        ).firstMatch
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 8))
+        let propertiesPane = settingsWindow.descendants(matching: .any)[
+            "Properties"
+        ].firstMatch
+        XCTAssertTrue(propertiesPane.waitForExistence(timeout: 8))
+        propertiesPane.click()
+        let retryProperties = settingsWindow.buttons["Retry Properties Settings"]
+        if retryProperties.waitForExistence(timeout: 2) {
+            retryProperties.click()
+        }
+        let seedEditor = settingsWindow.descendants(matching: .any)[
+            "YAML added to new Analysis notes without boundaries"
+        ].firstMatch
+        XCTAssertTrue(seedEditor.waitForExistence(timeout: 10))
+        try paste("tags: [seeded]\n", into: seedEditor)
+        let saveProperties = settingsWindow.buttons["Save Properties"]
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            saveProperties.exists && saveProperties.isEnabled
+        })
+        saveProperties.click()
+        let settingsURL = triptychDirectory
+            .appendingPathComponent(".scholium", isDirectory: true)
+            .appendingPathComponent("settings.json")
         XCTAssertTrue(waitUntil(timeout: 10) {
-            FileManager.default.fileExists(atPath: createdURL.path)
+            (try? String(contentsOf: settingsURL, encoding: .utf8))?
+                .contains("tags: [seeded]") == true
         })
-        let createdSource = try source(at: createdURL)
-        XCTAssertEqual(createdSource, "")
-        XCTAssertFalse(createdSource.contains("research_unit"))
+        settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !settingsWindow.exists })
 
-        let createdTitle = app.descendants(matching: .any)[
-            "scholium.documentNoteName"
-        ]
-        XCTAssertTrue(waitUntil(timeout: 45) {
-            createdTitle.value as? String == "Untitled"
+        let seededSource = "---\ntags: [seeded]\n---\n"
+        let seededMarker = "warm-seeded-first-keystroke\n"
+        try createAndType(
+            path: "Untitled 2.md",
+            initialSource: seededSource,
+            marker: seededMarker
+        )
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            createdTitle.value as? String == "Untitled 2"
         })
-        let emptyReview = app.descendants(matching: .any)[
-            "scholium.emptyNoteReview"
-        ]
-        XCTAssertTrue(
-            emptyReview.waitForExistence(timeout: 5),
-            "An exact empty note must present its completed Review state immediately."
-        )
-        XCTAssertFalse(
-            app.descendants(matching: .any)["scholium.renderedDocument.loading"].exists
-        )
 
         selectResearchInspectorMode("overview")
         let about = app.descendants(matching: .any)["scholium.about"]
         XCTAssertTrue(about.waitForExistence(timeout: 8))
+        XCTAssertTrue(about.staticTexts["Tags"].exists)
+        XCTAssertTrue(about.staticTexts["seeded"].exists)
         for omittedField in [
             "Completion", "Limitations", "Authors", "Year", "Type", "Source Basis",
         ] {

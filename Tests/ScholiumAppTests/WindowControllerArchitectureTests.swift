@@ -2560,7 +2560,7 @@ struct WindowControllerArchitectureTests {
         )
 
         #expect(permissions.contains(
-            "Select the requested Notes this Run may modify."
+            "Select the requested Note targets this Run may create or modify."
         ))
         #expect(permissions.contains(
             "This starts a new independent Run with current permissions"
@@ -2575,7 +2575,9 @@ struct WindowControllerArchitectureTests {
         }
         #expect(!settings.contains("INVARIANTS"))
         #expect(!preview.contains("ResearchProofNotice"))
-        #expect(preview.contains("Select the requested Notes this Run may modify."))
+        #expect(preview.contains(
+            "Select the requested Note targets this Run may create or modify."
+        ))
     }
 
     private func fixtureReference(

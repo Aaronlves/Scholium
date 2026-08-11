@@ -4,17 +4,17 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-08-10, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
+**Environment:** 2026-08-11, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on the current Note-level Review
-integration. It
-validated the closed documentation manifests and shipped resources; TypeScript
-checking and 185 Web editor tests; reproducible editor, mathematics, and Mermaid
-bundles; 453 Core tests plus 3 Search performance tests; 124 Contracts tests;
-193 Application tests, 9 bridge tests, and 1 serialized architecture
-measurement; 520 App tests; 7 executable Research Action CLI lifecycles; the
-sandboxed local bridge probe; symbol/import/residue guards; and Debug and
-Release builds. The Release build completed in 177.88 seconds.
+The latest complete repository gate passed on the managed YAML/Properties and
+Agent-creation integration. It validated the closed documentation manifests
+and shipped resources; TypeScript checking and 187 Web editor tests;
+reproducible editor, mathematics, and Mermaid bundles; 485 Core tests plus 3
+Search performance tests; 130 Contracts tests; 217 Application tests, 10 bridge
+tests, and 1 serialized architecture measurement; 574 App tests; 7 executable
+Research Action CLI lifecycles; the sandboxed local bridge probe;
+symbol/import/residue guards; and Debug and Release builds. The Release build
+completed in 206.59 seconds.
 
 This proves deterministic repository conformance for that checkout and toolchain.
 It is not a packaged release, complete UI-suite result, human accessibility
@@ -22,6 +22,14 @@ exercise, source-fidelity review of private research, or researcher acceptance.
 
 ## Focused interface evidence
 
+- On 2026-08-11, one isolated Debug QA journey created an Analysis first with
+  no role seed and then with `tags: [seeded]`. Both commands bypassed a naming
+  or Properties sheet, presented Edit, exposed keyboard focus at the exact body
+  insertion point, persisted the first typed marker in the body, and preserved
+  the expected source bytes. The seeded Note also exposed the `seeded` Tags
+  capsule in Overview while the journey remained in Edit. XCUITest timing
+  includes its own menu and polling overhead, so this is behavioral evidence
+  rather than a visible-latency measurement or researcher acceptance.
 - The Research Action, Reading Lead note, and Researcher Evaluation sheet
   journey passed in 63.273 seconds on disposable fixtures and retained one
   screenshot per sheet.
@@ -187,10 +195,10 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
-The latest isolated Search v6 regression report recorded a cold rebuild of
-805.227 ms, warm-query p95 of 29.605 ms, incremental-publication p95 of
-21.451 ms, database size of 51,957,688 bytes, and process peak RSS of
-154,517,504 bytes on the deterministic 800-Note fixture. These are regression
+The latest isolated Search v7 regression report recorded a cold rebuild of
+778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
+21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
+144,310,272 bytes on the deterministic 800-Note fixture. These are regression
 measurements, not the packaged G7 gate or approved release limits.
 
 ## Upgrade and distribution evidence

@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Window document metadata projection")
 struct WindowDocumentMetadataProjectionTests {
-    @Test("Status has no semantic projection and remains unknown source YAML")
+    @Test("Status remains custom source YAML with generic filter projection")
     func statusIsNotCoreVocabulary() {
         let source = """
         ---
@@ -19,7 +19,7 @@ struct WindowDocumentMetadataProjectionTests {
 
         #expect(PropertyContractCatalog.contract(for: "status", profile: .analysis) == nil)
         #expect(note.property(at: "status") == .string("reviewed"))
-        #expect(note.filterableProperties["status"] == nil)
+        #expect(note.filterableProperties["status"] == ["reviewed"])
         #expect(note.rawContent == source)
     }
 
@@ -151,7 +151,7 @@ struct WindowDocumentMetadataProjectionTests {
 
         let options = WindowPropertyFilterOptions(notes: [first, second])
 
-        #expect(options.valuesByKey["status"] == nil)
+        #expect(options.valuesByKey["status"] == ["complete", "reviewed"])
         #expect(options.valuesByKey["authors"] == ["Arendt", "Beauvoir", "Weil"])
         #expect(options.valuesByKey["custom"] == ["Alpha", "Beta"])
         #expect(options.valuesByKey["relevance"] == nil)
@@ -214,13 +214,13 @@ struct WindowDocumentMetadataProjectionTests {
             "state.propertyFilterOptions = WindowPropertyFilterOptions(notes: notes)"
         ))
         #expect(controller.contains("state.authors = Set(notes.flatMap(\\.authors)).sorted()"))
-        #expect(controller.contains("state.years = Set(notes.compactMap(\\.year)).sorted(by: >)"))
+        #expect(!controller.contains("state.years"))
         #expect(app.contains(
             "var availablePropertyFilterOptions: WindowPropertyFilterOptions {"
         ))
         #expect(app.contains("workspaceProjectionController.propertyFilterOptions"))
         #expect(app.contains("workspaceProjectionController.authors"))
-        #expect(app.contains("workspaceProjectionController.years"))
+        #expect(!app.contains("workspaceProjectionController.years"))
         #expect(!app.contains("Set(notesInCurrentScope.flatMap(\\.authors)).sorted()"))
         #expect(!app.contains("Set(notesInCurrentScope.compactMap(\\.year)).sorted(by: >)"))
         #expect(!app.contains("@Published var notes: [WindowDocumentLocation]"))

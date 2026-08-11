@@ -53,10 +53,11 @@
 - Measure retained editor memory and visible latency during sustained input and
   repeated Note/mode switching. Extend shared source-range fixtures before
   changing parser or syntax rules.
-- Measure disposable warm and cold GUI **New Note** from command dispatch to
-  acknowledged exact body selection and first-keystroke readiness, with and
-  without a role YAML seed. Record both instrumentation and human-visible
-  acceptance before describing the direct-to-Edit path as zero latency.
+- The disposable Debug QA journey now proves direct Edit presentation, exact
+  body focus, first-keystroke persistence, and source fidelity with and without
+  a role YAML seed. Still measure command dispatch to acknowledged selection
+  with product instrumentation and complete human-visible acceptance before
+  describing this path as zero latency.
 
 ## Search and performance
 

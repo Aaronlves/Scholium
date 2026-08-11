@@ -2521,6 +2521,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                   bubbles: true,
                   relatedTarget: document.body
                 }));
+                await new Promise(resolve => setTimeout(resolve, 220));
                 const previewHiddenAfterFocusExit = popover.hidden;
 
                 reference.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));

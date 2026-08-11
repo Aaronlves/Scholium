@@ -717,7 +717,7 @@ private struct ResearchWriteSetExtensionProof: View {
                 Text("Allow Additional Notes for This Research Run?")
                     .font(ScholiumTypography.scholarly(.title))
                     .accessibilityAddTraits(.isHeader)
-                Text("Select the requested Notes this Run may modify.")
+                Text("Select the requested Note targets this Run may create or modify.")
                     .font(ScholiumTypography.scholarly(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)

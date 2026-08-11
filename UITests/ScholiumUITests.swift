@@ -123,8 +123,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     private var initialWorkspaceReadyTimeout: TimeInterval {
-        if name.contains("testNewAnalysisCreationHasNoPropertyRequirements")
-            || name.contains("testMissingAnalysisPropertiesAreOmittedFromAbout")
+        if name.contains("testManagedNewNoteDirectToEditWithAndWithoutRoleSeed")
             || name.contains("testFolderContextMenuCreatesInsideFolderAndExposesLifecycleActions") {
             return 90
         }

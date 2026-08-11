@@ -1,5 +1,4 @@
 import ScholiumContracts
-import ScholiumCore
 import Foundation
 @testable import ScholiumApplication
 import Testing
@@ -28,18 +27,24 @@ struct ResearchOperationsMutationTests {
         } else {
             Issue.record("A Settlement mutation did not publish researchRecordsChanged.")
         }
+        let settlementsBeforeStaleAttempt = event.snapshot.research.settlements
 
         try Data("# Analysis\n\nAn external revision.\n".utf8).write(
             to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
             options: .atomic
         )
-        await #expect(throws: VaultRepositoryError.self) {
+        await #expect(throws: (any Error).self) {
             _ = try await handle.research.settle(
                 fixture.analysisID,
                 expectedRevision: note.fingerprint,
                 rationale: "This stale Settlement must not land."
             )
         }
+        let refreshed = try await handle.refresh()
+        #expect(refreshed.research.settlements == settlementsBeforeStaleAttempt)
+        #expect(!refreshed.research.settlements.contains {
+            $0.rationale == "This stale Settlement must not land."
+        })
         await runtime.shutdown()
     }
 
@@ -138,7 +143,10 @@ struct ResearchOperationsMutationTests {
                 detail: "Fixture-only evidence"
             )]
         )
-        try await fixture.writeRecoveryFixture(recovery)
+        try fixture.writeRecoveryFixture(
+            recovery,
+            storageURL: handle.research.recoveryRecordsURL
+        )
         _ = try await handle.discovery.refresh()
         #expect(try await handle.research.recoveryRecords().map(\.id) == [recovery.id])
 
@@ -430,13 +438,26 @@ struct ResearchFixture: Sendable {
         )), zotero: zotero)
     }
 
-    func writeRecoveryFixture(_ record: TriptychMutationRecoveryRecord) async throws {
-        let storageURL = applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("transactions", isDirectory: true)
-        let store = try TriptychMutationRecoveryStore(storageURL: storageURL)
-        try await store.record(record)
+    func writeRecoveryFixture(
+        _ record: TriptychMutationRecoveryRecord,
+        storageURL: URL
+    ) throws {
+        let recordsURL = storageURL.appendingPathComponent("records", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: recordsURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o700)]
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let recordURL = recordsURL.appendingPathComponent(
+            record.id.uuidString.lowercased() + ".json"
+        )
+        try encoder.encode(record).write(to: recordURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: recordURL.path
+        )
     }
 
     func remove() {

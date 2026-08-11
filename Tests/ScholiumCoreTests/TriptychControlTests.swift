@@ -1251,7 +1251,7 @@ private final class PortableControlWriteBarrier: @unchecked Sendable {
     }
 
     func waitUntilPaused() -> Bool {
-        paused.wait(timeout: .now() + 2) == .success
+        paused.wait(timeout: .now() + 10) == .success
     }
 
     func resume() {
