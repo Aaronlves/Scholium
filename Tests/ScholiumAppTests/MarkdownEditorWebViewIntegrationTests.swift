@@ -4294,7 +4294,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     initialScrollAnchor: sourceBox.scrollAnchor,
                     onDocumentActivity: {},
                     onRequestSave: {},
-                    onRequestSearch: {},
+                    onRequestFind: { _ in },
                     onLinkActivation: { sourceBox.activatedLinks.append($0) },
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }

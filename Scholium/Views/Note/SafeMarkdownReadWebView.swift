@@ -36,6 +36,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
+    var findRequest: DocumentFindPresentationRequest? = nil
+    var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
     var observedScrollPosition = ObservedScrollPosition()
     var scrollRestoreRequest: ScrollRestoreRequest? = nil
     var onScrollRestoreConsumed: ((UInt64, String) -> Void)? = nil
@@ -62,6 +64,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
+            findRequest: findRequest,
+            onFindResult: onFindResult,
             observedScrollPosition: observedScrollPosition,
             scrollRestoreRequest: scrollRestoreRequest,
             onScrollRestoreConsumed: onScrollRestoreConsumed,
@@ -127,6 +131,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
+            findRequest: findRequest,
+            onFindResult: onFindResult,
             observedScrollPosition: observedScrollPosition,
             scrollRestoreRequest: scrollRestoreRequest,
             onScrollRestoreConsumed: onScrollRestoreConsumed,
@@ -209,6 +215,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
+        private var findRequest: DocumentFindPresentationRequest?
+        private var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?
+        private var appliedFindRequestID: UInt64?
         private var scrollRestoreRequest: ScrollRestoreRequest?
         private var scrollRestoreOwnership: ScrollRestoreOwnership?
         private var observedScrollPosition: ObservedScrollPosition
@@ -225,6 +234,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var linkPreviewUpdateTask: Task<Void, Never>?
         private var selectionSurfaceUpdateTask: Task<Void, Never>?
+        private var findUpdateTask: Task<Void, Never>?
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
         private var desiredLinkPreviewRevision = ""
@@ -261,6 +271,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
+            findRequest: DocumentFindPresentationRequest?,
+            onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?,
             observedScrollPosition: ObservedScrollPosition,
             scrollRestoreRequest: ScrollRestoreRequest?,
             onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
@@ -281,6 +293,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
+            self.findRequest = findRequest
+            self.onFindResult = onFindResult
             self.scrollRestoreRequest = scrollRestoreRequest
             scrollRestoreOwnership = scrollRestoreRequest == nil ? nil : .caller
             self.observedScrollPosition = observedScrollPosition
@@ -304,6 +318,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
+            findRequest: DocumentFindPresentationRequest?,
+            onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?,
             observedScrollPosition: ObservedScrollPosition,
             scrollRestoreRequest: ScrollRestoreRequest?,
             onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
@@ -321,6 +337,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 lastReachedSourceLine = nil
                 pageIsReady = false
                 appliedSelectionSurfaceIsActive = nil
+                appliedFindRequestID = nil
                 hasLoadedPage = false
                 cancelPendingPageWork()
                 webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
@@ -336,6 +353,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
+            self.findRequest = findRequest
+            self.onFindResult = onFindResult
             self.observedScrollPosition = observedScrollPosition
             if self.observedScrollPosition.anchor?.sourceFingerprint != fingerprint {
                 self.observedScrollPosition.anchor = nil
@@ -348,6 +367,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onSourceLineReached = onSourceLineReached
             schedulePostLoadPositioningIfNeeded(in: webView)
             applySelectionSurfaceActivityIfNeeded(in: webView)
+            applyFindRequestIfNeeded(in: webView)
             requestCommentComposerIfNeeded(commentComposerRequestID, in: webView)
             resolveCommentIfNeeded(commentResolution, in: webView)
         }
@@ -436,6 +456,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard loadedSignature != signature else {
                 applyLinkPreviewsIfNeeded(in: webView)
                 applySelectionSurfaceActivityIfNeeded(in: webView)
+                applyFindRequestIfNeeded(in: webView)
                 return
             }
             self.source = source
@@ -454,6 +475,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
             appliedSelectionSurfaceIsActive = nil
+            appliedFindRequestID = nil
             activeWebView = webView
             installBridgeScripts(
                 presentationCSS: presentationCSS,
@@ -525,6 +547,68 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 forMainFrameOnly: true,
                 in: SafeMarkdownReadWebView.bridgeContentWorld
             ))
+            contentController.addUserScript(WKUserScript(
+                source: SafeMarkdownReadWebView.reviewFindScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true,
+                in: SafeMarkdownReadWebView.bridgeContentWorld
+            ))
+        }
+
+        private func applyFindRequestIfNeeded(in webView: WKWebView) {
+            guard pageIsReady,
+                  activeWebView === webView,
+                  let findRequest,
+                  findRequest.id != appliedFindRequestID else { return }
+            appliedFindRequestID = findRequest.id
+            let requestedGeneration = loadGeneration
+            let arguments: [String: Any]
+            switch findRequest.operation {
+            case .clear:
+                arguments = ["operation": "clear"]
+            case .execute(let action):
+                arguments = [
+                    "operation": "execute",
+                    "action": action.rawValue,
+                    "query": findRequest.query,
+                    "replacement": findRequest.replacement,
+                    "caseSensitive": findRequest.caseSensitive,
+                    "wholeWord": findRequest.wholeWord,
+                ]
+            }
+            findUpdateTask?.cancel()
+            findUpdateTask = Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView else { return }
+                do {
+                    let raw = try await webView.callAsyncJavaScript(
+                        "return window.scholiumReviewFind?.perform(request)",
+                        arguments: ["request": arguments],
+                        in: nil,
+                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    )
+                    guard !Task.isCancelled,
+                          self.activeWebView === webView,
+                          self.pageIsReady,
+                          self.loadGeneration == requestedGeneration,
+                          self.findRequest?.id == findRequest.id,
+                          let payload = raw as? [String: Any],
+                          let current = (payload["current"] as? NSNumber)?.intValue,
+                          let total = (payload["total"] as? NSNumber)?.intValue,
+                          current >= 0,
+                          total >= 0,
+                          current <= total else { return }
+                    self.onFindResult?(
+                        findRequest.id,
+                        .success(DocumentFindResult(current: current, total: total))
+                    )
+                } catch {
+                    guard !Task.isCancelled,
+                          self.activeWebView === webView,
+                          self.loadGeneration == requestedGeneration,
+                          self.findRequest?.id == findRequest.id else { return }
+                    self.onFindResult?(findRequest.id, .failure(error))
+                }
+            }
         }
 
         private func applyLinkPreviewsIfNeeded(in webView: WKWebView) {
@@ -704,6 +788,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)
             applySelectionSurfaceActivityIfNeeded(in: webView)
+            applyFindRequestIfNeeded(in: webView)
             let restoreClaim = claimScrollRestoreRequest()
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
@@ -1109,6 +1194,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             linkPreviewUpdateTask = nil
             selectionSurfaceUpdateTask?.cancel()
             selectionSurfaceUpdateTask = nil
+            findUpdateTask?.cancel()
+            findUpdateTask = nil
             mermaidRuntimeLoadTask?.cancel()
             mermaidRuntimeLoadTask = nil
             mermaidRuntimeLoadID = nil

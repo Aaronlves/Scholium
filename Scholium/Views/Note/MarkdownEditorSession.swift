@@ -933,6 +933,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ = try await send(.command(command, argument: argument), in: webView)
     }
 
+    func performDocumentFind(_ query: DocumentFindQuery) async throws -> DocumentFindResult {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let result = try await send(.documentFind(query), in: webView)
+        guard let find = result.find,
+              find.current >= 0,
+              find.total >= 0,
+              find.current <= find.total else {
+            throw SessionError.invalidResult
+        }
+        return find
+    }
+
+    func clearDocumentFind() {
+        guard isReady, isLoaded, let webView else { return }
+        Task { _ = try? await send(.clearDocumentFind, in: webView) }
+    }
+
     func acceptEditorChanges(
         _ rawChanges: [EditorBridgeChange],
         baseGeneration: Int,

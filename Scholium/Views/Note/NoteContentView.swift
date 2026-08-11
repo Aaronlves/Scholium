@@ -877,6 +877,7 @@ struct NoteContentView: View {
     @State private var isMarkingNoteReviewed = false
     @State private var noteReviewError: String?
     @State private var noteReviewRequiresReload = false
+    @StateObject private var documentFind = DocumentFindPresentationModel()
 
     init(
         controller: DocumentController,
@@ -981,6 +982,13 @@ struct NoteContentView: View {
                 )
             }
 
+            if documentFind.isPresented {
+                DocumentFindBar(
+                    model: documentFind,
+                    allowsReplacement: isEditing
+                )
+            }
+
             documentBodySurface
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
@@ -998,6 +1006,7 @@ struct NoteContentView: View {
             ScholiumFocusedEditorActions(
                 documentID: isEditing ? editorSession.documentID : note.relativePath,
                 isComposing: isEditing && editorSession.context?.composing == true,
+                allowsReplace: isEditing,
                 isAvailable: { command in
                     isEditing && editorSession.context?.availableCommands.contains(command) == true
                 },
@@ -1022,7 +1031,11 @@ struct NoteContentView: View {
                         }
                     }
                 },
-                startComment: requestCommentFromDocument
+                startComment: requestCommentFromDocument,
+                presentFind: documentFind.present,
+                findNext: documentFind.next,
+                findPrevious: documentFind.previous,
+                useSelectionForFind: useSelectionForDocumentFind
             )
         ))
         .overlay(alignment: .bottom) {
@@ -1112,6 +1125,7 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
+            documentFind.refresh()
             focusEditorIfPresented()
             if !isEditing,
                documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256 {
@@ -1186,6 +1200,20 @@ struct NoteContentView: View {
         }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
+        }
+        .task(id: documentFind.request) {
+            guard let request = documentFind.request else { return }
+            if case .clear = request.operation {
+                editorSession.clearDocumentFind()
+                return
+            }
+            guard isEditing, let query = request.editorQuery else { return }
+            do {
+                let result = try await editorSession.performDocumentFind(query)
+                documentFind.accept(result, for: request.id)
+            } catch {
+                documentFind.fail(error, for: request.id)
+            }
         }
     }
 
@@ -1490,9 +1518,7 @@ struct NoteContentView: View {
                     )
                 }
             },
-            onRequestSearch: {
-                actions.beginSearch(.findInNote(previousScope: state.ordinarySearchScope))
-            },
+            onRequestFind: handleDocumentFindShortcut,
             onLinkActivation: { target in
                 if let url = URL(string: target),
                    let scheme = url.scheme?.lowercased(),
@@ -1669,6 +1695,15 @@ struct NoteContentView: View {
                     PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
                 }
             },
+            findRequest: documentFind.request,
+            onFindResult: { requestID, result in
+                switch result {
+                case .success(let value):
+                    documentFind.accept(value, for: requestID)
+                case .failure(let error):
+                    documentFind.fail(error, for: requestID)
+                }
+            },
             observedScrollPosition: documentSession.observedScrollPosition,
             scrollRestoreRequest: documentSession.scrollRestoreRequest,
             onScrollRestoreConsumed: { id, fingerprint in
@@ -1757,6 +1792,33 @@ struct NoteContentView: View {
 
     private var editorIsComposing: Bool {
         isEditing && editorSession.context?.composing == true
+    }
+
+    private func handleDocumentFindShortcut(_ shortcut: DocumentFindShortcut) {
+        switch shortcut {
+        case .present:
+            documentFind.present()
+        case .next:
+            documentFind.next()
+        case .previous:
+            documentFind.previous()
+        case .useSelection:
+            useSelectionForDocumentFind()
+        }
+    }
+
+    private func useSelectionForDocumentFind() {
+        if isEditing {
+            Task { @MainActor in
+                let selection = try? await editorSession.currentSelection(
+                    for: editorSession.documentID,
+                    in: editingSource
+                )
+                documentFind.useSelection(selection?.excerpt)
+            }
+        } else {
+            documentFind.useSelection(documentSession.readSelection?.excerpt)
+        }
     }
 
     private func selectPresentationMode(_ mode: NotePresentationMode) {

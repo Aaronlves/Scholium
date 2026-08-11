@@ -17,7 +17,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let initialScrollAnchor: EditorScrollAnchor?
     let onDocumentActivity: () -> Void
     let onRequestSave: () -> Void
-    let onRequestSearch: () -> Void
+    let onRequestFind: (DocumentFindShortcut) -> Void
     let onLinkActivation: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
@@ -28,7 +28,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             performanceDocumentID: performanceDocumentID,
             onDocumentActivity: onDocumentActivity,
             onRequestSave: onRequestSave,
-            onRequestSearch: onRequestSearch,
+            onRequestFind: onRequestFind,
             linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
             onScrollFractionChange: onScrollFractionChange,
@@ -134,7 +134,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.performanceDocumentID = performanceDocumentID
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
-        context.coordinator.onRequestSearch = onRequestSearch
+        context.coordinator.onRequestFind = onRequestFind
         context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
@@ -246,7 +246,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         let session: MarkdownEditorSession
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
-        var onRequestSearch: () -> Void
+        var onRequestFind: (DocumentFindShortcut) -> Void
         var linkCompletionQuery: @MainActor (String) async -> [EditorLinkCompletion]
         var onLinkActivation: (String) -> Void
         var onScrollFractionChange: (Double) -> Void
@@ -277,7 +277,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             performanceDocumentID: String,
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
-            onRequestSearch: @escaping () -> Void,
+            onRequestFind: @escaping (DocumentFindShortcut) -> Void,
             linkCompletionQuery: @escaping @MainActor (String) async -> [EditorLinkCompletion],
             onLinkActivation: @escaping (String) -> Void,
             onScrollFractionChange: @escaping (Double) -> Void,
@@ -287,7 +287,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.performanceDocumentID = performanceDocumentID
             self.onDocumentActivity = onDocumentActivity
             self.onRequestSave = onRequestSave
-            self.onRequestSearch = onRequestSearch
+            self.onRequestFind = onRequestFind
             self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
             self.onScrollFractionChange = onScrollFractionChange
@@ -365,9 +365,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "requestSave":
                 guard validEnvelope(payload) else { return }
                 onRequestSave()
-            case "requestSearch":
-                guard validEnvelope(payload) else { return }
-                onRequestSearch()
+            case "requestDocumentFind":
+                guard validEnvelope(payload), let action = payload.action else { return }
+                onRequestFind(action)
             case "requestMermaidRuntime":
                 guard validEnvelope(payload), let webView = message.webView else { return }
                 requestMermaidRuntime(in: webView)

@@ -1084,11 +1084,16 @@ struct ScholiumFocusedResearchActionActionsKey: FocusedValueKey {
 struct ScholiumFocusedEditorActions {
     let documentID: String
     let isComposing: Bool
+    let allowsReplace: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
     let canCommentOnSelectedPassage: () -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
     let startComment: () -> Void
+    let presentFind: () -> Void
+    let findNext: () -> Void
+    let findPrevious: () -> Void
+    let useSelectionForFind: () -> Void
 }
 
 struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
@@ -1207,14 +1212,24 @@ private struct ScholiumCommands: Commands {
             .keyboardShortcut("v", modifiers: [.command, .shift])
             .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
             Divider()
-            Button("Find in This Note…") {
-                guard let appState else { return }
-                searchActions?.begin(
-                    .findInNote(previousScope: appState.searchController.ordinaryScope)
-                )
+            Menu("Find") {
+                Button("Find…") { editorActions?.presentFind() }
+                    .keyboardShortcut("f", modifiers: [.command])
+                    .disabled(editorActions == nil)
+                Button("Find and Replace…") { editorActions?.presentFind() }
+                    .disabled(editorActions?.allowsReplace != true)
+                Divider()
+                Button("Find Next") { editorActions?.findNext() }
+                    .keyboardShortcut("g", modifiers: [.command])
+                    .disabled(editorActions == nil)
+                Button("Find Previous") { editorActions?.findPrevious() }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                    .disabled(editorActions == nil)
+                Button("Use Selection for Find") { editorActions?.useSelectionForFind() }
+                    .keyboardShortcut("e", modifiers: [.command])
+                    .disabled(editorActions == nil)
             }
-            .keyboardShortcut("f", modifiers: [.command])
-            .disabled(searchActions == nil || appState?.currentNote == nil)
+            .disabled(appState?.currentNote == nil)
             Button("Edit Properties…") { appState?.showFrontmatterEditor = true }
                 .disabled(appState?.canEditCurrentNote != true)
         }

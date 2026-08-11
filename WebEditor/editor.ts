@@ -163,6 +163,11 @@ import {
   type LiveProjectionIndex,
   type SemanticCodeBlockRange,
 } from "./live-projection-index";
+import {
+  clearDocumentFind,
+  documentFindExtension,
+  performDocumentFind,
+} from "./document-find";
 
 const editorStartupStartedAt = performance.now();
 
@@ -2759,7 +2764,31 @@ const saveKeymap = keymap.of([
     key: "Mod-f",
     preventDefault: true,
     run: () => {
-      post({ type: "requestSearch" });
+      post({type: "requestDocumentFind", action: "present"});
+      return true;
+    },
+  },
+  {
+    key: "Mod-g",
+    preventDefault: true,
+    run: () => {
+      post({type: "requestDocumentFind", action: "next"});
+      return true;
+    },
+  },
+  {
+    key: "Shift-Mod-g",
+    preventDefault: true,
+    run: () => {
+      post({type: "requestDocumentFind", action: "previous"});
+      return true;
+    },
+  },
+  {
+    key: "Mod-e",
+    preventDefault: true,
+    run: () => {
+      post({type: "requestDocumentFind", action: "useSelection"});
       return true;
     },
   },
@@ -3123,6 +3152,7 @@ const editorExtensions = [
         ...foldKeymap,
       ]),
       saveKeymap,
+      documentFindExtension,
       editorContextMenu,
       stateReporter,
       linkActivation,
@@ -3472,6 +3502,18 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     lastRedoLabel = transformed.undoLabel;
     return successfulResult(request.requestID, true, transformed.undoLabel);
   }
+  case "documentFind": {
+    const result = performDocumentFind(editor, operation.value);
+    if (result.undoLabel) {
+      lastUndoLabel = result.undoLabel;
+      lastRedoLabel = result.undoLabel;
+    }
+    return {
+      ...successfulResult(request.requestID, result.sourceChanged, result.undoLabel),
+      find: {current: result.current, total: result.total},
+    };
+  }
+  case "clearDocumentFind": clearDocumentFind(editor); break;
   case "markClean": editorOperations.markClean(); break;
   case "focus": editorOperations.focus(); break;
   case "blur": editorOperations.blur(); break;

@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 11;
+export const EDITOR_PROTOCOL_VERSION = 12;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -77,6 +77,19 @@ export interface EditorPerformanceSample {
   durationMilliseconds: number;
   observed: Record<string, number>;
 }
+export type DocumentFindAction =
+  | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
+export interface DocumentFindQuery {
+  query: string;
+  replacement: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  action: DocumentFindAction;
+}
+export interface DocumentFindResult {
+  current: number;
+  total: number;
+}
 export type EditorOperation =
   | {
     type: "initialize";
@@ -98,6 +111,8 @@ export type EditorOperation =
   | {type: "setScrollAnchor"; anchor: EditorScrollAnchor}
   | {type: "queryText"} | {type: "querySelection"} | {type: "queryContext"} | {type: "queryScrollAnchor"}
   | {type: "queryPerformance"}
+  | {type: "documentFind"; value: DocumentFindQuery}
+  | {type: "clearDocumentFind"}
   | {type: "captureRecovery"}
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
@@ -124,6 +139,7 @@ export interface EditorCommandResult {
   recovery?: RecoverySnapshot;
   scrollAnchor?: EditorScrollAnchor;
   performanceSamples?: EditorPerformanceSample[];
+  find?: DocumentFindResult;
   commitSuperseded?: boolean;
   accepted: boolean;
   error?: string;
@@ -132,7 +148,7 @@ export interface EditorCommandResult {
 const operationTypes = new Set([
   "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "markClean", "focus", "blur",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -264,8 +280,17 @@ function validOperation(operation: Record<string, unknown>) {
   case "command":
     return typeof operation.command === "string" && commandTypes.has(operation.command as MarkdownEditorCommand)
       && (operation.argument === undefined || typeof operation.argument === "string");
+  case "documentFind": {
+    const value = operation.value as Partial<DocumentFindQuery> | undefined;
+    return Boolean(value)
+      && typeof value?.query === "string" && value.query.length <= 16_384
+      && typeof value.replacement === "string" && value.replacement.length <= 1_000_000
+      && typeof value.caseSensitive === "boolean"
+      && typeof value.wholeWord === "boolean"
+      && ["update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
+  }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview":
-  case "markClean": case "focus": case "blur": return true;
+  case "clearDocumentFind": case "markClean": case "focus": case "blur": return true;
   default: return false;
   }
 }

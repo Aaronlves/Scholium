@@ -50,7 +50,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 11")
+    @Test("Request envelope and operation round trip with protocol version 12")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -66,10 +66,32 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 11)
+        #expect(object["protocolVersion"] as? Int == 12)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
+    }
+
+    @Test("Document find round trips and only replacements serialize source mutation")
+    func documentFindRoundTrip() throws {
+        let update = MarkdownEditorOperation.documentFind(DocumentFindQuery(
+            query: "value",
+            replacement: "replacement",
+            caseSensitive: false,
+            wholeWord: true,
+            action: .update
+        ))
+        let replacement = MarkdownEditorOperation.documentFind(DocumentFindQuery(
+            query: "value",
+            replacement: "replacement",
+            caseSensitive: false,
+            wholeWord: true,
+            action: .replaceAll
+        ))
+        let encoded = try JSONEncoder().encode(update)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == update)
+        #expect(!update.serializesSourceMutation)
+        #expect(replacement.serializesSourceMutation)
     }
 
     @Test("Markdown comment is a typed formatting command")

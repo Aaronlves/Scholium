@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 11
+let markdownEditorProtocolVersion = 12
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -184,6 +184,27 @@ struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
     let observed: [String: Double]
 }
 
+enum DocumentFindAction: String, Codable, Hashable, Sendable {
+    case update, next, previous, replaceCurrent, replaceAll
+}
+
+enum DocumentFindShortcut: String, Codable, Hashable, Sendable {
+    case present, next, previous, useSelection
+}
+
+struct DocumentFindQuery: Codable, Hashable, Sendable {
+    let query: String
+    let replacement: String
+    let caseSensitive: Bool
+    let wholeWord: Bool
+    let action: DocumentFindAction
+}
+
+struct DocumentFindResult: Codable, Hashable, Sendable {
+    let current: Int
+    let total: Int
+}
+
 enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case initialize(
         text: String,
@@ -203,6 +224,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setScrollFraction(Double)
     case setScrollAnchor(MarkdownEditorWireScrollAnchor)
     case queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance, captureRecovery
+    case documentFind(DocumentFindQuery)
+    case clearDocumentFind
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
     case command(MarkdownEditorCommand, argument: String?)
@@ -215,6 +238,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         switch self {
         case .initialize, .restoreRecovery, .acknowledgeCommittedSnapshot, .command:
             true
+        case .documentFind(let query):
+            query.action == .replaceCurrent || query.action == .replaceAll
         default:
             false
         }
@@ -227,7 +252,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     private enum Kind: String, Codable {
         case initialize, setMode, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
-        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, markClean, focus, blur
+        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, blur
     }
 
     init(from decoder: any Decoder) throws {
@@ -267,6 +292,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .queryContext: self = .queryContext
         case .queryScrollAnchor: self = .queryScrollAnchor
         case .queryPerformance: self = .queryPerformance
+        case .documentFind: self = try .documentFind(container.decode(DocumentFindQuery.self, forKey: .value))
+        case .clearDocumentFind: self = .clearDocumentFind
         case .captureRecovery: self = .captureRecovery
         case .restoreRecovery: self = try .restoreRecovery(container.decode(MarkdownEditorRecoverySnapshot.self, forKey: .snapshot))
         case .acknowledgeCommittedSnapshot:
@@ -320,6 +347,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .queryContext: try container.encode(Kind.queryContext, forKey: .type)
         case .queryScrollAnchor: try container.encode(Kind.queryScrollAnchor, forKey: .type)
         case .queryPerformance: try container.encode(Kind.queryPerformance, forKey: .type)
+        case let .documentFind(value): try pair(.documentFind, value, .value, into: &container)
+        case .clearDocumentFind: try container.encode(Kind.clearDocumentFind, forKey: .type)
         case .captureRecovery: try container.encode(Kind.captureRecovery, forKey: .type)
         case let .restoreRecovery(snapshot): try pair(.restoreRecovery, snapshot, .snapshot, into: &container)
         case let .acknowledgeCommittedSnapshot(expected, committed, fingerprint):
@@ -384,6 +413,7 @@ struct MarkdownEditorCommandResult: Codable, Hashable, Sendable {
     let recovery: MarkdownEditorRecoverySnapshot?
     let scrollAnchor: MarkdownEditorWireScrollAnchor?
     let performanceSamples: [MarkdownEditorPerformanceSample]?
+    let find: DocumentFindResult?
     let commitSuperseded: Bool?
     let accepted: Bool
     let error: String?
