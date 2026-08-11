@@ -16,7 +16,8 @@ Analysis, Topic, and ordinary Work notes support:
   authoritative Markdown annotation including semantic Callouts;
 - role-aware Properties and the closed Platform Research Actions with
   researcher-configured academic Profiles;
-- Search in **This Note**, **This Vault**, or **Triptych**, plus Attention; and
+- Search in **This Note**, **This Vault**, or **Triptych**, plus Attention;
+- lightweight Document Find in every mode, with Replace in Edit and Source; and
 - Research Record and independent checkpoint recovery.
 
 Critique bodies are read-only in Scholium but remain ordinary externally
@@ -72,24 +73,69 @@ transaction without moving the document selection; the caret-line **Toggle
 Task** command remains the keyboard/menu route. Source always exposes the exact
 prefix and task bytes.
 
-Edit alone owns two caret-triggered input suggestion lists. Typing `[[` opens
+Edit alone owns three caret-triggered input suggestion lists. Typing `[[` opens
 the current Workspace note catalog and filters it again as the researcher types;
-each insertable result shows its resolved title and quiet path context. Accepting
-one unique result completes exactly one Wikilink, reusing rather than duplicating
-any auto-inserted closing brackets. Ambiguous cross-vault targets remain
-nonauthorizing and are not offered as insertable results. Typing `/` at the
-start of a line or after whitespace opens structured insertion. A bare slash on
-a block-safe line shows only **Callout**, **Date**, **Inline Math**, and
-**Mermaid**; further characters fuzzy-match the complete bounded set:
-**Callout**, **Date**, **Inline Math**, **Display Math**, **Mermaid**, **Table**,
-**Footnote**, **Code Block**, and **Divider**. In ordinary prose, the bare slash
-offers only Date, Inline Math, and Footnote. Date inserts the local calendar date
-as `YYYY-MM-DD`; Callout continues into the canonical role chooser. These lists
-never run during marked-text composition or inside frontmatter, code, raw HTML,
-comments, mathematics, or another protected construct. Source owns neither
-input list. Each accepted suggestion is one editor transaction and one
-Undo event; it never creates another buffer, selection, focus owner, or
-writable projection.
+each insertable result shows its resolved title and quiet path context. Titles,
+paths, and authored aliases participate in matching. Accepting a title or path
+inserts the canonical target as `[[Target]]`; accepting an authored alias inserts
+`[[Target|Alias]]`. When the researcher has already entered `|Visible Text`,
+completion replaces only the target and preserves that exact visible text.
+Accepting one unique result completes exactly one Wikilink, reusing rather than
+duplicating any auto-inserted closing brackets and never rewriting an existing
+link elsewhere. Ambiguous cross-vault targets remain nonauthorizing and are not
+offered as insertable results.
+
+Typing `@` at a text boundary opens **Analysis Reference** completion over only
+the active Analyses vault. It searches the current Analysis identity and
+available author, publication-date, and source-title projections, shows author,
+year, title, and quiet path when present, and performs no Zotero read. Accepting
+one result inserts a neutral Wikilink to the canonical Analysis target with a
+short visible author/year label when those fields permit one, otherwise its
+resolved title. It never invents or inserts a citation key, citation processor
+syntax, evidential relation, or bibliography entry. The candidate set and
+derived display labels are read-only, cancellable, and nonpersistent.
+
+Typing `/` at the start of a line or after whitespace opens structured
+insertion. A bare slash on a block-safe line shows only **Callout**, **Date**,
+**Inline Math**, and **Mermaid**; further characters fuzzy-match the complete
+bounded set: **Callout**, **Date**, **Inline Math**, **Display Math**,
+**Mermaid**, **Table**, **Footnote**, **Code Block**, and **Divider**. In
+ordinary prose, the bare slash offers only Date, Inline Math, and Footnote. Date
+inserts the local calendar date as `YYYY-MM-DD`; Callout continues into the
+canonical role chooser. These lists never run during marked-text composition or
+inside frontmatter, code, raw HTML, comments, mathematics, or another protected
+construct. Source owns none of the input lists. Each accepted suggestion is one
+editor transaction and one Undo event; it never creates another buffer,
+selection, focus owner, or writable projection.
+
+Document statistics are derived from the current unsaved body and never stored.
+A nonempty selection changes the scope to that selection; clearing it returns to
+the complete body. **English words** are Unicode letter-or-number runs in Latin
+script, retaining internal apostrophes or hyphens. **Chinese characters** count
+each Han character. **Characters** count Unicode extended grapheme clusters in
+visible authored text. YAML, Markdown delimiters, code-fence delimiters, and
+link destinations are excluded; visible link labels, image alternative text,
+code content, and punctuation remain in the character total. Other scripts
+remain in Characters without being mislabeled as English words or Chinese
+characters. Statistics never retain history or claim an exact source-byte
+count.
+
+Spelling and grammar use the installed macOS text services. Scholium exposes the
+standard Edit-menu and contextual routes and does not ship a dictionary,
+language detector, correction model, or persistent spelling profile.
+
+An image attachment import copies one researcher-selected supported image into
+the current vault at `Attachments/<attachment-uuid>/<original-filename>` without
+replacing an existing file, records its stable identity and vault-relative path
+in the portable attachment catalog, and inserts one ordinary relative Markdown
+image link into the current Edit or Source buffer. Selecting an existing safe
+image inside the current vault registers and links that exact file without
+copying it. The source link remains authoritative and meaningful in other
+Markdown editors; the catalog never regenerates or silently repairs it. Import
+failure, catalog failure, stale source, or editor rejection inserts no link and
+removes only an exact file created by that failed operation. Scholium never
+uploads, deletes, moves, or rewrites an attachment as a side effect of editing
+or deleting a Note.
 
 Rendered callouts hide generated role names visually but retain them for
 accessibility. A supplied title inherits the role heading style; an untitled

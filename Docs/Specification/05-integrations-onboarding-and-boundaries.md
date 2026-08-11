@@ -209,7 +209,10 @@ Zotero and local Agent transports.
 
 Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
-inheritance and sharing; and Work finding overlays.
+inheritance and sharing; Work finding overlays; active-table-cell hybrid
+editing; and PDF attachment presentation. A later PDF attachment route uses
+Quick Look, Open, and Reveal in Finder over ordinary attachment bytes and never
+becomes an embedded PDF reader.
 
 Additional researcher-facing interface translations beyond English and
 Simplified Chinese, right-to-left interface chrome and navigation, and complete
@@ -230,8 +233,10 @@ File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
 remains authoritative for Markdown, ordinary Skill-folder contents,
-attachments, and checkpoint folders; Zotero for bibliography/PDFs; external
-Agents for optional open-ended work.
+attachment bytes, and checkpoint folders. The portable attachment catalog under
+`.scholium/attachments/v1/` records stable identities and vault-relative paths
+only. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
+external Agents remain authoritative for optional open-ended work.
 
 Scholium defines no separate durable research-handoff packet, memory object, or ontology.
 Analyses, Topics, Works, and researcher-authored Markdown remain the durable

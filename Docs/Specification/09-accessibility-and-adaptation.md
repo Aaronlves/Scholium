@@ -96,6 +96,24 @@
 - Edit suggestions retain document focus and one listbox selection. Up/Down
   moves, Return accepts, Escape closes, and pointer acceptance has the same
   result. Marked-text composition opens no suggestion list or forced selection.
+- Document Find exposes its query, options, current/total result, navigation,
+  replacement availability, and close route in one keyboard order. Opening it
+  focuses Find; Escape closes it and returns to the exact editor selection.
+  Match highlighting, current-match state, and replacement availability never
+  rely on color alone.
+- Wikilink alias and Analysis Reference rows expose visible label, canonical
+  target, note role, and path without reading Markdown delimiters aloud.
+  Analysis metadata absence remains absence and never receives an invented
+  author, year, or citation key.
+- Document statistics expose one complete localized accessibility value and
+  identify whether it describes the selection or body. The visual status may
+  yield at narrow widths, but the Edit menu retains a named **Document
+  Statistics** command that announces the same current value.
+- Spelling and grammar retain the standard macOS Edit submenu, shortcuts,
+  contextual commands, correction state, and installed-language behavior.
+- Insert Image uses a native file panel with an **Insert** action, reports copy,
+  catalog, source, and cleanup failures without losing editor focus or source,
+  and never makes drag, paste, or Finder the only route.
 - English, Simplified Chinese, and mixed English/Chinese Source lines keep the
   visual cursor, selection, and installed input method consistent with visible
   content. Other Unicode source remains exact and Source-visible without a
@@ -142,6 +160,8 @@
   listbox position; only one owns selection. Explain Query is keyboard and
   VoiceOver reachable and presents the Application explanation without
   reparsing the query.
+- Research Search and Document Find have distinct accessible names, shortcuts,
+  focus owners, scopes, and results; neither is announced as the other.
 - Invalid, ambiguous, provider-mismatch, unavailable, stale, and empty Search
   states remain distinct and retain an edit or retry target. Note and Record
   results identify their source context and restore focus at the exact available

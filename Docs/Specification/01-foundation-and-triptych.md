@@ -207,6 +207,9 @@ The portable directory beside Works contains only:
 - per-vault Properties profiles, exact New Note YAML, and Analysis Agent
   creation requirements;
 - typed Analysis-to-Zotero bindings keyed by stable Note identity;
+- the portable attachment catalog under `.scholium/attachments/v1/`, relating
+  stable attachment identities to vault-qualified Finder paths without storing
+  attachment bytes or reconstructing Markdown links;
 - current primary Skill Markdown, optional machine-local folder markers,
   Philosophical Practices, Action Profiles, and explicit Action bindings; and
 - portable intellectual Research Records under
@@ -233,9 +236,11 @@ Authored Markdown/YAML contains only research content that remains meaningful
 outside Scholium. Portable `.scholium/` contains only synchronized control
 state required to continue interpreting the same Triptych. Application Support
 contains machine-local access, execution, derived, window, temporary, and
-recovery state. A portable binding is not a Property or a general machine-field
-bag; an absolute path, bookmark, secret, Session, index, or live editor state
-is never portable control state.
+recovery state. Attachment bytes remain ordinary Finder-authoritative files
+inside their owning vault; the portable catalog records identity and relative
+location only. A portable binding or attachment entry is not a Property or a
+general machine-field bag; an absolute path, bookmark, secret, Session, index,
+or live editor state is never portable control state.
 
 Production requires the real per-user Application Support root before it may
 construct a workspace runtime or any machine-owned store. Failure to resolve,

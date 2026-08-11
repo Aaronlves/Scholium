@@ -17,11 +17,12 @@ Architecture, Status, and evidence rather than copying them into another pack.
 **Usable Core** covers:
 
 - Bootstrap success/failure, registration/restoration, and independent windows;
-- create/open/read/edit/save, versioned Note Search, and explicit cross-vault
-  navigation;
+- create/open/read/edit/save, Document Find/Replace, versioned Note Search, and
+  explicit cross-vault navigation;
 - Edit/Source fidelity, formatting, Review passage Comment, and Markdown
-  Callout authoring,
-  and mode changes;
+  Callout authoring, Wikilink aliases, Analysis Reference completion, image
+  attachment import, Document statistics, native spelling routes, and mode
+  changes;
 - categorized About/Properties, optional top-level Research fields, Settle,
   and simplified Actions;
 - native split resize/visibility, Document tabs without shell reconstruction,

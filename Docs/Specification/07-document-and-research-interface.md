@@ -53,8 +53,8 @@ Edit's formatting bar keeps the frequent commands visible in this order:
 **More**. Wiki applies a Wikilink directly; its adjacent, undivided chevron
 opens **Supports**, **Opposes**, and **Incompatible** Vector Link actions.
 More contains **Inline Code**, **Code Block**, one **Lists** submenu for bullet,
-numbered, and checkbox lists, **Blockquote**, and **Comment** (the Markdown
-Comment wrapper). A
+numbered, and checkbox lists, **Blockquote**, **Comment** (the Markdown Comment
+wrapper), and **Insert Image…**. It also appears in Format. A
 constrained-width presentation may also move Strikethrough and Highlight into
 More without changing command availability. Familiar formatting actions and
 all Vector Link relationship actions use direct monochrome SF Symbols with one
