@@ -44,15 +44,16 @@ struct EditorLinkCompletionIndexTests {
         #expect(try await index.query("价值", sourcePath: "Source.md", currentVaultID: vaultID, generation: 3).count == 1)
     }
 
-    @Test("Queries are bounded and stale graph generations return nothing")
+    @Test("Top-K is globally ordered, input-order independent, bounded, and generation-safe")
     func boundsAndGeneration() async throws {
         let vaultID = UUID()
         let index = EditorLinkCompletionIndex()
-        await index.replace(notes: (0..<150).map {
+        let notes = (0..<150).map {
             note(vaultID: vaultID, path: "Many/Item \($0).md", title: "Item \($0)")
-        }, generation: 9)
+        }
+        await index.replace(notes: Array(notes.reversed()), generation: 9)
 
-        let current = try await index.query(
+        let reversed = try await index.query(
             "Item",
             sourcePath: "Source.md",
             currentVaultID: vaultID,
@@ -65,9 +66,43 @@ struct EditorLinkCompletionIndexTests {
             currentVaultID: vaultID,
             generation: 8
         )
+        await index.replace(
+            notes: Array(notes.dropFirst(75)) + Array(notes.prefix(75)),
+            generation: 10
+        )
+        let rotated = try await index.query(
+            "Item",
+            sourcePath: "Source.md",
+            currentVaultID: vaultID,
+            generation: 10,
+            limit: 1_000
+        )
 
-        #expect(current.count == 100)
+        let expectedLabels = (0..<100).map { "Item \($0)" }
+        #expect(reversed.map(\.label) == expectedLabels)
+        #expect(rotated.map(\.label) == expectedLabels)
         #expect(stale.isEmpty)
+    }
+
+    @Test("Equal labels use the complete display path before the unique identity tie-break")
+    func equalLabelOrdering() async throws {
+        let vaultID = UUID()
+        let index = EditorLinkCompletionIndex()
+        let notes = [
+            note(vaultID: vaultID, path: "Zed/Same.md", title: "Same"),
+            note(vaultID: vaultID, path: "Able/Same.md", title: "Same"),
+        ]
+        await index.replace(notes: notes, generation: 1)
+
+        let result = try await index.query(
+            "Same",
+            sourcePath: "Source.md",
+            currentVaultID: vaultID,
+            generation: 1,
+            limit: 1
+        )
+
+        #expect(result.map(\.path) == ["Topics/Able/Same.md"])
     }
 
     private func note(

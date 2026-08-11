@@ -4,6 +4,8 @@ import ScholiumContracts
 /// Generation-owned, locale-stable wikilink candidate index. Graph/catalog
 /// replacement invalidates older queries; callers receive at most 100 rows.
 actor EditorLinkCompletionIndex {
+    private static let stableLocale = Locale(identifier: "en_US_POSIX")
+
     private struct IndexedNote: Sendable {
         let note: WorkspaceCatalogNote
         let stem: String
@@ -11,7 +13,10 @@ actor EditorLinkCompletionIndex {
         let pathWithoutExtension: String
         let normalizedStem: String
         let normalizedPath: String
+        let normalizedTitle: String
+        let normalizedDisplayPath: String
         let normalizedSearchText: String
+        let uniqueSortKey: String
     }
 
     private var generation = -1
@@ -35,6 +40,7 @@ actor EditorLinkCompletionIndex {
                 .deletingPathExtension
             let folder = (path as NSString).deletingLastPathComponent
             let withoutExtension = (path as NSString).deletingPathExtension
+            let displayPath = "\(note.reference.vaultName)/\(path)"
             return IndexedNote(
                 note: note,
                 stem: stem,
@@ -42,11 +48,16 @@ actor EditorLinkCompletionIndex {
                 pathWithoutExtension: withoutExtension,
                 normalizedStem: Self.normalize(stem),
                 normalizedPath: Self.normalize(withoutExtension),
+                normalizedTitle: Self.normalize(note.title),
+                normalizedDisplayPath: Self.normalize(displayPath),
                 normalizedSearchText: Self.normalize(
                     "\(note.title) \(path) \(note.aliases.joined(separator: " "))"
-                )
+                ),
+                uniqueSortKey: "\(note.reference.vaultID.uuidString.lowercased()):\(path):"
+                    + (note.reference.stableNoteID ?? note.fingerprint.sha256)
             )
         }
+        notes.sort(by: Self.candidatesAreOrdered)
         stemGroups = Dictionary(grouping: notes.indices) { notes[$0].normalizedStem }
         pathGroups = Dictionary(grouping: notes.indices) { notes[$0].normalizedPath }
     }
@@ -118,18 +129,30 @@ actor EditorLinkCompletionIndex {
             ))
             if results.count == boundedLimit { break }
         }
-        return results.sorted {
-            if $0.label != $1.label {
-                return $0.label.localizedStandardCompare($1.label) == .orderedAscending
-            }
-            return $0.path < $1.path
-        }
+        return results
+    }
+
+    private static func candidatesAreOrdered(_ lhs: IndexedNote, _ rhs: IndexedNote) -> Bool {
+        let titleOrder = compareSortText(lhs.normalizedTitle, rhs.normalizedTitle)
+        if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+        let pathOrder = compareSortText(lhs.normalizedDisplayPath, rhs.normalizedDisplayPath)
+        if pathOrder != .orderedSame { return pathOrder == .orderedAscending }
+        return lhs.uniqueSortKey < rhs.uniqueSortKey
+    }
+
+    private static func compareSortText(_ lhs: String, _ rhs: String) -> ComparisonResult {
+        lhs.compare(
+            rhs,
+            options: [.numeric],
+            range: nil,
+            locale: stableLocale
+        )
     }
 
     private static func normalize(_ value: String) -> String {
         value.precomposedStringWithCanonicalMapping.folding(
             options: [.caseInsensitive, .diacriticInsensitive],
-            locale: Locale(identifier: "en_US_POSIX")
+            locale: stableLocale
         )
     }
 }
