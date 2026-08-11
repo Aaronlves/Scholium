@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 13;
+export const EDITOR_PROTOCOL_VERSION = 14;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -12,7 +12,7 @@ export type MarkdownEditorCommand =
   | "numberedList" | "taskList" | "fencedCode" | "thematicBreak"
   | "calloutOrient" | "calloutCite" | "calloutConnect" | "calloutState"
   | "calloutIllustrate" | "calloutQuote" | "calloutFlag"
-  | "insertFootnote" | "insertTable" | "toggleTask"
+  | "insertFootnote" | "insertTable" | "insertImage" | "toggleTask"
   | "tableInsertRowBefore" | "tableInsertRowAfter" | "tableDeleteRow"
   | "tableInsertColumnBefore" | "tableInsertColumnAfter" | "tableDeleteColumn"
   | "tableAlignLeft" | "tableAlignCenter" | "tableAlignRight"
@@ -156,7 +156,7 @@ const commandTypes = new Set<MarkdownEditorCommand>([
   "heading2", "heading3", "heading4", "heading5", "heading6", "blockQuotation", "bulletList",
   "numberedList", "taskList", "fencedCode", "thematicBreak", "calloutOrient", "calloutCite",
   "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
-  "insertFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter",
+  "insertFootnote", "insertTable", "insertImage", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter",
   "tableDeleteRow", "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown",
   "linkSelectedText",

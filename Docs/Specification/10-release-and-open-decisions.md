@@ -21,7 +21,7 @@ Architecture, Status, and evidence rather than copying them into another pack.
   explicit cross-vault navigation;
 - Edit/Source fidelity, formatting, Review passage Comment, and Markdown
   Callout authoring, Wikilink aliases, Analysis Reference completion, image
-  attachment import, Document statistics, native spelling routes, and mode
+  attachment Import/Index, Document statistics, native spelling routes, and mode
   changes;
 - categorized About/Properties, optional top-level Research fields, Settle,
   and simplified Actions;

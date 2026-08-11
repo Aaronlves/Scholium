@@ -7,6 +7,27 @@ public protocol DocumentUseCases: Sendable {
         at sourceURL: URL,
         intoVault vaultID: UUID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func unavailableIndexedImagePaths(in markdownSource: String) async throws -> [String]
+    func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws
     func create(
         _ id: VaultQualifiedNoteID,
         content: String

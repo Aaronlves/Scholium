@@ -124,16 +124,27 @@ Spelling and grammar use the installed macOS text services. Scholium exposes the
 standard Edit-menu and contextual routes and does not ship a dictionary,
 language detector, correction model, or persistent spelling profile.
 
-An image attachment import copies one researcher-selected supported image into
-the current vault at `Attachments/<attachment-uuid>/<original-filename>` without
-replacing an existing file, records its stable identity and vault-relative path
-in the portable attachment catalog, and inserts one ordinary relative Markdown
-image link into the current Edit or Source buffer. Selecting an existing safe
-image inside the current vault registers and links that exact file without
-copying it. The source link remains authoritative and meaningful in other
-Markdown editors; the catalog never regenerates or silently repairs it. Import
-failure, catalog failure, stale source, or editor rejection inserts no link and
-removes only an exact file created by that failed operation. Scholium never
+Image attachment management has exactly two explicit routes. **Import Image…**
+copies one researcher-selected supported image into the current vault at
+`Attachments/<attachment-uuid>/<original-filename>` without replacement,
+records its stable identity and vault-relative path, and inserts one ordinary
+relative Markdown image link into the current Edit or Source buffer. Pasting
+image bytes or a copied image file always uses this Import route.
+
+**Index Image…** validates but does not copy the selected image, records its
+stable identity and standardized absolute Finder path, and inserts that
+percent-encoded absolute path as the ordinary Markdown image destination. A
+read-only security-scoped bookmark may be retained only in machine-local
+Application Support so Scholium can check access after relaunch; bookmark bytes
+never enter `.scholium` or Markdown and never replace the authored absolute path
+as location authority. If the path later becomes missing, inaccessible, moved,
+or stale, Scholium reports that the indexed attachment is unavailable and does
+not search for, relink, repair, copy, move, or delete it.
+
+In both routes the source link remains authoritative and meaningful in other
+Markdown editors; the catalog never regenerates or silently repairs it. Import,
+Index, catalog, bookmark, stale-source, or editor failure inserts no link and
+rolls back only state exactly created by that failed operation. Scholium never
 uploads, deletes, moves, or rewrites an attachment as a side effect of editing
 or deleting a Note.
 

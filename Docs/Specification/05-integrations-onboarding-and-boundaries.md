@@ -234,8 +234,10 @@ Settings-owned Research Guidance, not packages, a marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
 remains authoritative for Markdown, ordinary Skill-folder contents,
 attachment bytes, and checkpoint folders. The portable attachment catalog under
-`.scholium/attachments/v1/` records stable identities and vault-relative paths
-only. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
+`.scholium/attachments/v1/` records stable identities plus either an imported
+vault-relative path or an indexed absolute path. Machine-local read-only
+bookmark data for an indexed path stays outside the Triptych and cannot repair
+or replace that path. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
 external Agents remain authoritative for optional open-ended work.
 
 Scholium defines no separate durable research-handoff packet, memory object, or ontology.

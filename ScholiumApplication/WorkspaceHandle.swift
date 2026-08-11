@@ -20,6 +20,7 @@ struct WorkspaceServices: Sendable {
     let researchAgentSessions: ResearchAgentSessionAuthority?
     let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
+    let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
     let portableResearchRecordStore: PortableResearchRecordStore
     let localResearchExecutionStore: LocalResearchExecutionStore
@@ -634,6 +635,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
                 ),
+                indexedAttachmentAccessStore: try IndexedAttachmentAccessStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
                 zotero: zotero,
                 portableResearchRecordStore: portableResearchRecordStore,
                 localResearchExecutionStore: localResearchExecutionStore,
@@ -871,6 +876,255 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             document: committedDocument,
             identityRecoveryWarning: identityRecoveryWarning
         )
+    }
+
+    func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.prepareImage(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath,
+            management: .importIntoAttachments
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: nil
+        )
+    }
+
+    func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.prepareImage(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath,
+            management: .indexAbsolutePath
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: sourceURL
+        )
+    }
+
+    func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.prepareImage(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath,
+            management: .importIntoAttachments
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: nil
+        )
+    }
+
+    func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.preparePastedImage(
+            data: data,
+            preferredFilename: preferredFilename,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: nil
+        )
+    }
+
+    private func registerPreparedImageFile(
+        _ preparedFile: PreparedVaultImageFile,
+        attachmentID: UUID,
+        vaultID: UUID,
+        fileStore: VaultAttachmentStore,
+        indexedSourceURL: URL?
+    ) async throws -> PreparedImageAttachment {
+        let registration: (record: PortableAttachmentRecord, created: Bool)
+        do {
+            registration = try await services.controlStore.registerAttachment(
+                vaultID: vaultID,
+                location: preparedFile.location,
+                preferredID: attachmentID
+            )
+        } catch {
+            if let fingerprint = preparedFile.copiedFileFingerprint,
+               let copiedRelativePath = preparedFile.copiedRelativePath {
+                if let imageError = error as? ImageAttachmentError,
+                   case .catalogCommitUncertain = imageError {
+                    throw error
+                }
+                do {
+                    try await fileStore.removeCopiedImageIfExact(
+                        relativePath: copiedRelativePath,
+                        expectedFingerprint: fingerprint
+                    )
+                } catch let cleanupError {
+                    throw ImageAttachmentError.preparationCleanupFailed(
+                        operation: error.localizedDescription,
+                        cleanup: cleanupError.localizedDescription
+                    )
+                }
+            }
+            throw error
+        }
+
+        var createdLocalAccessRecord = false
+        if case .absolutePath(let path) = registration.record.location {
+            guard let indexedSourceURL else {
+                throw IndexedAttachmentAccessError.bookmarkUnavailable(path)
+            }
+            do {
+                createdLocalAccessRecord = try await services
+                    .indexedAttachmentAccessStore.register(
+                        attachmentID: registration.record.id,
+                        selectedURL: indexedSourceURL,
+                        expectedAbsolutePath: path
+                    )
+            } catch {
+                if registration.created {
+                    do {
+                        try await services.controlStore.removeAttachment(
+                            registration.record
+                        )
+                    } catch let cleanupError {
+                        throw ImageAttachmentError.preparationCleanupFailed(
+                            operation: error.localizedDescription,
+                            cleanup: cleanupError.localizedDescription
+                        )
+                    }
+                }
+                throw error
+            }
+        }
+        return PreparedImageAttachment(
+            record: registration.record,
+            markdownDestination: preparedFile.markdownDestination,
+            altText: preparedFile.altText,
+            copiedFileFingerprint: preparedFile.copiedFileFingerprint,
+            createdCatalogRecord: registration.created,
+            createdLocalAccessRecord: createdLocalAccessRecord
+        )
+    }
+
+    func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        if preparation.createdCatalogRecord {
+            // Keep Finder bytes when catalog cleanup is uncertain: a remaining
+            // portable record must never be made to point at a missing file.
+            try await services.controlStore.removeAttachment(preparation.record)
+        }
+        if preparation.createdLocalAccessRecord {
+            try await services.indexedAttachmentAccessStore.removeIfPresent(
+                attachmentID: preparation.record.id
+            )
+        }
+        if let fingerprint = preparation.copiedFileFingerprint {
+            guard case .vaultRelative(let relativePath) = preparation.record.location else {
+                throw ImageAttachmentError.cleanupRefused(
+                    preparation.record.location.path
+                )
+            }
+            let repository = try repository(vaultID: preparation.record.vaultID)
+            let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+            try await fileStore.removeCopiedImageIfExact(
+                relativePath: relativePath,
+                expectedFingerprint: fingerprint
+            )
+        }
+    }
+
+    func unavailableIndexedImagePaths(
+        in markdownSource: String
+    ) async throws -> [String] {
+        let referencedPaths = IndexedImageReferences.absolutePaths(
+            in: markdownSource
+        )
+        guard !referencedPaths.isEmpty else { return [] }
+        let records = try await services.controlStore.attachmentRecords()
+        var unavailable: [String] = []
+        for record in records {
+            guard case .absolutePath(let path) = record.location,
+                  referencedPaths.contains(path) else { continue }
+            if try await services.indexedAttachmentAccessStore.isAvailable(
+                attachmentID: record.id,
+                expectedAbsolutePath: path
+            ) == false {
+                unavailable.append(path)
+            }
+        }
+        return unavailable.sorted()
     }
 
     func createDocument(

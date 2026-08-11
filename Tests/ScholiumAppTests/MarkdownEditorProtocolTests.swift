@@ -50,7 +50,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 13")
+    @Test("Request envelope and operation round trip with protocol version 14")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -66,7 +66,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 13)
+        #expect(object["protocolVersion"] as? Int == 14)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
@@ -101,6 +101,18 @@ struct MarkdownEditorProtocolTests {
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["type"] as? String == "command")
         #expect(object["command"] as? String == "markdownComment")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+    }
+
+    @Test("Image insertion is a typed, argument-bearing editor command")
+    func imageInsertionCommandRoundTrip() throws {
+        let argument = #"{"alt":"Figure","destination":"../Attachments/id/Figure.png"}"#
+        let operation = MarkdownEditorOperation.command(.insertImage, argument: argument)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "command")
+        #expect(object["command"] as? String == "insertImage")
+        #expect(object["argument"] as? String == argument)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 

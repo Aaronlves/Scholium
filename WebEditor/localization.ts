@@ -56,6 +56,8 @@ export const webInterfaceLocalizationKeys = [
   "Vector Link Options",
   "Vector Link",
   "More Formatting",
+  "Import Image…",
+  "Index Image…",
   "Inline Code",
   "Code Block",
   "Lists",

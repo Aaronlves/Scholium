@@ -1095,6 +1095,8 @@ struct ScholiumFocusedEditorActions {
     let findPrevious: () -> Void
     let useSelectionForFind: () -> Void
     let announceDocumentStatistics: () -> Void
+    let importImage: () -> Void
+    let indexImage: () -> Void
 }
 
 struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
@@ -1252,6 +1254,10 @@ private struct ScholiumCommands: Commands {
                 .disabled(editorActions?.isAvailable(.highlight) != true)
             Button("Inline Code") { editorActions?.perform(.inlineCode) }
                 .disabled(editorActions?.isAvailable(.inlineCode) != true)
+            Button("Import Image…") { editorActions?.importImage() }
+                .disabled(editorActions?.isAvailable(.insertImage) != true)
+            Button("Index Image…") { editorActions?.indexImage() }
+                .disabled(editorActions?.isAvailable(.insertImage) != true)
             Divider()
             Menu("Heading") {
                 Button("Paragraph") { editorActions?.perform(.paragraph) }
@@ -1311,6 +1317,11 @@ private struct ScholiumCommands: Commands {
                 .disabled(editorActions?.isAvailable(.markdownComment) != true)
         }
         CommandMenu("Insert") {
+            Button("Import Image…") { editorActions?.importImage() }
+                .disabled(editorActions?.isAvailable(.insertImage) != true)
+            Button("Index Image…") { editorActions?.indexImage() }
+                .disabled(editorActions?.isAvailable(.insertImage) != true)
+            Divider()
             Button("Link") { editorActions?.perform(.standardLink) }
                 .keyboardShortcut("k", modifiers: [.command])
                 .disabled(editorActions?.isAvailable(.standardLink) != true)

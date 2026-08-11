@@ -21040,7 +21040,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 13;
+  var EDITOR_PROTOCOL_VERSION = 14;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21105,6 +21105,7 @@
     "calloutFlag",
     "insertFootnote",
     "insertTable",
+    "insertImage",
     "toggleTask",
     "tableInsertRowBefore",
     "tableInsertRowAfter",
@@ -21428,6 +21429,29 @@ ${blankRow(table.position.columnCount)}`;
   function labelFor(command2) {
     return command2.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
   }
+  function imageArgument(argument) {
+    if (!argument || new TextEncoder().encode(argument).byteLength > 8192) return null;
+    try {
+      const value = JSON.parse(argument);
+      if (!value || typeof value !== "object" || typeof value.alt !== "string" || typeof value.destination !== "string" || value.alt.length > 1024 || /[\u0000-\u001f\u007f]/.test(value.alt) || value.destination.length === 0 || value.destination.length > 4096 || /[\u0000-\u0020\u007f\\]/.test(value.destination) || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value.destination) || !validImageDestination(value.destination)) return null;
+      return { alt: value.alt, destination: value.destination };
+    } catch {
+      return null;
+    }
+  }
+  function validImageDestination(destination) {
+    if (/%(?![0-9A-Fa-f]{2})/.test(destination)) return false;
+    const absolute = destination.startsWith("/");
+    const components = destination.split("/");
+    if (absolute) components.shift();
+    if (components.length === 0 || components.some((component) => component.length === 0)) {
+      return false;
+    }
+    return components.every((component) => !absolute && component === ".." || component !== "." && component !== ".." && /^[A-Za-z0-9._~%-]+$/.test(component));
+  }
+  function escapedImageAlt(value) {
+    return value.replace(/\\/g, "\\\\").replace(/([\[\]])/g, "\\$1");
+  }
   function inlineChange(source, range, opening, closing2) {
     const selected = source.slice(range.from, range.to);
     const escapedOpening = range.from > 0 && source[range.from - 1] === "\\";
@@ -21492,6 +21516,20 @@ ${fence}`;
     if (command2 === "insertTable") {
       const insert2 = "| Column 1 | Column 2 |\n|---|---|\n|  |  |";
       return { change: { ...range, insert: insert2 }, selection: { anchor: range.from + 2, head: range.from + 10 }, label: "Insert Table" };
+    }
+    if (command2 === "insertImage") {
+      const image = imageArgument(argument);
+      if (!image) return null;
+      const selected = source.slice(range.from, range.to);
+      const usableSelection = selected.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(selected) ? selected : "";
+      const alt = escapedImageAlt(usableSelection || image.alt);
+      const insert2 = `![${alt}](${image.destination})`;
+      const position = range.from + insert2.length;
+      return {
+        change: { ...range, insert: insert2 },
+        selection: { anchor: position, head: position },
+        label: "Insert Image"
+      };
     }
     const bounds = lineBounds(source, range);
     const block = source.slice(bounds.from, bounds.to);
@@ -30691,6 +30729,8 @@ ${fence}
     "Vector Link Options",
     "Vector Link",
     "More Formatting",
+    "Import Image\u2026",
+    "Index Image\u2026",
     "Inline Code",
     "Code Block",
     "Lists",
@@ -31958,6 +31998,23 @@ ${fence}
       menu.element.append(item);
       return item;
     }
+    function addActionMenuItem(menu, label, action) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "scholium-selection-menu-item";
+      item.tabIndex = -1;
+      item.setAttribute("role", "menuitem");
+      const text = document.createElement("span");
+      text.className = "scholium-selection-menu-label";
+      text.textContent = label;
+      item.append(text);
+      item.addEventListener("click", () => {
+        closeMenus();
+        action();
+      });
+      menu.element.append(item);
+      return item;
+    }
     function addSubmenuItem(menu, label, symbol) {
       const item = document.createElement("button");
       item.type = "button";
@@ -32268,6 +32325,8 @@ ${fence}
       addMenuItem(listsMenu, localized("Checkbox List"), "taskList", "", false, "checklist");
       addMenuItem(moreMenu, localized("Blockquote"), "blockQuotation", "", false, "text-quote");
       addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash");
+      addActionMenuItem(moreMenu, localized("Import Image\u2026"), () => options.requestImportImage?.());
+      addActionMenuItem(moreMenu, localized("Index Image\u2026"), () => options.requestIndexImage?.());
       const handleDocumentMouseDown = (event) => {
         if (root && event.target instanceof Node && !root.contains(event.target)) closeMenus();
       };
@@ -36854,6 +36913,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   var selectionActions = createSelectionActionsController({
     applyCommand: applySelectionAction,
+    requestImportImage: () => post({ type: "requestImportImage" }),
+    requestIndexImage: () => post({ type: "requestIndexImage" }),
     selectionForPresentation: (view) => liveSelection.selection(view.state),
     presentationInteractionChanged: (update) => liveSelection.interactionChanged(
       update.startState,
@@ -37405,8 +37466,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     compositionGate.begin();
     window.queueMicrotask(publishEditorContext);
   });
-  function pasteTransfer(transfer, dropPosition) {
+  function pasteTransfer(transfer, dropPosition, requestNativeImageImport = false) {
     if (Array.from(transfer.files).length > 0 || Array.from(transfer.items).some((item) => item.kind === "file")) {
+      const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/")) || Array.from(transfer.items).some((item) => item.kind === "file" && item.type.startsWith("image/"));
+      if (requestNativeImageImport && image) {
+        post({ type: "requestImagePaste" });
+        return true;
+      }
       post({ type: "failure", message: unsupportedFilePasteMessage() });
       announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
       return true;
@@ -37424,7 +37490,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   editor.contentDOM.addEventListener("paste", (event) => {
     if (!event.clipboardData) return;
-    if (pasteTransfer(event.clipboardData)) event.preventDefault();
+    if (pasteTransfer(event.clipboardData, void 0, true)) event.preventDefault();
   }, { capture: true });
   editor.contentDOM.addEventListener("drop", (event) => {
     if (!event.dataTransfer) return;

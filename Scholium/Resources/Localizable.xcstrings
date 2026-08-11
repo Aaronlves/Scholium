@@ -1,6 +1,75 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Attachment cleanup needs attention: %arg" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Attachment cleanup needs attention: %arg" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "附件清理需要处理：%arg" } }
+      }
+    },
+    "%arg indexed attachments are unavailable." : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "%arg indexed attachments are unavailable." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%arg 个已索引附件不可用。" } }
+      }
+    },
+    "Choose an image to copy into this Vault's Attachments folder." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Choose an image to copy into this Vault's Attachments folder." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择要复制到此资料库 Attachments 文件夹的图片。" } }
+      }
+    },
+    "Choose an image to reference at its absolute path without copying it." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Choose an image to reference at its absolute path without copying it." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选择要以绝对路径引用且不复制的图片。" } }
+      }
+    },
+    "Image inserted." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Image inserted." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图片已插入。" } }
+      }
+    },
+    "Import Image" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Import Image" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "导入图片" } }
+      }
+    },
+    "Import Image…" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Import Image…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "导入图片…" } }
+      }
+    },
+    "Index" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Index" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "索引" } }
+      }
+    },
+    "Index Image" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Index Image" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "索引图片" } }
+      }
+    },
+    "Index Image…" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Index Image…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "索引图片…" } }
+      }
+    },
+    "Indexed attachment unavailable: %arg" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "new", "value" : "Indexed attachment unavailable: %arg" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已索引附件不可用：%arg" } }
+      }
+    },
     "" : {
       "localizations" : {
         "en" : {

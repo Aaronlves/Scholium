@@ -1,10 +1,17 @@
+import AppKit
 import ScholiumContracts
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum DocumentNotificationKind {
     case success
     case information
     case error
+}
+
+private enum ImageAttachmentSelectionMode: Equatable {
+    case importFile
+    case index
 }
 
 enum DocumentIntegrityPresentation: Hashable {
@@ -864,6 +871,7 @@ private struct DiscussionPanel: View {
 }
 
 struct NoteContentView: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
     let target: DocumentEditingTarget
@@ -879,6 +887,9 @@ struct NoteContentView: View {
     @State private var noteReviewRequiresReload = false
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
+    @State private var isInsertingImage = false
+    @State private var announcedUnavailableIndexedImages: Set<String> = []
+    @State private var indexedImageAvailabilityGeneration = 0
 
     init(
         controller: DocumentController,
@@ -1039,7 +1050,9 @@ struct NoteContentView: View {
                 findNext: documentFind.next,
                 findPrevious: documentFind.previous,
                 useSelectionForFind: useSelectionForDocumentFind,
-                announceDocumentStatistics: announceDocumentStatistics
+                announceDocumentStatistics: announceDocumentStatistics,
+                importImage: requestImageImport,
+                indexImage: requestImageIndex
             )
         ))
         .overlay(alignment: .bottom) {
@@ -1156,6 +1169,11 @@ struct NoteContentView: View {
             consumePendingSourceLocation()
             focusEditorIfPresented()
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            indexedImageAvailabilityGeneration &+= 1
+        }
         .onChange(of: state.noteReviewState) { _, reviewState in
             documentSession.reconcileNoteReviewTask(with: reviewState)
         }
@@ -1201,6 +1219,9 @@ struct NoteContentView: View {
             guard !Task.isCancelled, fingerprint == noteFingerprint else { return }
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
+        }
+        .task(id: indexedImageAvailabilityTaskIdentity) {
+            await checkIndexedImageAvailability()
         }
         .task(id: discussionProjectionPollIdentity) {
             await pollPortableDiscussionProjection()
@@ -1526,6 +1547,9 @@ struct NoteContentView: View {
                 }
             },
             onRequestFind: handleDocumentFindShortcut,
+            onRequestImportImage: requestImageImport,
+            onRequestIndexImage: requestImageIndex,
+            onPasteImage: handlePastedImage,
             onLinkActivation: { target in
                 if let url = URL(string: target),
                    let scheme = url.scheme?.lowercased(),
@@ -1810,6 +1834,47 @@ struct NoteContentView: View {
             : reviewDocumentStatistics.value
     }
 
+    private var indexedImageAvailabilityTaskIdentity: String {
+        "\(note.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
+    }
+
+    @MainActor
+    private func checkIndexedImageAvailability() async {
+        let source = isEditing ? editingSource : note.rawContent
+        guard source.contains("](/") else {
+            announcedUnavailableIndexedImages = []
+            return
+        }
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            let unavailable = Set(
+                try await controller.unavailableIndexedImagePaths(in: source)
+            )
+            guard !Task.isCancelled else { return }
+            let newlyUnavailable = unavailable.subtracting(
+                announcedUnavailableIndexedImages
+            )
+            announcedUnavailableIndexedImages = unavailable
+            guard !newlyUnavailable.isEmpty else { return }
+            if newlyUnavailable.count == 1, let path = newlyUnavailable.first {
+                actions.notify(
+                    String(localized: "Indexed attachment unavailable: \(path)"),
+                    .information
+                )
+            } else {
+                actions.notify(
+                    String(localized: "\(newlyUnavailable.count) indexed attachments are unavailable."),
+                    .information
+                )
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            // Catalog and local-access health are reported by their owning
+            // workflows. A reminder check never blocks or mutates the Note.
+        }
+    }
+
     private func updateReviewDocumentStatistics(
         selection: MarkdownReviewSelection?
     ) {
@@ -1851,6 +1916,169 @@ struct NoteContentView: View {
         } else {
             documentFind.useSelection(documentSession.readSelection?.excerpt)
         }
+    }
+
+    private func requestImageImport() {
+        requestImageSelection(.importFile)
+    }
+
+    private func requestImageIndex() {
+        requestImageSelection(.index)
+    }
+
+    private func requestImageSelection(_ mode: ImageAttachmentSelectionMode) {
+        guard isEditing,
+              editorSession.isLoaded,
+              editorSession.context?.composing != true,
+              !isInsertingImage else { return }
+        isInsertingImage = true
+        let expectedDocumentID = editorSession.documentID
+        let expectedPath = note.relativePath
+        let noteID = VaultQualifiedNoteID(
+            vaultID: note.vaultID,
+            relativePath: expectedPath
+        )
+
+        Task { @MainActor in
+            defer {
+                isInsertingImage = false
+                focusEditorIfPresented()
+            }
+            var prepared: PreparedImageAttachment?
+            do {
+                guard let fileSelectionPresenter else {
+                    throw ScholiumFileSelectionError.presenterUnavailable
+                }
+                let request = ScholiumFileSelectionRequest(
+                    title: mode == .importFile
+                        ? String(localized: "Import Image")
+                        : String(localized: "Index Image"),
+                    message: mode == .importFile
+                        ? String(localized: "Choose an image to copy into this Vault's Attachments folder.")
+                        : String(localized: "Choose an image to reference at its absolute path without copying it."),
+                    prompt: mode == .importFile
+                        ? String(localized: "Import")
+                        : String(localized: "Index"),
+                    kind: .files(allowedContentTypes: [.image])
+                )
+                guard let sourceURL = try await fileSelectionPresenter.selectURL(request) else {
+                    return
+                }
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                let preparation = switch mode {
+                case .importFile:
+                    try await controller.importImageAttachment(
+                        at: sourceURL,
+                        for: noteID
+                    )
+                case .index:
+                    try await controller.indexImageAttachment(
+                        at: sourceURL,
+                        for: noteID
+                    )
+                }
+                prepared = preparation
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                try await editorSession.perform(
+                    .insertImage,
+                    argument: preparation.editorArgument
+                )
+                prepared = nil
+                AccessibilityNotification.Announcement(
+                    String(localized: "Image inserted.")
+                ).post()
+            } catch {
+                var message = error.localizedDescription
+                if let prepared {
+                    do {
+                        try await controller.rollbackImageAttachment(prepared)
+                    } catch {
+                        message += " " + String(
+                            localized: "Attachment cleanup needs attention: \(error.localizedDescription)"
+                        )
+                    }
+                }
+                actions.notify(message, .error)
+            }
+        }
+    }
+
+    private func handlePastedImage(_ source: EditorPastedImageSource) -> Bool {
+        guard isEditing,
+              editorSession.isLoaded,
+              editorSession.context?.composing != true,
+              !isInsertingImage else { return false }
+        isInsertingImage = true
+        let expectedDocumentID = editorSession.documentID
+        let expectedPath = note.relativePath
+        let noteID = VaultQualifiedNoteID(
+            vaultID: note.vaultID,
+            relativePath: expectedPath
+        )
+
+        Task { @MainActor in
+            defer {
+                isInsertingImage = false
+                focusEditorIfPresented()
+            }
+            var prepared: PreparedImageAttachment?
+            do {
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                let preparation: PreparedImageAttachment
+                switch source {
+                case .file(let url):
+                    preparation = try await controller.importPastedImageAttachment(
+                        at: url,
+                        for: noteID
+                    )
+                case .data(let data, let preferredFilename):
+                    preparation = try await controller.importPastedImageAttachment(
+                        data: data,
+                        preferredFilename: preferredFilename,
+                        for: noteID
+                    )
+                }
+                prepared = preparation
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                try await editorSession.perform(
+                    .insertImage,
+                    argument: preparation.editorArgument
+                )
+                prepared = nil
+                AccessibilityNotification.Announcement(
+                    String(localized: "Image inserted.")
+                ).post()
+            } catch {
+                var message = error.localizedDescription
+                if let prepared {
+                    do {
+                        try await controller.rollbackImageAttachment(prepared)
+                    } catch {
+                        message += " " + String(
+                            localized: "Attachment cleanup needs attention: \(error.localizedDescription)"
+                        )
+                    }
+                }
+                actions.notify(message, .error)
+            }
+        }
+        return true
     }
 
     private func selectPresentationMode(_ mode: NotePresentationMode) {

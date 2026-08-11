@@ -5,6 +5,49 @@ import ScholiumContracts
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
+    @Test("Portable attachment records retain only stable identity and typed location")
+    func attachmentCatalogRegistrationAndRemoval() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        )
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let vaultID = try #require(vaultIDs[.output])
+        let path = try AttachmentRelativePath("Attachments/id/Figure.png")
+        let preferredID = UUID()
+
+        let first = try await store.registerAttachment(
+            vaultID: vaultID,
+            location: .vaultRelative(path),
+            preferredID: preferredID
+        )
+        let reused = try await store.registerAttachment(
+            vaultID: vaultID,
+            location: .vaultRelative(path),
+            preferredID: UUID()
+        )
+
+        #expect(first.created)
+        #expect(first.record.id == preferredID)
+        #expect(!reused.created)
+        #expect(reused.record == first.record)
+        #expect(try await store.attachmentRecords() == [first.record])
+        let recordURL = fixture.root
+            .appendingPathComponent(".scholium/attachments/v1")
+            .appendingPathComponent("\(preferredID.uuidString.lowercased()).json")
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
+                as? [String: Any]
+        )
+        #expect(Set(object.keys) == ["schemaVersion", "id", "vaultID", "location"])
+
+        try await store.removeAttachment(first.record)
+        #expect(try await store.attachmentRecords().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: recordURL.path))
+    }
+
     @Test("Stored Scholium templates adopt the current bundled response contract")
     func bundledTemplateUpdateDoesNotBecomeResearcherCustomization() throws {
         let encoder = JSONEncoder()

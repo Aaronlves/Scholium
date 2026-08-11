@@ -51,6 +51,8 @@ function directMenuButtons(menu: HTMLDivElement) {
  */
 export function createSelectionActionsController(options: {
   applyCommand(view: EditorView, command: SelectionActionCommand): void;
+  requestImportImage?(): void;
+  requestIndexImage?(): void;
   selectionForPresentation?(view: EditorView): EditorSelection;
   presentationInteractionChanged?(update: ViewUpdate): boolean;
   pointerSelectionIsComplete?(view: EditorView): boolean;
@@ -249,6 +251,28 @@ export function createSelectionActionsController(options: {
     text.textContent = label;
     item.append(text);
     item.addEventListener("click", () => apply(command));
+    menu.element.append(item);
+    return item;
+  }
+
+  function addActionMenuItem(
+    menu: MenuController,
+    label: string,
+    action: () => void,
+  ) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "scholium-selection-menu-item";
+    item.tabIndex = -1;
+    item.setAttribute("role", "menuitem");
+    const text = document.createElement("span");
+    text.className = "scholium-selection-menu-label";
+    text.textContent = label;
+    item.append(text);
+    item.addEventListener("click", () => {
+      closeMenus();
+      action();
+    });
     menu.element.append(item);
     return item;
   }
@@ -596,6 +620,8 @@ export function createSelectionActionsController(options: {
     addMenuItem(listsMenu, localized("Checkbox List"), "taskList", "", false, "checklist");
     addMenuItem(moreMenu, localized("Blockquote"), "blockQuotation", "", false, "text-quote");
     addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash");
+    addActionMenuItem(moreMenu, localized("Import Image…"), () => options.requestImportImage?.());
+    addActionMenuItem(moreMenu, localized("Index Image…"), () => options.requestIndexImage?.());
 
     const handleDocumentMouseDown = (event: MouseEvent) => {
       if (root && event.target instanceof Node && !root.contains(event.target)) closeMenus();

@@ -139,7 +139,7 @@ code-element responsibilities. `MarkdownEditorSession` alone owns the retained
 WebView lifecycle, checked source mirror, generation, recovery, and pending
 requests. `MarkdownEditorBridgeAdapter` owns the typed wire envelope and
 structured JavaScript dispatcher; `MarkdownEditorNativeWebView` owns AppKit
-attachment and the single native context-menu presentation; and
+attachment, image paste, and the context menu; and
 `MarkdownEditorWebView` is the
 SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
 snapshot probes and interaction drivers live in the two

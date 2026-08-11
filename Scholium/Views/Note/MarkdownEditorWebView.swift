@@ -21,6 +21,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onDocumentActivity: () -> Void
     let onRequestSave: () -> Void
     let onRequestFind: (DocumentFindShortcut) -> Void
+    let onRequestImportImage: () -> Void
+    let onRequestIndexImage: () -> Void
+    let onPasteImage: (EditorPastedImageSource) -> Bool
     let onLinkActivation: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
     let onScrollAnchorChange: (EditorScrollAnchor) -> Void
@@ -32,6 +35,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: onDocumentActivity,
             onRequestSave: onRequestSave,
             onRequestFind: onRequestFind,
+            onRequestImportImage: onRequestImportImage,
+            onRequestIndexImage: onRequestIndexImage,
             linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
             onScrollFractionChange: onScrollFractionChange,
@@ -101,6 +106,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
 
         let webView = WindowAttachedWebView(frame: .zero, configuration: configuration)
         webView.editorSession = session
+        webView.onPasteImage = onPasteImage
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.documentID = documentID
@@ -133,11 +139,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
+            webView.onPasteImage = onPasteImage
         }
         context.coordinator.performanceDocumentID = performanceDocumentID
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
         context.coordinator.onRequestFind = onRequestFind
+        context.coordinator.onRequestImportImage = onRequestImportImage
+        context.coordinator.onRequestIndexImage = onRequestIndexImage
         context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
@@ -175,6 +184,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = nil
+            webView.onPasteImage = nil
         }
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "scholium")
         webView.navigationDelegate = nil
@@ -250,6 +260,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
         var onRequestFind: (DocumentFindShortcut) -> Void
+        var onRequestImportImage: () -> Void
+        var onRequestIndexImage: () -> Void
         var linkCompletionQuery: @MainActor (
             EditorLinkCompletionKind,
             String
@@ -284,6 +296,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestFind: @escaping (DocumentFindShortcut) -> Void,
+            onRequestImportImage: @escaping () -> Void,
+            onRequestIndexImage: @escaping () -> Void,
             linkCompletionQuery: @escaping @MainActor (
                 EditorLinkCompletionKind,
                 String
@@ -297,6 +311,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onDocumentActivity = onDocumentActivity
             self.onRequestSave = onRequestSave
             self.onRequestFind = onRequestFind
+            self.onRequestImportImage = onRequestImportImage
+            self.onRequestIndexImage = onRequestIndexImage
             self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
             self.onScrollFractionChange = onScrollFractionChange
@@ -377,6 +393,16 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case "requestDocumentFind":
                 guard validEnvelope(payload), let action = payload.action else { return }
                 onRequestFind(action)
+            case "requestImportImage":
+                guard validEnvelope(payload) else { return }
+                onRequestImportImage()
+            case "requestIndexImage":
+                guard validEnvelope(payload) else { return }
+                onRequestIndexImage()
+            case "requestImagePaste":
+                guard validEnvelope(payload),
+                      let webView = message.webView as? WindowAttachedWebView else { return }
+                _ = webView.consumePastedImage()
             case "requestMermaidRuntime":
                 guard validEnvelope(payload), let webView = message.webView else { return }
                 requestMermaidRuntime(in: webView)

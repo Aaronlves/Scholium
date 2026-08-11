@@ -54,13 +54,14 @@ Edit's formatting bar keeps the frequent commands visible in this order:
 opens **Supports**, **Opposes**, and **Incompatible** Vector Link actions.
 More contains **Inline Code**, **Code Block**, one **Lists** submenu for bullet,
 numbered, and checkbox lists, **Blockquote**, **Comment** (the Markdown Comment
-wrapper), and **Insert Image…**. It also appears in Format. A
+wrapper), **Import Image…**, and **Index Image…**. Both image routes also appear
+in Format and Insert. A
 constrained-width presentation may also move Strikethrough and Highlight into
 More without changing command availability. Familiar formatting actions and
 all Vector Link relationship actions use direct monochrome SF Symbols with one
 quiet optical weight; Scholium does not redraw equivalent marks. Wiki remains
-a short text label. Menu rows show action names, never Markdown delimiters or
-syntax examples, and no submenu nests beyond the single Lists level.
+a short text label. Menu rows show action names, never syntax examples; only
+Lists nests.
 
 Edit's Wikilink and slash-command suggestions use one caret-anchored bounded
 panel rather than a window, sheet, toolbar, or second text field. It follows the

@@ -50,6 +50,10 @@
 - Exercise pointer and keyboard behavior for construct-scoped syntax, completed-
   selection toolbar timing, context menus, Callouts, footnotes, lists, tables,
   suggestions, previews, and source-return navigation.
+- Complete direct sandbox, keyboard, VoiceOver, relaunch, missing-path, and
+  cleanup acceptance for image Import, pasted-image Import, absolute-path
+  Index, and indexed-attachment reminders. Focused tests prove the typed
+  transactions and path/bookmark boundaries but are not human acceptance.
 - Run the connected Edit/Source request-to-accessible-layout collector against
   the exact packaged artifact. A corrected focused Debug 3-warm-up/10-sample
   scenario recorded 80.350 ms p50, 102.832 ms nearest-rank p95/maximum, and

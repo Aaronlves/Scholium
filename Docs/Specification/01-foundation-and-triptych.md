@@ -208,8 +208,9 @@ The portable directory beside Works contains only:
   creation requirements;
 - typed Analysis-to-Zotero bindings keyed by stable Note identity;
 - the portable attachment catalog under `.scholium/attachments/v1/`, relating
-  stable attachment identities to vault-qualified Finder paths without storing
-  attachment bytes or reconstructing Markdown links;
+  stable attachment identities to an explicit imported vault-relative path or
+  indexed absolute Finder path without storing attachment bytes, sandbox
+  bookmark data, or reconstructing Markdown links;
 - current primary Skill Markdown, optional machine-local folder markers,
   Philosophical Practices, Action Profiles, and explicit Action bindings; and
 - portable intellectual Research Records under

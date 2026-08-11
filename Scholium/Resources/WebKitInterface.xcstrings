@@ -41,6 +41,8 @@
     "Inline Code" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline Code"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内代码"}}}},
     "Inline Math" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline Math"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内公式"}}}},
     "Inline code" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline code"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内代码"}}}},
+    "Import Image…" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Import Image…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"导入图片…"}}}},
+    "Index Image…" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Index Image…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"索引图片…"}}}},
     "Introduces the note's purpose, scope, and route." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Introduces the note's purpose, scope, and route."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"介绍笔记的目的、范围与阅读路径。"}}}},
     "Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Isolates a claim, definition, principle, formula, distinction, or compact argument without endorsing it."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"单独呈现一项主张、定义、原则、公式、区分或简短论证，但不表示认可。"}}}},
     "Italic" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Italic"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"斜体"}}}},

@@ -111,9 +111,11 @@
   Statistics** command that announces the same current value.
 - Spelling and grammar retain the standard macOS Edit submenu, shortcuts,
   contextual commands, correction state, and installed-language behavior.
-- Insert Image uses a native file panel with an **Insert** action, reports copy,
-  catalog, source, and cleanup failures without losing editor focus or source,
-  and never makes drag, paste, or Finder the only route.
+- Import Image and Index Image use native file panels with corresponding
+  **Import** and **Index** actions. They expose the copy-versus-absolute-path
+  consequence by name, report copy, catalog, bookmark, source, stale-path, and
+  cleanup failures without losing editor focus or source, and never make drag,
+  paste, or Finder the only route. A pasted image is announced as an Import.
 - English, Simplified Chinese, and mixed English/Chinese Source lines keep the
   visual cursor, selection, and installed input method consistent with visible
   content. Other Unicode source remains exact and Source-visible without a

@@ -45,6 +45,12 @@
   source-preserving semantic projection, formatting, suggestions, and task
   interaction. Source exposes the complete exact text. Conflict comparison and
   recovery remain Document-owned.
+- Document Find stays inside the Document rather than opening workspace Search.
+  Edit and Source expose explicit Import Image and Index Image commands in the
+  formatting, Format, and Insert routes; native selection and native image
+  paste converge on the same editor transaction. The lower status reports
+  body/selection statistics, while missing indexed absolute paths produce a
+  nonauthorizing reminder.
 - Complete Properties is a grouped Note sheet with raw YAML keys, structured
   controls, a searchable source-type-aware Add a Property chooser, reversible
   pending removal, and an Edit in Source route for unsupported or malformed

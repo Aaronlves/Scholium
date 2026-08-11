@@ -3029,6 +3029,8 @@ function applySelectionAction(view: EditorView, command: SelectionActionCommand)
 
 const selectionActions = createSelectionActionsController({
   applyCommand: applySelectionAction,
+  requestImportImage: () => post({type: "requestImportImage"}),
+  requestIndexImage: () => post({type: "requestIndexImage"}),
   selectionForPresentation: (view) => liveSelection.selection(view.state),
   presentationInteractionChanged: (update) => liveSelection.interactionChanged(
     update.startState,
@@ -3572,9 +3574,20 @@ editor.contentDOM.addEventListener("compositionstart", () => {
   window.queueMicrotask(publishEditorContext);
 });
 
-function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
+function pasteTransfer(
+  transfer: DataTransfer,
+  dropPosition?: number,
+  requestNativeImageImport = false,
+) {
   if (Array.from(transfer.files).length > 0
       || Array.from(transfer.items).some((item) => item.kind === "file")) {
+    const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/"))
+      || Array.from(transfer.items).some((item) =>
+        item.kind === "file" && item.type.startsWith("image/"));
+    if (requestNativeImageImport && image) {
+      post({type: "requestImagePaste"});
+      return true;
+    }
     post({type: "failure", message: unsupportedFilePasteMessage()});
     announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
     return true;
@@ -3595,7 +3608,7 @@ function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
 
 editor.contentDOM.addEventListener("paste", (event) => {
   if (!event.clipboardData) return;
-  if (pasteTransfer(event.clipboardData)) event.preventDefault();
+  if (pasteTransfer(event.clipboardData, undefined, true)) event.preventDefault();
 }, {capture: true});
 editor.contentDOM.addEventListener("drop", (event) => {
   if (!event.dataTransfer) return;

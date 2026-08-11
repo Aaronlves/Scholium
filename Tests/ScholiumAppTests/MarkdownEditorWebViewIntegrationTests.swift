@@ -2775,6 +2775,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             "Lists",
             "Blockquote",
             "Comment",
+            "Import Image…",
+            "Index Image…",
         ])
         #expect(more.visibleMenuCommands == [
             "inlineCode",
@@ -2782,6 +2784,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             "",
             "blockQuotation",
             "markdownComment",
+            "",
+            "",
         ])
         #expect(more.visibleMenuSystemSymbolNames == [
             "curlybraces",
@@ -3082,6 +3086,27 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) == nil)
         #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Table")) == nil)
+    }
+
+    @Test("Native pasteboard image bytes route to attachment import")
+    func nativeImagePasteboardRouting() throws {
+        let pasteboard = NSPasteboard(
+            name: NSPasteboard.Name("scholium-image-paste-\(UUID().uuidString)")
+        )
+        pasteboard.clearContents()
+        let png = try #require(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        #expect(pasteboard.setData(png, forType: .init("public.png")))
+
+        guard case .data(let data, let preferredFilename) =
+                WindowAttachedWebView.pastedImageSource(in: pasteboard) else {
+            Issue.record("Expected native PNG pasteboard bytes.")
+            return
+        }
+        #expect(data == png)
+        #expect(preferredFilename == "Pasted Image.png")
+        pasteboard.clearContents()
     }
 
     @Test("Bridge v10 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
@@ -4300,6 +4325,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                     onDocumentActivity: {},
                     onRequestSave: {},
                     onRequestFind: { _ in },
+                    onRequestImportImage: {},
+                    onRequestIndexImage: {},
+                    onPasteImage: { _ in false },
                     onLinkActivation: { sourceBox.activatedLinks.append($0) },
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }

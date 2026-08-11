@@ -45,7 +45,14 @@
   handling, and recovery remain bound to the same exact source.
 - The editor supports the declared Markdown dialect, semantic Callouts, tables,
   footnotes, mathematics, Wiki and Vector Links, task items, formatting,
-  caret-anchored suggestions, and nonmutating search-result reveal.
+  caret-anchored Wikilink and Analysis Reference suggestions, Document
+  Find/Replace, Document statistics, native spelling routes, and nonmutating
+  search-result reveal.
+- Image Import copies selected or pasted bytes exactly into the current
+  vault's UUID-scoped `Attachments` folder and inserts a relative Markdown
+  destination. Image Index retains the selected absolute path without copying;
+  its read-only sandbox bookmark is machine-local, and a moved, missing, stale,
+  or inaccessible path produces a reminder without repair or mutation.
 - Editor Undo, Triptych checkpoints, Before Agent Work recovery, settled
   revision pins, and interrupted-write candidates remain distinct. Restore
   rechecks the current revision and preserves evidence when replacement cannot

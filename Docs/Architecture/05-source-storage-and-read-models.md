@@ -203,3 +203,14 @@ Analysis Note UUID. Reads return an exact-byte revision; set and clear require
 that revision, atomically replace, and readback. `WorkspaceSnapshotBuilder`
 joins bindings only through resolved portable identities. The catalog and
 Overview never derive a binding from frontmatter or bibliographic similarity.
+
+`TriptychControlStore` also owns one strict JSON record per attachment under
+`.scholium/attachments/v1/`. Each record contains a stable attachment UUID,
+vault UUID, and typed location: Import uses a vault-relative path; Index uses a
+standardized absolute path. The record contains neither bytes nor access
+credentials. `VaultAttachmentStore` alone performs no-follow image validation,
+descriptor-relative exact Import creation, and fingerprint-bound rollback.
+`IndexedAttachmentAccessStore` retains read-only security-scoped bookmarks in
+Triptych-keyed Application Support. It requires the bookmark to resolve to the
+authored absolute path and reports unavailable rather than following a moved
+file or rewriting source.

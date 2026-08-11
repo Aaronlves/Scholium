@@ -297,6 +297,62 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().importImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws {
+        try await requireOperations().rollbackImageAttachment(preparation)
+    }
+
+    func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().indexImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().importPastedImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().importPastedImageAttachment(
+            data: data,
+            preferredFilename: preferredFilename,
+            for: note
+        )
+    }
+
+    func unavailableIndexedImagePaths(
+        in markdownSource: String
+    ) async throws -> [String] {
+        try await requireOperations().unavailableIndexedImagePaths(
+            in: markdownSource
+        )
+    }
+
     func create(
         _ id: VaultQualifiedNoteID,
         content: String
