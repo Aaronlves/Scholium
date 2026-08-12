@@ -973,6 +973,36 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testRestoreAccessFolderSelectionUsesScenePresenter() {
+        let restoreSheet = app.sheets.firstMatch
+        XCTAssertTrue(
+            restoreSheet.staticTexts["Restore Access"].waitForExistence(timeout: 8),
+            "The isolated recovery route must present the real Restore Access sheet."
+        )
+
+        let chooseFolder = restoreSheet.buttons["Choose Folder…"]
+        XCTAssertTrue(chooseFolder.waitForExistence(timeout: 5))
+        chooseFolder.click()
+
+        let panel = app.descendants(matching: .any)["open-panel"]
+        XCTAssertTrue(
+            panel.waitForExistence(timeout: 5),
+            "Restore Access must present the shared native Open panel from its owning sheet."
+        )
+        XCTAssertFalse(
+            restoreSheet.staticTexts[
+                "File selection is unavailable in this window."
+            ].exists
+        )
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            restoreSheet.staticTexts["Restore Access"].exists,
+            "Cancelling folder selection must leave Restore Access available for retry."
+        )
+    }
+
+    @MainActor
     func testCleanAccountConfiguresAndRestoresACompleteTriptych() throws {
         app.terminate()
 

@@ -37,6 +37,26 @@ enum ScholiumRuntimeIsolation {
         return nil
     }
 
+    /// Supplies one synthetic existing vault path so XCUITest can exercise the
+    /// real Restore Access sheet without corrupting a persisted registration.
+    static func fileSelectionRecoveryProofURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> URL? {
+#if DEBUG
+        guard bundleIdentifier == qaBundleIdentifier,
+              environment["SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"] == "1",
+              let root = fixtureRootURL(environment: environment) else {
+            return nil
+        }
+        return root
+            .appendingPathComponent("01-analyses", isDirectory: true)
+            .standardizedFileURL
+#else
+        return nil
+#endif
+    }
+
     /// Resolves the one deterministic native-window identity requested by UI
     /// automation. The bootstrap scene installs this identity in the initial
     /// workspace route; later windows keep their independently generated IDs.

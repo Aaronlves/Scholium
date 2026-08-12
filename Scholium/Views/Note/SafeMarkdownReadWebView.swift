@@ -33,6 +33,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
     var selectionSurfaceIsActive = true
+    /// The caller's acknowledgement of the coordinator's finalized revision.
+    /// A retained page can re-announce readiness when a reconstructed outer
+    /// session has lost this derived state without forcing a duplicate load.
+    var renderingReadinessIsAcknowledged = false
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
@@ -61,6 +65,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
+            renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
@@ -128,6 +133,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
+            renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
@@ -212,6 +218,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private var selectionSurfaceIsActive: Bool
         private var appliedSelectionSurfaceIsActive: Bool?
+        private var renderingReadinessIsAcknowledged: Bool
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
@@ -251,6 +258,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onSourceLineReached: (() -> Void)?
         private var lastReachedSourceLine: Int?
         private var loadedSignature: String?
+        private var finalizedSignature: String?
         private var pageIsReady = false
         weak var activeWebView: WKWebView?
         #if DEBUG
@@ -268,6 +276,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
+            renderingReadinessIsAcknowledged: Bool,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -290,6 +299,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.commentResolution = commentResolution
             self.onSelectionChange = onSelectionChange
             self.selectionSurfaceIsActive = selectionSurfaceIsActive
+            self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
@@ -315,6 +325,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
+            renderingReadinessIsAcknowledged: Bool,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
@@ -332,6 +343,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
             if documentChanged {
                 loadedSignature = nil
+                finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
                 loadingLinkPreviewRevision = ""
                 lastReachedSourceLine = nil
@@ -350,6 +362,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onCommentSelection = onCommentSelection
             self.onSelectionChange = onSelectionChange
             self.selectionSurfaceIsActive = selectionSurfaceIsActive
+            self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
@@ -454,6 +467,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             desiredLinkPreviews = linkPreviews
             desiredLinkPreviewRevision = previewRevision
             guard loadedSignature != signature else {
+                reannounceFinalizedRenderingIfNeeded(
+                    signature: signature,
+                    in: webView
+                )
                 applyLinkPreviewsIfNeeded(in: webView)
                 applySelectionSurfaceActivityIfNeeded(in: webView)
                 applyFindRequestIfNeeded(in: webView)
@@ -472,6 +489,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             activeNavigation = nil
             cancelPendingPageWork(keepingLoadIdentity: true)
             loadedSignature = signature
+            finalizedSignature = nil
+            renderingReadinessIsAcknowledged = false
             loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
             appliedSelectionSurfaceIsActive = nil
@@ -864,6 +883,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     webView.setAccessibilityIdentifier(
                         "scholium.renderedDocument.\(expectedDocumentID)"
                     )
+                    self.finalizedSignature = expectedSignature
+                    self.renderingReadinessIsAcknowledged = true
                     self.onRenderingReady?()
                 } catch {
                     self.failCurrentLoadFinalization(
@@ -906,6 +927,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadFinalizationTask = nil
             pageIsReady = false
             loadedSignature = nil
+            finalizedSignature = nil
+            renderingReadinessIsAcknowledged = false
             loadGeneration &+= 1
             activeLoadSignature = nil
             activeNavigation = nil
@@ -916,12 +939,35 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             pageIsReady = false
             loadedSignature = nil
+            finalizedSignature = nil
+            renderingReadinessIsAcknowledged = false
             cancelPendingPageWork()
             webView.setAccessibilityIdentifier("scholium.renderedDocument.failed")
             onRenderingFailure?(
                 WebKitInterfaceLocalization.current()
                     .string("The Review renderer stopped unexpectedly.")
             )
+        }
+
+        /// Reconnects a finalized retained page to reconstructed SwiftUI
+        /// session state. Yielding avoids publishing ObservableObject state
+        /// during `updateNSView`; the acknowledgement prevents an update loop.
+        private func reannounceFinalizedRenderingIfNeeded(
+            signature: String,
+            in webView: WKWebView
+        ) {
+            guard finalizedSignature == signature,
+                  !renderingReadinessIsAcknowledged else { return }
+            Task { @MainActor [weak self, weak webView] in
+                await Task.yield()
+                guard let self, let webView,
+                      self.activeWebView === webView,
+                      self.loadedSignature == signature,
+                      self.finalizedSignature == signature,
+                      !self.renderingReadinessIsAcknowledged else { return }
+                self.renderingReadinessIsAcknowledged = true
+                self.onRenderingReady?()
+            }
         }
 
         private func restoreScrollPosition(

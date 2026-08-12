@@ -9,6 +9,69 @@ import Testing
 @Suite("Frontend architecture")
 @MainActor
 struct FrontendArchitectureTests {
+    @Test("Transient workspace notices are owned by the Document split region")
+    func transientNoticesFollowDocumentRegionWidth() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let documentStart = try #require(source.range(of: "} document: {"))
+        let apparatusStart = try #require(
+            source.range(
+                of: "} apparatus: {",
+                range: documentStart.upperBound..<source.endIndex
+            )
+        )
+        let documentRegion = source[
+            documentStart.lowerBound..<apparatusStart.lowerBound
+        ]
+
+        #expect(documentRegion.contains("ToastView(toast: toast)"))
+        #expect(documentRegion.contains("refreshStatusNotice"))
+        #expect(
+            source.components(separatedBy: "ToastView(toast: toast)").count
+                == 2
+        )
+        #expect(
+            source.components(
+                separatedBy: ".accessibilityIdentifier(\"scholium.refreshStatus\")"
+            ).count == 2
+        )
+    }
+
+    @Test("Research Action availability reconverges after progressive loading")
+    func researchActionsRefreshWhenWorkspaceBecomesComplete() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains(
+            "let snapshotPhase: WorkspaceSnapshotPhase?"
+        ))
+        #expect(source.contains(
+            "snapshotPhase: workspaceProjectionController.snapshotPhase"
+        ))
+        #expect(source.contains(
+            ".task(id: researchActionAvailabilityRefreshIdentity)"
+        ))
+        #expect(!source.contains(
+            ".task(id: appState.currentResearchFunctionTarget)"
+        ))
+    }
+
     @Test("Packaged performance prepares its UI driver before the cooled gate")
     func performanceGateUsesPreparedDriver() throws {
         let repository = URL(fileURLWithPath: #filePath)

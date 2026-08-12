@@ -522,17 +522,11 @@ private struct ScholiumBootstrapRoot: View {
             }
         }
         .tint(ScholiumColorRole.accent.color)
-        .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
         .ignoresSafeArea(.container, edges: .top)
         .background(
             BootstrapWindowAttachment(
                 windowID: route.windowID,
                 lifecycleRegistry: lifecycleRegistry
-            )
-        )
-        .background(
-            ScholiumFileSelectionWindowAttachment(
-                presenter: fileSelectionPresenter
             )
         )
         .task {
@@ -559,6 +553,7 @@ private struct ScholiumBootstrapRoot: View {
                 routingErrorMessage = error.localizedDescription
             }
         }
+        .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
     }
 
     private var workspaceSetupContext: WorkspaceSetupContext {
@@ -864,30 +859,9 @@ private struct ScholiumWindowObservedRoot: View {
             .focusedSceneObject(appState)
             .focusedSceneObject(appState.commandObservation)
             .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
-            .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
             .background(
                 WorkspaceWindowAttachment(coordinator: windowCoordinator)
             )
-            .background(
-                ScholiumFileSelectionWindowAttachment(
-                    presenter: fileSelectionPresenter
-                )
-            )
-            .fileImporter(
-                isPresented: Binding(
-                    get: { presentationRouter.fileImport == .markdown },
-                    set: { presentationRouter.fileImport = $0 ? .markdown : nil }
-                ),
-                allowedContentTypes: [UTType(filenameExtension: "md") ?? .plainText],
-                allowsMultipleSelection: true
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    appState.requestMarkdownImport(urls)
-                case .failure(let error):
-                    appState.vaultError = error.localizedDescription
-                }
-            }
             .sheet(item: Binding(
                 get: { windowWorkspaceController.state.accessRecovery },
                 set: { windowWorkspaceController.setAccessRecovery($0) }
@@ -899,9 +873,20 @@ private struct ScholiumWindowObservedRoot: View {
                 )
             }
             .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
+            .task(id: presentationRouter.fileImport) {
+                await selectMarkdownFilesForImportIfRequested()
+            }
             .task(id: route.windowID) {
                 windowCoordinator.update(reduceMotion: reduceMotion)
                 await appState.restoreWindowSession(id: route.windowID)
+                if let proofURL = ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL() {
+                    windowWorkspaceController.setAccessRecovery(
+                        WorkspaceAccessRecovery(
+                            kind: .vault,
+                            expectedPath: proofURL.path
+                        )
+                    )
+                }
                 redirectUnconfiguredWindowToBootstrapIfNeeded()
                 appState.openRequestedInitialDocumentIfNeeded()
             }
@@ -1003,6 +988,39 @@ private struct ScholiumWindowObservedRoot: View {
                 windowCoordinator.detach()
                 appState.persistWindowSessionNow()
             }
+            .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
+    }
+
+    private func selectMarkdownFilesForImportIfRequested() async {
+        guard presentationRouter.fileImport == .markdown else { return }
+        defer {
+            if presentationRouter.fileImport == .markdown {
+                presentationRouter.fileImport = nil
+            }
+        }
+
+        do {
+            guard let urls = try await fileSelectionPresenter.selectURLs(
+                ScholiumFileSelectionRequest(
+                    prompt: String(
+                        localized: "Import",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
+                    kind: .files(
+                        allowedContentTypes: [
+                            UTType(filenameExtension: "md") ?? .plainText
+                        ],
+                        allowsMultipleSelection: true
+                    )
+                )
+            ) else { return }
+            appState.requestMarkdownImport(urls)
+        } catch is CancellationError {
+            return
+        } catch {
+            appState.vaultError = error.localizedDescription
+        }
     }
 
     private func redirectUnconfiguredWindowToBootstrapIfNeeded() {
@@ -1046,18 +1064,13 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
-            .environment(\.scholiumFileSelectionPresenter, fileSelectionPresenter)
             .frame(width: 700, height: 560)
-            .background(
-                ScholiumFileSelectionWindowAttachment(
-                    presenter: fileSelectionPresenter
-                )
-            )
             .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
                 await settingsModel.restorePreferredWorkspaceIfNeeded(
                     activeTriptychID: workspaceStore.latestWorkspaceActivation?.workspaceID
                 )
             }
+            .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
     }
 }
 

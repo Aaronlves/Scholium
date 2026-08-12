@@ -171,7 +171,9 @@ final class ScholiumUITests: XCTestCase {
             )
             return
         }
-        let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
+        let renderedDocument = app.descendants(matching: .any)[
+            "scholium.readProjection.ready"
+        ]
         XCTAssertTrue(
             waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },
             "The isolated QA window appeared without reaching a usable document surface."

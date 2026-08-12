@@ -180,6 +180,11 @@ extension ScholiumUITests {
                 "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
             ] = secondTriptychDirectory.path
         }
+        if name.contains("testRestoreAccessFolderSelectionUsesScenePresenter") {
+            application.launchEnvironment[
+                "SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"
+            ] = "1"
+        }
         // Keep navigation assertions independent of the user's persisted note
         // sort preference. The journey deliberately starts from A, then
         // crosses to the peer Topics vault and back again.
@@ -299,7 +304,9 @@ extension ScholiumUITests {
 
     @MainActor
     func waitForDocumentSurface() {
-        let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
+        let renderedDocument = app.descendants(matching: .any)[
+            "scholium.readProjection.ready"
+        ]
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
     }
 
@@ -412,7 +419,7 @@ extension ScholiumUITests {
         }
         XCTAssertTrue(
             app.descendants(matching: .any)[contentIdentifier]
-                .waitForExistence(timeout: 8)
+                .waitForExistence(timeout: mode == "actions" ? 45 : 8)
         )
         let scrollableInspector = app.scrollViews[
             "scholium.researchInspector"

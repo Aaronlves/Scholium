@@ -118,6 +118,15 @@ final class DocumentSessionModel: ObservableObject {
         managedCreationBodyStartUTF16 = nil
     }
 
+    /// Prepares the outer Review projection without invalidating a retained
+    /// WebView that has already finalized the same authoritative revision.
+    /// The WebView load lifecycle owns readiness changes for an actual reload.
+    func prepareReadProjection(for fingerprint: String) {
+        failedReadFingerprint = nil
+        guard renderedReadFingerprint != fingerprint else { return }
+        renderedReadReadyFingerprint = ""
+    }
+
     func preparePresentationMode(_ mode: NotePresentationMode) {
         updatePresentation { $0.prepare(mode) }
     }

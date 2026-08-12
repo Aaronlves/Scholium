@@ -9,6 +9,11 @@ enum DiscussionPresentationError: LocalizedError {
     }
 }
 
+private struct ResearchActionAvailabilityRefreshIdentity: Equatable {
+    let target: ResearchFunctionTarget?
+    let snapshotPhase: WorkspaceSnapshotPhase?
+}
+
 // MARK: - Content View
 
 struct ContentView: View {
@@ -109,6 +114,27 @@ struct ContentView: View {
             }
             .scholiumSurface(.document)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay(alignment: .bottom) {
+                if let toast = appState.toastMessage {
+                    ToastView(toast: toast)
+                        .transition(
+                            ScholiumMotion.transientStatusTransition(
+                                reduceMotion: reduceMotion
+                            )
+                        )
+                        .padding(
+                            .bottom,
+                            ScholiumGrid.Spacing.regionContentInset
+                        )
+                }
+            }
+            .animation(
+                ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
+                value: appState.toastMessage
+            )
+            .overlay(alignment: .topTrailing) {
+                refreshStatusNotice
+            }
         } apparatus: {
             apparatusRegion
             .scholiumSurface(.apparatus)
@@ -128,53 +154,6 @@ struct ContentView: View {
             ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
             value: appState.currentNote != nil
         )
-        .overlay(alignment: .bottom) {
-            if let toast = appState.toastMessage {
-                ToastView(toast: toast)
-                    .transition(
-                        ScholiumMotion.transientStatusTransition(
-                            reduceMotion: reduceMotion
-                        )
-                    )
-                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
-            }
-        }
-        .animation(
-            ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-            value: appState.toastMessage
-        )
-        .overlay(alignment: .topTrailing) {
-            if let status = appState.refreshStatusText {
-                HStack(spacing: ScholiumMetrics.Workspace.refreshStatusSpacing) {
-                    Label(
-                        status,
-                        systemImage: appState.hasDerivedRefreshFailure
-                            ? "exclamationmark.triangle"
-                            : "arrow.triangle.2.circlepath"
-                    )
-                    if appState.hasDerivedRefreshFailure {
-                        Button("Retry Refresh") {
-                            Task { await appState.retryDerivedRefresh() }
-                        }
-                        .buttonStyle(.borderless)
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    }
-                }
-                .font(ScholiumTypography.interface(.small))
-                .padding(.horizontal, ScholiumMetrics.Workspace.refreshStatusHorizontalInset)
-                .padding(.vertical, ScholiumMetrics.Workspace.refreshStatusVerticalInset)
-                .scholiumEditorialSurface(
-                    .floatingControl,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                        style: .continuous
-                    )
-                )
-                .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("scholium.refreshStatus")
-            }
-        }
         .overlay {
             if appState.isLoading {
                 LoadingOverlay()
@@ -255,8 +234,61 @@ struct ContentView: View {
                 }
             )
         }
-        .task(id: appState.currentResearchFunctionTarget) {
+        .task(id: researchActionAvailabilityRefreshIdentity) {
             await appState.refreshResearchActionAvailability()
+        }
+    }
+
+    private var researchActionAvailabilityRefreshIdentity:
+        ResearchActionAvailabilityRefreshIdentity {
+        ResearchActionAvailabilityRefreshIdentity(
+            target: appState.currentResearchFunctionTarget,
+            snapshotPhase: workspaceProjectionController.snapshotPhase
+        )
+    }
+
+    @ViewBuilder
+    private var refreshStatusNotice: some View {
+        if let status = appState.refreshStatusText {
+            HStack(spacing: ScholiumMetrics.Workspace.refreshStatusSpacing) {
+                Label(
+                    status,
+                    systemImage: appState.hasDerivedRefreshFailure
+                        ? "exclamationmark.triangle"
+                        : "arrow.triangle.2.circlepath"
+                )
+                if appState.hasDerivedRefreshFailure {
+                    Button("Retry Refresh") {
+                        Task { await appState.retryDerivedRefresh() }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(
+                        ScholiumTypography.interface(
+                            .small,
+                            emphasis: .strong
+                        )
+                    )
+                }
+            }
+            .font(ScholiumTypography.interface(.small))
+            .padding(
+                .horizontal,
+                ScholiumMetrics.Workspace.refreshStatusHorizontalInset
+            )
+            .padding(
+                .vertical,
+                ScholiumMetrics.Workspace.refreshStatusVerticalInset
+            )
+            .scholiumEditorialSurface(
+                .floatingControl,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                    style: .continuous
+                )
+            )
+            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("scholium.refreshStatus")
         }
     }
 

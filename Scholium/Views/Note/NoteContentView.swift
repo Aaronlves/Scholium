@@ -1184,8 +1184,9 @@ struct NoteContentView: View {
             ).post()
         }
         .task(id: readProjectionTaskIdentity) {
-            failedReadFingerprint = nil
-            documentSession.renderedReadReadyFingerprint = ""
+            documentSession.prepareReadProjection(
+                for: noteFingerprint.sha256
+            )
             updateReviewDocumentStatistics(selection: nil)
             let source = note.rawContent
             let relativePath = note.relativePath
@@ -1642,6 +1643,11 @@ struct NoteContentView: View {
                         .accessibilityHidden(!webProjectionIsReady)
                 }
             }
+            .accessibilityIdentifier(
+                webProjectionIsReady
+                    ? "scholium.readProjection.ready"
+                    : "scholium.readProjection.loading"
+            )
         }
     }
 
@@ -1716,6 +1722,9 @@ struct NoteContentView: View {
                 updateReviewDocumentStatistics(selection: selection)
             },
             selectionSurfaceIsActive: !isEditing,
+            renderingReadinessIsAcknowledged:
+                documentSession.renderedReadReadyFingerprint
+                    == noteFingerprint.sha256,
             onRenderingFailure: { reason in
                 actions.enterCSSSafeMode(reason)
                 failedReadFingerprint = noteFingerprint.sha256

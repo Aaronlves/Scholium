@@ -260,6 +260,20 @@ extension EnvironmentValues {
     }
 }
 
+extension View {
+    /// Installs the one native file-selection owner for an entire scene.
+    /// Apply this after the scene's presentation modifiers so their sheets
+    /// inherit the presenter as well as the scene's ordinary content.
+    func scholiumFileSelectionScene(
+        presenter: ScholiumFileSelectionPresenter
+    ) -> some View {
+        environment(\.scholiumFileSelectionPresenter, presenter)
+            .background(
+                ScholiumFileSelectionWindowAttachment(presenter: presenter)
+            )
+    }
+}
+
 struct ScholiumFileSelectionWindowAttachment: NSViewRepresentable {
     let presenter: ScholiumFileSelectionPresenter
 

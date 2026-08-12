@@ -1114,6 +1114,32 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A finalized retained Read page re-acknowledges reconstructed caller state")
+    func finalizedReadPageReacknowledgesCallerReadiness() async throws {
+        let source = "# Retained Review\n\nThe finalized page stays authoritative.\n"
+        let document = NoteDocument(
+            relativePath: "ReadFixture.md",
+            rawContent: source
+        )
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        let webViewIdentity = try harness.webViewIdentity()
+
+        harness.forgetCallerReadiness()
+        try await harness.waitUntilReady()
+
+        #expect(try harness.webViewIdentity() == webViewIdentity)
+        await harness.closeAndDrain()
+    }
+
     @Test("Review footnotes preview, navigate, and return")
     func reviewFootnotesOwnInteraction() async throws {
         let source = "First claim[^one], then another claim[^one].\n\n[^one]: Basis.\n"
@@ -2320,6 +2346,18 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox.isReady
         }
 
+        func forgetCallerReadiness() {
+            sourceBox.isReady = false
+        }
+
+        func webViewIdentity() throws -> ObjectIdentifier {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return ObjectIdentifier(webView)
+        }
+
         func waitUntilCommentSubmission() async throws -> PassageCommentSubmission {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(2))
@@ -2982,6 +3020,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onCommentSelection: commentHandler,
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
+                renderingReadinessIsAcknowledged: sourceBox.isReady,
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },
