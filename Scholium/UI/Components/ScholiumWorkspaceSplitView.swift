@@ -586,6 +586,12 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             apparatusItem.minimumThickness =
                 ScholiumMetrics.Apparatus.minimumReadableWidth
             apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+            // Document is the elastic Workspace plane. Keep the user's current
+            // Inspector width stable when Sidebar visibility changes the space
+            // available to the two sibling panes.
+            apparatusItem.holdingPriority = NSLayoutConstraint.Priority(
+                rawValue: documentItem.holdingPriority.rawValue + 1
+            )
             // Keep divider tracking exclusively about width: the native toolbar
             // and View command are the explicit, accessible visibility routes.
             apparatusItem.canCollapse = false

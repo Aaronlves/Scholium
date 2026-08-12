@@ -61,6 +61,30 @@ extension ScholiumUITests {
             inspector.frame.width >= minimumFrame.width + 50
                 && abs(inspector.frame.maxX - initialFrame.maxX) <= 2
         })
+
+        let stableInspectorFrame = inspector.frame
+        let toolbar = app.toolbars.firstMatch
+        let library = app.descendants(matching: .any)["scholium.librarySurface"]
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+        XCTAssertTrue(library.waitForExistence(timeout: 5))
+
+        let hideSidebar = toolbar.buttons["Hide Sidebar"].firstMatch
+        XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
+        hideSidebar.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            !library.exists
+                && abs(inspector.frame.width - stableInspectorFrame.width) <= 2
+                && abs(inspector.frame.maxX - stableInspectorFrame.maxX) <= 2
+        })
+
+        let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+        XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
+        showSidebar.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            library.exists
+                && abs(inspector.frame.width - stableInspectorFrame.width) <= 2
+                && abs(inspector.frame.maxX - stableInspectorFrame.maxX) <= 2
+        })
     }
 
     /// A completed primary click on the Folder row—not only its disclosure
