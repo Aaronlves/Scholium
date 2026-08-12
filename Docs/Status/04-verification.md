@@ -220,6 +220,18 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
+On 2026-08-13, the exact-tagged, packaged `v0.1.0-beta.3` G7 attempt completed
+the five-warm-up/30-retained-sample Library and Search series before the warm
+Read driver failed while repositioning its alternate offscreen Sidebar target.
+Library recorded 755.269ms p50, 777.424ms nearest-rank p95, and 784.265ms
+maximum against its `< 1,000ms` limit. Search returned the one expected result
+for every sample and recorded 134.558ms p50, 154.032ms p95, and 217.007ms
+maximum. Those Search durations are below the subsequently approved `< 200ms`
+complete-visible-results p95 limit, but the interrupted run predates that
+decision in source provenance and omitted the remaining required metrics. It
+is partial packaged evidence, not a G7 pass, and cannot be resumed or
+retrospectively accepted.
+
 The latest isolated Search v7 regression report recorded a cold rebuild of
 778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
 21.065 ms, database size of 46,254,760 bytes, and process peak RSS of

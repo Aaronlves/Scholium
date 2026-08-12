@@ -28,7 +28,7 @@ LATENCY_METRICS = (
 ALL_METRICS = LATENCY_METRICS + ("editor_retained_memory",)
 THRESHOLDS_MS = {
     "warm_library_launch": 1_000.0,
-    "indexed_search": 100.0,
+    "indexed_search": 200.0,
     "warm_read_activation": 300.0,
     "cold_read_activation": 1_000.0,
     "editor_key_to_paint": 100.0,
@@ -357,6 +357,19 @@ def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, o
 
 
 def self_test() -> None:
+    search_completion = summarize_latency("indexed_search", [199.0] * 30)
+    assert search_completion["threshold_ms_exclusive"] == 200.0
+    assert search_completion["threshold_met"] is True
+    assert search_completion["passed"] is True
+
+    search_boundary_failure = summarize_latency(
+        "indexed_search",
+        [199.0] * 28 + [200.0, 250.0],
+    )
+    assert search_boundary_failure["p95_ms"] == 200.0
+    assert search_boundary_failure["threshold_met"] is False
+    assert search_boundary_failure["passed"] is False
+
     smooth = [10.0] * 29 + [199.0]
     smooth_summary = summarize_latency("editor_mode_transition", smooth)
     assert smooth_summary["threshold_met"] is True

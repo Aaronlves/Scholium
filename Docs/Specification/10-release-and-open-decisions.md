@@ -100,7 +100,7 @@ p95 over exactly 30 valid samples after five excluded warm-ups:
 | Interaction | p95 limit |
 | --- | ---: |
 | Warm library launch to a usable note list | `< 1,000 ms` |
-| Indexed Note Search query to complete visible results | `< 100 ms` |
+| Indexed Note Search query to complete visible results | `< 200 ms` |
 | Warm Review-note activation to interactive rendering | `< 300 ms` |
 | Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
 
