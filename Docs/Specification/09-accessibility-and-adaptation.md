@@ -36,9 +36,9 @@
   AppKit preserve the initiating modality: keyboard dismissal returns to the
   initiating control or the next valid semantic target, while pointer dismissal
   does not synthesize a keyboard-only focus ring. Feature call sites do not add
-  unconditional `FocusState` restoration around native Buttons, sheets, or
-  segmented controls. The shared activation-focus adapter remains limited to
-  custom controls whose keyboard owner cannot be expressed natively. Removal
+  unconditional `FocusState` restoration around native Buttons or sheets. The
+  shared Scholium segmented component alone owns its focus and Left/Right
+  traversal; feature call sites add none. Removal
   follows a stable next, previous, then owning-container sequence.
 - Custom controls expose current names, roles, values, selected state,
   availability, errors, consequences, and recovery actions. Decoration and
@@ -137,21 +137,29 @@
 ### Properties and portable settings
 
 - Settings names the selected role, exact YAML editor, fixed delimiters,
-  source-type picker, Agent-required checkboxes, About fields, structured-edit
-  fields, validation location, dirty/save/conflict state, and separate restore
-  or clear consequences in one keyboard order. Its multiline YAML editor keeps
+  source-type picker, Agent-required checkboxes, About fields, validation
+  location, dirty/save/conflict state, and separate restore or clear
+  consequences in one keyboard order. Its multiline YAML editor keeps
   selection, Undo/Redo, Find, mixed-script text, and an LTR technical region.
 - Source-type switching retains every unsaved requirements draft. Invalid
   fields in another role or type remain named and prevent the single atomic
   save. Revision conflict preserves the draft and offers **Reload Saved
   Settings**; errors are never color-only or a generic alert.
-- Complete Properties exposes existing key, label, value/summary, editability,
-  source-only state, and not-typical status. **Add a Property…** is a searchable
+- Complete Properties exposes existing key, label, value/summary, direct-edit
+  or source-only state, and not-typical status. Its spacing-defined semantic
+  groups retain accessible group names without duplicate visible headings.
+  Concise field definitions use pointer Help instead of persistent copy.
+  Low-frequency field actions reveal on pointer hover or keyboard focus without
+  reflow and remain in the keyboard and accessibility order when not visible.
+  Each direct editor has one persistent accessible label; contributor items
+  retain their number, kind, subfield labels, and contextual Add/Remove action
+  at 200% text and narrow widths.
+  **Add a Property…** is a searchable
   grouped chooser with one listbox selection, keyboard acceptance, Escape
   cancellation, and focus return. YAML-free insertion explicitly distinguishes
   **Add YAML Properties…** from **Keep Without YAML**.
-- About group headings participate in the reading hierarchy without becoming
-  duplicate top-level sections. The complete fact grid preserves row/column
+- About uses the same spacing-defined groups and accessible group names as
+  Complete Properties. The complete fact grid preserves row/column
   association under enlargement and reflow. Tags are individually readable
   neutral tokens in source order, not color-coded status or unlabeled chips.
 
@@ -168,8 +176,8 @@
   states remain distinct and retain an edit or retry target. Note and Record
   results identify their source context and restore focus at the exact available
   destination.
-- Inspector's Overview, Connect, and Actions form one horizontal single-choice
-  group. Selection remains identifiable without hover. At regular, compact,
+- Inspector's Overview, Connect, and Actions form one shared horizontal
+  segmented single-choice group. Selection remains identifiable without hover. At regular, compact,
   enlarged-text, and supported English, Simplified Chinese, and mixed-script
   presentations, About fields adapt as one complete grid and error/recovery
   text remains untruncated.

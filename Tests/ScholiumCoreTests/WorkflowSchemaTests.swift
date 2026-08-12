@@ -65,20 +65,13 @@ struct WorkflowSchemaTests {
 
         for configuration in [analyses, topics, works] {
             #expect(configuration.visibleFields.contains("summary"))
-            #expect(configuration.editableFields.contains("summary"))
             #expect(!configuration.visibleFields.contains("last_modified_by"))
             #expect(!configuration.visibleFields.contains("last_modified_at"))
-            #expect(!configuration.editableFields.contains("last_modified_by"))
-            #expect(!configuration.editableFields.contains("last_modified_at"))
         }
         #expect(!analyses.visibleFields.contains("relevance"))
-        #expect(!analyses.editableFields.contains("relevance"))
         #expect(!analyses.visibleFields.contains("debate_importance"))
         #expect(!analyses.visibleFields.contains("debate_importance_scope"))
-        #expect(!analyses.editableFields.contains("debate_importance"))
-        #expect(!analyses.editableFields.contains("debate_importance_scope"))
         #expect(!works.visibleFields.contains("deadline"))
-        #expect(!works.editableFields.contains("deadline"))
     }
 
     @Test("CLI role aliases do not become persisted registry spellings")

@@ -26,7 +26,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let documentCommands = NSToolbarItem.Identifier(
             "scholium.toolbar.documentCommands"
         )
-        static let apparatusDivider = NSToolbarItem.Identifier.inspectorTrackingSeparator
+        // Apparatus is an explicitly managed trailing split item rather than
+        // AppKit's Inspector factory item. A private identifier keeps the
+        // initializer's explicit dividerIndex authoritative instead of asking
+        // AppKit to rediscover and regroup an Inspector section that no longer
+        // exists.
+        static let apparatusDivider = NSToolbarItem.Identifier(
+            "scholium.toolbar.apparatusDivider"
+        )
     }
 
     private let appState: WindowModel

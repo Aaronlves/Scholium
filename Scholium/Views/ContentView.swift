@@ -737,9 +737,6 @@ struct ContentView: View {
             if let note = note(at: route.path) {
                 FrontmatterEditorView(
                     note: note,
-                    configuredEditableFields: appState.currentDocumentPropertiesConfiguration.map {
-                        Set($0.editableFields)
-                    },
                     expectedRevision: appState.currentDocumentRevisions[note.relativePath],
                     onClose: {
                         finishFrontmatter(route)

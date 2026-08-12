@@ -1794,6 +1794,38 @@
         }
       }
     },
+    "Additional Context" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Additional Context"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附加上下文"
+          }
+        }
+      }
+    },
+    "Additional Instructions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Additional Instructions"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附加说明"
+          }
+        }
+      }
+    },
     "Academic Outcome" : {
       "localizations" : {
         "en" : {
@@ -2339,18 +2371,18 @@
         }
       }
     },
-    "Add to Display" : {
+    "Add to About" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Add to Display"
+            "value" : "Add to About"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "添加到显示"
+            "value" : "添加到概览"
           }
         }
       }
@@ -6086,6 +6118,22 @@
         }
       }
     },
+    "Citation checks use the active style from Research Guidance." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Citation checks use the active style from Research Guidance."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用核查使用“研究指引”中的当前格式。"
+          }
+        }
+      }
+    },
     "Citation checking remains unavailable until a style is selected." : {
       "localizations" : {
         "zh-Hans" : {
@@ -8829,18 +8877,18 @@
         }
       }
     },
-    "Custom top-level YAML field" : {
+    "Custom top-level YAML field for About" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Custom top-level YAML field"
+            "value" : "Custom top-level YAML field for About"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自定义顶级 YAML 字段"
+            "value" : "用于概览的自定义顶级 YAML 字段"
           }
         }
       }
@@ -28256,6 +28304,22 @@
         }
       }
     },
+    "The source stays local. Its path and contents aren’t stored in the Research Record." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The source stays local. Its path and contents aren’t stored in the Research Record."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "源文件保留在本机；其路径和内容不会写入研究记录。"
+          }
+        }
+      }
+    },
     "The bundled Markdown editor resources could not be found." : {
       "localizations" : {
         "en" : {
@@ -32890,6 +32954,156 @@
         }
       }
     },
+    "Add Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加作者"
+          }
+        }
+      }
+    },
+    "Add Editor": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加编辑"
+          }
+        }
+      }
+    },
+    "Add Translator": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加译者"
+          }
+        }
+      }
+    },
+    "Add Collection Editor": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加文集编辑"
+          }
+        }
+      }
+    },
+    "Add Container Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加载体作者"
+          }
+        }
+      }
+    },
+    "Add Original Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加原作者"
+          }
+        }
+      }
+    },
+    "Add Reviewed Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加被评作品作者"
+          }
+        }
+      }
+    },
+    "Creator": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创作者"
+          }
+        }
+      }
+    },
+    "Editor": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑"
+          }
+        }
+      }
+    },
+    "Translator": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "译者"
+          }
+        }
+      }
+    },
+    "Collection Editor": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文集编辑"
+          }
+        }
+      }
+    },
+    "Container Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "载体作者"
+          }
+        }
+      }
+    },
+    "Original Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原作者"
+          }
+        }
+      }
+    },
+    "Reviewed Author": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "被评作品作者"
+          }
+        }
+      }
+    },
+    "Organization Name": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "机构名称"
+          }
+        }
+      }
+    },
     "Add YAML Properties…": {
       "localizations": {
         "zh-Hans": {
@@ -33080,22 +33294,22 @@
         }
       }
     },
-    "Manage future New Note YAML, Agent creation requirements, About, and structured editing for each Triptych role.": {
+    "Manage future New Note YAML, Agent creation requirements, and About for each Triptych role.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "为每个三联体角色管理今后的新建笔记 YAML、Agent 创建要求、概览和结构化编辑。"
+            "value": "为每个三联体角色管理今后的新建笔记 YAML、Agent 创建要求和概览。"
           }
         }
       }
     },
-    "No fields are enabled for structured editing. Change the role allowlist in Settings, or edit the exact YAML in Source.": {
+    "No properties yet.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有为结构化编辑启用字段。请在设置中更改此角色的允许列表，或在源文本中编辑精确 YAML。"
+            "value": "尚无属性。"
           }
         }
       }
@@ -33116,6 +33330,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "不省略的姓名连接词"
+          }
+        }
+      }
+    },
+    "Not typical": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "非典型字段"
           }
         }
       }
@@ -33156,6 +33380,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "机构或团体名称"
+          }
+        }
+      }
+    },
+    "Pending Removal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待移除"
           }
         }
       }
@@ -33210,12 +33444,12 @@
         }
       }
     },
-    "Restore About & Editing Defaults": {
+    "Restore About Defaults": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "恢复概览和编辑默认值"
+            "value": "恢复概览默认值"
           }
         }
       }
@@ -33306,6 +33540,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "此笔记没有 YAML 属性。"
+          }
+        }
+      }
+    },
+    "This note has no supported fields that can be added here. Keep it without YAML or edit the exact source.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此笔记没有可在此处添加的受支持字段。请保持不含 YAML，或编辑精确源文本。"
           }
         }
       }

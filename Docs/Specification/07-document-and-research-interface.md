@@ -160,10 +160,12 @@ Properties remains in Research. Compact identity stays secondary and static;
 H1 stays primary without handoff or scroll animation.
 Document Text Size is per-window and source-neutral.
 
-Properties lists safe top-level keys, routes unsupported shapes to Source, and
-adds only valid values. YAML-free insertion is explicit. About remains one
-grouped section with a shared fact grid, reading blocks, and final neutral Tag
-capsules. Binding metadata remains a Zotero action.
+Properties uses the shared sheet. Labels and values remain; definitions use
+Help. Its action slot reveals on hover/focus without reflow and stays
+accessible. Whitespace groups fields. Contributors
+retain numbered subfields and the shared neutral segmented kind selector. Save stays emphasized.
+It edits values, groups custom fields, routes shapes to Source, and inserts
+YAML. About reuses order.
 
 ## 18.5 Contextual research and Actions
 
@@ -176,10 +178,9 @@ unrelated window focus, defaults to **760 × 680pt**, and is resizable down to
 interface mode and never appears inside Inspector.
 
 The ordinary entry is a full-window collection on one continuous semantic
-Document surface. The native toolbar owns the restrained **Records / Reading
-Leads** index as an equal-width native capsule segmented control. It uses the
-Scholium raised selection surface, hides shared Liquid Glass, and adds no
-underline or custom ModeIndex skin. Below it, one adaptive header places search and the borderless native
+Document surface. The native toolbar hosts the shared **Records / Reading
+Leads** segmented index: equal text segments, a quiet track, and one raised
+selection plate without Accent fill or shared Liquid Glass. Below it, one adaptive header places search and the borderless native
 Scope and filter menus on one scanning row at wide widths and stacks them only
 when space requires it. The toolbar index is the visible collection identity
 without a count; search fills the header. Ready, empty, filtered-empty,
@@ -358,11 +359,10 @@ never Note Review.
 There is exactly one native trailing Inspector per window, with **Overview,
 Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
-tabs, panels, or windows. The index uses three equal columns with each label
-centered and a 4pt semantic gap between local state surfaces; it has no shared
-control band, capsule, border, underline, Accent mark, shadow, or full-width
-bottom rule. Only the selected mode receives one shallow
-opaque raised surface using the purpose-owned editorial-control corner recipe;
+tabs, panels, or windows. The index uses the shared segmented control with
+three equal centered labels, its quiet track, and one raised selection plate.
+It has no underline, Accent fill, or full-width bottom rule. The selected mode uses
+the shared continuous selection corner;
 its label uses Semibold primary ink. An unselected label uses Regular secondary
 ink. Hover gives an unselected item the same-shaped but quieter local surface
 and primary ink without changing its weight; press and native focus remain
@@ -389,11 +389,11 @@ Overview presents only compact current-note projections, in this order:
 2. **Review:** distinct from Attention. It states **No Agent changes to review**,
    **Needs Review · N Agent activities** as one full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** nonempty fields in fixed groups. Research fields
-   use reading blocks; final Tags use neutral capsules. Its heading is **Edit Properties**, while values remain
-   static and selectable; no bottom Edit or Customize exists. A current
-   Analysis with a valid portable typed Zotero binding adds quiet **Open in Zotero**
-   without exposing the library, key, or metadata. Research Status, Key Properties,
+3. **About:** nonempty fields use the shared spacing-only group order; group
+   names remain accessible. Research fields use reading blocks and Tags use
+   neutral capsules. Its **Edit Properties** heading opens the shared sheet;
+   values remain static and selectable. A bound Analysis adds quiet **Open in
+   Zotero** without exposing identity. Research Status, Key Properties,
    Provenance, Derived State, and a Zotero section remain absent.
 
 A pending activity set automatically presents a once-announced, focus-neutral
@@ -411,7 +411,7 @@ offers Retry where applicable; it never claims reading, truth, or evidence.
 In Overview it follows the About projection and its Edit Properties route; it
 is not promoted to a separate section or card.
 
-Connect begins with a native macOS two-segment single-choice control labelled
+Connect begins with the shared two-segment single-choice control labelled
 **Incoming Links** and **Outgoing Links**, immediately after its freshness
 state and before the relationship groups. It is centered on the Inspector
 content axis rather than aligned as a leading list row. This is a local Connect view switch,

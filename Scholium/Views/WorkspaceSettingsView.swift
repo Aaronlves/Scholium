@@ -224,11 +224,9 @@ private struct PropertiesSettingsView: View {
         let present = settingsModel.propertyKeys(for: selectedSlot)
         return Array(Set(
             configuration.visibleFields
-                + configuration.editableFields
                 + recommendedKeys
                 + present
         ))
-            .filter { !ResearcherPropertyPolicy.isHidden($0) }
             .sorted { displayName(for: $0).localizedStandardCompare(displayName(for: $1)) == .orderedAscending }
     }
 
@@ -238,7 +236,6 @@ private struct PropertiesSettingsView: View {
         configuration.visibleFields.removeAll {
             !AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
         }
-        configuration.editableFields.removeAll { !ResearcherPropertyPolicy.isHumanEditable($0) }
         return configuration
     }
 
@@ -377,7 +374,7 @@ private struct PropertiesSettingsView: View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
             Text("Properties")
                 .font(ScholiumTypography.interface(.primaryTitle))
-            Text("Manage future New Note YAML, Agent creation requirements, About, and structured editing for each Triptych role.")
+            Text("Manage future New Note YAML, Agent creation requirements, and About for each Triptych role.")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
             if case .needsReview = settingsModel.portableSettingsState {
@@ -398,13 +395,25 @@ private struct PropertiesSettingsView: View {
                 .scholiumForeground(.attention)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            Picker("Role", selection: $selectedSlot) {
-                Text("Analysis").tag(WorkspaceVaultSlot.paperAnalysis)
-                Text("Topic").tag(WorkspaceVaultSlot.topicKnowledge)
-                Text("Work").tag(WorkspaceVaultSlot.output)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Properties role")
+            ScholiumSegmentedControl(
+                selection: $selectedSlot,
+                options: [
+                    ScholiumSegmentedControlOption(
+                        .paperAnalysis,
+                        title: String(localized: "Analysis")
+                    ),
+                    ScholiumSegmentedControlOption(
+                        .topicKnowledge,
+                        title: String(localized: "Topic")
+                    ),
+                    ScholiumSegmentedControlOption(
+                        .output,
+                        title: String(localized: "Work")
+                    ),
+                ],
+                label: String(localized: "Properties role"),
+                accessibilityIdentifier: "scholium.properties.role"
+            )
 
             ScrollView {
                 LazyVStack(
@@ -418,8 +427,6 @@ private struct PropertiesSettingsView: View {
                     }
                     Divider()
                     displayOrderColumn
-                    Divider()
-                    editableFieldsColumn
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -787,83 +794,27 @@ private struct PropertiesSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var editableFieldsColumn: some View {
-        GroupBox("Structured Editing") {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                ForEach(editableConfigurationGroups, id: \.group) { group in
-                    VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.explanationSpacing) {
-                        Text(group.group.label)
-                            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                            .scholiumForeground(.secondaryText)
-                            .accessibilityHeading(.h3)
-                        ForEach(group.keys, id: \.self) { key in
-                            HStack {
-                                Toggle(isOn: Binding(
-                                    get: { selectedConfiguration.editableFields.contains(key) },
-                                    set: { enabled in
-                                        updateSelectedConfiguration {
-                                            $0.setHumanEditable(enabled, field: key)
-                                        }
-                                    }
-                                )) {
-                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
-                                        Text(displayName(for: key))
-                                        Text(key)
-                                            .font(ScholiumTypography.exact(.small))
-                                            .scholiumForeground(.mutedText)
-                                        if PropertyPresentationCatalog.presentation(
-                                            for: key,
-                                            in: selectedProfile
-                                        ) == nil {
-                                            Text("Editable When Present")
-                                                .font(ScholiumTypography.interface(.small))
-                                                .scholiumForeground(.secondaryText)
-                                        }
-                                    }
-                                }
-                                .toggleStyle(.checkbox)
-                                .disabled(!ResearcherPropertyPolicy.isHumanEditable(key))
-                                .help(key)
-
-                                if !ResearcherPropertyPolicy.isHumanEditable(key) {
-                                    Text("Protected")
-                                        .font(ScholiumTypography.interface(.small))
-                                        .scholiumForeground(.secondaryText)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var customFieldInput: some View {
-        TextField("Custom top-level YAML field", text: $customField)
+        TextField("Custom top-level YAML field for About", text: $customField)
             .textFieldStyle(.roundedBorder)
             .onSubmit { addCustomFieldToDisplay() }
     }
 
     private var customFieldButtons: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Add to Display") { addCustomFieldToDisplay() }
+            Button("Add to About") { addCustomFieldToDisplay() }
                 .disabled(normalizedCustomField == nil)
-            Button("Editable When Present") { addCustomFieldToEditableFields() }
-                .disabled(!customFieldCanBeEdited)
         }
     }
 
     private var restoreAndClearActions: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Restore About & Editing Defaults") {
+            Button("Restore About Defaults") {
                 guard let defaults = TriptychSettings.defaultProperties[selectedSlot] else {
                     return
                 }
                 var configuration = selectedConfiguration
                 configuration.visibleFields = defaults.visibleFields
-                configuration.editableFields = defaults.editableFields
                 configurations[selectedSlot] = configuration
                 customFieldMessage = nil
             }
@@ -913,19 +864,6 @@ private struct PropertiesSettingsView: View {
         )
     }
 
-    private var editableConfigurationGroups: [AboutProfileGroup] {
-        let grouped = Dictionary(grouping: availableKeys) { key in
-            PropertyPresentationCatalog.presentation(
-                for: key,
-                in: selectedProfile
-            )?.group ?? .other
-        }
-        return PropertyPresentationCatalog.orderedGroups(for: selectedProfile).compactMap { group in
-            guard let keys = grouped[group], !keys.isEmpty else { return nil }
-            return AboutProfileGroup(group: group, keys: keys)
-        }
-    }
-
     private var hiddenAboutConfigurationGroups: [AboutProfileGroup] {
         let hidden = availableKeys.filter {
             AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
@@ -939,13 +877,8 @@ private struct PropertiesSettingsView: View {
 
     private var normalizedCustomField: String? {
         let value = customField.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, !ResearcherPropertyPolicy.isHidden(value) else { return nil }
+        guard !value.isEmpty else { return nil }
         return value
-    }
-
-    private var customFieldCanBeEdited: Bool {
-        guard let field = normalizedCustomField else { return false }
-        return ResearcherPropertyPolicy.isHumanEditable(field)
     }
 
     private func updateSelectedConfiguration(
@@ -978,16 +911,6 @@ private struct PropertiesSettingsView: View {
         updateSelectedConfiguration { $0.setVisible(true, field: field) }
         customField = ""
         customFieldMessage = "\(displayName(for: field)) was added at the end of the display order."
-    }
-
-    private func addCustomFieldToEditableFields() {
-        guard let field = normalizedCustomField, customFieldCanBeEdited else {
-            customFieldMessage = "Structured editing supports non-protected top-level YAML keys."
-            return
-        }
-        updateSelectedConfiguration { $0.setHumanEditable(true, field: field) }
-        customField = ""
-        customFieldMessage = "\(displayName(for: field)) is now available in the structured Properties editor."
     }
 
     private func displayName(for key: String) -> String {

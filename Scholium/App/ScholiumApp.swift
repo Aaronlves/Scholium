@@ -4136,7 +4136,7 @@ final class WindowModel: ObservableObject {
 
     private func loadTriptychSettingsProjection() async throws -> String? {
         let state = try await researchController.settingsLoadState()
-        triptychPropertiesAreAuthoritative = state.authorizesPropertyEditing
+        triptychPropertiesAreAuthoritative = state.authorizesAboutProjection
         switch state {
         case .current(let snapshot):
             triptychSettings = snapshot.settings
@@ -4330,7 +4330,7 @@ final class WindowModel: ObservableObject {
               let slot = WorkspaceVaultSlot.allCases.first(where: {
                   workspaceAssignment?.vault(for: $0)?.id == vault.id
               }) else { return nil }
-        return WorkspacePropertyAuthorization.configuration(
+        return WorkspaceAboutConfiguration.configuration(
             settings: triptychSettings,
             slot: slot,
             isAuthoritative: triptychPropertiesAreAuthoritative

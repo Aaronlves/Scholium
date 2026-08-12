@@ -317,7 +317,7 @@ struct WorkspaceSettingsArchitectureTests {
 
     @Test("A normalized Needs Review candidate is dirty and directly saveable")
     func repairableCandidateDiffersFromRawSettings() throws {
-        let raw = Data(#"{"newNoteYAML":"tags: [draft]\r\n","visibleFields":[" tags ","tags"],"editableFields":[" tags ","tags"]}"#.utf8)
+        let raw = Data(#"{"newNoteYAML":"tags: [draft]\r\n","visibleFields":[" tags ","tags"]}"#.utf8)
         let decoded = try JSONDecoder().decode(
             VaultPropertiesConfiguration.self,
             from: raw
@@ -338,11 +338,10 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(candidate != saved)
         #expect(candidate.properties[.paperAnalysis]?.newNoteYAML == "tags: [draft]\n")
         #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["tags"])
-        #expect(candidate.properties[.paperAnalysis]?.editableFields == ["tags"])
         try TriptychSettingsValidator.validate(candidate)
     }
 
-    @Test("Properties Settings keeps seed, Agent, About, and editing contracts separate")
+    @Test("Properties Settings keeps seed, Agent, and About contracts separate")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -365,11 +364,12 @@ struct WorkspaceSettingsArchitectureTests {
             "YAML Added to New Notes",
             "Agent-Created Analyses",
             "GroupBox(\"About\")",
-            "GroupBox(\"Structured Editing\")",
         ] {
             #expect(properties.contains(section))
         }
-        #expect(properties.contains("Restore About & Editing Defaults"))
+        #expect(properties.contains("Restore About Defaults"))
+        #expect(!properties.contains("Structured Editing"))
+        #expect(!properties.contains("editableFields"))
         #expect(properties.contains("Clear New Note YAML"))
         #expect(properties.contains("TriptychSettingsValidator.validate(candidateSettings)"))
         #expect(properties.contains("settingsRevisionConflict"))
@@ -413,10 +413,28 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("creatorListEditor"))
         #expect(source.contains("readOnlyFieldValue(for: field)"))
         #expect(source.contains("Text(\"Source only\")"))
-        #expect(source.contains("Label(\"Property Actions\""))
-        #expect(source.contains("groupHeadingIsRedundant(group)"))
-        #expect(source.contains(".help(Text(verbatim: field.key))"))
+        #expect(source.contains("ScholiumEditorialIconControl("))
+        #expect(source.contains("systemImage: \"ellipsis\""))
+        #expect(source.contains("isVisuallyRevealed: hoveredFieldKey == field.key"))
+        #expect(source.contains("|| focusedFieldKey == field.key"))
+        #expect(source.contains("@State private var hoveredFieldKey: String?"))
+        #expect(source.contains(".onHover { isHovering in"))
+        #expect(source.contains(".accessibilityLabel(\"Property Actions\")"))
+        #expect(source.contains(".accessibilityValue(Text(verbatim: field.label))"))
+        #expect(source.contains("ScholiumPropertyGroup("))
+        #expect(source.contains("separatesFromPrevious: index > 0"))
+        #expect(source.contains("ScholiumMetrics.Properties.fieldBlockSeparation"))
+        #expect(!source.contains("Text(group.group.label)"))
+        #expect(!source.contains("ScholiumMetrics.Properties.fieldVerticalInset"))
+        #expect(!source.contains("configuredEditableFields"))
+        #expect(source.contains(".help(propertyHelpText(for: field))"))
         #expect(source.contains("ScholiumTagCapsuleLabel("))
+        #expect(source.contains("creatorRolePresentation(for: field.key)"))
+        #expect(source.contains("creatorTextField(\"Family name\""))
+        #expect(source.contains("creatorKindPicker(selection: binding.kind)"))
+        #expect(source.contains(".labelsHidden()"))
+        #expect(source.contains("PropertyPresentationCatalog.choiceDisplayName("))
+        #expect(!source.contains("Text(value.capitalized)"))
         #expect(!source.contains("Text(\"Researcher Properties\")"))
         #expect(!source.contains("This value's source shape or the role allowlist does not permit a targeted edit."))
 
@@ -427,6 +445,22 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let fieldHeaderSource = fieldHeaderRemainder[..<fieldHeaderEnd.lowerBound]
         #expect(!fieldHeaderSource.contains("Text(field.key)"))
+        let fieldEditorStart = try #require(source.range(of: "private func fieldEditor("))
+        let fieldEditorRemainder = source[fieldEditorStart.lowerBound...]
+        let fieldEditorEnd = try #require(
+            fieldEditorRemainder.range(of: "private func fieldHeader(")
+        )
+        let fieldEditorSource = fieldEditorRemainder[..<fieldEditorEnd.lowerBound]
+        #expect(!fieldEditorSource.contains("field.help"))
+        #expect(!fieldEditorSource.contains("This property will be removed when Save succeeds."))
+        #expect(!fieldEditorSource.contains("Not typical for"))
+        #expect(source.contains("Text(\"Pending Removal\")"))
+        #expect(source.contains("Text(\"Not typical\")"))
+        #expect(source.components(separatedBy: ".buttonStyle(.borderedProminent)").count == 4)
+        #expect(source.components(
+            separatedBy: ".tint(ScholiumColorRole.accent.color)"
+        ).count == 2)
+        #expect(!source.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(source.contains("removedFieldKeys"))
         #expect(source.contains("List(selection: $selectionKey)"))
         #expect(source.contains("Discard Properties Draft?"))

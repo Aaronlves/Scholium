@@ -126,10 +126,11 @@ Workspace, Search, Link Graph, and Research Actions. App's independent
 `PropertyPresentation` adds label, help, one group, and control style only.
 The app's Properties feature composes those owners without creating another
 schema: Settings edits exact role seeds, per-source-type Agent requirements,
-About order, and structured-edit allowlists as one revision-bound candidate;
-the Note sheet lists every present safe top-level value and offers only
-applicable canonical missing keys. Unsupported shapes remain read-only with a
-Source route. Creator controls produce the canonical ordered mapping sequence.
+and About order as one revision-bound candidate. One shared Analysis/Topic/Work
+Note sheet lists every present safe top-level value and offers only applicable
+canonical missing keys. Editability is derived from the current exact source
+and targeted planner, never Settings. Unsupported shapes remain read-only with
+a Source route. Creator controls produce the canonical ordered mapping sequence.
 Quoted strings remain structured-editable. Any YAML scalar resolved as a
 timestamp, whether implicit or explicitly tagged and regardless of its field,
 is shown as its exact authored token and remains Source-only, so no text value

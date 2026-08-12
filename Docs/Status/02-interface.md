@@ -51,14 +51,16 @@
   paste converge on the same editor transaction. The lower status reports
   body/selection statistics, while missing indexed absolute paths produce a
   nonauthorizing reminder.
-- Complete Properties is a grouped Note sheet with raw YAML keys, structured
-  controls, a searchable source-type-aware Add a Property chooser, reversible
-  pending removal, and an Edit in Source route for unsupported or malformed
-  source. A YAML-free Note first presents Add YAML Properties… and Keep Without
-  YAML; choosing insertion opens only a draft and Save remains unavailable
-  until at least one concrete canonical value is valid.
-- Inspector presents Overview, Connect, and Actions as one mutually exclusive
-  index. Overview shows Needs Attention, Review, then About; Connect switches Incoming
+- Complete Properties is one Analysis/Topic/Work Note sheet with direct
+  source-safe controls, a searchable source-type-aware Add a Property chooser,
+  reversible pending removal, and an Edit in Source route for unsupported or
+  malformed source. Semantic groups use shared whitespace rather than repeated
+  visible headings; labels carry concise Help, and the reserved field-action
+  slot reveals on hover or focus without reflow. Custom fields remain together. A YAML-free Note first
+  presents Add YAML Properties… and Keep Without YAML; choosing insertion opens
+  only a draft and Save remains unavailable until one canonical value is valid.
+- Inspector presents Overview, Connect, and Actions through the shared
+  segmented control. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
   Settle. A pending Review is one full-row route. Its exact pending activity set
   auto-presents the retained Document session's attached Review task once;
@@ -103,8 +105,8 @@
   Inspect, Resynthesize, Leave Unchanged, dismiss, and Retry routes.
 - Research Records opens to Records or Reading Leads with toolbar View,
   window-local Scope, search, filters, sorting, exact total, and incremental
-  loading. View is an AppKit capsule segmented control with Scholium semantic
-  selection color and no shared Liquid Glass background. Selecting a row
+  loading. View uses the same quiet-track, raised-selection segmented control
+  as the Workspace surfaces and has no shared Liquid Glass background. Selecting a row
   replaces the collection with one retained detail route; Back restores the
   collection state. Record detail omits the generic toolbar title.
 - Record detail uses a dominant reading plane and optional Evidence
@@ -120,8 +122,8 @@
 
 ## Appearance, adaptation, and localization
 
-- Settings → Properties uses one role selector and the ordered New Notes,
-  Agent-Created Analyses, About, and Structured Editing sections. Exact seed
+- Settings → Properties uses the shared segmented role selector and the ordered New Notes,
+  Agent-Created Analyses, and About sections. Exact seed
   delimiters are visible but not editable; source errors stay inline; Agent
   requirements remain source-type-specific; reset, clear, revert, reload after
   conflict, and atomic Save are separate actions. Current-schema repair keeps
@@ -135,6 +137,10 @@
 - System, Light, and Dark use one semantic resolver across native and document surfaces. Accent and
   Paper are the only configurable color inputs; Interface, Scholarly, and Exact
   are the native text families.
+- Inspector Mode, Connect direction, Search scope, Properties role and creator
+  kind, and Records View now share one equal-segment control with an adaptive
+  neutral track and selection plate, continuous corners, Left/Right traversal,
+  and no Accent-filled selection.
 - Shared semantic owners cover surfaces, boundaries, transient elevation,
   structural depth, interaction feedback, corner geometry, symbols, typography,
   spacing, component cadence, and purpose-named motion. Native system controls

@@ -23,15 +23,16 @@
   the same source claim. YAML-free first-Property insertion is a separate
   explicit expected-revision transaction and never writes empty delimiters.
 - Portable Properties settings independently own each role's exact New Note
-  YAML, About order, and structured-edit allowlist plus per-source-type Analysis
+  YAML and About order plus per-source-type Analysis
   Agent requirements. One strict candidate validation and exact settings
   target identity plus revision guard the atomic save; uncertain or
   committed-with-refresh-warning outcomes are authoritatively reconciled.
-  Unavailable or invalid settings remain nonauthorizing rather than exposing
-  writable defaults.
+  Unavailable or invalid settings remain nonauthorizing for managed creation,
+  Agent requirements, and About rather than exposing defaults.
 - Complete Properties retains every safely bounded present top-level value,
-  marks unsupported shapes read-only, recommends only applicable missing
-  canonical keys, supports structured CreatorLists and authored date text, and
+  derives direct editability from exact source rather than Settings, marks
+  unsupported shapes read-only, recommends only applicable missing canonical
+  keys, supports structured CreatorLists and authored date text, and
   removes a property only through the same targeted expected-revision write.
 
 ## Notes, documents, and lifecycle

@@ -215,8 +215,9 @@ radius, shadow, border, gradient, or paper scales.
 Corner geometry follows component responsibility and containment rather than
 one application-wide numeric scale.
 
-- Native windows, toolbars, menus, sheets, popovers, and controls retain their
-  platform shapes; Scholium copies no system radius or control skin.
+- Native windows, toolbars, menus, sheets, popovers, and ordinary controls
+  retain their platform shapes. The shared segmented control alone uses the
+  approved continuous track and selection corners; no feature copies its skin.
 - Matching component responsibilities and sizes use one recipe. Feature
   components name no raw radius. Nested custom surfaces use container-concentric geometry or one
   purpose-owned fallback when the platform cannot resolve it.
@@ -244,7 +245,8 @@ adaptation continue to follow §20.
   requires one.
 - **Elevation:** Elevation is purpose-named, never a depth scale. Native
   presentations keep system elevation. Custom transient surfaces use only
-  **floating control**, **bounded panel**, or **search overlay**. Structural
+  **floating control**, **bounded panel**, or **search overlay**. The shared
+  segmented selection plate reuses floating-control depth. Structural
   depth is limited to the Workspace **document-navigation boundary** and Record
   detail **reading-evidence boundary**. Each is noninteractive, motionless,
   defined with logical edges, structurally mirrorable for §17's deferred
@@ -261,16 +263,17 @@ adaptation continue to follow §20.
 
 #### Interaction presentation
 
-Native controls own their platform states and shapes. Custom targets prefer
+Native controls own their platform states and shapes. The shared segmented
+control is the one custom horizontal-choice owner. Custom targets prefer
 **28pt**, never fall below **20pt**, and remain keyboard reachable. Resting
 content controls use secondary ink; hover or focus promotes primary ink and
 adds the purpose-owned surface only when needed. Keyboard focus remains stronger
 than hover, persistent selection remains stronger than both, and pointer
 activation does not leave a keyboard-only focus effect. Matching controls use
 one recipe without copying toolbar pixels or adding geometry animation. Native
-Buttons, sheets, and segmented controls do not receive feature-local focus
-state or unconditional focus restoration; the shared activation-focus recipe
-is reserved for genuinely custom keyboard owners.
+Buttons and sheets receive no feature-local focus state or unconditional focus
+restoration. Segmented focus and Left/Right traversal live only in the shared
+component; no feature recreates them.
 
 Toolbar controls retain native small-control geometry and feedback without a
 Scholium underline or enclosure. Location-header icons share one **28 × 28pt**
@@ -472,13 +475,14 @@ the required meaning.
 | --- | --- | --- | --- |
 | `Sidebar / Document / Apparatus` | Keep Document primary across three opaque planes; one full-height Sidebar-edge cue advances the Document/Apparatus work field without replacing the native divider. | Cards, a floating Inspector, a parallel divider, or a dashboard. | §18.2 |
 | `Triptych Workspace Navigator` | Presents Analyses, Topics, and Works as full-width destinations with one persistent Navigation selection and quiet, exact Note totals. | A Scope filter, pipeline, project selector, segmented band, or Attention counter. | §§3.2, 18.2–18.3 |
-| `ModeIndex` | Selects one Inspector mode through the shallow editorial surface. Toolbar views instead use a native capsule segmented control with hidden shared glass and Scholium selection color. | A workspace navigator, toolbar skin, or Document tab strip. | §18.5 |
+| `Segmented Control` | Equal text segments use a quiet Paper track, one adaptive raised selection, continuous corners, and no Accent fill. Inspector, Connect, Search, Properties, and Records share input and accessibility. | Workspace navigation, tab strips, or mixed actions. | §§18.4–18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
 | `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §14, §18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Document Find Bar` | Find and, in writable modes, replace literal text in the current unsaved buffer while retaining editor selection, Undo, and focus. | Research Search, a modal panel, a second text owner, or saved query history. | §13, §18.4 |
+| `Property Group` | Uses 24pt between groups and 16pt between fields in Properties/About; names stay accessible. Help owns definitions. The fixed action slot reveals on hover/focus without reflow. Save stays emphasized. | Heading, explanation, card, rule, permission, or schema. | §§5.2, 18.4–18.5 |
 | `Content State` | Presents page or pane state with one restrained indicator, title, optional explanation, and adjacent repair action. | A runtime state owner, card, or compact inline feedback. | §§18.2–18.5, §19.9 |
 | `Bootstrap Narrative Illustration` | Frames each fixed onboarding stage while adjacent text remains complete. | A state indicator, selector, interactive diagram, tuner, or icon variant. | §16, §§19.2, 19.5 |
 

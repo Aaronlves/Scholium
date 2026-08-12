@@ -112,6 +112,18 @@ enum PropertyPresentationCatalog {
         }
     }
 
+    static func choiceDisplayName(for value: String, fieldKey: String) -> String {
+        if fieldKey == "type", let sourceType = AnalysisSourceType(rawValue: value) {
+            return sourceType.propertyDisplayName
+        }
+        return ScholiumL10n.dynamicString(
+            value.replacingOccurrences(of: "_", with: " ")
+                .split(separator: " ")
+                .map { $0.capitalized }
+                .joined(separator: " ")
+        )
+    }
+
     private static let analysisSourceKeys: Set<String> = [
         "type", "title", "short_title", "original_title", "reviewed_title",
         "genre", "medium", "version", "language", "authors", "editors",

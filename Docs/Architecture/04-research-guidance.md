@@ -114,7 +114,7 @@ transaction.
 
 Portable `TriptychSettings` is a separate strict owner for role Properties.
 Its current schema contains exact delimiter-free New Note YAML, About order,
-structured-edit allowlists, and per-source-type Analysis Agent requirements.
+and per-source-type Analysis Agent requirements.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -131,9 +131,10 @@ an uncertain replacement is authoritatively reread before another save can be
 attempted, and a failed reread keeps that Triptych mutation-blocked. A commit
 that began in one Triptych remains truthfully attributed there if the active
 Triptych changes while it is in flight; its snapshot is never installed into
-the new target. Only a validated current state authorizes About or structured
-Note editing; every other state supplies an explicit empty display/edit
-allowlist, never default authority.
+the new target. Only a validated current state authorizes About; every other
+state supplies an explicit empty display profile, never default authority.
+Current-note structured editing instead depends only on the exact Note source
+and targeted patch contract.
 Current bundled prompt bodies are app projections selected by stable IDs; load
 may replace or supply those in memory without writing the portable file. It
 does not repair researcher templates or invalid active-template IDs.

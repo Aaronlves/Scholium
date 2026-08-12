@@ -32,12 +32,13 @@ struct ResearchActionPanelView: View {
     @ObservedObject private var controller: ResearchActionController
     let context: ResearchActionPanelContext
 
-    @FocusState private var focusedAcademicFieldID: String?
     @State private var focalNoteQuery = ""
     @State private var pendingHandoff: PendingHandoff?
     @State private var handoffErrorMessage: String?
     @State private var sourceSelectionErrorMessage: String?
     @State private var confirmsEndAction = false
+    @State private var showsAdditionalContext = false
+    @State private var showsOptionalAcademicInputs = false
 
     init(
         controller: ResearchActionController,
@@ -60,10 +61,10 @@ struct ResearchActionPanelView: View {
             idealWidth: ScholiumMetrics.ResearchSheet.Action.idealWidth,
             minHeight: controller.isStatusPresentation
                 ? 300
-                : ScholiumMetrics.ResearchSheet.Action.minimumHeight,
+                : preparationMinimumHeight,
             idealHeight: controller.isStatusPresentation
                 ? 360
-                : ScholiumMetrics.ResearchSheet.Action.idealHeight
+                : preparationIdealHeight
         )
         .scholiumSurface(.denseEvidence)
         .accessibilityAddTraits(.isModal)
@@ -78,14 +79,10 @@ struct ResearchActionPanelView: View {
                 || controller.phase == .cancelling
         )
         .onAppear {
-            if !controller.isStatusPresentation {
-                focusFirstAcademicTextField()
-            }
+            synchronizeDisclosureState()
         }
         .onChange(of: controller.phase) { _, phase in
             switch phase {
-            case .editing:
-                focusFirstAcademicTextField()
             case .prepared:
                 completePendingHandoff()
             case .failed:
@@ -93,8 +90,13 @@ struct ResearchActionPanelView: View {
             case .cancelled:
                 pendingHandoff = nil
                 context.dismiss()
-            case .idle, .loading, .preparing, .cancelling:
+            case .idle, .loading, .editing, .preparing, .cancelling:
                 break
+            }
+        }
+        .onChange(of: controller.selectedFocalNoteIDs) { _, selectedIDs in
+            if !selectedIDs.isEmpty {
+                showsAdditionalContext = true
             }
         }
         .confirmationDialog(
@@ -294,7 +296,7 @@ struct ResearchActionPanelView: View {
 
     private var statusFooter: some View {
         HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
-            Button("Done") { context.dismiss() }
+            Button("Close") { context.dismiss() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(controller.isBusy)
             if canEndStatusAction {
@@ -314,8 +316,6 @@ struct ResearchActionPanelView: View {
                         isPending: pendingHandoff == .copyNew
                     )
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
                 .disabled(pendingHandoff != nil || controller.isBusy)
                 .accessibilityIdentifier(
                     "scholium.researchAction.statusCopyNewHandoff"
@@ -388,27 +388,38 @@ struct ResearchActionPanelView: View {
 
     @ViewBuilder
     private var platformInputs: some View {
-        let selectors = controller.platformSelectors
-        if !selectors.isEmpty {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing) {
-                Text("RESEARCH CONTEXT")
-                    .scholiumApparatusHeadingStyle()
-                    .accessibilityAddTraits(.isHeader)
-                if selectors.contains(.source) { sourceSelector }
-                if selectors.contains(.focalNotes) { focalNotesSelector }
-                if selectors.contains(.passage) { passageSelector }
-                if selectors.contains(.fidelityChecks) { fidelityChecksSelector }
-                if selectors.contains(.citationStyle) {
-                    machineResolvedSelector(
-                        title: "Citation Style",
-                        detail: "Scholium resolves the current citation configuration at preparation."
-                    )
+        let layout = actionSheetLayout
+        if !layout.primaryModules.isEmpty || !layout.additionalContextModules.isEmpty {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing
+            ) {
+                ForEach(layout.primaryModules, id: \.self) { module in
+                    platformModule(module)
                 }
-                if selectors.contains(.feedback) {
-                    machineResolvedSelector(
-                        title: "Feedback",
-                        detail: "Only explicit current feedback supplied through Scholium is included."
-                    )
+                if !layout.additionalContextModules.isEmpty {
+                    ScholiumDisclosureHeaderButton(
+                        isExpanded: showsAdditionalContext,
+                        accessibilityLabel: Text("Additional Context"),
+                        accessibilityIdentifier:
+                            "scholium.researchAction.additionalContext",
+                        action: { showsAdditionalContext.toggle() }
+                    ) {
+                        Text("Additional Context")
+                            .font(ScholiumTypography.interface(.sectionTitle))
+                    }
+                    if showsAdditionalContext {
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing
+                        ) {
+                            ForEach(layout.additionalContextModules, id: \.self) { module in
+                                platformModule(module)
+                            }
+                        }
+                        .padding(.top, ScholiumMetrics.ResearchSheet.fieldSpacing)
+                        .padding(.leading, ScholiumGrid.Spacing.nestedContentInset)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -416,21 +427,103 @@ struct ResearchActionPanelView: View {
     }
 
     @ViewBuilder
+    private func platformModule(_ module: ResearchActionSheetModule) -> some View {
+        switch module {
+        case .source:
+            sourceSelector
+        case .fidelityChecks:
+            fidelityChecksSelector
+        case .passage:
+            passageSelector
+        case .focalNotes:
+            focalNotesSelector
+        }
+    }
+
+    @ViewBuilder
     private var academicInputs: some View {
-        if let fields = controller.profile?.academicInputFields.filter({
-            $0.requirement != .excluded
-        }), !fields.isEmpty {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing) {
-                Text("ACADEMIC INPUTS")
-                    .scholiumApparatusHeadingStyle()
-                    .accessibilityAddTraits(.isHeader)
-                ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
-                    academicField(field)
-                    if index < fields.count - 1 { ScholiumStructuralRule() }
+        if !requiredAcademicFields.isEmpty || !optionalAcademicFields.isEmpty {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing
+            ) {
+                if !requiredAcademicFields.isEmpty {
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing
+                    ) {
+                        Text("ACADEMIC INPUTS")
+                            .scholiumApparatusHeadingStyle()
+                            .accessibilityAddTraits(.isHeader)
+                        ForEach(requiredAcademicFields, id: \.id) { field in
+                            academicField(field)
+                        }
+                    }
+                }
+                if !optionalAcademicFields.isEmpty {
+                    ScholiumDisclosureHeaderButton(
+                        isExpanded: showsOptionalAcademicInputs,
+                        accessibilityLabel: Text("Additional Instructions"),
+                        accessibilityIdentifier:
+                            "scholium.researchAction.additionalInstructions",
+                        action: { showsOptionalAcademicInputs.toggle() }
+                    ) {
+                        Text("Additional Instructions")
+                            .font(ScholiumTypography.interface(.sectionTitle))
+                    }
+                    if showsOptionalAcademicInputs {
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing
+                        ) {
+                            ForEach(optionalAcademicFields, id: \.id) { field in
+                                academicField(field)
+                            }
+                        }
+                        .padding(.top, ScholiumMetrics.ResearchSheet.fieldSpacing)
+                        .padding(.leading, ScholiumGrid.Spacing.nestedContentInset)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var requiredAcademicFields: [ResearchAcademicFieldDefinition] {
+        controller.profile?.academicInputFields.filter {
+            $0.requirement == .required
+        } ?? []
+    }
+
+    private var optionalAcademicFields: [ResearchAcademicFieldDefinition] {
+        controller.profile?.academicInputFields.filter {
+            $0.requirement == .optional
+        } ?? []
+    }
+
+    private var actionSheetLayout: ResearchActionSheetLayout {
+        ResearchActionSheetLayout.resolve(
+            selectors: controller.platformSelectors,
+            passageIsAvailable: controller.passageIsAvailable,
+            selectedFocalNoteCount: controller.selectedFocalNoteIDs.count
+        )
+    }
+
+    private var preparationMinimumHeight: CGFloat {
+        actionSheetLayout.primaryModules.isEmpty
+            ? ScholiumMetrics.ResearchSheet.Action.compactMinimumHeight
+            : ScholiumMetrics.ResearchSheet.Action.regularMinimumHeight
+    }
+
+    private var preparationIdealHeight: CGFloat {
+        actionSheetLayout.primaryModules.isEmpty
+            ? ScholiumMetrics.ResearchSheet.Action.compactIdealHeight
+            : ScholiumMetrics.ResearchSheet.Action.regularIdealHeight
+    }
+
+    private func synchronizeDisclosureState() {
+        showsAdditionalContext = actionSheetLayout.expandsAdditionalContext
+        showsOptionalAcademicInputs = false
     }
 
     @ViewBuilder
@@ -479,7 +572,6 @@ struct ResearchActionPanelView: View {
             RoundedRectangle(cornerRadius: ScholiumShape.editorialControlCornerRadius)
                 .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
         }
-        .focused($focusedAcademicFieldID, equals: field.fieldID.rawValue)
         .accessibilityLabel(Text(verbatim: field.label))
         .accessibilityIdentifier(
             "scholium.researchAction.academicText.\(field.fieldID.rawValue)"
@@ -576,7 +668,7 @@ struct ResearchActionPanelView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
-                Text("Scholium retains permission and the fingerprint locally; the Research Record stores neither the path nor source bytes.")
+                Text("The source stays local. Its path and contents aren’t stored in the Research Record.")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -677,15 +769,12 @@ struct ResearchActionPanelView: View {
                 }
                 .toggleStyle(.checkbox)
             }
-        }
-    }
-
-    private func machineResolvedSelector(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            selectorHeader(title, required: false)
-            Text(detail)
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
+            if controller.selectedFidelityChecks.contains(.citations) {
+                Text("Citation checks use the active style from Research Guidance.")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -761,7 +850,7 @@ struct ResearchActionPanelView: View {
 
     private var footer: some View {
         HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
-            Button(controller.preparation == nil ? "Cancel" : "Done") {
+            Button(controller.preparation == nil ? "Cancel" : "Close") {
                 context.dismiss()
             }
             .keyboardShortcut(.cancelAction)
@@ -901,12 +990,6 @@ struct ResearchActionPanelView: View {
     private var canCopyInstructions: Bool {
         guard pendingHandoff == nil, !controller.isBusy else { return false }
         return controller.canCancelPreparedRun || controller.canPrepare
-    }
-
-    private func focusFirstAcademicTextField() {
-        focusedAcademicFieldID = controller.profile?.academicInputFields.first(where: {
-            $0.kind == .freeText && $0.requirement != .excluded
-        })?.fieldID.rawValue
     }
 
     private func selectorIsRequired(_ selector: PlatformActionSelector) -> Bool {

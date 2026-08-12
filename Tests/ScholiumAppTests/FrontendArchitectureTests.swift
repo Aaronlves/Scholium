@@ -812,11 +812,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
-        #expect(
-            apparatusComponentsSource.contains(
-                ".scholiumActivationFocus(focusedMode, equals: mode)"
-            ))
-        #expect(apparatusComponentsSource.contains(".onMoveCommand(perform: move)"))
+        #expect(apparatusComponentsSource.contains("ScholiumSegmentedControl("))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
@@ -1722,7 +1718,6 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains(".onMoveCommand(perform: move)"))
         #expect(componentsSource.contains("case .up:"))
         #expect(componentsSource.contains("case .down:"))
-        #expect(!componentsSource.contains("@Environment(\\.layoutDirection)"))
         #expect(!sidebarSource.contains("private var scopeIndex"))
         #expect(!sidebarSource.contains(".font(.system(size: 12"))
     }
@@ -2174,11 +2169,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.relationClusterSpacing == 12)
         #expect(ScholiumMetrics.Apparatus.relationRowMinimumHeight == 28)
         #expect(ScholiumMetrics.Apparatus.actionRowMinimumHeight == 44)
-        #expect(
-            ScholiumMetrics.Apparatus.modeColumnSpacing
-                == ScholiumGrid.Spacing.labelAccessoryGap
-        )
-
         #expect(componentsSource.contains("struct ScholiumApparatusSection"))
         #expect(componentsSource.contains("struct ScholiumApparatusRow"))
         #expect(componentsSource.contains("struct ScholiumApparatusFactGrid"))
@@ -2188,36 +2178,16 @@ struct FrontendArchitectureTests {
         #expect(sharedComponentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(componentsSource.contains("struct ScholiumApparatusSectionHeaderButton"))
         #expect(componentsSource.contains("struct ScholiumInspectorModeIndex"))
-        let modeButtonStart = try #require(
-            componentsSource.range(
-                of: "private struct ScholiumInspectorModeButton"
-            ))
-        let modeButtonEnd = try #require(
-            componentsSource.range(
-                of: "/// One Inspector section",
-                range: modeButtonStart.upperBound..<componentsSource.endIndex
-            ))
-        let modeButton = componentsSource[
-            modeButtonStart.lowerBound..<modeButtonEnd.lowerBound
-        ]
-        #expect(!modeButton.contains("ScholiumColorRole.raisedSurfaceBackground"))
-        #expect(modeButton.contains("ScholiumShape.editorialControlCornerRadius"))
-        #expect(modeButton.contains("ScholiumContentControlButtonStyle("))
-        #expect(modeButton.contains(".scholiumContentControlInk()"))
-        #expect(modeButton.contains("Button(action: select)"))
-        #expect(
-            modeButton.contains(
-                ".scholiumActivationFocus(focusedMode, equals: mode)"
-            ))
-        #expect(!modeButton.contains("ScholiumControlActivation"))
-        #expect(!modeButton.contains(".onHover"))
-        #expect(!modeButton.contains(".buttonStyle(.plain)"))
-        #expect(!modeButton.contains("ScholiumEditorialIndexUnderline"))
-        #expect(!modeButton.contains("ScholiumColorRole.accent"))
-        #expect(!modeButton.contains("Capsule"))
+        #expect(componentsSource.contains("ScholiumSegmentedControl("))
+        #expect(sharedComponentsSource.contains("struct ScholiumSegmentedControl<Value: Hashable>"))
+        #expect(sharedComponentsSource.contains("ScholiumShape.segmentedControlCornerRadius"))
+        #expect(sharedComponentsSource.contains("ScholiumColorRole.surfaceBackground.color"))
+        #expect(sharedComponentsSource.contains(".scholiumElevation(.floatingControl)"))
+        #expect(sharedComponentsSource.contains(".scholiumActivationFocus(focusedValue, equals: value)"))
+        #expect(sharedComponentsSource.contains(".onMoveCommand(perform: move)"))
+        #expect(sharedComponentsSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        #expect(!sharedComponentsSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(!componentsSource.contains("struct ScholiumConnectionGlyph"))
-        #expect(!componentsSource.contains("select(mode)\n        focusedMode = mode"))
-        #expect(componentsSource.contains("select(nextMode)\n        focusedMode = nextMode"))
         #expect(componentsSource.contains("ViewThatFits(in: .horizontal)"))
         #expect(componentsSource.contains("ForEach(visibleFacts)"))
         #expect(
@@ -2255,6 +2225,12 @@ struct FrontendArchitectureTests {
             ))
         #expect(researchSource.contains("aboutSection"))
         #expect(researchSource.contains("aboutGroups"))
+        #expect(researchSource.contains("ScholiumPropertyGroup("))
+        #expect(!researchSource.contains("Text(group.group.label)"))
+        #expect(sharedComponentsSource.contains("struct ScholiumPropertyGroup"))
+        #expect(sharedComponentsSource.contains("semanticGroupSeparation"))
+        #expect(sharedComponentsSource.contains("isVisuallyRevealed"))
+        #expect(sharedComponentsSource.contains(".opacity(isVisuallyRevealed || isFocused ? 1 : 0)"))
         #expect(researchSource.contains("ScholiumApparatusFactGrid(facts: group.facts)"))
         #expect(researchSource.contains("ResearchProjectionFreshnessView("))
         #expect(researchSource.contains("ScholiumApparatusStateView("))
@@ -2266,11 +2242,13 @@ struct FrontendArchitectureTests {
             connectionsSource.contains(
                 "Image(systemName: cluster.presentation.systemSymbol.systemName)"
             ))
-        #expect(connectionsSource.contains("Image(systemName: \"chevron.right\")"))
+        #expect(componentsSource.contains("struct ScholiumDisclosureHeaderButton"))
+        #expect(componentsSource.contains("Image(systemName: \"chevron.right\")"))
         #expect(
-            connectionsSource.contains(
+            componentsSource.contains(
                 "ScholiumMotion.disclosure(reduceMotion: reduceMotion)"
             ))
+        #expect(connectionsSource.contains("ScholiumDisclosureHeaderButton("))
         #expect(
             connectionsSource.contains(
                 "ScholiumTypography.interface(.body)"
@@ -2334,8 +2312,8 @@ struct FrontendArchitectureTests {
         #expect(!connectionsSource.contains("ScholiumColorRole.surfaceBackground.color"))
         #expect(connectionsSource.contains("ConnectionRelationshipCluster"))
         #expect(connectionsSource.contains("relationGlyphColumnWidth"))
-        #expect(connectionsSource.contains("Picker(\"Link Direction\""))
-        #expect(connectionsSource.contains(".pickerStyle(.segmented)"))
+        #expect(connectionsSource.contains("ScholiumSegmentedControl("))
+        #expect(!connectionsSource.contains(".pickerStyle(.segmented)"))
         #expect(
             connectionsSource.contains(
                 ".connectionDirectionControlMaximumWidth"
@@ -2372,6 +2350,51 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(appSource.contains("case .researchConfigurationInvalidated = event"))
         #expect(appSource.contains("refreshResearchActionAvailability()"))
+    }
+
+    @Test("Every segmented local choice uses the shared Scholium presentation")
+    func segmentedControlPresentationOwner() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let consumerPaths = [
+            "Scholium/UI/Components/ScholiumApparatusComponents.swift",
+            "Scholium/Views/Backlinks/ConnectionsInspectorView.swift",
+            "Scholium/Views/WorkspaceSettingsView.swift",
+            "Scholium/Views/SearchWorkspaceView.swift",
+            "Scholium/Views/Frontmatter/FrontmatterEditorView.swift",
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift",
+        ]
+        let consumerSources = try consumerPaths.map { path in
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+        let sharedSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for source in consumerSources {
+            #expect(source.contains("ScholiumSegmentedControl("))
+            #expect(!source.contains(".pickerStyle(.segmented)"))
+            #expect(!source.contains("NSSegmentedControl("))
+        }
+        #expect(
+            consumerSources.reduce(0) {
+                $0 + $1.components(separatedBy: "ScholiumSegmentedControl(").count - 1
+            } == consumerPaths.count
+        )
+        #expect(sharedSource.contains("ScholiumColorRole.surfaceBackground.color"))
+        #expect(sharedSource.contains("? .raisedSurfaceBackground"))
+        #expect(sharedSource.contains(": .documentBackground"))
+        #expect(sharedSource.contains("ScholiumShape.segmentedControlCornerRadius"))
+        #expect(sharedSource.contains("ScholiumShape.editorialControlCornerRadius"))
+        #expect(sharedSource.contains(".accessibilityValue(Text(verbatim: selectedTitle))"))
     }
 
     @Test("The Library plane is opaque, Liquid Glass is absent, and no-note is restrained")
@@ -3008,11 +3031,9 @@ struct FrontendArchitectureTests {
             ))
         #expect(browser.contains("sharedBackgroundVisibility(.hidden)"))
         #expect(browser.contains("ResearchRecordsViewIndex"))
-        #expect(browser.contains("NSSegmentedControl("))
-        #expect(browser.contains("control.segmentStyle = .capsule"))
-        #expect(browser.contains("control.borderShape = .capsule"))
-        #expect(browser.contains("control.selectedSegmentBezelColor"))
-        #expect(browser.contains("ScholiumColorRole.raisedSurfaceBackground.nsColor"))
+        #expect(browser.contains("ScholiumSegmentedControl("))
+        #expect(!browser.contains("NSSegmentedControl("))
+        #expect(!browser.contains("control.selectedSegmentBezelColor"))
         #expect(!browser.contains("ResearchRecordsViewIndexButton"))
         #expect(!browser.contains("ResearchRecordsViewIndexUnderline"))
         #expect(!browser.contains("ResearchRecordsRouteToolbarTitle(title: \"Record\")"))
@@ -3611,6 +3632,7 @@ struct FrontendArchitectureTests {
                 == Set([
                     .inlineStatus,
                     .editorialControl,
+                    .segmentedControl,
                     .workspaceNavigation,
                     .editorialPanel,
                     .loadingSurface,

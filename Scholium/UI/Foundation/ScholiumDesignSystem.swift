@@ -1293,7 +1293,6 @@ enum ScholiumGrid {
     enum Apparatus {
         static let contentInset = Peripheral.contentInset
         static let modeStripHeight = foundationUnit * 10
-        static let modeColumnGap = Spacing.labelAccessoryGap
         static let firstSectionGap = foundationUnit * 4
         static let sectionGap = foundationUnit * 4
         static let connectionDirectionControlMaximumWidth = foundationUnit * 60
@@ -1323,6 +1322,15 @@ enum ScholiumGrid {
         static let longTextIndent = foundationUnit * 3
         static let readingBlockGap = foundationUnit * 2
         static let bottomInset = contentInset
+    }
+
+    enum SegmentedControl {
+        static let trackInset = Spacing.opticalAlignmentAdjustment
+        static let segmentGap = Spacing.opticalAlignmentAdjustment
+        static let regularSegmentMinimumHeight = Dimension.preferredCustomTarget
+        static let compactSegmentMinimumHeight = Dimension.compactHierarchyRowHeight
+        static let regularHorizontalInset = Spacing.nestedContentInset
+        static let compactHorizontalInset = Spacing.inlineControlGap
     }
 
     enum ResearchRecords {
@@ -1384,6 +1392,19 @@ enum ScholiumMetrics {
     enum Accessibility {
         static let preferredCustomTarget = ScholiumGrid.Dimension.preferredCustomTarget
         static let minimumCustomTarget = ScholiumGrid.Dimension.minimumCustomTarget
+    }
+
+    enum SegmentedControl {
+        static let trackInset = ScholiumGrid.SegmentedControl.trackInset
+        static let segmentSpacing = ScholiumGrid.SegmentedControl.segmentGap
+        static let regularSegmentMinimumHeight =
+            ScholiumGrid.SegmentedControl.regularSegmentMinimumHeight
+        static let compactSegmentMinimumHeight =
+            ScholiumGrid.SegmentedControl.compactSegmentMinimumHeight
+        static let regularHorizontalInset =
+            ScholiumGrid.SegmentedControl.regularHorizontalInset
+        static let compactHorizontalInset =
+            ScholiumGrid.SegmentedControl.compactHorizontalInset
     }
 
     enum Onboarding {
@@ -1478,8 +1499,10 @@ enum ScholiumMetrics {
         enum Action {
             static let minimumWidth: CGFloat = 520
             static let idealWidth: CGFloat = 660
-            static let minimumHeight: CGFloat = 500
-            static let idealHeight: CGFloat = 680
+            static let compactMinimumHeight: CGFloat = 280
+            static let compactIdealHeight: CGFloat = 320
+            static let regularMinimumHeight: CGFloat = 340
+            static let regularIdealHeight: CGFloat = 380
         }
 
         enum ResearcherResponse {
@@ -1531,13 +1554,16 @@ enum ScholiumMetrics {
 
     enum Properties {
         static let headerDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let groupSpacing = ScholiumGrid.foundationUnit * 2.5
-        static let fieldVerticalInset = ScholiumGrid.foundationUnit * 2.5
+        static let semanticGroupSeparation = ScholiumGrid.foundationUnit * 6
+        static let fieldBlockSeparation = ScholiumGrid.Spacing.sectionSeparation
+        static let creatorItemSeparation = ScholiumGrid.Spacing.sectionSeparation
         static let optionSpacing = ScholiumGrid.foundationUnit * 1.25
         static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
         static let labelSpacing = ScholiumGrid.foundationUnit * 1.25
         static let tagContentSpacing = ScholiumGrid.foundationUnit * 0.75
         static let tagVerticalInset = ScholiumGrid.foundationUnit * 0.75
+        static let numberControlMaximumWidth = ScholiumGrid.foundationUnit * 50
+        static let compactControlMaximumWidth = ScholiumGrid.foundationUnit * 60
     }
 
     enum Settings {
@@ -1683,7 +1709,6 @@ enum ScholiumMetrics {
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
         static let rowSpacing = ScholiumGrid.Apparatus.contentRowGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
-        static let modeColumnSpacing = ScholiumGrid.Apparatus.modeColumnGap
         static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
         static let actionRowMinimumHeight = ScholiumGrid.Apparatus.actionRowMinimumHeight
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
@@ -1856,6 +1881,7 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
 enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     case inlineStatus
     case editorialControl
+    case segmentedControl
     case workspaceNavigation
     case editorialPanel
     case loadingSurface
@@ -1879,7 +1905,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
              .researchRecordCollectionRow, .boundedPanel,
              .documentCalloutSurface, .documentEmbeddedNote:
             8
-        case .editorialPanel, .loadingSurface, .documentCodeBlock:
+        case .editorialPanel, .segmentedControl, .loadingSurface, .documentCodeBlock:
             10
         case .editorialTextEditor:
             6
@@ -1922,7 +1948,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             "--scholium-corner-selection-split-control"
         case .calloutDisclosureFocus:
             "--scholium-corner-callout-disclosure-focus"
-        case .editorialControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
+        case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
              .searchOverlay, .researchRecordCollectionRow:
             nil
         }
@@ -1932,6 +1958,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
 enum ScholiumShape {
     static let inlineStatusCornerRadius = ScholiumCornerRole.inlineStatus.radius
     static let editorialControlCornerRadius = ScholiumCornerRole.editorialControl.radius
+    static let segmentedControlCornerRadius = ScholiumCornerRole.segmentedControl.radius
     static let workspaceNavigationCornerRadius = ScholiumCornerRole.workspaceNavigation.radius
     static let editorialPanelCornerRadius = ScholiumCornerRole.editorialPanel.radius
     static let loadingSurfaceCornerRadius = ScholiumCornerRole.loadingSurface.radius

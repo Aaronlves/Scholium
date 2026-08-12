@@ -35,7 +35,7 @@ public enum TriptychSettingsLoadState: Equatable, Sendable {
     case futureSchema(Int)
     case corrupted
 
-    public var authorizesPropertyEditing: Bool {
+    public var authorizesAboutProjection: Bool {
         if case .current = self { true } else { false }
     }
 }

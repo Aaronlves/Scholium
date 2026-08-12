@@ -279,7 +279,7 @@ contains at most one typed user/group-library plus item-key binding for the curr
 the view neither derives nor displays protected machine data.
 
 `ConnectionsInspectorView` owns one nonpersistent `ConnectionDirection`,
-defaulting each new presentation to Outgoing. Its native segmented `Picker`
+defaulting each new presentation to Outgoing. The shared segmented component
 projects the same immutable direct graph into Incoming or Outgoing rows;
 Neutral and Incompatible edges enter both projections with their original
 source occurrence. Relationship subheadings and Note rows use system Sans,

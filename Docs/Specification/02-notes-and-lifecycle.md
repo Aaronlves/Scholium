@@ -275,13 +275,15 @@ top clearance belongs to the scrolling document.
 
 ### 5.2 Properties
 
-Properties separates eight states that never imply one another: supported,
-applicable, recommended, Agent-required, creatable, present, About-visible,
-and structured-editable. Their owners are respectively the canonical property
-catalog, Analysis source-type profile, that profile's recommendation order,
-Triptych Agent-creation settings, role creation policy, exact YAML, the About
-profile, and the structured-edit allowlist. Exact New Note YAML and Zotero
-binding are separate contracts again; neither is inferred from these states.
+Properties separates seven states that never imply one another: supported,
+applicable, recommended, Agent-required, creatable, present, and About-visible.
+Their owners are respectively the canonical property catalog, Analysis
+source-type profile, that profile's recommendation order, Triptych
+Agent-creation settings, role creation policy, exact YAML, and the About
+profile. Whether a present value is directly editable depends only on its
+current exact-source shape and the targeted patch contract; it is not a
+portable setting. Exact New Note YAML and Zotero binding are separate
+contracts again; neither is inferred from these states.
 
 Every canonical field is researcher-owned source metadata. Scholium has no
 protected-machine Property. Identity, fingerprints, provenance, bindings,
@@ -317,10 +319,10 @@ Researcher State, acceptance, or writer proof. Researcher and authorized Agent
 edits share the exact-revision, attribution, conflict, and recovery boundary;
 the current value alone never identifies its author.
 
-Each Triptych role stores independent About order, structured-edit allowlist,
-and exact delimiter-free `newNoteYAML`. Analysis additionally stores per-source
-type Agent-required fields. The three built-in seeds and all built-in required
-sets are empty. About and edit defaults never materialize keys. Settings uses
+Each Triptych role stores independent About order and exact delimiter-free
+`newNoteYAML`. Analysis additionally stores per-source-type Agent-required
+fields. The three built-in seeds and all built-in required sets are empty.
+About defaults never materialize keys. Settings uses
 one explicit schema envelope and exact-byte `SettingsRevision`; save is an
 expected-revision atomic transaction with readback. Old, future, damaged,
 conflicting, and current-schema-needs-review states remain distinct and never
@@ -332,14 +334,19 @@ rewriting `settings.json`. Researcher templates and active IDs remain exact
 portable settings; a missing or mismatched active ID needs review rather than
 being repaired.
 
-Complete Properties shows every safely bounded existing top-level property.
-Allowed canonical or observably scalar/list values receive structured controls;
-unsupported shapes remain read-only with a Source route. **Add a Property…**
-creates only a missing canonical key with a valid nonempty value. A YAML-free
+Complete Properties uses one role-aware sheet for Analysis, Topic, and Work and
+shows every safely bounded existing top-level property. Canonical or observably
+scalar/list values receive direct controls whenever their exact source range can
+be targeted; unsupported or ambiguous shapes remain read-only with a Source
+route. All custom top-level fields stay together in one final custom group.
+Semantic groups are separated by whitespace rather than repeated visible group
+headings; their names remain available to assistive technology. **Add a
+Property…** creates only a missing applicable canonical key with a valid
+nonempty value. A YAML-free
 Note offers explicit **Add YAML Properties…** or **Keep Without YAML**; insertion
 is a single current-fingerprint-bound source transaction, never automatic or
-batch migration. About omits absent and empty values and follows Appendix A's
-fixed groups; Tags form the final named group and render as neutral capsules.
+batch migration. About omits absent and empty values, follows the same group
+order and whitespace grammar, and renders final Tags as neutral capsules.
 
 ### 5.3 Create, duplicate, rename, and identity
 

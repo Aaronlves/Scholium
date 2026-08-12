@@ -274,32 +274,31 @@ struct ResearchOverviewView: View {
 
             VStack(
                 alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+                spacing: 0
             ) {
-                ForEach(aboutGroups) { group in
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
+                ForEach(Array(aboutGroups.enumerated()), id: \.element.group) { index, group in
+                    ScholiumPropertyGroup(
+                        label: group.group.label,
+                        separatesFromPrevious: index > 0
                     ) {
-                        Text(group.group.label)
-                            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                            .scholiumForeground(.secondaryText)
-                            .accessibilityHeading(.h3)
-
-                        if !group.facts.isEmpty {
-                            ScholiumApparatusFactGrid(facts: group.facts)
-                        }
-                        ForEach(Array(group.readingBlocks.enumerated()), id: \.offset) { _, block in
-                            ScholiumApparatusReadingBlock(
-                                label: block.label,
-                                text: block.text
-                            )
-                        }
-                        if !group.tags.isEmpty {
-                            AboutTagsView(tags: group.tags)
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumMetrics.Properties.fieldBlockSeparation
+                        ) {
+                            if !group.facts.isEmpty {
+                                ScholiumApparatusFactGrid(facts: group.facts)
+                            }
+                            ForEach(Array(group.readingBlocks.enumerated()), id: \.offset) { _, block in
+                                ScholiumApparatusReadingBlock(
+                                    label: block.label,
+                                    text: block.text
+                                )
+                            }
+                            if !group.tags.isEmpty {
+                                AboutTagsView(tags: group.tags)
+                            }
                         }
                     }
-                    .accessibilityElement(children: .contain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

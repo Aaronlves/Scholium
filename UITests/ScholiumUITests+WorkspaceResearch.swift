@@ -1435,11 +1435,31 @@ extension ScholiumUITests {
         XCTAssertTrue(sheet.descendants(matching: .any)[
             "scholium.researchAction.sheet"
         ].waitForExistence(timeout: 8))
+        let additionalContext = sheet.buttons[
+            "scholium.researchAction.additionalContext"
+        ]
+        XCTAssertTrue(additionalContext.waitForExistence(timeout: 8))
+        XCTAssertEqual(additionalContext.value as? String, "Collapsed")
+        additionalContext.click()
+        XCTAssertTrue(sheet.descendants(matching: .any)[
+            "scholium.researchAction.focalNoteSearch"
+        ].waitForExistence(timeout: 8))
+        XCTAssertEqual(additionalContext.value as? String, "Expanded")
+        let additionalInstructions = sheet.buttons[
+            "scholium.researchAction.additionalInstructions"
+        ]
+        XCTAssertTrue(additionalInstructions.waitForExistence(timeout: 8))
+        XCTAssertEqual(additionalInstructions.value as? String, "Collapsed")
+        additionalInstructions.click()
         XCTAssertTrue(sheet.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
+        XCTAssertEqual(additionalInstructions.value as? String, "Expanded")
         XCTAssertFalse(sheet.descendants(matching: .any)[
             "scholium.researchFunctionPanel"
+        ].exists)
+        XCTAssertFalse(sheet.descendants(matching: .any)[
+            "scholium.researcherCommentsPanel"
         ].exists)
         let sheetScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         sheetScreenshot.name = "Research Action common sheet"
@@ -1843,12 +1863,15 @@ extension ScholiumUITests {
             let panel = sheet.descendants(matching: .any)["scholium.researchAction.sheet"]
             XCTAssertTrue(panel.waitForExistence(timeout: 8))
             XCTAssertTrue(sheet.descendants(matching: .any)[
-                "scholium.researchAction.boundary"
+                "scholium.researchAction.additionalContext"
+            ].exists)
+            XCTAssertFalse(sheet.descendants(matching: .any)[
+                "scholium.researchAction.focalNoteSearch"
             ].exists)
             XCTAssertTrue(sheet.descendants(matching: .any)[
-                "scholium.researchAction.noteSearch.materials"
+                "scholium.researchAction.additionalInstructions"
             ].exists)
-            XCTAssertTrue(sheet.descendants(matching: .any)[
+            XCTAssertFalse(sheet.descendants(matching: .any)[
                 "scholium.researchAction.academicText.research-request"
             ].exists)
             XCTAssertTrue(sheet.buttons["Cancel"].exists)
@@ -1901,10 +1924,19 @@ extension ScholiumUITests {
 
         let panel = app.descendants(matching: .any)["scholium.researchAction.sheet"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.researchAction.boundary"].exists)
+        let additionalContext = app.buttons[
+            "scholium.researchAction.additionalContext"
+        ]
+        XCTAssertTrue(additionalContext.waitForExistence(timeout: 8))
+        additionalContext.click()
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.noteSearch.materials"
+            "scholium.researchAction.focalNoteSearch"
         ].waitForExistence(timeout: 8))
+        let additionalInstructions = app.buttons[
+            "scholium.researchAction.additionalInstructions"
+        ]
+        XCTAssertTrue(additionalInstructions.waitForExistence(timeout: 8))
+        additionalInstructions.click()
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
@@ -1924,7 +1956,7 @@ extension ScholiumUITests {
         XCTAssertTrue(copiedInstructions.contains("scholium-working-critique"))
         XCTAssertTrue(copiedInstructions.contains("QA Work.md"))
         XCTAssertTrue(panel.exists)
-        app.buttons["Done"].firstMatch.click()
+        app.buttons["Close"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 3) { !panel.exists })
     }
 
@@ -2155,6 +2187,11 @@ extension ScholiumUITests {
             "scholium.researchAction.sheet"
         ]
         XCTAssertTrue(actionSheet.waitForExistence(timeout: 8))
+        let additionalInstructions = app.descendants(matching: .any)[
+            "scholium.researchAction.additionalInstructions"
+        ]
+        XCTAssertTrue(additionalInstructions.waitForExistence(timeout: 5))
+        additionalInstructions.click()
         let request = app.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ]

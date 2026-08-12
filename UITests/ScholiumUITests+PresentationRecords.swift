@@ -490,6 +490,47 @@ extension ScholiumUITests {
             inspectorToggle.click()
             XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
 
+            let sidebarToggle = app.descendants(matching: .any)[
+                "scholium.toggleSidebar"
+            ]
+            let documentIdentity = app.descendants(matching: .any)[
+                "scholium.documentToolbarIdentity"
+            ]
+            let documentCommands = app.descendants(matching: .any)[
+                "scholium.documentToolbarCommands"
+            ]
+            XCTAssertTrue(
+                sidebarToggle.isHittable,
+                "Hiding Inspector must preserve the fixed leading toolbar zone."
+            )
+            XCTAssertTrue(
+                documentIdentity.isHittable,
+                "Hiding Inspector must preserve the Document identity toolbar zone."
+            )
+            XCTAssertTrue(
+                documentCommands.isHittable,
+                "Hiding Inspector must preserve the Document command toolbar zone."
+            )
+            XCTAssertTrue(
+                app.descendants(matching: .any)["scholium.noteList"].isHittable,
+                "Hiding Inspector must not collapse the independent Library plane."
+            )
+            XCTAssertLessThan(
+                sidebarToggle.frame.maxX,
+                documentIdentity.frame.minX,
+                "The leading controls must remain before the Document identity."
+            )
+            XCTAssertLessThan(
+                documentIdentity.frame.maxX,
+                documentCommands.frame.minX,
+                "The Document identity must remain before the command group."
+            )
+            XCTAssertLessThan(
+                documentCommands.frame.maxX,
+                inspectorToggle.frame.minX,
+                "The command group must remain before the trailing Inspector control."
+            )
+
             let window = app.windows.firstMatch
             window.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)
@@ -1219,7 +1260,7 @@ extension ScholiumUITests {
         selectResearchInspectorMode("actions")
         let actionSheet = openDiscussFromActions()
         XCTAssertGreaterThanOrEqual(actionSheet.frame.width, 519)
-        XCTAssertGreaterThanOrEqual(actionSheet.frame.height, 499)
+        XCTAssertGreaterThanOrEqual(actionSheet.frame.height, 279)
         XCTAssertTrue(actionSheet.staticTexts["Discuss"].exists)
         XCTAssertTrue(actionSheet.buttons["Cancel"].isHittable)
         XCTAssertTrue(actionSheet.buttons["Copy Handoff"].isHittable)

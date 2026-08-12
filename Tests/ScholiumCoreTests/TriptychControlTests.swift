@@ -99,21 +99,17 @@ struct TriptychControlTests {
     func propertiesConfigurationOrderingAndDeduplication() {
         var configuration = VaultPropertiesConfiguration(
             newNoteYAML: "tags: [draft]\r\n\r\n",
-            visibleFields: [" authors ", "publication_date", "authors", "", "type"],
-            editableFields: ["title", " title ", "tags"]
+            visibleFields: [" authors ", "publication_date", "authors", "", "type"]
         )
 
         #expect(configuration.newNoteYAML == "tags: [draft]\n\n")
         #expect(configuration.visibleFields == ["authors", "publication_date", "type"])
-        #expect(configuration.editableFields == ["title", "tags"])
 
         configuration.moveVisibleField("type", to: 0)
         configuration.setVisible(true, field: " access ")
         configuration.setVisible(false, field: "publication_date")
-        configuration.editableFields.append(" tags ")
 
         #expect(configuration.visibleFields == ["type", "authors", "access"])
-        #expect(configuration.editableFields == ["title", "tags"])
     }
 
     @Test("Seed normalization preserves keep-chomping trailing blank lines exactly")
@@ -123,8 +119,7 @@ struct TriptychControlTests {
         var settings = TriptychSettings()
         settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
             newNoteYAML: exact,
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         #expect(settings.properties[.paperAnalysis]?.newNoteYAML == expected)
         try TriptychSettingsValidator.validate(settings)
@@ -146,16 +141,13 @@ struct TriptychControlTests {
         let expected = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
                 newNoteYAML: "language: en\n",
-                visibleFields: ["authors", "publication_date", "type"],
-                editableFields: ["title", "authors"]
+                visibleFields: ["authors", "publication_date", "type"]
             ),
             .topicKnowledge: VaultPropertiesConfiguration(
-                visibleFields: ["aliases"],
-                editableFields: []
+                visibleFields: ["aliases"]
             ),
             .output: VaultPropertiesConfiguration(
-                visibleFields: ["work_type", "coauthors"],
-                editableFields: ["work_type", "coauthors"]
+                visibleFields: ["work_type", "coauthors"]
             ),
         ], analysisAgentCreation: AnalysisAgentCreationConfiguration(
             requiredFieldsBySourceType: [.journalArticle: ["title", "authors"]]
@@ -168,7 +160,6 @@ struct TriptychControlTests {
         #expect(loaded.settings.properties == expected.properties)
         #expect(loaded.settings.properties[.paperAnalysis]?.newNoteYAML == "language: en\n")
         #expect(loaded.settings.properties[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
-        #expect(loaded.settings.properties[.topicKnowledge]?.editableFields == [])
         #expect(loaded.settings.properties[.output]?.visibleFields == ["work_type", "coauthors"])
         #expect(loaded.settings.analysisAgentCreation.requiredFields(for: .journalArticle) == ["title", "authors"])
     }
@@ -177,8 +168,7 @@ struct TriptychControlTests {
     func propertiesConfigurationCompletesTriptych() {
         let settings = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                visibleFields: ["authors"],
-                editableFields: ["title"]
+                visibleFields: ["authors"]
             ),
         ])
 
@@ -188,8 +178,6 @@ struct TriptychControlTests {
         #expect(settings.properties[.output] == TriptychSettings.defaultProperties[.output])
         #expect(settings.properties[.output]?.visibleFields.contains("work_type") == true)
         #expect(settings.properties[.output]?.visibleFields.contains("kind") == false)
-        #expect(settings.properties[.output]?.editableFields.contains("coauthors") == true)
-        #expect(settings.properties[.output]?.editableFields.contains("authors") == false)
     }
 
     @Test("Settings save rejects a stale exact-byte revision without overwriting")
@@ -224,8 +212,7 @@ struct TriptychControlTests {
         var invalid = initial.settings
         invalid.properties[.paperAnalysis] = VaultPropertiesConfiguration(
             newNoteYAML: "authors:\n  - family: Scanlon\n",
-            visibleFields: invalid.properties[.paperAnalysis]?.visibleFields ?? [],
-            editableFields: invalid.properties[.paperAnalysis]?.editableFields ?? []
+            visibleFields: invalid.properties[.paperAnalysis]?.visibleFields ?? []
         )
         invalid.analysisAgentCreation = AnalysisAgentCreationConfiguration(
             requiredFieldsBySourceType: [.journalArticle: ["authors"]]
@@ -248,8 +235,7 @@ struct TriptychControlTests {
         var settings = TriptychSettings()
         settings.properties[.output] = VaultPropertiesConfiguration(
             newNoteYAML: "doi: custom-looking-but-analysis-canonical\n",
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validate(settings)
@@ -257,8 +243,7 @@ struct TriptychControlTests {
 
         settings.properties[.output] = VaultPropertiesConfiguration(
             newNoteYAML: "researcher_method: dialectical\n",
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         try TriptychSettingsValidator.validate(settings)
     }
@@ -285,14 +270,13 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsFutureSchema(999) = $0 { true } else { false } })
 
-        try Data(#"{"schemaVersion":2,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        try Data(#"{"schemaVersion":3,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
         var reviewed = TriptychSettings()
         reviewed.properties[.paperAnalysis] = VaultPropertiesConfiguration(
             newNoteYAML: "title: reserved\n",
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         try JSONEncoder().encode(reviewed).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
@@ -306,7 +290,7 @@ struct TriptychControlTests {
             uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
         ))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
-        #expect((try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect((try await store.settingsLoadState()).authorizesAboutProjection)
 
         var reviewable = TriptychSettings()
         reviewable.activePromptTemplateIDs[.dialogue] = UUID()
@@ -320,7 +304,7 @@ struct TriptychControlTests {
         #expect(decoded == reviewable)
         #expect(revision.fingerprint == DocumentFingerprint(data: reviewableBytes))
         #expect(!reason.isEmpty)
-        #expect(!(try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)
         #expect(try Data(contentsOf: url) == reviewableBytes)
 
         try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
@@ -329,10 +313,10 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .futureSchema(999))
 
-        try Data(#"{"schemaVersion":2,"properties":"damaged"}"#.utf8)
+        try Data(#"{"schemaVersion":3,"properties":"damaged"}"#.utf8)
             .write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .corrupted)
-        #expect(!(try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)
     }
 
     @Test("An uncoordinated final-window replacement is preserved instead of overwritten")

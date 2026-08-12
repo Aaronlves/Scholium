@@ -265,12 +265,15 @@ extension ScholiumUITests {
             "scholium.researchAction.sheet"
         ].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.boundary"
+            "scholium.researchAction.additionalContext"
+        ].exists)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.researchAction.focalNoteSearch"
         ].exists)
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchAction.noteSearch.materials"
+            "scholium.researchAction.additionalInstructions"
         ].exists)
-        XCTAssertTrue(app.descendants(matching: .any)[
+        XCTAssertFalse(app.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].exists)
         XCTAssertFalse(app.staticTexts["Supported modes"].exists)

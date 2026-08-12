@@ -738,9 +738,6 @@ final class ResearchActionController: ObservableObject {
                 passage != nil && usesPassage
             case .fidelityChecks:
                 !selectedFidelityChecks.isEmpty
-            case .citationStyle, .feedback:
-                // These selectors are resolved from current app-owned state.
-                true
             }
         }
     }

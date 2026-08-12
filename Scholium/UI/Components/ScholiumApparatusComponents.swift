@@ -20,107 +20,28 @@ extension View {
 /// selection and keyboard traversal; the surrounding window remains the mode
 /// state owner.
 struct ScholiumInspectorModeIndex: View {
-    @Environment(\.layoutDirection) private var layoutDirection
-    @FocusState private var focusedMode: ResearchInspectorMode?
-
     let selectedMode: ResearchInspectorMode
     let select: (ResearchInspectorMode) -> Void
 
     var body: some View {
-        HStack(spacing: ScholiumMetrics.Apparatus.modeColumnSpacing) {
-            ForEach(ResearchInspectorMode.allCases) { mode in
-                ScholiumInspectorModeButton(
-                    mode: mode,
-                    isSelected: selectedMode == mode,
-                    focusedMode: $focusedMode,
-                    select: { selectMode(mode) },
-                    move: { moveFocus(from: mode, direction: $0) }
+        ScholiumSegmentedControl(
+            selection: Binding(
+                get: { selectedMode },
+                set: { select($0) }
+            ),
+            options: ResearchInspectorMode.allCases.map { mode in
+                ScholiumSegmentedControlOption(
+                    mode,
+                    title: String(localized: mode.interfaceTitleResource),
+                    accessibilityIdentifier: "scholium.inspectorMode.\(mode.rawValue)"
                 )
-                .frame(minWidth: 0, maxWidth: .infinity)
-            }
-        }
+            },
+            label: String(localized: "Research Inspector"),
+            size: .compact,
+            accessibilityIdentifier: "scholium.inspectorMode"
+        )
         .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
         .frame(minHeight: ScholiumMetrics.Apparatus.headerHeight)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Research Inspector")
-    }
-
-    private func selectMode(_ mode: ResearchInspectorMode) {
-        select(mode)
-    }
-
-    private func moveFocus(
-        from mode: ResearchInspectorMode,
-        direction: MoveCommandDirection
-    ) {
-        let modes = ResearchInspectorMode.allCases
-        guard let index = modes.firstIndex(of: mode) else { return }
-        let visualStep: Int
-        switch direction {
-        case .left:
-            visualStep = layoutDirection == .leftToRight ? -1 : 1
-        case .right:
-            visualStep = layoutDirection == .leftToRight ? 1 : -1
-        default:
-            return
-        }
-        let nextIndex = (index + visualStep + modes.count) % modes.count
-        let nextMode = modes[nextIndex]
-        select(nextMode)
-        focusedMode = nextMode
-    }
-}
-
-private struct ScholiumInspectorModeButton: View {
-    let mode: ResearchInspectorMode
-    let isSelected: Bool
-    let focusedMode: FocusState<ResearchInspectorMode?>.Binding
-    let select: () -> Void
-    let move: (MoveCommandDirection) -> Void
-
-    var body: some View {
-        Button(action: select) {
-            Text(mode.interfaceTitleResource)
-                .font(
-                    isSelected
-                        ? ScholiumTypography.interface(.compact, emphasis: .strong)
-                        : ScholiumTypography.interface(.compact, emphasis: .medium)
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.9)
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
-                )
-                .contentShape(
-                    RoundedRectangle(
-                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                        style: .continuous
-                    ))
-                .scholiumContentControlInk()
-        }
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                isSelected: isSelected,
-                isFocused: isFocused,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
-        )
-        .frame(
-            maxWidth: .infinity,
-            minHeight: ScholiumMetrics.Apparatus.headerHeight
-        )
-        .scholiumActivationFocus(focusedMode, equals: mode)
-        .onMoveCommand(perform: move)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("scholium.inspectorMode.\(mode.rawValue)")
-    }
-
-    private var isFocused: Bool {
-        focusedMode.wrappedValue == mode
     }
 }
 
@@ -465,6 +386,90 @@ struct ScholiumApparatusSectionHeaderButton: View {
         .help(actionLabel)
         .accessibilityLabel(Text(actionLabel))
         .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+/// A native full-row disclosure heading shared by Inspector and sheet
+/// progressive disclosure. The heading, indicator, trailing value, and empty
+/// row space form one Button while the disclosed content remains outside the
+/// control for ordinary reading and interaction.
+struct ScholiumDisclosureHeaderButton<Label: View, Trailing: View>: View {
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
+
+    let isExpanded: Bool
+    let accessibilityLabel: Text
+    let accessibilityIdentifier: String
+    let minimumHeight: CGFloat
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @ViewBuilder let trailing: () -> Trailing
+
+    init(
+        isExpanded: Bool,
+        accessibilityLabel: Text,
+        accessibilityIdentifier: String,
+        minimumHeight: CGFloat = ScholiumMetrics.Accessibility.preferredCustomTarget,
+        action: @escaping () -> Void,
+        @ViewBuilder label: @escaping () -> Label,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.isExpanded = isExpanded
+        self.accessibilityLabel = accessibilityLabel
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.minimumHeight = minimumHeight
+        self.action = action
+        self.label = label
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
+                Image(systemName: "chevron.right")
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                    .scholiumForeground(.mutedText)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .animation(
+                        ScholiumMotion.disclosure(reduceMotion: reduceMotion),
+                        value: isExpanded
+                    )
+                    .accessibilityHidden(true)
+                label()
+                Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
+                trailing()
+            }
+        }
+        .buttonStyle(
+            ScholiumQuietRowButtonStyle(
+                minimumHeight: minimumHeight,
+                verticalInset: 0
+            )
+        )
+        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(isExpanded ? Text("Expanded") : Text("Collapsed"))
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+extension ScholiumDisclosureHeaderButton where Trailing == EmptyView {
+    init(
+        isExpanded: Bool,
+        accessibilityLabel: Text,
+        accessibilityIdentifier: String,
+        minimumHeight: CGFloat = ScholiumMetrics.Accessibility.preferredCustomTarget,
+        action: @escaping () -> Void,
+        @ViewBuilder label: @escaping () -> Label
+    ) {
+        self.init(
+            isExpanded: isExpanded,
+            accessibilityLabel: accessibilityLabel,
+            accessibilityIdentifier: accessibilityIdentifier,
+            minimumHeight: minimumHeight,
+            action: action,
+            label: label,
+            trailing: { EmptyView() }
+        )
     }
 }
 

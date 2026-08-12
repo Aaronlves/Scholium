@@ -31,6 +31,268 @@ struct ScholiumStructuralRule: View {
     }
 }
 
+enum ScholiumSegmentedControlSize: Sendable {
+    case regular
+    case compact
+}
+
+struct ScholiumSegmentedControlOption<Value: Hashable>: Identifiable {
+    let value: Value
+    let title: String
+    let accessibilityIdentifier: String?
+
+    init(
+        _ value: Value,
+        title: String,
+        accessibilityIdentifier: String? = nil
+    ) {
+        self.value = value
+        self.title = title
+        self.accessibilityIdentifier = accessibilityIdentifier
+    }
+
+    var id: Value { value }
+}
+
+/// The single presentation owner for horizontal, mutually exclusive local
+/// choices. Feature owners retain the selected value; this component owns the
+/// equal segments, quiet track, raised selection plate, pointer feedback,
+/// keyboard traversal, and accessibility grouping.
+struct ScholiumSegmentedControl<Value: Hashable>: View {
+    @Environment(\.layoutDirection) private var layoutDirection
+    @FocusState private var focusedValue: Value?
+
+    @Binding private var selection: Value
+    private let options: [ScholiumSegmentedControlOption<Value>]
+    private let label: String
+    private let size: ScholiumSegmentedControlSize
+    private let accessibilityIdentifier: String?
+
+    init(
+        selection: Binding<Value>,
+        options: [ScholiumSegmentedControlOption<Value>],
+        label: String,
+        size: ScholiumSegmentedControlSize = .regular,
+        accessibilityIdentifier: String? = nil
+    ) {
+        _selection = selection
+        self.options = options
+        self.label = label
+        self.size = size
+        self.accessibilityIdentifier = accessibilityIdentifier
+    }
+
+    var body: some View {
+        Group {
+            if let accessibilityIdentifier {
+                control.accessibilityIdentifier(accessibilityIdentifier)
+            } else {
+                control
+            }
+        }
+    }
+
+    private var control: some View {
+        HStack(spacing: ScholiumMetrics.SegmentedControl.segmentSpacing) {
+            ForEach(options) { option in
+                if let accessibilityIdentifier = option.accessibilityIdentifier {
+                    segment(for: option)
+                        .accessibilityIdentifier(accessibilityIdentifier)
+                } else {
+                    segment(for: option)
+                }
+            }
+        }
+        .padding(ScholiumMetrics.SegmentedControl.trackInset)
+        .background(
+            ScholiumColorRole.surfaceBackground.color,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.segmentedControlCornerRadius,
+                style: .continuous
+            )
+        )
+        .scholiumBoundary(
+            .subtleBoundary,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.segmentedControlCornerRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(verbatim: label))
+        .accessibilityValue(Text(verbatim: selectedTitle))
+    }
+
+    private func segment(
+        for option: ScholiumSegmentedControlOption<Value>
+    ) -> some View {
+        ScholiumSegmentButton(
+            title: option.title,
+            isSelected: selection == option.value,
+            focusedValue: $focusedValue,
+            value: option.value,
+            size: size,
+            select: { select(option.value) },
+            move: { moveFocus(from: option.value, direction: $0) }
+        )
+        .frame(minWidth: 0, maxWidth: .infinity)
+    }
+
+    private var selectedTitle: String {
+        options.first(where: { $0.value == selection })?.title ?? ""
+    }
+
+    private func select(_ value: Value) {
+        guard selection != value else { return }
+        selection = value
+    }
+
+    private func moveFocus(from value: Value, direction: MoveCommandDirection) {
+        guard let index = options.firstIndex(where: { $0.value == value }) else {
+            return
+        }
+        let visualStep: Int
+        switch direction {
+        case .left:
+            visualStep = layoutDirection == .leftToRight ? -1 : 1
+        case .right:
+            visualStep = layoutDirection == .leftToRight ? 1 : -1
+        default:
+            return
+        }
+        let nextIndex = (index + visualStep + options.count) % options.count
+        let nextValue = options[nextIndex].value
+        selection = nextValue
+        focusedValue = nextValue
+    }
+}
+
+private struct ScholiumSegmentButton<Value: Hashable>: View {
+    @State private var isHovering = false
+
+    let title: String
+    let isSelected: Bool
+    let focusedValue: FocusState<Value?>.Binding
+    let value: Value
+    let size: ScholiumSegmentedControlSize
+    let select: () -> Void
+    let move: (MoveCommandDirection) -> Void
+
+    var body: some View {
+        Button(action: select) {
+            Text(verbatim: title)
+                .font(
+                    size == .regular
+                        ? ScholiumTypography.interface(
+                            .body,
+                            emphasis: isSelected ? .strong : nil
+                        )
+                        : ScholiumTypography.interface(
+                            .compact,
+                            emphasis: isSelected ? .strong : .medium
+                        )
+                )
+                .scholiumForeground(
+                    isSelected || isHovering || isFocused
+                        ? .primaryText
+                        : .secondaryText
+                )
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, horizontalInset)
+                .frame(maxWidth: .infinity, minHeight: minimumHeight)
+                .contentShape(
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                )
+        }
+        .buttonStyle(
+            ScholiumSegmentButtonStyle(
+                isSelected: isSelected,
+                isHovering: isHovering,
+                isFocused: isFocused
+            )
+        )
+        .scholiumActivationFocus(focusedValue, equals: value)
+        .onMoveCommand(perform: move)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(Text(verbatim: title))
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var isFocused: Bool {
+        focusedValue.wrappedValue == value
+    }
+
+    private var minimumHeight: CGFloat {
+        size == .regular
+            ? ScholiumMetrics.SegmentedControl.regularSegmentMinimumHeight
+            : ScholiumMetrics.SegmentedControl.compactSegmentMinimumHeight
+    }
+
+    private var horizontalInset: CGFloat {
+        size == .regular
+            ? ScholiumMetrics.SegmentedControl.regularHorizontalInset
+            : ScholiumMetrics.SegmentedControl.compactHorizontalInset
+    }
+}
+
+private struct ScholiumSegmentButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
+
+    let isSelected: Bool
+    let isHovering: Bool
+    let isFocused: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                if isSelected {
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                    .fill(selectedSurfaceColor)
+                    .scholiumBoundary(
+                        .subtleBoundary,
+                        in: RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .scholiumElevation(.floatingControl)
+                } else {
+                    RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
+                    )
+                    .fill(
+                        ScholiumContentInteractionSurface.color(
+                            isHovering: isEnabled && isHovering,
+                            isFocused: isEnabled && isFocused,
+                            isPressed: isEnabled && configuration.isPressed,
+                            increasedContrast: increasedContrast
+                        )
+                    )
+                }
+            }
+            .opacity(isEnabled && configuration.isPressed ? 0.78 : 1)
+    }
+
+    private var selectedSurfaceColor: Color {
+        let role: ScholiumColorRole =
+            colorScheme == .dark
+            ? .raisedSurfaceBackground
+            : .documentBackground
+        return role.color(increasedContrast: increasedContrast)
+    }
+}
+
 /// One neutral tag presentation shared by read-only About and the editable
 /// Properties surface. An optional trailing symbol extends the capsule without
 /// changing its height or text rhythm.
@@ -71,6 +333,37 @@ struct ScholiumTagCapsuleLabel: View {
     }
 }
 
+/// A shared Properties/About group boundary. Visual grouping uses whitespace;
+/// the semantic label remains available to assistive technologies.
+struct ScholiumPropertyGroup<Content: View>: View {
+    let label: String
+    let separatesFromPrevious: Bool
+    let content: Content
+
+    init(
+        label: String,
+        separatesFromPrevious: Bool,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.label = label
+        self.separatesFromPrevious = separatesFromPrevious
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(
+                .top,
+                separatesFromPrevious
+                    ? ScholiumMetrics.Properties.semanticGroupSeparation
+                    : 0
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text(verbatim: label))
+            .accessibilityHeading(.h3)
+    }
+}
+
 /// The single presentation owner for matching icon controls in a content-owned
 /// header. Its native Button or Menu child retains only activation, focus,
 /// menu tracking, and accessibility semantics; this component owns the exact
@@ -81,16 +374,19 @@ struct ScholiumEditorialIconControl<NativeControl: View>: View {
 
     private let nativeControl: NativeControl
     private let isActive: Bool
+    private let isVisuallyRevealed: Bool
 
     init(
         systemImage: String,
         isActive: Bool = false,
+        isVisuallyRevealed: Bool = true,
         @ViewBuilder nativeControl: (ScholiumEditorialIconControlLabel) -> NativeControl
     ) {
         self.nativeControl = nativeControl(ScholiumEditorialIconControlLabel(
             systemImage: systemImage
         ))
         self.isActive = isActive
+        self.isVisuallyRevealed = isVisuallyRevealed
     }
 
     var body: some View {
@@ -108,6 +404,7 @@ struct ScholiumEditorialIconControl<NativeControl: View>: View {
                 )
             )
             .scholiumActivationFocus($isFocused)
+            .opacity(isVisuallyRevealed || isFocused ? 1 : 0)
     }
 }
 

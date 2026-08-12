@@ -89,7 +89,6 @@ public enum TriptychSettingsValidator {
         for role in WorkspaceVaultSlot.allCases {
             let configuration = settings.properties[role]!
             try validateConfiguredFields(configuration.visibleFields, role: role)
-            try validateConfiguredFields(configuration.editableFields, role: role)
             seedKeysByRole[role] = try validateSeed(configuration.newNoteYAML, role: role)
         }
 

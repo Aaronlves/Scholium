@@ -153,8 +153,7 @@ struct PropertyContractTests {
             var settings = TriptychSettings()
             settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
                 newNoteYAML: source,
-                visibleFields: [],
-                editableFields: []
+                visibleFields: []
             )
             do {
                 try TriptychSettingsValidator.validate(settings)

@@ -40,26 +40,17 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         didSet { visibleFields = Self.unique(visibleFields) }
     }
 
-    /// Top-level YAML fields the researcher may change through structured
-    /// controls. Exact Source editing remains a separate, unrestricted mode.
-    public var editableFields: [String] {
-        didSet { editableFields = Self.unique(editableFields) }
-    }
-
     public init(
         newNoteYAML: String? = nil,
-        visibleFields: [String] = [],
-        editableFields: [String] = []
+        visibleFields: [String] = []
     ) {
         self.newNoteYAML = Self.normalizedNewNoteYAML(newNoteYAML)
         self.visibleFields = Self.unique(visibleFields)
-        self.editableFields = Self.unique(editableFields)
     }
 
     private enum CodingKeys: String, CodingKey {
         case newNoteYAML
         case visibleFields
-        case editableFields
     }
 
     /// Decoding deliberately retains current-schema bytes semantically as
@@ -69,14 +60,12 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         newNoteYAML = try container.decodeIfPresent(String.self, forKey: .newNoteYAML)
         visibleFields = try container.decode([String].self, forKey: .visibleFields)
-        editableFields = try container.decode([String].self, forKey: .editableFields)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(newNoteYAML, forKey: .newNoteYAML)
         try container.encode(visibleFields, forKey: .visibleFields)
-        try container.encode(editableFields, forKey: .editableFields)
     }
 
     /// Adds or removes a field without losing the explicit order of the
@@ -97,15 +86,6 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         let value = visibleFields.remove(at: sourceIndex)
         let boundedIndex = min(max(0, destinationIndex), visibleFields.count)
         visibleFields.insert(value, at: boundedIndex)
-    }
-
-    public mutating func setHumanEditable(_ isEditable: Bool, field: String) {
-        guard let field = Self.normalized(field) else { return }
-        if isEditable {
-            if !editableFields.contains(field) { editableFields.append(field) }
-        } else {
-            editableFields.removeAll { $0 == field }
-        }
     }
 
     private static func unique(_ fields: [String]) -> [String] {
@@ -181,7 +161,7 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public var properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
@@ -290,16 +270,13 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
                 "type", "publication_date", "limitations", "summary", "source_basis", "tags",
-            ],
-            editableFields: PropertyContractCatalog.analysisCanonicalKeys
+            ]
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["summary", "aliases", "limitations", "tags"],
-            editableFields: ["aliases", "summary", "limitations", "tags"]
+            visibleFields: ["summary", "aliases", "limitations", "tags"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["work_type", "coauthors", "summary", "limitations", "tags"],
-            editableFields: ["work_type", "coauthors", "summary", "limitations", "tags"]
+            visibleFields: ["work_type", "coauthors", "summary", "limitations", "tags"]
         ),
     ]
 

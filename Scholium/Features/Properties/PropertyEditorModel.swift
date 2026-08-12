@@ -29,17 +29,14 @@ struct PropertyEditorField: Identifiable, Hashable, Sendable {
 struct PropertyEditorModel: Sendable {
     let note: WindowDocumentLocation
     let profile: SchemaProfileID
-    let configuredEditableFields: Set<String>?
     let analysisSourceTypeOverride: AnalysisSourceType?
 
     init(
         note: WindowDocumentLocation,
-        configuredEditableFields: Set<String>? = nil,
         analysisSourceTypeOverride: AnalysisSourceType? = nil
     ) {
         self.note = note
         self.profile = note.schemaProfile
-        self.configuredEditableFields = configuredEditableFields
         self.analysisSourceTypeOverride = analysisSourceTypeOverride
     }
 
@@ -61,7 +58,6 @@ struct PropertyEditorModel: Sendable {
     var availableFields: [PropertyEditorField] {
         resolvedPresentations.filter {
             note.topLevelProperty(named: $0.key) == nil
-                && isEditableByConfiguration($0.key)
                 && $0.isTypicalForSourceType
         }
     }
@@ -209,9 +205,7 @@ struct PropertyEditorModel: Sendable {
                 contract: contract,
                 sourceKey: contract.canonicalKey,
                 valueKind: contract.valueKind,
-                isReadOnly: !ResearcherPropertyPolicy.isHumanEditable(presentation.key)
-                    || !(configuredEditableFields?.contains(presentation.key) ?? true)
-                    || !hasEditableSourceShape,
+                isReadOnly: !hasEditableSourceShape,
                 isRecommended: recommended.contains(presentation.key),
                 isTypicalForSourceType: applicable.contains(presentation.key)
             )
@@ -221,12 +215,6 @@ struct PropertyEditorModel: Sendable {
     private var recognizedKeys: Set<String> {
         let contracts = PropertyContractCatalog.contracts(for: profile)
         return Set(contracts.map(\.canonicalKey))
-    }
-
-    private func isEditableByConfiguration(_ key: String) -> Bool {
-        PropertyContractCatalog.contract(for: key, profile: profile) != nil
-            && ResearcherPropertyPolicy.isHumanEditable(key)
-            && (configuredEditableFields?.contains(key) ?? true)
     }
 
     private func customField(key: String, value: YAMLValue) -> PropertyEditorField {
@@ -269,8 +257,7 @@ struct PropertyEditorModel: Sendable {
             sourceKey: key,
             valueKind: kind,
             isReadOnly: readOnly
-                || !sourceCanTarget(key: key, value: value, kind: kind)
-                || !(configuredEditableFields?.contains(key) ?? true),
+                || !sourceCanTarget(key: key, value: value, kind: kind),
             isRecommended: false,
             isTypicalForSourceType: true
         )
