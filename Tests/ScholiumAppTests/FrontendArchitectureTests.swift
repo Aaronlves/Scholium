@@ -2182,6 +2182,12 @@ struct FrontendArchitectureTests {
         #expect(sharedComponentsSource.contains("struct ScholiumSegmentedControl<Value: Hashable>"))
         #expect(sharedComponentsSource.contains("ScholiumShape.segmentedControlCornerRadius"))
         #expect(sharedComponentsSource.contains("ScholiumColorRole.surfaceBackground.color"))
+        #expect(
+            sharedComponentsSource.contains(
+                "ScholiumContentInteractionSurface.selectionColor("
+            )
+        )
+        #expect(!sharedComponentsSource.contains("private var selectedSurfaceColor"))
         #expect(sharedComponentsSource.contains(".scholiumElevation(.floatingControl)"))
         #expect(sharedComponentsSource.contains(".scholiumActivationFocus(focusedValue, equals: value)"))
         #expect(sharedComponentsSource.contains(".onMoveCommand(perform: move)"))
@@ -2390,8 +2396,12 @@ struct FrontendArchitectureTests {
             } == consumerPaths.count
         )
         #expect(sharedSource.contains("ScholiumColorRole.surfaceBackground.color"))
-        #expect(sharedSource.contains("? .raisedSurfaceBackground"))
-        #expect(sharedSource.contains(": .documentBackground"))
+        #expect(
+            sharedSource.contains(
+                "ScholiumContentInteractionSurface.selectionColor("
+            )
+        )
+        #expect(!sharedSource.contains("private var selectedSurfaceColor"))
         #expect(sharedSource.contains("ScholiumShape.segmentedControlCornerRadius"))
         #expect(sharedSource.contains("ScholiumShape.editorialControlCornerRadius"))
         #expect(sharedSource.contains(".accessibilityValue(Text(verbatim: selectedTitle))"))

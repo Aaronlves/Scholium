@@ -241,7 +241,6 @@ private struct ScholiumSegmentButton<Value: Hashable>: View {
 }
 
 private struct ScholiumSegmentButtonStyle: ButtonStyle {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.scholiumIncreasedContrast) private var increasedContrast
 
@@ -257,7 +256,15 @@ private struct ScholiumSegmentButtonStyle: ButtonStyle {
                         cornerRadius: ScholiumShape.editorialControlCornerRadius,
                         style: .continuous
                     )
-                    .fill(selectedSurfaceColor)
+                    .fill(
+                        ScholiumContentInteractionSurface.selectionColor(
+                            isSelected: true,
+                            isHovering: isEnabled && isHovering,
+                            isFocused: isEnabled && isFocused,
+                            isPressed: isEnabled && configuration.isPressed,
+                            increasedContrast: increasedContrast
+                        )
+                    )
                     .scholiumBoundary(
                         .subtleBoundary,
                         in: RoundedRectangle(
@@ -282,14 +289,6 @@ private struct ScholiumSegmentButtonStyle: ButtonStyle {
                 }
             }
             .opacity(isEnabled && configuration.isPressed ? 0.78 : 1)
-    }
-
-    private var selectedSurfaceColor: Color {
-        let role: ScholiumColorRole =
-            colorScheme == .dark
-            ? .raisedSurfaceBackground
-            : .documentBackground
-        return role.color(increasedContrast: increasedContrast)
     }
 }
 
