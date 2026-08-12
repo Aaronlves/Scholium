@@ -618,7 +618,8 @@ struct SpotlightSearchPanelView: View {
             options: SearchPresentationScope.visibleModes.map { mode in
                 ScholiumSegmentedControlOption(
                     mode,
-                    title: localizedScopeTitle(mode)
+                    title: localizedScopeTitle(mode),
+                    accessibilityIdentifier: "scholium.searchScope.\(mode.rawValue)"
                 )
             },
             label: String(localized: "Search scope"),

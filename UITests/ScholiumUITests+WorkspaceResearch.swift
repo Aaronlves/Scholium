@@ -571,7 +571,7 @@ extension ScholiumUITests {
 
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let triptych = app.radioButtons["Triptych"]
+        let triptych = app.buttons["scholium.searchScope.triptych"]
         XCTAssertTrue(triptych.waitForExistence(timeout: 5))
         triptych.click()
         typeCommittedText("Normative QA Nexus", into: field, in: app)
@@ -2380,16 +2380,16 @@ extension ScholiumUITests {
         let closeSearch = app.descendants(matching: .any)["scholium.closeSearchButton"]
         XCTAssertTrue(searchMode.waitForExistence(timeout: 5))
         XCTAssertTrue(closeSearch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.radioButtons["This Note"].exists)
-        XCTAssertTrue(app.radioButtons["This Vault"].exists)
-        XCTAssertTrue(app.radioButtons["Triptych"].exists)
+        XCTAssertTrue(app.buttons["scholium.searchScope.thisNote"].exists)
+        XCTAssertTrue(app.buttons["scholium.searchScope.currentVault"].exists)
+        XCTAssertTrue(app.buttons["scholium.searchScope.triptych"].exists)
         let collapsedControls = field.frame
             .union(searchMode.frame)
             .union(closeSearch.frame)
         XCTAssertLessThanOrEqual(collapsedControls.width, 644)
         XCTAssertLessThanOrEqual(collapsedControls.height, 80)
 
-        app.radioButtons["This Note"].click()
+        app.buttons["scholium.searchScope.thisNote"].click()
         typeCommittedText("analysis", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         let expandedContentHeight = result.frame.maxY - field.frame.minY
@@ -2421,7 +2421,7 @@ extension ScholiumUITests {
             identifier: "scholium.searchResult.QA Autosave A.md"
         ).firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let thisNote = app.radioButtons["This Note"]
+        let thisNote = app.buttons["scholium.searchScope.thisNote"]
         XCTAssertTrue(thisNote.waitForExistence(timeout: 5))
         thisNote.click()
         typeCommittedText("analysis", into: field, in: app)
@@ -2457,7 +2457,7 @@ extension ScholiumUITests {
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let triptych = app.radioButtons["Triptych"]
+        let triptych = app.buttons["scholium.searchScope.triptych"]
         XCTAssertTrue(triptych.waitForExistence(timeout: 5))
         triptych.click()
         typeCommittedText(
@@ -2497,7 +2497,7 @@ extension ScholiumUITests {
         app.typeKey("f", modifierFlags: [.command, .shift])
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let thisVault = app.radioButtons["This Vault"]
+        let thisVault = app.buttons["scholium.searchScope.currentVault"]
         XCTAssertTrue(thisVault.waitForExistence(timeout: 5))
         thisVault.click()
         typeCommittedText("deliberative autonomy", into: field, in: app)
