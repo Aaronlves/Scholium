@@ -264,9 +264,17 @@ extension WorkspaceHandle {
             throw ResearchAgentConnectionError.runUnavailable
         }
         let platform = try requiredPlatformAction(action.actionID)
+        let shouldDeliverZoteroIntegrationAdapter =
+            action.target.role == .analysis
+                && record.snapshot.zoteroBibliographicContext != nil
+                && platform.operations.contains(.useZotero)
+        let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter? =
+            shouldDeliverZoteroIntegrationAdapter
+            ? try BundledResearchSkillResources.zoteroIntegrationAdapter()
+            : nil
         let purpose: String? = if case .freeText(let text)? =
             action.academicInputs.values["research-request"] { text } else { nil }
-        return ResearchAuthenticatedRunContext(
+        return try ResearchAuthenticatedRunContext(
             coreProtocol: authenticated.shouldDeliverCoreProtocol
                 ? coreProtocol
                 : nil,
@@ -279,6 +287,7 @@ extension WorkspaceHandle {
                 capabilities: Self.capabilities(platform)
             ),
             method: ResearchMethodContext(snapshot: action.method),
+            zoteroIntegrationAdapter: zoteroIntegrationAdapter,
             resultContract: action.resultContract,
             boundedWriteSet: record.boundedWriteSet.entries.map(
                 ResearchBoundedWriteSetViewEntry.init

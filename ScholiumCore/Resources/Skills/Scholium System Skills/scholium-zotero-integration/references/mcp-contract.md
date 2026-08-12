@@ -15,12 +15,11 @@ This reference describes capabilities, not hard-coded MCP server or tool names. 
 
 The Beta integration must expose equivalent capabilities through stable, documented MCP tools. The System Skill must route by capability so a release can change internal tool names without changing the scholarly workflow.
 
-The current first-party mapping is `zotero_status`, `zotero_search`,
-`zotero_item`, `zotero_selected_target`, `zotero_import_bibtex`, and
-`zotero_import_ris`. `zotero_item` returns attachment pointers only when
-`include_attachments=true`. An MCP initialize response establishes the
-transport only; `zotero_status` separately establishes Zotero API and Connector
-readiness.
+The installed MCP tool schemas own current tool names, input fields, and return
+shapes. Route by the declared capability rather than copying those volatile
+details into this contract. An MCP initialize response establishes the
+transport only; the Status capability separately establishes Zotero API and
+Connector readiness.
 
 ## Retrieval protocol
 
@@ -53,9 +52,9 @@ A real import is permitted only when all of the following hold:
 3. Ambiguity about the record, item type, or destination has been resolved by the researcher.
 4. A dry run of the exact unchanged import text has succeeded and its preview
    matches the intended operation.
-5. The real tool call uses `dry_run=false`, `confirm=true`, and the unexpired
-   one-shot authorization token returned by that dry run. The token must be
-   bound to the content hash and selected destination.
+5. The real tool call explicitly confirms a non-dry-run import with the
+   unexpired one-shot authorization returned by that dry run. The authorization
+   must be bound to the content hash and selected destination.
 6. The result is re-read and checked after the write.
 
 Do not convert an analysis, bibliography check, citation request, or earlier import into standing write permission. If the tool lacks a target-bound dry run, one-shot authorization, explicit confirmation, and read-back controls, treat imports as unavailable.

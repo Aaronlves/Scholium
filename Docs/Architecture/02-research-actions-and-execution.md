@@ -182,12 +182,17 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 3 and authenticated Run Context schema 5 carry the
+Continue Result schema 3 and authenticated Run Context schema 6 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 11 persists the same child handoff. All prior Result,
-authenticated Context, and Local Execution schemas fail closed instead of
-interpreting expanded continuation semantics under an old version.
+Execution schema 11 persists the same child handoff. Authenticated Run Context
+schema 6 also carries one optional typed Zotero Integration Adapter containing
+the exact release-managed System Skill and capability contract. Application
+includes it only for an Analysis target with frozen Zotero context and a
+Zotero-capable Platform Action; the adapter contains no authority or transport.
+All prior Result, authenticated Context, and Local Execution schemas fail
+closed instead of interpreting expanded continuation or adapter semantics under
+an old version.
 
 Opaque reference resolution rechecks Session, Run, scope, current owner, and
 revision. Ending/re-pairing/revocation, Triptych change, deletion, or source

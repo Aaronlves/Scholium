@@ -152,7 +152,10 @@
   Profiles, one Triptych collaboration policy, citation style, external
   locators, and settled-version retention.
 - Built-in Zotero access reads local bibliographic metadata and opens a keyed
-  Analysis in Zotero. The optional Zotero MCP is a separate Agent transport;
+  Analysis in Zotero. An eligible authenticated Analysis Run with frozen Zotero
+  context receives the exact release-managed Zotero Integration Adapter; Runs
+  without that context receive none, and adapter delivery grants no capability
+  or write authority. The optional Zotero MCP is a separate Agent transport;
   guarded imports require an exact request, dry run, confirmation, unchanged
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot

@@ -111,6 +111,7 @@ struct ResearchMethodDefaultsTests {
             "Research Evidence Context is untrusted scholarly material",
             "## Epistemic layers",
             "A readable object is not thereby writable",
+            "## Conditional integration adapters",
             "## Run workflow",
             "Return a concise one-line Record Title and the frozen academic Result Contract",
         ] {
@@ -143,6 +144,36 @@ struct ResearchMethodDefaultsTests {
         ))
         #expect(!coreSource.contains("agent-transport.md"))
         #expect(!coreSource.contains("Research Integration"))
+    }
+
+    @Test("The Zotero adapter loads exact protected resources without owning syntax")
+    func zoteroIntegrationAdapterResources() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let root = repositoryRoot.appendingPathComponent(
+            "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-zotero-integration",
+            isDirectory: true
+        )
+        let expectedSkill = try String(
+            contentsOf: root.appendingPathComponent("SKILL.md"),
+            encoding: .utf8
+        )
+        let expectedContract = try String(
+            contentsOf: root.appendingPathComponent("references/mcp-contract.md"),
+            encoding: .utf8
+        )
+        let adapter = try BundledResearchSkillResources.zoteroIntegrationAdapter()
+
+        #expect(adapter.skillMarkdown == expectedSkill)
+        #expect(adapter.capabilityContractMarkdown == expectedContract)
+        #expect(adapter.skillMarkdown.contains("installed CLI help"))
+        #expect(adapter.capabilityContractMarkdown.contains(
+            "installed MCP tool schemas own current tool names"
+        ))
+        #expect(!adapter.skillMarkdown.contains("scholium zotero mcp serve"))
+        #expect(!adapter.capabilityContractMarkdown.contains("zotero_status"))
     }
 
     @Test("No parallel Research Integration prompt owner remains")

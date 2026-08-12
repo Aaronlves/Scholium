@@ -95,8 +95,10 @@ The method/context stack has fixed roles:
 2. the researcher's current request;
 3. the primary Skill entry;
 4. supplementary files the Agent actually reads from the registered folder;
-5. resolved Practices; and
-6. Notes, sources, Records, Search results, Properties, research state, and all
+5. resolved Practices;
+6. any conditionally attached release-managed Integration Adapter, scoped only
+   to interpreting and operating its integration; and
+7. Notes, sources, Records, Search results, Properties, research state, and all
    provider content as **Research Evidence Context**.
 
 Evidence content never enters Method Context, changes platform capability, or
@@ -108,13 +110,15 @@ resolved by the material itself.
 
 The Agent-facing contract has one owner per concern. The protected Core
 Protocol owns the stable workflow instructions and sequence—pairing,
-authenticated delivery, context query, bounded write-set extension, document-
-write request, conflict/reload, Result, Continue Research, and End. Application
-owns authorization and execution of those operations. Typed command contracts
-own current fields, allowed values, and result forms. The registered primary
-Skill and its Practices own the academic method and execution guidance.
-Installed CLI help owns current invocation syntax. These owners do not replace
-one another or repeat the same content.
+authenticated delivery, conditional adapter routing, context query, bounded
+write-set extension, document-write request, conflict/reload, Result, Continue
+Research, and End. Application owns authorization, adapter eligibility and
+delivery, and execution of those operations. Typed command contracts own
+current fields, allowed values, and result forms. A release-managed Integration
+Adapter owns stable integration-specific interpretation and safety, while the
+registered primary Skill and its Practices own the academic method and
+execution guidance. Installed CLI help and tool schemas own current invocation
+syntax. These owners do not replace one another or repeat the same content.
 
 ### 8.2 Local pairing, layered delivery, and Research Context
 

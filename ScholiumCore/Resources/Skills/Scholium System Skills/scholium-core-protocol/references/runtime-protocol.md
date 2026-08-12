@@ -25,6 +25,17 @@ Use only capabilities authorized for this Run. A readable object is not thereby 
 Every write remains subject to the exact document identity, allowed operation,
 and expected revision supplied by Scholium.
 
+## Conditional integration adapters
+
+When the authenticated Run packet includes the Zotero Integration Adapter,
+read its System Skill and integration contract before interpreting the prepared
+Zotero snapshot or attempting a Zotero operation. The adapter supplies scoped
+handling rules for this Run; it does not create a transport, expose an
+operation, authorize a library read or write, or expand the bounded write set.
+Use it only when the current task requires Zotero and the Run Brief marks the
+needed integration access as available. When the adapter is absent, do not
+probe for or discover an integration independently.
+
 ## Run workflow
 
 Use the installed `scholium agent` commands and their current strict input

@@ -25,7 +25,11 @@ no prepared snapshot supplies the bounded result.
 
 ## Supported MCP transport
 
-Scholium's supported transport is the installed Scholium CLI or MCP adapter, including the first-party `scholium zotero mcp serve` stdio service. Use `scholium zotero mcp config --format json` for the external-agent configuration and `scholium zotero mcp status` to report command availability; add `--probe` only for the data-free MCP initialize lifecycle. If the installed adapter is unavailable, report that limitation rather than searching developer directories or trying to build Scholium.
+Scholium's supported transport is the installed Scholium CLI or its configured
+local MCP adapter. Use the installed CLI help and the MCP tool schemas as the
+only authority for current invocation syntax and fields. If the installed
+adapter is unavailable, report that limitation rather than searching developer
+directories or trying to build Scholium.
 
 The first-party service uses Zotero Desktop's loopback API for readiness, search, item inspection, and explicitly requested bounded attachment pointers. That API is read-only. BibTeX and RIS imports use Zotero's localhost Connector and require an exact-content dry run; the returned authorization token is short-lived, one-shot, and bound to the content hash and selected destination. The confirmed call rechecks the destination and then reads every returned item back through the local API. No Zotero Web API key is required or stored. Scholium's built-in UI remains read-only and never inherits this external-agent write capability.
 
@@ -59,7 +63,7 @@ Read [references/mcp-contract.md](references/mcp-contract.md) completely before 
 4. Distinguish the Zotero item key from a citation or BibTeX key.
 5. Treat library metadata as identity and retrieval information, not as evidence for a paper's philosophical claims.
 6. Retrieve attachment pointers or full text only when the task requires source access and the researcher-authorized read set permits it. Record extraction and locator reliability separately.
-7. For an import, require an explicit current-task request, verify the selected target, preview the exact unchanged record, then make the real call only with `confirm=true`, `dry_run=false`, and the one-shot authorization token returned by that preview.
+7. For an import, require an explicit current-task request, verify the selected target, preview the exact unchanged record, then make the real confirmed call only with the one-shot authorization returned by that preview.
 8. Re-read the resulting item after an import and report any mismatch in item type, creators, title, dates, identifiers, destination, or citation key.
 
 ## Non-negotiable boundaries

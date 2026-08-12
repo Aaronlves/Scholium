@@ -4,6 +4,12 @@
 
 Identify the accessible source unit, authorship, edition or version, pagination scheme, and missing parts. Verify load-bearing quotations and locators against the text. Separate the author's own view from positions reported, quoted, or criticized.
 
+A bibliographic record can establish source identity but not what the source
+says. Prior Analyses, topic notes, search snippets, and bibliography entries may
+orient reading; they do not replace the inspected source. For empirically
+informed work, keep the reported result, its warranted scope, any bridge
+premise, and the philosophical conclusion distinct.
+
 ## Pass 2: reconstruct before evaluating
 
 First identify the source's genre, aim, and operative method. Do not force a historical, interpretive, phenomenological, genealogical, case-based, or otherwise non-deductive source into a premise-conclusion form it does not use. Reconstruct arguments when the text advances arguments; otherwise preserve the source's actual explanatory, interpretive, descriptive, or critical structure.

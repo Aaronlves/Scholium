@@ -505,6 +505,97 @@ struct ResearchAgentSessionAuthorityTests {
         await runtime.shutdown()
     }
 
+    @Test("Only an eligible Analysis Run receives the frozen Zotero adapter")
+    func zoteroAdapterDeliveryIsConditional() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "meta0001")
+        defer { fixture.remove() }
+        let script = ZoteroRequestScript(steps: [
+            .response(
+                status: 200,
+                data: Data(ResearchFunctionOperationsTests.zoteroItemJSON.utf8)
+            ),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
+            request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let analysisPreparation = try await handle.research.prepareProtectedFunction(
+            ResearchFunctionRequest(
+                function: .discuss,
+                target: analysis,
+                instruction: "Discuss the bounded source identity."
+            )
+        )
+        #expect(analysisPreparation.snapshot.zoteroBibliographicContext != nil)
+        #expect(await script.requestCount() == 1)
+        let analysisHandoff = try await handle.research.issueAgentHandoff(
+            runID: analysisPreparation.runID
+        )
+        let analysisCredential = try await handle.research.pairAgent(
+            run: analysisHandoff.run,
+            pairingCode: analysisHandoff.pairingCode
+        )
+        let analysisContext = try await handle.research.authenticatedAgentContext(
+            credential: analysisCredential,
+            run: analysisHandoff.run
+        )
+        let adapter = try #require(analysisContext.zoteroIntegrationAdapter)
+        #expect(adapter.skillMarkdown.contains("Prepared Analyze Action"))
+        #expect(adapter.capabilityContractMarkdown.contains("Capability map"))
+        #expect(!adapter.skillMarkdown.contains("META0001"))
+        #expect(analysisContext.brief.capabilities.zotero)
+        #expect(!analysisContext.brief.capabilities.writeInitialObject)
+        #expect(analysisContext.boundedWriteSet.isEmpty)
+
+        let analysisReload = try await handle.research.authenticatedAgentContext(
+            credential: analysisCredential,
+            run: analysisHandoff.run
+        )
+        #expect(analysisReload.coreProtocol == nil)
+        #expect(analysisReload.zoteroIntegrationAdapter == adapter)
+        _ = try await runtime.endResearchAgentRun(
+            credential: analysisCredential,
+            run: analysisHandoff.run
+        )
+
+        let topic = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let topicPreparation = try await handle.research.prepareProtectedFunction(
+            ResearchFunctionRequest(
+                function: .discuss,
+                target: topic,
+                instruction: "Discuss without Zotero context."
+            )
+        )
+        let topicHandoff = try await handle.research.issueAgentHandoff(
+            runID: topicPreparation.runID
+        )
+        let topicCredential = try await handle.research.pairAgent(
+            run: topicHandoff.run,
+            pairingCode: topicHandoff.pairingCode
+        )
+        let topicContext = try await handle.research.authenticatedAgentContext(
+            credential: topicCredential,
+            run: topicHandoff.run
+        )
+        #expect(topicContext.zoteroIntegrationAdapter == nil)
+        #expect(await script.requestCount() == 1)
+        _ = try await runtime.endResearchAgentRun(
+            credential: topicCredential,
+            run: topicHandoff.run
+        )
+        await runtime.shutdown()
+    }
+
     @Test("Pairing is one-time, scoped, and a re-pair revokes the prior writer")
     func oneTimeAndRepairRevocation() async throws {
         let random = FixedResearchRandomSource()

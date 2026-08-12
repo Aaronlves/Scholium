@@ -111,7 +111,7 @@ struct ActionCLIExecutableLifecycleTests {
             practices: []
         )
         let profileRevision = try profile.contentRevision()
-        let context = ResearchAuthenticatedRunContext(
+        let context = try ResearchAuthenticatedRunContext(
             coreProtocol: "Scholium Core Protocol",
             brief: ResearchRunBrief(
                 run: run,
@@ -139,6 +139,20 @@ struct ActionCLIExecutableLifecycleTests {
             ),
             boundedWriteSet: []
         )
+        let adapter = try ResearchZoteroIntegrationAdapter(
+            skillMarkdown: "# Zotero Integration\n",
+            capabilityContractMarkdown: "# Capability Contract\n"
+        )
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchAuthenticatedRunContext(
+                coreProtocol: context.coreProtocol,
+                brief: context.brief,
+                method: context.method,
+                zoteroIntegrationAdapter: adapter,
+                resultContract: context.resultContract,
+                boundedWriteSet: context.boundedWriteSet
+            )
+        }
         let endReceipt = try ResearchRunEndReceipt(
             run: run,
             recoveryRetained: false,

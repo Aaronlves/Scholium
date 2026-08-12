@@ -163,12 +163,15 @@ replacing their workspace snapshot.
 
 `BundledResearchSkillResources` is the one reader for release-managed Skill
 bytes. [Research Actions and Execution](02-research-actions-and-execution.md)
-owns loading and delivering the protected Core Skill during an authenticated
-Run. Research Guidance distinguishes those release-managed bytes from
+owns loading and delivering the protected Core Skill and any eligible typed
+Integration Adapter during an authenticated Run. Application selects the
+adapter from frozen Run facts; bundle discovery and Agent inference do not.
+Research Guidance distinguishes those release-managed bytes from
 researcher-owned Methods and Practices, which contain the Action's intellectual
-procedure. Run Brief, Method context, Result Contract, capability availability,
-command inputs, and Research Context remain typed current data. Installed CLI
-help owns current invocation syntax.
+procedure. Run Brief, Method context, Result Contract, adapter payload,
+capability availability, command inputs, and Research Context remain typed
+current data. Installed CLI help and tool schemas own current invocation
+syntax.
 
 The bundle is not a package manager or second prompt store. Research Guidance
 has no staged installer, resource preview, package validation, version

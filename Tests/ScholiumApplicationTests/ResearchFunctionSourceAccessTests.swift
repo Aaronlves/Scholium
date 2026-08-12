@@ -687,6 +687,23 @@ extension ResearchFunctionOperationsTests {
         #expect(analysisPreparation.snapshot.zoteroBibliographicContext == nil)
         #expect(workPreparation.snapshot.zoteroBibliographicContext == nil)
         #expect(await script.requestCount() == 0)
+
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: analysisPreparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        let context = try await handle.research.authenticatedAgentContext(
+            credential: credential,
+            run: handoff.run
+        )
+        #expect(context.zoteroIntegrationAdapter == nil)
+        _ = try await runtime.endResearchAgentRun(
+            credential: credential,
+            run: handoff.run
+        )
         await runtime.shutdown()
     }
 

@@ -33,9 +33,10 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Complete the separately authorized `set_zotero_binding` and
-  `clear_zotero_binding` Agent operations. Current creation, body, and property
-  authority cannot mutate portable Zotero bindings.
+- Complete restrained Analysis Overview set, rebind, and clear paths plus the
+  separately authorized `set_zotero_binding` and `clear_zotero_binding` Agent
+  operations. Current Overview exposes only Open in Zotero; current Agent
+  creation, body, and property authority cannot mutate portable bindings.
 - Decide whether finished Local Execution should compact the nonauthorizing
   Bounded Write Set after copying every target fact needed by historical
   recovery into self-describing transaction evidence. Completion already

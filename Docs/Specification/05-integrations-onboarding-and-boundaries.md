@@ -40,8 +40,14 @@ key nor fetched metadata and is absent without a current binding.
 When Analyze or another eligible Analysis Action begins preparation with a
 binding, Application performs one exact local item read and automatically
 attaches the catalogued `scholium-zotero-integration` System Skill. The
-immutable Action snapshot is labelled **Zotero bibliographic metadata** and
-may carry item key, item type, title, complete creator roles, date/year,
+authenticated Run Context carries that Skill and its capability contract in one
+typed optional Zotero Integration Adapter. The adapter is present only when the
+Action targets an Analysis, its immutable snapshot contains Zotero context, and
+the Platform Action permits Zotero use. It explains how to handle the already
+bounded integration but grants no transport, capability, read, write, or
+Markdown authority. The immutable Action snapshot is labelled **Zotero
+bibliographic metadata** and may carry item key, item type, title, complete
+creator roles, date/year,
 language, container, volume, issue, pages, edition, series, publisher, place,
 DOI, ISBN, ISSN, citation key, URL, abstract, tags, Collections, and
 modification time.
@@ -50,7 +56,8 @@ The same Run reuses that snapshot when resumed; every new Run reads Zotero
 again. No metadata cache crosses tasks. Unavailable Zotero, a missing item, or
 an invalid response adds one nonblocking warning and never prevents the Agent
 from continuing with available evidence or leaving unnecessary fields absent.
-No binding and non-Analysis targets perform no read and emit no warning.
+No binding and non-Analysis targets perform no read, emit no warning, attach no
+adapter, and authorize no independent integration discovery.
 
 Task metadata is never written into Markdown or displayed in Inspector.
 Abstract, tags, and Collections remain bibliographic metadata, never source
@@ -95,7 +102,9 @@ their parent Records.
 
 Beta also supplies a protected `scholium-zotero-integration` System Skill and a
 supported local MCP service or installation route. The skill is an instruction
-contract; MCP is transport, not an embedded runtime.
+contract; MCP is transport, not an embedded runtime. The Skill routes stable
+capabilities and safety rules; installed CLI help and MCP tool schemas own
+current command names, fields, and return shapes.
 
 It may report readiness, search, inspect exact metadata and bounded attachment
 pointers, identify an import target, and import BibTeX/RIS. A real import needs
