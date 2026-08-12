@@ -84,9 +84,8 @@
   remain keyboard and VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
-- The Editor p95 and every-sample limits are approved. Approve the remaining
-  non-Editor packaged thresholds, freeze the exact source/artifact and fixture,
-  then run the complete warm-up/sample
+- The Editor and non-Editor Beta limits are approved. Freeze the exact
+  source/artifact and fixture, then run the complete warm-up/sample
   protocol for Search, large Library, cold start, Editor latency, and retained
   memory.
 

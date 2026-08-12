@@ -94,11 +94,10 @@ Performance evidence has three noninterchangeable classes:
 Only the third class can satisfy G7. Debug builds, unit tests, internal timers,
 human stopwatches, and partial memory series are never substitutes.
 
-The non-Editor candidate Beta thresholds remain subject to explicit
-release-owner approval. If approved, use nearest-rank p95 over exactly 30 valid
-samples after five excluded warm-ups:
+The release owner has approved these non-Editor Beta limits. Use nearest-rank
+p95 over exactly 30 valid samples after five excluded warm-ups:
 
-| Interaction | Candidate p95 limit |
+| Interaction | p95 limit |
 | --- | ---: |
 | Warm library launch to a usable note list | `< 1,000 ms` |
 | Indexed Note Search query to complete visible results | `< 100 ms` |
@@ -212,9 +211,7 @@ rules and decision chronology. Implementation and acceptance gaps belong in
 Only questions that can still change the target remain here:
 
 - promote or revise provisional interface metrics only after the complete
-  adaptation and human visual-acceptance matrix; and
-- approve the remaining non-Editor packaged G7 p95 thresholds before they
-  become release limits.
+  adaptation and human visual-acceptance matrix.
 
 Resolving an item updates its owning canonical section and removes the item
 from this list in the same patch.
