@@ -48,51 +48,44 @@ struct TriptychControlTests {
         #expect(!FileManager.default.fileExists(atPath: recordURL.path))
     }
 
-    @Test("Stored Scholium templates adopt the current bundled response contract")
-    func bundledTemplateUpdateDoesNotBecomeResearcherCustomization() throws {
-        let encoder = JSONEncoder()
-        var object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(TriptychSettings())) as? [String: Any]
+    @Test("Portable Settings schema has one bounded set of owners")
+    func portableSettingsSchemaOwners() throws {
+        let object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
         )
-        var templates = try #require(object["promptTemplates"] as? [[String: Any]])
-        let dialogueIndex = try #require(templates.firstIndex {
-            ($0["id"] as? String) == ResearchPromptTemplate.defaultDialogue.id.uuidString
-        })
-        templates[dialogueIndex]["source"] = "Old bundled {{researcher_instruction}} {{selected_notes}} {{editing_rules}}"
-        templates[dialogueIndex]["origin"] = ResearchPromptOrigin.scholium.rawValue
-        object["promptTemplates"] = templates
-        let data = try JSONSerialization.data(withJSONObject: object)
 
+        #expect(Set(object.keys) == [
+            "schemaVersion",
+            "properties",
+            "analysisAgentCreation",
+            "attentionDismissalDays",
+        ])
+        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 4)
+    }
+
+    @Test("The isolated QA Settings fixture uses only the current schema")
+    func qaSettingsFixtureUsesCurrentSchema() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
+            "Tools/Fixtures/qa-triptych-settings-v4.json"
+        ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
-        #expect(settings.activePromptTemplate(for: .dialogue) == .defaultDialogue)
-        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("concise attributed academic result"))
-        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("authorizes no research-note mutation"))
-        #expect(!settings.promptTemplates.contains { $0.name == "Migrated Dialogue" })
-    }
-
-    @Test("Deleting an active researcher template restores the Scholium default")
-    func deletingActiveTemplateRestoresDefault() {
-        var settings = TriptychSettings()
-        let custom = ResearchPromptTemplate(
-            kind: .dialogue,
-            name: "Focused Dialogue",
-            source: TriptychSettings.defaultDialoguePromptTemplate + "\nKeep the comparison narrow."
+        #expect(settings.schemaVersion == TriptychSettings.currentSchemaVersion)
+        try TriptychSettingsValidator.validate(settings)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        settings.savePromptTemplate(custom)
-        #expect(settings.activePromptTemplate(for: .dialogue).id == custom.id)
-
-        settings.deletePromptTemplate(id: custom.id)
-
-        #expect(settings.activePromptTemplate(for: .dialogue).id == ResearchPromptTemplate.defaultDialogue.id)
-    }
-
-    @Test("Prompt validation reports every missing required placeholder")
-    func promptValidationRequiresStructuralPlaceholders() {
-        let template = ResearchPromptTemplate(kind: .critique, name: "Incomplete", source: "Critique this Work.")
-
-        #expect(template.validationIssues.count == ResearchPromptKind.critique.requiredPlaceholders.count)
-        #expect(template.validationIssues.allSatisfy { $0.contains("Missing required placeholder") })
+        #expect(Set(object.keys) == [
+            "schemaVersion",
+            "properties",
+            "analysisAgentCreation",
+            "attentionDismissalDays",
+        ])
     }
 
     @Test("Properties configuration preserves order and removes duplicate fields")
@@ -257,12 +250,15 @@ struct TriptychControlTests {
         ))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
 
-        var invalidActive = TriptychSettings()
-        invalidActive.activePromptTemplateIDs[.dialogue] = UUID()
-        let invalidActiveBytes = try JSONEncoder().encode(invalidActive)
-        try invalidActiveBytes.write(to: url, options: .atomic)
+        var invalidObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
+        )
+        invalidObject["attentionDismissalDays"] = 0
+        let invalidBytes = try JSONSerialization.data(withJSONObject: invalidObject)
+        try invalidBytes.write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
-        #expect(try Data(contentsOf: url) == invalidActiveBytes)
+        #expect(try Data(contentsOf: url) == invalidBytes)
 
         try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsOldSchema(nil) = $0 { true } else { false } })
@@ -270,7 +266,14 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsFutureSchema(999) = $0 { true } else { false } })
 
-        try Data(#"{"schemaVersion":3,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        let oldSchemaBytes = Data(
+            #"{"schemaVersion":3,"promptTemplates":[],"activePromptTemplateIDs":{}}"#.utf8
+        )
+        try oldSchemaBytes.write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
+        #expect(try Data(contentsOf: url) == oldSchemaBytes)
+
+        try Data(#"{"schemaVersion":4,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
         var reviewed = TriptychSettings()
@@ -292,9 +295,13 @@ struct TriptychControlTests {
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
         #expect((try await store.settingsLoadState()).authorizesAboutProjection)
 
-        var reviewable = TriptychSettings()
-        reviewable.activePromptTemplateIDs[.dialogue] = UUID()
-        let reviewableBytes = try JSONEncoder().encode(reviewable)
+        var reviewableObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
+        )
+        reviewableObject["attentionDismissalDays"] = 0
+        let reviewableBytes = try JSONSerialization.data(withJSONObject: reviewableObject)
+        let reviewable = try JSONDecoder().decode(TriptychSettings.self, from: reviewableBytes)
         try reviewableBytes.write(to: url, options: .atomic)
         guard case .needsReview(let decoded, let revision, let reason) =
             try await store.settingsLoadState() else {
@@ -313,7 +320,7 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .futureSchema(999))
 
-        try Data(#"{"schemaVersion":3,"properties":"damaged"}"#.utf8)
+        try Data(#"{"schemaVersion":4,"properties":"damaged"}"#.utf8)
             .write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .corrupted)
         #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)

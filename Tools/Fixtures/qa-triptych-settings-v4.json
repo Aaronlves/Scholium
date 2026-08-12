@@ -1,0 +1,41 @@
+{
+  "analysisAgentCreation" : {
+    "requiredFieldsBySourceType" : [
+
+    ]
+  },
+  "attentionDismissalDays" : 7,
+  "properties" : [
+    "paper_analysis",
+    {
+      "visibleFields" : [
+        "type",
+        "publication_date",
+        "limitations",
+        "summary",
+        "source_basis",
+        "tags"
+      ]
+    },
+    "topic_knowledge",
+    {
+      "visibleFields" : [
+        "summary",
+        "aliases",
+        "limitations",
+        "tags"
+      ]
+    },
+    "output",
+    {
+      "visibleFields" : [
+        "work_type",
+        "coauthors",
+        "summary",
+        "limitations",
+        "tags"
+      ]
+    }
+  ],
+  "schemaVersion" : 4
+}

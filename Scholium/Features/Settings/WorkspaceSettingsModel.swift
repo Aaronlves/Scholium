@@ -3,12 +3,11 @@ import Combine
 import Foundation
 
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
-    case vaults
+    case triptychs
+    case propertyProfiles = "property-profiles"
     case appearance
-    case properties
-    case researchGuidance = "research-guidance"
     case attention
-    case zotero
+    case researchGuidance = "research-guidance"
 
     var id: String { rawValue }
 }
@@ -118,7 +117,7 @@ struct WorkspaceSettingsMachineCapabilities {
     let openExternal: (URL) -> Bool
 }
 
-/// Zotero operations used by the dedicated Settings pane.
+/// Zotero operations used by Research Guidance's Sources & Integrations pane.
 @MainActor
 struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo
@@ -252,7 +251,7 @@ final class WorkspaceSettingsModel: ObservableObject {
     init(
         capabilities: WorkspaceSettingsCapabilities,
         cssSnippetStore: CSSSnippetStore,
-        selectedPane: WorkspaceSettingsPane = .vaults
+        selectedPane: WorkspaceSettingsPane = .triptychs
     ) {
         self.selectedPane = selectedPane
         self.snapshot = WorkspaceSettingsSnapshot()
@@ -266,7 +265,7 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     /// Pure construction seam for feature tests and previews.
     init(
-        selectedPane: WorkspaceSettingsPane = .vaults,
+        selectedPane: WorkspaceSettingsPane = .triptychs,
         snapshot: WorkspaceSettingsSnapshot = WorkspaceSettingsSnapshot(),
         loadSnapshot: SnapshotLoader? = nil,
         activateTriptych: TriptychActivator? = nil,

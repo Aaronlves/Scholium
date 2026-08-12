@@ -8,7 +8,7 @@ import Testing
 struct WorkspaceSettingsArchitectureTests {
     @Test("Settings model has no window or document session state")
     func constructionIsWindowIndependent() async {
-        let model = WorkspaceSettingsModel(selectedPane: .properties)
+        let model = WorkspaceSettingsModel(selectedPane: .propertyProfiles)
         let storedTypeNames = Mirror(reflecting: model).children.map {
             String(reflecting: type(of: $0.value))
         }
@@ -16,7 +16,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(storedTypeNames.allSatisfy { !$0.contains("WindowModel") })
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentController") })
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentSession") })
-        #expect(model.selectedPane == .properties)
+        #expect(model.selectedPane == .propertyProfiles)
         #expect(model.snapshot.propertyKeysBySlot.isEmpty)
         #expect(!model.hasWritableTriptychSettings)
 
@@ -26,6 +26,113 @@ struct WorkspaceSettingsArchitectureTests {
             )
         ))
         #expect(model.hasWritableTriptychSettings)
+    }
+
+    @Test("Settings top level exposes each canonical pane once")
+    func topLevelPaneOwnership() throws {
+        #expect(
+            WorkspaceSettingsPane.allCases.map(\.rawValue) == [
+                "triptychs",
+                "property-profiles",
+                "appearance",
+                "attention",
+                "research-guidance",
+            ]
+        )
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let topLevelEnd = try #require(
+            source.range(of: "private struct AttentionSettingsView")
+        )
+        let topLevel = String(source[..<topLevelEnd.lowerBound])
+
+        #expect(
+            topLevel.components(separatedBy: ".tag(WorkspaceSettingsPane.").count
+                == WorkspaceSettingsPane.allCases.count + 1
+        )
+        #expect(!topLevel.contains("ZoteroSettingsView()"))
+
+        let orderedTags = [
+            ".tag(WorkspaceSettingsPane.triptychs)",
+            ".tag(WorkspaceSettingsPane.propertyProfiles)",
+            ".tag(WorkspaceSettingsPane.appearance)",
+            ".tag(WorkspaceSettingsPane.attention)",
+            ".tag(WorkspaceSettingsPane.researchGuidance)",
+        ]
+        let indices = try orderedTags.map { tag in
+            try #require(topLevel.range(of: tag)).lowerBound
+        }
+        #expect(zip(indices, indices.dropFirst()).allSatisfy { pair in
+            pair.0 < pair.1
+        })
+
+        let sourcesAndIntegrations = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/ResearchSourcesSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(
+            sourcesAndIntegrations.components(
+                separatedBy: "ZoteroSettingsView()"
+            ).count == 2
+        )
+    }
+
+    @Test("Settings makes Triptych and machine-local scope explicit")
+    func settingsScopeAndPageHierarchy() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(
+            source.components(separatedBy: "TriptychScopedSettingsView {").count
+                == 4
+        )
+        #expect(source.contains("scholium.settings.triptychScope"))
+        #expect(source.contains("ScholiumL10n.Settings.triptychs"))
+        #expect(source.contains("ScholiumL10n.Settings.propertyProfiles"))
+        #expect(source.contains("ScholiumL10n.Settings.appearance"))
+        #expect(source.contains("ScholiumL10n.Settings.attention"))
+        #expect(source.contains("Reminder Timing for This Triptych"))
+        #expect(source.contains("Dismissed Items on This Mac"))
+        #expect(source.contains("SCHOLIUM CLI ON THIS MAC"))
+        #expect(source.contains("READ-ONLY ZOTERO ACCESS ON THIS MAC"))
+        #expect(source.contains("TRIPTYCH CITATION STYLE"))
+        #expect(source.contains("settingsTriptychLabel("))
+        #expect(source.contains(
+            ".onChange(of: settingsModel.snapshot.activeTriptychID)"
+        ))
+
+        let machineIntegrationStart = try #require(
+            source.range(of: "struct AgentCLISettingsView: View")
+        )
+        let triptychListStart = try #require(
+            source.range(
+                of: "struct WorkspaceSettingsView: View",
+                range: machineIntegrationStart.upperBound..<source.endIndex
+            )
+        )
+        let machineIntegrationSource = source[
+            machineIntegrationStart.lowerBound..<triptychListStart.lowerBound
+        ]
+        #expect(!machineIntegrationSource.contains("GroupBox"))
     }
 
     @Test("Explicit Settings save keeps the draft's frozen revision")
@@ -897,7 +1004,7 @@ struct WorkspaceSettingsArchitectureTests {
         }.count == 4)
     }
 
-    @Test("Concurrent Settings restoration does not drop the visible Vaults refresh")
+    @Test("Concurrent Settings restoration does not drop the visible Triptychs refresh")
     func concurrentRestorationKeepsLatestSnapshot() async {
         let entered = SettingsTestSignal()
         let releaseFirstLoad = SettingsTestSignal()

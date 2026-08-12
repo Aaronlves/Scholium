@@ -7,13 +7,29 @@ import UniformTypeIdentifiers
 struct ScholiumSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("scholium.settings.selectedPane") private var persistedPane = "vaults"
+    @AppStorage("scholium.settings.selectedPane") private var persistedPane = "triptychs"
 
     var body: some View {
         TabView(selection: selectedPane) {
             WorkspaceSettingsView()
-                .tabItem { Label(ScholiumL10n.Settings.vaults, systemImage: "externaldrive") }
-                .tag(WorkspaceSettingsPane.vaults)
+                .tabItem {
+                    Label(
+                        ScholiumL10n.Settings.triptychs,
+                        systemImage: "rectangle.3.group"
+                    )
+                }
+                .tag(WorkspaceSettingsPane.triptychs)
+
+            TriptychScopedSettingsView {
+                PropertiesSettingsView()
+            }
+                .tabItem {
+                    Label(
+                        ScholiumL10n.Settings.propertyProfiles,
+                        systemImage: "slider.horizontal.3"
+                    )
+                }
+                .tag(WorkspaceSettingsPane.propertyProfiles)
 
             Group {
                 if let store = settingsModel.cssSnippetStore {
@@ -21,7 +37,7 @@ struct ScholiumSettingsView: View {
                 } else {
                     ScholiumContentStateView(
                         "Appearance Unavailable",
-                        detail: Text("Open a complete Triptych to manage its appearance."),
+                        detail: Text("Appearance profiles are unavailable in this Settings session."),
                         indicator: .symbol("paintbrush", role: .attention)
                     )
                 }
@@ -31,29 +47,24 @@ struct ScholiumSettingsView: View {
                 }
                 .tag(WorkspaceSettingsPane.appearance)
 
-            PropertiesSettingsView()
-                .tabItem {
-                    Label(ScholiumL10n.Settings.properties, systemImage: "slider.horizontal.3")
-                }
-                .tag(WorkspaceSettingsPane.properties)
-
-            ResearchGuidanceSettingsView()
-                .tabItem {
-                    Label(ScholiumL10n.Settings.researchGuidance, systemImage: "text.bubble")
-                }
-                .tag(WorkspaceSettingsPane.researchGuidance)
-
-            AttentionSettingsView()
+            TriptychScopedSettingsView {
+                AttentionSettingsView()
+            }
                 .tabItem {
                     Label(ScholiumL10n.Settings.attention, systemImage: "exclamationmark.triangle")
                 }
                 .tag(WorkspaceSettingsPane.attention)
 
-            ZoteroSettingsView()
-                .tabItem { Label(ScholiumL10n.Settings.zotero, systemImage: "books.vertical") }
-                .tag(WorkspaceSettingsPane.zotero)
+            TriptychScopedSettingsView {
+                ResearchGuidanceSettingsView()
+            }
+                .tabItem {
+                    Label(ScholiumL10n.Settings.researchGuidance, systemImage: "text.bubble")
+                }
+                .tag(WorkspaceSettingsPane.researchGuidance)
         }
         .padding(ScholiumGrid.Spacing.inlineControlGap)
+        .accessibilityIdentifier("scholium.settings.root")
         .overlay(alignment: .bottom) {
             if let message = settingsModel.toastMessage {
                 ToastView(message: message)
@@ -77,9 +88,8 @@ struct ScholiumSettingsView: View {
             settingsModel.dismissToast(message)
         }
         .onAppear {
-            let restoredPane = persistedPane == "document-styles"
-                ? WorkspaceSettingsPane.appearance
-                : WorkspaceSettingsPane(rawValue: persistedPane) ?? .vaults
+            let restoredPane = WorkspaceSettingsPane(rawValue: persistedPane)
+                ?? .triptychs
             settingsModel.selectPane(restoredPane)
         }
         .onChange(of: settingsModel.selectedPane) { _, pane in
@@ -95,6 +105,72 @@ struct ScholiumSettingsView: View {
     }
 }
 
+private struct TriptychScopedSettingsView<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TriptychSettingsScopeBar()
+            content()
+        }
+    }
+}
+
+private struct TriptychSettingsScopeBar: View {
+    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+
+    var body: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if settingsModel.registeredTriptychs.isEmpty {
+                Label("No Triptych Registered", systemImage: "rectangle.3.group")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+            } else {
+                Text("Triptych")
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                    .scholiumForeground(.secondaryText)
+
+                Picker("Triptych", selection: activeTriptychID) {
+                    ForEach(settingsModel.registeredTriptychs) { assignment in
+                        Text(settingsTriptychLabel(
+                            assignment,
+                            among: settingsModel.registeredTriptychs
+                        ))
+                        .tag(Optional(assignment.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 320)
+                .disabled(settingsModel.isRefreshing)
+                .accessibilityIdentifier("scholium.settings.triptychScope")
+            }
+
+            Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
+
+            if settingsModel.isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Changing Triptych")
+            }
+        }
+        .padding(.horizontal, ScholiumMetrics.Settings.editorContentInset)
+        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var activeTriptychID: Binding<UUID?> {
+        Binding(
+            get: { settingsModel.workspaceAssignment?.id },
+            set: { value in
+                guard let value,
+                      value != settingsModel.workspaceAssignment?.id else { return }
+                Task { await settingsModel.activateRegisteredTriptych(id: value) }
+            }
+        )
+    }
+}
+
 private struct AttentionSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var dismissalDays = TriptychSettings().attentionDismissalDays
@@ -106,42 +182,65 @@ private struct AttentionSettingsView: View {
     private let durations = [1, 3, 7, 14, 30]
 
     var body: some View {
-        Form {
-            Section("Dismissed Attention") {
-                Picker("Return dismissed items after", selection: $dismissalDays) {
-                    ForEach(durations, id: \.self) { days in
-                        Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+        VStack(alignment: .leading, spacing: 0) {
+            settingsTitle(
+                ScholiumL10n.Settings.attention,
+                detail: LocalizedStringResource(
+                    "Choose when dismissed derived reminders return, or restore every dismissed item on this Mac.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            )
+            .padding(ScholiumMetrics.Settings.editorContentInset)
+
+            Divider()
+
+            Form {
+                Section("Reminder Timing for This Triptych") {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                            reminderTimingPicker
+                            Spacer()
+                            saveAttentionButton
+                        }
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                        ) {
+                            reminderTimingPicker
+                            saveAttentionButton
+                        }
                     }
+
+                    Text("Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again. Neither action changes a note, its Connections, or Research Record facts.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
                 }
-                .frame(maxWidth: 300)
 
-                Button("Save Attention Settings") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isSaving || dismissalDays == settingsModel.triptychSettings.attentionDismissalDays)
+                Section("Dismissed Items on This Mac") {
+                    Button("Restore All Dismissed Items") {
+                        var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
+                        ledger.removeAll()
+                        dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
+                    }
+                    .disabled(!hasDismissedAttention)
 
-                Button("Restore All Dismissed Items") {
-                    var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-                    ledger.removeAll()
-                    dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
+                    Text("This restores dismissed derived reminders across every Triptych on this Mac. Research notes and portable Triptych settings remain unchanged.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
                 }
-                .disabled(!hasDismissedAttention)
 
-                Text("Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
+                Section("What Attention Can Report") {
+                    Text("Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                    Text("Attention does not judge truth, evidence, philosophical quality, or how a note may be used.")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
             }
-
-            Section("What Attention Can Report") {
-                Text("Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                Text("Attention does not judge truth, evidence, philosophical quality, or how a note may be used.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
-        .padding(ScholiumGrid.Spacing.nestedContentInset)
         .task {
             let stored = settingsModel.triptychSettings.attentionDismissalDays
             dismissalDays = durations.contains(stored)
@@ -162,6 +261,25 @@ private struct AttentionSettingsView: View {
         let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
         return !ledger.dismissedUntilByItemID.isEmpty
             || !ledger.revisionBoundItemIDs.isEmpty
+    }
+
+    private var reminderTimingPicker: some View {
+        Picker("Return dismissed items after", selection: $dismissalDays) {
+            ForEach(durations, id: \.self) { days in
+                Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+            }
+        }
+        .frame(maxWidth: 300)
+    }
+
+    private var saveAttentionButton: some View {
+        Button("Save Attention Settings") { save() }
+            .buttonStyle(.borderedProminent)
+            .disabled(
+                isSaving
+                    || dismissalDays
+                        == settingsModel.triptychSettings.attentionDismissalDays
+            )
     }
 
     private func save() {
@@ -372,11 +490,14 @@ private struct PropertiesSettingsView: View {
 
     private var writableSettingsContent: some View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
-            Text("Properties")
-                .font(ScholiumTypography.interface(.primaryTitle))
-            Text("Manage future New Note YAML, Agent creation requirements, and About for each Triptych role.")
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
+            settingsTitle(
+                ScholiumL10n.Settings.propertyProfiles,
+                detail: LocalizedStringResource(
+                    "Manage future New Note YAML, Agent creation requirements, and About for each Triptych role.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            )
             if case .needsReview = settingsModel.portableSettingsState {
                 Label(
                     "These current-schema settings need review before managed creation can resume.",
@@ -1090,12 +1211,6 @@ private struct PropertiesSettingsView: View {
             diagnosticReason = String(localized: "Attention dismissal days must be positive.", table: "Localizable", bundle: .module)
             repair = String(localized: "Repair Attention settings before saving Properties.", table: "Localizable", bundle: .module)
             explicitPosition = nil
-        case .invalidPromptConfiguration:
-            role = nil; sourceType = nil; key = nil
-            section = .other
-            diagnosticReason = String(localized: "The active Research Guidance template selection is incomplete or inconsistent.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Repair Research Guidance settings before saving Properties.", table: "Localizable", bundle: .module)
-            explicitPosition = nil
         }
         let position = explicitPosition.map { (line: $0.line, column: $0.column) }
             ?? role.flatMap { role in
@@ -1213,7 +1328,11 @@ struct AgentCLISettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        GroupBox("Scholium CLI") {
+        researchSettingsSection(LocalizedStringResource(
+            "SCHOLIUM CLI ON THIS MAC",
+            table: "Localizable",
+            bundle: .module
+        )) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if let status {
                     Label(statusLabel(status), systemImage: statusSymbol(status))
@@ -1299,11 +1418,18 @@ struct AgentCLISettingsView: View {
 
     private func statusLabel(_ status: CommandLineToolStatus) -> String {
         switch status.state {
-        case .bundledToolUnavailable: "Not included in this build"
-        case .notInstalled: "Ready to install"
-        case .updateAvailable: "Update available"
-        case .installed: status.isOnCurrentPATH ? "Installed and discoverable" : "Installed"
-        case .invalidInstallation: "Needs attention"
+        case .bundledToolUnavailable:
+            localizedInterfaceString("Not included in this build")
+        case .notInstalled:
+            localizedInterfaceString("Ready to install")
+        case .updateAvailable:
+            localizedInterfaceString("Update available")
+        case .installed:
+            status.isOnCurrentPATH
+                ? localizedInterfaceString("Installed and discoverable")
+                : localizedInterfaceString("Installed")
+        case .invalidInstallation:
+            localizedInterfaceString("Needs attention")
         }
     }
 
@@ -1326,7 +1452,11 @@ struct ResearchCitationMethodSettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        GroupBox {
+        researchSettingsSection(LocalizedStringResource(
+            "TRIPTYCH CITATION STYLE",
+            table: "Localizable",
+            bundle: .module
+        )) {
             HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.fieldSpacing) {
                     if let status {
@@ -1367,9 +1497,6 @@ struct ResearchCitationMethodSettingsView: View {
                 if isWorking { ProgressView().controlSize(.small) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        } label: {
-            Label("Citation Style", systemImage: "text.book.closed")
-                .font(ScholiumTypography.interface(.sectionTitle))
         }
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
         .alert("Could Not Update Citation Style", isPresented: Binding(
@@ -1451,8 +1578,12 @@ struct ZoteroSettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Form {
-            Section("Read-Only Zotero Access") {
+        researchSettingsSection(LocalizedStringResource(
+            "READ-ONLY ZOTERO ACCESS ON THIS MAC",
+            table: "Localizable",
+            bundle: .module
+        )) {
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 LabeledContent("Local API") {
                     Label(statusTitle, systemImage: statusSymbol)
                         .scholiumForeground(statusColorRole)
@@ -1461,17 +1592,12 @@ struct ZoteroSettingsView: View {
                     Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
                         .scholiumForeground(.secondaryText)
                 }
-                HStack {
-                    Button("Open Zotero") {
-                        Task { await settingsModel.openZotero() }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        zoteroActions
                     }
-                    Button("Check Connection") { refresh() }
-                        .disabled(isTesting)
-                    Button("Clear Connection History", role: .destructive) {
-                        Task {
-                            try? await settingsModel.clearZoteroConnectionHistory()
-                            info = await settingsModel.zoteroConnectionInfo()
-                        }
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        zoteroActions
                     }
                 }
                 Text("Scholium talks only to Zotero Desktop on localhost. No account, password, online API key, or Zotero data-folder permission is required. Scholium never modifies Zotero data.")
@@ -1482,25 +1608,38 @@ struct ZoteroSettingsView: View {
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.attention)
                 }
-            }
-            if let errorMessage {
-                Section {
+                if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                         .scholiumForeground(.destructive)
                 }
             }
         }
-        .formStyle(.grouped)
-        .padding(ScholiumGrid.Spacing.nestedContentInset)
         .task { info = await settingsModel.zoteroConnectionInfo() }
+    }
+
+    @ViewBuilder
+    private var zoteroActions: some View {
+        Button("Open Zotero") {
+            Task { await settingsModel.openZotero() }
+        }
+        Button("Check Connection") { refresh() }
+            .disabled(isTesting)
+        Button("Clear Connection History", role: .destructive) {
+            Task {
+                try? await settingsModel.clearZoteroConnectionHistory()
+                info = await settingsModel.zoteroConnectionInfo()
+            }
+        }
     }
 
     private var statusTitle: String {
         switch info.status {
-        case .available: "Connected"
-        case .apiDisabled: "Access Disabled in Zotero"
-        case .appUnavailable: "Zotero Not Available"
-        case .itemMissing: "Connected"
+        case .available, .itemMissing:
+            localizedInterfaceString("Connected")
+        case .apiDisabled:
+            localizedInterfaceString("Access Disabled in Zotero")
+        case .appUnavailable:
+            localizedInterfaceString("Zotero Not Available")
         }
     }
 
@@ -1533,39 +1672,37 @@ struct WorkspaceSettingsView: View {
     @State private var selectedTriptychID: UUID?
 
     var body: some View {
-        VStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
-            HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
-                Picker("Triptych", selection: selectedTriptychBinding) {
-                    ForEach(settingsModel.registeredTriptychs) { assignment in
-                        Text(triptychLabel(assignment)).tag(Optional(assignment.id))
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
+                settingsTitle(
+                    ScholiumL10n.Settings.triptychs,
+                    detail: LocalizedStringResource(
+                        "Manage registered Triptychs and their three independent, researcher-controlled folders.",
+                        table: "Localizable",
+                        bundle: .module
+                    )
+                )
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
+                        triptychPicker
+                        triptychActions
+                    }
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                    ) {
+                        triptychPicker
+                        triptychActions
                     }
                 }
-                .frame(maxWidth: 360)
-                .disabled(settingsModel.registeredTriptychs.isEmpty)
-
-                Button("Open in New Window") {
-                    guard let selectedTriptychID else { return }
-                    openWindow(
-                        id: "scholium-main",
-                        value: TriptychWindowRoute(triptychID: selectedTriptychID)
-                    )
-                }
-                .disabled(selectedTriptychID == nil)
-
-                Button("New Triptych…") {
-                    openWindow(
-                        id: "scholium-bootstrap",
-                        value: BootstrapWindowRoute(purpose: .newTriptych)
-                    )
-                }
             }
-            .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-            .padding(.top, ScholiumGrid.Spacing.nestedContentInset)
+            .padding(ScholiumMetrics.Settings.editorContentInset)
+
+            Divider()
 
             if let selectedTriptychID {
                 WorkspacePathEditor(
-                    title: "Manage Triptych",
-                    explanation: "Change this Triptych’s three independent locations without moving or rewriting research files.",
                     completionTitle: "Save Triptych",
                     targetTriptychID: selectedTriptychID,
                     showsCancel: false,
@@ -1580,13 +1717,15 @@ struct WorkspaceSettingsView: View {
                 )
             }
         }
-        .padding(ScholiumGrid.Spacing.inlineControlGap)
         .task {
             await settingsModel.refreshRegisteredVaults()
             if selectedTriptychID == nil {
                 selectedTriptychID = settingsModel.workspaceAssignment?.id
                     ?? settingsModel.registeredTriptychs.first?.id
             }
+        }
+        .onChange(of: settingsModel.snapshot.activeTriptychID) { _, activeID in
+            selectedTriptychID = activeID
         }
     }
 
@@ -1601,18 +1740,55 @@ struct WorkspaceSettingsView: View {
         )
     }
 
-    private func triptychLabel(_ assignment: TriptychAssignment) -> String {
-        let duplicates = settingsModel.registeredTriptychs.filter {
-            $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
+    private var triptychPicker: some View {
+        Picker("Triptych", selection: selectedTriptychBinding) {
+            ForEach(settingsModel.registeredTriptychs) { assignment in
+                Text(settingsTriptychLabel(
+                    assignment,
+                    among: settingsModel.registeredTriptychs
+                ))
+                .tag(Optional(assignment.id))
+            }
         }
-        guard duplicates.count > 1,
-              let works = assignment.vault(for: .output) else {
-            return assignment.triptych.name
-        }
-        let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-            .deletingLastPathComponent().lastPathComponent
-        return "\(assignment.triptych.name) — \(parent)"
+        .frame(maxWidth: 360)
+        .disabled(settingsModel.registeredTriptychs.isEmpty)
     }
+
+    @ViewBuilder
+    private var triptychActions: some View {
+        Button("Open in New Window") {
+            guard let selectedTriptychID else { return }
+            openWindow(
+                id: "scholium-main",
+                value: TriptychWindowRoute(triptychID: selectedTriptychID)
+            )
+        }
+        .disabled(selectedTriptychID == nil)
+
+        Button("New Triptych…") {
+            openWindow(
+                id: "scholium-bootstrap",
+                value: BootstrapWindowRoute(purpose: .newTriptych)
+            )
+        }
+    }
+
+}
+
+private func settingsTriptychLabel(
+    _ assignment: TriptychAssignment,
+    among assignments: [TriptychAssignment]
+) -> String {
+    let duplicates = assignments.filter {
+        $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
+    }
+    guard duplicates.count > 1,
+          let works = assignment.vault(for: .output) else {
+        return assignment.triptych.name
+    }
+    let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
+        .deletingLastPathComponent().lastPathComponent
+    return "\(assignment.triptych.name) — \(parent)"
 }
 
 private struct AppearanceSettingsView: View {
@@ -1626,43 +1802,39 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.listRowSpacing) {
-                Text("Appearance")
-                    .font(ScholiumTypography.interface(.primaryTitle))
-                Text("Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-            .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-            .padding(.bottom, ScholiumGrid.Spacing.nestedContentInset)
+            settingsTitle(
+                ScholiumL10n.Settings.appearance,
+                detail: LocalizedStringResource(
+                    "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            )
+            .padding(ScholiumMetrics.Settings.editorContentInset)
 
             Divider()
 
             Form {
                 Section("Configuration") {
-                    HStack {
-                        Picker("Configuration", selection: selectedProfileID) {
-                            ForEach(store.appearanceProfiles) { profile in
-                                Text(profile.name).tag(Optional(profile.id))
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                            appearancePicker
+                            appearanceActions
+                        }
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                        ) {
+                            appearancePicker
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                                    appearanceActions
+                                }
+                                VStack(alignment: .leading) {
+                                    appearanceActions
+                                }
                             }
                         }
-                        .labelsHidden()
-                        .frame(maxWidth: 280)
-
-                        Button("New") { store.createAppearance() }
-                        Button("Duplicate") {
-                            guard let id = store.selectedAppearanceProfileID else { return }
-                            store.duplicateAppearance(id)
-                        }
-                        .disabled(store.selectedAppearanceProfileID == nil)
-                        Button("Rename…") { beginRename() }
-                            .disabled(store.selectedAppearanceProfileID == nil)
-                        Button("Delete…", role: .destructive) {
-                            showDeleteConfirmation = true
-                        }
-                        .disabled(store.appearanceProfiles.count <= 1)
                     }
                     Text("Exactly one configuration is active. Configurations are stored in Scholium’s Application Support folder, not in the research vault.")
                         .font(ScholiumTypography.interface(.small))
@@ -1783,6 +1955,32 @@ private struct AppearanceSettingsView: View {
                 }
             }
         )
+    }
+
+    private var appearancePicker: some View {
+        Picker("Configuration", selection: selectedProfileID) {
+            ForEach(store.appearanceProfiles) { profile in
+                Text(profile.name).tag(Optional(profile.id))
+            }
+        }
+        .labelsHidden()
+        .frame(maxWidth: 280)
+    }
+
+    @ViewBuilder
+    private var appearanceActions: some View {
+        Button("New") { store.createAppearance() }
+        Button("Duplicate") {
+            guard let id = store.selectedAppearanceProfileID else { return }
+            store.duplicateAppearance(id)
+        }
+        .disabled(store.selectedAppearanceProfileID == nil)
+        Button("Rename…") { beginRename() }
+            .disabled(store.selectedAppearanceProfileID == nil)
+        Button("Delete…", role: .destructive) {
+            showDeleteConfirmation = true
+        }
+        .disabled(store.appearanceProfiles.count <= 1)
     }
 
     private var draftBinding: Binding<DocumentAppearanceProfile>? {
@@ -2287,8 +2485,6 @@ private struct CSSSnippetRow: View {
 private struct WorkspacePathEditor: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
 
-    let title: String
-    let explanation: String
     let completionTitle: String
     var targetTriptychID: UUID? = nil
     var showsCancel = true
@@ -2306,20 +2502,6 @@ private struct WorkspacePathEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.pathHeaderSpacing) {
-                Text(ScholiumL10n.dynamicString(title))
-                    .font(ScholiumTypography.interface(.primaryTitle))
-                Text(ScholiumL10n.dynamicString(explanation))
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
-            .padding(.top, ScholiumMetrics.Settings.pathTopInset)
-            .padding(.bottom, ScholiumMetrics.Settings.pathBottomInset)
-
-            Divider()
-
             Form {
                 Section("Triptych") {
                     TextField("Name", text: $triptychName)

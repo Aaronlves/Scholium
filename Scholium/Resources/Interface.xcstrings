@@ -37,26 +37,26 @@
         }
       }
     },
-    "settings.tab.properties" : {
-      "comment" : "Settings tab for configured note properties.",
+    "settings.tab.propertyProfiles" : {
+      "comment" : "Settings tab for New Note YAML, Agent requirements, and About fields.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Properties"
+            "value" : "Property Profiles"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "属性"
+            "value" : "属性配置"
           }
         }
       }
     },
     "settings.tab.researchGuidance" : {
-      "comment" : "Settings tab for prompts, skills, and research methods.",
+      "comment" : "Settings tab for Methods, Profiles, Collaboration, Sources, and Recovery.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
@@ -73,38 +73,20 @@
         }
       }
     },
-    "settings.tab.vaults" : {
-      "comment" : "Settings tab for configuring the three research vaults.",
+    "settings.tab.triptychs" : {
+      "comment" : "Settings tab for managing registered Triptychs and their folders.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Vaults"
+            "value" : "Triptychs"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "研究库"
-          }
-        }
-      }
-    },
-    "settings.tab.zotero" : {
-      "comment" : "Settings tab for the Zotero integration. Do not translate the brand name.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Zotero"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zotero"
+            "value" : "脉络"
           }
         }
       }

@@ -30240,18 +30240,18 @@
         }
       }
     },
-    "Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts." : {
+    "Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again. Neither action changes a note, its Connections, or Research Record facts." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again or you restore dismissed items here. Neither action changes a note, its Connections, or Research Record facts."
+            "value" : "Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again. Neither action changes a note, its Connections, or Research Record facts."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "定时忽略只会在所选时段内隐藏派生提醒。“保持不变”仅隐藏准确的材料修订对，直到材料再次变化或你在此恢复已忽略项目。两种操作都不会更改笔记、连接或研究记录事实。"
+            "value" : "定时忽略只会在所选时段内隐藏派生提醒。“保持不变”仅隐藏准确的材料修订对，直到材料再次变化。两种操作都不会更改笔记、连接或研究记录事实。"
           }
         }
       }
@@ -34791,7 +34791,26 @@
     "Check Document Now" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Check Document Now"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"立即检查文档"}}}},
     "Check Spelling While Typing" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Check Spelling While Typing"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"输入时检查拼写"}}}},
     "Check Grammar With Spelling" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Check Grammar With Spelling"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"随拼写检查语法"}}}},
-    "Correct Spelling Automatically" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Correct Spelling Automatically"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"自动更正拼写"}}}}
+    "Correct Spelling Automatically" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Correct Spelling Automatically"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"自动更正拼写"}}}},
+    "Appearance profiles are unavailable in this Settings session." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Appearance profiles are unavailable in this Settings session."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"当前设置会话无法使用外观配置。"}}}},
+    "Changing Triptych" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Changing Triptych"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在切换脉络"}}}},
+    "Choose when dismissed derived reminders return, or restore every dismissed item on this Mac." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Choose when dismissed derived reminders return, or restore every dismissed item on this Mac."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"选择已忽略的派生提醒何时返回，或恢复这台 Mac 上的所有已忽略项目。"}}}},
+    "Dismissed Items on This Mac" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Dismissed Items on This Mac"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"这台 Mac 上已忽略的项目"}}}},
+    "Manage registered Triptychs and their three independent, researcher-controlled folders." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Manage registered Triptychs and their three independent, researcher-controlled folders."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"管理已注册的脉络及其三个相互独立、由研究者掌控的文件夹。"}}}},
+    "READ-ONLY ZOTERO ACCESS ON THIS MAC" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"READ-ONLY ZOTERO ACCESS ON THIS MAC"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"这台 Mac 上的只读 Zotero 访问"}}}},
+    "Reminder Timing for This Triptych" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Reminder Timing for This Triptych"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"当前脉络的提醒返回时间"}}}},
+    "SCHOLIUM CLI ON THIS MAC" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"SCHOLIUM CLI ON THIS MAC"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"这台 Mac 上的 Scholium CLI"}}}},
+    "This restores dismissed derived reminders across every Triptych on this Mac. Research notes and portable Triptych settings remain unchanged." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This restores dismissed derived reminders across every Triptych on this Mac. Research notes and portable Triptych settings remain unchanged."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"这会恢复这台 Mac 上所有脉络中已忽略的派生提醒；研究笔记和可移植脉络设置均不会改变。"}}}},
+    "TRIPTYCH CITATION STYLE" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"TRIPTYCH CITATION STYLE"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"脉络引用格式"}}}},
+    "Access Disabled in Zotero" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Access Disabled in Zotero"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Zotero 中已停用访问"}}}},
+    "Connected" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Connected"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已连接"}}}},
+    "Installed" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Installed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已安装"}}}},
+    "Installed and discoverable" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Installed and discoverable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已安装且可发现"}}}},
+    "Needs attention" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Needs attention"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"需要关注"}}}},
+    "Not included in this build" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Not included in this build"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此构建未包含"}}}},
+    "Ready to install" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Ready to install"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"可安装"}}}},
+    "Update available" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Update available"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"有可用更新"}}}},
+    "Zotero Not Available" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Zotero Not Available"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Zotero 不可用"}}}}
   },
   "version" : "1.0"
 }

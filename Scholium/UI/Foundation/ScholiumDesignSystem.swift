@@ -1580,10 +1580,7 @@ enum ScholiumMetrics {
         static let rowStatusSpacing = ScholiumGrid.foundationUnit * 0.75
         static let rowActionMinimumSpacing = ScholiumGrid.Spacing.labelAccessoryGap
         static let rowVerticalInset = ScholiumGrid.foundationUnit * 0.75
-        static let pathHeaderSpacing = ScholiumGrid.foundationUnit * 1.5
         static let pathHorizontalInset = ScholiumGrid.foundationUnit * 6
-        static let pathTopInset = ScholiumGrid.foundationUnit * 5.5
-        static let pathBottomInset = ScholiumGrid.foundationUnit * 4.5
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
     }
 

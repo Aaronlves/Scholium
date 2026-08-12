@@ -8,9 +8,11 @@ QA_ROOT="${ROOT}/.build/qa-runtime"
 APP="${QA_ROOT}/Scholium-QA.app"
 FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${HOME}/Desktop/TestVaults}"
 FIXTURE_COPY="${QA_ROOT}/fixtures"
+SETTINGS_FIXTURE="${ROOT}/Tools/Fixtures/qa-triptych-settings-v4.json"
 QA_HOME="${QA_ROOT}/home"
 
 [[ -d "${FIXTURE_SOURCE}" ]] || { print -u2 "Missing fixture vault root: ${FIXTURE_SOURCE}"; exit 1; }
+[[ -f "${SETTINGS_FIXTURE}" ]] || { print -u2 "Missing current QA Settings fixture: ${SETTINGS_FIXTURE}"; exit 1; }
 
 terminate_qa_instances() {
   pkill -f "${APP}/Contents/MacOS/Scholium" 2>/dev/null || true
@@ -54,8 +56,13 @@ done
 if [[ -d "${FIXTURE_SOURCE}/.scholium" ]]; then
   cp -R "${FIXTURE_SOURCE}/.scholium" "${FIXTURE_COPY}/.scholium"
 fi
-# QA consumes a static fixture snapshot. Authoring utilities such as
-# generate_fixtures.py are deliberately neither copied nor executed.
+# QA consumes a static research-note snapshot plus the repository-owned
+# current portable Settings fixture. The replacement occurs only in the
+# disposable copy; unsupported source fixture bytes remain untouched.
+mkdir -p "${FIXTURE_COPY}/.scholium"
+cp "${SETTINGS_FIXTURE}" "${FIXTURE_COPY}/.scholium/settings.json"
+# Authoring utilities such as generate_fixtures.py are deliberately neither
+# copied nor executed.
 
 DEVELOPER_DIR="${XCODE}" swift build \
   --package-path "${ROOT}" \

@@ -29,9 +29,31 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.zotero,
+                ScholiumL10n.Settings.triptychs,
                 locale: simplifiedChinese
-            ) == "Zotero"
+            ) == "脉络"
+        )
+        #expect(
+            ScholiumL10n.localized(
+                ScholiumL10n.Settings.propertyProfiles,
+                locale: simplifiedChinese
+            ) == "属性配置"
+        )
+        #expect(
+            ScholiumL10n.string("Ready to install", locale: simplifiedChinese)
+                == "可安装"
+        )
+        #expect(
+            ScholiumL10n.string("Installed and discoverable", locale: simplifiedChinese)
+                == "已安装且可发现"
+        )
+        #expect(
+            ScholiumL10n.string("Connected", locale: simplifiedChinese)
+                == "已连接"
+        )
+        #expect(
+            ScholiumL10n.string("Zotero Not Available", locale: simplifiedChinese)
+                == "Zotero 不可用"
         )
     }
 

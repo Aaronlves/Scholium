@@ -328,11 +328,11 @@ expected-revision atomic transaction with readback. Old, future, damaged,
 conflicting, and current-schema-needs-review states remain distinct and never
 fall back to overwriting defaults.
 
-Bundled prompt-template bodies are the sole decoded-value exception: their
-stable IDs select current app-bundled definitions projected in memory without
-rewriting `settings.json`. Researcher templates and active IDs remain exact
-portable settings; a missing or mismatched active ID needs review rather than
-being repaired.
+The portable Settings schema owns only the three role Property profiles,
+Analysis per-source-type Agent requirements, and the Attention dismissal
+period. It stores no prompt bodies or active prompt selection. Research
+Guidance intellectual configuration remains owned by exact Markdown Methods
+and Practices rather than a second settings representation.
 
 Complete Properties uses one role-aware sheet for Analysis, Topic, and Work and
 shows every safely bounded existing top-level property. Canonical or observably

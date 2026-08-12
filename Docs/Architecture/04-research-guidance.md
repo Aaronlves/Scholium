@@ -135,9 +135,10 @@ the new target. Only a validated current state authorizes About; every other
 state supplies an explicit empty display profile, never default authority.
 Current-note structured editing instead depends only on the exact Note source
 and targeted patch contract.
-Current bundled prompt bodies are app projections selected by stable IDs; load
-may replace or supply those in memory without writing the portable file. It
-does not repair researcher templates or invalid active-template IDs.
+Portable Triptych Settings does not store prompt bodies or active prompt
+selection. Exact Markdown Methods and Practices remain the sole persisted
+owners of Research Guidance intellectual configuration; runtime action
+contracts consume those owners without a second template representation.
 
 `PropertyContractCatalog` owns shapes; `AnalysisSourceTypeProfileCatalog` owns
 applicable/recommended/serialization order; Settings owns only selection and

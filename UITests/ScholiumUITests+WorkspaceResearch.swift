@@ -881,9 +881,9 @@ extension ScholiumUITests {
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
 
-        let vaultsPane = app.descendants(matching: .any)["Vaults"].firstMatch
-        XCTAssertTrue(vaultsPane.waitForExistence(timeout: 10))
-        vaultsPane.click()
+        let triptychsPane = app.descendants(matching: .any)["Triptychs"].firstMatch
+        XCTAssertTrue(triptychsPane.waitForExistence(timeout: 10))
+        triptychsPane.click()
         let settingsWindow = app.windows.matching(
             identifier: "com_apple_SwiftUI_Settings_window"
         ).firstMatch
@@ -1079,9 +1079,9 @@ extension ScholiumUITests {
         let settings = app.menuItems["Settings…"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
-        let vaultsPane = app.descendants(matching: .any)["Vaults"].firstMatch
-        XCTAssertTrue(vaultsPane.waitForExistence(timeout: 10))
-        vaultsPane.click()
+        let triptychsPane = app.descendants(matching: .any)["Triptychs"].firstMatch
+        XCTAssertTrue(triptychsPane.waitForExistence(timeout: 10))
+        triptychsPane.click()
         let nameField = app.descendants(matching: .any)["scholium.triptychName"]
         XCTAssertTrue(nameField.waitForExistence(timeout: 10))
         try paste("QA Renamed Triptych", into: nameField)
@@ -1104,13 +1104,55 @@ extension ScholiumUITests {
 
 
     @MainActor
-    func testResearchGuidanceUsesCurrentOwnerCategories() throws {
+    func testSettingsUsesCanonicalPanesScopesAndGuidanceCategories() throws {
         let appMenu = app.menuBars.menuBarItems["Scholium QA"]
         XCTAssertTrue(appMenu.waitForExistence(timeout: 5))
         appMenu.click()
         let settings = app.menuItems["Settings…"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
+
+        let settingsRoot = app.descendants(matching: .any)["scholium.settings.root"]
+        XCTAssertTrue(settingsRoot.waitForExistence(timeout: 10))
+        let paneNames = [
+            "Triptychs",
+            "Property Profiles",
+            "Appearance",
+            "Attention",
+            "Research Guidance",
+        ]
+        for paneName in paneNames {
+            XCTAssertTrue(
+                app.descendants(matching: .any)[paneName].firstMatch.exists,
+                "Missing canonical Settings pane: \(paneName)"
+            )
+        }
+
+        app.descendants(matching: .any)["Triptychs"].firstMatch.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.triptychName"
+        ].waitForExistence(timeout: 8))
+
+        app.descendants(matching: .any)["Property Profiles"].firstMatch.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.settings.triptychScope"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.properties.role"
+        ].waitForExistence(timeout: 8))
+
+        app.descendants(matching: .any)["Appearance"].firstMatch.click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.appearance.form"
+        ].waitForExistence(timeout: 8))
+
+        app.descendants(matching: .any)["Attention"].firstMatch.click()
+        XCTAssertTrue(app.staticTexts[
+            "Reminder Timing for This Triptych"
+        ].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Dismissed Items on This Mac"].exists)
+
+        app.descendants(matching: .any)["Research Guidance"].firstMatch.click()
 
         let categoryList = app.descendants(matching: .any)[
             "scholium.researchGuidance.categoryList"
