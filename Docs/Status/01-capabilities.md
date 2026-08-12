@@ -12,6 +12,11 @@
   constructing a runtime. Malformed current-schema registry data can be
   preserved and relinked; unsupported schema and I/O failures remain
   nonauthorizing. No temporary workspace fallback is reachable.
+- Live app activation can publish the selected Vault's authoritative source,
+  metadata, and stable identities first, then replace that explicit opening
+  phase with one complete three-Vault generation through the existing refresh
+  owner. Document reads are usable immediately; Search and Research Actions
+  fail closed until Graph, Search, and research projections are complete.
 - Exact Markdown bytes remain authoritative. Repository reads and mutations
   enforce containment, regular-file identity, expected revisions, atomic
   replacement, metadata preservation, readback, conflict, and recoverable

@@ -322,6 +322,80 @@ struct WorkspaceRuntimeTests {
         #expect(await iterator.next() == nil)
     }
 
+    @Test("Live opening publishes one usable vault before the complete Triptych")
+    func progressiveLiveOpening() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(
+            id: fixture.assignment.id,
+            openingVault: .paperAnalysis
+        )
+        let stream = await handle.events.events()
+        var iterator = stream.makeAsyncIterator()
+        let openingEvent = try #require(await iterator.next())
+
+        #expect(openingEvent.snapshot.phase == .opening(
+            availableVault: .paperAnalysis
+        ))
+        #expect(openingEvent.snapshot.vaults.map(\.slot) == [.paperAnalysis])
+        #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
+        #expect(openingEvent.snapshot.discovery.catalog.graph == nil)
+        #expect(!openingEvent.snapshot.research.finishedResearchRecordProjectionIsComplete)
+        #expect(await handle.ownedBackgroundTaskCount >= 2)
+
+        let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
+        #expect(openedDocument.rawContent.contains("Freedom enables action"))
+        do {
+            _ = try await handle.discovery.search(SearchRequest(
+                query: "freedom",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
+            Issue.record("Opening Search presented an incomplete Triptych as complete.")
+        } catch let error as ScholiumApplicationError {
+            guard case .workspaceStillLoading(let id) = error else {
+                Issue.record("Unexpected opening Search error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            #expect(id == fixture.assignment.id)
+        }
+
+        var completed = false
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(20))
+            if try await handle.snapshot().phase.isComplete {
+                completed = true
+                break
+            }
+        }
+        #expect(completed)
+        let completeEvent = try #require(await iterator.next())
+        #expect(completeEvent.snapshot.phase == .complete)
+        #expect(completeEvent.snapshot.vaults.count == 3)
+        #expect(completeEvent.snapshot.vaults.flatMap(\.documents).count == 3)
+        #expect(completeEvent.snapshot.discovery.searchGeneration != nil)
+        #expect(completeEvent.snapshot.discovery.catalog.graph != nil)
+
+        let response = try await handle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        #expect(!response.results.isEmpty)
+        #expect(await handle.watcherReadinessEvidence != nil)
+
+        await runtime.shutdown()
+        #expect(await handle.ownedBackgroundTaskCount == 0)
+        #expect(await iterator.next() == nil)
+    }
+
     @Test("Native live events publish one stable-identity move to every window")
     func liveRenamePublishesMoveToTwoWindows() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
@@ -767,6 +841,45 @@ struct WorkspaceRuntimeTests {
         #expect(incrementalNoteResults.map(\.relativePath)
             == cleanNoteResults.map(\.relativePath))
         await cleanRuntime.shutdown()
+    }
+
+    @Test("Library projection defers Search offsets without rereading source")
+    func sourceCatalogDefersSearchProjection() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let services = await handle.services
+        let catalog = VaultSourceCatalog(
+            repository: try #require(
+                services.repositories[fixture.analysisNoteID.vaultID]
+            ),
+            vaultRole: .sourceCorpus
+        )
+
+        let library = try await catalog.snapshot(
+            refreshFolders: false,
+            projectionRequirement: .library
+        )
+        #expect(!library.documents.isEmpty)
+        #expect(library.semantics.count == library.documents.count)
+        #expect(library.searchProjections.isEmpty)
+        #expect(library.measurement.readFiles == library.documents.count)
+        #expect(library.measurement.projectedDocuments == 0)
+
+        let search = try await catalog.snapshot(
+            refreshFolders: false,
+            projectionRequirement: .search
+        )
+        #expect(search.documents.map(\.fingerprint) == library.documents.map(\.fingerprint))
+        #expect(search.searchProjections.count == search.documents.count)
+        #expect(search.measurement.readFiles == 0)
+        #expect(search.measurement.parsedDocuments == 0)
+        #expect(search.measurement.projectedDocuments == search.documents.count)
+        await runtime.shutdown()
     }
 
     @Test("A failed source reconcile retains the prior complete catalog generation")

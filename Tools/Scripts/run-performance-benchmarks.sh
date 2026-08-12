@@ -13,18 +13,21 @@ RELAUNCH_COOLDOWN_MS=0
 METRIC_COOLDOWN_SECONDS=0
 MEMORY_WATCH_PID=""
 ONLY_METRIC=""
+PREPARED_DRIVER=""
+DRIVER_RUN_FILES=()
 usage() {
   cat <<'EOF'
 Usage:
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR [--scenario]
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric NAME
-  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate --prepared-driver DIR
 
 Scenario mode defaults to 0 warm-ups and 1 retained sample per metric and is
 bounded to at most 3 + 10. Gate mode is fixed at 5 + 30, batches warm Search
 and Read inside one process, cools between cold relaunches and metrics, and
-additionally requires a clean exact-tag checkout, matching packaged provenance,
-and SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1.
+never compiles after the prepared-driver boundary. It additionally requires a
+clean exact-tag checkout, matching packaged and driver provenance, and
+SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1.
 EOF
 }
 
@@ -45,6 +48,7 @@ while (( $# > 0 )); do
     --warmups) WARMUPS="$2"; shift 2 ;;
     --samples) SAMPLES="$2"; shift 2 ;;
     --metric) ONLY_METRIC="$2"; shift 2 ;;
+    --prepared-driver) PREPARED_DRIVER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) print -u2 "Unknown argument: $1"; usage >&2; exit 64 ;;
   esac
@@ -64,6 +68,10 @@ if [[ "${MODE}" == scenario_only && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10 
 fi
 if [[ "${MODE}" == product_gate && ( "${WARMUPS}" != 5 || "${SAMPLES}" != 30 ) ]]; then
   print -u2 "A product gate is fixed at 5 warm-ups and 30 retained samples."
+  exit 64
+fi
+if [[ "${MODE}" == product_gate && -z "${PREPARED_DRIVER}" ]]; then
+  print -u2 "A product gate requires --prepared-driver from prepare-performance-driver.sh."
   exit 64
 fi
 LATENCY_METRICS=(
@@ -106,6 +114,16 @@ fi
 APP="${APP:P}"
 FIXTURE="${FIXTURE:P}"
 OUTPUT="${OUTPUT:A}"
+if [[ -n "${PREPARED_DRIVER}" ]]; then
+  PREPARED_DRIVER="${PREPARED_DRIVER:A}"
+  case "${PREPARED_DRIVER}" in
+    "${ROOT}/.build"/*) ;;
+    *)
+      print -u2 "Prepared performance drivers must remain under ${ROOT}/.build."
+      exit 65
+      ;;
+  esac
+fi
 [[ -d "${APP}" && -x "${APP}/Contents/MacOS/Scholium" ]] || {
   print -u2 "Invalid Scholium app bundle: ${APP}"
   exit 66
@@ -172,6 +190,29 @@ if [[ "${MODE}" == product_gate ]]; then
   [[ "$(plutil -extract git_exact_tag raw "${PROVENANCE}")" == "${EXACT_TAG}" ]]
 fi
 
+DRIVER_PRODUCTS=""
+BASE_XCTESTRUN=""
+if [[ -n "${PREPARED_DRIVER}" ]]; then
+  DRIVER_MANIFEST="${PREPARED_DRIVER}/ScholiumPerformanceDriver.plist"
+  [[ -f "${DRIVER_MANIFEST}" ]] || {
+    print -u2 "Prepared driver manifest is missing: ${DRIVER_MANIFEST}"
+    exit 66
+  }
+  CURRENT_XCODE_BUILD="$("${DEVELOPER_DIR}/usr/bin/xcodebuild" -version | awk '/Build version/{print $3}')"
+  [[ "$(plutil -extract schema raw "${DRIVER_MANIFEST}")" == scholium-performance-driver-v1 ]]
+  [[ "$(plutil -extract source_clean raw "${DRIVER_MANIFEST}")" == true ]]
+  [[ "$(plutil -extract git_commit raw "${DRIVER_MANIFEST}")" == "$(git -C "${ROOT}" rev-parse HEAD)" ]]
+  [[ "$(plutil -extract git_exact_tag raw "${DRIVER_MANIFEST}")" == "$(git -C "${ROOT}" describe --tags --exact-match)" ]]
+  [[ "$(plutil -extract architecture raw "${DRIVER_MANIFEST}")" == "$(uname -m)" ]]
+  [[ "$(plutil -extract xcode_build raw "${DRIVER_MANIFEST}")" == "${CURRENT_XCODE_BUILD}" ]]
+  DRIVER_PRODUCTS="${PREPARED_DRIVER}/derived-data/Build/Products"
+  BASE_XCTESTRUN="$(find "${DRIVER_PRODUCTS}" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+  [[ -f "${BASE_XCTESTRUN}" ]] || {
+    print -u2 "Prepared driver has no .xctestrun file."
+    exit 66
+  }
+fi
+
 RUN_ID="rdf1_$(date -u +%Y%m%dT%H%M%SZ)_$$"
 SCRATCH="${ROOT}/.build/performance-${RUN_ID}"
 APP_CONTAINER_TMP="${HOME}/Library/Containers/${BUNDLE_ID}/Data/tmp"
@@ -187,6 +228,9 @@ cleanup() {
     kill "${MEMORY_WATCH_PID}" 2>/dev/null || true
     wait "${MEMORY_WATCH_PID}" 2>/dev/null || true
   fi
+  for run_file in "${DRIVER_RUN_FILES[@]}"; do
+    rm -f -- "${run_file}"
+  done
   for pid in $(pgrep -f "^${APP}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
     kill "${pid}" 2>/dev/null || true
   done
@@ -212,14 +256,17 @@ python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   --verify \
   --allow-outside-tmp
 
-"${DEVELOPER_DIR}/usr/bin/xcodebuild" \
-  -project "${ROOT}/ScholiumUITests.xcodeproj" \
-  -scheme ScholiumUITests \
-  -destination "platform=macOS,arch=$(uname -m)" \
-  -derivedDataPath "${DERIVED}" \
-  build-for-testing \
-  >"${SCRATCH}/build-ui-driver.log"
-BASE_XCTESTRUN="$(find "${DERIVED}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+if [[ -z "${PREPARED_DRIVER}" ]]; then
+  "${DEVELOPER_DIR}/usr/bin/xcodebuild" \
+    -project "${ROOT}/ScholiumUITests.xcodeproj" \
+    -scheme ScholiumUITests \
+    -destination "platform=macOS,arch=$(uname -m)" \
+    -derivedDataPath "${DERIVED}" \
+    build-for-testing \
+    >"${SCRATCH}/build-ui-driver.log"
+  DRIVER_PRODUCTS="${DERIVED}/Build/Products"
+  BASE_XCTESTRUN="$(find "${DRIVER_PRODUCTS}" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+fi
 [[ -f "${BASE_XCTESTRUN}" ]] || {
   print -u2 "Xcode did not produce an .xctestrun file."
   exit 70
@@ -244,7 +291,8 @@ set_test_environment() {
 for metric in "${LATENCY_METRICS[@]}"; do
   results="${RAW}/${metric}.jsonl"
   home="${APP_SCRATCH}/home-${metric}"
-  run_file="${DERIVED}/Build/Products/ScholiumPerformance-${metric}.xctestrun"
+  run_file="${DRIVER_PRODUCTS}/ScholiumPerformance-${RUN_ID}-${metric}.xctestrun"
+  DRIVER_RUN_FILES+=("${run_file}")
   mkdir -p "${home}"
   cp "${BASE_XCTESTRUN}" "${run_file}"
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${APP}"
@@ -279,7 +327,8 @@ memory_results="${memory_handoff}/editor_retained_memory.jsonl"
 memory_progress="${memory_handoff}/editor_retained_memory_progress.jsonl"
 memory_acknowledgment="${memory_handoff}/editor_retained_memory.ack"
 memory_home="${APP_SCRATCH}/home-editor-retained-memory"
-memory_run_file="${DERIVED}/Build/Products/ScholiumPerformance-editor-retained-memory.xctestrun"
+memory_run_file="${DRIVER_PRODUCTS}/ScholiumPerformance-${RUN_ID}-editor-retained-memory.xctestrun"
+DRIVER_RUN_FILES+=("${memory_run_file}")
 mkdir -p "${memory_home}" "${memory_handoff}"
 cp "${BASE_XCTESTRUN}" "${memory_run_file}"
 set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${APP}"

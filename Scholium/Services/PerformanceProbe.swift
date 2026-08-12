@@ -49,6 +49,9 @@ final class PerformanceProbe {
         documentID: String,
         startNanoseconds: UInt64
     )?
+    private var warmLibraryWindowModelInitializationNanoseconds: UInt64?
+    private var warmLibraryWorkspaceReadyNanoseconds: UInt64?
+    private var warmLibraryProjectionNanoseconds: UInt64?
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
@@ -110,6 +113,24 @@ final class PerformanceProbe {
         configuration?.metric == .editorModeTransition
             || configuration?.metric == .warmEditActivation
             || configuration?.metric == .coldEditActivation
+    }
+
+    func markWarmLibraryWindowModelInitializationStarted() {
+        guard configuration?.metric == .warmLibraryLaunch,
+              warmLibraryWindowModelInitializationNanoseconds == nil else { return }
+        warmLibraryWindowModelInitializationNanoseconds = now()
+    }
+
+    func markWarmLibraryWorkspaceReady() {
+        guard configuration?.metric == .warmLibraryLaunch,
+              warmLibraryWorkspaceReadyNanoseconds == nil else { return }
+        warmLibraryWorkspaceReadyNanoseconds = now()
+    }
+
+    func markWarmLibraryProjectionReady() {
+        guard configuration?.metric == .warmLibraryLaunch,
+              warmLibraryProjectionNanoseconds == nil else { return }
+        warmLibraryProjectionNanoseconds = now()
     }
 
     func beginSearch(query: String) {
@@ -328,7 +349,34 @@ final class PerformanceProbe {
               configuration.metric == .warmLibraryLaunch,
               configuration.expectedCount.map({ $0 == noteCount }) ?? true,
               let start = configuration.externalStartNanoseconds else { return }
-        record(startNanoseconds: start, observedCount: noteCount)
+        let completed = now()
+        var phases: [String: Double] = [:]
+        if let windowModelInitialization = warmLibraryWindowModelInitializationNanoseconds,
+           let workspaceReady = warmLibraryWorkspaceReadyNanoseconds,
+           let projection = warmLibraryProjectionNanoseconds,
+           windowModelInitialization >= start,
+           workspaceReady >= windowModelInitialization,
+           projection >= workspaceReady,
+           completed >= projection {
+            phases = [
+                "process_to_window_model_init_duration_ms": milliseconds(
+                    windowModelInitialization - start
+                ),
+                "window_model_init_to_workspace_ready_duration_ms": milliseconds(
+                    workspaceReady - windowModelInitialization
+                ),
+                "workspace_ready_to_projection_duration_ms": milliseconds(
+                    projection - workspaceReady
+                ),
+                "projection_to_layout_duration_ms": milliseconds(completed - projection),
+            ]
+        }
+        record(
+            startNanoseconds: start,
+            observedCount: noteCount,
+            completedNanoseconds: completed,
+            phaseDurations: phases
+        )
     }
 
     /// Publishes the retained Editor handshake only after the WebKit bridge
@@ -381,6 +429,10 @@ final class PerformanceProbe {
         recordedSampleCount += 1
         searchStartNanoseconds = nil
         readStartNanoseconds = nil
+    }
+
+    private func milliseconds(_ nanoseconds: UInt64) -> Double {
+        Double(nanoseconds) / 1_000_000
     }
 
     private func append(_ object: [String: Any], to resultURL: URL) -> Bool {

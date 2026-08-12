@@ -510,14 +510,26 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
-    private func workspaceHandle(id: UUID) async throws -> WorkspaceHandle {
-        let handle = try await applicationRuntime.openWorkspace(id: id)
+    private func workspaceHandle(
+        id: UUID,
+        openingVault: WorkspaceVaultSlot? = nil
+    ) async throws -> WorkspaceHandle {
+        let handle = try await applicationRuntime.openWorkspace(
+            id: id,
+            openingVault: openingVault
+        )
         try await install(handle: handle)
         return handle
     }
 
-    func workspaceCapabilities(id: UUID) async throws -> WindowWorkspaceCapabilities {
-        capabilities(from: try await workspaceHandle(id: id))
+    func workspaceCapabilities(
+        id: UUID,
+        openingVault: WorkspaceVaultSlot? = nil
+    ) async throws -> WindowWorkspaceCapabilities {
+        capabilities(from: try await workspaceHandle(
+            id: id,
+            openingVault: openingVault
+        ))
     }
 
     private func configureTriptych(
@@ -526,7 +538,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         outputURL: URL,
         portableContainerURL: URL,
         triptychID: UUID? = nil,
-        triptychName: String? = nil
+        triptychName: String? = nil,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
         let selectedPaths = Set([
             paperAnalysisURL,
@@ -543,7 +556,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             outputURL: outputURL,
             portableContainerURL: portableContainerURL,
             triptychID: triptychID,
-            triptychName: triptychName
+            triptychName: triptychName,
+            openingVault: openingVault
         )
         try await install(handle: handle, replacing: previous)
         return handle
@@ -555,7 +569,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         outputURL: URL,
         portableContainerURL: URL,
         triptychID: UUID? = nil,
-        triptychName: String? = nil
+        triptychName: String? = nil,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WindowWorkspaceCapabilities {
         capabilities(from: try await configureTriptych(
             paperAnalysisURL: paperAnalysisURL,
@@ -563,7 +578,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             outputURL: outputURL,
             portableContainerURL: portableContainerURL,
             triptychID: triptychID,
-            triptychName: triptychName
+            triptychName: triptychName,
+            openingVault: openingVault
         ))
     }
 
@@ -1064,7 +1080,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
         // A caller and the old handle's runtimeReloaded event can converge on
         // the same successor. Recheck after both suspension points so only one
-        // complete installation is committed and retained.
+        // explicitly phased installation is committed and retained.
         if let existing = handles[handle.id],
            existing.runtimeIdentity == handle.runtimeIdentity,
            previousIdentity == nil || previousIdentity?.triptychID == handle.id {

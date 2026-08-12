@@ -2182,6 +2182,7 @@ final class WindowModel: ObservableObject {
         lifecyclePolicy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy(),
         finalWindowSessionSaver: WindowSessionPersistenceCoordinator.Saver? = nil
     ) {
+        PerformanceProbe.shared.markWarmLibraryWindowModelInitializationStarted()
         let resolvedWindowID = nativeWindowID ?? UUID()
         self.nativeWindowID = resolvedWindowID
         windowSessionID = resolvedWindowID
@@ -3554,7 +3555,7 @@ final class WindowModel: ObservableObject {
         switch derivedRefreshStatus {
         case .stale, .failed:
             true
-        case .current, .none:
+        case .opening, .current, .none:
             false
         }
     }
@@ -4167,6 +4168,7 @@ final class WindowModel: ObservableObject {
         triptychID: UUID? = nil,
         triptychName: String? = nil
     ) async throws {
+        let openingVault = requestedInitialWorkspaceSlot
         let intendedTriptychID = triptychID ?? workspaceAssignment?.id ?? requestedTriptychID
         let normalizedTriptychName = triptychName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let capabilities = try await workspaceStore.configureTriptychCapabilities(
@@ -4177,10 +4179,12 @@ final class WindowModel: ObservableObject {
             triptychID: intendedTriptychID,
             triptychName: (normalizedTriptychName?.isEmpty == false ? normalizedTriptychName : nil)
                 ?? registeredTriptychs.first(where: { $0.id == triptychID })?.triptych.name
-                ?? workspaceAssignment?.triptych.name
+                ?? workspaceAssignment?.triptych.name,
+            openingVault: openingVault
         )
         let assignment = capabilities.assignment
         workspaceAssignment = assignment
+        PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
         workspaceAccessRecovery = nil
         registeredVaults = try await workspaceStore.registeredVaults()
         registeredTriptychs = try await workspaceStore.registeredTriptychs()
@@ -4193,7 +4197,7 @@ final class WindowModel: ObservableObject {
             currentVaultRole = assignedCurrent.role
             return
         }
-        try await openWorkspaceVault(.paperAnalysis)
+        try await openWorkspaceVault(openingVault)
     }
 
     func activateRegisteredTriptych(id: UUID) async {
@@ -4210,7 +4214,10 @@ final class WindowModel: ObservableObject {
         assignment: TriptychAssignment
     ) async throws {
         triptychPropertiesAreAuthoritative = false
-        let capabilities = try await workspaceStore.workspaceCapabilities(id: assignment.id)
+        let capabilities = try await workspaceStore.workspaceCapabilities(
+            id: assignment.id,
+            openingVault: shellState.selectedWorkspace
+        )
         bindApplicationCapabilities(to: capabilities)
         let researchSnapshot = try await researchController.researchSnapshot()
         var activationIssues = researchSnapshot.healthIssues
@@ -4359,6 +4366,7 @@ final class WindowModel: ObservableObject {
             return
         }
         guard previousIdentity != activation.runtimeIdentity else { return }
+        PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
 
         let previousAssignment = workspaceAssignment
         let previousVault = currentRegisteredVault
@@ -4413,6 +4421,7 @@ final class WindowModel: ObservableObject {
             context: workspaceProjectionContext
         )
         applyWorkspaceProjectionCommit(projectionCommit)
+        PerformanceProbe.shared.markWarmLibraryProjectionReady()
         researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(
             triptychID: activation.snapshot.triptych.id
         )
@@ -4987,8 +4996,8 @@ final class WindowModel: ObservableObject {
                 )
                 applyWorkspaceProjectionCommit(commit)
             }
+            PerformanceProbe.shared.markWarmLibraryProjectionReady()
             isLoading = false
-            refreshStatusText = nil
             await refreshWindowProjection()
             if !researchSnapshot.healthIssues.isEmpty {
                 vaultError = researchSnapshot.healthIssues.joined(separator: "\n\n")
@@ -5054,6 +5063,24 @@ final class WindowModel: ObservableObject {
                 vaultError = error.localizedDescription
             }
         }
+    }
+
+    private var requestedInitialWorkspaceSlot: WorkspaceVaultSlot {
+        let allowsRequestedSlot: Bool = {
+#if DEBUG
+            true
+#else
+            PerformanceProbe.shared.isEnabled
+#endif
+        }()
+        guard allowsRequestedSlot,
+              let rawValue = ProcessInfo.processInfo.environment[
+                "SCHOLIUM_UI_TEST_OPEN_SLOT"
+              ],
+              let requested = WorkspaceVaultSlot(rawValue: rawValue) else {
+            return shellState.selectedWorkspace
+        }
+        return requested
     }
 
     private func workspaceAccessRecoveryRoute(for error: Error) -> WorkspaceAccessRecovery? {
@@ -7160,8 +7187,13 @@ final class WindowModel: ObservableObject {
             searchController.searchGenerationDidChange()
         }
         switch commit.derivedRefreshStatus {
+        case .opening:
+            if refreshStatusText?.hasPrefix("Conflict:") != true {
+                refreshStatusText = String(localized: "Refreshing derived state…")
+            }
         case .current:
-            if refreshStatusText == "Derived state is stale"
+            if refreshStatusText == String(localized: "Refreshing derived state…")
+                || refreshStatusText == "Derived state is stale"
                 || refreshStatusText == "Derived refresh failed" {
                 refreshStatusText = nil
             }

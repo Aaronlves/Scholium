@@ -60,6 +60,11 @@
   selected state, Up/Down traversal, localized Note totals, and inert hidden
   workspaces. Switching preserves focus on the selected destination until the
   resulting Document route requires another focus target.
+- During progressive live opening, the available workspace keeps its complete
+  Library keyboard and accessibility routes. Unavailable workspace rows expose
+  an unavailable Note count and do not accept pointer or Arrow-key selection.
+  The persistent derived-state status names background progress without moving
+  focus; completion enables the remaining rows and updates their counts once.
 - Back and Forward expose stable names and current availability in both the
   toolbar and View menu. A successful visit updates them without moving focus;
   revisiting a document uses the ordinary source-safe transition and preserves

@@ -140,6 +140,12 @@ record covers macOS, hardware, power mode, display, foreground applications,
 window size, accessibility settings, and logging. Each metric uses isolated
 Application Support, preferences, bookmarks, and derived state.
 
+Compile and sign the UI measurement driver in a separate preparation phase
+from that same clean exact tag, record its commit, tag, Xcode build, and
+architecture, then let the reference machine cool before measurement. The
+product-gate phase must verify and reuse that prepared driver and must not
+compile code after cooling is confirmed.
+
 The measured boundary is user-visible and accessible: a selectable, unblocked
 library; complete visible Search results; or rendered, interactive Review/Edit
 content after native publication and editor-renderer readiness. Semantic

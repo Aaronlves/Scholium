@@ -6,6 +6,16 @@ private enum VaultSourceCatalogError: Error {
     case generationExhausted
 }
 
+enum VaultSourceCatalogProjectionRequirement: Equatable, Sendable {
+    /// Authoritative source plus the semantic projection needed by Library and
+    /// Document presentation. Search-specific visible text and offset maps may
+    /// be completed later by the same catalog actor.
+    case library
+    /// The complete source-bound Search projection required by a Triptych
+    /// generation.
+    case search
+}
+
 struct VaultSourceCatalogMeasurement: Equatable, Sendable {
     let enumeratedFiles: Int
     let readFiles: Int
@@ -77,17 +87,27 @@ actor VaultSourceCatalog {
 
     func snapshot(
         refreshFolders: Bool = true,
-        consumePendingMeasurement: Bool = false
+        consumePendingMeasurement: Bool = false,
+        projectionRequirement: VaultSourceCatalogProjectionRequirement = .search
     ) async throws -> VaultSourceCatalogSnapshot {
         if !isInitialized || needsFullReconcile {
-            try await reconcile()
-        } else if refreshFolders {
-            let observedFolders = try await repository.folderRelativePaths(
-                includeLifecycle: true
-            )
-            if observedFolders != folders {
-                try advanceGeneration()
-                folders = observedFolders
+            try await reconcile(projectionRequirement: projectionRequirement)
+        } else {
+            if projectionRequirement == .search,
+               records.contains(where: {
+                   WorkspaceDocumentLifecycle(relativePath: $0.key) == .active
+                       && $0.value.searchProjection == nil
+               }) {
+                try completeSearchProjections()
+            }
+            if refreshFolders {
+                let observedFolders = try await repository.folderRelativePaths(
+                    includeLifecycle: true
+                )
+                if observedFolders != folders {
+                    try advanceGeneration()
+                    folders = observedFolders
+                }
             }
         }
         let measurement = consumePendingMeasurement
@@ -99,7 +119,9 @@ actor VaultSourceCatalog {
         return makeSnapshot(measurement: measurement)
     }
 
-    func reconcile() async throws {
+    func reconcile(
+        projectionRequirement: VaultSourceCatalogProjectionRequirement = .search
+    ) async throws {
         let clock = ContinuousClock()
         let enumerationStart = clock.now
         let paths = try await repository.markdownRelativePaths(includeLifecycle: true)
@@ -123,7 +145,8 @@ actor VaultSourceCatalog {
             let existing = nextRecords[path]
             let authorized = try await authorizedRecord(
                 relativePath: path,
-                existing: existing
+                existing: existing,
+                projectionRequirement: projectionRequirement
             )
             readDuration += authorized.readDuration
             parseDuration += authorized.parseDuration
@@ -133,7 +156,7 @@ actor VaultSourceCatalog {
             if authorized.didProject { projectedDocuments += 1 }
             if let record = authorized.record {
                 nextRecords[path] = record
-                if authorized.didRead { changed = true }
+                if authorized.didRead || authorized.didProject { changed = true }
             } else {
                 nextRecords[path] = nil
                 if existing != nil { changed = true }
@@ -178,7 +201,8 @@ actor VaultSourceCatalog {
             let existing = nextRecords[path]
             let authorized = try await authorizedRecord(
                 relativePath: path,
-                existing: existing
+                existing: existing,
+                projectionRequirement: .search
             )
             readDuration += authorized.readDuration
             parseDuration += authorized.parseDuration
@@ -188,7 +212,7 @@ actor VaultSourceCatalog {
             if authorized.didProject { projectedDocuments += 1 }
             if let record = authorized.record {
                 nextRecords[path] = record
-                if authorized.didRead { changed = true }
+                if authorized.didRead || authorized.didProject { changed = true }
             } else {
                 nextRecords[path] = nil
                 if existing != nil { changed = true }
@@ -261,7 +285,8 @@ actor VaultSourceCatalog {
 
     private func authorizedRecord(
         relativePath: String,
-        existing: Record?
+        existing: Record?,
+        projectionRequirement: VaultSourceCatalogProjectionRequirement
     ) async throws -> AuthorizedRecord {
         if let existing {
             do {
@@ -269,6 +294,23 @@ actor VaultSourceCatalog {
                     relativePath: relativePath,
                     version: existing.version
                 ) {
+                    if projectionRequirement == .search,
+                       existing.semantic != nil,
+                       existing.searchProjection == nil {
+                        let projectionStart = ContinuousClock().now
+                        let completed = recordByCompletingSearchProjection(existing)
+                        return AuthorizedRecord(
+                            record: completed,
+                            didRead: false,
+                            didParse: false,
+                            didProject: true,
+                            readDuration: .zero,
+                            parseDuration: .zero,
+                            projectionDuration: projectionStart.duration(
+                                to: ContinuousClock().now
+                            )
+                        )
+                    }
                     return AuthorizedRecord(
                         record: existing,
                         didRead: false,
@@ -306,8 +348,9 @@ actor VaultSourceCatalog {
                     : nil
             let parseDuration = parseStart.duration(to: clock.now)
             let projectionStart = clock.now
-            let searchProjection = semantic.map { semantic in
-                SearchDocumentProjection(
+            let searchProjection: SearchDocumentProjection?
+            if projectionRequirement == .search, let semantic {
+                searchProjection = SearchDocumentProjection(
                     document: loaded.document,
                     profile: WorkflowProfileResolver.resolve(
                         vaultRole: vaultRole,
@@ -316,6 +359,8 @@ actor VaultSourceCatalog {
                     ),
                     semantic: semantic
                 )
+            } else {
+                searchProjection = nil
             }
             return AuthorizedRecord(
                 record: Record(
@@ -343,6 +388,52 @@ actor VaultSourceCatalog {
                 projectionDuration: .zero
             )
         }
+    }
+
+    private func completeSearchProjections() throws {
+        let clock = ContinuousClock()
+        let projectionStart = clock.now
+        var nextRecords = records
+        var projectedDocuments = 0
+        for (path, record) in records where record.semantic != nil
+            && record.searchProjection == nil {
+            try Task.checkCancellation()
+            nextRecords[path] = recordByCompletingSearchProjection(record)
+            projectedDocuments += 1
+        }
+        guard projectedDocuments > 0 else { return }
+        try advanceGeneration()
+        records = nextRecords
+        record(VaultSourceCatalogMeasurement(
+            enumeratedFiles: 0,
+            readFiles: 0,
+            parsedDocuments: 0,
+            projectedDocuments: projectedDocuments,
+            enumerationDuration: .zero,
+            readDuration: .zero,
+            parseDuration: .zero,
+            projectionDuration: projectionStart.duration(to: clock.now)
+        ))
+    }
+
+    private func recordByCompletingSearchProjection(_ record: Record) -> Record {
+        Record(
+            document: record.document,
+            version: record.version,
+            fileMetadata: record.fileMetadata,
+            semantic: record.semantic,
+            searchProjection: record.semantic.map { semantic in
+                SearchDocumentProjection(
+                    document: record.document,
+                    profile: WorkflowProfileResolver.resolve(
+                        vaultRole: vaultRole,
+                        frontmatter: record.document.parsedFrontmatter,
+                        relativePath: record.document.relativePath
+                    ),
+                    semantic: semantic
+                )
+            }
+        )
     }
 
     private func record(_ measurement: VaultSourceCatalogMeasurement) {

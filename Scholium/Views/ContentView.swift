@@ -412,6 +412,8 @@ struct ContentView: View {
     private var researchProjectionFreshness: ResearchProjectionFreshness {
         if appState.isRefreshingWorkspaceCatalog { return .refreshing }
         switch appState.derivedRefreshStatus {
+        case .opening:
+            return .refreshing
         case .current:
             return .current
         case .stale(let issue):

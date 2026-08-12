@@ -205,6 +205,18 @@ Menus follow researcher tasks:
   an unavailable first result uses an em dash rather than claiming zero; a
   refresh retains the last trustworthy count. The row's accessible name or
   value states the workspace and localized Note count.
+- Live application opening may publish the selected workspace's first
+  trustworthy Vault projection before the complete Triptych projection. Once
+  that Vault's Library is usable, the shell removes its full-page Loading state
+  and keeps those rows interactive while one persistent derived-state progress
+  status names the remaining background work. Workspace rows without a first
+  trustworthy projection retain the em dash and remain unavailable; they never
+  claim zero or stage an empty destination. Graph, shared Search, Attention
+  totals, Research Records, and Research Actions remain unavailable rather than
+  presenting a selected-Vault subset as complete. One later complete generation
+  atomically supplies all three Vaults and those cross-Vault projections without
+  replacing, clearing, or moving focus from the usable Library. Snapshot and CLI
+  delivery continue to wait for a complete Triptych projection.
 - One native **Filter** menu groups Integrity, Metadata, Properties, Order, and
   Actions with at most one submenu level. Its icon-only entry hides the
   redundant outer menu indicator; native submenu chevrons remain. Current

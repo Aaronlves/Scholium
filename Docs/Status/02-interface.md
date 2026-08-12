@@ -24,6 +24,11 @@
   with stable selection, keyboard navigation, and ordinary-active-Note totals.
   Switching saves or fails safely, then restores that workspace's Location,
   filters, ordering, disclosure, tabs, Document mode, and Inspector mode.
+- On live opening, the selected Vault's usable Library can replace the initial
+  full-page Loading state before the remaining two Vaults finish. Their rows
+  retain unavailable counts and selection until the complete generation; the
+  existing derived-state progress presentation remains visible without
+  blocking the available list or moving focus.
 - Library, Set Aside, and Trash share one native hierarchical source list while
   retaining their distinct actions. Add, context-menu, keyboard, drag, menu,
   and accessibility routes converge on the same source mutations.

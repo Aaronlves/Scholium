@@ -72,6 +72,10 @@ ALLOWED_KEYS = {
     "bridge_started_duration_ms",
     "bridge_roundtrip_duration_ms",
     "layout_duration_ms",
+    "process_to_window_model_init_duration_ms",
+    "window_model_init_to_workspace_ready_duration_ms",
+    "workspace_ready_to_projection_duration_ms",
+    "projection_to_layout_duration_ms",
 }
 MEMORY_ROLES = ("app", "gpu", "networking", "web_content")
 MEMORY_ALLOWED_KEYS = {
@@ -204,6 +208,24 @@ def load_metric(
                 float(bridge_started) + float(bridge_roundtrip) - float(acknowledged)
             ) > 0.001:
                 raise SystemExit(f"{path}:{line_number}: Editor bridge phases do not match acknowledgement")
+        elif metric == "warm_library_launch":
+            library_phases = (
+                record.get("process_to_window_model_init_duration_ms"),
+                record.get("window_model_init_to_workspace_ready_duration_ms"),
+                record.get("workspace_ready_to_projection_duration_ms"),
+                record.get("projection_to_layout_duration_ms"),
+            )
+            if any(value is not None for value in library_phases):
+                if any(
+                    not isinstance(value, (int, float))
+                    or isinstance(value, bool)
+                    or not math.isfinite(value)
+                    or value < 0
+                    for value in library_phases
+                ):
+                    raise SystemExit(f"{path}:{line_number}: invalid Library phase duration")
+                if abs(sum(float(value) for value in library_phases) - float(duration)) > 0.001:
+                    raise SystemExit(f"{path}:{line_number}: Library phases do not match duration")
         elif "observed_mode" in record:
             raise SystemExit(f"{path}:{line_number}: unexpected observed mode")
         elif any(
@@ -216,6 +238,16 @@ def load_metric(
             )
         ):
             raise SystemExit(f"{path}:{line_number}: unexpected Editor phase duration")
+        if metric != "warm_library_launch" and any(
+            phase in record
+            for phase in (
+                "process_to_window_model_init_duration_ms",
+                "window_model_init_to_workspace_ready_duration_ms",
+                "workspace_ready_to_projection_duration_ms",
+                "projection_to_layout_duration_ms",
+            )
+        ):
+            raise SystemExit(f"{path}:{line_number}: unexpected Library phase duration")
         records.append(record)
 
     total = warmups + samples
@@ -469,6 +501,22 @@ def main() -> None:
                     "maximum_ms": max(values),
                     "mean_ms": statistics.fmean(values),
                 }
+        if metric == "warm_library_launch":
+            retained_records = records[arguments.warmups :]
+            for phase in (
+                "process_to_window_model_init_duration_ms",
+                "window_model_init_to_workspace_ready_duration_ms",
+                "workspace_ready_to_projection_duration_ms",
+                "projection_to_layout_duration_ms",
+            ):
+                if all(phase in record for record in retained_records):
+                    values = [float(record[phase]) for record in retained_records]
+                    summaries[metric][phase] = {
+                        "p50_ms": nearest_rank(values, 0.50),
+                        "p95_ms": nearest_rank(values, 0.95),
+                        "maximum_ms": max(values),
+                        "mean_ms": statistics.fmean(values),
+                    }
         raw_durations[metric] = {
             "warmups_ms": [float(record["duration_ms"]) for record in records[: arguments.warmups]],
             "retained_ms": measured,

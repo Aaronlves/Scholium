@@ -126,7 +126,9 @@ struct ArchitectureBoundaryTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("private func workspaceHandle(id: UUID)"))
+        #expect(source.contains("private func workspaceHandle(\n        id: UUID,"))
+        #expect(source.contains("openingVault: WorkspaceVaultSlot? = nil"))
+        #expect(source.contains("openingVault: openingVault"))
         #expect(source.contains("private func configureTriptych("))
         #expect(!source.contains("func reloadTriptychCapabilities("))
 

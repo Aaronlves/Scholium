@@ -721,6 +721,7 @@ struct ScholiumTriptychWorkspaceNavigator: View {
         let nextIndex = index + step
         guard slots.indices.contains(nextIndex) else { return }
         let nextSlot = slots[nextIndex]
+        guard noteCounts.count(for: nextSlot) != nil else { return }
         select(nextSlot)
         focusedSlot = nextSlot
     }
@@ -771,6 +772,7 @@ private struct ScholiumTriptychWorkspaceButton: View {
         )
         .scholiumActivationFocus(focusedSlot, equals: slot)
         .onMoveCommand(perform: move)
+        .disabled(noteCount == nil)
         .accessibilityLabel(ScholiumL10n.dynamicString(slot.displayName))
         .accessibilityValue(noteCountAccessibilityValue)
         .accessibilityAddTraits(isSelected ? .isSelected : [])

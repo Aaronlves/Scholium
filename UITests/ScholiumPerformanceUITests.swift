@@ -343,7 +343,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             }
             return
         }
-        application.typeKey("f", modifierFlags: [.command])
+        application.typeKey("f", modifierFlags: [.command, .shift])
         let field = application.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         replaceCommittedText("scopeSetup", in: field, application: application)

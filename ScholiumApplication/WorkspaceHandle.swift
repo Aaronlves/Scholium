@@ -363,6 +363,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         subsystem: "com.scholium.app",
         category: "WorkspaceRefresh"
     )
+    private nonisolated static let openLogger = Logger(
+        subsystem: "com.scholium.app",
+        category: "WorkspaceOpen"
+    )
     public nonisolated let id: UUID
     public nonisolated let runtimeIdentity: TriptychRuntimeIdentity
     public nonisolated let assignment: TriptychAssignment
@@ -386,6 +390,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var derivedStateRequiresRefresh = false
     private var isShutDown = false
     private var liveWatcherTask: Task<Void, Never>?
+    private var openingCompletionTask: Task<Void, Never>?
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var sourceCommitRefreshTask: Task<Void, Never>?
     private var pendingSourceCommitRefreshes: [WorkspaceRefreshPayload] = []
@@ -500,8 +505,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         vaultPool: WorkspaceVaultPool,
         zotero: ZoteroOperations,
         researchAgentSessions: ResearchAgentSessionAuthority?,
-        access: WorkspaceAccessConfiguration
+        access: WorkspaceAccessConfiguration,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
+        let clock = ContinuousClock()
+        let totalStart = clock.now
         try Task.checkCancellation()
         guard Set(assignment.vaults.keys) == Set(WorkspaceVaultSlot.allCases) else {
             throw ScholiumApplicationError.incompleteTriptych(assignment.id)
@@ -523,6 +531,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 pooledVaults[vault.id] = pooled
                 resolvedURLs[slot] = pooled.rootURL
             }
+            let vaultsReady = clock.now
 
             guard let worksVault = assignment.vault(for: .output),
                   let worksURL = resolvedURLs[.output],
@@ -663,28 +672,45 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     control: controlURL
                 )
             )
+            let servicesReady = clock.now
             var watcherStreams: [UUID: AsyncStream<VaultWatchEvent>] = [:]
             if mode == .live {
                 for (vaultID, pooled) in pooledVaults {
                     watcherStreams[vaultID] = await pooled.events()
                 }
             }
-            // Native observation is live before either inventory pass. The
-            // buffered stream plus the post-publication reconciliation closes
-            // edits that race either scan.
-            let preOpenInventory = mode == .live
+            let watchersReady = clock.now
+            let usesProgressiveOpening = mode == .live && openingVault != nil
+            // Native observation is live before either inventory pass. A
+            // progressive open inventories only its first usable vault; the
+            // buffered stream and complete background reconcile close edits
+            // that race either scan.
+            let preOpenInventory = mode == .live && !usesProgressiveOpening
                 ? try await sourceInventory(
                     assignment: assignment,
                     sourceCatalogs: services.sourceCatalogs
                 )
                 : nil
-            let initialBuild = try await WorkspaceSnapshotBuilder.build(
-                assignment: assignment,
-                mode: mode,
-                services: services,
-                graphGeneration: 1,
-                workspaceGeneration: initialWorkspaceGeneration
-            )
+            let inventoryReady = clock.now
+            let initialBuild: WorkspaceSnapshotBuildResult
+            if let openingVault, usesProgressiveOpening {
+                initialBuild = try await WorkspaceSnapshotBuilder.buildOpening(
+                    assignment: assignment,
+                    mode: mode,
+                    services: services,
+                    availableVault: openingVault,
+                    workspaceGeneration: initialWorkspaceGeneration
+                )
+            } else {
+                initialBuild = try await WorkspaceSnapshotBuilder.build(
+                    assignment: assignment,
+                    mode: mode,
+                    services: services,
+                    graphGeneration: 1,
+                    workspaceGeneration: initialWorkspaceGeneration
+                )
+            }
+            let snapshotReady = clock.now
             let initialSnapshot = initialBuild.snapshot
             logRefresh(initialBuild.measurement, publicationDuration: nil)
             try Task.checkCancellation()
@@ -733,11 +759,32 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             await reference.bind(handle)
             if case .live = access {
+                let activationInventory: [
+                    VaultQualifiedNoteID: DocumentFingerprint
+                ]
+                if let preOpenInventory {
+                    activationInventory = preOpenInventory
+                } else {
+                    activationInventory = await handle.sourceRevisions(
+                        in: initialSnapshot
+                    )
+                }
                 await handle.startLiveTasks(
                     streams: watcherStreams,
-                    preOpenInventory: preOpenInventory ?? [:]
+                    preOpenInventory: activationInventory,
+                    completesOpeningInBackground: usesProgressiveOpening
                 )
             }
+            let completed = clock.now
+            Self.logOpen(
+                vaults: totalStart.duration(to: vaultsReady),
+                services: vaultsReady.duration(to: servicesReady),
+                watchers: servicesReady.duration(to: watchersReady),
+                inventory: watchersReady.duration(to: inventoryReady),
+                snapshot: inventoryReady.duration(to: snapshotReady),
+                finalization: snapshotReady.duration(to: completed),
+                total: totalStart.duration(to: completed)
+            )
             return handle
         } catch {
             for lease in leases.reversed() where lease.started {
@@ -745,6 +792,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             throw error
         }
+    }
+
+    private nonisolated static func logOpen(
+        vaults: Duration,
+        services: Duration,
+        watchers: Duration,
+        inventory: Duration,
+        snapshot: Duration,
+        finalization: Duration,
+        total: Duration
+    ) {
+        openLogger.info(
+            "handle vaults=\(String(describing: vaults), privacy: .public) services=\(String(describing: services), privacy: .public) watchers=\(String(describing: watchers), privacy: .public) inventory=\(String(describing: inventory), privacy: .public) snapshot=\(String(describing: snapshot), privacy: .public) finalization=\(String(describing: finalization), privacy: .public) total=\(String(describing: total), privacy: .public)"
+        )
     }
 
     public func snapshot() throws -> WorkspaceSnapshot {
@@ -796,14 +857,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         sourceCommitRefresh?.cancel()
         await refreshCoordinator.shutdown()
         let watcher = liveWatcherTask
+        let openingCompletion = openingCompletionTask
         let refresh = liveIndexRefreshTask?.task
         liveWatcherTask = nil
+        openingCompletionTask = nil
         liveIndexRefreshTask = nil
         pendingLiveEvents.removeAll()
         shutDownWorkspaceSourceOperationGate()
         watcher?.cancel()
+        openingCompletion?.cancel()
         refresh?.cancel()
         await watcher?.value
+        await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
         await events.finish(finalSnapshot: currentSnapshot)
@@ -2450,7 +2515,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func refresh() async throws -> WorkspaceSnapshot {
-        try await refresh(publication: .explicit)
+        let snapshot = try await refresh(publication: .explicit)
+        if snapshot.phase.isComplete {
+            startLiveIndexRefreshIfNeeded()
+        }
+        return snapshot
     }
 
     /// Refreshes disposable projections after a durable non-document
@@ -2663,6 +2732,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 await events.publishDerivedStateChanged(snapshot: snapshot)
             }
         case .liveInventory:
+            if previous.phase != snapshot.phase {
+                await events.publishDerivedStateChanged(snapshot: snapshot)
+                return
+            }
             guard changes.hasChanges else {
                 if confirmsEarlierFailure {
                     await events.publishDerivedStateChanged(snapshot: snapshot)
@@ -2770,7 +2843,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func startLiveTasks(
         streams: [UUID: AsyncStream<VaultWatchEvent>],
-        preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]
+        preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint],
+        completesOpeningInBackground: Bool
     ) async {
         guard mode == .live, !isShutDown, liveWatcherTask == nil else { return }
         liveWatcherTask = Task { [weak self] in
@@ -2786,7 +2860,43 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 await group.waitForAll()
             }
         }
+        if completesOpeningInBackground {
+            openingCompletionTask = Task(priority: .utility) { [weak self] in
+                // This short presentation handoff is not a correctness gate.
+                // It lets the first usable Library commit before the complete
+                // cross-vault reconcile competes for CPU and filesystem I/O.
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled, let self else { return }
+                await self.completeLiveOpening(
+                    preOpenInventory: preOpenInventory
+                )
+            }
+            return
+        }
         await reconcileLiveActivation(preOpenInventory: preOpenInventory)
+    }
+
+    private func completeLiveOpening(
+        preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]
+    ) async {
+        defer { openingCompletionTask = nil }
+        guard !isShutDown, !Task.isCancelled else { return }
+        do {
+            if !currentSnapshot.phase.isComplete {
+                _ = try await refresh(
+                    publication: .liveInventory,
+                    failureDisposition: .failed(
+                        affectedVaultIDs: Set(assignment.vaults.values.map(\.id))
+                    ),
+                    sourceCatalogPreparation: .fullReconcile
+                )
+            }
+            await reconcileLiveActivation(preOpenInventory: preOpenInventory)
+            startLiveIndexRefreshIfNeeded()
+        } catch {
+            // `refresh` already published a typed failure while retaining the
+            // usable opening vault. Explicit Retry performs a full reconcile.
+        }
     }
 
     /// Closes the interval between the pre-open inventory and watcher
@@ -2913,6 +3023,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func startLiveIndexRefreshIfNeeded() {
         guard !isShutDown,
+              currentSnapshot.phase.isComplete,
               !sourceOperationGate.sourceMutationIsActive,
               !pendingLiveEvents.isEmpty,
               sourceCommitRefreshTask == nil,
@@ -3142,7 +3253,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     // Internal evidence for lifecycle tests; capabilities do not expose tasks.
     var ownedBackgroundTaskCount: Int {
-        (liveWatcherTask == nil ? 0 : 1) + (liveIndexRefreshTask == nil ? 0 : 1)
+        (liveWatcherTask == nil ? 0 : 1)
+            + (openingCompletionTask == nil ? 0 : 1)
+            + (liveIndexRefreshTask == nil ? 0 : 1)
     }
 
     var activationReconciliationCompleted: Bool {
@@ -3150,7 +3263,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     var watcherReadinessEvidence: WorkspaceWatcherReadinessEvidence? {
-        guard liveWatcherTask != nil, didCompleteActivationReconciliation else { return nil }
+        guard liveWatcherTask != nil,
+              currentSnapshot.phase.isComplete,
+              didCompleteActivationReconciliation else { return nil }
         return WorkspaceWatcherReadinessEvidence(
             watchedVaultIDs: Set(assignment.vaults.values.map(\.id)),
             activationReconciliationCompleted: true
@@ -3159,6 +3274,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func search(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
+        guard currentSnapshot.phase.isComplete else {
+            throw ScholiumApplicationError.workspaceStillLoading(id)
+        }
         if let diagnostic = searchScopeDiagnostic(request) {
             return await searchDiagnosticResponse(
                 request: request,
@@ -4049,6 +4167,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func requireActive() throws {
         if isShutDown { throw ScholiumApplicationError.workspaceShutDown(id) }
+    }
+
+    func requireCompleteWorkspace() throws {
+        try requireActive()
+        guard currentSnapshot.phase.isComplete else {
+            throw ScholiumApplicationError.workspaceStillLoading(id)
+        }
     }
 
     private static func resolvePortableControlAccess(

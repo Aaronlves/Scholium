@@ -22,6 +22,31 @@ exercise, source-fidelity review of private research, or researcher acceptance.
 
 ## Focused interface evidence
 
+- On 2026-08-13, the progressive-opening Application contract test proved that
+  one selected live Vault publishes first, its Note remains loadable, Search
+  fails closed with `workspaceStillLoading`, and the same handle later publishes
+  a complete three-Vault Graph/Search generation. The window-projection test
+  proved the corresponding opening-to-current atomic state transition, and the
+  catalog test proved that deferred Search offsets complete without rereading
+  source. The
+  complete pre-existing Workspace runtime suite also passed 16/16 before the
+  new focused case. This is deterministic implementation evidence, not packaged
+  launch performance or human loading-state acceptance.
+- A 2026-08-13 isolated Release diagnostic with RDF-1 and 267 visible Analysis
+  Notes retained three warm Library samples of 785.8–819.0ms after one warm-up
+  (median 797.8ms). Its unretained cold-page-cache sample was 1126.6ms. The
+  diagnostic used the existing test driver against a dirty, ad-hoc-signed
+  diagnostic bundle; it demonstrates margin for integration but is not the
+  clean tagged packaged 5+30 G7 result.
+- The 2026-08-13 integration verification passed the unchanged Web, Core,
+  Contracts, Search-performance, bridge, architecture-measurement, App, CLI,
+  sandbox, symbol-boundary, and Release-build gates. Its initial parallel
+  Application batch stopped making progress after all but one existing test;
+  that test passed alone in 0.51s and the complete Application batch then
+  passed 222/222 serially. After updating one source-signature architecture
+  assertion for the new opening-Vault parameter, App passed 604/604. This is a
+  recovered complete gate, not evidence that the Xcode beta parallel runner's
+  scheduling stall is resolved.
 - On 2026-08-11, one isolated Debug QA journey created an Analysis first with
   no role seed and then with `tags: [seeded]`. Both commands bypassed a naming
   or Properties sheet, presented Edit, exposed keyboard focus at the exact body

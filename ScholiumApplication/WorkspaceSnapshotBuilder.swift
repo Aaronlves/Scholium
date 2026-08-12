@@ -57,6 +57,222 @@ enum WorkspaceSnapshotBuilder {
         let snapshot: VaultSourceCatalogSnapshot
     }
 
+    /// Builds the first researcher-usable live projection without claiming a
+    /// complete Triptych generation. The selected vault's source, metadata,
+    /// and stable identities are authoritative; Graph, Search, and portable
+    /// research projections remain explicitly unavailable until `build`
+    /// publishes the complete replacement.
+    static func buildOpening(
+        assignment: TriptychAssignment,
+        mode: WorkspaceConfigurationMode,
+        services: WorkspaceServices,
+        availableVault slot: WorkspaceVaultSlot,
+        workspaceGeneration: UInt64
+    ) async throws -> WorkspaceSnapshotBuildResult {
+        let clock = ContinuousClock()
+        let totalStart = clock.now
+        try Task.checkCancellation()
+        guard mode == .live,
+              let vault = assignment.vault(for: slot),
+              let repository = services.repositories[vault.id],
+              let sourceCatalog = services.sourceCatalogs[vault.id] else {
+            throw ScholiumApplicationError.incompleteTriptych(assignment.id)
+        }
+
+        let rootURL = await repository.vaultURL
+        let pathComparisonPolicy = await repository.pathComparisonPolicy()
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: rootURL.path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else {
+            throw WorkspaceFileEventWatcherError.rootUnavailable(rootURL.path)
+        }
+
+        let sourceSnapshot = try await sourceCatalog.snapshot(
+            refreshFolders: false,
+            consumePendingMeasurement: true,
+            projectionRequirement: .library
+        )
+        let allDocuments = sourceSnapshot.documents
+        let activeDocuments = allDocuments.filter {
+            WorkspaceDocumentLifecycle(relativePath: $0.relativePath) == .active
+        }
+        let semantics = sourceSnapshot.semantics
+
+        let identityProjectionStart = clock.now
+        var identityStates = Dictionary(
+            uniqueKeysWithValues: allDocuments.map {
+                ($0.relativePath, WorkspaceNoteIdentityState.unresolved)
+            }
+        )
+        var identityHealthIssues: [String] = []
+        var identityRecovery = NoteIdentityRecoveryState(
+            identities: [:],
+            ambiguities: [],
+            pendingRebindings: [],
+            failures: []
+        )
+        do {
+            let recovery = try await services.identityRecoveryCoordinator.reconcile(
+                vaultID: vault.id,
+                documents: allDocuments.map { ($0.relativePath, $0.fingerprint) },
+                repository: repository,
+                migrateCritiquePaths: slot == .output
+            )
+            identityRecovery = recovery
+            for (path, record) in recovery.identities {
+                identityStates[path] = .resolved(record.id)
+            }
+            for ambiguity in recovery.ambiguities {
+                identityStates[ambiguity.relativePath] = .ambiguous(
+                    candidateIDs: ambiguity.candidates.map(\.id).sorted {
+                        $0.uuidString < $1.uuidString
+                    }
+                )
+            }
+            for pending in recovery.pendingRebindings {
+                identityStates[pending.relativePath] = .pending(pending.noteID)
+            }
+            identityHealthIssues.append(contentsOf: recovery.failures.map(\.message))
+        } catch {
+            identityHealthIssues.append(
+                "Portable note identity for \(vault.name): \(error.localizedDescription)"
+            )
+        }
+        let identityProjectionDuration = identityProjectionStart.duration(to: clock.now)
+        try Task.checkCancellation()
+
+        let assemblyStart = clock.now
+        let qualifiedSemantics = Dictionary(
+            uniqueKeysWithValues: activeDocuments.compactMap { document in
+                semantics[document.relativePath].map {
+                    (
+                        VaultQualifiedNoteID(
+                            vaultID: vault.id,
+                            relativePath: document.relativePath
+                        ),
+                        $0
+                    )
+                }
+            }
+        )
+        let stableNoteIDs: [VaultQualifiedNoteID: UUID] = Dictionary(
+            uniqueKeysWithValues: identityStates.compactMap { path, state in
+                guard case .resolved(let noteID) = state else { return nil }
+                return (
+                    VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
+                    noteID
+                )
+            }
+        )
+        let zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding]
+        if slot == .paperAnalysis {
+            let bindings = try await services.controlStore.zoteroBindings()
+            zoteroBindingsByNoteID = Dictionary(
+                uniqueKeysWithValues: bindings.bindings.map { ($0.noteID, $0) }
+            )
+        } else {
+            zoteroBindingsByNoteID = [:]
+        }
+        let catalog = WorkspaceCatalogBuilder.build(
+            vaults: [vault],
+            documents: [vault.id: activeDocuments],
+            semanticDocuments: qualifiedSemantics,
+            graph: nil,
+            identityAmbiguitiesByVault: [vault.id: identityRecovery.ambiguities],
+            stableNoteIDs: stableNoteIDs,
+            zoteroBindingsByNoteID: zoteroBindingsByNoteID
+        )
+        let vaultSnapshot = WorkspaceVaultSnapshot(
+            slot: slot,
+            vault: vault,
+            pathComparisonPolicy: pathComparisonPolicy,
+            documents: try allDocuments.map { document in
+                guard let fileMetadata = sourceSnapshot.fileMetadata[
+                    document.relativePath
+                ] else {
+                    throw ScholiumApplicationError.incompleteTriptych(assignment.id)
+                }
+                return WorkspaceNoteSnapshot(
+                    id: VaultQualifiedNoteID(
+                        vaultID: vault.id,
+                        relativePath: document.relativePath
+                    ),
+                    vaultRole: vault.role,
+                    stableIdentity: identityStates[document.relativePath] ?? .unresolved,
+                    document: document,
+                    fileMetadata: fileMetadata,
+                    lifecycle: WorkspaceDocumentLifecycle(
+                        relativePath: document.relativePath
+                    ),
+                    graphCounts: WorkspaceGraphCounts(
+                        incoming: 0,
+                        outgoing: 0,
+                        broken: 0,
+                        ambiguous: 0
+                    ),
+                    headings: semantics[document.relativePath]?.headings ?? [],
+                    cachedTitleProjection: semantics[document.relativePath].map {
+                        WorkspaceNoteTitleProjection(
+                            document: document,
+                            vaultRole: vault.role,
+                            semantic: $0
+                        )
+                    }
+                )
+            },
+            folders: sourceSnapshot.folders,
+            identityRecovery: identityRecovery
+        )
+        let snapshot = WorkspaceSnapshot(
+            triptych: assignment.triptych,
+            mode: mode,
+            phase: .opening(availableVault: slot),
+            generatedAt: Date(),
+            vaults: [vaultSnapshot],
+            discovery: WorkspaceDiscoverySnapshot(
+                catalog: catalog,
+                searchGeneration: nil
+            ),
+            research: WorkspaceResearchSnapshot(
+                finishedResearchRecordProjectionIsComplete: false,
+                critiques: [],
+                checkpointListing: TriptychCheckpointListing(
+                    checkpoints: [],
+                    unreadableEntries: []
+                ),
+                healthIssues: identityHealthIssues
+            )
+        )
+        let assemblyDuration = assemblyStart.duration(to: clock.now)
+        let measurement = sourceSnapshot.measurement
+        return WorkspaceSnapshotBuildResult(
+            snapshot: snapshot,
+            measurement: WorkspaceRefreshMeasurement(
+                workspaceGeneration: workspaceGeneration,
+                enumeratedFiles: measurement.enumeratedFiles,
+                readFiles: measurement.readFiles,
+                parsedDocuments: measurement.parsedDocuments,
+                projectedDocuments: measurement.projectedDocuments,
+                enumerationDuration: measurement.enumerationDuration,
+                readDuration: measurement.readDuration,
+                parseDuration: measurement.parseDuration,
+                projectionDuration: measurement.projectionDuration,
+                identityProjectionDuration: identityProjectionDuration,
+                graphDuration: .zero,
+                researchStateDuration: .zero,
+                searchDocumentProjectionDuration: .zero,
+                searchDuration: .zero,
+                snapshotAssemblyDuration: assemblyDuration,
+                totalDuration: totalStart.duration(to: clock.now),
+                snapshotSourceBytes: snapshot.vaults
+                    .flatMap { $0.documents }
+                    .reduce(0) { $0 + $1.document.sourceBytes.count }
+            )
+        )
+    }
+
     static func build(
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,

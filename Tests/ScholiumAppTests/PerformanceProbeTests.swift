@@ -7,6 +7,61 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    @Test("Warm Library launch records only numeric owner phases and the expected count")
+    func warmLibraryLaunchRecordsOwnerPhases() throws {
+        let fileManager = FileManager.default
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let result = directory.appendingPathComponent("warm_library_launch.jsonl")
+        var times: [UInt64] = [
+            2_000_000, 6_000_000, 11_000_000, 20_000_000,
+        ]
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "warm_library_launch",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "warm_library_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_COUNT": "267",
+                "SCHOLIUM_PERFORMANCE_STARTED_NS": "1000000",
+            ],
+            bundleID: "com.scholium.qa",
+            now: { times.removeFirst() }
+        )
+
+        probe.markWarmLibraryWindowModelInitializationStarted()
+        probe.markWarmLibraryWorkspaceReady()
+        probe.markWarmLibraryProjectionReady()
+        probe.markLibraryReady(noteCount: 267)
+
+        let line = try #require(
+            String(contentsOf: result, encoding: .utf8)
+                .split(separator: "\n").first
+        )
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+        )
+        #expect(object["duration_ms"] as? Double == 19)
+        #expect(object["observed_count"] as? Int == 267)
+        #expect(object["process_to_window_model_init_duration_ms"] as? Double == 1)
+        #expect(object["window_model_init_to_workspace_ready_duration_ms"] as? Double == 4)
+        #expect(object["workspace_ready_to_projection_duration_ms"] as? Double == 5)
+        #expect(object["projection_to_layout_duration_ms"] as? Double == 9)
+        #expect(Set(object.keys) == [
+            "schema", "run_id", "sample", "metric", "duration_ms",
+            "completed_uptime_ns", "observed_count",
+            "process_to_window_model_init_duration_ms",
+            "window_model_init_to_workspace_ready_duration_ms",
+            "workspace_ready_to_projection_duration_ms",
+            "projection_to_layout_duration_ms",
+        ])
+    }
+
     @Test("Editor Web metrics remain fixture-bound and privacy-safe")
     func editorWebMetricsRequireExpectedDocument() throws {
         let fileManager = FileManager.default

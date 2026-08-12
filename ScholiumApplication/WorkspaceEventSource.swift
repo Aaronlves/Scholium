@@ -13,11 +13,12 @@ public actor WorkspaceEventSource {
         currentSnapshot = initialSnapshot
     }
 
-    /// The first element is always the latest complete snapshot. Slow
-    /// subscribers retain only the newest complete generation.
+    /// The first element is always the latest snapshot. During progressive
+    /// live opening that may be one explicitly phased usable-vault snapshot;
+    /// slow subscribers still retain only the newest generation.
     public func events() -> AsyncStream<WorkspaceEvent> {
         let pair = AsyncStream<WorkspaceEvent>.makeStream(
-            // Every event carries the resulting complete snapshot. A slow
+            // Every event carries the resulting latest snapshot. A slow
             // subscriber therefore needs only the newest generation and can
             // resynchronize without replaying obsolete intermediate work.
             bufferingPolicy: .bufferingNewest(1)
@@ -74,9 +75,12 @@ public actor WorkspaceEventSource {
         snapshot: WorkspaceSnapshot,
         status: WorkspaceDerivedRefreshStatus? = nil
     ) {
+        let resolvedStatus = status ?? (snapshot.phase.isComplete
+            ? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
+            : .opening(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)))
         publish(.derivedStateChanged(WorkspaceDerivedStateChangedEvent(
             generation: nextGeneration(),
-            status: status ?? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
+            status: resolvedStatus,
             discovery: snapshot.discovery,
             snapshot: snapshot
         )), snapshot: snapshot)

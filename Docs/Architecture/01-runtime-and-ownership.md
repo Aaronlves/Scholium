@@ -142,6 +142,23 @@ live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
 any app window needs them; snapshot performs one-shot loading without watchers
 and shuts down after each CLI invocation.
 
+The live macOS activation may ask `WorkspaceHandle.open` for one selected
+`WorkspaceVaultSlot`. The handle constructs all three repositories, pooled
+catalogs, watchers, and capability objects once, but first publishes an explicit
+`WorkspaceSnapshotPhase.opening` snapshot from only that Vault's authoritative
+catalog and portable identities. `DocumentOperations.load` is usable at this
+phase; Search and Research Action resolution fail closed with
+`workspaceStillLoading`, and absent Graph, Search, and Research projections are
+not complete evidence. The handle owns one utility-priority opening-completion
+task. Watcher events enter the existing bounded journals while a complete
+three-catalog reconcile, Graph build, Search synchronization, research
+projection, and atomic event publication run through the same refresh
+coordinator and source-operation gate. The complete snapshot replaces the
+opening phase; no second repository, catalog, watcher, index, or source owner is
+created. Cancellation and shutdown cancel and await that task. Snapshot/CLI
+opens and live callers without a selected opening Vault retain the complete
+one-shot path.
+
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
 `Triptychs/<triptych-id>/indexes/search-v7.sqlite`; pooled vault runtimes own
 repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
@@ -151,6 +168,11 @@ source-bound part of
 `SearchDocumentProjection` as disposable state. Review and broken-link fields
 are reapplied with a lightweight projection-hash update, so ordinary Search
 deltas do not rebuild visible text and exact offset maps for unchanged notes.
+An opening-Vault catalog pass retains the exact document and Library semantic
+projection while deferring Search-specific visible text and offset maps. The
+same catalog actor completes those missing maps from its retained exact
+documents, without a second source read, before any complete Triptych Search
+generation may publish.
 Projection construction advances monotonic UTF-16 cursors, preserving exact
 source mapping without repeatedly rescanning an accumulated String.
 Watchers start before the initial
@@ -270,11 +292,11 @@ Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 `WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
-starts it with a complete `WorkspaceSnapshot`, and accepts only increasing
+starts it with the handle's explicitly phased latest `WorkspaceSnapshot`, and accepts only increasing
 generations. Commands remain direct capability calls, not event-bus messages.
 
 `WorkspaceStore` owns the live runtime, accepted Application-event
-subscription, latest complete immutable snapshots used by direct app adapters,
+subscription, latest explicitly phased immutable snapshots used by direct app adapters,
 cross-window editor-flush registry, and macOS adapters. The app-wide registry
 implements the client-owned `WorkspaceEditorFlushRegistry` port. One
 `WindowEditorFlushCoordinator` per exact window owns the current editor and

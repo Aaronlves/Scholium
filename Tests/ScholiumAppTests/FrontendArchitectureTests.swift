@@ -9,6 +9,62 @@ import Testing
 @Suite("Frontend architecture")
 @MainActor
 struct FrontendArchitectureTests {
+    @Test("Packaged performance prepares its UI driver before the cooled gate")
+    func performanceGateUsesPreparedDriver() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let runner = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/run-performance-benchmarks.sh"
+            ),
+            encoding: .utf8
+        )
+        let preparer = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/prepare-performance-driver.sh"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(runner.contains(
+            "A product gate requires --prepared-driver from prepare-performance-driver.sh."
+        ))
+        #expect(runner.contains("if [[ -z \"${PREPARED_DRIVER}\" ]]; then"))
+        #expect(runner.contains("scholium-performance-driver-v1"))
+        #expect(runner.contains("plutil -extract git_commit"))
+        #expect(runner.contains("plutil -extract xcode_build"))
+        #expect(preparer.contains("build-for-testing"))
+        #expect(preparer.contains("source_clean -bool true"))
+        #expect(preparer.contains("Cool the reference machine before invoking"))
+    }
+
+    @Test("Packaged Search performance uses the product global Search shortcut")
+    func performanceSearchDriverUsesGlobalSearchShortcut() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let driver = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumPerformanceUITests.swift"
+            ),
+            encoding: .utf8
+        )
+        let app = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(driver.contains(
+            "application.typeKey(\"f\", modifierFlags: [.command, .shift])"
+        ))
+        #expect(app.contains(".keyboardShortcut(\"f\", modifiers: [.command, .shift])"))
+    }
+
     @Test("EditorHost presentation preserves mounted Read and editor surfaces")
     func editorHostRetainsMountedSurfaces() throws {
         let repository = URL(fileURLWithPath: #filePath)
