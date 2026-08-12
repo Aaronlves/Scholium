@@ -21,6 +21,9 @@
   ordinary/minimum-width, and source-conflict acceptance for the Properties Settings seed editor,
   per-type Agent requirements, Complete Properties chooser, CreatorList editor,
   YAML-free first insertion, removal/Undo, and Source recovery routes.
+- Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
+  error, conflict, set, rebind, confirmed-clear, and minimum-width acceptance
+  for the Analysis Overview Zotero relationship sheet.
 
 ## Agent collaboration and research quality
 
@@ -33,10 +36,6 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Complete restrained Analysis Overview set, rebind, and clear paths plus the
-  separately authorized `set_zotero_binding` and `clear_zotero_binding` Agent
-  operations. Current Overview exposes only Open in Zotero; current Agent
-  creation, body, and property authority cannot mutate portable bindings.
 - Decide whether finished Local Execution should compact the nonauthorizing
   Bounded Write Set after copying every target fact needed by historical
   recovery into self-describing transaction evidence. Completion already
@@ -62,11 +61,15 @@
   p95 limit by 2.832 ms; the largest bridge roundtrip was 91.231 ms. The
   connected key-to-paint collector now covers inserted text and deletion; a
   focused Debug two-sample scenario measured 8 and 18 ms, but is not packaged
-  acceptance. Still implement and verify cached-preview, warm/cold Edit
-  activation, and visible-range projection collectors; measure sustained input
-  across repeated Note/mode switching, and run the complete Editor series on
-  the exact packaged artifact. Extend shared source-range fixtures before
-  changing parser or syntax rules.
+  acceptance. Cached preview, warm/cold Edit activation, and visible-range
+  projection now have connected collectors and verified one-sample Debug
+  scenario reachability. Those focused runs measured 21 ms, 86.082 ms,
+  3,953.526 ms, and 1 ms respectively. The cold Edit run correctly retained
+  the application-cold boundary and therefore missed its packaged threshold in
+  an instrumented Debug/XCTest journey; do not narrow that boundary to make a
+  scenario pass. Still measure sustained input across repeated Note/mode
+  switching and run the complete Editor series on the exact packaged artifact.
+  Extend shared source-range fixtures before changing parser or syntax rules.
 - The disposable Debug QA journey now proves direct Edit presentation, exact
   body focus, first-keystroke persistence, and source fidelity with and without
   a role YAML seed. Still measure command dispatch to acknowledged selection
@@ -82,8 +85,8 @@
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
 - The Editor p95 and every-sample limits are approved. Approve the remaining
-  non-Editor packaged thresholds, finish the missing Editor collectors, freeze
-  the exact source/artifact and fixture, then run the complete warm-up/sample
+  non-Editor packaged thresholds, freeze the exact source/artifact and fixture,
+  then run the complete warm-up/sample
   protocol for Search, large Library, cold start, Editor latency, and retained
   memory.
 

@@ -525,7 +525,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("isVisuallyRevealed: hoveredFieldKey == field.key"))
         #expect(source.contains("|| focusedFieldKey == field.key"))
         #expect(source.contains("@State private var hoveredFieldKey: String?"))
-        #expect(source.contains(".onHover { isHovering in"))
+        #expect(source.contains(".scholiumHoverState { isHovering in"))
         #expect(source.contains(".accessibilityLabel(\"Property Actions\")"))
         #expect(source.contains(".accessibilityValue(Text(verbatim: field.label))"))
         #expect(source.contains("ScholiumPropertyGroup("))

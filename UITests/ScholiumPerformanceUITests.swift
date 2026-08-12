@@ -15,12 +15,19 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case coldReadActivation = "cold_read_activation"
         case editorKeyToPaint = "editor_key_to_paint"
         case editorModeTransition = "editor_mode_transition"
+        case editorCachedPreview = "editor_cached_preview"
+        case warmEditActivation = "warm_edit_activation"
+        case coldEditActivation = "cold_edit_activation"
+        case editorVisibleProjection = "editor_visible_projection"
 
         var usesBatchedWarmProcess: Bool {
             self == .indexedSearch
                 || self == .warmReadActivation
                 || self == .editorKeyToPaint
                 || self == .editorModeTransition
+                || self == .editorCachedPreview
+                || self == .warmEditActivation
+                || self == .editorVisibleProjection
         }
     }
 
@@ -212,7 +219,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
             url: URL(fileURLWithPath: applicationPath, isDirectory: true)
         )
         application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
-        if metric == .editorModeTransition {
+        if metric == .editorModeTransition
+            || metric == .editorCachedPreview
+            || metric == .warmEditActivation
+            || metric == .editorVisibleProjection {
             application.launchArguments.append(
                 "--scholium-performance-editor-mode-notifications"
             )
@@ -245,7 +255,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
-        case .editorKeyToPaint, .editorModeTransition:
+        case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
+             .warmEditActivation, .coldEditActivation, .editorVisibleProjection:
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
@@ -267,9 +278,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
             setupDocument = "Cluster-00/analysis-note-001.md"
         case .warmReadActivation:
             setupDocument = "Cluster-01/analysis-note-002.md"
-        case .editorKeyToPaint, .editorModeTransition:
+        case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
+             .warmEditActivation, .editorVisibleProjection:
             setupDocument = "Long/Canonical-5000-Word-Work.md"
-        case .warmLibraryLaunch, .coldReadActivation:
+        case .warmLibraryLaunch, .coldReadActivation, .coldEditActivation:
             return
         }
         XCTAssertTrue(
@@ -280,7 +292,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
             try prepareWarmReadLibraryTargets(in: application)
             return
         }
-        if metric == .editorModeTransition || metric == .editorKeyToPaint {
+        if metric == .editorModeTransition || metric == .editorKeyToPaint
+            || metric == .editorCachedPreview
+            || metric == .warmEditActivation
+            || metric == .editorVisibleProjection {
             application.typeKey("r", modifierFlags: [.command])
             let modeMenu = application.descendants(matching: .any)[
                 "scholium.documentModeButton"
@@ -309,6 +324,23 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 )
                 application.typeKey(.end, modifierFlags: [.command])
             }
+            if metric == .warmEditActivation {
+                requestPerformanceEditorAction("review")
+                XCTAssertTrue(
+                    waitUntil(timeout: 20) {
+                        (modeMenu.value as? String) == "Review"
+                            && self.waitForRenderedDocument(
+                                setupDocument,
+                                in: application,
+                                timeout: 0.1
+                            )
+                    },
+                    "The warm Edit setup did not return to accessible Review."
+                )
+            }
+            if metric == .editorCachedPreview {
+                Thread.sleep(forTimeInterval: 0.5)
+            }
             return
         }
         application.typeKey("f", modifierFlags: [.command])
@@ -331,7 +363,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         total: Int
     ) throws {
         switch metric {
-        case .warmLibraryLaunch, .coldReadActivation:
+        case .warmLibraryLaunch, .coldReadActivation, .coldEditActivation:
             return
         case .indexedSearch:
             let field = application.descendants(matching: .any)["scholium.searchField"]
@@ -442,6 +474,49 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 },
                 "Sample \(sample): the measured Editor mode was not accessible after publication."
             )
+        case .editorCachedPreview:
+            requestPerformanceEditorAction("cached-preview")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): cached preview did not publish exactly one performance record."
+            )
+        case .editorVisibleProjection:
+            requestPerformanceEditorAction("visible-projection")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): visible projection did not publish exactly one performance record."
+            )
+        case .warmEditActivation:
+            requestPerformanceEditorAction("activation")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): warm Edit activation did not publish exactly one performance record."
+            )
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            XCTAssertTrue(
+                waitUntil(timeout: 20) {
+                    (modeMenu.value as? String) == "Edit"
+                        && application.descendants(matching: .any)[
+                            "Markdown editor, Edit mode"
+                        ].exists
+                }
+            )
+            if sample + 1 < total {
+                requestPerformanceEditorAction("review")
+                XCTAssertTrue(
+                    waitUntil(timeout: 20) {
+                        (modeMenu.value as? String) == "Review"
+                    }
+                )
+            }
         }
     }
 
@@ -518,6 +593,14 @@ final class ScholiumPerformanceUITests: XCTestCase {
             notify_post(notificationName),
             UInt32(NOTIFY_STATUS_OK),
             "The measured QA Editor mode request could not be posted."
+        )
+    }
+
+    private func requestPerformanceEditorAction(_ action: String) {
+        XCTAssertEqual(
+            notify_post("com.scholium.qa.performance-editor-\(action)"),
+            UInt32(NOTIFY_STATUS_OK),
+            "The QA Editor performance action could not be posted."
         )
     }
 

@@ -174,7 +174,8 @@ const editorStartupStartedAt = performance.now();
 interface ScholiumWindow extends Window {
   webkit?: { messageHandlers?: { scholium?: { postMessage(message: unknown): void } } };
   scholiumEditor?: ScholiumEditorAPI;
-  scholiumPerformanceMetric?: "editor_key_to_paint";
+  scholiumPerformanceMetric?: "editor_key_to_paint" | "editor_cached_preview"
+    | "editor_visible_projection";
 }
 interface SourceDelta { from: number; to: number; insert: string }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
@@ -214,6 +215,16 @@ const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
   documentVersion,
   ...message,
 });
+
+function postConfiguredPerformanceSample(
+  metric: "editor_cached_preview" | "editor_visible_projection",
+  durationMilliseconds: number,
+) {
+  if (webkitWindow.scholiumPerformanceMetric !== metric
+      || !Number.isFinite(durationMilliseconds)
+      || durationMilliseconds <= 0) return;
+  post({type: "performanceSample", metric, durationMilliseconds});
+}
 
 let mermaidRuntimePromise: Promise<NonNullable<typeof window.scholiumMermaid> | null> | null = null;
 
@@ -3043,6 +3054,7 @@ const selectionActions = createSelectionActionsController({
 
 const previewPopover = createPreviewPopoverController({
   previews: () => linkPreviews,
+  postPerformanceSample: postConfiguredPerformanceSample,
 });
 
 const sourceActiveLineDecoration = Decoration.line({class: "cm-activeLine"});
@@ -3366,6 +3378,19 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
   case "showPreview": previewPopover.showAtSelection(); break;
+  case "measureVisibleProjection": {
+    const startedAt = performance.now();
+    editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    postConfiguredPerformanceSample(
+      "editor_visible_projection",
+      // WebKit may quantize two readings around a sub-millisecond synchronous
+      // dispatch to the same value. Preserve that real below-clock-resolution
+      // observation as a positive sample so the native collector does not
+      // mistake it for a missing boundary.
+      Math.max(Number.EPSILON, performance.now() - startedAt),
+    );
+    break;
+  }
   case "showPreviewAt": previewPopover.showAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line); break;

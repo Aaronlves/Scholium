@@ -657,10 +657,13 @@ About keeps selectable values and routes editing through its heading button.
 For a current Analysis only, `WorkspaceSnapshotBuilder` joins a portable typed
 Zotero binding through the resolved stable Note UUID. The window root supplies
 its exact user/group library identity and item key as one immutable navigation
-value plus the existing
-`ZoteroBridge` presentation effect. About renders that value as one quiet
-**Open in Zotero** row without exposing the key, fetched metadata, matching, or
-confirmation. Frontmatter never participates in this projection. Connect
+value plus the existing `ZoteroBridge` presentation effect. About renders
+**Link Zotero Item…** or **Manage Zotero Link…**, and a bound value also renders
+**Open in Zotero**, without exposing key or fetched metadata in Inspector. The
+central `ZoteroBindingPanelView` searches disposable local metadata while
+`ZoteroBindingOperations` alone revision-checks set/clear against the stable
+Analysis identity and republishes derived state. Frontmatter never participates
+in this projection. Connect
 projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source

@@ -571,7 +571,7 @@ struct FrontmatterEditorView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onHover { isHovering in
+        .scholiumHoverState { isHovering in
             if isHovering {
                 hoveredFieldKey = field.key
             } else if hoveredFieldKey == field.key {

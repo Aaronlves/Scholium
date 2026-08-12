@@ -13,6 +13,10 @@ final class PerformanceProbe {
         case coldReadActivation = "cold_read_activation"
         case editorKeyToPaint = "editor_key_to_paint"
         case editorModeTransition = "editor_mode_transition"
+        case editorCachedPreview = "editor_cached_preview"
+        case warmEditActivation = "warm_edit_activation"
+        case coldEditActivation = "cold_edit_activation"
+        case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
     }
 
@@ -40,6 +44,10 @@ final class PerformanceProbe {
         startNanoseconds: UInt64,
         bridgeStartedNanoseconds: UInt64?,
         acknowledgedNanoseconds: UInt64?
+    )?
+    private var editActivation: (
+        documentID: String,
+        startNanoseconds: UInt64
     )?
     private var searchIsArmed = true
     private var readIsArmed = true
@@ -91,6 +99,17 @@ final class PerformanceProbe {
     }
     var measuresEditorKeyToPaint: Bool {
         configuration?.metric == .editorKeyToPaint
+    }
+    var measuresEditorCachedPreview: Bool {
+        configuration?.metric == .editorCachedPreview
+    }
+    var measuresEditorVisibleProjection: Bool {
+        configuration?.metric == .editorVisibleProjection
+    }
+    var measuresEditorVisibility: Bool {
+        configuration?.metric == .editorModeTransition
+            || configuration?.metric == .warmEditActivation
+            || configuration?.metric == .coldEditActivation
     }
 
     func beginSearch(query: String) {
@@ -248,6 +267,60 @@ final class PerformanceProbe {
         ]
         guard append(object, to: configuration.resultURL) else { return }
         recordedSampleCount += 1
+    }
+
+    func recordEditorWebDuration(
+        documentID: String,
+        metric: Metric,
+        durationMilliseconds: Double
+    ) {
+        guard let configuration,
+              configuration.metric == metric,
+              metric == .editorCachedPreview || metric == .editorVisibleProjection,
+              documentID == configuration.expectedDocument,
+              durationMilliseconds.isFinite,
+              durationMilliseconds > 0,
+              durationMilliseconds < 600_000,
+              recordedSampleCount < configuration.sampleCount else { return }
+        let completed = now()
+        let object: [String: Any] = [
+            "schema": "scholium-performance-v1",
+            "run_id": configuration.runID,
+            "sample": configuration.firstSample + recordedSampleCount,
+            "metric": configuration.metric.rawValue,
+            "duration_ms": durationMilliseconds,
+            "completed_uptime_ns": completed,
+        ]
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount += 1
+    }
+
+    func beginWarmEditActivation(documentID: String) {
+        guard let configuration,
+              configuration.metric == .warmEditActivation,
+              documentID == configuration.expectedDocument,
+              recordedSampleCount < configuration.sampleCount else {
+            editActivation = nil
+            return
+        }
+        editActivation = (documentID: documentID, startNanoseconds: now())
+    }
+
+    func markEditorVisible(documentID: String) {
+        guard let configuration,
+              documentID == configuration.expectedDocument else { return }
+        switch configuration.metric {
+        case .warmEditActivation:
+            guard let activation = editActivation,
+                  activation.documentID == documentID else { return }
+            editActivation = nil
+            record(startNanoseconds: activation.startNanoseconds, observedCount: nil)
+        case .coldEditActivation:
+            guard let start = configuration.externalStartNanoseconds else { return }
+            record(startNanoseconds: start, observedCount: nil)
+        default:
+            return
+        }
     }
 
     func markLibraryReady(noteCount: Int) {

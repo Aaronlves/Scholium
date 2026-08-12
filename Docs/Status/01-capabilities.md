@@ -151,11 +151,15 @@
   one recovery point per edited file, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external
   locators, and settled-version retention.
-- Built-in Zotero access reads local bibliographic metadata and opens a keyed
-  Analysis in Zotero. An eligible authenticated Analysis Run with frozen Zotero
+- Built-in Zotero access reads local bibliographic metadata, searches exact
+  user/group library items for researcher selection, revision-checks portable
+  Analysis set/rebind/clear, and opens a keyed Analysis in Zotero. An eligible authenticated Analysis Run with frozen Zotero
   context receives the exact release-managed Zotero Integration Adapter; Runs
   without that context receive none, and adapter delivery grants no capability
-  or write authority. The optional Zotero MCP is a separate Agent transport;
+  or write authority. Separately authorized Agent
+  `set_zotero_binding`/`clear_zotero_binding` use their own strict intent,
+  bridge/CLI route, one-use capability, binding-revision check, and Local
+  Execution ledger; they cannot write Markdown, Properties, or Zotero. The optional Zotero MCP is a separate Agent transport;
   guarded imports require an exact request, dry run, confirmation, unchanged
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot

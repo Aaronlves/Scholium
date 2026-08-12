@@ -2301,6 +2301,11 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains(".accessibilityIdentifier(\"scholium.about\")"))
         #expect(researchSource.contains("title: Text(\"Open in Zotero\")"))
         #expect(researchSource.contains("systemImage: \"arrow.up.forward.app\""))
+        #expect(researchSource.contains("\"Link Zotero Item…\""))
+        #expect(researchSource.contains("\"Manage Zotero Link…\""))
+        #expect(researchSource.contains(
+            ".accessibilityIdentifier(\"scholium.researchOverview.manageZoteroBinding\")"
+        ))
         #expect(
             researchSource.contains(
                 ".accessibilityIdentifier(\"scholium.researchOverview.openInZotero\")"

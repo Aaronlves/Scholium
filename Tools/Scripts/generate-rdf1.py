@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 
 
-FIXTURE_VERSION = "rdf-1-v2"
+FIXTURE_VERSION = "rdf-1-v3"
 TOTAL_NOTES = 800
 LONG_NOTE_WORDS = 5_000
 CJK_STRESS_CHARACTERS = 100_000
@@ -129,6 +129,7 @@ def long_note_body() -> str:
         "uncertainty distinction relation agency value reason response context"
     ).split()
     words = [vocabulary[index % len(vocabulary)] for index in range(LONG_NOTE_WORDS)]
+    words[0:4] = ["[[RDF-1", "Work", "Note", "003]]"]
     paragraphs = [" ".join(words[start : start + 100]) for start in range(0, len(words), 100)]
     body = "\n\n".join(paragraphs) + "\n"
     assert body_word_count(body) == LONG_NOTE_WORDS
@@ -194,7 +195,7 @@ def generate(output: Path) -> dict[str, object]:
             if is_long_note:
                 relative_path = LONG_NOTE_PATH
                 body = long_note_body()
-                link_count = 0
+                link_count = 1
                 typed_count = 0
             elif is_cjk_stress_note:
                 relative_path = CJK_STRESS_NOTE_PATH

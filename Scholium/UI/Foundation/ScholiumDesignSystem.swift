@@ -2546,6 +2546,20 @@ private struct ScholiumContentControlInkModifier: ViewModifier {
 /// reliably forward their pointer state. Ordinary Buttons use SwiftUI's
 /// lightweight hover and ButtonStyle press path; native-container call sites
 /// may leave hover to AppKit while retaining the shared press path.
+private struct ScholiumHoverStateModifier: ViewModifier {
+    let tracksHover: Bool
+    let stateDidChange: (Bool) -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if tracksHover {
+            content.onHover(perform: stateDidChange)
+        } else {
+            content
+        }
+    }
+}
+
 private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
@@ -2576,11 +2590,12 @@ private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModif
             )
             .opacity(isEnabled && isPressed ? pressedOpacity : 1)
 
-        if tracksHover {
-            feedback.onHover { isHovering = $0 }
-        } else {
-            feedback
-        }
+        feedback.modifier(
+            ScholiumHoverStateModifier(
+                tracksHover: tracksHover,
+                stateDidChange: { isHovering = $0 }
+            )
+        )
     }
 }
 
@@ -2999,6 +3014,21 @@ enum ScholiumMotion {
 }
 
 extension View {
+    /// Reports SwiftUI pointer presence through the Design System's single
+    /// hover adapter. Feature views may retain semantic reveal state, but do
+    /// not own a second platform presentation path.
+    func scholiumHoverState(
+        tracksHover: Bool = true,
+        _ stateDidChange: @escaping (Bool) -> Void
+    ) -> some View {
+        modifier(
+            ScholiumHoverStateModifier(
+                tracksHover: tracksHover,
+                stateDidChange: stateDidChange
+            )
+        )
+    }
+
     /// Applies the shared pointer-neutral, keyboard-complete focus policy to a
     /// custom button-like control with Boolean focus state.
     func scholiumActivationFocus(

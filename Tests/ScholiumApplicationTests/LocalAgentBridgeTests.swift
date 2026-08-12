@@ -135,6 +135,52 @@ struct LocalAgentBridgeTests {
         }
     }
 
+    @Test("Bridge Zotero-binding writes use a separate exact payload")
+    func zoteroBindingWriteIntentShape() throws {
+        let intent = try ResearchZoteroBindingWriteIntent(
+            requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000811")!,
+            role: .analysis,
+            relativePath: "Agency.md",
+            operation: .setZoteroBinding,
+            library: .group(42),
+            itemKey: "item_42"
+        )
+        let request = try LocalAgentBridgeRequest(
+            operation: .writeZoteroBinding,
+            run: ResearchRunLocator(rawValue: "bridgezoterowrite123")!,
+            credential: try testCredential(),
+            zoteroBindingWriteIntent: intent
+        )
+        let data = try LocalAgentBridgeWireCoding.encode(request)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        #expect(object["document_write_intent"] == nil)
+        #expect(object["zotero_binding_write_intent"] != nil)
+        let decoded = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: data
+        )
+        #expect(decoded.zoteroBindingWriteIntent == intent)
+
+        var invalid = object
+        invalid["document_write_intent"] = [
+            "schema_version": ResearchDocumentWriteIntent.currentSchemaVersion,
+            "request_id": UUID().uuidString.lowercased(),
+            "role": "analysis",
+            "relative_path": "Agency.md",
+            "operation": "modify_markdown",
+            "content": "changed",
+            "properties": [],
+        ]
+        #expect(throws: LocalAgentBridgeError.self) {
+            _ = try LocalAgentBridgeWireCoding.decode(
+                LocalAgentBridgeRequest.self,
+                from: JSONSerialization.data(withJSONObject: invalid)
+            )
+        }
+    }
+
     @Test("A current-UID peer is accepted and bridge state persists no credential")
     func currentUIDAndSecretBoundary() throws {
         let fixture = try BridgeFixture()

@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 14
+let markdownEditorProtocolVersion = 15
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -217,6 +217,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case setUserCSS(String)
     case setLinkPreviews([MarkdownEditorLinkPreview])
     case showPreview
+    case measureVisibleProjection
     case showPreviewAt(x: Double, y: Double)
     case announceStatus(String)
     case goToLine(Int)
@@ -250,7 +251,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, showPreviewAt, announceStatus
+        case initialize, setMode, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, blur
     }
@@ -273,6 +274,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
         case .showPreview: self = .showPreview
+        case .measureVisibleProjection: self = .measureVisibleProjection
         case .showPreviewAt:
             self = try .showPreviewAt(
                 x: container.decode(Double.self, forKey: .x),
@@ -330,6 +332,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
         case let .setLinkPreviews(value): try pair(.setLinkPreviews, value, .value, into: &container)
         case .showPreview: try container.encode(Kind.showPreview, forKey: .type)
+        case .measureVisibleProjection:
+            try container.encode(Kind.measureVisibleProjection, forKey: .type)
         case let .showPreviewAt(x, y):
             try container.encode(Kind.showPreviewAt, forKey: .type)
             try container.encode(x, forKey: .x)

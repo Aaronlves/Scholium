@@ -21040,7 +21040,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 14;
+  var EDITOR_PROTOCOL_VERSION = 15;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21050,6 +21050,7 @@
     "setUserCSS",
     "setLinkPreviews",
     "showPreview",
+    "measureVisibleProjection",
     "showPreviewAt",
     "announceStatus",
     "goToLine",
@@ -21193,6 +21194,7 @@
       case "queryPerformance":
       case "captureRecovery":
       case "showPreview":
+      case "measureVisibleProjection":
       case "clearDocumentFind":
       case "markClean":
       case "focus":
@@ -31086,9 +31088,16 @@ ${fence}
           activeRoot.style.left = `${resolved.left}px`;
           activeRoot.style.top = `${resolved.top}px`;
           activeRoot.style.visibility = "visible";
-          window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-            documentLength: activeEditor.state.doc.length
-          }));
+          scheduleAfterNextPaint(() => {
+            const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+            recordEditorMetric("cached-preview", startedAt, {
+              documentLength: activeEditor.state.doc.length
+            });
+            options.postPerformanceSample(
+              "editor_cached_preview",
+              durationMilliseconds
+            );
+          });
         }
       });
     }
@@ -34605,6 +34614,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     documentVersion,
     ...message
   });
+  function postConfiguredPerformanceSample(metric, durationMilliseconds) {
+    if (webkitWindow.scholiumPerformanceMetric !== metric || !Number.isFinite(durationMilliseconds) || durationMilliseconds <= 0) return;
+    post({ type: "performanceSample", metric, durationMilliseconds });
+  }
   var mermaidRuntimePromise = null;
   function ensureMermaidRuntime() {
     const current = window.scholiumMermaid;
@@ -36924,7 +36937,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     selectionIsAvailable: (view) => !view.state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedCommandRanges(), selection))
   });
   var previewPopover = createPreviewPopoverController({
-    previews: () => linkPreviews
+    previews: () => linkPreviews,
+    postPerformanceSample: postConfiguredPerformanceSample
   });
   var sourceActiveLineDecoration = Decoration.line({ class: "cm-activeLine" });
   var SourceActiveLineGutterMarker = class extends GutterMarker {
@@ -37240,6 +37254,19 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "showPreview":
         previewPopover.showAtSelection();
         break;
+      case "measureVisibleProjection": {
+        const startedAt = performance.now();
+        editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
+        postConfiguredPerformanceSample(
+          "editor_visible_projection",
+          // WebKit may quantize two readings around a sub-millisecond synchronous
+          // dispatch to the same value. Preserve that real below-clock-resolution
+          // observation as a positive sample so the native collector does not
+          // mistake it for a missing boundary.
+          Math.max(Number.EPSILON, performance.now() - startedAt)
+        );
+        break;
+      }
       case "showPreviewAt":
         previewPopover.showAtPoint(operation.x, operation.y);
         break;

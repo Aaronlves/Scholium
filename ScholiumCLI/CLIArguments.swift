@@ -140,6 +140,10 @@ extension ScholiumCLI {
                 pathLength: 2,
                 options: ["--run": .value, "--from": .value]
             ),
+            "agent write-zotero-binding": .init(
+                pathLength: 2,
+                options: ["--run": .value, "--from": .value]
+            ),
             "agent resolve-write-conflict": .init(
                 pathLength: 2,
                 options: ["--run": .value, "--from": .value]

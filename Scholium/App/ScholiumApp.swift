@@ -2219,15 +2219,19 @@ final class WindowModel: ObservableObject {
            ProcessInfo.processInfo.arguments.contains(
                "--scholium-performance-editor-mode-notifications"
            ) {
-            let requests: [(String, NotePresentationMode)] = [
-                ("com.scholium.qa.performance-editor-mode.live-preview", .livePreview),
-                ("com.scholium.qa.performance-editor-mode.source", .source),
+            let requests = [
+                "com.scholium.qa.performance-editor-mode.live-preview",
+                "com.scholium.qa.performance-editor-mode.source",
+                "com.scholium.qa.performance-editor-activation",
+                "com.scholium.qa.performance-editor-review",
+                "com.scholium.qa.performance-editor-cached-preview",
+                "com.scholium.qa.performance-editor-visible-projection",
             ]
-            for (name, mode) in requests {
+            for name in requests {
                 var token: Int32 = 0
                 let status = notify_register_dispatch(name, &token, .main) { [weak self] _ in
                     Task { @MainActor [weak self] in
-                        self?.requestPerformanceEditorMode(mode)
+                        self?.handlePerformanceEditorRequest(name)
                     }
                 }
                 if status == NOTIFY_STATUS_OK {
@@ -3233,6 +3237,48 @@ final class WindowModel: ObservableObject {
         requestPresentationMode = mode
     }
 
+    func setZoteroBinding(
+        noteID: UUID,
+        library: ZoteroLibraryIdentity,
+        itemKey: String
+    ) async throws {
+        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
+            throw ScholiumApplicationError.workspaceShutDown(
+                workspaceAssignment?.id ?? UUID()
+            )
+        }
+        let snapshot = try await capability.zoteroBindings()
+        let binding = try AnalysisZoteroBinding(
+            noteID: noteID,
+            library: library,
+            itemKey: itemKey
+        )
+        let result = try await capability.setZoteroBinding(
+            binding,
+            expectedRevision: snapshot.revision
+        )
+        if let warning = result.derivedRefreshWarning {
+            showToast(warning, kind: .information)
+        }
+    }
+
+    func clearZoteroBinding(noteID: UUID) async throws {
+        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
+            throw ScholiumApplicationError.workspaceShutDown(
+                workspaceAssignment?.id ?? UUID()
+            )
+        }
+        let snapshot = try await capability.zoteroBindings()
+        guard snapshot.binding(for: noteID) != nil else { return }
+        let result = try await capability.clearZoteroBinding(
+            noteID: noteID,
+            expectedRevision: snapshot.revision
+        )
+        if let warning = result.derivedRefreshWarning {
+            showToast(warning, kind: .information)
+        }
+    }
+
     #if DEBUG
     /// Drives the retained-editor performance scenario through the current
     /// document session instead of a one-shot SwiftUI presentation request.
@@ -3261,6 +3307,58 @@ final class WindowModel: ObservableObject {
         )
         session.switchEditorMode(to: editorMode)
         documentController.rememberPresentationMode(mode)
+    }
+
+    private func handlePerformanceEditorRequest(_ name: String) {
+        switch name {
+        case "com.scholium.qa.performance-editor-mode.live-preview":
+            requestPerformanceEditorMode(.livePreview)
+        case "com.scholium.qa.performance-editor-mode.source":
+            requestPerformanceEditorMode(.source)
+        case "com.scholium.qa.performance-editor-activation":
+            requestPerformanceEditActivation()
+        case "com.scholium.qa.performance-editor-review":
+            requestDocumentMode(.read)
+        case "com.scholium.qa.performance-editor-cached-preview":
+            requestPerformanceCachedPreview()
+        case "com.scholium.qa.performance-editor-visible-projection":
+            guard let descriptor = currentDocumentDescriptor else { return }
+            documentController.session(for: descriptor)
+                .editorSession.measureVisibleProjection()
+        default:
+            return
+        }
+    }
+
+    private func requestPerformanceEditActivation() {
+        guard canEditCurrentNote,
+              let descriptor = currentDocumentDescriptor else { return }
+        let session = documentController.session(for: descriptor)
+        guard !session.isEditing else { return }
+        PerformanceProbe.shared.beginWarmEditActivation(
+            documentID: descriptor.reference.relativePath
+        )
+        requestDocumentMode(.livePreview)
+    }
+
+    private func requestPerformanceCachedPreview() {
+        guard let descriptor = currentDocumentDescriptor else { return }
+        let session = documentController.session(for: descriptor)
+        guard session.isEditing else { return }
+        Task { @MainActor in
+            for _ in 0..<200 {
+                guard currentDocumentDescriptor?.sessionKey == descriptor.sessionKey,
+                      session.isEditing else { return }
+                if let preview = session.previewCatalog?.links.first {
+                    await session.editorSession.showPreview(
+                        for: preview,
+                        in: session.editingSource
+                    )
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
     }
     #endif
 
@@ -5034,6 +5132,10 @@ final class WindowModel: ObservableObject {
         let path = requested == "first"
             ? notes.sorted(by: notesAreOrdered).first?.relativePath
             : requested
+        if ProcessInfo.processInfo.environment["SCHOLIUM_PERFORMANCE_METRIC"]
+            == "cold_edit_activation" {
+            requestPresentationMode = .livePreview
+        }
         if let path { openNote(path) }
     }
 

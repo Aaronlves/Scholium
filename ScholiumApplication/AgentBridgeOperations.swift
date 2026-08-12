@@ -93,6 +93,23 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         return result
     }
 
+    public func writeZoteroBinding(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        intent: ResearchZoteroBindingWriteIntent
+    ) throws -> ResearchZoteroBindingWriteResult {
+        let response = try client.send(try LocalAgentBridgeRequest(
+            operation: .writeZoteroBinding,
+            run: run,
+            credential: credential,
+            zoteroBindingWriteIntent: intent
+        ))
+        guard let result = response.zoteroBindingWriteResult else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return result
+    }
+
     public func resolveWriteConflict(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

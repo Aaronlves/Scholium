@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 14;
+export const EDITOR_PROTOCOL_VERSION = 15;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -103,6 +103,7 @@ export type EditorOperation =
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkPreviews"; value: unknown[]}
   | {type: "showPreview"}
+  | {type: "measureVisibleProjection"}
   | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
   | {type: "goToLine"; line: number}
@@ -146,7 +147,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "showPreviewAt", "announceStatus",
+  "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "blur",
 ]);
@@ -289,7 +290,7 @@ function validOperation(operation: Record<string, unknown>) {
       && typeof value.wholeWord === "boolean"
       && ["update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
-  case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview":
+  case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection":
   case "clearDocumentFind": case "markClean": case "focus": case "blur": return true;
   default: return false;
   }

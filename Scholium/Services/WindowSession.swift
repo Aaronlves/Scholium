@@ -53,6 +53,7 @@ struct WindowWorkspaceCapabilities: Sendable {
     let documents: any DocumentUseCases
     let discovery: any DiscoveryUseCases
     let research: WindowResearchCapabilities
+    let zoteroBindings: any ZoteroBindingUseCases
 }
 
 /// The delivery-facing research capabilities for one activated Triptych.
@@ -199,6 +200,19 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                         run: run,
                         intent: intent
                     ))
+                case .writeZoteroBinding:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let intent = request.zoteroBindingWriteIntent else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .zoteroBindingWrite(
+                        try await runtime.writeResearchZoteroBinding(
+                            credential: credential,
+                            run: run,
+                            intent: intent
+                        )
+                    )
                 case .resolveWriteConflict:
                     guard let run = request.run,
                           let credential = request.credential,
@@ -1122,7 +1136,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 actions: research,
                 sourceAccess: research,
                 recoveryRecordsURL: research.recoveryRecordsURL
-            )
+            ),
+            zoteroBindings: handle.zoteroBindings
         )
     }
 

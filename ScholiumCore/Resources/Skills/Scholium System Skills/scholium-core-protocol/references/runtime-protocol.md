@@ -25,6 +25,14 @@ Use only capabilities authorized for this Run. A readable object is not thereby 
 Every write remains subject to the exact document identity, allowed operation,
 and expected revision supplied by Scholium.
 
+Portable Analysis-to-Zotero binding is separate from Markdown, Properties, and
+the Zotero library. Use `set_zotero_binding` only for an exact user/group
+library identity and item key already established in the current authorized
+task; never infer either from YAML, title, filename, similarity, or an
+ambiguous search. Use `clear_zotero_binding` only when the task requires removal
+of that relationship. These operations change only Scholium's portable
+relationship and never change Zotero data.
+
 ## Conditional integration adapters
 
 When the authenticated Run packet includes the Zotero Integration Adapter,
@@ -44,7 +52,11 @@ directly.
 
 1. Use `agent query` when the Method needs additional Research Context.
 2. Use `agent extend-write-set` only when the Method requires another target.
-   Write one returned current member with `agent write`.
+   For one returned current member, use `agent write` for `create_note`,
+   `modify_markdown`, or `modify_properties`; use
+   `agent write-zotero-binding` for `set_zotero_binding` or
+   `clear_zotero_binding`. Never put a binding operation in a document-write
+   payload.
 3. On a conflict, use the action returned for `agent resolve-write-conflict`.
    Reread changed source before deciding whether to create a new write input.
 4. Use `agent reload` whenever the current authenticated Run state is

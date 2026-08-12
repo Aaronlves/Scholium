@@ -371,6 +371,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let documents: DocumentOperations
     public nonisolated let discovery: DiscoveryOperations
     public nonisolated let research: ResearchOperations
+    public nonisolated let zoteroBindings: ZoteroBindingOperations
 
     let services: WorkspaceServices
     let researchFunctionCoordinator: ResearchFunctionCoordinator
@@ -459,7 +460,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         researchFunctionCoordinator: ResearchFunctionCoordinator,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
-        research: ResearchOperations
+        research: ResearchOperations,
+        zoteroBindings: ZoteroBindingOperations
     ) {
         id = assignment.id
         runtimeIdentity = TriptychRuntimeIdentity(
@@ -476,6 +478,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.documents = documents
         self.discovery = discovery
         self.research = research
+        self.zoteroBindings = zoteroBindings
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
         refreshCoordinator = WorkspaceRefreshCoordinator(
             startingAfter: initialWorkspaceGeneration
@@ -710,6 +713,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 functionCoordinator: researchFunctionCoordinator,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
+            let zoteroBindingOperations = ZoteroBindingOperations(
+                reference: reference
+            )
             let handle = WorkspaceHandle(
                 assignment: assignment,
                 mode: mode,
@@ -722,7 +728,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 researchFunctionCoordinator: researchFunctionCoordinator,
                 documents: documentOperations,
                 discovery: discoveryOperations,
-                research: researchOperations
+                research: researchOperations,
+                zoteroBindings: zoteroBindingOperations
             )
             await reference.bind(handle)
             if case .live = access {
@@ -2833,7 +2840,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         startLiveIndexRefreshIfNeeded()
     }
 
-    private func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
+    func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
         try requireActive()
         do {
             let lease = try await acquireWorkspaceSourceOperation(.sourceMutation)
@@ -2863,7 +2870,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try await beginSourceMutation()
     }
 
-    private func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
+    func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
         releaseWorkspaceSourceOperation(lease)
         startLiveIndexRefreshIfNeeded()
     }

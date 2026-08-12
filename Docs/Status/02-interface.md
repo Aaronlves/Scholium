@@ -66,6 +66,11 @@
   auto-presents the retained Document session's attached Review task once;
   closing suppresses that set without changing Review truth, and a later Agent
   activity presents again.
+- Every current Analysis Overview exposes **Link Zotero Item…** or **Manage
+  Zotero Link…**; a bound Analysis also exposes **Open in Zotero**. The central
+  binding sheet searches local user and group libraries, keeps exact library
+  identity visible during selection, supports Rebind, and confirms Clear while
+  changing neither Markdown nor Zotero data.
 - Action sheets expose academic inputs, target and mutation consequence,
   handoff, active Run state, continuation, cancellation, and recovery without
   exposing credentials, registration keys, protocol internals, or

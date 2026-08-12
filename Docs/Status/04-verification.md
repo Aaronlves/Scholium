@@ -4,17 +4,17 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-08-11, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
+**Environment:** 2026-08-12, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on the Editor performance-evidence
-integration. It validated the closed documentation manifests and shipped
-resources; TypeScript checking and 190 Web editor tests;
-reproducible editor, mathematics, and Mermaid bundles; 485 Core tests plus 3
-Search performance tests; 130 Contracts tests; 217 Application tests, 10 bridge
-tests, and 1 serialized architecture measurement; 581 App tests; 7 executable
-Research Action CLI lifecycles; the sandboxed local bridge probe;
-symbol/import/residue guards; and Debug and Release builds. The Release build
-completed in 174.97 seconds.
+The latest complete repository gate passed on the Zotero-binding, presentation-
+ownership, and Editor-performance collector integration. It validated the
+closed documentation manifests and shipped Skill resources; TypeScript checking
+and 199 Web editor tests; reproducible editor, mathematics, and Mermaid bundles;
+492 Core tests plus 3 Search performance tests; 138 Contracts tests; 220
+Application tests, 11 bridge tests, and 1 serialized architecture measurement;
+600 App tests; 7 executable Research Action CLI lifecycles; the sandboxed local
+bridge probe; symbol/import/residue guards; and Debug and Release builds. The
+Release build completed in 224.01 seconds.
 
 This proves deterministic repository conformance for that checkout and toolchain.
 It is not a packaged release, complete UI-suite result, human accessibility
@@ -215,16 +215,26 @@ after three warm-ups: 80.350 ms p50, 102.832 ms nearest-rank p95/maximum, and
 and one deletion through the connected key-to-paint collector. The samples were
 18 and 8 ms (8 ms p50, 18 ms nearest-rank p95/maximum, 13 ms mean); each record
 was emitted only after the matching delta generation was accepted and the Web
-surface crossed an animation-frame opportunity plus the following task. This
-two-sample result confirms collector reachability and sequence correctness, not
-packaged Beta acceptance. The last complete retained-memory run kept one exact
+surface crossed an animation-frame opportunity plus the following task.
+
+On 2026-08-12, four additional one-sample scenario-only Debug QA runs proved
+collector and driver reachability for the remaining required Editor metrics:
+cached preview measured 21 ms, warm Edit activation measured 86.082 ms,
+application-cold Edit activation measured 3,953.526 ms, and synchronous visible
+projection measured 1 ms. Correctness passed for all four; cached preview, warm
+Edit, and visible projection met their focused thresholds. Cold Edit retained
+the required pre-launch-to-accessible-editor boundary and therefore missed both
+the 750 ms p95 and 1,000 ms every-sample limits in this Debug/XCTest journey.
+These focused results establish instrumentation reachability, not packaged Beta
+performance acceptance, and the cold boundary must not be shortened to turn
+Debug harness overhead into a passing product claim. The last complete
+retained-memory run kept one exact
 app, GPU, networking, and two
 Web Content processes through 50 mode transitions; 51 RSS samples converged
 with 0.213% final-tail growth. Its report correctly remained `not_applicable`
 for G7 and historically identified five missing required Editor collectors.
-Key-to-paint is now connected; cached preview, warm Edit, cold Edit, and
-visible-range projection remain unimplemented. No real research vault or
-research text entered the evidence.
+All five collectors are now connected. No real research vault or research text
+entered the evidence.
 
 ## Upgrade and distribution evidence
 

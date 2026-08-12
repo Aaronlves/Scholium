@@ -217,7 +217,7 @@ private struct ScholiumSegmentButton<Value: Hashable>: View {
         )
         .scholiumActivationFocus(focusedValue, equals: value)
         .onMoveCommand(perform: move)
-        .onHover { isHovering = $0 }
+        .scholiumHoverState { isHovering = $0 }
         .accessibilityLabel(Text(verbatim: title))
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

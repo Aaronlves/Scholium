@@ -26,6 +26,10 @@ actor ZoteroBridge {
         try await operations.clearConnectionHistory()
     }
 
+    func searchLibrary(query: String) async throws -> [ZoteroSearchHit] {
+        try await operations.searchLibrary(query: query, limit: 25)
+    }
+
     func openZotero() {
         #if canImport(AppKit)
         if let url = URL(string: "zotero://select/library") {

@@ -122,6 +122,38 @@ extension ScholiumCLI {
             try writeAgentJSON(AgentDocumentWriteReport(result))
             return
         }
+        if arguments.first == "write-zotero-binding" {
+            guard let rawRun = option("--run", in: arguments),
+                  let run = ResearchRunLocator(rawValue: rawRun),
+                  let input = option("--from", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium agent write-zotero-binding --run <locator> --from <json|->"
+                )
+            }
+            let draft = try JSONDecoder().decode(
+                AgentZoteroBindingWriteDraft.self,
+                from: agentInput(input)
+            )
+            let intent = try ResearchZoteroBindingWriteIntent(
+                requestID: try stableAgentZoteroBindingWriteRequestID(
+                    run: run,
+                    draft: draft
+                ),
+                role: draft.role,
+                relativePath: draft.relativePath,
+                operation: draft.operation,
+                library: draft.library,
+                itemKey: draft.itemKey
+            )
+            let credential = try credentialStore.load(for: run)
+            let result = try await operations.writeZoteroBinding(
+                run: run,
+                credential: credential,
+                intent: intent
+            )
+            try writeAgentJSON(AgentZoteroBindingWriteReport(result))
+            return
+        }
         if arguments.first == "resolve-write-conflict" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
@@ -281,7 +313,7 @@ extension ScholiumCLI {
             return
         }
         throw CLIError.usage(
-            "Usage: scholium agent pair|context|reload|query|extend-write-set|write|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
+            "Usage: scholium agent pair|context|reload|query|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
         )
     }
 
@@ -331,6 +363,26 @@ extension ScholiumCLI {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let fingerprint = DocumentFingerprint(
             data: try encoder.encode(AgentDocumentWriteDigest(run: run, draft: draft))
+        ).sha256
+        return UUID(uuidString: [
+            String(fingerprint.prefix(8)),
+            String(fingerprint.dropFirst(8).prefix(4)),
+            String(fingerprint.dropFirst(12).prefix(4)),
+            String(fingerprint.dropFirst(16).prefix(4)),
+            String(fingerprint.dropFirst(20).prefix(12)),
+        ].joined(separator: "-"))!
+    }
+
+    private static func stableAgentZoteroBindingWriteRequestID(
+        run: ResearchRunLocator,
+        draft: AgentZoteroBindingWriteDraft
+    ) throws -> UUID {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let fingerprint = DocumentFingerprint(
+            data: try encoder.encode(
+                AgentZoteroBindingWriteDigest(run: run, draft: draft)
+            )
         ).sha256
         return UUID(uuidString: [
             String(fingerprint.prefix(8)),
@@ -437,6 +489,10 @@ private struct AgentDocumentWriteDraft: Codable {
                 String.self,
                 forKey: .content
             ) ?? ""
+        case .setZoteroBinding, .clearZoteroBinding:
+            throw CLIError.usage(
+                "Use agent write-zotero-binding for portable Zotero relationship mutations."
+            )
         }
         properties = try container.decodeIfPresent(
             [CanonicalPropertyInput].self,
@@ -460,6 +516,55 @@ private struct AgentDocumentWriteDraft: Codable {
 private struct AgentDocumentWriteDigest: Encodable {
     let run: ResearchRunLocator
     let draft: AgentDocumentWriteDraft
+}
+
+private struct AgentZoteroBindingWriteDraft: Codable {
+    let role: ResearchActionTargetRole
+    let relativePath: String
+    let operation: ResearchDocumentWriteOperation
+    let library: ZoteroLibraryIdentity?
+    let itemKey: String?
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case role
+        case relativePath = "relative_path"
+        case operation, library
+        case itemKey = "item_key"
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AgentWriteCodingKey.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw CLIError.usage(
+                "The Agent Zotero binding JSON contains an unknown field."
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decode(ResearchActionTargetRole.self, forKey: .role)
+        relativePath = try container.decode(String.self, forKey: .relativePath)
+        operation = try container.decode(
+            ResearchDocumentWriteOperation.self,
+            forKey: .operation
+        )
+        library = try container.decodeIfPresent(
+            ZoteroLibraryIdentity.self,
+            forKey: .library
+        )
+        itemKey = try container.decodeIfPresent(String.self, forKey: .itemKey)
+        _ = try ResearchZoteroBindingWriteIntent(
+            role: role,
+            relativePath: relativePath,
+            operation: operation,
+            library: library,
+            itemKey: itemKey
+        )
+    }
+}
+
+private struct AgentZoteroBindingWriteDigest: Encodable {
+    let run: ResearchRunLocator
+    let draft: AgentZoteroBindingWriteDraft
 }
 
 private struct AgentWriteConflictResolutionDraft: Decodable {
@@ -517,6 +622,26 @@ private struct AgentDocumentWriteReport: Encodable {
     let warning: String?
 
     init(_ result: ResearchDocumentWriteResult) {
+        state = result.state
+        target = result.target
+        message = result.message
+        warning = result.warning
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case state, target, message, warning
+    }
+}
+
+private struct AgentZoteroBindingWriteReport: Encodable {
+    let schemaVersion = 1
+    let state: ResearchZoteroBindingWriteState
+    let target: ResearchBoundedWriteSetViewEntry
+    let message: String
+    let warning: String?
+
+    init(_ result: ResearchZoteroBindingWriteResult) {
         state = result.state
         target = result.target
         message = result.message

@@ -2,7 +2,10 @@ import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
 import {floatingSurfacePosition} from "./floating-surface-geometry";
-import {recordEditorMetric} from "./performance";
+import {
+  recordEditorMetric,
+  scheduleAfterNextPaint,
+} from "./performance";
 import type {LinkPreview} from "./previews";
 import {localized} from "./localization";
 
@@ -50,6 +53,10 @@ export interface PreviewPopoverController {
 export function createPreviewPopoverController(
   options: {
     previews(): readonly LinkPreview[];
+    postPerformanceSample(
+      metric: "editor_cached_preview",
+      durationMilliseconds: number,
+    ): void;
   },
 ): PreviewPopoverController {
   let editor: EditorView | null = null;
@@ -114,9 +121,16 @@ export function createPreviewPopoverController(
         activeRoot.style.left = `${resolved.left}px`;
         activeRoot.style.top = `${resolved.top}px`;
         activeRoot.style.visibility = "visible";
-        window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-          documentLength: activeEditor.state.doc.length,
-        }));
+        scheduleAfterNextPaint(() => {
+          const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+          recordEditorMetric("cached-preview", startedAt, {
+            documentLength: activeEditor.state.doc.length,
+          });
+          options.postPerformanceSample(
+            "editor_cached_preview",
+            durationMilliseconds,
+          );
+        });
       },
     });
   }

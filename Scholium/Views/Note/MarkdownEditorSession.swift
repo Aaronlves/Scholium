@@ -622,6 +622,34 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
+    func showPreview(
+        for preview: DocumentLinkPreview,
+        in source: String
+    ) async {
+        guard canAttemptPreview, isReady, isLoaded, let webView else { return }
+        let offsetMap = source == checkedSource
+            ? sourceOffsetMap
+            : EditorSourceOffsetMap(source: source)
+        guard let from = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound
+              ),
+              let to = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound
+              ), to > from else { return }
+        _ = try? await send(
+            .revealSourceRange(fromUTF16: from, toUTF16: from),
+            in: webView
+        )
+        _ = try? await send(.showPreview, in: webView)
+    }
+
+    func measureVisibleProjection() {
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.measureVisibleProjection, in: webView)
+        }
+    }
+
     func showPreview(at point: CGPoint) {
         guard canAttemptPreview, isReady, isLoaded, let webView,
               point.x.isFinite, point.y.isFinite else { return }

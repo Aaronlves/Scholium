@@ -319,7 +319,8 @@ struct ContentView: View {
                 freshness: researchProjectionFreshness,
                 propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
                 zoteroBinding: currentAnalysisZoteroBinding,
-                noteReviewState: currentNoteReviewState
+                noteReviewState: currentNoteReviewState,
+                stableNoteID: currentAnalysisStableNoteID
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
             openProperties: {
@@ -350,6 +351,14 @@ struct ContentView: View {
             },
             openZoteroItem: { binding in
                 await appState.zoteroBridge.openInZotero(binding: binding)
+            },
+            manageZoteroBinding: { noteID, binding in
+                appState.presentationRouter.present(.zoteroBinding(
+                    ZoteroBindingPanelRoute(
+                        noteID: noteID,
+                        currentBinding: binding
+                    )
+                ))
             }
         )
     }
@@ -384,6 +393,11 @@ struct ContentView: View {
             $0.reference.vaultID == vaultID
                 && $0.reference.relativePath == note.relativePath
         }?.zoteroBinding
+    }
+
+    private var currentAnalysisStableNoteID: UUID? {
+        guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
+        return currentNoteStableID
     }
 
     private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
@@ -924,6 +938,26 @@ struct ContentView: View {
             .onDisappear {
                 appState.identityResolutionError = nil
             }
+        case .zoteroBinding(let route):
+            ZoteroBindingPanelView(
+                route: route,
+                search: { query in
+                    try await appState.zoteroBridge.searchLibrary(query: query)
+                },
+                setBinding: { hit in
+                    try await appState.setZoteroBinding(
+                        noteID: route.noteID,
+                        library: hit.library.identity,
+                        itemKey: hit.item.key
+                    )
+                    appState.presentationRouter.dismissSheet()
+                },
+                clearBinding: {
+                    try await appState.clearZoteroBinding(noteID: route.noteID)
+                    appState.presentationRouter.dismissSheet()
+                },
+                dismiss: { appState.presentationRouter.dismissSheet() }
+            )
         }
     }
 

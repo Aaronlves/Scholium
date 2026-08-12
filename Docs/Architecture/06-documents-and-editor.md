@@ -310,39 +310,26 @@ attached-WKWebView journey drives 50 transitions and checks the dirty buffer,
 accessibility chrome, and diagnostic ring; it cannot establish memory
 convergence or visible p95.
 
-The QA-only Edit/Source collector excludes Command-R and completes when matching
-bridge acknowledgement crosses layout to the accessible surface. It records
-bridge phases, layout, total, sample, and mode; mismatch writes nothing, and a
-focused scenario never weakens the complete gate.
+The connected Editor driver measures actual visible or accessible boundaries.
+Edit/Source excludes Command-R and ends after matching bridge acknowledgement
+and layout. Key-to-paint registers before native delta delivery and publishes
+after frame plus task for the accepted session/generation. Cached preview ends
+after its positioned surface crosses the same paint boundary. Warm and cold
+Edit end at the matching editor; cold timing begins at external launch on the
+5,000-word Note. Visible projection times one synchronous CodeMirror refresh
+dispatch. QA-only notifications drive those paths; `PerformanceProbe` accepts
+only the configured metric, fixture, finite duration, and sample budget.
 
-Key-to-paint uses `keydown`, falling back to non-composing `beforeinput`.
-Registered before native delta delivery, it publishes after frame-plus-task for
-the native-accepted session/generation. Note and bridge identities stay
-separate.
-
-Performance verification keeps target, mechanism, and evidence separate.
-`Tools/Scripts/generate-rdf1.py` owns manifest-listed RDF-1 Note bytes;
-verification regenerates them under `.build/` and rechecks the three vaults
-after runs. Authorized portable control remains outside that Note inventory.
-`Tools/Scripts/run-performance-benchmarks.sh` owns visible-boundary driving,
-the five-warm-up/30-sample protocol, validation, evidence class, and inventory.
-Gate mode accepts only the packaged app, approved thresholds, and build
-provenance matching a clean exact tag and commit. The summarizer fails a gate
-when any required Editor metric or complete series is missing; scenario reports
-expose omissions without claiming a gate result.
-
-Metric runs use isolated app state and metric-specific processes. Warm Search
-and Review reuse their post-setup process; launch and cold Review relaunch per
-sample. The driver expands deterministic Library targets rather than routing a
-Search result through Source mode. Native publication, AppKit layout, WebKit
-navigation, bridge acknowledgement, paint, and exact app/WebKit process
-attribution jointly define readiness. Run records contain only timing,
-correctness counts, fixture identity, artifact identity, and environment
-metadata—never queries, Note paths/titles, or research text. The target
-thresholds and evidence-class rules live in
-[Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
-dated measurements and incomplete series live only in
-[Open Work](../Status/03-open-work.md).
+`generate-rdf1.py` owns manifest-listed RDF-1 Note bytes;
+`run-performance-benchmarks.sh` owns isolated visible-boundary driving,
+five warm-ups, 30 retained samples, inventory recheck, and evidence class.
+Warm metrics reuse prepared processes; launch/cold metrics relaunch. Records
+contain timing, correctness, fixture, artifact, and environment—not queries,
+paths, titles, or research text. Gate mode requires the clean-tag packaged app
+and every approved metric/series; scenario omissions remain explicit. Limits
+and evidence rules belong to [Specification
+§21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
+dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).
 
 `ScholiumContracts` owns durable Markdown meanings and the immutable editing
 dialect. TypeScript may parse an uncommitted buffer for immediate projection

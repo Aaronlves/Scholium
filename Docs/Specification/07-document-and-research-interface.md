@@ -389,11 +389,13 @@ Overview presents only compact current-note projections, in this order:
 2. **Review:** distinct from Attention. It states **No Agent changes to review**,
    **Needs Review · N Agent activities** as one full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** nonempty fields use the shared spacing-only group order; group
-   names remain accessible. Research fields use reading blocks and Tags use
-   neutral capsules. Its **Edit Properties** heading opens the shared sheet;
-   values remain static and selectable. A bound Analysis adds quiet **Open in
-   Zotero** without exposing identity. Research Status, Key Properties,
+3. **About:** nonempty fields use spacing-only groups with accessible names.
+   Research fields use reading blocks and Tags use neutral capsules. Its **Edit
+   Properties** heading opens the shared sheet; values remain static and
+   selectable. Analysis adds **Link Zotero
+   Item…** or **Manage Zotero Link…**; a bound Analysis also adds **Open in
+   Zotero**. The sheet owns selection, Rebind, and confirmed
+   Clear without exposing identity or metadata in Inspector. Research Status, Key Properties,
    Provenance, Derived State, and a Zotero section remain absent.
 
 A pending activity set automatically presents a once-announced, focus-neutral

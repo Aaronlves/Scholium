@@ -23,6 +23,23 @@ paper content or philosophical evidence. Never copy the snapshot into Markdown.
 The remaining sections govern explicit external-agent Zotero operations when
 no prepared snapshot supplies the bounded result.
 
+## Portable Analysis binding
+
+An authenticated Run may separately authorize `set_zotero_binding` or
+`clear_zotero_binding` for one current Analysis member. This authority belongs
+to the Run's Bounded Write Set, not to MCP and not to Markdown or Properties.
+Use the installed `scholium agent write-zotero-binding` help for the current
+strict payload. Set only an exact library identity and item key established by
+the researcher or by a permitted, unambiguous current-task Zotero operation;
+clear only when the current task requires removing the relationship. Reload
+after conflict or uncertain recovery state.
+
+The command changes only Scholium's portable relationship. It does not write
+the Zotero library, fetch source content, create bibliographic evidence, or
+authorize another Note. If identity is ambiguous or the exact member and
+operation are not returned as ready, stop rather than guessing or using a
+document write.
+
 ## Supported MCP transport
 
 Scholium's supported transport is the installed Scholium CLI or its configured

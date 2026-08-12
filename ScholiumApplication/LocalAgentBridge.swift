@@ -8,6 +8,7 @@ public enum LocalAgentBridgeOperation: String, Codable, Sendable {
     case query
     case extendWriteSet = "extend_write_set"
     case writeDocument = "write_document"
+    case writeZoteroBinding = "write_zotero_binding"
     case resolveWriteConflict = "resolve_write_conflict"
     case submitResult = "submit_result"
     case continueResearch = "continue_research"
@@ -63,7 +64,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 10
+    public static let currentSchemaVersion = 11
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -74,6 +75,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
     public let contextRequest: ResearchContextRequest?
     public let writeSetIntent: ResearchWriteSetExtensionIntent?
     public let documentWriteIntent: ResearchDocumentWriteIntent?
+    public let zoteroBindingWriteIntent: ResearchZoteroBindingWriteIntent?
     public let conflictResolutionIntent: ResearchWriteConflictResolutionIntent?
     public let resultSubmission: ResearchAgentResultSubmission?
     public let continuationRequest: ResearchContinuationRequest?
@@ -88,6 +90,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         contextRequest: ResearchContextRequest? = nil,
         writeSetIntent: ResearchWriteSetExtensionIntent? = nil,
         documentWriteIntent: ResearchDocumentWriteIntent? = nil,
+        zoteroBindingWriteIntent: ResearchZoteroBindingWriteIntent? = nil,
         conflictResolutionIntent: ResearchWriteConflictResolutionIntent? = nil,
         resultSubmission: ResearchAgentResultSubmission? = nil,
         continuationRequest: ResearchContinuationRequest? = nil,
@@ -98,6 +101,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode != nil && credential == nil
                 && contextRequest == nil
                 && writeSetIntent == nil && documentWriteIntent == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -105,6 +109,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil
                 && writeSetIntent == nil && documentWriteIntent == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -112,6 +117,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest != nil
                 && writeSetIntent == nil && documentWriteIntent == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -119,6 +125,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent != nil
                 && documentWriteIntent == nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -126,13 +133,23 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent != nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
+                && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .writeZoteroBinding:
+            run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil
+                && zoteroBindingWriteIntent != nil
+                && resultSubmission == nil && conflictResolutionIntent == nil
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .resolveWriteConflict:
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent != nil
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -140,6 +157,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission != nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -147,6 +165,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest != nil
                 && methodImprovementSubmission == nil
@@ -154,6 +173,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -161,6 +181,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
                 && methodImprovementSubmission != nil
@@ -168,6 +189,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
+                && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
@@ -184,6 +206,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         self.contextRequest = contextRequest
         self.writeSetIntent = writeSetIntent
         self.documentWriteIntent = documentWriteIntent
+        self.zoteroBindingWriteIntent = zoteroBindingWriteIntent
         self.conflictResolutionIntent = conflictResolutionIntent
         self.resultSubmission = resultSubmission
         self.continuationRequest = continuationRequest
@@ -200,6 +223,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         case contextRequest = "context_request"
         case writeSetIntent = "write_set_intent"
         case documentWriteIntent = "document_write_intent"
+        case zoteroBindingWriteIntent = "zotero_binding_write_intent"
         case conflictResolutionIntent = "conflict_resolution_intent"
         case resultSubmission = "result_submission"
         case continuationRequest = "continuation_request"
@@ -220,6 +244,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         try container.encodeIfPresent(contextRequest, forKey: .contextRequest)
         try container.encodeIfPresent(writeSetIntent, forKey: .writeSetIntent)
         try container.encodeIfPresent(documentWriteIntent, forKey: .documentWriteIntent)
+        try container.encodeIfPresent(
+            zoteroBindingWriteIntent,
+            forKey: .zoteroBindingWriteIntent
+        )
         try container.encodeIfPresent(
             conflictResolutionIntent,
             forKey: .conflictResolutionIntent
@@ -279,6 +307,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             documentWriteIntent: container.decodeIfPresent(
                 ResearchDocumentWriteIntent.self,
                 forKey: .documentWriteIntent
+            ),
+            zoteroBindingWriteIntent: container.decodeIfPresent(
+                ResearchZoteroBindingWriteIntent.self,
+                forKey: .zoteroBindingWriteIntent
             ),
             conflictResolutionIntent: container.decodeIfPresent(
                 ResearchWriteConflictResolutionIntent.self,
@@ -348,7 +380,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 11
+    public static let currentSchemaVersion = 12
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -357,6 +389,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     public let researchContext: ResearchContextResponse?
     public let writeSetResult: ResearchWriteSetExtensionResult?
     public let documentWriteResult: ResearchDocumentWriteResult?
+    public let zoteroBindingWriteResult: ResearchZoteroBindingWriteResult?
     public let conflictResolutionResult: ResearchWriteConflictResolutionResult?
     public let resultReceipt: ResearchAgentResultReceipt?
     public let continuationResult: ResearchContinuationResult?
@@ -372,6 +405,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         researchContext: ResearchContextResponse? = nil,
         writeSetResult: ResearchWriteSetExtensionResult? = nil,
         documentWriteResult: ResearchDocumentWriteResult? = nil,
+        zoteroBindingWriteResult: ResearchZoteroBindingWriteResult? = nil,
         conflictResolutionResult: ResearchWriteConflictResolutionResult? = nil,
         resultReceipt: ResearchAgentResultReceipt? = nil,
         continuationResult: ResearchContinuationResult? = nil,
@@ -386,6 +420,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             researchContext != nil,
             writeSetResult != nil,
             documentWriteResult != nil,
+            zoteroBindingWriteResult != nil,
             conflictResolutionResult != nil,
             resultReceipt != nil,
             continuationResult != nil,
@@ -405,6 +440,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         self.researchContext = researchContext
         self.writeSetResult = writeSetResult
         self.documentWriteResult = documentWriteResult
+        self.zoteroBindingWriteResult = zoteroBindingWriteResult
         self.conflictResolutionResult = conflictResolutionResult
         self.resultReceipt = resultReceipt
         self.continuationResult = continuationResult
@@ -426,6 +462,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         case researchContext = "research_context"
         case writeSetResult = "write_set_result"
         case documentWriteResult = "document_write_result"
+        case zoteroBindingWriteResult = "zotero_binding_write_result"
         case conflictResolutionResult = "conflict_resolution_result"
         case resultReceipt = "result_receipt"
         case continuationResult = "continuation_result"
@@ -447,6 +484,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         try container.encodeIfPresent(researchContext, forKey: .researchContext)
         try container.encodeIfPresent(writeSetResult, forKey: .writeSetResult)
         try container.encodeIfPresent(documentWriteResult, forKey: .documentWriteResult)
+        try container.encodeIfPresent(
+            zoteroBindingWriteResult,
+            forKey: .zoteroBindingWriteResult
+        )
         try container.encodeIfPresent(
             conflictResolutionResult,
             forKey: .conflictResolutionResult
@@ -496,6 +537,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             documentWriteResult: container.decodeIfPresent(
                 ResearchDocumentWriteResult.self,
                 forKey: .documentWriteResult
+            ),
+            zoteroBindingWriteResult: container.decodeIfPresent(
+                ResearchZoteroBindingWriteResult.self,
+                forKey: .zoteroBindingWriteResult
             ),
             conflictResolutionResult: container.decodeIfPresent(
                 ResearchWriteConflictResolutionResult.self,
@@ -663,6 +708,7 @@ public enum LocalAgentBridgeHandlerResult: Sendable {
     case researchContext(ResearchContextResponse)
     case writeSet(ResearchWriteSetExtensionResult)
     case documentWrite(ResearchDocumentWriteResult)
+    case zoteroBindingWrite(ResearchZoteroBindingWriteResult)
     case conflictResolution(ResearchWriteConflictResolutionResult)
     case resultReceipt(ResearchAgentResultReceipt)
     case continuation(ResearchContinuationResult)
@@ -920,6 +966,11 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,
                     documentWriteResult: result
+                )
+            case .zoteroBindingWrite(let result):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    zoteroBindingWriteResult: result
                 )
             case .conflictResolution(let result):
                 try LocalAgentBridgeResponse(

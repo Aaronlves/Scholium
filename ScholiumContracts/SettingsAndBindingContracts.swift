@@ -181,3 +181,16 @@ public struct AnalysisZoteroBindingsSnapshot: Codable, Hashable, Sendable {
         bindings.first { $0.noteID == noteID }
     }
 }
+
+public struct AnalysisZoteroBindingMutationResult: Codable, Hashable, Sendable {
+    public let snapshot: AnalysisZoteroBindingsSnapshot
+    public let derivedRefreshWarning: String?
+
+    public init(
+        snapshot: AnalysisZoteroBindingsSnapshot,
+        derivedRefreshWarning: String? = nil
+    ) {
+        self.snapshot = snapshot
+        self.derivedRefreshWarning = derivedRefreshWarning
+    }
+}

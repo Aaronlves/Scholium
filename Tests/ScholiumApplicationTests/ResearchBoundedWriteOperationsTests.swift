@@ -50,6 +50,135 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(oversized.contains("i"))
     }
 
+    @Test("Zotero binding authority is independent, revision checked, and idempotent")
+    func zoteroBindingWritesUseIndependentAuthority() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let savedPolicy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: savedPolicy.revision
+        )
+        let sourceBefore = try await handle.documents.load(fixture.analysisID)
+
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: "Analysis.md",
+                    operations: [.setZoteroBinding, .clearZoteroBinding]
+                )],
+                academicReason: "Bind the exact Zotero source used by this Analysis."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
+        let target = try #require(extensionResult.entries.first)
+        #expect(target.operations.contains(.modifyMarkdown))
+        #expect(target.operations.contains(.setZoteroBinding))
+        #expect(target.operations.contains(.clearZoteroBinding))
+
+        let setIntent = try ResearchZoteroBindingWriteIntent(
+            requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000701")!,
+            role: .analysis,
+            relativePath: "Analysis.md",
+            operation: .setZoteroBinding,
+            library: .group(42),
+            itemKey: "item_42"
+        )
+        let set = try await handle.research.writeAgentZoteroBinding(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: setIntent
+        )
+        #expect(set.state == .committed)
+        #expect(try await handle.research.writeAgentZoteroBinding(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: setIntent
+        ) == set)
+
+        let execution = try await handle.services.localResearchExecutionStore.record(
+            id: connection.preparation.runID
+        )
+        let entry = try #require(execution.boundedWriteSet.entries.first)
+        let bound = try #require(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: entry.noteID)
+        )
+        #expect(bound.library == .group(42))
+        #expect(bound.itemKey == "ITEM_42")
+        #expect(
+            try await handle.documents.load(fixture.analysisID).sourceBytes
+                == sourceBefore.sourceBytes
+        )
+        #expect(execution.zoteroBindingWriteRecords.count == 1)
+        #expect(execution.documentWriteRecords.isEmpty)
+
+        let externalSnapshot = try await handle.services.controlStore.zoteroBindings()
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            AnalysisZoteroBinding(
+                noteID: entry.noteID,
+                library: .user,
+                itemKey: "EXTERNAL1"
+            ),
+            expectedRevision: externalSnapshot.revision
+        )
+        let conflicted = try await handle.research.writeAgentZoteroBinding(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchZoteroBindingWriteIntent(
+                requestID: UUID(),
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .clearZoteroBinding
+            )
+        )
+        #expect(conflicted.state == .conflict)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: entry.noteID)?.itemKey == "EXTERNAL1")
+
+        let cleared = try await handle.research.writeAgentZoteroBinding(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchZoteroBindingWriteIntent(
+                requestID: UUID(),
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .clearZoteroBinding
+            )
+        )
+        #expect(cleared.state == .committed)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: entry.noteID) == nil)
+        #expect(
+            try await handle.documents.load(fixture.analysisID).sourceBytes
+                == sourceBefore.sourceBytes
+        )
+        do {
+            _ = try await runtime.endResearchAgentRun(
+                credential: connection.credential,
+                run: connection.handoff.run
+            )
+            Issue.record("A committed portable binding write must require Result finalization.")
+        } catch let error as ResearchFunctionContractError {
+            guard case .committedWritesRequireCompletion(let runID) = error else {
+                Issue.record("Unexpected end error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            #expect(runID == connection.preparation.runID)
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Authenticated Analysis creation freezes a safe field plan and records one created mutation")
     func authenticatedAnalysisCreationIsIdempotentAndPortable() async throws {
         let fixture = try await ResearchFixture.make()

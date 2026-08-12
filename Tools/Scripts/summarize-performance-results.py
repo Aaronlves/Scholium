@@ -20,6 +20,10 @@ LATENCY_METRICS = (
     "cold_read_activation",
     "editor_key_to_paint",
     "editor_mode_transition",
+    "editor_cached_preview",
+    "warm_edit_activation",
+    "cold_edit_activation",
+    "editor_visible_projection",
 )
 ALL_METRICS = LATENCY_METRICS + ("editor_retained_memory",)
 THRESHOLDS_MS = {
@@ -29,10 +33,18 @@ THRESHOLDS_MS = {
     "cold_read_activation": 1_000.0,
     "editor_key_to_paint": 100.0,
     "editor_mode_transition": 100.0,
+    "editor_cached_preview": 100.0,
+    "warm_edit_activation": 200.0,
+    "cold_edit_activation": 750.0,
+    "editor_visible_projection": 3.0,
 }
 MAXIMUM_LIMITS_MS = {
     "editor_key_to_paint": 200.0,
     "editor_mode_transition": 200.0,
+    "editor_cached_preview": 200.0,
+    "warm_edit_activation": 300.0,
+    "cold_edit_activation": 1_000.0,
+    "editor_visible_projection": 5.0,
 }
 REQUIRED_EDITOR_METRICS = (
     "editor_key_to_paint",

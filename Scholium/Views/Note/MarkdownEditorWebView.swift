@@ -67,9 +67,19 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
-        if PerformanceProbe.shared.measuresEditorKeyToPaint {
+        if PerformanceProbe.shared.measuresEditorKeyToPaint
+            || PerformanceProbe.shared.measuresEditorCachedPreview
+            || PerformanceProbe.shared.measuresEditorVisibleProjection {
+            let metric: String
+            if PerformanceProbe.shared.measuresEditorCachedPreview {
+                metric = "editor_cached_preview"
+            } else if PerformanceProbe.shared.measuresEditorVisibleProjection {
+                metric = "editor_visible_projection"
+            } else {
+                metric = "editor_key_to_paint"
+            }
             contentController.addUserScript(WKUserScript(
-                source: "window.scholiumPerformanceMetric = 'editor_key_to_paint';",
+                source: "window.scholiumPerformanceMetric = '\(metric)';",
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             ))
@@ -379,14 +389,31 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 applyEditorChanges(from: payload)
             case "performanceSample":
                 guard validEnvelope(payload),
-                      payload.metric == "editor_key_to_paint",
+                      let metric = payload.metric,
                       let duration = payload.durationMilliseconds,
                       duration.isFinite,
                       duration > 0 else { return }
-                PerformanceProbe.shared.recordEditorKeyToPaint(
-                    documentID: performanceDocumentID,
-                    durationMilliseconds: duration
-                )
+                switch metric {
+                case "editor_key_to_paint":
+                    PerformanceProbe.shared.recordEditorKeyToPaint(
+                        documentID: performanceDocumentID,
+                        durationMilliseconds: duration
+                    )
+                case "editor_cached_preview":
+                    PerformanceProbe.shared.recordEditorWebDuration(
+                        documentID: performanceDocumentID,
+                        metric: .editorCachedPreview,
+                        durationMilliseconds: duration
+                    )
+                case "editor_visible_projection":
+                    PerformanceProbe.shared.recordEditorWebDuration(
+                        documentID: performanceDocumentID,
+                        metric: .editorVisibleProjection,
+                        durationMilliseconds: duration
+                    )
+                default:
+                    return
+                }
             case "requestSave":
                 guard validEnvelope(payload) else { return }
                 onRequestSave()

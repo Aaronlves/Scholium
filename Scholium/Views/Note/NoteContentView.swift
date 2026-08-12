@@ -1586,7 +1586,7 @@ struct NoteContentView: View {
         }
         .scholiumSurface(.document)
         .overlay(alignment: .topLeading) {
-            if PerformanceProbe.shared.measuresEditorModeTransition,
+            if PerformanceProbe.shared.measuresEditorVisibility,
                isEditing,
                editorSession.isLoaded,
                let presentedMode = editorSession.presentedMode,
@@ -1597,6 +1597,9 @@ struct NoteContentView: View {
                     PerformanceProbe.shared.markEditorModeVisible(
                         documentID: note.relativePath,
                         mode: presentedMode
+                    )
+                    PerformanceProbe.shared.markEditorVisible(
+                        documentID: note.relativePath
                     )
                 }
                 .frame(width: 0, height: 0)

@@ -7,6 +7,94 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    @Test("Editor Web metrics remain fixture-bound and privacy-safe")
+    func editorWebMetricsRequireExpectedDocument() throws {
+        let fileManager = FileManager.default
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let result = directory.appendingPathComponent("editor_cached_preview.jsonl")
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "editor_cached_preview",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "cached_preview_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
+            ],
+            bundleID: "com.scholium.qa",
+            now: { 50_000_000 }
+        )
+
+        probe.recordEditorWebDuration(
+            documentID: "Private.md",
+            metric: .editorCachedPreview,
+            durationMilliseconds: 8
+        )
+        #expect(!fileManager.fileExists(atPath: result.path))
+        probe.recordEditorWebDuration(
+            documentID: "Fixture.md",
+            metric: .editorCachedPreview,
+            durationMilliseconds: 8
+        )
+
+        let object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: result)
+            ) as? [String: Any]
+        )
+        #expect(object["metric"] as? String == "editor_cached_preview")
+        #expect(object["duration_ms"] as? Double == 8)
+        #expect(Set(object.keys) == [
+            "schema", "run_id", "sample", "metric", "duration_ms",
+            "completed_uptime_ns",
+        ])
+    }
+
+    @Test("Warm Edit activation ends only at the matching visible editor")
+    func warmEditActivationRequiresMatchingVisibleDocument() throws {
+        let fileManager = FileManager.default
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let result = directory.appendingPathComponent("warm_edit_activation.jsonl")
+        var times: [UInt64] = [10_000_000, 35_000_000]
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "warm_edit_activation",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "warm_edit_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "2",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
+            ],
+            bundleID: "com.scholium.qa",
+            now: { times.removeFirst() }
+        )
+
+        probe.beginWarmEditActivation(documentID: "Fixture.md")
+        probe.markEditorVisible(documentID: "Other.md")
+        #expect(!fileManager.fileExists(atPath: result.path))
+        probe.markEditorVisible(documentID: "Fixture.md")
+
+        let line = try #require(
+            String(contentsOf: result, encoding: .utf8)
+                .split(separator: "\n").first
+        )
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+        )
+        #expect(object["sample"] as? Int == 2)
+        #expect(object["duration_ms"] as? Double == 25)
+    }
+
     @Test("Painted key latency accepts only a finite sample for the requested fixture")
     func editorKeyToPaintRequiresExpectedDocument() throws {
         let fileManager = FileManager.default

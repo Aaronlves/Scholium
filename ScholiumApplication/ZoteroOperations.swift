@@ -47,6 +47,40 @@ public actor ZoteroOperations: ZoteroUseCases {
         let data: Payload
     }
 
+    private struct GroupEnvelope: Decodable {
+        struct Payload: Decodable {
+            let id: Int?
+            let name: String?
+        }
+
+        let id: Int
+        let name: String
+
+        private enum CodingKeys: String, CodingKey {
+            case id, name, data
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let payload = try container.decodeIfPresent(Payload.self, forKey: .data)
+            guard let id = try container.decodeIfPresent(Int.self, forKey: .id)
+                    ?? payload?.id,
+                  let name = try container.decodeIfPresent(String.self, forKey: .name)
+                    ?? payload?.name,
+                  id > 0,
+                  !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "A Zotero group must include a positive ID and name."
+                    )
+                )
+            }
+            self.id = id
+            self.name = name
+        }
+    }
+
     init(
         descriptor: ZoteroMCPTransportDescriptor = .supportedLocal,
         server: ZoteroMCPServer = ZoteroMCPServer(),
@@ -135,6 +169,68 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     public func clearConnectionHistory() async throws {
         lastSuccessfulConnection = nil
+    }
+
+    public func libraries() async throws -> [ZoteroLibraryMetadata] {
+        let data = try await request(path: "groups", query: [])
+        let groups: [GroupEnvelope]
+        do {
+            groups = try JSONDecoder().decode([GroupEnvelope].self, from: data)
+        } catch {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+        guard groups.count <= 50,
+              Set(groups.map(\.id)).count == groups.count else {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+        return [ZoteroLibraryMetadata(identity: .user, name: "My Library")]
+            + groups.sorted { $0.id < $1.id }.map {
+                ZoteroLibraryMetadata(identity: .group($0.id), name: $0.name)
+            }
+    }
+
+    public func searchLibrary(
+        query rawQuery: String,
+        limit: Int = 25
+    ) async throws -> [ZoteroSearchHit] {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, query.utf8.count <= 512,
+              (1...25).contains(limit) else {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+        var hits: [ZoteroSearchHit] = []
+        for library in try await libraries() {
+            let data = try await request(
+                library: library.identity,
+                path: "items",
+                query: [
+                    URLQueryItem(name: "format", value: "json"),
+                    URLQueryItem(name: "itemType", value: "-attachment"),
+                    URLQueryItem(name: "q", value: query),
+                    URLQueryItem(name: "qmode", value: "everything"),
+                    URLQueryItem(name: "limit", value: String(limit)),
+                ]
+            )
+            let items: [ZoteroItemMetadata]
+            do {
+                items = try decodedParentItems(data)
+            } catch {
+                throw ZoteroUseCaseError.invalidResponse
+            }
+            hits.append(contentsOf: items.map {
+                ZoteroSearchHit(library: library, item: $0)
+            })
+        }
+        hits.sort { lhs, rhs in
+            let titleOrder = lhs.item.title.localizedStandardCompare(rhs.item.title)
+            if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+            if lhs.library.name != rhs.library.name {
+                return lhs.library.name.localizedStandardCompare(rhs.library.name)
+                    == .orderedAscending
+            }
+            return lhs.item.key < rhs.item.key
+        }
+        return Array(hits.prefix(limit))
     }
 
     public func resolve(source: ZoteroSourceIdentity) async throws -> ZoteroMatchResult {

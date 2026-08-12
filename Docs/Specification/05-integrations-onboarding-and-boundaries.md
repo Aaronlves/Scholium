@@ -33,9 +33,14 @@ relationship; permanent deletion removes it. The Zotero integration surface
 provides visible open, clear, and rebind paths. Single-Note Markdown restore
 leaves it unchanged; complete Triptych restore follows §14.
 
-When the current Analysis has a valid binding, Overview exposes one quiet
-**Open in Zotero** action for that exact library item. It displays neither the
-key nor fetched metadata and is absent without a current binding.
+Overview gives every current Analysis one quiet **Link Zotero Item…** or
+**Manage Zotero Link…** action. Its central sheet searches the local user and
+group libraries, displays enough bibliographic and library context for an
+exact researcher selection, and persists only stable library identity plus the
+normalized item key. A bound Analysis also exposes quiet **Open in Zotero**;
+Manage supports explicit Rebind and confirmed Clear. The Inspector displays
+neither the key nor fetched metadata, and no binding action changes Markdown or
+Zotero data.
 
 When Analyze or another eligible Analysis Action begins preparation with a
 binding, Application performs one exact local item read and automatically
