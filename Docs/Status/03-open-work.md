@@ -78,11 +78,6 @@
 
 ## Search and performance
 
-- Correct the warm Read performance driver so each alternating Sidebar target
-  is scrolled into its native Note-list viewport outside the measured click,
-  then prepare a new exact-tagged package and driver and rerun the complete G7.
-  The interrupted `v0.1.0-beta.3` run is retained only as partial packaged
-  evidence and cannot be resumed or accepted.
 - Review the [Search Case Pack](04-verification.md#search-case-pack) with the
   researcher before deciding whether dynamic Property-key or Note-identity
   completion is needed. Keep Explain Query compact only if its complete fields

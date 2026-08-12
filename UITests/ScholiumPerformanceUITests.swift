@@ -8,6 +8,11 @@ import notify
 /// gate. `run-performance-benchmarks.sh` owns those fail-closed checks and
 /// invokes this single method against an explicitly registered app bundle.
 final class ScholiumPerformanceUITests: XCTestCase {
+    private enum WarmReadScrollDirection {
+        case towardEarlierRows
+        case towardLaterRows
+    }
+
     private enum Metric: String {
         case warmLibraryLaunch = "warm_library_launch"
         case indexedSearch = "indexed_search"
@@ -397,7 +402,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "scholium.noteRow.Cluster-00/analysis-note-001.md"
             ]
             XCTAssertTrue(target.waitForExistence(timeout: 15))
-            XCTAssertTrue(target.isHittable, "Sample \(sample): the warm Read Library target is not hittable.")
+            scrollWarmReadTargetIntoView(
+                target,
+                in: application,
+                sample: sample,
+                role: "measured",
+                direction: .towardEarlierRows
+            )
             target.click()
             XCTAssertTrue(
                 waitForRenderedDocument(
@@ -416,9 +427,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
                     "scholium.noteRow.Cluster-01/analysis-note-002.md"
                 ]
                 XCTAssertTrue(alternate.waitForExistence(timeout: 15))
-                XCTAssertTrue(
-                    alternate.isHittable,
-                    "Sample \(sample): the alternate warm Read Library target is not hittable."
+                scrollWarmReadTargetIntoView(
+                    alternate,
+                    in: application,
+                    sample: sample,
+                    role: "alternate",
+                    direction: .towardLaterRows
                 )
                 alternate.click()
                 XCTAssertTrue(
@@ -538,6 +552,49 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.descendants(matching: .any)[
                 "scholium.noteRow.Cluster-01/analysis-note-002.md"
             ].waitForExistence(timeout: 10)
+        )
+    }
+
+    /// Reconciles the native Sidebar viewport before the measured Note click.
+    /// `PerformanceProbe.beginReadActivation` starts inside the click action,
+    /// so these setup swipes never enter the warm Read duration. Offscreen
+    /// NSOutlineView rows expose document rather than viewport coordinates;
+    /// the caller therefore supplies the frozen RDF-1 row-order direction.
+    @MainActor
+    private func scrollWarmReadTargetIntoView(
+        _ target: XCUIElement,
+        in application: XCUIApplication,
+        sample: Int,
+        role: String,
+        direction: WarmReadScrollDirection
+    ) {
+        let noteList = application.descendants(matching: .any)[
+            "scholium.noteList"
+        ].firstMatch
+        XCTAssertTrue(
+            noteList.waitForExistence(timeout: 10),
+            "Sample \(sample): the native Note list did not remain accessible."
+        )
+
+        func isVisiblyHittable() -> Bool {
+            guard target.isHittable else { return false }
+            let intersection = target.frame.intersection(noteList.frame)
+            return !intersection.isNull
+                && intersection.width >= 8
+                && intersection.height >= 8
+        }
+
+        for _ in 0..<12 where !isVisiblyHittable() {
+            switch direction {
+            case .towardEarlierRows:
+                noteList.swipeDown(velocity: .slow)
+            case .towardLaterRows:
+                noteList.swipeUp(velocity: .slow)
+            }
+        }
+        XCTAssertTrue(
+            isVisiblyHittable(),
+            "Sample \(sample): the \(role) warm Read target did not become visibly hittable."
         )
     }
 

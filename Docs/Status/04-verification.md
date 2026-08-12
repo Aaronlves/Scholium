@@ -232,6 +232,15 @@ decision in source provenance and omitted the remaining required metrics. It
 is partial packaged evidence, not a G7 pass, and cannot be resumed or
 retrospectively accepted.
 
+The corrected warm Read driver was then compiled separately and exercised
+against the unchanged packaged `v0.1.0-beta.3` App in one focused zero-warm-up,
+two-sample RDF-1 scenario. It scrolled the alternate target toward later native
+Sidebar rows, returned the next measured target toward earlier rows, rendered
+both expected documents, and published exactly two records of 487.786ms and
+335.101ms. Correctness passed. The report remains `scenario_only` with G7
+`not_applicable`; two unconditioned samples neither establish the `< 300ms`
+threshold nor repair or resume the interrupted packaged run.
+
 The latest isolated Search v7 regression report recorded a cold rebuild of
 778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
 21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
