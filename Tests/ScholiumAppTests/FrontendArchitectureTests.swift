@@ -638,7 +638,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(!splitSource.contains("libraryItem.canCollapseFromWindowResize = false"))
         #expect(
-            splitSource.contains(
+            !splitSource.contains(
                 "inspectorWithViewController: apparatusBackgroundController"
             ))
         #expect(!workspaceSplitSource.contains("preferredThicknessFraction"))
@@ -653,12 +653,17 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("libraryItem.maximumThickness"))
         #expect(!splitSource.contains("libraryItem.automaticMaximumThickness"))
         #expect(!splitSource.contains("documentItem.minimumThickness"))
-        #expect(!splitSource.contains("apparatusItem.minimumThickness"))
+        #expect(
+            splitSource.contains(
+                "ScholiumMetrics.Apparatus.minimumReadableWidth"
+            ))
         #expect(
             splitSource.contains(
                 "apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension"
             ))
-        #expect(splitSource.contains("toggleInspector(nil)"))
+        #expect(splitSource.contains("apparatusItem.canCollapse = false"))
+        #expect(splitSource.contains("apparatusItem.isCollapsed = !visible"))
+        #expect(!workspaceSplitSource.contains("toggleInspector(nil)"))
         #expect(!splitSource.contains("effectiveRect proposedEffectiveRect"))
         #expect(!splitSource.contains("dividerHitExpansion"))
         #expect(!splitSource.contains("ScholiumInteractiveSplitView"))
@@ -671,9 +676,15 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("sizingOptions = [.minSize]"))
         #expect(!splitSource.contains("scholium.library.preferred-width"))
         #expect(splitSource.contains("ScholiumFirstApparatusWidthOffer"))
-        #expect(splitSource.contains("prepareForReveal(animated:"))
-        #expect(splitSource.contains("revealAnimationDidFinish()"))
-        #expect(splitSource.contains("firstApparatusWidthOffer.offerIfReady()"))
+        #expect(splitSource.contains("firstApparatusWidthOffer.offerAfterReveal()"))
+        #expect(
+            splitSource.components(
+                separatedBy: "firstApparatusWidthOffer.offerAfterReveal()"
+            ).count == 3
+        )
+        #expect(!splitSource.contains("prepareForReveal(animated:"))
+        #expect(!splitSource.contains("revealAnimationDidFinish()"))
+        #expect(!splitSource.contains("firstApparatusWidthOffer.offerIfReady()"))
         #expect(splitSource.contains("ScholiumMetrics.Apparatus.firstRevealWidth"))
         #expect(!splitSource.contains("splitView.adjustSubviews"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
@@ -1073,8 +1084,8 @@ struct FrontendArchitectureTests {
         #expect(depthCounts == [1, 0, 0])
     }
 
-    @Test("Research Inspector keeps AppKit behavior after removing its fixed maximum")
-    func researchInspectorKeepsAppKitBehavior() throws {
+    @Test("Research Inspector separates divider resizing from explicit visibility")
+    func researchInspectorSeparatesResizeAndVisibility() throws {
         let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: false,
@@ -1094,9 +1105,14 @@ struct FrontendArchitectureTests {
         _ = controller.view
         let item = try #require(controller.splitViewItems.last)
 
-        #expect(item.behavior == .inspector)
-        #expect(item.canCollapse)
+        #expect(item.behavior == .default)
+        #expect(!item.canCollapse)
+        #expect(!item.canCollapseFromWindowResize)
         #expect(item.isCollapsed)
+        #expect(
+            item.minimumThickness
+                == ScholiumMetrics.Apparatus.minimumReadableWidth
+        )
         #expect(item.maximumThickness == NSSplitViewItem.unspecifiedDimension)
         #expect(
             item.collapseBehavior
@@ -3184,7 +3200,7 @@ struct FrontendArchitectureTests {
                 "sidebarWithViewController: libraryBackgroundController"
             ))
         #expect(
-            splitSource.contains(
+            !splitSource.contains(
                 "inspectorWithViewController: apparatusBackgroundController"
             ))
         #expect(splitSource.contains("splitControllerDidAttach(self)"))

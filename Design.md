@@ -302,7 +302,7 @@ metrics, and absent content contributes no spacing.
 | Shared grid | **2pt** optical alignment; **4pt** label/accessory; **8pt** inline control; **12pt** nested content; **16pt** section; **20pt** region content; **28pt** peripheral page edge. |
 | Shared anchors | Preferred/minimum custom target **28/20pt**; Document tab strip **40pt**; Action target **44pt**; region header **48pt**. There is no general 24pt row role. |
 | Library | **300pt** minimum readable thickness; **12pt** row inset; **28pt** minimum row; **16pt** hierarchy step; **12–14pt** leading slot; **8pt** title gap; **12pt** header-to-workspace gap. Set Aside and Trash reuse these metrics. |
-| Apparatus | **4pt** local-state gap; **78pt** fact-label minimum; **14pt** fact gap; **204pt** horizontal-grid threshold; **44pt** Action row. |
+| Apparatus | **270pt** system Inspector minimum with no application-defined maximum; **4pt** local-state gap; **78pt** fact-label minimum; **14pt** fact gap; **204pt** horizontal-grid threshold; **44pt** Action row. |
 | Connect | **16pt** between major groups; **8pt** heading-to-first-cluster; **12pt** between clusters; **28pt** Note rows; **4pt** relationship-heading gap; **240pt** direction-control cap. |
 | Records collection | **240pt** View index; **28pt** page edge and column header; **24pt** section header; **8pt** row corners; **48pt** ledger rows. |
 | Records columns | **28pt** Attention gutter; **96pt** Action; **104pt** Date; **32pt** Handled track with **8pt** Title gap; **116/48/184pt** author/year/publication. |

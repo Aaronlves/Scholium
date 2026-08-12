@@ -1658,6 +1658,10 @@ enum ScholiumMetrics {
     }
 
     enum Apparatus {
+        /// AppKit's standard Inspector thickness is 270 points. Scholium keeps
+        /// that readable lower bound while allowing the native split item to
+        /// grow without an application-defined maximum.
+        static let minimumReadableWidth: CGFloat = 270
         /// One initial suggestion, mirroring the system inspector's ideal-width
         /// semantics. AppKit continues to own subsequent resizing.
         static let firstRevealWidth: CGFloat = 320

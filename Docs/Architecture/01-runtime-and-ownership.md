@@ -621,24 +621,28 @@ AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
 binding, window search, persisted divider geometry, or continuous correction
 intervenes. Library receives the specified 300pt native content minimum,
-without a preferred/maximum width or second geometry owner. Apparatus clears
-the system Inspector item's fixed maximum, installs its initial collapsed state
-before adding the item to the native split, and uses a controller-lifetime
-adapter that offers the provisional 320pt ideal exactly once after the first explicit
-reveal, only when Document can retain at least that width. The offer is neither
-persisted nor replayed; all later resizing, hiding, showing, and restoration
-remain AppKit-owned. No item receives a Scholium fraction, holding priority, or
-restoration state. A scene/window minimum remains contingent on the complete
-adaptation matrix.
+without a preferred/maximum width or second geometry owner. Apparatus uses a
+standard resizable `NSSplitViewItem` with the 270pt system Inspector minimum,
+no application-defined maximum, and its initial collapsed state installed
+before the item enters the native split. A controller-lifetime adapter offers
+the provisional 320pt ideal exactly once when the first explicit reveal
+finishes and Document can retain at least that width. The adapter is never
+called by the split resize callback, so the offer cannot override a user drag.
+The offer is neither persisted nor replayed; all later resizing, hiding,
+showing, and restoration remain AppKit-owned. No item receives a Scholium
+fraction, holding priority, or restoration state. A scene/window minimum
+remains contingent on the complete adaptation matrix.
 
-Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`; production does
-not replace its native minimum, divider, safe area, separator, or collapse
-policy. The one initial ideal-width offer above is released immediately after
-application; the native item and `toggleInspector(_:)` own transitions. Because
-the nested split may sit outside the responder chain, the visibility route is a
-borderless hosted item, not the platform-wrapped standard toolbar item, and bridges with the View command
-through the exact per-window coordinator. Selected-document state supplies
-availability when showing, while a visible Inspector can always be hidden.
+Apparatus remains the semantic Inspector, but does not use
+`NSSplitViewItem(inspectorWithViewController:)`: on macOS 14 and later that
+factory is a fixed-width presentation whose committed drag behavior returns to
+the system Inspector thickness. Explicit toolbar and View commands set the
+retained split item's native collapsed state directly; divider interaction only
+changes width and never enters the collapse path. Because the nested split may
+sit outside the responder chain, the visibility route is a borderless hosted
+item, not the platform-wrapped standard toolbar item, and bridges with the View
+command through the exact per-window coordinator. Selected-document state
+supplies availability when showing, while a visible Inspector can always be hidden.
 `WindowShellState` mirrors native visibility for commands, toolbar labels, and
 restoration. The toolbar controller installs one stable item list; its hosted
 controls observe shell visibility without reasserting split state or storing

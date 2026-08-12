@@ -4,6 +4,65 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    /// The native divider owns width only. Visibility remains an explicit
+    /// toolbar/menu action, so crossing the Inspector's minimum width must not
+    /// enter AppKit's interactive collapse tracking path.
+    @MainActor
+    func testInspectorDividerResizesWithoutInteractiveCollapse() throws {
+        let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
+        if !inspector.exists {
+            app.typeKey("b", modifierFlags: [.command, .option])
+        }
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+        let initialFrame = inspector.frame
+        XCTAssertGreaterThan(initialFrame.width, 0)
+
+        func dragDivider(by horizontalDelta: CGFloat) throws {
+            let inspectorFrame = inspector.frame
+            let divider = try XCTUnwrap(
+                app.descendants(matching: .splitter)
+                    .allElementsBoundByIndex
+                    .first { candidate in
+                        let frame = candidate.frame
+                        return frame.width <= 2
+                            && frame.height >= inspectorFrame.height
+                            && abs(frame.midX - inspectorFrame.minX) <= 2
+                    }
+            )
+            let start = divider.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            )
+            start.click(
+                forDuration: 0.35,
+                thenDragTo: start.withOffset(CGVector(dx: horizontalDelta, dy: 0)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.2
+            )
+        }
+
+        try dragDivider(by: -100)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            inspector.frame.width >= initialFrame.width + 70
+                && abs(inspector.frame.maxX - initialFrame.maxX) <= 2
+        })
+
+        let expandedFrame = inspector.frame
+        try dragDivider(by: 500)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            inspector.exists
+                && inspector.frame.width < expandedFrame.width - 70
+                && inspector.frame.width >= 250
+                && abs(inspector.frame.maxX - initialFrame.maxX) <= 2
+        })
+
+        let minimumFrame = inspector.frame
+        try dragDivider(by: -80)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            inspector.frame.width >= minimumFrame.width + 50
+                && abs(inspector.frame.maxX - initialFrame.maxX) <= 2
+        })
+    }
+
     /// A completed primary click on the Folder row—not only its disclosure
     /// triangle—must use the native outline action and toggle every time.
     @MainActor

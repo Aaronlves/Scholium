@@ -60,14 +60,16 @@ reveal may request a provisional **320pt** readable thickness once, after the
 native split is attached. That request yields to the remaining Document space
 and native bounds; it is not a minimum, maximum, restored divider value, or
 later-reveal preference. After that one transition, the native container and
-direct user resizing remain authoritative. Scholium declares no scene/window minimum
-unless the complete adaptation matrix proves one necessary. The sole specified
-content constraint is the expanded Library's **300pt minimum readable
-thickness**: the native split must keep it at or above that boundary or
-collapse it. This is neither a preferred width, restored divider value, nor parallel
-geometry owner. Library remains a semantic Sidebar and Apparatus a semantic
-Inspector. All three planes are opaque, and the native tracking separator
-remains the sole interactive inter-pane boundary and divider-geometry owner.
+direct user resizing remain authoritative. Scholium declares no scene/window
+minimum unless the complete adaptation matrix proves one necessary. The
+specified content constraints are the expanded Library's **300pt minimum
+readable thickness** and Apparatus's **270pt system Inspector minimum**. The
+native split must keep each expanded peripheral plane at or above its boundary;
+Apparatus has no application-defined maximum. These are neither preferred
+widths, restored divider values, nor parallel geometry owners. Library remains
+a semantic Sidebar and Apparatus a semantic Inspector. All three planes are
+opaque, and the native tracking separator remains the sole interactive
+inter-pane boundary and divider-geometry owner.
 At the Sidebar–Document edge alone, the Workspace adds §19.3's secondary
 **document-navigation boundary** depth cue. It is visually continuous from the
 top of the window through the titlebar/toolbar band to the bottom, falls only

@@ -522,6 +522,7 @@ struct WindowLifecycleTests {
         #expect(first.splitViewItems[0].canCollapseFromWindowResize)
         #expect(!first.splitViewItems[1].canCollapse)
         #expect(!first.splitViewItems[1].canCollapseFromWindowResize)
+        #expect(!first.splitViewItems[2].canCollapse)
 
         first.setLibraryVisible(false, animated: false)
         first.setResearchInspectorVisible(true, animated: false)
@@ -545,6 +546,7 @@ struct WindowLifecycleTests {
         )
 
         let inspectorItem = try #require(controller.splitViewItems.last)
+        #expect(!inspectorItem.canCollapse)
         #expect(
             inspectorItem.collapseBehavior
                 == .preferResizingSiblingsWithFixedSplitView
@@ -591,7 +593,12 @@ struct WindowLifecycleTests {
             ofDividerAt: dividerIndex
         )
         controller.view.layoutSubtreeIfNeeded()
-        #expect(abs(inspectorView.frame.width - 440) < 1)
+        #expect(
+            abs(
+                inspectorView.frame.width
+                    - (440 - controller.splitView.dividerThickness)
+            ) < 1
+        )
         #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
 
         controller.splitView.setPosition(
@@ -599,7 +606,17 @@ struct WindowLifecycleTests {
             ofDividerAt: dividerIndex
         )
         controller.view.layoutSubtreeIfNeeded()
+        #expect(!inspectorItem.isCollapsed)
+        #expect(
+            inspectorView.frame.width
+                >= ScholiumMetrics.Apparatus.minimumReadableWidth
+        )
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
+
+        controller.setResearchInspectorVisible(false, animated: false)
         #expect(inspectorItem.isCollapsed)
+        controller.setResearchInspectorVisible(true, animated: false)
+        #expect(!inspectorItem.isCollapsed)
 
         controller.splitView.setPosition(
             controller.splitView.bounds.maxX - 360,
@@ -607,7 +624,12 @@ struct WindowLifecycleTests {
         )
         controller.view.layoutSubtreeIfNeeded()
         #expect(!inspectorItem.isCollapsed)
-        #expect(abs(inspectorView.frame.width - 360) < 1)
+        #expect(
+            abs(
+                inspectorView.frame.width
+                    - (360 - controller.splitView.dividerThickness)
+            ) < 1
+        )
         #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
 
         let apparatusContainer = try #require(
