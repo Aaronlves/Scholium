@@ -26,6 +26,24 @@ struct DocumentReadProjectionCacheTests {
         #expect(await cache.entryCount(workspaceID: key.workspaceID) == 1)
     }
 
+    @Test("Read reuses an exact workspace semantic projection")
+    func exactSemanticReuse() async {
+        let cache = DocumentReadProjectionCache()
+        let source = "# Exact\n\nA [[Target]] with *emphasis*.\n"
+        let document = NoteDocument(relativePath: "Exact.md", rawContent: source)
+        let semantic = MarkdownSemanticDocument(parsing: document)
+        let key = DocumentReadProjectionKey(
+            workspaceID: UUID(),
+            stableTarget: "note-1",
+            relativePath: document.relativePath,
+            fingerprint: document.fingerprint
+        )
+
+        let reused = await cache.html(for: key, source: source, semantic: semantic)
+
+        #expect(reused == SafeMarkdownRenderer.render(document).htmlBody)
+    }
+
     @Test("Empty Markdown is retained as a valid read projection")
     func emptyMarkdownProjection() async {
         let cache = DocumentReadProjectionCache()

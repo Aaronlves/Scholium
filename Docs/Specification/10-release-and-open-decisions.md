@@ -157,10 +157,16 @@ mismatch, incomplete samples, or unapproved thresholds fail closed.
 
 The 100,000-CJK fixture must remain editable at beginning, middle, and end with
 working undo, mode switching, and byte-exact save. After 50 note/mode switches,
-retained editor-renderer counts and total app-plus-renderer memory must converge
-rather than grow monotonically. These are correctness and stability conditions,
-not percentile results. Current measurements and remaining activation work
-belong only in [Implementation Status](../IMPLEMENTATION_STATUS.md).
+retained editor-renderer counts must remain stable and total
+app-plus-renderer memory must demonstrate bounded, decelerating tail growth:
+the median of the final 10 samples may exceed the preceding 10-sample median
+by no more than 5%, and the final 10-sample span must be smaller than the
+preceding 10-sample span unless both spans are zero. Requiring one incidental
+RSS decrease is not convergence; a monotone sequence can converge, while a
+constant leak fails the deceleration
+condition. These are correctness and stability conditions, not percentile
+results. Current measurements and remaining activation work belong only in
+[Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 ### 21.5 Source-first Beta distribution
 

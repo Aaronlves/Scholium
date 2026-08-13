@@ -59,6 +59,23 @@ EXPECTED_COUNTS = {
     "warm_library_launch": 267,
     "indexed_search": 1,
 }
+LAUNCH_PHASE_METRICS = {
+    "warm_library_launch",
+    "cold_read_activation",
+    "cold_edit_activation",
+}
+LAUNCH_PHASE_KEYS = (
+    "process_to_window_model_init_duration_ms",
+    "window_model_init_to_workspace_ready_duration_ms",
+    "workspace_ready_to_projection_duration_ms",
+    "projection_to_layout_duration_ms",
+)
+READ_PHASE_KEYS = (
+    "workspace_projection_to_read_html_ready_duration_ms",
+    "read_html_ready_to_navigation_start_duration_ms",
+    "read_navigation_duration_ms",
+    "read_navigation_to_ready_duration_ms",
+)
 ALLOWED_KEYS = {
     "schema",
     "metric",
@@ -76,6 +93,10 @@ ALLOWED_KEYS = {
     "window_model_init_to_workspace_ready_duration_ms",
     "workspace_ready_to_projection_duration_ms",
     "projection_to_layout_duration_ms",
+    "workspace_projection_to_read_html_ready_duration_ms",
+    "read_html_ready_to_navigation_start_duration_ms",
+    "read_navigation_duration_ms",
+    "read_navigation_to_ready_duration_ms",
 }
 MEMORY_ROLES = ("app", "gpu", "networking", "web_content")
 MEMORY_ALLOWED_KEYS = {
@@ -92,6 +113,17 @@ MEMORY_ALLOWED_KEYS = {
 }
 MEMORY_TRANSITIONS = 50
 MEMORY_TAIL_GROWTH_LIMIT = 0.05
+CJK_CORRECTNESS_FILE = "editor_large_cjk_correctness.jsonl"
+CJK_CORRECTNESS_KEYS = {
+    "schema",
+    "run_id",
+    "character_count",
+    "beginning_edit_undo",
+    "middle_edit_undo",
+    "end_edit_save",
+    "mode_switching",
+    "exact_source_restored",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -208,24 +240,19 @@ def load_metric(
                 float(bridge_started) + float(bridge_roundtrip) - float(acknowledged)
             ) > 0.001:
                 raise SystemExit(f"{path}:{line_number}: Editor bridge phases do not match acknowledgement")
-        elif metric == "warm_library_launch":
-            library_phases = (
-                record.get("process_to_window_model_init_duration_ms"),
-                record.get("window_model_init_to_workspace_ready_duration_ms"),
-                record.get("workspace_ready_to_projection_duration_ms"),
-                record.get("projection_to_layout_duration_ms"),
-            )
-            if any(value is not None for value in library_phases):
+        elif metric in LAUNCH_PHASE_METRICS:
+            launch_phases = tuple(record.get(phase) for phase in LAUNCH_PHASE_KEYS)
+            if any(value is not None for value in launch_phases):
                 if any(
                     not isinstance(value, (int, float))
                     or isinstance(value, bool)
                     or not math.isfinite(value)
                     or value < 0
-                    for value in library_phases
+                    for value in launch_phases
                 ):
-                    raise SystemExit(f"{path}:{line_number}: invalid Library phase duration")
-                if abs(sum(float(value) for value in library_phases) - float(duration)) > 0.001:
-                    raise SystemExit(f"{path}:{line_number}: Library phases do not match duration")
+                    raise SystemExit(f"{path}:{line_number}: invalid launch phase duration")
+                if abs(sum(float(value) for value in launch_phases) - float(duration)) > 0.001:
+                    raise SystemExit(f"{path}:{line_number}: launch phases do not match duration")
         elif "observed_mode" in record:
             raise SystemExit(f"{path}:{line_number}: unexpected observed mode")
         elif any(
@@ -238,16 +265,29 @@ def load_metric(
             )
         ):
             raise SystemExit(f"{path}:{line_number}: unexpected Editor phase duration")
-        if metric != "warm_library_launch" and any(
-            phase in record
-            for phase in (
-                "process_to_window_model_init_duration_ms",
-                "window_model_init_to_workspace_ready_duration_ms",
-                "workspace_ready_to_projection_duration_ms",
-                "projection_to_layout_duration_ms",
-            )
+        if metric not in LAUNCH_PHASE_METRICS and any(
+            phase in record for phase in LAUNCH_PHASE_KEYS
         ):
-            raise SystemExit(f"{path}:{line_number}: unexpected Library phase duration")
+            raise SystemExit(f"{path}:{line_number}: unexpected launch phase duration")
+        read_phases = tuple(record.get(phase) for phase in READ_PHASE_KEYS)
+        if metric == "cold_read_activation" and any(
+            value is not None for value in read_phases
+        ):
+            if any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or value < 0
+                for value in read_phases
+            ):
+                raise SystemExit(f"{path}:{line_number}: invalid Read phase duration")
+            layout = record.get("projection_to_layout_duration_ms")
+            if not isinstance(layout, (int, float)) or abs(
+                sum(float(value) for value in read_phases) - float(layout)
+            ) > 0.001:
+                raise SystemExit(f"{path}:{line_number}: Read phases do not match layout")
+        elif any(value is not None for value in read_phases):
+            raise SystemExit(f"{path}:{line_number}: unexpected Read phase duration")
         records.append(record)
 
     total = warmups + samples
@@ -332,10 +372,16 @@ def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, o
     monotonic_tail_growth = all(
         later >= earlier for earlier, later in zip(final_tail, final_tail[1:])
     ) and any(later > earlier for earlier, later in zip(final_tail, final_tail[1:]))
+    preceding_tail_growth_bytes = preceding_tail[-1] - preceding_tail[0]
+    final_tail_growth_bytes = final_tail[-1] - final_tail[0]
+    tail_growth_decelerated = (
+        final_tail_growth_bytes == preceding_tail_growth_bytes == 0
+        or final_tail_growth_bytes < preceding_tail_growth_bytes
+    )
     converged = (
         stable_counts
-        and not monotonic_tail_growth
         and tail_growth_ratio <= MEMORY_TAIL_GROWTH_LIMIT
+        and tail_growth_decelerated
     )
     summary = {
         "sample_count": len(records),
@@ -350,10 +396,70 @@ def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, o
         "tail_growth_ratio": tail_growth_ratio,
         "tail_growth_limit_inclusive": MEMORY_TAIL_GROWTH_LIMIT,
         "monotonic_tail_growth": monotonic_tail_growth,
+        "preceding_tail_growth_bytes": preceding_tail_growth_bytes,
+        "final_tail_growth_bytes": final_tail_growth_bytes,
+        "tail_growth_decelerated": tail_growth_decelerated,
         "convergence_observed": converged,
         "correctness_passed": True,
     }
     return records, summary
+
+
+def load_cjk_correctness(path: Path, run_id: str) -> dict[str, object]:
+    if not path.is_file():
+        raise SystemExit(f"Missing 100,000-CJK correctness results: {path}")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if len(lines) != 1:
+        raise SystemExit(f"{path}: expected exactly one CJK correctness record")
+    try:
+        record = json.loads(lines[0])
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"{path}: invalid CJK correctness JSON: {error}") from error
+    if not isinstance(record, dict) or set(record) != CJK_CORRECTNESS_KEYS:
+        raise SystemExit(f"{path}: invalid CJK correctness contract")
+    if record.get("schema") != "scholium-cjk-correctness-v1":
+        raise SystemExit(f"{path}: unsupported CJK correctness schema")
+    if record.get("run_id") != run_id:
+        raise SystemExit(f"{path}: CJK correctness run id mismatch")
+    if record.get("character_count") != 100_000:
+        raise SystemExit(f"{path}: CJK character count mismatch")
+    checks = (
+        "beginning_edit_undo",
+        "middle_edit_undo",
+        "end_edit_save",
+        "mode_switching",
+        "exact_source_restored",
+    )
+    if any(record.get(check) is not True for check in checks):
+        raise SystemExit(f"{path}: CJK correctness check failed")
+    return {
+        "character_count": 100_000,
+        **{check: True for check in checks},
+        "correctness_passed": True,
+    }
+
+
+def environment_missing_fields(path: Path) -> list[str]:
+    try:
+        environment = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Invalid environment metadata: {error}") from error
+    accessibility = environment.get("accessibility")
+    if not isinstance(accessibility, dict):
+        return ["accessibility"]
+    required = (
+        "increase_contrast",
+        "reduce_transparency",
+        "reduce_motion",
+        "differentiate_without_color",
+        "voice_over",
+        "full_keyboard_access",
+    )
+    return [
+        f"accessibility.{key}"
+        for key in required
+        if not isinstance(accessibility.get(key), bool)
+    ]
 
 
 def self_test() -> None:
@@ -439,6 +545,27 @@ def self_test() -> None:
         loaded, measured = load_metric(path, "editor_mode_transition", "self_test", 0, 2)
         assert len(loaded) == 2 and measured == [10.0, 10.0]
 
+        cold_read_path = Path(directory) / "cold_read_activation.jsonl"
+        cold_read_path.write_text(
+            json.dumps({
+                "schema": "scholium-performance-v1",
+                "metric": "cold_read_activation",
+                "run_id": "self_test",
+                "sample": 0,
+                "duration_ms": 10.0,
+                "completed_uptime_ns": 1,
+                "process_to_window_model_init_duration_ms": 1.0,
+                "window_model_init_to_workspace_ready_duration_ms": 2.0,
+                "workspace_ready_to_projection_duration_ms": 3.0,
+                "projection_to_layout_duration_ms": 4.0,
+            }) + "\n",
+            encoding="utf-8",
+        )
+        loaded, measured = load_metric(
+            cold_read_path, "cold_read_activation", "self_test", 0, 1
+        )
+        assert len(loaded) == 1 and measured == [10.0]
+
         path.write_text(
             json.dumps({**records[0], "document": "Private.md"}) + "\n",
             encoding="utf-8",
@@ -458,6 +585,70 @@ def self_test() -> None:
         else:
             raise AssertionError("A missing Editor latency sample was accepted.")
 
+        cjk_path = Path(directory) / CJK_CORRECTNESS_FILE
+        cjk_path.write_text(
+            json.dumps({
+                "schema": "scholium-cjk-correctness-v1",
+                "run_id": "self_test",
+                "character_count": 100_000,
+                "beginning_edit_undo": True,
+                "middle_edit_undo": True,
+                "end_edit_save": True,
+                "mode_switching": True,
+                "exact_source_restored": True,
+            }) + "\n",
+            encoding="utf-8",
+        )
+        assert load_cjk_correctness(cjk_path, "self_test")["correctness_passed"] is True
+
+        memory_path = Path(directory) / "editor_retained_memory.jsonl"
+
+        def memory_records(totals: list[int]) -> list[dict[str, object]]:
+            return [
+                {
+                    "schema": "scholium-process-memory-v1",
+                    "sample": sample,
+                    "transition": sample,
+                    "mode": "live_preview" if sample % 2 == 0 else "source",
+                    "sample_uptime_ns": sample + 1,
+                    "scope": "app_plus_attributed_webkit_services",
+                    "process_count": 4,
+                    "resident_bytes": total,
+                    "role_process_counts": {
+                        "app": 1, "gpu": 1, "networking": 1, "web_content": 1,
+                    },
+                    "role_resident_bytes": {
+                        "app": total - 3_000,
+                        "gpu": 1_000,
+                        "networking": 1_000,
+                        "web_content": 1_000,
+                    },
+                }
+                for sample, total in enumerate(totals)
+            ]
+
+        decelerating = [
+            100_000_000 + sum(50_000 - step * 800 for step in range(sample))
+            for sample in range(MEMORY_TRANSITIONS + 1)
+        ]
+        memory_path.write_text(
+            "".join(json.dumps(record) + "\n" for record in memory_records(decelerating)),
+            encoding="utf-8",
+        )
+        _, decelerating_summary = load_editor_memory(memory_path)
+        assert decelerating_summary["monotonic_tail_growth"] is True
+        assert decelerating_summary["tail_growth_decelerated"] is True
+        assert decelerating_summary["convergence_observed"] is True
+
+        constant_growth = [100_000_000 + sample * 10_000 for sample in range(51)]
+        memory_path.write_text(
+            "".join(json.dumps(record) + "\n" for record in memory_records(constant_growth)),
+            encoding="utf-8",
+        )
+        _, leaking_summary = load_editor_memory(memory_path)
+        assert leaking_summary["tail_growth_decelerated"] is False
+        assert leaking_summary["convergence_observed"] is False
+
     print("Performance summary self-test: thresholds, privacy, and completeness passed")
 
 
@@ -476,6 +667,7 @@ def main() -> None:
         raise SystemExit("A product gate requires every performance metric.")
     if not arguments.environment.is_file():
         raise SystemExit("Missing environment metadata.")
+    missing_environment_fields = environment_missing_fields(arguments.environment)
 
     summaries: dict[str, object] = {}
     raw_durations: dict[str, object] = {}
@@ -514,14 +706,20 @@ def main() -> None:
                     "maximum_ms": max(values),
                     "mean_ms": statistics.fmean(values),
                 }
-        if metric == "warm_library_launch":
+        if metric in LAUNCH_PHASE_METRICS:
             retained_records = records[arguments.warmups :]
-            for phase in (
-                "process_to_window_model_init_duration_ms",
-                "window_model_init_to_workspace_ready_duration_ms",
-                "workspace_ready_to_projection_duration_ms",
-                "projection_to_layout_duration_ms",
-            ):
+            for phase in LAUNCH_PHASE_KEYS:
+                if all(phase in record for record in retained_records):
+                    values = [float(record[phase]) for record in retained_records]
+                    summaries[metric][phase] = {
+                        "p50_ms": nearest_rank(values, 0.50),
+                        "p95_ms": nearest_rank(values, 0.95),
+                        "maximum_ms": max(values),
+                        "mean_ms": statistics.fmean(values),
+                    }
+        if metric == "cold_read_activation":
+            retained_records = records[arguments.warmups :]
+            for phase in READ_PHASE_KEYS:
                 if all(phase in record for record in retained_records):
                     values = [float(record[phase]) for record in retained_records]
                     summaries[metric][phase] = {
@@ -547,6 +745,13 @@ def main() -> None:
         all_pass = all_pass and bool(memory_summary["convergence_observed"])
     missing_editor_metrics = missing_required_editor_metrics(summaries)
     all_pass = all_pass and not missing_editor_metrics
+    correctness: dict[str, object] = {}
+    if arguments.evidence_class == "product_gate":
+        correctness["hundred_thousand_cjk"] = load_cjk_correctness(
+            arguments.input_dir / CJK_CORRECTNESS_FILE,
+            arguments.run_id,
+        )
+        all_pass = all_pass and not missing_environment_fields
 
     gate_status = "not_applicable"
     if arguments.evidence_class == "product_gate":
@@ -563,7 +768,10 @@ def main() -> None:
         "environment": {
             "file": arguments.environment.name,
             "sha256": sha256(arguments.environment),
+            "complete": not missing_environment_fields,
+            "missing_required_fields": missing_environment_fields,
         },
+        "correctness": correctness,
         "metrics": summaries,
         "raw_durations": raw_durations,
     }

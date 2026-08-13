@@ -34894,6 +34894,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       element.className = `scholium-math scholium-math-${this.expression.kind} cm-live-math`;
       element.dataset.scholiumProtected = "math";
       const runtime = window.scholiumMath;
+      if (runtime?.version !== 1) post({ type: "requestMathRuntime" });
       const rendered = runtime?.version === 1 ? runtime.render({ source: this.expression.content, kind: this.expression.kind }) : { ok: false, reason: "invalid-source" };
       if (rendered.ok) {
         element.classList.add("scholium-math-rendered");
@@ -37736,7 +37737,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   };
   webkitWindow.scholiumEditor = {
     dispatch: dispatchEditorRequest,
-    resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery
+    resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
+    refreshMathRuntime() {
+      editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
+      return true;
+    }
   };
   recordEditorMetric("startup", editorStartupStartedAt, { documentLength: editor.state.doc.length });
   post({ type: "ready" });

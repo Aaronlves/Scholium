@@ -641,6 +641,9 @@ struct ContentView: View {
                     expectedRecordSourceManifestHash: manifest
                 )
             },
+            openingDocumentPresentationDidComplete: {
+                appState.openingDocumentPresentationDidComplete()
+            },
             notify: { message, kind in
                 switch kind {
                 case .success: appState.showToast(message)

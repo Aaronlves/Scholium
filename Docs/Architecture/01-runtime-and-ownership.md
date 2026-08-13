@@ -153,11 +153,14 @@ not complete evidence. The handle owns one utility-priority opening-completion
 task. Watcher events enter the existing bounded journals while a complete
 three-catalog reconcile, Graph build, Search synchronization, research
 projection, and atomic event publication run through the same refresh
-coordinator and source-operation gate. The complete snapshot replaces the
-opening phase; no second repository, catalog, watcher, index, or source owner is
-created. Cancellation and shutdown cancel and await that task. Snapshot/CLI
-opens and live callers without a selected opening Vault retain the complete
-one-shot path.
+coordinator and source-operation gate. The completion task waits until the
+opening Vault's first Document crosses its native visible-layout boundary, so
+the full reconcile cannot contend with that initial presentation; a bounded
+fallback still completes a Library-only window or a failed renderer. The
+complete snapshot replaces the opening phase; no second repository, catalog,
+watcher, index, or source owner is created. Cancellation and shutdown cancel
+and await that task. Snapshot/CLI opens and live callers without a selected
+opening Vault retain the complete one-shot path.
 
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
 `Triptychs/<triptych-id>/indexes/search-v7.sqlite`; pooled vault runtimes own

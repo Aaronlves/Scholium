@@ -17,11 +17,9 @@ enum ScholiumMathAssets {
         )
         for match in matches.reversed() {
             let fontName = (bundled as NSString).substring(with: match.range(at: 1))
-            guard let url = Bundle.module.url(forResource: fontName, withExtension: "woff2"),
-                  let data = try? Data(contentsOf: url) else { continue }
             mutable.replaceCharacters(
                 in: match.range,
-                with: "src:url(\"data:font/woff2;base64,\(data.base64EncodedString())\") format(\"woff2\")"
+                with: "src:url(\"\(ScholiumWebFontResources.url(for: fontName + ".woff2"))\") format(\"woff2\")"
             )
         }
         return (mutable as String) + "\n" + presentationCSS

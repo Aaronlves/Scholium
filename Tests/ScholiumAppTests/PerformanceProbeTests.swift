@@ -7,6 +7,54 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    @Test("Large CJK correctness remains distinct from latency measurement")
+    func largeCJKCorrectnessHasDedicatedProbeMode() throws {
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-cjk-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                    .appendingPathComponent("correctness.jsonl").path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "editor_large_cjk_correctness",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "cjk_probe_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Canonical.md",
+            ],
+            bundleID: "com.scholium.qa"
+        )
+
+        #expect(probe.exercisesLargeCJKCorrectness)
+        #expect(!probe.measuresEditorModeTransition)
+        probe.recordLargeCJKCorrectness(
+            documentID: "Wrong.md",
+            source: String(repeating: "研", count: 100_000)
+        )
+        #expect(!FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("correctness.jsonl").path
+        ))
+
+        probe.recordLargeCJKCorrectness(
+            documentID: "Canonical.md",
+            source: String(repeating: "研", count: 100_000)
+        )
+        let object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: directory.appendingPathComponent("correctness.jsonl"))
+            ) as? [String: Any]
+        )
+        #expect(object["schema"] as? String == "scholium-cjk-correctness-v1")
+        #expect(object["character_count"] as? Int == 100_000)
+        #expect(object["exact_source_restored"] as? Bool == true)
+    }
+
     @Test("Warm Library launch records only numeric owner phases and the expected count")
     func warmLibraryLaunchRecordsOwnerPhases() throws {
         let fileManager = FileManager.default
@@ -148,6 +196,66 @@ struct PerformanceProbeTests {
         )
         #expect(object["sample"] as? Int == 2)
         #expect(object["duration_ms"] as? Double == 25)
+    }
+
+    @Test("Cold Read records the complete launch phase decomposition")
+    func coldReadRecordsLaunchPhases() throws {
+        let fileManager = FileManager.default
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let result = directory.appendingPathComponent("cold_read_activation.jsonl")
+        var times: [UInt64] = [
+            20_000_000, 50_000_000, 90_000_000, 100_000_000,
+            110_000_000, 130_000_000, 150_000_000,
+        ]
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "cold_read_activation",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "cold_read_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
+                "SCHOLIUM_PERFORMANCE_STARTED_NS": "10000000",
+            ],
+            bundleID: "com.scholium.qa",
+            now: { times.removeFirst() }
+        )
+
+        probe.markWarmLibraryWindowModelInitializationStarted()
+        probe.markWarmLibraryWorkspaceReady()
+        probe.markWarmLibraryProjectionReady()
+        probe.markReadHTMLReady(documentID: "Fixture.md")
+        probe.markReadNavigationStarted(documentID: "Fixture.md")
+        probe.markReadNavigationFinished(documentID: "Fixture.md")
+        probe.markReadReady(documentID: "Fixture.md")
+
+        let line = try #require(
+            String(contentsOf: result, encoding: .utf8)
+                .split(separator: "\n").first
+        )
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+        )
+        #expect(object["duration_ms"] as? Double == 140)
+        #expect(object["process_to_window_model_init_duration_ms"] as? Double == 10)
+        #expect(object["window_model_init_to_workspace_ready_duration_ms"] as? Double == 30)
+        #expect(object["workspace_ready_to_projection_duration_ms"] as? Double == 40)
+        #expect(object["projection_to_layout_duration_ms"] as? Double == 60)
+        #expect(
+            object["workspace_projection_to_read_html_ready_duration_ms"] as? Double
+                == 10
+        )
+        #expect(
+            object["read_html_ready_to_navigation_start_duration_ms"] as? Double
+                == 10
+        )
+        #expect(object["read_navigation_duration_ms"] as? Double == 20)
+        #expect(object["read_navigation_to_ready_duration_ms"] as? Double == 20)
     }
 
     @Test("Painted key latency accepts only a finite sample for the requested fixture")

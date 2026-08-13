@@ -242,7 +242,8 @@ final class DocumentController: ObservableObject {
         relativePath: String,
         source: String,
         fingerprint: DocumentFingerprint,
-        workspaceID: UUID?
+        workspaceID: UUID?,
+        semantic: MarkdownSemanticDocument? = nil
     ) async -> String {
         let stableTarget: String
         switch target {
@@ -258,7 +259,8 @@ final class DocumentController: ObservableObject {
                 relativePath: relativePath,
                 fingerprint: fingerprint
             ),
-            source: source
+            source: source,
+            semantic: semantic
         )
     }
 

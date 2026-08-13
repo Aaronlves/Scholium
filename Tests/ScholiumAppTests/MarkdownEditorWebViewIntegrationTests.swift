@@ -883,6 +883,41 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A plain Editor loads mathematics only after the first authored expression")
+    func plainEditorLoadsMathRuntimeOnDemand() async throws {
+        let plainSource = "Other paragraph.\n\nInline "
+        #expect(!MarkdownEditorWebView.requiresMathRuntime(
+            source: plainSource,
+            linkPreviews: []
+        ))
+        let end = plainSource.utf16.count
+        let harness = EditorHarness(
+            source: plainSource,
+            initialSourceRange: end..<end
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "$x$.\n")
+        harness.synchronizeLifecycleSourceFromSession()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0)
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let presentation = try await harness.waitUntilPresentation(
+            stage: "on-demand mathematics runtime"
+        ) {
+            $0.renderedMathCount == 1 && $0.mathErrorCount == 0
+        }
+        #expect(presentation.renderedMathCount == 1)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "Other paragraph.\n\nInline $x$.\n"
+        )
+    }
+
     @Test("Exact UTF-16 reveal selects source without changing bytes, generation, or undo")
     func exactSourceRangeRevealIsNonmutating() async throws {
         let source = "# Search\n\nBefore 🧭 autonomy after.\n"
@@ -3682,6 +3717,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         private var hostingController: NSViewController?
         private var isClosed = false
 
+        func synchronizeLifecycleSourceFromSession() {
+            sourceBox.source = session.checkedSource
+        }
+
         init(
             documentID: String = "Argument.md",
             source: String,
@@ -4318,6 +4357,10 @@ struct MarkdownEditorWebViewIntegrationTests {
                     mode: sourceBox.mode,
                     presentationCSS: sourceBox.presentationCSS,
                     userCSS: sourceBox.userCSS,
+                    requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
+                        source: sourceBox.source,
+                        linkPreviews: linkPreviews
+                    ),
                     linkCompletionQuery: { _, _ in [] },
                     linkPreviews: linkPreviews,
                     initialScrollFraction: 0,

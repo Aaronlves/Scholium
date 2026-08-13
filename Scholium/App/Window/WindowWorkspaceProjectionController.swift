@@ -395,6 +395,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                 graphCounts: source.graphCounts,
                 headings: source.headings,
                 derivedProjectionState: .sourceAhead,
+                cachedSemanticDocument: source.cachedSemanticDocument,
                 cachedTitleProjection: source.cachedTitleProjection
             )
             documents[sourceIndex] = destination
@@ -496,6 +497,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             graphCounts: source.graphCounts,
             headings: source.headings,
             derivedProjectionState: .sourceAhead,
+            cachedSemanticDocument: source.cachedSemanticDocument,
             cachedTitleProjection: source.cachedTitleProjection
         )
 

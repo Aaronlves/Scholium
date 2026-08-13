@@ -297,20 +297,27 @@ whole-document commands that actually require them. The native receiver applies
 the same small deltas directly to `EditorExactSourceBuffer`; one
 deadline-driven autosave task moves its deadline during continued typing
 instead of being cancelled and recreated for every English or IME transaction.
-Its dirty-path publication changes only when the path changes. Document toolbar
-navigation consumes the fingerprint-bound heading projection already carried
-by `WorkspaceNoteSnapshot`; no SwiftUI `body` reparses Markdown.
+Its dirty-path publication changes only when the path changes. Document
+navigation and Review reuse fingerprint-bound semantics from
+`WorkspaceNoteSnapshot`; stale input reparses; SwiftUI `body` never does.
 
 The retained-memory journey uses a run-specific app handshake. Initial load
 and each typed Live Preview/Source transition publish progress after bridge
 acknowledgement; the external sampler records the attributed app/WebKit process
 set and acknowledges before the driver advances. Its QA transport addresses
-the retained session directly to prevent SwiftUI request coalescing. A separate
-attached-WKWebView journey drives 50 transitions and checks the dirty buffer,
+the retained session directly to prevent SwiftUI request coalescing. The gate
+applies the convergence rule in [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate).
+A separate attached-WKWebView journey drives 50 transitions and checks the dirty buffer,
 accessibility chrome, and diagnostic ring; it cannot establish memory
 convergence or visible p95.
 
 The connected Editor driver measures actual visible or accessible boundaries.
+A Document uses a source-free, network-denied view to prime
+nonpersistent WebKit and allowlisted font during opening.
+First Review takes it instead of constructing another page context; bounded
+expiry otherwise releases it. Initial navigation skips a redundant loading
+publication; replacement retains it. Multi-`WKProcessPool` is unused.
+
 Edit/Source excludes Command-R and ends after matching bridge acknowledgement
 and layout. Key-to-paint registers before native delta delivery and publishes
 after frame plus task for the accepted session/generation. Cached preview ends
@@ -656,7 +663,10 @@ fixtures compare definition content as well as identifiers so Swift and
 TypeScript cannot silently choose different block ownership.
 
 Mathematics uses a locally bundled, exactly pinned KaTeX runtime and matching
-CSS/fonts. The first admissible integration must use `htmlAndMathml`,
+CSS/fonts. Bundled fonts use a read-only filename allowlist scheme, never
+filesystem/network access or base64 HTML. Review and Editor load the math runtime
+only for a source/preview candidate; a later validated request refreshes only
+disposable projection. The first admissible integration must use `htmlAndMathml`,
 `trust: false`, bounded `maxExpand` and `maxSize`, no remote resources, and
 escaped plain-source diagnostics for failures. KaTeX output is a projection;
 only the original delimiter span is editable or writable. Inactive display

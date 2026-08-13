@@ -101,6 +101,121 @@ struct FrontendArchitectureTests {
         #expect(preparer.contains("build-for-testing"))
         #expect(preparer.contains("source_clean -bool true"))
         #expect(preparer.contains("Cool the reference machine before invoking"))
+        #expect(runner.contains("testRDF1HundredThousandCJKCorrectness"))
+        #expect(runner.contains("SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH"))
+    }
+
+    @Test("Fixture launch opens the requested Vault once before its document")
+    func fixtureLaunchDoesNotReopenConfiguredVault() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded() async"))
+        let fixtureEnd = try #require(source.range(
+            of: "await refreshRegisteredVaults()\n        await refreshWorkspaceAssignment()",
+            range: restore.upperBound..<source.endIndex
+        ))
+        let fixtureBranch = source[restore.lowerBound..<fixtureEnd.lowerBound]
+
+        #expect(fixtureBranch.contains("try await configureTriptych("))
+        #expect(fixtureBranch.contains("await refreshRegisteredVaults()"))
+        #expect(fixtureBranch.contains("shellState.selectWorkspace(requestedInitialWorkspaceSlot)"))
+        #expect(fixtureBranch.contains("try await openRegisteredVault(openingVault)"))
+        #expect(fixtureBranch.contains("openRequestedTestNoteIfNeeded()"))
+        #expect(!fixtureBranch.contains("try await openWorkspaceVault("))
+    }
+
+    @Test("Initial Vault publication reuses its runtime-bound accepted snapshot")
+    func initialVaultPublicationReusesAcceptedSnapshot() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let loadVault = try #require(source.range(of: "private func loadVault("))
+        let restore = try #require(source.range(
+            of: "func restoreWorkspaceIfNeeded() async",
+            range: loadVault.upperBound..<source.endIndex
+        ))
+        let initialPublication = source[loadVault.lowerBound..<restore.lowerBound]
+
+        #expect(initialPublication.contains("workspaceProjectionController.activate("))
+        #expect(initialPublication.contains("applyWorkspaceProjectionCommit(commit)"))
+        #expect(initialPublication.contains("workspaceStore.snapshot("))
+        #expect(initialPublication.contains("for: capabilities.runtimeIdentity"))
+        #expect(initialPublication.contains("isLoading = false"))
+        #expect(!initialPublication.contains("documentController.workspaceSnapshots()"))
+        #expect(!initialPublication.contains("researchController.researchSnapshot()"))
+        #expect(!initialPublication.contains("await refreshWindowProjection()"))
+
+        let storeSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let acceptedSnapshot = try #require(storeSource.range(
+            of: "func snapshot(\n        for runtimeIdentity: TriptychRuntimeIdentity"
+        ))
+        let registration = try #require(storeSource.range(
+            of: "func registerEditorFlush(",
+            range: acceptedSnapshot.upperBound..<storeSource.endIndex
+        ))
+        let implementation = storeSource[acceptedSnapshot.lowerBound..<registration.lowerBound]
+        #expect(implementation.contains("workspaceActivations[runtimeIdentity.triptychID]"))
+        #expect(implementation.contains("== runtimeIdentity"))
+    }
+
+    @Test("Retained-memory driver synchronizes on app records without observer artifacts")
+    func retainedMemoryDriverAvoidsRepeatedAccessibilitySnapshots() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumPerformanceUITests.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(source.range(of: "func testRDF1EditorRetainedMemory()"))
+        let end = try #require(source.range(
+            of: "func testRDF1HundredThousandCJKCorrectness()",
+            range: start.upperBound..<source.endIndex
+        ))
+        let journey = source[start.lowerBound..<end.lowerBound]
+
+        #expect(journey.contains("lineCount(at: progressPath) == transition + 1"))
+        #expect(!journey.contains("XCUIScreen.main.screenshot()"))
+        #expect(!journey.contains("Thread.sleep"))
+    }
+
+    @Test("Performance environment records accessibility settings as booleans")
+    func performanceEnvironmentHasNoUnrecordedAccessibilitySentinel() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/capture-performance-environment.py"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("process_is_running(\"VoiceOver\")"))
+        #expect(source.contains("FullKeyboardAccessEnabled"))
+        #expect(source.contains("AppleKeyboardUIMode"))
+        #expect(!source.contains("voiceOverOnOffKey"))
+        #expect(!source.contains("not_recorded_by_automation"))
     }
 
     @Test("Packaged Search performance uses the product global Search shortcut")
@@ -170,6 +285,8 @@ struct FrontendArchitectureTests {
         #expect(!registration.contains("#if DEBUG"))
         #expect(!registration.contains("Bundle.main.bundleIdentifier"))
         #expect(requests.contains("PerformanceProbe.shared.isEnabled"))
+        #expect(requests.contains("exercisesLargeCJKCorrectness"))
+        #expect(requests.contains("requestDocumentMode(mode)"))
         #expect(!requests.contains("#if DEBUG"))
     }
 
@@ -5650,7 +5767,8 @@ struct FrontendArchitectureTests {
 
         #expect(ScholiumMathAssets.runtimeJavaScript.contains("scholiumMath"))
         #expect(css.contains(".katex"))
-        #expect(css.contains("data:font/woff2;base64,"))
+        #expect(css.contains("scholium-font://bundled/KaTeX_"))
+        #expect(!css.contains("data:font/woff2;base64,"))
         #expect(!css.contains("url(fonts/"))
         #expect(css.contains(".scholium-math-display"))
         #expect(
@@ -5662,6 +5780,70 @@ struct FrontendArchitectureTests {
         #expect(css.contains("content: \"(\" counter(scholium-equation) \")\""))
         #expect(css.contains(".scholium-math-display .katex { font-style: italic; }"))
         #expect(editorHTML.contains(css))
+
+        let plainReadHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<p>Ordinary prose</p>"
+        )
+        let mathReadHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<span class="scholium-math scholium-math-inline" data-math-source="eA==" data-math-kind="inline"></span>"#
+        )
+        #expect(!plainReadHTML.contains(css))
+        #expect(mathReadHTML.contains(css))
+    }
+
+    @Test("Read and Editor fonts use one allowlisted offline WebKit resource route")
+    func sharedOfflineFontResources() throws {
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<p>Ordinary prose</p>"
+        )
+        let regularURL = try #require(URL(
+            string: ScholiumWebFontResources.url(for: "Alegreya-Regular.ttf")
+        ))
+        let regular = try #require(ScholiumWebFontResources.resource(for: regularURL))
+
+        #expect(regular.mimeType == "font/ttf")
+        #expect(!regular.data.isEmpty)
+        #expect(ScholiumWebFonts.css.contains(regularURL.absoluteString))
+        #expect(!ScholiumWebFonts.css.contains("data:font/ttf;base64,"))
+        #expect(editorHTML.contains("font-src scholium-font: data:"))
+        #expect(readHTML.contains("font-src scholium-font: data:"))
+        #expect(ScholiumWebFontResources.resource(
+            for: URL(string: "scholium-font://bundled/../../Private.md")!
+        ) == nil)
+        #expect(ScholiumWebFontResources.resource(
+            for: URL(string: "https://example.com/Alegreya-Regular.ttf")!
+        ) == nil)
+    }
+
+    @Test("Initial WebKit prewarm is nonpersistent, source-free, and bounded")
+    func initialWebKitPrewarmIsBounded() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Styling/ScholiumWebKitRuntime.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains("WKWebsiteDataStore.nonPersistent()"))
+        #expect(source.contains("default-src 'none'"))
+        #expect(source.contains("font-src scholium-font:"))
+        #expect(source.contains("ScholiumWebFonts.css"))
+        #expect(source.contains("Task.sleep(for: .seconds(5))"))
+        #expect(source.contains("func takeReadWebView() -> WKWebView?"))
+        #expect(!source.contains("WKProcessPool"))
+        #expect(!source.contains("URLSession"))
+
+        let readSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(readSource.contains("takeReadWebView()"))
     }
 
     @Test("Review and Edit share one offline fail-closed Mermaid runtime")

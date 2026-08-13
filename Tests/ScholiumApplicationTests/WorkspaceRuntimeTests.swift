@@ -366,6 +366,12 @@ struct WorkspaceRuntimeTests {
             #expect(id == fixture.assignment.id)
         }
 
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(try await handle.snapshot().phase == .opening(
+            availableVault: .paperAnalysis
+        ))
+        await handle.openingPresentationDidComplete()
+
         var completed = false
         for _ in 0..<100 {
             try await Task.sleep(for: .milliseconds(20))
@@ -394,6 +400,36 @@ struct WorkspaceRuntimeTests {
         await runtime.shutdown()
         #expect(await handle.ownedBackgroundTaskCount == 0)
         #expect(await iterator.next() == nil)
+    }
+
+    @Test("Library-only progressive opening completes through its bounded fallback")
+    func progressiveLiveOpeningWithoutDocumentPresentation() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(
+            id: fixture.assignment.id,
+            openingVault: .paperAnalysis
+        )
+        #expect(try await handle.snapshot().phase == .opening(
+            availableVault: .paperAnalysis
+        ))
+
+        var completed = false
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(20))
+            if try await handle.snapshot().phase.isComplete {
+                completed = true
+                break
+            }
+        }
+        #expect(completed)
+
+        await runtime.shutdown()
+        #expect(await handle.ownedBackgroundTaskCount == 0)
     }
 
     @Test("Native live events publish one stable-identity move to every window")

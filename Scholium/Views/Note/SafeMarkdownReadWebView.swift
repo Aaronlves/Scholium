@@ -87,19 +87,26 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let contentController = WKUserContentController()
+        let webView: WKWebView
+        let contentController: WKUserContentController
+        if let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
+            webView = prepared
+            contentController = prepared.configuration.userContentController
+        } else {
+            contentController = WKUserContentController()
+            let configuration = WKWebViewConfiguration()
+            configuration.userContentController = contentController
+            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+            ScholiumWebFontResources.install(in: configuration)
+            webView = WKWebView(frame: .zero, configuration: configuration)
+        }
         contentController.add(
             context.coordinator,
             contentWorld: Self.bridgeContentWorld,
             name: Coordinator.messageHandlerName
         )
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController = contentController
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         webView.setAccessibilityElement(true)
@@ -479,6 +486,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.source = source
             sourceUTF16Length = source.utf16.count
             sourceUTF8Length = source.utf8.count
+            let publishesLoadingTransition = hasLoadedPage
+                || renderingReadinessIsAcknowledged
             ensureScrollRestoreRequest(
                 reason: hasLoadedPage ? .webViewRebuild : .documentLoad
             )
@@ -496,19 +505,37 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             appliedSelectionSurfaceIsActive = nil
             appliedFindRequestID = nil
             activeWebView = webView
+            let includesMathRuntime = Self.requiresMathRuntime(
+                body: body,
+                linkPreviews: linkPreviews
+            )
             installBridgeScripts(
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 linkPreviews: linkPreviews,
+                includesMathRuntime: includesMathRuntime,
                 loadGeneration: loadGeneration,
                 localization: interfaceLocalization,
                 in: webView
             )
             let html = Self.documentHTML(
                 body: body,
+                includesMathRuntime: includesMathRuntime,
                 localization: interfaceLocalization
             )
             let expectedSignature = signature
+            if !publishesLoadingTransition {
+                PerformanceProbe.shared.markReadNavigationStarted(
+                    documentID: documentID
+                )
+                let navigation = webView.loadHTMLString(html, baseURL: nil)
+                guard activeWebView === webView,
+                      loadedSignature == expectedSignature,
+                      activeLoadSignature == expectedSignature,
+                      loadGeneration == expectedLoadGeneration else { return }
+                activeNavigation = navigation
+                return
+            }
             Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView,
                       self.activeWebView === webView,
@@ -519,6 +546,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       self.loadedSignature == expectedSignature,
                       self.activeLoadSignature == expectedSignature,
                       self.loadGeneration == expectedLoadGeneration else { return }
+                PerformanceProbe.shared.markReadNavigationStarted(
+                    documentID: self.documentID
+                )
                 let navigation = webView.loadHTMLString(html, baseURL: nil)
                 guard self.activeWebView === webView,
                       self.loadedSignature == expectedSignature,
@@ -536,13 +566,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: String,
             userCSS: String,
             linkPreviews: [DocumentLinkPreview],
+            includesMathRuntime: Bool,
             loadGeneration: UInt64,
             localization: WebKitInterfaceLocalization,
             in webView: WKWebView
         ) {
             let contentController = webView.configuration.userContentController
             contentController.removeAllUserScripts()
-            if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
+            if includesMathRuntime, !ScholiumMathAssets.runtimeJavaScript.isEmpty {
                 contentController.addUserScript(WKUserScript(
                     source: ScholiumMathAssets.runtimeJavaScript,
                     injectionTime: .atDocumentStart,
@@ -803,6 +834,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   let expectedSignature = activeLoadSignature,
                   loadedSignature == expectedSignature else { return }
             let expectedLoadGeneration = loadGeneration
+            PerformanceProbe.shared.markReadNavigationFinished(
+                documentID: documentID
+            )
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)
@@ -1401,6 +1435,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
         static func documentHTML(
             body: String,
+            includesMathRuntime: Bool? = nil,
             localization: WebKitInterfaceLocalization = .current()
         ) -> String {
             #if DEBUG
@@ -1410,14 +1445,17 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             #else
             let qaCommentSubmitControl = ""
             #endif
+            let includesMathRuntime = includesMathRuntime
+                ?? requiresMathRuntime(body: body, linkPreviews: [])
+            let mathCSS = includesMathRuntime ? ScholiumMathAssets.css : ""
             return """
             <!doctype html>
             <html lang="\(localization.languageTag)">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src data:">
-              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src scholium-font: data:">
+              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(mathCSS)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
               <style id="scholium-presentation-css"></style>
               <style id="scholium-user-css"></style>
             </head>
@@ -1443,6 +1481,22 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             </body>
             </html>
             """
+        }
+
+        /// Mathematics is an immutable optional projection. Avoid parsing the
+        /// large runtime and embedded font stylesheet for ordinary prose, but
+        /// retain the exact existing path whenever the document or an initial
+        /// bounded preview contains a rendered mathematics node.
+        static func requiresMathRuntime(
+            body: String,
+            linkPreviews: [DocumentLinkPreview]
+        ) -> Bool {
+            func containsMath(_ html: String) -> Bool {
+                html.contains("data-math-source=\"")
+                    && html.contains("data-math-kind=\"")
+            }
+            return containsMath(body)
+                || linkPreviews.contains { containsMath($0.htmlBody) }
         }
 
         /// App-owned Read bridge executed in the named content world.

@@ -18,6 +18,7 @@ final class PerformanceProbe {
         case coldEditActivation = "cold_edit_activation"
         case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
+        case editorLargeCJKCorrectness = "editor_large_cjk_correctness"
     }
 
     static let shared = PerformanceProbe()
@@ -52,6 +53,9 @@ final class PerformanceProbe {
     private var warmLibraryWindowModelInitializationNanoseconds: UInt64?
     private var warmLibraryWorkspaceReadyNanoseconds: UInt64?
     private var warmLibraryProjectionNanoseconds: UInt64?
+    private var coldReadHTMLReadyNanoseconds: UInt64?
+    private var coldReadNavigationStartedNanoseconds: UInt64?
+    private var coldReadNavigationFinishedNanoseconds: UInt64?
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
@@ -109,6 +113,9 @@ final class PerformanceProbe {
     var measuresEditorVisibleProjection: Bool {
         configuration?.metric == .editorVisibleProjection
     }
+    var exercisesLargeCJKCorrectness: Bool {
+        configuration?.metric == .editorLargeCJKCorrectness
+    }
     var measuresEditorVisibility: Bool {
         configuration?.metric == .editorModeTransition
             || configuration?.metric == .warmEditActivation
@@ -116,19 +123,19 @@ final class PerformanceProbe {
     }
 
     func markWarmLibraryWindowModelInitializationStarted() {
-        guard configuration?.metric == .warmLibraryLaunch,
+        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
               warmLibraryWindowModelInitializationNanoseconds == nil else { return }
         warmLibraryWindowModelInitializationNanoseconds = now()
     }
 
     func markWarmLibraryWorkspaceReady() {
-        guard configuration?.metric == .warmLibraryLaunch,
+        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
               warmLibraryWorkspaceReadyNanoseconds == nil else { return }
         warmLibraryWorkspaceReadyNanoseconds = now()
     }
 
     func markWarmLibraryProjectionReady() {
-        guard configuration?.metric == .warmLibraryLaunch,
+        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
               warmLibraryProjectionNanoseconds == nil else { return }
         warmLibraryProjectionNanoseconds = now()
     }
@@ -166,6 +173,24 @@ final class PerformanceProbe {
         readStartNanoseconds = now()
     }
 
+    func markReadHTMLReady(documentID: String) {
+        guard measuresExpectedColdRead(documentID),
+              coldReadHTMLReadyNanoseconds == nil else { return }
+        coldReadHTMLReadyNanoseconds = now()
+    }
+
+    func markReadNavigationStarted(documentID: String) {
+        guard measuresExpectedColdRead(documentID),
+              coldReadNavigationStartedNanoseconds == nil else { return }
+        coldReadNavigationStartedNanoseconds = now()
+    }
+
+    func markReadNavigationFinished(documentID: String) {
+        guard measuresExpectedColdRead(documentID),
+              coldReadNavigationFinishedNanoseconds == nil else { return }
+        coldReadNavigationFinishedNanoseconds = now()
+    }
+
     func markReadReady(documentID: String) {
         guard let configuration,
               documentID == configuration.expectedDocument else { return }
@@ -175,7 +200,20 @@ final class PerformanceProbe {
             record(startNanoseconds: start, observedCount: nil)
         case .coldReadActivation:
             guard let start = configuration.externalStartNanoseconds else { return }
-            record(startNanoseconds: start, observedCount: nil)
+            let completed = now()
+            var phases = launchPhaseDurations(
+                startNanoseconds: start,
+                completedNanoseconds: completed
+            )
+            phases.merge(readPhaseDurations(completedNanoseconds: completed)) {
+                _, readPhase in readPhase
+            }
+            record(
+                startNanoseconds: start,
+                observedCount: nil,
+                completedNanoseconds: completed,
+                phaseDurations: phases
+            )
         default:
             return
         }
@@ -338,7 +376,16 @@ final class PerformanceProbe {
             record(startNanoseconds: activation.startNanoseconds, observedCount: nil)
         case .coldEditActivation:
             guard let start = configuration.externalStartNanoseconds else { return }
-            record(startNanoseconds: start, observedCount: nil)
+            let completed = now()
+            record(
+                startNanoseconds: start,
+                observedCount: nil,
+                completedNanoseconds: completed,
+                phaseDurations: launchPhaseDurations(
+                    startNanoseconds: start,
+                    completedNanoseconds: completed
+                )
+            )
         default:
             return
         }
@@ -401,6 +448,32 @@ final class PerformanceProbe {
         recordedSampleCount += 1
     }
 
+    /// Persists the packaged CJK journey's final privacy-safe handshake only
+    /// after the driver has restored the exact source and requested this
+    /// record. The application owns the destination inside its sandbox.
+    func recordLargeCJKCorrectness(documentID: String, source: String) {
+        guard let configuration,
+              configuration.metric == .editorLargeCJKCorrectness,
+              documentID == configuration.expectedDocument,
+              recordedSampleCount == 0 else { return }
+        let characterCount = source.unicodeScalars.reduce(into: 0) { count, scalar in
+            if (0x4E00...0x9FFF).contains(scalar.value) { count += 1 }
+        }
+        guard characterCount == 100_000 else { return }
+        let object: [String: Any] = [
+            "schema": "scholium-cjk-correctness-v1",
+            "run_id": configuration.runID,
+            "character_count": characterCount,
+            "beginning_edit_undo": true,
+            "middle_edit_undo": true,
+            "end_edit_save": true,
+            "mode_switching": true,
+            "exact_source_restored": true,
+        ]
+        guard append(object, to: configuration.resultURL) else { return }
+        recordedSampleCount = 1
+    }
+
     private func record(
         startNanoseconds: UInt64,
         observedCount: Int?,
@@ -433,6 +506,70 @@ final class PerformanceProbe {
 
     private func milliseconds(_ nanoseconds: UInt64) -> Double {
         Double(nanoseconds) / 1_000_000
+    }
+
+    private var measuresColdDocumentLaunch: Bool {
+        configuration?.metric == .coldReadActivation
+            || configuration?.metric == .coldEditActivation
+    }
+
+    private func measuresExpectedColdRead(_ documentID: String) -> Bool {
+        configuration?.metric == .coldReadActivation
+            && configuration?.expectedDocument == documentID
+    }
+
+    private func launchPhaseDurations(
+        startNanoseconds: UInt64,
+        completedNanoseconds: UInt64
+    ) -> [String: Double] {
+        guard let windowModelInitialization = warmLibraryWindowModelInitializationNanoseconds,
+              let workspaceReady = warmLibraryWorkspaceReadyNanoseconds,
+              let projection = warmLibraryProjectionNanoseconds,
+              windowModelInitialization >= startNanoseconds,
+              workspaceReady >= windowModelInitialization,
+              projection >= workspaceReady,
+              completedNanoseconds >= projection else { return [:] }
+        return [
+            "process_to_window_model_init_duration_ms": milliseconds(
+                windowModelInitialization - startNanoseconds
+            ),
+            "window_model_init_to_workspace_ready_duration_ms": milliseconds(
+                workspaceReady - windowModelInitialization
+            ),
+            "workspace_ready_to_projection_duration_ms": milliseconds(
+                projection - workspaceReady
+            ),
+            "projection_to_layout_duration_ms": milliseconds(
+                completedNanoseconds - projection
+            ),
+        ]
+    }
+
+    private func readPhaseDurations(
+        completedNanoseconds: UInt64
+    ) -> [String: Double] {
+        guard let workspaceProjection = warmLibraryProjectionNanoseconds,
+              let htmlReady = coldReadHTMLReadyNanoseconds,
+              let navigationStarted = coldReadNavigationStartedNanoseconds,
+              let navigationFinished = coldReadNavigationFinishedNanoseconds,
+              htmlReady >= workspaceProjection,
+              navigationStarted >= htmlReady,
+              navigationFinished >= navigationStarted,
+              completedNanoseconds >= navigationFinished else { return [:] }
+        return [
+            "workspace_projection_to_read_html_ready_duration_ms": milliseconds(
+                htmlReady - workspaceProjection
+            ),
+            "read_html_ready_to_navigation_start_duration_ms": milliseconds(
+                navigationStarted - htmlReady
+            ),
+            "read_navigation_duration_ms": milliseconds(
+                navigationFinished - navigationStarted
+            ),
+            "read_navigation_to_ready_duration_ms": milliseconds(
+                completedNanoseconds - navigationFinished
+            ),
+        ]
     }
 
     private func append(_ object: [String: Any], to resultURL: URL) -> Bool {

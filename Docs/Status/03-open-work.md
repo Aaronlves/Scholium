@@ -85,9 +85,11 @@
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
 - The Editor and non-Editor Beta limits are approved. Freeze the exact
-  source/artifact and fixture, then run the complete warm-up/sample
-  protocol for Search, large Library, cold start, Editor latency, and retained
-  memory.
+  source/artifact and fixture, then rerun the complete warm-up/sample protocol
+  after the current G7 remediation is reviewed, committed, exactly tagged,
+  packaged, and the reference machine has cooled. The first complete packaged
+  attempt failed warm/cold Review, cold Edit, and the superseded RSS-jitter
+  convergence rule; working-tree diagnostics are not release acceptance.
 
 ## Source coordination, recovery, and external locators
 

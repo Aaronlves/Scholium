@@ -187,6 +187,7 @@ struct DocumentFeatureActions {
         DocumentFingerprint,
         String
     ) async throws -> Void
+    let openingDocumentPresentationDidComplete: @MainActor () -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
 
@@ -1148,7 +1149,7 @@ struct NoteContentView: View {
             focusEditorIfPresented()
             if !isEditing,
                documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256 {
-                PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+                markReadPresentationReady(documentID: note.relativePath)
             }
         }
         .onChange(of: editorSession.presentedMode) { _, presentedMode in
@@ -1206,7 +1207,7 @@ struct NoteContentView: View {
                 renderedReadFingerprint = fingerprint.sha256
                 documentSession.renderedReadReadyFingerprint = fingerprint.sha256
                 if !isEditing {
-                    PerformanceProbe.shared.markReadReady(documentID: relativePath)
+                    markReadPresentationReady(documentID: relativePath)
                 }
                 return
             }
@@ -1215,9 +1216,11 @@ struct NoteContentView: View {
                 relativePath: relativePath,
                 source: source,
                 fingerprint: fingerprint,
-                workspaceID: state.currentVaultID
+                workspaceID: state.currentVaultID,
+                semantic: note.workspaceSnapshot?.cachedSemanticDocument
             )
             guard !Task.isCancelled, fingerprint == noteFingerprint else { return }
+            PerformanceProbe.shared.markReadHTMLReady(documentID: relativePath)
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
         }
@@ -1529,6 +1532,10 @@ struct NoteContentView: View {
             mode: documentSession.retainedEditorMode,
             presentationCSS: documentPresentationCSS,
             userCSS: state.livePreviewCSS,
+            requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
+                source: editingSource,
+                linkPreviews: documentSession.previewCatalog?.links ?? []
+            ),
             linkCompletionQuery: queryEditorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             initialScrollFraction: state.initialScrollFraction,
@@ -1587,8 +1594,7 @@ struct NoteContentView: View {
         }
         .scholiumSurface(.document)
         .overlay(alignment: .topLeading) {
-            if PerformanceProbe.shared.measuresEditorVisibility,
-               isEditing,
+            if isEditing,
                editorSession.isLoaded,
                let presentedMode = editorSession.presentedMode,
                presentedMode == documentSession.activeEditorMode {
@@ -1602,6 +1608,18 @@ struct NoteContentView: View {
                     PerformanceProbe.shared.markEditorVisible(
                         documentID: note.relativePath
                     )
+                    actions.openingDocumentPresentationDidComplete()
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+            if !isEditing,
+               (note.document.hasExactEmptyBody
+                || documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256) {
+                PerformanceReadyBoundary(
+                    generation: "read:\(noteFingerprint.sha256)"
+                ) {
+                    actions.openingDocumentPresentationDidComplete()
                 }
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
@@ -1731,7 +1749,7 @@ struct NoteContentView: View {
             onRenderingReady: {
                 documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
                 if !isEditing {
-                    PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+                    markReadPresentationReady(documentID: note.relativePath)
                 }
             },
             findRequest: documentFind.request,
@@ -1768,6 +1786,10 @@ struct NoteContentView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)
+    }
+
+    private func markReadPresentationReady(documentID: String) {
+        PerformanceProbe.shared.markReadReady(documentID: documentID)
     }
 
     private var editorScrollAnchor: EditorScrollAnchor? {
@@ -2701,6 +2723,7 @@ private extension CritiqueFindingDispositionDecision {
         viewAgentChanges: {},
         reloadNoteReviewState: {},
         markCurrentNoteReviewed: { _, _, _ in },
+        openingDocumentPresentationDidComplete: {},
         notify: { _, _ in }
     )
     let critiqueProvenanceContext = CritiqueProvenanceContext(

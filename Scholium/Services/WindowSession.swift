@@ -54,6 +54,7 @@ struct WindowWorkspaceCapabilities: Sendable {
     let discovery: any DiscoveryUseCases
     let research: WindowResearchCapabilities
     let zoteroBindings: any ZoteroBindingUseCases
+    let openingPresentationDidComplete: @Sendable () async -> Void
 }
 
 /// The delivery-facing research capabilities for one activated Triptych.
@@ -886,8 +887,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
-    func snapshot(for triptychID: UUID) -> WorkspaceSnapshot? {
-        workspaceSnapshots[triptychID]
+    func snapshot(
+        for runtimeIdentity: TriptychRuntimeIdentity
+    ) -> WorkspaceSnapshot? {
+        guard workspaceActivations[runtimeIdentity.triptychID]?.runtimeIdentity
+                == runtimeIdentity else { return nil }
+        return workspaceSnapshots[runtimeIdentity.triptychID]
     }
 
     func registerEditorFlush(
@@ -1153,7 +1158,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 sourceAccess: research,
                 recoveryRecordsURL: research.recoveryRecordsURL
             ),
-            zoteroBindings: handle.zoteroBindings
+            zoteroBindings: handle.zoteroBindings,
+            openingPresentationDidComplete: {
+                await handle.openingPresentationDidComplete()
+            }
         )
     }
 

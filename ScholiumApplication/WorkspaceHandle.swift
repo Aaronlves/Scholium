@@ -391,6 +391,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var isShutDown = false
     private var liveWatcherTask: Task<Void, Never>?
     private var openingCompletionTask: Task<Void, Never>?
+    private let openingPresentationSignal = AsyncStream<Void>.makeStream(
+        bufferingPolicy: .bufferingNewest(1)
+    )
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var sourceCommitRefreshTask: Task<Void, Never>?
     private var pendingSourceCommitRefreshes: [WorkspaceRefreshPayload] = []
@@ -866,6 +869,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         shutDownWorkspaceSourceOperationGate()
         watcher?.cancel()
         openingCompletion?.cancel()
+        openingPresentationSignal.continuation.finish()
         refresh?.cancel()
         await watcher?.value
         await openingCompletion?.value
@@ -881,6 +885,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try requireActive()
         let repository = try repository(vaultID: id.vaultID)
         return try await repository.load(relativePath: id.relativePath)
+    }
+
+    /// Releases the deferred complete-Triptych reconcile after the opening
+    /// Vault's first Document has crossed its native visible-layout boundary.
+    /// The signal is idempotent and carries no document identity or source.
+    public func openingPresentationDidComplete() {
+        openingPresentationSignal.continuation.yield()
+        openingPresentationSignal.continuation.finish()
     }
 
     func importMarkdown(
@@ -2861,11 +2873,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
         }
         if completesOpeningInBackground {
+            let presentationEvents = openingPresentationSignal.stream
             openingCompletionTask = Task(priority: .utility) { [weak self] in
-                // This short presentation handoff is not a correctness gate.
-                // It lets the first usable Library commit before the complete
-                // cross-vault reconcile competes for CPU and filesystem I/O.
-                try? await Task.sleep(for: .milliseconds(200))
+                await Self.waitForOpeningPresentationOrFallback(presentationEvents)
                 guard !Task.isCancelled, let self else { return }
                 await self.completeLiveOpening(
                     preOpenInventory: preOpenInventory
@@ -2874,6 +2884,23 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             return
         }
         await reconcileLiveActivation(preOpenInventory: preOpenInventory)
+    }
+
+    private nonisolated static func waitForOpeningPresentationOrFallback(
+        _ events: AsyncStream<Void>
+    ) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in events { return }
+            }
+            group.addTask {
+                // A Library-only window must still converge when no Document
+                // is selected or its renderer fails before becoming visible.
+                try? await Task.sleep(for: .seconds(2))
+            }
+            _ = await group.next()
+            group.cancelAll()
+        }
     }
 
     private func completeLiveOpening(

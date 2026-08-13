@@ -372,6 +372,29 @@ MEMORY_WATCH_PID=""
 cp "${memory_results}" "${RAW}/editor_retained_memory.jsonl"
 fi
 
+if [[ "${MODE}" == product_gate ]]; then
+cjk_results="${RAW}/editor_large_cjk_correctness.jsonl"
+cjk_home="${APP_SCRATCH}/home-editor-large-cjk-correctness"
+cjk_run_file="${DRIVER_PRODUCTS}/ScholiumPerformance-${RUN_ID}-editor-large-cjk-correctness.xctestrun"
+DRIVER_RUN_FILES+=("${cjk_run_file}")
+mkdir -p "${cjk_home}"
+cp "${BASE_XCTESTRUN}" "${cjk_run_file}"
+set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${APP}"
+set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${FIXTURE_COPY}"
+set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${cjk_home}"
+set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${RUN_ID}"
+set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH "${cjk_results}"
+"${DEVELOPER_DIR}/usr/bin/xcodebuild" \
+  -xctestrun "${cjk_run_file}" \
+  -destination "platform=macOS,arch=$(uname -m)" \
+  -parallel-testing-enabled NO \
+  -maximum-parallel-testing-workers 1 \
+  -resultBundlePath "${SCRATCH}/editor-large-cjk-correctness.xcresult" \
+  test-without-building \
+  -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1HundredThousandCJKCorrectness \
+  >"${SCRATCH}/editor-large-cjk-correctness.log"
+fi
+
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   --output "${FIXTURE_COPY}" \
   --verify \

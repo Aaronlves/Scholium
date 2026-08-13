@@ -220,6 +220,30 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
+On 2026-08-13, the exact-tagged packaged `v0.1.0-beta.5` G7 run completed all
+ten latency series at five warm-ups plus 30 retained samples and the separate
+50-transition/51-RSS series with no invalid trial or visible-correctness
+failure. Warm Library recorded 722.933ms p95 and Search 142.733ms p95. Warm
+Review recorded 360.937ms p95, cold Review 1,471.497ms p95, and cold Edit
+1,419.142ms p95/1,437.826ms maximum, so those three missed their approved
+limits. Key-to-paint, Edit/Source transition, cached preview, warm Edit, and
+visible projection passed. The memory series kept stable app, GPU, networking,
+and two Web Content process counts; its final-tail median grew 0.644%, but the
+old jitter-sensitive rule rejected its strictly increasing final ten samples.
+The report therefore correctly failed G7.
+
+The subsequent bounded working-tree remediation removes a duplicate initial
+Vault open, avoids loading the Review mathematics runtime and fonts for prose,
+removes repeated accessibility snapshots from the retained-memory driver, and
+adds fail-closed packaged 100,000-CJK and accessibility-environment evidence.
+An ad-hoc-signed dirty Release diagnostic then passed the packaged CJK journey
+in 13.864 seconds and restored the complete 800-Note RDF-1 manifest exactly.
+Its observer-free memory journey kept the same stable process roles; the final
+ten-sample span was 1,605,632 bytes versus 3,473,408 bytes for the preceding
+span, and the final-tail medians grew 0.236%. Under the corrected bounded,
+decelerating convergence rule this is a pass. These diagnostics validate the
+repair paths but do not replace the cooled, clean, exact-tagged packaged rerun.
+
 On 2026-08-13, the exact-tagged, packaged `v0.1.0-beta.3` G7 attempt completed
 the five-warm-up/30-retained-sample Library and Search series before the warm
 Read driver failed while repositioning its alternate offscreen Sidebar target.

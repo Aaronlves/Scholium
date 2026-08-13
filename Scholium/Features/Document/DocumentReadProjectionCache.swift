@@ -48,7 +48,8 @@ actor DocumentReadProjectionCache {
 
     func html(
         for key: DocumentReadProjectionKey,
-        source: String
+        source: String,
+        semantic: MarkdownSemanticDocument? = nil
     ) -> String {
         guard DocumentFingerprint(content: source) == key.fingerprint else {
             return ""
@@ -60,10 +61,15 @@ actor DocumentReadProjectionCache {
             return cached.html
         }
 
-        let html = SafeMarkdownRenderer.render(NoteDocument(
+        let document = NoteDocument(
             relativePath: key.relativePath,
             rawContent: source
-        )).htmlBody
+        )
+        let html = if let semantic {
+            SafeMarkdownRenderer.render(document, semantic: semantic).htmlBody
+        } else {
+            SafeMarkdownRenderer.render(document).htmlBody
+        }
         let byteCount = html.utf8.count
         guard byteCount <= maximumBytesPerWorkspace else { return html }
         entries[key] = Entry(html: html, byteCount: byteCount, access: nextAccess)

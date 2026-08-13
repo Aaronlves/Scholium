@@ -183,7 +183,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application: application,
             documentID: "Long/Canonical-5000-Word-Work.md"
         )
-        Thread.sleep(forTimeInterval: 0.5)
         waitForMemoryAcknowledgment(
             index: 0,
             acknowledgmentPath: acknowledgmentPath
@@ -191,21 +190,188 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
         for transition in 1...transitions {
             let sourceMode = transition.isMultiple(of: 2) == false
-            selectEditorMode(
-                sourceMode ? "Source" : "Edit",
-                accessibilityLabel: sourceMode
-                    ? "Markdown source editor"
-                    : "Markdown editor, Edit mode",
-                modeMenu: modeMenu,
-                application: application,
-                documentID: "Long/Canonical-5000-Word-Work.md"
+            requestMeasuredEditorMode(sourceMode ? "Source" : "Edit")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: progressPath) == transition + 1
+                },
+                "The app did not acknowledge retained-memory transition \(transition)."
             )
-            _ = XCUIScreen.main.screenshot()
-            Thread.sleep(forTimeInterval: 0.1)
             waitForMemoryAcknowledgment(
                 index: transition,
                 acknowledgmentPath: acknowledgmentPath
             )
+        }
+
+        let finalModeIsSource = transitions.isMultiple(of: 2) == false
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (modeMenu.value as? String) == (finalModeIsSource ? "Source" : "Edit")
+                    && application.descendants(matching: .any)[
+                        finalModeIsSource
+                            ? "Markdown source editor"
+                            : "Markdown editor, Edit mode"
+                    ].exists
+            },
+            "The final retained Editor mode was not visibly accessible."
+        )
+    }
+
+    /// Exercises the frozen packaged RDF-1 CJK document without leaving a
+    /// modified fixture behind. Beginning and middle edits are immediately
+    /// undone; the end edit is saved across mode switches, then undone and
+    /// saved back to the original exact bytes.
+    @MainActor
+    func testRDF1HundredThousandCJKCorrectness() throws {
+        continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH"] != nil else {
+            throw XCTSkip("The packaged RDF-1 CJK correctness driver is not configured.")
+        }
+        let applicationPath = try required("SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH", in: environment)
+        let fixtureRoot = try required("SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT", in: environment)
+        let homeRoot = try required("SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT", in: environment)
+        let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
+        let resultsPath = try required("SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH", in: environment)
+        let relativePath = "Long/Canonical-100000-CJK-Work.md"
+        let noteURL = URL(fileURLWithPath: fixtureRoot, isDirectory: true)
+            .appendingPathComponent("03-works", isDirectory: true)
+            .appendingPathComponent(relativePath, isDirectory: false)
+        let originalData = try Data(contentsOf: noteURL)
+        let originalSource = try XCTUnwrap(String(data: originalData, encoding: .utf8))
+        let cjkCharacterCount = originalSource.unicodeScalars.reduce(into: 0) { count, scalar in
+            if (0x4E00...0x9FFF).contains(scalar.value) { count += 1 }
+        }
+        XCTAssertEqual(cjkCharacterCount, 100_000)
+        let application = XCUIApplication(
+            url: URL(fileURLWithPath: applicationPath, isDirectory: true)
+        )
+        application.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            "--scholium-performance-editor-mode-notifications",
+        ]
+        application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
+        application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
+        application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "cjk-\(runID)"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = relativePath
+        application.launchEnvironment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"] = "300000"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = resultsPath
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_METRIC"] =
+            "editor_large_cjk_correctness"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = runID
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE"] = "0"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"] = "1"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = relativePath
+        defer {
+            let stopped = stopPackagedApplication(
+                application,
+                bundleURL: URL(fileURLWithPath: applicationPath, isDirectory: true)
+            )
+            // Never race a live editor buffer with an out-of-process repair.
+            // A process that refuses termination leaves the disposable fixture
+            // dirty so the runner's final RDF-1 manifest check fails closed.
+            if stopped, (try? Data(contentsOf: noteURL)) != originalData {
+                try? originalData.write(to: noteURL, options: .atomic)
+            }
+        }
+
+        application.launch()
+        XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
+        let modeMenu = application.descendants(matching: .any)["scholium.documentModeButton"]
+        XCTAssertTrue(modeMenu.waitForExistence(timeout: 30))
+        selectCJKDocumentMode(
+            "Edit",
+            accessibilityLabel: "Markdown editor, Edit mode",
+            modeMenu: modeMenu,
+            application: application,
+            documentID: relativePath
+        )
+        let editor = application.descendants(matching: .any)["Markdown editor, Edit mode"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 60))
+        editor.click()
+
+        let beginningToken = "QA-CJK-BEGIN-\(UUID().uuidString)"
+        application.typeKey(.home, modifierFlags: [.command])
+        try paste(beginningToken, into: application)
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (editor.value as? String)?.contains(beginningToken) == true
+            }
+        )
+        application.typeKey("z", modifierFlags: [.command])
+
+        for _ in 0..<24 { application.typeKey(.pageDown, modifierFlags: []) }
+        let middleToken = "QA-CJK-MIDDLE-\(UUID().uuidString)"
+        try paste(middleToken, into: application)
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (editor.value as? String)?.contains(middleToken) == true
+            }
+        )
+        application.typeKey("z", modifierFlags: [.command])
+
+        let endToken = "QA-CJK-END-\(UUID().uuidString)"
+        application.typeKey(.end, modifierFlags: [.command])
+        try paste(endToken, into: application)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalData)
+
+        application.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 60) {
+                (try? String(contentsOf: noteURL, encoding: .utf8).contains(endToken)) == true
+            },
+            "The 100,000-CJK end edit did not reach the revision-checked save path."
+        )
+        let committedSource = try String(contentsOf: noteURL, encoding: .utf8)
+        XCTAssertEqual(committedSource.components(separatedBy: endToken).count, 2)
+        XCTAssertEqual(committedSource.replacingOccurrences(of: endToken, with: ""), originalSource)
+
+        selectCJKDocumentMode(
+            "Source",
+            accessibilityLabel: "Markdown source editor",
+            modeMenu: modeMenu,
+            application: application,
+            documentID: relativePath
+        )
+        selectCJKDocumentMode(
+            "Edit",
+            accessibilityLabel: "Markdown editor, Edit mode",
+            modeMenu: modeMenu,
+            application: application,
+            documentID: relativePath
+        )
+        editor.click()
+        application.typeKey("z", modifierFlags: [.command])
+        application.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 60) { (try? Data(contentsOf: noteURL)) == originalData },
+            "Undo after mode switching did not restore the exact RDF-1 CJK bytes."
+        )
+
+        XCTAssertEqual(
+            notify_post("com.scholium.qa.performance-editor-cjk-correctness"),
+            UInt32(NOTIFY_STATUS_OK),
+            "The packaged CJK correctness handshake could not be posted."
+        )
+        XCTAssertTrue(
+            waitUntil(timeout: 20) { self.lineCount(at: resultsPath) == 1 },
+            "The packaged app did not publish the CJK correctness record."
+        )
+        let recorded = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: URL(fileURLWithPath: resultsPath))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(recorded["run_id"] as? String, runID)
+        XCTAssertEqual(recorded["character_count"] as? Int, cjkCharacterCount)
+        for key in [
+            "beginning_edit_undo", "middle_edit_undo", "end_edit_save",
+            "mode_switching", "exact_source_restored",
+        ] {
+            XCTAssertEqual(recorded[key] as? Bool, true)
         }
     }
 
@@ -659,6 +825,68 @@ final class ScholiumPerformanceUITests: XCTestCase {
             UInt32(NOTIFY_STATUS_OK),
             "The QA Editor performance action could not be posted."
         )
+    }
+
+    @MainActor
+    private func paste(_ text: String, into application: XCUIApplication) throws {
+        let process = Process()
+        let input = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+        process.standardInput = input
+        try process.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        application.typeKey("v", modifierFlags: [.command])
+    }
+
+    @MainActor
+    private func selectCJKDocumentMode(
+        _ title: String,
+        accessibilityLabel: String,
+        modeMenu: XCUIElement,
+        application: XCUIApplication,
+        documentID: String
+    ) {
+        if (modeMenu.value as? String) != title {
+            let notificationName = title == "Edit"
+                ? "com.scholium.qa.performance-editor-mode.live-preview"
+                : "com.scholium.qa.performance-editor-mode.source"
+            XCTAssertEqual(
+                notify_post(notificationName),
+                UInt32(NOTIFY_STATUS_OK),
+                "The packaged CJK mode request could not be posted."
+            )
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 60) {
+                (modeMenu.value as? String) == title
+                    && application.descendants(matching: .any)[accessibilityLabel].exists
+            },
+            "The packaged CJK \(title) surface for \(documentID) did not become accessible."
+        )
+    }
+
+    private func stopPackagedApplication(
+        _ application: XCUIApplication,
+        bundleURL: URL
+    ) -> Bool {
+        let expectedURL = bundleURL.standardizedFileURL
+        func matchingApplications() -> [NSRunningApplication] {
+            NSRunningApplication.runningApplications(
+                withBundleIdentifier: "com.scholium.app"
+            ).filter { $0.bundleURL?.standardizedFileURL == expectedURL }
+        }
+
+        application.terminate()
+        if waitUntil(timeout: 10) { matchingApplications().isEmpty } {
+            return true
+        }
+        matchingApplications().forEach { $0.forceTerminate() }
+        return waitUntil(timeout: 10) { matchingApplications().isEmpty }
     }
 
     private func waitForMemoryAcknowledgment(

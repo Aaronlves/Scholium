@@ -118,6 +118,9 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     /// this exact fingerprint. Presentation consumers must not parse Markdown
     /// again merely to build document navigation.
     public let headings: [HeadingNode]
+    /// Exact-fingerprint derived semantics prepared by the workspace opening
+    /// generation. Package consumers may reuse it but never write from it.
+    package let cachedSemanticDocument: MarkdownSemanticDocument?
     package let cachedTitleProjection: WorkspaceNoteTitleProjection?
 
     public var fingerprint: DocumentFingerprint { document.fingerprint }
@@ -166,6 +169,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             graphCounts: graphCounts,
             headings: headings,
             derivedProjectionState: derivedProjectionState,
+            cachedSemanticDocument: nil,
             cachedTitleProjection: nil
         )
     }
@@ -180,6 +184,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         graphCounts: WorkspaceGraphCounts,
         headings: [HeadingNode],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
+        cachedSemanticDocument: MarkdownSemanticDocument? = nil,
         cachedTitleProjection: WorkspaceNoteTitleProjection?
     ) {
         self.id = id
@@ -191,6 +196,9 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.graphCounts = graphCounts
         self.headings = headings
         self.derivedProjectionState = derivedProjectionState
+        self.cachedSemanticDocument = cachedSemanticDocument?.fingerprint == document.fingerprint
+            ? cachedSemanticDocument
+            : nil
         self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
             ? cachedTitleProjection
             : nil

@@ -6,6 +6,36 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Initial Review consumes the bounded source-free prewarmed WebView")
+    func readConsumesPreparedWebView() async throws {
+        let prewarmer = ScholiumWebKitProcessPrewarmer.shared
+        prewarmer.finish()
+        prewarmer.start()
+        let preparedIdentity = try #require(prewarmer.testingPreparedWebViewIdentity)
+        let source = "# Prepared Review\n\nThe exact source remains authoritative.\n"
+        let document = NoteDocument(relativePath: "Prepared.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer {
+            harness.close()
+            prewarmer.finish()
+        }
+
+        try await harness.waitUntilReady()
+
+        #expect(try harness.webViewIdentity() == preparedIdentity)
+        #expect(!prewarmer.isActive)
+        #expect(
+            try harness.webViewAccessibilityIdentifier()
+                == "scholium.renderedDocument.ReadFixture.md"
+        )
+    }
+
     @Test("Review renders inert Mermaid and keeps unsupported source visible")
     func reviewMermaidProjectionFailsClosed() async throws {
         let source = """
@@ -106,6 +136,26 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(html.contains("<style id=\"scholium-presentation-css\"></style>"))
         #expect(html.contains("<style id=\"scholium-user-css\"></style>"))
         #expect(html.contains("script-src 'none'"))
+    }
+
+    @Test("Read loads its packaged prose font through the allowlisted scheme")
+    func readLoadsAllowlistedPackagedFont() async throws {
+        let source = "# Exact\n\nA rendered claim.\n"
+        let document = NoteDocument(relativePath: "Font.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        let loaded = try await harness.callBridgeJavaScript(
+            "return document.fonts.check('16px Alegreya');"
+        ) as? Bool
+        #expect(loaded == true)
     }
 
     @Test("Read treats hostile CSS bytes as inert style text")

@@ -182,6 +182,7 @@ interface WikilinkPresentation { displayStart: number; displayEnd: number; isLeg
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
+  refreshMathRuntime(): boolean;
 }
 
 const webkitWindow = window as ScholiumWindow;
@@ -549,6 +550,7 @@ class MathWidget extends WidgetType {
     element.dataset.scholiumProtected = "math";
 
     const runtime = window.scholiumMath;
+    if (runtime?.version !== 1) post({type: "requestMathRuntime"});
     const rendered = runtime?.version === 1
       ? runtime.render({source: this.expression.content, kind: this.expression.kind})
       : {ok: false as const, reason: "invalid-source" as const};
@@ -3905,6 +3907,10 @@ const editorOperations = {
 webkitWindow.scholiumEditor = {
   dispatch: dispatchEditorRequest,
   resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
+  refreshMathRuntime() {
+    editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    return true;
+  },
 };
 
 recordEditorMetric("startup", editorStartupStartedAt, {documentLength: editor.state.doc.length});

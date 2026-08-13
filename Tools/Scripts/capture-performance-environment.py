@@ -29,13 +29,40 @@ def sysctl(name: str) -> str | None:
     return command("/usr/sbin/sysctl", "-n", name)
 
 
-def default_bool(key: str) -> bool | None:
-    value = command("/usr/bin/defaults", "read", "com.apple.universalaccess", key)
+def default_bool(domain: str, key: str) -> bool:
+    value = command("/usr/bin/defaults", "read", domain, key)
     if value in {"1", "true", "TRUE", "YES"}:
         return True
     if value in {"0", "false", "FALSE", "NO"}:
         return False
-    return None
+    # These accessibility preferences are opt-in system settings. In their
+    # defaults domains, an absent key represents the unset/off state.
+    return False
+
+
+def process_is_running(name: str) -> bool:
+    result = subprocess.run(
+        ["/usr/bin/pgrep", "-x", name],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return True
+    if result.returncode == 1:
+        return False
+    raise RuntimeError(f"Could not inspect process state for {name}")
+
+
+def full_keyboard_access_enabled() -> bool:
+    if default_bool("com.apple.Accessibility", "FullKeyboardAccessEnabled"):
+        return True
+    raw_mode = command("/usr/bin/defaults", "read", "-g", "AppleKeyboardUIMode")
+    try:
+        mode = int(raw_mode) if raw_mode is not None else 0
+    except ValueError:
+        mode = 0
+    return mode & 0b10 != 0
 
 
 def file_sha256(path: Path) -> str:
@@ -96,12 +123,20 @@ def main() -> None:
         "foreground_application": frontmost or "unavailable",
         "window": {"width_points": 1380, "layout_mode": "wide"},
         "accessibility": {
-            "increase_contrast": default_bool("increaseContrast"),
-            "reduce_transparency": default_bool("reduceTransparency"),
-            "reduce_motion": default_bool("reduceMotion"),
-            "differentiate_without_color": default_bool("differentiateWithoutColor"),
-            "voice_over": "not_recorded_by_automation",
-            "full_keyboard_access": "not_recorded_by_automation",
+            "increase_contrast": default_bool(
+                "com.apple.universalaccess", "increaseContrast"
+            ),
+            "reduce_transparency": default_bool(
+                "com.apple.universalaccess", "reduceTransparency"
+            ),
+            "reduce_motion": default_bool(
+                "com.apple.universalaccess", "reduceMotion"
+            ),
+            "differentiate_without_color": default_bool(
+                "com.apple.universalaccess", "differentiateWithoutColor"
+            ),
+            "voice_over": process_is_running("VoiceOver"),
+            "full_keyboard_access": full_keyboard_access_enabled(),
         },
         "logging": "default release logging; performance records contain timing and counts only",
         "artifact": {

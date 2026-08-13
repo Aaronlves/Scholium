@@ -213,6 +213,7 @@ enum WorkspaceSnapshotBuilder {
                         ambiguous: 0
                     ),
                     headings: semantics[document.relativePath]?.headings ?? [],
+                    cachedSemanticDocument: semantics[document.relativePath],
                     cachedTitleProjection: semantics[document.relativePath].map {
                         WorkspaceNoteTitleProjection(
                             document: document,
@@ -765,6 +766,9 @@ enum WorkspaceSnapshotBuilder {
                         headings: loaded.semantics[
                             document.relativePath
                         ]?.headings ?? [],
+                        cachedSemanticDocument: loaded.semantics[
+                            document.relativePath
+                        ],
                         cachedTitleProjection: loaded.semantics[
                             document.relativePath
                         ].map {
