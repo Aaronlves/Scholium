@@ -17,7 +17,7 @@ LATENCY_METRICS = (
     "warm_library_launch",
     "indexed_search",
     "warm_read_activation",
-    "cold_read_activation",
+    "first_read_activation",
     "editor_key_to_paint",
     "editor_mode_transition",
     "editor_cached_preview",
@@ -30,7 +30,7 @@ THRESHOLDS_MS = {
     "warm_library_launch": 1_000.0,
     "indexed_search": 200.0,
     "warm_read_activation": 300.0,
-    "cold_read_activation": 1_000.0,
+    "first_read_activation": 1_000.0,
     "editor_key_to_paint": 100.0,
     "editor_mode_transition": 100.0,
     "editor_cached_preview": 100.0,
@@ -61,7 +61,6 @@ EXPECTED_COUNTS = {
 }
 LAUNCH_PHASE_METRICS = {
     "warm_library_launch",
-    "cold_read_activation",
     "cold_edit_activation",
 }
 LAUNCH_PHASE_KEYS = (
@@ -75,16 +74,13 @@ LAUNCH_DETAIL_KEYS = (
     "startup_safety_ready_to_vault_configuration_ready_duration_ms",
     "vault_configuration_ready_to_projection_duration_ms",
 )
-READ_PHASE_KEYS = (
-    "workspace_projection_to_read_html_ready_duration_ms",
+FIRST_READ_PHASE_KEYS = (
+    "activation_to_document_selection_duration_ms",
+    "document_selection_to_read_task_start_duration_ms",
+    "read_task_start_to_html_ready_duration_ms",
     "read_html_ready_to_navigation_start_duration_ms",
     "read_navigation_duration_ms",
     "read_navigation_to_ready_duration_ms",
-)
-READ_PREPARATION_KEYS = (
-    "projection_to_document_selection_duration_ms",
-    "document_selection_to_read_task_start_duration_ms",
-    "read_task_start_to_html_ready_duration_ms",
 )
 ALLOWED_KEYS = {
     "schema",
@@ -106,8 +102,7 @@ ALLOWED_KEYS = {
     "workspace_ready_to_startup_safety_ready_duration_ms",
     "startup_safety_ready_to_vault_configuration_ready_duration_ms",
     "vault_configuration_ready_to_projection_duration_ms",
-    "workspace_projection_to_read_html_ready_duration_ms",
-    "projection_to_document_selection_duration_ms",
+    "activation_to_document_selection_duration_ms",
     "document_selection_to_read_task_start_duration_ms",
     "read_task_start_to_html_ready_duration_ms",
     "read_html_ready_to_navigation_start_duration_ms",
@@ -177,7 +172,8 @@ def nearest_rank(values: list[float], percentile: float) -> float:
 def summarize_latency(metric: str, measured: list[float]) -> dict[str, object]:
     p95 = nearest_rank(measured, 0.95)
     maximum = max(measured)
-    threshold_met = p95 < THRESHOLDS_MS[metric]
+    threshold = THRESHOLDS_MS[metric]
+    threshold_met = p95 < threshold
     maximum_limit = MAXIMUM_LIMITS_MS.get(metric)
     maximum_limit_met = maximum_limit is None or maximum < maximum_limit
     return {
@@ -185,7 +181,7 @@ def summarize_latency(metric: str, measured: list[float]) -> dict[str, object]:
         "p95_ms": p95,
         "maximum_ms": maximum,
         "mean_ms": statistics.fmean(measured),
-        "threshold_ms_exclusive": THRESHOLDS_MS[metric],
+        "threshold_ms_exclusive": threshold,
         "threshold_met": threshold_met,
         "maximum_limit_ms_exclusive": maximum_limit,
         "maximum_limit_met": maximum_limit_met,
@@ -302,46 +298,22 @@ def load_metric(
                 raise SystemExit(f"{path}:{line_number}: launch details do not match projection")
         elif any(value is not None for value in launch_details):
             raise SystemExit(f"{path}:{line_number}: unexpected launch detail duration")
-        read_phases = tuple(record.get(phase) for phase in READ_PHASE_KEYS)
-        if metric == "cold_read_activation" and any(
-            value is not None for value in read_phases
-        ):
+        first_read_phases = tuple(record.get(phase) for phase in FIRST_READ_PHASE_KEYS)
+        if metric == "first_read_activation":
             if any(
                 not isinstance(value, (int, float))
                 or isinstance(value, bool)
                 or not math.isfinite(value)
                 or value < 0
-                for value in read_phases
+                for value in first_read_phases
             ):
-                raise SystemExit(f"{path}:{line_number}: invalid Read phase duration")
-            layout = record.get("projection_to_layout_duration_ms")
-            if not isinstance(layout, (int, float)) or abs(
-                sum(float(value) for value in read_phases) - float(layout)
+                raise SystemExit(f"{path}:{line_number}: invalid first Read phase duration")
+            if abs(
+                sum(float(value) for value in first_read_phases) - float(duration)
             ) > 0.001:
-                raise SystemExit(f"{path}:{line_number}: Read phases do not match layout")
-        elif any(value is not None for value in read_phases):
-            raise SystemExit(f"{path}:{line_number}: unexpected Read phase duration")
-        read_preparation = tuple(record.get(phase) for phase in READ_PREPARATION_KEYS)
-        if metric == "cold_read_activation":
-            if any(
-                not isinstance(value, (int, float))
-                or isinstance(value, bool)
-                or not math.isfinite(value)
-                or value < 0
-                for value in read_preparation
-            ):
-                raise SystemExit(f"{path}:{line_number}: invalid Read preparation duration")
-            html_ready = record.get(
-                "workspace_projection_to_read_html_ready_duration_ms"
-            )
-            if not isinstance(html_ready, (int, float)) or abs(
-                sum(float(value) for value in read_preparation) - float(html_ready)
-            ) > 0.001:
-                raise SystemExit(
-                    f"{path}:{line_number}: Read preparation does not match HTML ready"
-                )
-        elif any(value is not None for value in read_preparation):
-            raise SystemExit(f"{path}:{line_number}: unexpected Read preparation duration")
+                raise SystemExit(f"{path}:{line_number}: first Read phases do not match duration")
+        elif any(value is not None for value in first_read_phases):
+            raise SystemExit(f"{path}:{line_number}: unexpected first Read phase duration")
         records.append(record)
 
     total = warmups + samples
@@ -599,51 +571,47 @@ def self_test() -> None:
         loaded, measured = load_metric(path, "editor_mode_transition", "self_test", 0, 2)
         assert len(loaded) == 2 and measured == [10.0, 10.0]
 
-        cold_read_path = Path(directory) / "cold_read_activation.jsonl"
-        cold_read_path.write_text(
+        first_read_path = Path(directory) / "first_read_activation.jsonl"
+        first_read_path.write_text(
             json.dumps({
                 "schema": "scholium-performance-v1",
-                "metric": "cold_read_activation",
+                "metric": "first_read_activation",
                 "run_id": "self_test",
                 "sample": 0,
                 "duration_ms": 10.0,
                 "completed_uptime_ns": 1,
-                "process_to_window_model_init_duration_ms": 1.0,
-                "window_model_init_to_workspace_ready_duration_ms": 2.0,
-                "workspace_ready_to_projection_duration_ms": 3.0,
-                "projection_to_layout_duration_ms": 4.0,
-                "workspace_ready_to_startup_safety_ready_duration_ms": 0.5,
-                "startup_safety_ready_to_vault_configuration_ready_duration_ms": 1.0,
-                "vault_configuration_ready_to_projection_duration_ms": 1.5,
-                "workspace_projection_to_read_html_ready_duration_ms": 1.5,
-                "projection_to_document_selection_duration_ms": 0.5,
-                "document_selection_to_read_task_start_duration_ms": 0.5,
-                "read_task_start_to_html_ready_duration_ms": 0.5,
-                "read_html_ready_to_navigation_start_duration_ms": 0.5,
-                "read_navigation_duration_ms": 1.5,
-                "read_navigation_to_ready_duration_ms": 0.5,
+                "activation_to_document_selection_duration_ms": 1.0,
+                "document_selection_to_read_task_start_duration_ms": 1.0,
+                "read_task_start_to_html_ready_duration_ms": 2.0,
+                "read_html_ready_to_navigation_start_duration_ms": 1.0,
+                "read_navigation_duration_ms": 3.0,
+                "read_navigation_to_ready_duration_ms": 2.0,
             }) + "\n",
             encoding="utf-8",
         )
         loaded, measured = load_metric(
-            cold_read_path, "cold_read_activation", "self_test", 0, 1
+            first_read_path, "first_read_activation", "self_test", 0, 1
         )
         assert len(loaded) == 1 and measured == [10.0]
+        first_read = summarize_latency("first_read_activation", measured)
+        assert first_read["threshold_ms_exclusive"] == 1_000.0
+        assert first_read["threshold_met"] is True
+        assert first_read["maximum_limit_ms_exclusive"] is None
+        assert first_read["maximum_limit_met"] is True
+        assert first_read["passed"] is True
 
-        incomplete_cold_read = json.loads(cold_read_path.read_text(encoding="utf-8"))
-        incomplete_cold_read.pop(
-            "startup_safety_ready_to_vault_configuration_ready_duration_ms"
-        )
-        cold_read_path.write_text(
-            json.dumps(incomplete_cold_read) + "\n",
+        incomplete_first_read = json.loads(first_read_path.read_text(encoding="utf-8"))
+        incomplete_first_read.pop("read_task_start_to_html_ready_duration_ms")
+        first_read_path.write_text(
+            json.dumps(incomplete_first_read) + "\n",
             encoding="utf-8",
         )
         try:
-            load_metric(cold_read_path, "cold_read_activation", "self_test", 0, 1)
+            load_metric(first_read_path, "first_read_activation", "self_test", 0, 1)
         except SystemExit as error:
-            assert "invalid launch detail duration" in str(error)
+            assert "invalid first Read phase duration" in str(error)
         else:
-            raise AssertionError("The summary accepted an incomplete launch detail record.")
+            raise AssertionError("The summary accepted an incomplete first Read record.")
 
         path.write_text(
             json.dumps({**records[0], "document": "Private.md"}) + "\n",
@@ -762,8 +730,9 @@ def main() -> None:
             arguments.samples,
         )
         latency = summarize_latency(metric, measured)
-        passed = bool(latency.pop("passed"))
-        all_pass = all_pass and passed
+        passed = latency.pop("passed")
+        if passed is not None:
+            all_pass = all_pass and bool(passed)
         summaries[metric] = {
             "sample_count": len(measured),
             "warmup_count": arguments.warmups,
@@ -796,9 +765,9 @@ def main() -> None:
                         "maximum_ms": max(values),
                         "mean_ms": statistics.fmean(values),
                     }
-        if metric == "cold_read_activation":
+        if metric == "first_read_activation":
             retained_records = records[arguments.warmups :]
-            for phase in READ_PHASE_KEYS + READ_PREPARATION_KEYS:
+            for phase in FIRST_READ_PHASE_KEYS:
                 if all(phase in record for record in retained_records):
                     values = [float(record[phase]) for record in retained_records]
                     summaries[metric][phase] = {

@@ -198,8 +198,8 @@ struct PerformanceProbeTests {
         #expect(object["duration_ms"] as? Double == 25)
     }
 
-    @Test("Cold Read records the complete launch phase decomposition")
-    func coldReadRecordsLaunchPhases() throws {
+    @Test("First Read records activation-to-interactive phase decomposition")
+    func firstReadRecordsActivationPhases() throws {
         let fileManager = FileManager.default
         let directory = URL(
             fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
@@ -207,32 +207,26 @@ struct PerformanceProbeTests {
         )
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: directory) }
-        let result = directory.appendingPathComponent("cold_read_activation.jsonl")
+        let result = directory.appendingPathComponent("first_read_activation.jsonl")
         var times: [UInt64] = [
-            20_000_000, 50_000_000, 60_000_000, 80_000_000,
-            90_000_000, 95_000_000, 98_000_000, 100_000_000,
-            110_000_000, 130_000_000, 150_000_000,
+            10_000_000, 20_000_000, 30_000_000, 50_000_000,
+            60_000_000, 80_000_000, 100_000_000,
         ]
         let probe = PerformanceProbe(
             environment: [
                 "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
-                "SCHOLIUM_PERFORMANCE_METRIC": "cold_read_activation",
-                "SCHOLIUM_PERFORMANCE_RUN_ID": "cold_read_test",
+                "SCHOLIUM_PERFORMANCE_METRIC": "first_read_activation",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "first_read_test",
                 "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
                 "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
                 "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
-                "SCHOLIUM_PERFORMANCE_STARTED_NS": "10000000",
             ],
             bundleID: "com.scholium.qa",
             now: { times.removeFirst() }
         )
 
-        probe.markWarmLibraryWindowModelInitializationStarted()
-        probe.markWarmLibraryWorkspaceReady()
-        probe.markStartupSafetyReady()
-        probe.markVaultConfigurationReady()
-        probe.markWarmLibraryProjectionReady()
-        probe.markColdDocumentSelected(documentID: "Fixture.md")
+        probe.beginReadActivation(documentID: "Fixture.md")
+        probe.markFirstReadDocumentSelected(documentID: "Fixture.md")
         probe.markReadTaskStarted(documentID: "Fixture.md")
         probe.markReadHTMLReady(documentID: "Fixture.md")
         probe.markReadNavigationStarted(documentID: "Fixture.md")
@@ -246,33 +240,13 @@ struct PerformanceProbeTests {
         let object = try #require(
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
         )
-        #expect(object["duration_ms"] as? Double == 140)
-        #expect(object["process_to_window_model_init_duration_ms"] as? Double == 10)
-        #expect(object["window_model_init_to_workspace_ready_duration_ms"] as? Double == 30)
-        #expect(object["workspace_ready_to_projection_duration_ms"] as? Double == 40)
-        #expect(object["projection_to_layout_duration_ms"] as? Double == 60)
-        #expect(
-            object["workspace_ready_to_startup_safety_ready_duration_ms"] as? Double
-                == 10
-        )
-        #expect(
-            object["startup_safety_ready_to_vault_configuration_ready_duration_ms"]
-                as? Double == 20
-        )
-        #expect(
-            object["vault_configuration_ready_to_projection_duration_ms"] as? Double
-                == 10
-        )
-        #expect(
-            object["workspace_projection_to_read_html_ready_duration_ms"] as? Double
-                == 10
-        )
-        #expect(object["projection_to_document_selection_duration_ms"] as? Double == 5)
+        #expect(object["duration_ms"] as? Double == 90)
+        #expect(object["activation_to_document_selection_duration_ms"] as? Double == 10)
         #expect(
             object["document_selection_to_read_task_start_duration_ms"] as? Double
-                == 3
+                == 10
         )
-        #expect(object["read_task_start_to_html_ready_duration_ms"] as? Double == 2)
+        #expect(object["read_task_start_to_html_ready_duration_ms"] as? Double == 20)
         #expect(
             object["read_html_ready_to_navigation_start_duration_ms"] as? Double
                 == 10

@@ -6550,7 +6550,7 @@ final class WindowModel: ObservableObject {
             documentNavigationHistoryController.record(document)
         }
         reconcileDocumentSessionLeases()
-        PerformanceProbe.shared.markColdDocumentSelected(
+        PerformanceProbe.shared.markFirstReadDocumentSelected(
             documentID: document.relativePath
         )
     }

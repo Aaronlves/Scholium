@@ -311,17 +311,18 @@ A separate attached-WKWebView journey drives 50 transitions and checks the dirty
 accessibility chrome, and diagnostic ring; it cannot establish memory
 convergence or visible p95.
 
-The connected Editor driver measures actual visible or accessible boundaries.
+The connected Editor driver measures visible or accessible boundaries.
 A Document uses a source-free, network-denied view to prime
 nonpersistent WebKit and allowlisted font during opening.
-First Review takes it instead of constructing another page context; bounded
-expiry otherwise releases it. Initial navigation skips a redundant loading
-publication; replacement retains it. Multi-`WKProcessPool` is unused.
+First-use Review takes it after selection instead of constructing the primed
+page context; bounded expiry otherwise releases it. Initial navigation skips a
+redundant loading publication; replacement retains it. Multi-`WKProcessPool`
+is unused.
 
 Edit/Source excludes Command-R and ends after matching bridge acknowledgement
 and layout. Key-to-paint registers before native delta delivery and publishes
 after frame plus task for the accepted session/generation. Cached preview ends
-after its positioned surface crosses the same paint boundary. Warm and cold
+after its positioned surface crosses the paint boundary. Warm and cold
 Edit end at the matching editor; cold timing begins at external launch on the
 5,000-word Note. Visible projection times one synchronous CodeMirror refresh
 dispatch. QA-only notifications drive those paths; `PerformanceProbe` accepts

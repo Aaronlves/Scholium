@@ -10,7 +10,7 @@ final class PerformanceProbe {
         case warmLibraryLaunch = "warm_library_launch"
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
-        case coldReadActivation = "cold_read_activation"
+        case firstReadActivation = "first_read_activation"
         case editorKeyToPaint = "editor_key_to_paint"
         case editorModeTransition = "editor_mode_transition"
         case editorCachedPreview = "editor_cached_preview"
@@ -55,11 +55,11 @@ final class PerformanceProbe {
     private var startupSafetyReadyNanoseconds: UInt64?
     private var vaultConfigurationReadyNanoseconds: UInt64?
     private var warmLibraryProjectionNanoseconds: UInt64?
-    private var coldDocumentSelectedNanoseconds: UInt64?
-    private var coldReadTaskStartedNanoseconds: UInt64?
-    private var coldReadHTMLReadyNanoseconds: UInt64?
-    private var coldReadNavigationStartedNanoseconds: UInt64?
-    private var coldReadNavigationFinishedNanoseconds: UInt64?
+    private var firstReadDocumentSelectedNanoseconds: UInt64?
+    private var firstReadTaskStartedNanoseconds: UInt64?
+    private var firstReadHTMLReadyNanoseconds: UInt64?
+    private var firstReadNavigationStartedNanoseconds: UInt64?
+    private var firstReadNavigationFinishedNanoseconds: UInt64?
     private var searchIsArmed = true
     private var readIsArmed = true
     private var recordedSampleCount = 0
@@ -178,7 +178,9 @@ final class PerformanceProbe {
     }
 
     func beginReadActivation(documentID: String) {
-        guard let configuration, configuration.metric == .warmReadActivation else { return }
+        guard let configuration,
+              configuration.metric == .warmReadActivation
+                || configuration.metric == .firstReadActivation else { return }
         guard documentID == configuration.expectedDocument else {
             readStartNanoseconds = nil
             readIsArmed = true
@@ -189,34 +191,34 @@ final class PerformanceProbe {
         readStartNanoseconds = now()
     }
 
-    func markColdDocumentSelected(documentID: String) {
-        guard measuresExpectedColdDocument(documentID),
-              coldDocumentSelectedNanoseconds == nil else { return }
-        coldDocumentSelectedNanoseconds = now()
+    func markFirstReadDocumentSelected(documentID: String) {
+        guard measuresExpectedFirstRead(documentID),
+              firstReadDocumentSelectedNanoseconds == nil else { return }
+        firstReadDocumentSelectedNanoseconds = now()
     }
 
     func markReadTaskStarted(documentID: String) {
-        guard measuresExpectedColdRead(documentID),
-              coldReadTaskStartedNanoseconds == nil else { return }
-        coldReadTaskStartedNanoseconds = now()
+        guard measuresExpectedFirstRead(documentID),
+              firstReadTaskStartedNanoseconds == nil else { return }
+        firstReadTaskStartedNanoseconds = now()
     }
 
     func markReadHTMLReady(documentID: String) {
-        guard measuresExpectedColdRead(documentID),
-              coldReadHTMLReadyNanoseconds == nil else { return }
-        coldReadHTMLReadyNanoseconds = now()
+        guard measuresExpectedFirstRead(documentID),
+              firstReadHTMLReadyNanoseconds == nil else { return }
+        firstReadHTMLReadyNanoseconds = now()
     }
 
     func markReadNavigationStarted(documentID: String) {
-        guard measuresExpectedColdRead(documentID),
-              coldReadNavigationStartedNanoseconds == nil else { return }
-        coldReadNavigationStartedNanoseconds = now()
+        guard measuresExpectedFirstRead(documentID),
+              firstReadNavigationStartedNanoseconds == nil else { return }
+        firstReadNavigationStartedNanoseconds = now()
     }
 
     func markReadNavigationFinished(documentID: String) {
-        guard measuresExpectedColdRead(documentID),
-              coldReadNavigationFinishedNanoseconds == nil else { return }
-        coldReadNavigationFinishedNanoseconds = now()
+        guard measuresExpectedFirstRead(documentID),
+              firstReadNavigationFinishedNanoseconds == nil else { return }
+        firstReadNavigationFinishedNanoseconds = now()
     }
 
     func markReadReady(documentID: String) {
@@ -226,16 +228,13 @@ final class PerformanceProbe {
         case .warmReadActivation:
             guard let start = readStartNanoseconds else { return }
             record(startNanoseconds: start, observedCount: nil)
-        case .coldReadActivation:
-            guard let start = configuration.externalStartNanoseconds else { return }
+        case .firstReadActivation:
+            guard let start = readStartNanoseconds else { return }
             let completed = now()
-            var phases = launchPhaseDurations(
+            let phases = firstReadPhaseDurations(
                 startNanoseconds: start,
                 completedNanoseconds: completed
             )
-            phases.merge(readPhaseDurations(completedNanoseconds: completed)) {
-                _, readPhase in readPhase
-            }
             record(
                 startNanoseconds: start,
                 observedCount: nil,
@@ -519,17 +518,11 @@ final class PerformanceProbe {
     }
 
     private var measuresColdDocumentLaunch: Bool {
-        configuration?.metric == .coldReadActivation
-            || configuration?.metric == .coldEditActivation
+        configuration?.metric == .coldEditActivation
     }
 
-    private func measuresExpectedColdDocument(_ documentID: String) -> Bool {
-        measuresColdDocumentLaunch
-            && configuration?.expectedDocument == documentID
-    }
-
-    private func measuresExpectedColdRead(_ documentID: String) -> Bool {
-        configuration?.metric == .coldReadActivation
+    private func measuresExpectedFirstRead(_ documentID: String) -> Bool {
+        configuration?.metric == .firstReadActivation
             && configuration?.expectedDocument == documentID
     }
 
@@ -573,20 +566,30 @@ final class PerformanceProbe {
         return phases
     }
 
-    private func readPhaseDurations(
+    private func firstReadPhaseDurations(
+        startNanoseconds: UInt64,
         completedNanoseconds: UInt64
     ) -> [String: Double] {
-        guard let workspaceProjection = warmLibraryProjectionNanoseconds,
-              let htmlReady = coldReadHTMLReadyNanoseconds,
-              let navigationStarted = coldReadNavigationStartedNanoseconds,
-              let navigationFinished = coldReadNavigationFinishedNanoseconds,
-              htmlReady >= workspaceProjection,
+        guard let documentSelected = firstReadDocumentSelectedNanoseconds,
+              let readTaskStarted = firstReadTaskStartedNanoseconds,
+              let htmlReady = firstReadHTMLReadyNanoseconds,
+              let navigationStarted = firstReadNavigationStartedNanoseconds,
+              let navigationFinished = firstReadNavigationFinishedNanoseconds,
+              documentSelected >= startNanoseconds,
+              readTaskStarted >= documentSelected,
+              htmlReady >= readTaskStarted,
               navigationStarted >= htmlReady,
               navigationFinished >= navigationStarted,
               completedNanoseconds >= navigationFinished else { return [:] }
-        var phases = [
-            "workspace_projection_to_read_html_ready_duration_ms": milliseconds(
-                htmlReady - workspaceProjection
+        return [
+            "activation_to_document_selection_duration_ms": milliseconds(
+                documentSelected - startNanoseconds
+            ),
+            "document_selection_to_read_task_start_duration_ms": milliseconds(
+                readTaskStarted - documentSelected
+            ),
+            "read_task_start_to_html_ready_duration_ms": milliseconds(
+                htmlReady - readTaskStarted
             ),
             "read_html_ready_to_navigation_start_duration_ms": milliseconds(
                 navigationStarted - htmlReady
@@ -598,19 +601,6 @@ final class PerformanceProbe {
                 completedNanoseconds - navigationFinished
             ),
         ]
-        if let documentSelected = coldDocumentSelectedNanoseconds,
-           let readTaskStarted = coldReadTaskStartedNanoseconds,
-           documentSelected >= workspaceProjection,
-           readTaskStarted >= documentSelected,
-           htmlReady >= readTaskStarted {
-            phases["projection_to_document_selection_duration_ms"] =
-                milliseconds(documentSelected - workspaceProjection)
-            phases["document_selection_to_read_task_start_duration_ms"] =
-                milliseconds(readTaskStarted - documentSelected)
-            phases["read_task_start_to_html_ready_duration_ms"] =
-                milliseconds(htmlReady - readTaskStarted)
-        }
-        return phases
     }
 
     private func append(_ object: [String: Any], to resultURL: URL) -> Bool {

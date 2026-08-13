@@ -20,13 +20,16 @@ usage() {
 Usage:
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR [--scenario]
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric NAME
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric first_read_activation --warmups 5 --samples 30
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate --prepared-driver DIR
 
 Scenario mode defaults to 0 warm-ups and 1 retained sample per metric and is
-bounded to at most 3 + 10. Gate mode is fixed at 5 + 30, batches warm Search
-and Read inside one process, cools between cold relaunches and metrics, and
-never compiles after the prepared-driver boundary. It additionally requires a
-clean exact-tag checkout, matching packaged and driver provenance, and
+bounded to at most 3 + 10, except for a fixed 5 + 30 first Review diagnostic.
+That exception remains scenario-only evidence.
+Gate mode is fixed at 5 + 30, batches warm Search and Read inside one process,
+cools between cold relaunches and metrics, and never compiles after the
+prepared-driver boundary. It additionally requires a clean exact-tag checkout,
+matching packaged and driver provenance, and
 SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1.
 EOF
 }
@@ -62,7 +65,17 @@ done
   print -u2 "Warm-ups must be nonnegative and samples must be positive integers."
   exit 64
 }
-if [[ "${MODE}" == scenario_only && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10 ) ]]; then
+IS_FIRST_READ_FULL_SCENARIO=0
+if [[ "${MODE}" == scenario_only
+      && "${ONLY_METRIC}" == first_read_activation
+      && "${WARMUPS}" == 5
+      && "${SAMPLES}" == 30 ]]; then
+  IS_FIRST_READ_FULL_SCENARIO=1
+  RELAUNCH_COOLDOWN_MS=1500
+fi
+if [[ "${MODE}" == scenario_only
+      && "${IS_FIRST_READ_FULL_SCENARIO}" != 1
+      && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10 ) ]]; then
   print -u2 "A scenario run is limited to 3 warm-ups and 10 retained samples."
   exit 64
 fi
@@ -78,7 +91,7 @@ LATENCY_METRICS=(
   warm_library_launch
   indexed_search
   warm_read_activation
-  cold_read_activation
+  first_read_activation
   editor_key_to_paint
   editor_mode_transition
   editor_cached_preview
@@ -93,7 +106,7 @@ if [[ -n "${ONLY_METRIC}" ]]; then
     exit 64
   }
   case "${ONLY_METRIC}" in
-    warm_library_launch|indexed_search|warm_read_activation|cold_read_activation|editor_key_to_paint|editor_mode_transition|editor_cached_preview|warm_edit_activation|cold_edit_activation|editor_visible_projection)
+    warm_library_launch|indexed_search|warm_read_activation|first_read_activation|editor_key_to_paint|editor_mode_transition|editor_cached_preview|warm_edit_activation|cold_edit_activation|editor_visible_projection)
       LATENCY_METRICS=("${ONLY_METRIC}")
       RUN_MEMORY=0
       ;;
@@ -200,11 +213,16 @@ if [[ -n "${PREPARED_DRIVER}" ]]; then
   }
   CURRENT_XCODE_BUILD="$("${DEVELOPER_DIR}/usr/bin/xcodebuild" -version | awk '/Build version/{print $3}')"
   [[ "$(plutil -extract schema raw "${DRIVER_MANIFEST}")" == scholium-performance-driver-v1 ]]
-  [[ "$(plutil -extract source_clean raw "${DRIVER_MANIFEST}")" == true ]]
+  [[ "$(plutil -extract evidence_class raw "${DRIVER_MANIFEST}")" == "${MODE}" ]]
   [[ "$(plutil -extract git_commit raw "${DRIVER_MANIFEST}")" == "$(git -C "${ROOT}" rev-parse HEAD)" ]]
-  [[ "$(plutil -extract git_exact_tag raw "${DRIVER_MANIFEST}")" == "$(git -C "${ROOT}" describe --tags --exact-match)" ]]
   [[ "$(plutil -extract architecture raw "${DRIVER_MANIFEST}")" == "$(uname -m)" ]]
   [[ "$(plutil -extract xcode_build raw "${DRIVER_MANIFEST}")" == "${CURRENT_XCODE_BUILD}" ]]
+  CURRENT_PATCH_SHA256="$(git -C "${ROOT}" diff --binary HEAD | shasum -a 256 | awk '{print $1}')"
+  [[ "$(plutil -extract worktree_patch_sha256 raw "${DRIVER_MANIFEST}")" == "${CURRENT_PATCH_SHA256}" ]]
+  if [[ "${MODE}" == product_gate ]]; then
+    [[ "$(plutil -extract source_clean raw "${DRIVER_MANIFEST}")" == true ]]
+    [[ "$(plutil -extract git_exact_tag raw "${DRIVER_MANIFEST}")" == "$(git -C "${ROOT}" describe --tags --exact-match)" ]]
+  fi
   DRIVER_PRODUCTS="${PREPARED_DRIVER}/derived-data/Build/Products"
   BASE_XCTESTRUN="$(find "${DRIVER_PRODUCTS}" -maxdepth 1 -name '*.xctestrun' -print -quit)"
   [[ -f "${BASE_XCTESTRUN}" ]] || {
@@ -313,7 +331,7 @@ for metric in "${LATENCY_METRICS[@]}"; do
     test-without-building \
     -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1PerformanceSamples \
     >"${SCRATCH}/${metric}.log"
-  if [[ "${MODE}" == product_gate && "${metric}" != cold_read_activation ]]; then
+  if [[ "${MODE}" == product_gate ]]; then
     sleep "${METRIC_COOLDOWN_SECONDS}"
   fi
 done

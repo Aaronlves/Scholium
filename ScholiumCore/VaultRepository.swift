@@ -88,8 +88,11 @@ public actor VaultRepository {
     ) throws -> (
         document: NoteDocument,
         version: SourceVersion,
-        fileMetadata: WorkspaceFileMetadata
+        fileMetadata: WorkspaceFileMetadata,
+        readDuration: Duration
     ) {
+        let clock = ContinuousClock()
+        let readStart = clock.now
         let path = try markdownRelativePath(relativePath)
         let loaded = try descriptorAccess.withOpenRegularFile(path) {
             descriptor, parentDescriptor, name, initialStatus in
@@ -135,7 +138,8 @@ public actor VaultRepository {
         return (
             document,
             Self.sourceVersion(status: loaded.1, fingerprint: document.fingerprint),
-            Self.fileMetadata(status: loaded.1)
+            Self.fileMetadata(status: loaded.1),
+            readStart.duration(to: clock.now)
         )
     }
 

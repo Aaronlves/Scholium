@@ -220,6 +220,21 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
+On 2026-08-14, the working-tree Review metric was cut over from external
+process-start timing with an implicitly opened document to first-use activation
+from a verified no-document Workspace. The collector now requires a real
+Library selection of the frozen 5,000-word RDF-1 Note and reports the complete
+activation-to-interactive phase decomposition. Its focused eight-test
+`PerformanceProbe` suite, summary self-test, documentation validator, shell
+syntax check, fail-closed threshold preflight, and UI-driver test build passed.
+The cooled ad-hoc QA 5+30 scenario then completed all 35 ordered records with
+no invalid trial, passed Review correctness, and preserved the exact 800-Note
+RDF-1 tree. Its 30 retained samples measured 572.096ms p50, 742.752ms
+nearest-rank p95, 612.138ms mean, and 1,442.219ms maximum. The release owner
+therefore approved first-use Review at p95 `< 1,000ms` with no every-sample
+maximum. This working-tree scenario supports the target decision but is not G7
+product-gate evidence.
+
 On 2026-08-13, the exact-tagged packaged `v0.1.0-beta.5` G7 run completed all
 ten latency series at five warm-ups plus 30 retained samples and the separate
 50-transition/51-RSS series with no invalid trial or visible-correctness

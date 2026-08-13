@@ -153,6 +153,11 @@ persistence is best-effort after content is safe; its failure is diagnosed but
 does not veto close or misreport a source-save failure. Late lifecycle work may
 not act on a newer route, window, document, or close attempt.
 
+An ordinary application-cold launch opens the selected Triptych with no
+document selected; it does not restore or implicitly open a previous document.
+Only an explicit researcher route, such as an intentional document open, may
+bypass that no-note starting state.
+
 The Library BrandHeader sits below window controls. A static Scholium wordmark
 occupies its own identity line. The next line pairs the Triptych identity menu
 with one logical-trailing Triptych Attention control on the 28pt peripheral

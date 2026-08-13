@@ -326,6 +326,18 @@ struct WorkspaceRuntimeTests {
     func progressiveLiveOpening() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
         defer { fixture.remove() }
+        let measurementDocumentCount = 16
+        let measurementBody = String(
+            repeating: "A bounded catalog measurement paragraph.\n\n",
+            count: 96
+        )
+        for index in 0..<measurementDocumentCount {
+            try Data(
+                "# Catalog Measurement \(index)\n\n\(measurementBody)".utf8
+            ).write(to: fixture.analysesURL.appendingPathComponent(
+                "Catalog Measurement \(index).md"
+            ))
+        }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
             workspaceRegistryStorageURL: fixture.registryStorageURL
@@ -337,10 +349,12 @@ struct WorkspaceRuntimeTests {
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
         let openingEvent = try #require(await iterator.next())
+        let openingMeasurement = await handle.latestRefreshMeasurement
 
         #expect(openingEvent.snapshot.phase == .opening(
             availableVault: .paperAnalysis
         ))
+        #expect(openingMeasurement.readDuration <= openingMeasurement.totalDuration)
         #expect(openingEvent.snapshot.vaults.map(\.slot) == [.paperAnalysis])
         #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
         #expect(openingEvent.snapshot.discovery.catalog.graph == nil)
@@ -384,7 +398,10 @@ struct WorkspaceRuntimeTests {
         let completeEvent = try #require(await iterator.next())
         #expect(completeEvent.snapshot.phase == .complete)
         #expect(completeEvent.snapshot.vaults.count == 3)
-        #expect(completeEvent.snapshot.vaults.flatMap(\.documents).count == 3)
+        #expect(
+            completeEvent.snapshot.vaults.flatMap(\.documents).count
+                == 3 + measurementDocumentCount
+        )
         #expect(completeEvent.snapshot.discovery.searchGeneration != nil)
         #expect(completeEvent.snapshot.discovery.catalog.graph != nil)
 

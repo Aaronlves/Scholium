@@ -102,7 +102,12 @@ p95 over exactly 30 valid samples after five excluded warm-ups:
 | Warm library launch to a usable note list | `< 1,000 ms` |
 | Indexed Note Search query to complete visible results | `< 200 ms` |
 | Warm Review-note activation to interactive rendering | `< 300 ms` |
-| Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
+| First-use 5,000-word Review activation from a no-document Workspace to interactive rendering | `< 1,000 ms` |
+
+The first-use Review series launches to the no-document Workspace, makes the
+frozen 5,000-word RDF-1 target visibly reachable without selecting it, then
+measures from the researcher's selection action to interactive Review. It has
+no every-sample maximum.
 
 The release owner has approved these Editor Beta limits. Each p95 uses the same
 five-warm-up/30-retained-sample nearest-rank protocol; every retained sample

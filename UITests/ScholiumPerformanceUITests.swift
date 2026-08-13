@@ -17,7 +17,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case warmLibraryLaunch = "warm_library_launch"
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
-        case coldReadActivation = "cold_read_activation"
+        case firstReadActivation = "first_read_activation"
         case editorKeyToPaint = "editor_key_to_paint"
         case editorModeTransition = "editor_mode_transition"
         case editorCachedPreview = "editor_cached_preview"
@@ -102,18 +102,28 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 sampleCount: 1
             )
 
-            application.launchEnvironment["SCHOLIUM_PERFORMANCE_STARTED_NS"] = String(
-                DispatchTime.now().uptimeNanoseconds
-            )
+            if metric != .firstReadActivation {
+                application.launchEnvironment["SCHOLIUM_PERFORMANCE_STARTED_NS"] = String(
+                    DispatchTime.now().uptimeNanoseconds
+                )
+            }
             application.launch()
             XCTAssertTrue(
                 application.windows.firstMatch.waitForExistence(timeout: 30),
                 "Sample \(sample): the performance app window did not appear."
             )
-            XCTAssertTrue(
-                waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
-                "Sample \(sample): the app did not publish exactly one performance record."
-            )
+            if metric == .firstReadActivation {
+                performFirstReadActivation(
+                    in: application,
+                    resultsPath: resultsPath,
+                    sample: sample
+                )
+            } else {
+                XCTAssertTrue(
+                    waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
+                    "Sample \(sample): the app did not publish exactly one performance record."
+                )
+            }
             application.terminate()
             if sample + 1 < total, relaunchCooldownMilliseconds > 0 {
                 Thread.sleep(forTimeInterval: Double(relaunchCooldownMilliseconds) / 1_000)
@@ -422,9 +432,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "paper_analysis"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Cluster-01/analysis-note-002.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Cluster-00/analysis-note-001.md"
-        case .coldReadActivation:
+        case .firstReadActivation:
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
-            application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
         case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
              .warmEditActivation, .coldEditActivation, .editorVisibleProjection:
@@ -452,7 +461,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
              .warmEditActivation, .editorVisibleProjection:
             setupDocument = "Long/Canonical-5000-Word-Work.md"
-        case .warmLibraryLaunch, .coldReadActivation, .coldEditActivation:
+        case .warmLibraryLaunch, .firstReadActivation, .coldEditActivation:
             return
         }
         XCTAssertTrue(
@@ -534,7 +543,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         total: Int
     ) throws {
         switch metric {
-        case .warmLibraryLaunch, .coldReadActivation, .coldEditActivation:
+        case .warmLibraryLaunch, .firstReadActivation, .coldEditActivation:
             return
         case .indexedSearch:
             let field = application.descendants(matching: .any)["scholium.searchField"]
@@ -568,7 +577,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "scholium.noteRow.Cluster-00/analysis-note-001.md"
             ]
             XCTAssertTrue(target.waitForExistence(timeout: 15))
-            scrollWarmReadTargetIntoView(
+            scrollReadTargetIntoView(
                 target,
                 in: application,
                 sample: sample,
@@ -593,7 +602,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                     "scholium.noteRow.Cluster-01/analysis-note-002.md"
                 ]
                 XCTAssertTrue(alternate.waitForExistence(timeout: 15))
-                scrollWarmReadTargetIntoView(
+                scrollReadTargetIntoView(
                     alternate,
                     in: application,
                     sample: sample,
@@ -721,13 +730,70 @@ final class ScholiumPerformanceUITests: XCTestCase {
         )
     }
 
-    /// Reconciles the native Sidebar viewport before the measured Note click.
+    @MainActor
+    private func performFirstReadActivation(
+        in application: XCUIApplication,
+        resultsPath: String,
+        sample: Int
+    ) {
+        let noDocumentState = application.descendants(matching: .any)[
+            "scholium.noDocumentState"
+        ]
+        XCTAssertTrue(
+            noDocumentState.waitForExistence(timeout: 30),
+            "Sample \(sample): cold launch did not settle on an empty Workspace."
+        )
+
+        let folder = application.descendants(matching: .any)[
+            "scholium.folderRow.Long"
+        ]
+        XCTAssertTrue(folder.waitForExistence(timeout: 15))
+        scrollReadTargetIntoView(
+            folder,
+            in: application,
+            sample: sample,
+            role: "first-use folder",
+            direction: .towardLaterRows
+        )
+        if (folder.value as? String) != "Expanded" {
+            folder.click()
+        }
+
+        let documentID = "Long/Canonical-5000-Word-Work.md"
+        let target = application.descendants(matching: .any)[
+            "scholium.noteRow.\(documentID)"
+        ]
+        XCTAssertTrue(target.waitForExistence(timeout: 15))
+        scrollReadTargetIntoView(
+            target,
+            in: application,
+            sample: sample,
+            role: "first-use document",
+            direction: .towardLaterRows
+        )
+        XCTAssertTrue(
+            noDocumentState.exists,
+            "Sample \(sample): setup selected a document before the measured action."
+        )
+
+        target.click()
+        XCTAssertTrue(
+            waitForRenderedDocument(documentID, in: application, timeout: 60),
+            "Sample \(sample): the first selected Review document did not render."
+        )
+        XCTAssertTrue(
+            waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
+            "Sample \(sample): first Review did not publish exactly one performance record."
+        )
+    }
+
+    /// Reconciles the native Sidebar viewport before a measured Note click.
     /// `PerformanceProbe.beginReadActivation` starts inside the click action,
-    /// so these setup swipes never enter the warm Read duration. Offscreen
+    /// so these setup swipes never enter the Read duration. Offscreen
     /// NSOutlineView rows expose document rather than viewport coordinates;
     /// the caller therefore supplies the frozen RDF-1 row-order direction.
     @MainActor
-    private func scrollWarmReadTargetIntoView(
+    private func scrollReadTargetIntoView(
         _ target: XCUIElement,
         in application: XCUIApplication,
         sample: Int,
@@ -760,7 +826,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         }
         XCTAssertTrue(
             isVisiblyHittable(),
-            "Sample \(sample): the \(role) warm Read target did not become visibly hittable."
+            "Sample \(sample): the \(role) Read target did not become visibly hittable."
         )
     }
 
