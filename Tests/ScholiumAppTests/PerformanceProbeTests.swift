@@ -182,7 +182,7 @@ struct PerformanceProbeTests {
             now: { times.removeFirst() }
         )
 
-        probe.beginWarmEditActivation(documentID: "Fixture.md")
+        probe.beginEditActivation(documentID: "Fixture.md")
         probe.markEditorVisible(documentID: "Other.md")
         #expect(!fileManager.fileExists(atPath: result.path))
         probe.markEditorVisible(documentID: "Fixture.md")
@@ -196,6 +196,45 @@ struct PerformanceProbeTests {
         )
         #expect(object["sample"] as? Int == 2)
         #expect(object["duration_ms"] as? Double == 25)
+    }
+
+    @Test("First Edit starts at the researcher request, not process launch")
+    func firstEditStartsAtResearcherRequest() throws {
+        let fileManager = FileManager.default
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+        let result = directory.appendingPathComponent("first_edit_activation.jsonl")
+        var times: [UInt64] = [1_010_000_000, 1_085_000_000]
+        let probe = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "first_edit_activation",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "first_edit_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                "SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT": "Fixture.md",
+                "SCHOLIUM_PERFORMANCE_STARTED_NS": "10000000",
+            ],
+            bundleID: "com.scholium.qa",
+            now: { times.removeFirst() }
+        )
+
+        probe.markEditorVisible(documentID: "Fixture.md")
+        #expect(!fileManager.fileExists(atPath: result.path))
+        probe.beginEditActivation(documentID: "Fixture.md")
+        probe.markEditorVisible(documentID: "Fixture.md")
+
+        let object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: result)
+            ) as? [String: Any]
+        )
+        #expect(object["metric"] as? String == "first_edit_activation")
+        #expect(object["duration_ms"] as? Double == 75)
     }
 
     @Test("First Read records activation-to-interactive phase decomposition")

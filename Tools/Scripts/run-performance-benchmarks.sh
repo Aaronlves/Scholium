@@ -21,11 +21,12 @@ Usage:
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR [--scenario]
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric NAME
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric first_read_activation --warmups 5 --samples 30
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric first_edit_activation --warmups 5 --samples 30
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate --prepared-driver DIR
 
 Scenario mode defaults to 0 warm-ups and 1 retained sample per metric and is
-bounded to at most 3 + 10, except for a fixed 5 + 30 first Review diagnostic.
-That exception remains scenario-only evidence.
+bounded to at most 3 + 10, except for fixed 5 + 30 first-use Review or Edit
+diagnostics. Those exceptions remain scenario-only evidence.
 Gate mode is fixed at 5 + 30, batches warm Search and Read inside one process,
 cools between cold relaunches and metrics, and never compiles after the
 prepared-driver boundary. It additionally requires a clean exact-tag checkout,
@@ -65,16 +66,17 @@ done
   print -u2 "Warm-ups must be nonnegative and samples must be positive integers."
   exit 64
 }
-IS_FIRST_READ_FULL_SCENARIO=0
+IS_FIRST_USE_FULL_SCENARIO=0
 if [[ "${MODE}" == scenario_only
-      && "${ONLY_METRIC}" == first_read_activation
+      && ( "${ONLY_METRIC}" == first_read_activation
+        || "${ONLY_METRIC}" == first_edit_activation )
       && "${WARMUPS}" == 5
       && "${SAMPLES}" == 30 ]]; then
-  IS_FIRST_READ_FULL_SCENARIO=1
+  IS_FIRST_USE_FULL_SCENARIO=1
   RELAUNCH_COOLDOWN_MS=1500
 fi
 if [[ "${MODE}" == scenario_only
-      && "${IS_FIRST_READ_FULL_SCENARIO}" != 1
+      && "${IS_FIRST_USE_FULL_SCENARIO}" != 1
       && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10 ) ]]; then
   print -u2 "A scenario run is limited to 3 warm-ups and 10 retained samples."
   exit 64
@@ -96,7 +98,7 @@ LATENCY_METRICS=(
   editor_mode_transition
   editor_cached_preview
   warm_edit_activation
-  cold_edit_activation
+  first_edit_activation
   editor_visible_projection
 )
 RUN_MEMORY=1
@@ -106,7 +108,7 @@ if [[ -n "${ONLY_METRIC}" ]]; then
     exit 64
   }
   case "${ONLY_METRIC}" in
-    warm_library_launch|indexed_search|warm_read_activation|first_read_activation|editor_key_to_paint|editor_mode_transition|editor_cached_preview|warm_edit_activation|cold_edit_activation|editor_visible_projection)
+    warm_library_launch|indexed_search|warm_read_activation|first_read_activation|editor_key_to_paint|editor_mode_transition|editor_cached_preview|warm_edit_activation|first_edit_activation|editor_visible_projection)
       LATENCY_METRICS=("${ONLY_METRIC}")
       RUN_MEMORY=0
       ;;

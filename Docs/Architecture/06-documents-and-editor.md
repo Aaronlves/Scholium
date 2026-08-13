@@ -322,19 +322,19 @@ is unused.
 Edit/Source excludes Command-R and ends after matching bridge acknowledgement
 and layout. Key-to-paint registers before native delta delivery and publishes
 after frame plus task for the accepted session/generation. Cached preview ends
-after its positioned surface crosses the paint boundary. Warm and cold
-Edit end at the matching editor; cold timing begins at external launch on the
-5,000-word Note. Visible projection times one synchronous CodeMirror refresh
-dispatch. QA-only notifications drive those paths; `PerformanceProbe` accepts
-only the configured metric, fixture, finite duration, and sample budget.
+after its surface paints. Warm Edit reuses the prepared Editor. First-use Edit
+launches to no document, reaches the 5,000-word Note's interactive Review as
+setup, then times the Edit request. Both end at the matching visible,
+accessible Editor. Visible projection times one synchronous CodeMirror refresh.
+QA-only notifications drive those paths; `PerformanceProbe` enforces metric,
+fixture, duration, and sample budget.
 
-`generate-rdf1.py` owns manifest-listed RDF-1 Note bytes;
-`run-performance-benchmarks.sh` owns isolated visible-boundary driving,
-five warm-ups, 30 retained samples, inventory recheck, and evidence class.
-Warm metrics reuse prepared processes; launch/cold metrics relaunch. Records
-contain timing, correctness, fixture, artifact, and environment—not queries,
-paths, titles, or research text. Gate mode requires the clean-tag packaged app
-and every approved metric/series; scenario omissions remain explicit. Limits
+`generate-rdf1.py` owns manifest-listed RDF-1 bytes;
+`run-performance-benchmarks.sh` owns isolated visible driving, sampling,
+inventory recheck, and evidence class. Warm metrics reuse processes; launch
+and first-use metrics relaunch. Records retain timing, correctness, and
+provenance but exclude research content. Gate mode requires the clean-tag
+packaged app and every approved series; scenario omissions remain explicit. Limits
 and evidence rules belong to [Specification
 §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).

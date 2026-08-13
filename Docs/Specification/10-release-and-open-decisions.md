@@ -119,8 +119,14 @@ must also remain below its maximum:
 | Edit/Source request to visible and accessible requested mode | `< 100 ms` | `< 200 ms` |
 | Cached-preview request to visible and accessible preview | `< 100 ms` | `< 200 ms` |
 | Warm Edit activation to visible, accessible, interactive editor | `< 200 ms` | `< 300 ms` |
-| Application-cold 5,000-word Edit activation to visible, accessible, interactive editor | `< 750 ms` | `< 1,000 ms` |
+| First-use Edit request after cold-launch first Review to visible, accessible, interactive editor | `< 750 ms` | `< 1,000 ms` |
 | One visible-range projection | `< 3 ms` | `< 5 ms` |
+
+The first-use Edit series cold-launches to the no-document Workspace, selects
+the frozen 5,000-word RDF-1 Note through Library, and waits for interactive
+Review as unmeasured setup. It then measures the researcher's Edit request to
+the first visible, accessible, interactive editor. It does not auto-open a
+document or include process launch in the Edit interaction.
 
 An interaction that cannot complete within 100 ms must expose nonblocking,
 accessible progress feedback within `< 100 ms`; feedback does not convert an

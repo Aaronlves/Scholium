@@ -220,6 +220,23 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
+On 2026-08-14, the approved Edit gate boundary was aligned with the shipped
+cold-launch behavior: launch settles on a no-document Workspace, Library opens
+the frozen 5,000-word Note into interactive Review as unmeasured setup, and the
+collector then measures the researcher's first Edit request to the matching
+visible and accessible editor. The former application-cold Edit reports remain
+historical diagnostics and cannot satisfy this replacement metric. The focused
+Debug QA scenario completed all five excluded warm-ups and 30 retained samples
+without an invalid journey. Retained samples measured 335.648ms p50, 363.570ms
+nearest-rank p95, 328.895ms mean, and 371.997ms maximum; correctness, the
+`< 750ms` p95 limit, and the `< 1,000ms` every-sample limit passed. Report
+SHA-256 is `8dc94f93a3f2b3428185396239bcb47373e3a4578d69be8c66ae874509c5fa31`.
+The release owner records the first-use Edit metric as completely passed and
+closes its implementation acceptance. The report retains its accurate
+`scenario_only` evidence class: this scoped decision does not convert it into a
+packaged product-gate report or accept latency and memory series that were not
+rerun.
+
 On 2026-08-14, the working-tree Review metric was cut over from external
 process-start timing with an implicitly opened document to first-use activation
 from a verified no-document Workspace. The collector now requires a real

@@ -3365,7 +3365,7 @@ final class WindowModel: ObservableObject {
               let descriptor = currentDocumentDescriptor else { return }
         let session = documentController.session(for: descriptor)
         guard !session.isEditing else { return }
-        PerformanceProbe.shared.beginWarmEditActivation(
+        PerformanceProbe.shared.beginEditActivation(
             documentID: descriptor.reference.relativePath
         )
         requestDocumentMode(.livePreview)
@@ -5227,10 +5227,6 @@ final class WindowModel: ObservableObject {
         let path = requested == "first"
             ? notes.sorted(by: notesAreOrdered).first?.relativePath
             : requested
-        if ProcessInfo.processInfo.environment["SCHOLIUM_PERFORMANCE_METRIC"]
-            == "cold_edit_activation" {
-            requestPresentationMode = .livePreview
-        }
         if let path { openNote(path) }
     }
 

@@ -22,7 +22,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case editorModeTransition = "editor_mode_transition"
         case editorCachedPreview = "editor_cached_preview"
         case warmEditActivation = "warm_edit_activation"
-        case coldEditActivation = "cold_edit_activation"
+        case firstEditActivation = "first_edit_activation"
         case editorVisibleProjection = "editor_visible_projection"
 
         var usesBatchedWarmProcess: Bool {
@@ -102,7 +102,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 sampleCount: 1
             )
 
-            if metric != .firstReadActivation {
+            if metric == .warmLibraryLaunch {
                 application.launchEnvironment["SCHOLIUM_PERFORMANCE_STARTED_NS"] = String(
                     DispatchTime.now().uptimeNanoseconds
                 )
@@ -114,6 +114,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
             )
             if metric == .firstReadActivation {
                 performFirstReadActivation(
+                    in: application,
+                    resultsPath: resultsPath,
+                    sample: sample
+                )
+            } else if metric == .firstEditActivation {
+                performFirstEditActivation(
                     in: application,
                     resultsPath: resultsPath,
                     sample: sample
@@ -403,6 +409,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         if metric == .editorModeTransition
             || metric == .editorCachedPreview
             || metric == .warmEditActivation
+            || metric == .firstEditActivation
             || metric == .editorVisibleProjection {
             application.launchArguments.append(
                 "--scholium-performance-editor-mode-notifications"
@@ -432,11 +439,11 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "paper_analysis"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Cluster-01/analysis-note-002.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Cluster-00/analysis-note-001.md"
-        case .firstReadActivation:
+        case .firstReadActivation, .firstEditActivation:
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
         case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
-             .warmEditActivation, .coldEditActivation, .editorVisibleProjection:
+             .warmEditActivation, .editorVisibleProjection:
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
@@ -461,7 +468,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
              .warmEditActivation, .editorVisibleProjection:
             setupDocument = "Long/Canonical-5000-Word-Work.md"
-        case .warmLibraryLaunch, .firstReadActivation, .coldEditActivation:
+        case .warmLibraryLaunch, .firstReadActivation, .firstEditActivation:
             return
         }
         XCTAssertTrue(
@@ -543,7 +550,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         total: Int
     ) throws {
         switch metric {
-        case .warmLibraryLaunch, .firstReadActivation, .coldEditActivation:
+        case .warmLibraryLaunch, .firstReadActivation, .firstEditActivation:
             return
         case .indexedSearch:
             let field = application.descendants(matching: .any)["scholium.searchField"]
@@ -736,6 +743,50 @@ final class ScholiumPerformanceUITests: XCTestCase {
         resultsPath: String,
         sample: Int
     ) {
+        _ = selectFirstUseReviewDocument(in: application, sample: sample)
+        XCTAssertTrue(
+            waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
+            "Sample \(sample): first Review did not publish exactly one performance record."
+        )
+    }
+
+    @MainActor
+    private func performFirstEditActivation(
+        in application: XCUIApplication,
+        resultsPath: String,
+        sample: Int
+    ) {
+        _ = selectFirstUseReviewDocument(in: application, sample: sample)
+        XCTAssertEqual(
+            lineCount(at: resultsPath),
+            sample,
+            "Sample \(sample): first Edit setup published a record before the Edit request."
+        )
+
+        requestPerformanceEditorAction("activation")
+        XCTAssertTrue(
+            waitUntil(timeout: 30) { self.lineCount(at: resultsPath) == sample + 1 },
+            "Sample \(sample): first Edit did not publish exactly one performance record."
+        )
+        let modeMenu = application.descendants(matching: .any)[
+            "scholium.documentModeButton"
+        ]
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (modeMenu.value as? String) == "Edit"
+                    && application.descendants(matching: .any)[
+                        "Markdown editor, Edit mode"
+                    ].exists
+            },
+            "Sample \(sample): the first Editor was not visible and accessible."
+        )
+    }
+
+    @MainActor
+    private func selectFirstUseReviewDocument(
+        in application: XCUIApplication,
+        sample: Int
+    ) -> String {
         let noDocumentState = application.descendants(matching: .any)[
             "scholium.noDocumentState"
         ]
@@ -781,10 +832,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             waitForRenderedDocument(documentID, in: application, timeout: 60),
             "Sample \(sample): the first selected Review document did not render."
         )
-        XCTAssertTrue(
-            waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
-            "Sample \(sample): first Review did not publish exactly one performance record."
-        )
+        return documentID
     }
 
     /// Reconciles the native Sidebar viewport before a measured Note click.

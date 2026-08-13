@@ -84,10 +84,14 @@
   remain keyboard and VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
-- The Editor, Library, Search, warm Review, and first-use Review limits are
-  approved. The cooled first-use working-tree baseline supports its `< 1,000ms`
-  p95 limit but is scenario evidence only. Freeze the exact source/artifact and
-  fixture, then rerun the complete protocol from a reviewed, committed, exactly
+- The Editor, Library, Search, warm Review, first-use Review, and first-use Edit
+  limits are approved. The cooled first-use working-tree baseline supports its `< 1,000ms`
+  Review p95 limit but is scenario evidence only. The former application-cold
+  Edit collector is replaced by the product-aligned first-use Edit journey.
+  The release owner accepts that metric as complete after its full 5+30 QA
+  series passed at 363.570ms p95 and 371.997ms maximum. This removes first-use
+  Edit implementation acceptance from open work; G7 still requires the exact
+  packaged artifact and every applicable series. Freeze the exact source/artifact and fixture, then rerun the complete protocol from a reviewed, committed, exactly
   tagged, packaged source on the cooled reference machine. The first complete
   packaged attempt failed warm Review, cold Edit, and the superseded
   cold-Review and RSS-jitter rules; working-tree diagnostics are not release

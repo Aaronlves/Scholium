@@ -15,7 +15,7 @@ final class PerformanceProbe {
         case editorModeTransition = "editor_mode_transition"
         case editorCachedPreview = "editor_cached_preview"
         case warmEditActivation = "warm_edit_activation"
-        case coldEditActivation = "cold_edit_activation"
+        case firstEditActivation = "first_edit_activation"
         case editorVisibleProjection = "editor_visible_projection"
         case editorRetainedMemory = "editor_retained_memory"
         case editorLargeCJKCorrectness = "editor_large_cjk_correctness"
@@ -123,35 +123,35 @@ final class PerformanceProbe {
     var measuresEditorVisibility: Bool {
         configuration?.metric == .editorModeTransition
             || configuration?.metric == .warmEditActivation
-            || configuration?.metric == .coldEditActivation
+            || configuration?.metric == .firstEditActivation
     }
 
     func markWarmLibraryWindowModelInitializationStarted() {
-        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
+        guard configuration?.metric == .warmLibraryLaunch,
               warmLibraryWindowModelInitializationNanoseconds == nil else { return }
         warmLibraryWindowModelInitializationNanoseconds = now()
     }
 
     func markWarmLibraryWorkspaceReady() {
-        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
+        guard configuration?.metric == .warmLibraryLaunch,
               warmLibraryWorkspaceReadyNanoseconds == nil else { return }
         warmLibraryWorkspaceReadyNanoseconds = now()
     }
 
     func markStartupSafetyReady() {
-        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
+        guard configuration?.metric == .warmLibraryLaunch,
               startupSafetyReadyNanoseconds == nil else { return }
         startupSafetyReadyNanoseconds = now()
     }
 
     func markVaultConfigurationReady() {
-        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
+        guard configuration?.metric == .warmLibraryLaunch,
               vaultConfigurationReadyNanoseconds == nil else { return }
         vaultConfigurationReadyNanoseconds = now()
     }
 
     func markWarmLibraryProjectionReady() {
-        guard measuresColdDocumentLaunch || configuration?.metric == .warmLibraryLaunch,
+        guard configuration?.metric == .warmLibraryLaunch,
               warmLibraryProjectionNanoseconds == nil else { return }
         warmLibraryProjectionNanoseconds = now()
     }
@@ -381,9 +381,10 @@ final class PerformanceProbe {
         recordedSampleCount += 1
     }
 
-    func beginWarmEditActivation(documentID: String) {
+    func beginEditActivation(documentID: String) {
         guard let configuration,
-              configuration.metric == .warmEditActivation,
+              (configuration.metric == .warmEditActivation
+                || configuration.metric == .firstEditActivation),
               documentID == configuration.expectedDocument,
               recordedSampleCount < configuration.sampleCount else {
             editActivation = nil
@@ -396,23 +397,11 @@ final class PerformanceProbe {
         guard let configuration,
               documentID == configuration.expectedDocument else { return }
         switch configuration.metric {
-        case .warmEditActivation:
+        case .warmEditActivation, .firstEditActivation:
             guard let activation = editActivation,
                   activation.documentID == documentID else { return }
             editActivation = nil
             record(startNanoseconds: activation.startNanoseconds, observedCount: nil)
-        case .coldEditActivation:
-            guard let start = configuration.externalStartNanoseconds else { return }
-            let completed = now()
-            record(
-                startNanoseconds: start,
-                observedCount: nil,
-                completedNanoseconds: completed,
-                phaseDurations: launchPhaseDurations(
-                    startNanoseconds: start,
-                    completedNanoseconds: completed
-                )
-            )
         default:
             return
         }
@@ -515,10 +504,6 @@ final class PerformanceProbe {
 
     private func milliseconds(_ nanoseconds: UInt64) -> Double {
         Double(nanoseconds) / 1_000_000
-    }
-
-    private var measuresColdDocumentLaunch: Bool {
-        configuration?.metric == .coldEditActivation
     }
 
     private func measuresExpectedFirstRead(_ documentID: String) -> Bool {

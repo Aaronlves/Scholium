@@ -22,7 +22,7 @@ LATENCY_METRICS = (
     "editor_mode_transition",
     "editor_cached_preview",
     "warm_edit_activation",
-    "cold_edit_activation",
+    "first_edit_activation",
     "editor_visible_projection",
 )
 ALL_METRICS = LATENCY_METRICS + ("editor_retained_memory",)
@@ -35,7 +35,7 @@ THRESHOLDS_MS = {
     "editor_mode_transition": 100.0,
     "editor_cached_preview": 100.0,
     "warm_edit_activation": 200.0,
-    "cold_edit_activation": 750.0,
+    "first_edit_activation": 750.0,
     "editor_visible_projection": 3.0,
 }
 MAXIMUM_LIMITS_MS = {
@@ -43,7 +43,7 @@ MAXIMUM_LIMITS_MS = {
     "editor_mode_transition": 200.0,
     "editor_cached_preview": 200.0,
     "warm_edit_activation": 300.0,
-    "cold_edit_activation": 1_000.0,
+    "first_edit_activation": 1_000.0,
     "editor_visible_projection": 5.0,
 }
 REQUIRED_EDITOR_METRICS = (
@@ -51,7 +51,7 @@ REQUIRED_EDITOR_METRICS = (
     "editor_mode_transition",
     "editor_cached_preview",
     "warm_edit_activation",
-    "cold_edit_activation",
+    "first_edit_activation",
     "editor_visible_projection",
     "editor_retained_memory",
 )
@@ -61,7 +61,6 @@ EXPECTED_COUNTS = {
 }
 LAUNCH_PHASE_METRICS = {
     "warm_library_launch",
-    "cold_edit_activation",
 }
 LAUNCH_PHASE_KEYS = (
     "process_to_window_model_init_duration_ms",
@@ -531,7 +530,7 @@ def self_test() -> None:
     assert missing_required_editor_metrics(available) == [
         "editor_cached_preview",
         "warm_edit_activation",
-        "cold_edit_activation",
+        "first_edit_activation",
         "editor_visible_projection",
     ]
 
