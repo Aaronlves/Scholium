@@ -2183,9 +2183,7 @@ final class WindowModel: ObservableObject {
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
     private var presentResearchRecordSearchResult:
         @MainActor (RecordSearchResult) -> Void = { _ in }
-    #if DEBUG
-    private var qaPerformanceModeNotificationTokens: [Int32] = []
-    #endif
+    private var performanceModeNotificationTokens: [Int32] = []
 
     init(
         workspaceStore: WorkspaceStore,
@@ -2228,8 +2226,7 @@ final class WindowModel: ObservableObject {
                 self?.receiveWorkspaceEvents(events)
             }
             .store(in: &workspaceCancellables)
-        #if DEBUG
-        if Bundle.main.bundleIdentifier == "com.scholium.qa",
+        if PerformanceProbe.shared.isEnabled,
            ProcessInfo.processInfo.arguments.contains(
                "--scholium-performance-editor-mode-notifications"
            ) {
@@ -2249,11 +2246,10 @@ final class WindowModel: ObservableObject {
                     }
                 }
                 if status == NOTIFY_STATUS_OK {
-                    qaPerformanceModeNotificationTokens.append(token)
+                    performanceModeNotificationTokens.append(token)
                 }
             }
         }
-        #endif
         if let saved = UserDefaults.standard.string(forKey: "noteSortOrder"),
            let order = NoteSortOrder(rawValue: saved) {
             noteSortOrder = order
@@ -2273,11 +2269,9 @@ final class WindowModel: ObservableObject {
         researchActionOpenTask?.cancel()
         libraryRevealTask?.cancel()
         markdownImportTask?.cancel()
-        #if DEBUG
-        for token in qaPerformanceModeNotificationTokens {
+        for token in performanceModeNotificationTokens {
             notify_cancel(token)
         }
-        #endif
     }
 
     // MARK: Computed Properties
@@ -3293,13 +3287,12 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    #if DEBUG
     /// Drives the retained-editor performance scenario through the current
     /// document session instead of a one-shot SwiftUI presentation request.
     /// The editor bridge still performs the real mode transition and reports
     /// readiness only after CodeMirror acknowledges it.
     private func requestPerformanceEditorMode(_ mode: NotePresentationMode) {
-        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
+        guard PerformanceProbe.shared.isEnabled,
               ProcessInfo.processInfo.arguments.contains(
                   "--scholium-performance-editor-mode-notifications"
               ),
@@ -3374,7 +3367,6 @@ final class WindowModel: ObservableObject {
             }
         }
     }
-    #endif
 
     func openResearchAction(
         _ actionID: ResearchActionID,

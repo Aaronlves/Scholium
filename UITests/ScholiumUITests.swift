@@ -172,7 +172,7 @@ final class ScholiumUITests: XCTestCase {
             return
         }
         let renderedDocument = app.descendants(matching: .any)[
-            "scholium.readProjection.ready"
+            "scholium.renderedDocument.\(initialOpenNoteForCurrentTest)"
         ]
         XCTAssertTrue(
             waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },

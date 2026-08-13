@@ -128,6 +128,51 @@ struct FrontendArchitectureTests {
         #expect(app.contains(".keyboardShortcut(\"f\", modifiers: [.command, .shift])"))
     }
 
+    @Test("Packaged editor performance actions remain reachable only in an explicit run")
+    func packagedEditorPerformanceActionsHaveReleaseReachability() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let tokenOwner = try #require(
+            source.range(of: "private var performanceModeNotificationTokens")
+        )
+        let registrationEnd = try #require(
+            source.range(
+                of: "if let saved = UserDefaults.standard.string",
+                range: tokenOwner.lowerBound..<source.endIndex
+            )
+        )
+        let registration = source[
+            tokenOwner.lowerBound..<registrationEnd.lowerBound
+        ]
+        let requestOwner = try #require(
+            source.range(of: "private func requestPerformanceEditorMode")
+        )
+        let requestEnd = try #require(
+            source.range(
+                of: "func openResearchAction(",
+                range: requestOwner.lowerBound..<source.endIndex
+            )
+        )
+        let requests = source[requestOwner.lowerBound..<requestEnd.lowerBound]
+
+        #expect(registration.contains("PerformanceProbe.shared.isEnabled"))
+        #expect(registration.contains(
+            "--scholium-performance-editor-mode-notifications"
+        ))
+        #expect(!registration.contains("#if DEBUG"))
+        #expect(!registration.contains("Bundle.main.bundleIdentifier"))
+        #expect(requests.contains("PerformanceProbe.shared.isEnabled"))
+        #expect(!requests.contains("#if DEBUG"))
+    }
+
     @Test("EditorHost presentation preserves mounted Read and editor surfaces")
     func editorHostRetainsMountedSurfaces() throws {
         let repository = URL(fileURLWithPath: #filePath)
@@ -211,6 +256,40 @@ struct FrontendArchitectureTests {
         let readyEnd = try #require(readySuffix.range(of: "private func validEnvelope"))
         let readyBody = readySuffix[..<readyEnd.lowerBound]
         #expect(!readyBody.contains("loadDocument("))
+    }
+
+    @Test("Read readiness preserves the native per-document accessibility identity")
+    func readReadinessKeepsDocumentIdentityQueryable() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let webViewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        let uiSupport = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumUITests+Support.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!noteSource.contains("scholium.readProjection."))
+        #expect(webViewSource.contains(
+            #"scholium.renderedDocument.\(expectedDocumentID)"#
+        ))
+        #expect(uiSupport.contains("identifier BEGINSWITH %@"))
+        #expect(uiSupport.contains("scholium.renderedDocument.loading"))
+        #expect(uiSupport.contains("scholium.renderedDocument.failed"))
     }
 
     @Test(

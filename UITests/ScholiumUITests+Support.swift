@@ -304,9 +304,14 @@ extension ScholiumUITests {
 
     @MainActor
     func waitForDocumentSurface() {
-        let renderedDocument = app.descendants(matching: .any)[
-            "scholium.readProjection.ready"
-        ]
+        let renderedDocument = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@",
+                "scholium.renderedDocument.",
+                "scholium.renderedDocument.loading",
+                "scholium.renderedDocument.failed"
+            )
+        ).firstMatch
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
     }
 

@@ -1643,11 +1643,6 @@ struct NoteContentView: View {
                         .accessibilityHidden(!webProjectionIsReady)
                 }
             }
-            .accessibilityIdentifier(
-                webProjectionIsReady
-                    ? "scholium.readProjection.ready"
-                    : "scholium.readProjection.loading"
-            )
         }
     }
 

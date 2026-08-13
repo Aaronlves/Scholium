@@ -1132,11 +1132,19 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         try await harness.waitUntilReady()
         let webViewIdentity = try harness.webViewIdentity()
+        #expect(
+            try harness.webViewAccessibilityIdentifier()
+                == "scholium.renderedDocument.ReadFixture.md"
+        )
 
         harness.forgetCallerReadiness()
         try await harness.waitUntilReady()
 
         #expect(try harness.webViewIdentity() == webViewIdentity)
+        #expect(
+            try harness.webViewAccessibilityIdentifier()
+                == "scholium.renderedDocument.ReadFixture.md"
+        )
         await harness.closeAndDrain()
     }
 
@@ -2356,6 +2364,14 @@ extension MarkdownEditorWebViewIntegrationTests {
                 throw ReadHarnessError.webViewUnavailable
             }
             return ObjectIdentifier(webView)
+        }
+
+        func webViewAccessibilityIdentifier() throws -> String? {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return webView.accessibilityIdentifier()
         }
 
         func waitUntilCommentSubmission() async throws -> PassageCommentSubmission {
