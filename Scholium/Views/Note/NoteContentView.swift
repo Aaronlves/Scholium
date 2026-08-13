@@ -1185,6 +1185,9 @@ struct NoteContentView: View {
             ).post()
         }
         .task(id: readProjectionTaskIdentity) {
+            PerformanceProbe.shared.markReadTaskStarted(
+                documentID: note.relativePath
+            )
             documentSession.prepareReadProjection(
                 for: noteFingerprint.sha256
             )

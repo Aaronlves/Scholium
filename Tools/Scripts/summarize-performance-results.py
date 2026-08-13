@@ -70,11 +70,21 @@ LAUNCH_PHASE_KEYS = (
     "workspace_ready_to_projection_duration_ms",
     "projection_to_layout_duration_ms",
 )
+LAUNCH_DETAIL_KEYS = (
+    "workspace_ready_to_startup_safety_ready_duration_ms",
+    "startup_safety_ready_to_vault_configuration_ready_duration_ms",
+    "vault_configuration_ready_to_projection_duration_ms",
+)
 READ_PHASE_KEYS = (
     "workspace_projection_to_read_html_ready_duration_ms",
     "read_html_ready_to_navigation_start_duration_ms",
     "read_navigation_duration_ms",
     "read_navigation_to_ready_duration_ms",
+)
+READ_PREPARATION_KEYS = (
+    "projection_to_document_selection_duration_ms",
+    "document_selection_to_read_task_start_duration_ms",
+    "read_task_start_to_html_ready_duration_ms",
 )
 ALLOWED_KEYS = {
     "schema",
@@ -93,7 +103,13 @@ ALLOWED_KEYS = {
     "window_model_init_to_workspace_ready_duration_ms",
     "workspace_ready_to_projection_duration_ms",
     "projection_to_layout_duration_ms",
+    "workspace_ready_to_startup_safety_ready_duration_ms",
+    "startup_safety_ready_to_vault_configuration_ready_duration_ms",
+    "vault_configuration_ready_to_projection_duration_ms",
     "workspace_projection_to_read_html_ready_duration_ms",
+    "projection_to_document_selection_duration_ms",
+    "document_selection_to_read_task_start_duration_ms",
+    "read_task_start_to_html_ready_duration_ms",
     "read_html_ready_to_navigation_start_duration_ms",
     "read_navigation_duration_ms",
     "read_navigation_to_ready_duration_ms",
@@ -269,6 +285,23 @@ def load_metric(
             phase in record for phase in LAUNCH_PHASE_KEYS
         ):
             raise SystemExit(f"{path}:{line_number}: unexpected launch phase duration")
+        launch_details = tuple(record.get(phase) for phase in LAUNCH_DETAIL_KEYS)
+        if metric in LAUNCH_PHASE_METRICS:
+            if any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or value < 0
+                for value in launch_details
+            ):
+                raise SystemExit(f"{path}:{line_number}: invalid launch detail duration")
+            projection = record.get("workspace_ready_to_projection_duration_ms")
+            if not isinstance(projection, (int, float)) or abs(
+                sum(float(value) for value in launch_details) - float(projection)
+            ) > 0.001:
+                raise SystemExit(f"{path}:{line_number}: launch details do not match projection")
+        elif any(value is not None for value in launch_details):
+            raise SystemExit(f"{path}:{line_number}: unexpected launch detail duration")
         read_phases = tuple(record.get(phase) for phase in READ_PHASE_KEYS)
         if metric == "cold_read_activation" and any(
             value is not None for value in read_phases
@@ -288,6 +321,27 @@ def load_metric(
                 raise SystemExit(f"{path}:{line_number}: Read phases do not match layout")
         elif any(value is not None for value in read_phases):
             raise SystemExit(f"{path}:{line_number}: unexpected Read phase duration")
+        read_preparation = tuple(record.get(phase) for phase in READ_PREPARATION_KEYS)
+        if metric == "cold_read_activation":
+            if any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or value < 0
+                for value in read_preparation
+            ):
+                raise SystemExit(f"{path}:{line_number}: invalid Read preparation duration")
+            html_ready = record.get(
+                "workspace_projection_to_read_html_ready_duration_ms"
+            )
+            if not isinstance(html_ready, (int, float)) or abs(
+                sum(float(value) for value in read_preparation) - float(html_ready)
+            ) > 0.001:
+                raise SystemExit(
+                    f"{path}:{line_number}: Read preparation does not match HTML ready"
+                )
+        elif any(value is not None for value in read_preparation):
+            raise SystemExit(f"{path}:{line_number}: unexpected Read preparation duration")
         records.append(record)
 
     total = warmups + samples
@@ -558,6 +612,16 @@ def self_test() -> None:
                 "window_model_init_to_workspace_ready_duration_ms": 2.0,
                 "workspace_ready_to_projection_duration_ms": 3.0,
                 "projection_to_layout_duration_ms": 4.0,
+                "workspace_ready_to_startup_safety_ready_duration_ms": 0.5,
+                "startup_safety_ready_to_vault_configuration_ready_duration_ms": 1.0,
+                "vault_configuration_ready_to_projection_duration_ms": 1.5,
+                "workspace_projection_to_read_html_ready_duration_ms": 1.5,
+                "projection_to_document_selection_duration_ms": 0.5,
+                "document_selection_to_read_task_start_duration_ms": 0.5,
+                "read_task_start_to_html_ready_duration_ms": 0.5,
+                "read_html_ready_to_navigation_start_duration_ms": 0.5,
+                "read_navigation_duration_ms": 1.5,
+                "read_navigation_to_ready_duration_ms": 0.5,
             }) + "\n",
             encoding="utf-8",
         )
@@ -565,6 +629,21 @@ def self_test() -> None:
             cold_read_path, "cold_read_activation", "self_test", 0, 1
         )
         assert len(loaded) == 1 and measured == [10.0]
+
+        incomplete_cold_read = json.loads(cold_read_path.read_text(encoding="utf-8"))
+        incomplete_cold_read.pop(
+            "startup_safety_ready_to_vault_configuration_ready_duration_ms"
+        )
+        cold_read_path.write_text(
+            json.dumps(incomplete_cold_read) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            load_metric(cold_read_path, "cold_read_activation", "self_test", 0, 1)
+        except SystemExit as error:
+            assert "invalid launch detail duration" in str(error)
+        else:
+            raise AssertionError("The summary accepted an incomplete launch detail record.")
 
         path.write_text(
             json.dumps({**records[0], "document": "Private.md"}) + "\n",
@@ -708,7 +787,7 @@ def main() -> None:
                 }
         if metric in LAUNCH_PHASE_METRICS:
             retained_records = records[arguments.warmups :]
-            for phase in LAUNCH_PHASE_KEYS:
+            for phase in LAUNCH_PHASE_KEYS + LAUNCH_DETAIL_KEYS:
                 if all(phase in record for record in retained_records):
                     values = [float(record[phase]) for record in retained_records]
                     summaries[metric][phase] = {
@@ -719,7 +798,7 @@ def main() -> None:
                     }
         if metric == "cold_read_activation":
             retained_records = records[arguments.warmups :]
-            for phase in READ_PHASE_KEYS:
+            for phase in READ_PHASE_KEYS + READ_PREPARATION_KEYS:
                 if all(phase in record for record in retained_records):
                     values = [float(record[phase]) for record in retained_records]
                     summaries[metric][phase] = {

@@ -151,10 +151,25 @@ struct FrontendArchitectureTests {
         #expect(initialPublication.contains("applyWorkspaceProjectionCommit(commit)"))
         #expect(initialPublication.contains("workspaceStore.snapshot("))
         #expect(initialPublication.contains("for: capabilities.runtimeIdentity"))
+        #expect(initialPublication.contains("markVaultConfigurationReady()"))
+        #expect(initialPublication.contains("markWarmLibraryProjectionReady()"))
         #expect(initialPublication.contains("isLoading = false"))
         #expect(!initialPublication.contains("documentController.workspaceSnapshots()"))
         #expect(!initialPublication.contains("researchController.researchSnapshot()"))
         #expect(!initialPublication.contains("await refreshWindowProjection()"))
+
+        let adoptionStart = try #require(source.range(
+            of: "private func adoptWorkspaceActivation("
+        ))
+        let adoptionEnd = try #require(source.range(
+            of: "var currentWorkspaceSlot:",
+            range: adoptionStart.upperBound..<source.endIndex
+        ))
+        let adoption = source[adoptionStart.lowerBound..<adoptionEnd.lowerBound]
+        #expect(adoption.contains(
+            "if currentRegisteredVault != nil {\n"
+                + "            PerformanceProbe.shared.markWarmLibraryProjectionReady()"
+        ))
 
         let storeSource = try String(
             contentsOf: repository.appendingPathComponent(

@@ -4276,6 +4276,7 @@ final class WindowModel: ObservableObject {
             ] + recoveryIssues).joined(separator: "\n")
         }
         await refreshTransactionRecoveryRecords()
+        PerformanceProbe.shared.markStartupSafetyReady()
         activeTriptychServicesID = assignment.id
     }
 
@@ -4461,7 +4462,9 @@ final class WindowModel: ObservableObject {
             context: workspaceProjectionContext
         )
         applyWorkspaceProjectionCommit(projectionCommit)
-        PerformanceProbe.shared.markWarmLibraryProjectionReady()
+        if currentRegisteredVault != nil {
+            PerformanceProbe.shared.markWarmLibraryProjectionReady()
+        }
         researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(
             triptychID: activation.snapshot.triptych.id
         )
@@ -5012,6 +5015,7 @@ final class WindowModel: ObservableObject {
                     isDirectory: true
                 )
             )
+            PerformanceProbe.shared.markVaultConfigurationReady()
 
             resetWindowSession()
 
@@ -6546,6 +6550,9 @@ final class WindowModel: ObservableObject {
             documentNavigationHistoryController.record(document)
         }
         reconcileDocumentSessionLeases()
+        PerformanceProbe.shared.markColdDocumentSelected(
+            documentID: document.relativePath
+        )
     }
 
     /// Every successful in-app document activation converges on this one

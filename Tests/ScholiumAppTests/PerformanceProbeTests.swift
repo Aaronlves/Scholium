@@ -209,7 +209,8 @@ struct PerformanceProbeTests {
         defer { try? fileManager.removeItem(at: directory) }
         let result = directory.appendingPathComponent("cold_read_activation.jsonl")
         var times: [UInt64] = [
-            20_000_000, 50_000_000, 90_000_000, 100_000_000,
+            20_000_000, 50_000_000, 60_000_000, 80_000_000,
+            90_000_000, 95_000_000, 98_000_000, 100_000_000,
             110_000_000, 130_000_000, 150_000_000,
         ]
         let probe = PerformanceProbe(
@@ -228,7 +229,11 @@ struct PerformanceProbeTests {
 
         probe.markWarmLibraryWindowModelInitializationStarted()
         probe.markWarmLibraryWorkspaceReady()
+        probe.markStartupSafetyReady()
+        probe.markVaultConfigurationReady()
         probe.markWarmLibraryProjectionReady()
+        probe.markColdDocumentSelected(documentID: "Fixture.md")
+        probe.markReadTaskStarted(documentID: "Fixture.md")
         probe.markReadHTMLReady(documentID: "Fixture.md")
         probe.markReadNavigationStarted(documentID: "Fixture.md")
         probe.markReadNavigationFinished(documentID: "Fixture.md")
@@ -247,9 +252,27 @@ struct PerformanceProbeTests {
         #expect(object["workspace_ready_to_projection_duration_ms"] as? Double == 40)
         #expect(object["projection_to_layout_duration_ms"] as? Double == 60)
         #expect(
+            object["workspace_ready_to_startup_safety_ready_duration_ms"] as? Double
+                == 10
+        )
+        #expect(
+            object["startup_safety_ready_to_vault_configuration_ready_duration_ms"]
+                as? Double == 20
+        )
+        #expect(
+            object["vault_configuration_ready_to_projection_duration_ms"] as? Double
+                == 10
+        )
+        #expect(
             object["workspace_projection_to_read_html_ready_duration_ms"] as? Double
                 == 10
         )
+        #expect(object["projection_to_document_selection_duration_ms"] as? Double == 5)
+        #expect(
+            object["document_selection_to_read_task_start_duration_ms"] as? Double
+                == 3
+        )
+        #expect(object["read_task_start_to_html_ready_duration_ms"] as? Double == 2)
         #expect(
             object["read_html_ready_to_navigation_start_duration_ms"] as? Double
                 == 10
