@@ -252,6 +252,7 @@ if rg -n --glob '*.swift' \
   --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
   --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
+  --glob '!**/Styling/ScholiumWebFontResources.swift' \
   --glob '!**/Styling/ScholiumCalloutStyles.swift' \
   --glob '!**/Styling/ScholiumTableStyles.swift' \
   --glob '!**/Styling/ScholiumFootnoteStyles.swift' \

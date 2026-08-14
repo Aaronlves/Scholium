@@ -84,7 +84,6 @@ public struct FolderMoveCommit: Hashable, Sendable {
     public let graphGeneration: Int
     public let noteMoves: [FolderNoteMoveCommit]
     public let rewrites: [CoordinatedIncomingLinkRewriteResult]
-    public let cleanupWarnings: [SaveCleanupWarning]
 
     public init(
         vaultID: UUID,
@@ -92,8 +91,7 @@ public struct FolderMoveCommit: Hashable, Sendable {
         destinationFolder: VaultRelativeFolderPath,
         graphGeneration: Int,
         noteMoves: [FolderNoteMoveCommit],
-        rewrites: [CoordinatedIncomingLinkRewriteResult],
-        cleanupWarnings: [SaveCleanupWarning] = []
+        rewrites: [CoordinatedIncomingLinkRewriteResult]
     ) {
         self.vaultID = vaultID
         self.sourceFolder = sourceFolder
@@ -101,6 +99,5 @@ public struct FolderMoveCommit: Hashable, Sendable {
         self.graphGeneration = graphGeneration
         self.noteMoves = noteMoves
         self.rewrites = rewrites
-        self.cleanupWarnings = cleanupWarnings
     }
 }

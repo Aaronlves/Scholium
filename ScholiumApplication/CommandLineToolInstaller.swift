@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 
@@ -6,7 +7,7 @@ import ScholiumContracts
 public actor CommandLineToolInstaller {
     private let fileManager: FileManager
     private let environment: @Sendable () -> [String: String]
-    private let homeDirectory: @Sendable () -> URL
+    private let homeDirectory: @Sendable () -> URL?
     private let bundleURL: @Sendable () -> URL
     private let version: String
 
@@ -15,15 +16,15 @@ public actor CommandLineToolInstaller {
         environment: @escaping @Sendable () -> [String: String] = {
             ProcessInfo.processInfo.environment
         },
-        homeDirectory: @escaping @Sendable () -> URL = {
-            FileManager.default.homeDirectoryForCurrentUser
-        },
+        homeDirectory: (@Sendable () -> URL?)? = nil,
         bundleURL: @escaping @Sendable () -> URL = { Bundle.main.bundleURL },
         version: String = ScholiumProductIdentity.releaseLabel
     ) {
         self.fileManager = fileManager
         self.environment = environment
-        self.homeDirectory = homeDirectory
+        self.homeDirectory = homeDirectory ?? {
+            Self.defaultInstallationHomeDirectory()
+        }
         self.bundleURL = bundleURL
         self.version = version
     }
@@ -31,20 +32,36 @@ public actor CommandLineToolInstaller {
     public func commandLineToolStatus() async -> CommandLineToolStatus {
         let source = bundledExecutableURL()
         let sourceResources = bundledResourceURL()
-        let destination = installedExecutableURL()
-        let destinationResources = installedResourceURL()
         let sourceFingerprint = source.flatMap(fingerprintOfRegularFile)
-        let destinationIsLink = isSymbolicLink(destination)
+        guard let destination = installedExecutableURL() else {
+            return CommandLineToolStatus(
+                state: .invalidInstallation,
+                version: version,
+                installPath: "~/.local/bin/scholium",
+                isOnCurrentPATH: false,
+                bundledRevision: sourceFingerprint,
+                repairMessage: CommandLineToolInstallationError
+                    .installationHomeUnavailable.localizedDescription
+            )
+        }
+        let destinationResources = installedResourceURL(for: destination)
+        let installationPathContainsLink = installationPathContainsSymbolicLink(
+            destination,
+            resources: destinationResources
+        )
         let resourcesAreValid = validResourceBundle(destinationResources)
-        let installedFingerprint = destinationIsLink ? nil : fingerprintOfRegularFile(destination)
+        let installedFingerprint = installationPathContainsLink
+            ? nil
+            : fingerprintOfRegularFile(destination)
         let state: CommandLineToolInstallationState
         let repair: String?
         if sourceFingerprint == nil || sourceResources == nil {
             state = .bundledToolUnavailable
             repair = "Use a packaged Scholium build that includes Contents/Helpers/scholium."
-        } else if destinationIsLink || isSymbolicLink(destinationResources) {
+        } else if installationPathContainsLink || isSymbolicLink(destinationResources) {
             state = .invalidInstallation
-            repair = CommandLineToolInstallationError.destinationIsSymbolicLink.localizedDescription
+            repair = CommandLineToolInstallationError.installationPathContainsSymbolicLink
+                .localizedDescription
         } else if installedFingerprint == nil && !fileManager.fileExists(atPath: destination.path) {
             state = .notInstalled
             repair = nil
@@ -77,14 +94,19 @@ public actor CommandLineToolInstaller {
               let sourceFingerprint = fingerprintOfRegularFile(source) else {
             throw CommandLineToolInstallationError.bundledToolUnavailable
         }
-        let destination = installedExecutableURL()
-        let destinationResources = installedResourceURL()
-        guard !isSymbolicLink(destination) else {
-            throw CommandLineToolInstallationError.destinationIsSymbolicLink
+        guard let destination = installedExecutableURL() else {
+            throw CommandLineToolInstallationError.installationHomeUnavailable
+        }
+        let destinationResources = installedResourceURL(for: destination)
+        guard !installationPathContainsSymbolicLink(
+            destination,
+            resources: destinationResources
+        ) else {
+            throw CommandLineToolInstallationError.installationPathContainsSymbolicLink
         }
         let directory = destination.deletingLastPathComponent()
         guard !isSymbolicLink(destinationResources) else {
-            throw CommandLineToolInstallationError.destinationIsSymbolicLink
+            throw CommandLineToolInstallationError.installationPathContainsSymbolicLink
         }
         try fileManager.createDirectory(
             at: directory,
@@ -131,11 +153,11 @@ public actor CommandLineToolInstaller {
             .appendingPathComponent("scholium", isDirectory: false)
     }
 
-    private func installedExecutableURL() -> URL {
+    private func installedExecutableURL() -> URL? {
         if let override = environment()["SCHOLIUM_CLI_INSTALL_PATH"], !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
         }
-        return homeDirectory()
+        return homeDirectory()?
             .appendingPathComponent(".local", isDirectory: true)
             .appendingPathComponent("bin", isDirectory: true)
             .appendingPathComponent("scholium", isDirectory: false)
@@ -149,8 +171,8 @@ public actor CommandLineToolInstaller {
         return validResourceBundle(candidate) ? candidate : nil
     }
 
-    private func installedResourceURL() -> URL {
-        installedExecutableURL().deletingLastPathComponent()
+    private func installedResourceURL(for executable: URL) -> URL {
+        executable.deletingLastPathComponent()
             .appendingPathComponent("Scholium_ScholiumCore.bundle", isDirectory: true)
     }
 
@@ -189,11 +211,64 @@ public actor CommandLineToolInstaller {
         (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
     }
 
+    private func installationPathContainsSymbolicLink(
+        _ destination: URL,
+        resources: URL
+    ) -> Bool {
+        let directory = destination.deletingLastPathComponent()
+        return [
+            destination,
+            resources,
+            directory,
+            directory.deletingLastPathComponent(),
+        ].contains(where: isSymbolicLink)
+    }
+
     private func pathContains(_ directory: URL) -> Bool {
         let expected = directory.standardizedFileURL.path
         return (environment()["PATH"] ?? "")
             .split(separator: ":")
             .map(String.init)
             .contains { URL(fileURLWithPath: $0).standardizedFileURL.path == expected }
+    }
+
+    static func installationHomeDirectory(
+        accountHomePath: String?
+    ) -> URL? {
+        guard let accountHomePath,
+              accountHomePath.hasPrefix("/") else {
+            return nil
+        }
+        return URL(
+            fileURLWithPath: accountHomePath,
+            isDirectory: true
+        ).standardizedFileURL
+    }
+
+    private static func defaultInstallationHomeDirectory() -> URL? {
+        installationHomeDirectory(
+            accountHomePath: currentAccountHomePath()
+        )
+    }
+
+    private static func currentAccountHomePath() -> String? {
+        var account = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+        let configuredSize = sysconf(_SC_GETPW_R_SIZE_MAX)
+        let bufferSize = configuredSize > 0 ? Int(configuredSize) : 16_384
+        var buffer = [CChar](repeating: 0, count: bufferSize)
+        let status = getpwuid_r(
+            getuid(),
+            &account,
+            &buffer,
+            buffer.count,
+            &result
+        )
+        guard status == 0,
+              result != nil,
+              account.pw_dir != nil else {
+            return nil
+        }
+        return String(cString: account.pw_dir)
     }
 }

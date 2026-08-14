@@ -121,17 +121,13 @@ struct ContractBoundaryTests {
         #expect(decoded.researchWrite == nil)
     }
 
-    @Test("Committed source outcomes remain distinct from post-commit warnings")
+    @Test("Committed source outcomes remain distinct from derived recovery warnings")
     func structuredErrors() {
         let revision = DocumentFingerprint(sha256: "revision", byteCount: 8)
         let outcome = WorkspaceMutationOutcome(
             committedValue: revision,
             derivedRefreshWarning: "index unavailable",
-            identityRecoveryWarning: "identity unavailable",
-            cleanupWarnings: [SaveCleanupWarning(
-                kind: .displacedSourceCopy,
-                message: "old source copy pending"
-            )]
+            identityRecoveryWarning: "identity unavailable"
         )
         let researchError = ScholiumApplicationError.operationCommittedButRefreshFailed(
             operation: "research completion",
@@ -145,7 +141,6 @@ struct ContractBoundaryTests {
         #expect(outcome.committedValue == revision)
         #expect(outcome.derivedRefreshWarning == "index unavailable")
         #expect(outcome.identityRecoveryWarning == "identity unavailable")
-        #expect(outcome.cleanupWarnings.map(\.message) == ["old source copy pending"])
         #expect(researchError.durableMutationWasCommitted)
         #expect(researchError.mustNotRetryMutation)
         #expect(researchError.mutationRequiresReconciliation)

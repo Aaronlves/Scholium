@@ -904,9 +904,8 @@ struct ContentView: View {
                         checkpointID,
                         selection: selection
                     )
-                    if result.cleanupWarnings.isEmpty {
-                        appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
-                    }
+                    _ = result
+                    appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
                 },
                 revealCheckpoints: {
                     appState.revealCheckpointsInFinder()

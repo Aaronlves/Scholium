@@ -4788,7 +4788,7 @@ struct FrontendArchitectureTests {
             to: "private func coordinatedMoveFolder("
         )
         #expect(documentMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
-        #expect(documentMove.contains("cleanupWarnings: commit.cleanupWarnings"))
+        #expect(!documentMove.contains("cleanupWarnings"))
         #expect(!documentMove.contains("await refreshCoordinator.request(refreshPayload)"))
 
         let folderMove = try sourceSection(
@@ -4797,7 +4797,7 @@ struct FrontendArchitectureTests {
             to: "private func workspaceFolderMovePlan("
         )
         #expect(folderMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
-        #expect(folderMove.contains("cleanupWarnings: commit.cleanupWarnings"))
+        #expect(!folderMove.contains("cleanupWarnings"))
         #expect(!folderMove.contains("try await refresh("))
 
         let folderPlan = try sourceSection(
@@ -4843,12 +4843,12 @@ struct FrontendArchitectureTests {
             from: "documentController.bind(",
             to: "researchController.bind("
         )
-        #expect(documentBinding.contains("result.cleanupWarning"))
-        #expect(documentBinding.contains("cleanupWarnings: [warning]"))
-        #expect(appSource.contains("private func localizedCleanupWarnings("))
-        #expect(appSource.contains("case .displacedSourceCopy:"))
-        #expect(appSource.contains("case .transactionRecord:"))
-        #expect(!appSource.contains("cleanupWarnings.map(\\.message)"))
+        #expect(documentBinding.contains("replaceSavedDocument(result.document)"))
+        #expect(!documentBinding.contains("cleanupWarning"))
+        #expect(!appSource.contains("private func localizedCleanupWarnings("))
+        #expect(!appSource.contains("case .displacedSourceCopy:"))
+        #expect(!appSource.contains("case .transactionRecord:"))
+        #expect(!appSource.contains("cleanupWarnings"))
 
         let toolbarSource = try String(
             contentsOf: repository.appendingPathComponent(

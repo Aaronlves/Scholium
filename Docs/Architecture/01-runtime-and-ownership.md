@@ -153,8 +153,12 @@ not complete evidence. The handle owns one utility-priority opening-completion
 task. Watcher events enter the existing bounded journals while a complete
 three-catalog reconcile, Graph build, Search synchronization, research
 projection, and atomic event publication run through the same refresh
-coordinator and source-operation gate. The completion task waits until the
-opening Vault's first Document crosses its native visible-layout boundary, so
+coordinator and source-operation gate. The first live refresh that can replace
+an opening snapshot completes its full post-observation activation reconcile
+before building or publishing `.complete`; Search availability and watcher
+readiness therefore cross one actor-owned completion boundary. The completion
+task waits until the opening Vault's first Document crosses its native
+visible-layout boundary, so
 the full reconcile cannot contend with that initial presentation; a bounded
 fallback still completes a Library-only window or a failed renderer. The
 complete snapshot replaces the opening phase; no second repository, catalog,
@@ -739,7 +743,14 @@ registration only, the same model holds workspace routing closed while the
 setup view borrows the existing Application-owned `CommandLineToolInstaller`
 for optional machine preparation. Prompt-copy and researcher-confirmation state
 remain presentation-local and create no Agent, Session, Run, research-access,
-or durable readiness owner. When Agent preparation follows, the setup view
+or durable readiness owner. The installer resolves the login account's POSIX
+home rather than the sandbox-container home, owns only
+`~/.local/bin/scholium` and its adjacent protected resource bundle, and
+read-verifies both before publishing Installed. The packaged App grants its
+sandbox only the `~/.local/` root needed to create that conventional
+user-local destination; the writer refuses symbolic links in the destination
+or either directory ancestor and never edits `PATH`, shell profiles, or Agent
+configuration. When Agent preparation follows, the setup view
 starts Application registration before presenting Agent and retains only the
 local gate that prevents Ready until registration succeeds; Application still
 owns the registration transaction and failure. Bootstrap and Workspace

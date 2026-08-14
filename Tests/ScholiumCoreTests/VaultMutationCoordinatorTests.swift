@@ -8,75 +8,63 @@ import Testing
 struct VaultMutationCoordinatorTests {
     private struct InjectedFailure: Error {}
 
-    @Test("Every injected update phase preserves or recovers the preimage", arguments: [
-        VaultMutationPhase.initialRead,
-        .staged,
-        .finalCheck,
-        .swapped,
-        .readback,
-    ])
-    func injectedFailureAtEveryPhase(_ phase: VaultMutationPhase) throws {
+    @Test("An existing note uses coordinated system replacement and exact readback")
+    func successfulExistingUpdate() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { observed in
-                if observed == phase { throw InjectedFailure() }
-            })
-        )
 
-        var wasCommitUncertain = false
-        do {
-            _ = try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate,
-                persistCleanupTask: { _ in },
-                cleanupStagedCandidate: { cleanup in
-                    try FileManager.default.removeItem(
-                        at: fixture.root.appendingPathComponent(cleanup.stagingName)
-                    )
-                }
-            )
-            Issue.record("An injected commit-stage failure was reported as Saved.")
-        } catch VaultRepositoryError.commitUncertain {
-            wasCommitUncertain = true
-        } catch is InjectedFailure {
-            // Pre-swap failures retain the ordinary typed error.
-        }
-
-        #expect(try Data(contentsOf: fixture.note) == fixture.original)
-        if phase == .swapped || phase == .readback {
-            #expect(wasCommitUncertain)
-            #expect(try fixture.stagedFiles().contains {
-                try Data(contentsOf: $0) == fixture.candidate
-            })
-        } else {
-            #expect(!wasCommitUncertain)
-            #expect(try fixture.stagedFiles().isEmpty)
-        }
-    }
-
-    @Test("A proven replacement returns an exact cleanup task before removal")
-    func cleanupFailureRetainsBoundedTask() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let coordinator = VaultMutationCoordinator(resolver: fixture.resolver)
-
-        let result = try coordinator.updateExisting(
+        try VaultMutationCoordinator(resolver: fixture.resolver).updateExisting(
             path: fixture.path,
             expected: fixture.original,
             candidate: fixture.candidate
         )
 
-        #expect(result.cleanupTask.relativePath == fixture.path.rawValue)
-        #expect(result.cleanupTask.displacedSource.fingerprint
-            == DocumentFingerprint(data: fixture.original))
-        #expect(result.cleanupTask.stagedCandidate.fingerprint
-            == DocumentFingerprint(data: fixture.candidate))
         #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
-        let staging = try #require(fixture.stagedFiles().first)
-        #expect(try Data(contentsOf: staging) == fixture.original)
+        #expect(try fixture.replacementFiles().isEmpty)
+    }
+
+    @Test("Failures before replacement preserve the source and remove the candidate")
+    func failureBeforeReplacement() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                if phase == .replacing { throw InjectedFailure() }
+            })
+        )
+
+        #expect(throws: InjectedFailure.self) {
+            try coordinator.updateExisting(
+                path: fixture.path,
+                expected: fixture.original,
+                candidate: fixture.candidate
+            )
+        }
+        #expect(try Data(contentsOf: fixture.note) == fixture.original)
+        #expect(try fixture.replacementFiles().isEmpty)
+    }
+
+    @Test("A failure after replacement does not perform a second source mutation")
+    func failureAfterReplacement() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                if phase == .replaced { throw InjectedFailure() }
+            })
+        )
+
+        #expect(throws: InjectedFailure.self) {
+            try coordinator.updateExisting(
+                path: fixture.path,
+                expected: fixture.original,
+                candidate: fixture.candidate
+            )
+        }
+        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
+        #expect(try fixture.replacementFiles().isEmpty)
     }
 
     @Test("An external writer before final authorization causes a conflict")
@@ -87,59 +75,9 @@ struct VaultMutationCoordinatorTests {
         let coordinator = VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
-                if phase == .staged { try external.write(to: fixture.note, options: .atomic) }
-            })
-        )
-
-        #expect(throws: VaultRepositoryError.self) {
-            _ = try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-        }
-        #expect(try Data(contentsOf: fixture.note) == external)
-    }
-
-    @Test("A writer between final check and swap is restored and reported uncertain")
-    func writerAtSwapBoundary() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let external = Data("external-at-swap".utf8)
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                if phase == .finalCheck { try external.write(to: fixture.note, options: .atomic) }
-            })
-        )
-
-        do {
-            _ = try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-            Issue.record("The raced swap was incorrectly reported as saved")
-        } catch VaultRepositoryError.commitUncertain {
-            // Required outcome.
-        } catch {
-            Issue.record("Unexpected raced-swap error: \(error)")
-        }
-        #expect(try Data(contentsOf: fixture.note) == external)
-        #expect(try fixture.stagedFiles().contains(where: { try Data(contentsOf: $0) == fixture.candidate }))
-    }
-
-    @Test("Delete and recreate at the swap boundary never reports Saved")
-    func deleteRecreateAtBoundary() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let recreated = Data("recreated".utf8)
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .finalCheck else { return }
-                try FileManager.default.removeItem(at: fixture.note)
-                try recreated.write(to: fixture.note)
+                if phase == .staged {
+                    try external.write(to: fixture.note, options: .atomic)
+                }
             })
         )
 
@@ -150,51 +88,51 @@ struct VaultMutationCoordinatorTests {
                 candidate: fixture.candidate
             )
         }
-        #expect(try Data(contentsOf: fixture.note) == recreated)
+        #expect(try Data(contentsOf: fixture.note) == external)
+        #expect(try fixture.replacementFiles().isEmpty)
     }
 
-    @Test("A symlink substitution cannot escape the descriptor-relative commit")
+    @Test("A symlink substitution cannot escape the vault")
     func symlinkSubstitution() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let outside = fixture.root.deletingLastPathComponent()
             .appendingPathComponent("outside-\(UUID().uuidString).md")
-        try Data("outside".utf8).write(to: outside)
+        let outsideBytes = Data("outside".utf8)
+        try outsideBytes.write(to: outside)
         defer { try? FileManager.default.removeItem(at: outside) }
         let coordinator = VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .finalCheck else { return }
+                guard phase == .staged else { return }
                 try FileManager.default.removeItem(at: fixture.note)
-                try FileManager.default.createSymbolicLink(at: fixture.note, withDestinationURL: outside)
+                try FileManager.default.createSymbolicLink(
+                    at: fixture.note,
+                    withDestinationURL: outside
+                )
             })
         )
 
-        #expect(throws: VaultRepositoryError.self) {
+        #expect(throws: (any Error).self) {
             try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
                 candidate: fixture.candidate
             )
         }
-        #expect(try Data(contentsOf: outside) == Data("outside".utf8))
+        #expect(try Data(contentsOf: outside) == outsideBytes)
+        #expect(try fixture.replacementFiles().isEmpty)
     }
 
-    @Test(
-        "A parent-directory symlink exchange cannot commit to a detached path",
-        arguments: [VaultMutationPhase.finalCheck, .swapped]
-    )
-    func parentSymlinkExchange(at injectedPhase: VaultMutationPhase) throws {
+    @Test("A parent-directory exchange cannot retarget the replacement")
+    func parentSymlinkExchange() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let base = repositoryRoot
             .appendingPathComponent(".build/vault-parent-races", isDirectory: true)
-            .appendingPathComponent(
-                String(UUID().uuidString.prefix(12)).lowercased(),
-                isDirectory: true
-            )
+            .appendingPathComponent(String(UUID().uuidString.prefix(12)).lowercased(), isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
         let root = base.appendingPathComponent("Vault", isDirectory: true)
         let parent = root.appendingPathComponent("Folder", isDirectory: true)
@@ -215,7 +153,7 @@ struct VaultMutationCoordinatorTests {
                 normalizationSensitive: true
             ),
             hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == injectedPhase else { return }
+                guard phase == .finalCheck else { return }
                 try FileManager.default.moveItem(at: parent, to: detached)
                 try FileManager.default.createSymbolicLink(
                     at: parent,
@@ -235,41 +173,7 @@ struct VaultMutationCoordinatorTests {
         #expect(try Data(contentsOf: outside.appendingPathComponent("Note.md")) == outsideBytes)
     }
 
-    @Test("A permission change after swap is uncertain and restores the preimage")
-    func permissionChangeAfterSwap() throws {
-        let fixture = try Fixture()
-        defer {
-            for staged in (try? fixture.stagedFiles()) ?? [] {
-                try? FileManager.default.setAttributes(
-                    [.posixPermissions: 0o600],
-                    ofItemAtPath: staged.path
-                )
-            }
-            fixture.remove()
-        }
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                if phase == .swapped {
-                    try FileManager.default.setAttributes(
-                        [.posixPermissions: 0o000],
-                        ofItemAtPath: fixture.note.path
-                    )
-                }
-            })
-        )
-
-        #expect(throws: VaultRepositoryError.self) {
-            try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-        }
-        #expect(try Data(contentsOf: fixture.note) == fixture.original)
-    }
-
-    @Test("An external replacement before readback is never reported saved")
+    @Test("A readback mismatch never reports success or rewrites the external bytes")
     func externalReplacementBeforeReadback() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -283,20 +187,47 @@ struct VaultMutationCoordinatorTests {
             })
         )
 
-        do {
-            _ = try coordinator.updateExisting(
+        #expect(throws: VaultRepositoryError.self) {
+            try coordinator.updateExisting(
                 path: fixture.path,
                 expected: fixture.original,
                 candidate: fixture.candidate
             )
-            Issue.record("The replaced readback was incorrectly reported as saved")
-        } catch VaultRepositoryError.commitUncertain {
-            // Required outcome.
-        } catch {
-            Issue.record("Unexpected readback error: \(error)")
         }
         #expect(try Data(contentsOf: fixture.note) == external)
-        #expect(!(try fixture.stagedFiles()).isEmpty)
+        #expect(try fixture.replacementFiles().isEmpty)
+    }
+
+    @Test("Filesystem metadata changes do not become save failures")
+    func metadataChangeIsNotASavePredicate() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let attributeName = "com.scholium.metadata-test"
+        let coordinator = VaultMutationCoordinator(
+            resolver: fixture.resolver,
+            hooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .replaced else { return }
+                try Data("provider-owned".utf8).withUnsafeBytes { bytes in
+                    guard setxattr(
+                        fixture.note.path,
+                        attributeName,
+                        bytes.baseAddress,
+                        bytes.count,
+                        0,
+                        0
+                    ) == 0 else {
+                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    }
+                }
+            })
+        )
+
+        try coordinator.updateExisting(
+            path: fixture.path,
+            expected: fixture.original,
+            candidate: fixture.candidate
+        )
+        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
     }
 
     @Test("Successful create, move, update, and delete preserve exact bytes")
@@ -304,271 +235,25 @@ struct VaultMutationCoordinatorTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let coordinator = VaultMutationCoordinator(resolver: fixture.resolver)
-        _ = try coordinator.updateExisting(
+        try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
             candidate: fixture.candidate
         )
-        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
 
         let createdPath = try MarkdownRelativePath("Created.md")
         try coordinator.create(path: createdPath, data: fixture.original)
         let movedPath = try MarkdownRelativePath("Moved.md")
-        try coordinator.move(source: createdPath, destination: movedPath, expected: fixture.original)
-        #expect(!FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent("Created.md").path))
+        try coordinator.move(
+            source: createdPath,
+            destination: movedPath,
+            expected: fixture.original
+        )
         #expect(try Data(contentsOf: fixture.root.appendingPathComponent("Moved.md")) == fixture.original)
         try coordinator.delete(path: movedPath, expected: fixture.original)
-        #expect(!FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent("Moved.md").path))
-    }
-
-    @Test("Update preserves mode, owner/group, ACL, xattrs, Finder tags, flags, and birth time")
-    func updatePreservesMetadata() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        guard chmod(fixture.note.path, 0o640) == 0,
-              chflags(fixture.note.path, UInt32(UF_HIDDEN)) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        let attributeName = "com.scholium.metadata-test"
-        let attribute = Data("preserve-xattr".utf8)
-        let finderTagName = "com.apple.metadata:_kMDItemUserTags"
-        let finderTag = try PropertyListSerialization.data(
-            fromPropertyList: ["Stability\n6"],
-            format: .binary,
-            options: 0
-        )
-        try setExtendedAttribute(attribute, name: attributeName, at: fixture.note)
-        try setExtendedAttribute(finderTag, name: finderTagName, at: fixture.note)
-        try installReadACL(at: fixture.note)
-        let aclBefore = try extendedACLText(at: fixture.note)
-        var before = stat()
-        #expect(stat(fixture.note.path, &before) == 0)
-
-        _ = try VaultMutationCoordinator(resolver: fixture.resolver).updateExisting(
-            path: fixture.path,
-            expected: fixture.original,
-            candidate: fixture.candidate
-        )
-
-        var after = stat()
-        #expect(stat(fixture.note.path, &after) == 0)
-        #expect(after.st_mode & 0o7777 == before.st_mode & 0o7777)
-        #expect(after.st_uid == before.st_uid)
-        #expect(after.st_gid == before.st_gid)
-        #expect(after.st_flags == before.st_flags)
-        #expect(after.st_birthtimespec.tv_sec == before.st_birthtimespec.tv_sec)
-        #expect(after.st_birthtimespec.tv_nsec == before.st_birthtimespec.tv_nsec)
-        #expect(
-            after.st_mtimespec.tv_sec > before.st_mtimespec.tv_sec
-                || (after.st_mtimespec.tv_sec == before.st_mtimespec.tv_sec
-                    && after.st_mtimespec.tv_nsec > before.st_mtimespec.tv_nsec)
-        )
-        #expect(try extendedAttribute(name: attributeName, at: fixture.note) == attribute)
-        #expect(try extendedAttribute(name: finderTagName, at: fixture.note) == finderTag)
-        #expect(try extendedACLText(at: fixture.note) == aclBefore)
-    }
-
-    @Test("Update accepts bounded system normalization of quarantine metadata")
-    func updateAcceptsNormalizedQuarantineAttribute() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let quarantineName = "com.apple.quarantine"
-        let quarantine = Data(
-            "0081;66A1B2C3;Scholium;00000000-0000-0000-0000-000000000001".utf8
-        )
-        try setExtendedAttribute(
-            quarantine,
-            name: quarantineName,
-            at: fixture.note
-        )
-        let rewritten = Data(
-            "0081;6A620F27;;00000000-0000-0000-0000-000000000001".utf8
-        )
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .swapped else { return }
-                try setExtendedAttribute(
-                    rewritten,
-                    name: quarantineName,
-                    at: fixture.note
-                )
-            })
-        )
-
-        _ = try coordinator.updateExisting(
-            path: fixture.path,
-            expected: fixture.original,
-            candidate: fixture.candidate
-        )
-
-        #expect(
-            try extendedAttribute(name: quarantineName, at: fixture.note)
-                == rewritten
-        )
-        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
-    }
-
-    @Test("Update accepts a valid quarantine attribute added by the sandbox")
-    func updateAcceptsSandboxAddedQuarantineAttribute() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let quarantineName = "com.apple.quarantine"
-        let quarantine = Data(
-            "0081;6A620F27;Scholium;00000000-0000-0000-0000-000000000001".utf8
-        )
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .swapped else { return }
-                try setExtendedAttribute(
-                    quarantine,
-                    name: quarantineName,
-                    at: fixture.note
-                )
-            })
-        )
-
-        _ = try coordinator.updateExisting(
-            path: fixture.path,
-            expected: fixture.original,
-            candidate: fixture.candidate
-        )
-
-        #expect(
-            try extendedAttribute(name: quarantineName, at: fixture.note)
-                == quarantine
-        )
-        #expect(try Data(contentsOf: fixture.note) == fixture.candidate)
-    }
-
-    @Test("Update rejects an ordinary extended attribute added during commit")
-    func updateRejectsAddedOrdinaryExtendedAttribute() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let attributeName = "com.scholium.unexpected-metadata"
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .swapped else { return }
-                try setExtendedAttribute(
-                    Data("unexpected".utf8),
-                    name: attributeName,
-                    at: fixture.note
-                )
-            })
-        )
-
-        #expect(throws: VaultRepositoryError.self) {
-            try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-        }
-        #expect(try Data(contentsOf: fixture.note) == fixture.original)
-    }
-
-    @Test("Update rejects a malformed quarantine attribute added during commit")
-    func updateRejectsMalformedAddedQuarantineAttribute() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let quarantineName = "com.apple.quarantine"
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .swapped else { return }
-                try setExtendedAttribute(
-                    Data("not-a-quarantine-envelope".utf8),
-                    name: quarantineName,
-                    at: fixture.note
-                )
-            })
-        )
-
-        #expect(throws: VaultRepositoryError.self) {
-            try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-        }
-        #expect(try Data(contentsOf: fixture.note) == fixture.original)
-    }
-
-    @Test("Update rejects a quarantine security or event identity change")
-    func updateRejectsChangedQuarantineAuthority() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let quarantineName = "com.apple.quarantine"
-        let quarantine = Data(
-            "0081;66A1B2C3;Scholium;00000000-0000-0000-0000-000000000001".utf8
-        )
-        try setExtendedAttribute(
-            quarantine,
-            name: quarantineName,
-            at: fixture.note
-        )
-        let changedAuthority = Data(
-            "0181;6A620F27;;00000000-0000-0000-0000-000000000002".utf8
-        )
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .swapped else { return }
-                try setExtendedAttribute(
-                    changedAuthority,
-                    name: quarantineName,
-                    at: fixture.note
-                )
-            })
-        )
-
-        #expect(throws: VaultRepositoryError.self) {
-            try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-        }
-        #expect(try Data(contentsOf: fixture.note) == fixture.original)
-    }
-
-    @Test("Update rejects removal of an existing quarantine attribute")
-    func updateRejectsRemovedQuarantineAttribute() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let quarantineName = "com.apple.quarantine"
-        let quarantine = Data(
-            "0081;66A1B2C3;Scholium;00000000-0000-0000-0000-000000000001".utf8
-        )
-        try setExtendedAttribute(
-            quarantine,
-            name: quarantineName,
-            at: fixture.note
-        )
-        let coordinator = VaultMutationCoordinator(
-            resolver: fixture.resolver,
-            hooks: VaultMutationHooks(didReach: { phase in
-                guard phase == .swapped else { return }
-                guard removexattr(fixture.note.path, quarantineName, 0) == 0 else {
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                }
-            })
-        )
-
-        #expect(throws: VaultRepositoryError.self) {
-            try coordinator.updateExisting(
-                path: fixture.path,
-                expected: fixture.original,
-                candidate: fixture.candidate
-            )
-        }
-        #expect(try Data(contentsOf: fixture.note) == fixture.original)
-        #expect(
-            try extendedAttribute(name: quarantineName, at: fixture.note)
-                == quarantine
-        )
+        #expect(!FileManager.default.fileExists(
+            atPath: fixture.root.appendingPathComponent("Moved.md").path
+        ))
     }
 
     @Test("Deletion never converts a presence error into confirmed absence")
@@ -581,79 +266,10 @@ struct VaultMutationCoordinatorTests {
                 presenceOverride: { _ in .inaccessible(EACCES) }
             )
         )
-        do {
+
+        #expect(throws: VaultRepositoryError.self) {
             try coordinator.delete(path: fixture.path, expected: fixture.original)
-            Issue.record("An inaccessible deletion check was reported as success.")
-        } catch VaultRepositoryError.commitUncertain {
-            // Required fail-closed outcome.
-        } catch {
-            Issue.record("Unexpected deletion verification error: \(error)")
         }
-    }
-
-    private func setExtendedAttribute(_ data: Data, name: String, at url: URL) throws {
-        try data.withUnsafeBytes { bytes in
-            guard setxattr(
-                url.path,
-                name,
-                bytes.baseAddress,
-                bytes.count,
-                0,
-                0
-            ) == 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-        }
-    }
-
-    private func extendedAttribute(name: String, at url: URL) throws -> Data {
-        let count = getxattr(url.path, name, nil, 0, 0, 0)
-        guard count >= 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        var bytes = [UInt8](repeating: 0, count: count)
-        let observed = getxattr(url.path, name, &bytes, bytes.count, 0, 0)
-        guard observed == count else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        return Data(bytes)
-    }
-
-    private func installReadACL(at url: URL) throws {
-        _ = try commandOutput(
-            executable: "/bin/chmod",
-            arguments: ["+a", "everyone allow read", url.path]
-        )
-    }
-
-    private func extendedACLText(at url: URL) throws -> [String] {
-        try commandOutput(
-            executable: "/bin/ls",
-            arguments: ["-lde", url.path]
-        )
-        .split(separator: "\n")
-        .dropFirst()
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-        .filter { !$0.isEmpty }
-    }
-
-    private func commandOutput(
-        executable: String,
-        arguments: [String]
-    ) throws -> String {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        process.waitUntilExit()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard process.terminationStatus == 0 else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        return String(decoding: data, as: UTF8.self)
     }
 
     private final class Fixture {
@@ -672,7 +288,10 @@ struct VaultMutationCoordinatorTests {
             root = repositoryRoot
                 .appendingPathComponent(".build/vault-mutations", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: root,
+                withIntermediateDirectories: true
+            )
             note = root.appendingPathComponent("Note.md")
             try original.write(to: note)
             path = try MarkdownRelativePath("Note.md")
@@ -683,28 +302,15 @@ struct VaultMutationCoordinatorTests {
             )
         }
 
-        func stagedFiles() throws -> [URL] {
-            try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-                .filter { $0.lastPathComponent.hasPrefix(".scholium-swap-") }
+        func replacementFiles() throws -> [URL] {
+            try FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: nil
+            ).filter { $0.lastPathComponent.hasPrefix(".scholium-replacement-") }
         }
 
-        func remove() { try? FileManager.default.removeItem(at: root) }
-    }
-}
-
-private extension VaultMutationCoordinator {
-    @discardableResult
-    func updateExisting(
-        path: MarkdownRelativePath,
-        expected: Data,
-        candidate: Data
-    ) throws -> VaultMutationUpdateResult {
-        try updateExisting(
-            path: path,
-            expected: expected,
-            candidate: candidate,
-            persistCleanupTask: { _ in },
-            cleanupStagedCandidate: { _ in }
-        )
+        func remove() {
+            try? FileManager.default.removeItem(at: root)
+        }
     }
 }

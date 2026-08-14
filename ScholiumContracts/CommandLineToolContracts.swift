@@ -38,15 +38,18 @@ public struct CommandLineToolStatus: Codable, Hashable, Sendable {
 
 public enum CommandLineToolInstallationError: LocalizedError, Equatable, Sendable {
     case bundledToolUnavailable
-    case destinationIsSymbolicLink
+    case installationHomeUnavailable
+    case installationPathContainsSymbolicLink
     case verificationFailed
 
     public var errorDescription: String? {
         switch self {
         case .bundledToolUnavailable:
             "This Scholium build does not contain the command-line tool."
-        case .destinationIsSymbolicLink:
-            "The CLI destination is a symbolic link. Remove or inspect it before installing."
+        case .installationHomeUnavailable:
+            "Scholium could not resolve the login account's home folder for CLI installation."
+        case .installationPathContainsSymbolicLink:
+            "The CLI installation path contains a symbolic link. Remove or inspect it before installing."
         case .verificationFailed:
             "The installed command-line tool did not match the bundled executable."
         }

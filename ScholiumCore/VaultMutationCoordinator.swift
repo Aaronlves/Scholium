@@ -6,61 +6,22 @@ enum VaultMutationPhase: Equatable, Sendable {
     case initialRead
     case staged
     case finalCheck
-    case swapped
+    case replacing
+    case replaced
     case readback
     case completedReplacement
-    case cleanup
 }
 
 struct VaultMutationHooks: @unchecked Sendable {
     var didReach: ((VaultMutationPhase) throws -> Void)? = nil
     var presenceOverride: ((String) -> FilePresence?)? = nil
-    var cleanupPersistenceOverride: (() throws -> Void)? = nil
-    var cleanupOverride: (() throws -> Void)? = nil
-    var cleanupIsolationOverride: (() throws -> Void)? = nil
-    var cleanupRecordRemovalOverride: (() throws -> Void)? = nil
 
     static let none = VaultMutationHooks()
-}
-
-struct VaultMutationCleanupIdentity: Codable, Hashable, Sendable {
-    let device: UInt64
-    let inode: UInt64
-    let fingerprint: DocumentFingerprint
-}
-
-/// Exact pre- and post-swap identities for one same-directory staging name.
-/// The task is only a cleanup authorization; it never authorizes a source
-/// replacement or a deletion of a different file at the same spelling.
-struct VaultMutationCleanupTask: Codable, Hashable, Sendable {
-    let relativePath: String
-    let stagingName: String
-    let stagedCandidate: VaultMutationCleanupIdentity
-    let displacedSource: VaultMutationCleanupIdentity
-}
-
-struct VaultMutationUpdateResult: Sendable {
-    let cleanupTask: VaultMutationCleanupTask
-}
-
-private struct VaultMutationPreSwapCleanupFailure: LocalizedError {
-    let cause: Error
-    let cleanup: Error
-
-    var errorDescription: String? {
-        "The source was not replaced, but its staged candidate could not be removed. \(cause.localizedDescription) Cleanup: \(cleanup.localizedDescription)"
-    }
 }
 
 /// Coordinates short-lived filesystem commits while descriptor-relative,
 /// no-follow checks retain the actual authorization boundary.
 final class VaultMutationCoordinator {
-    private struct MetadataSnapshot {
-        let status: stat
-        let extendedAttributes: [String: Data]
-        let accessControlList: Data?
-    }
-
     private let resolver: VaultPathResolver
     private let descriptorAccess: VaultDescriptorAccess
     private let hooks: VaultMutationHooks
@@ -71,16 +32,13 @@ final class VaultMutationCoordinator {
         self.hooks = hooks
     }
 
-    @discardableResult
     func updateExisting(
         path: MarkdownRelativePath,
         expected: Data,
-        candidate: Data,
-        persistCleanupTask: (VaultMutationCleanupTask) throws -> Void,
-        cleanupStagedCandidate: (VaultMutationCleanupTask) throws -> Void
-    ) throws -> VaultMutationUpdateResult {
+        candidate: Data
+    ) throws {
         let targetURL = try resolver.unresolvedURL(for: path)
-        var updateResult: VaultMutationUpdateResult?
+        var replacementCompleted = false
         try coordinateWriting(targetURL, options: .forReplacing) {
             try self.descriptorAccess.withOpenRegularFile(path) {
                 originalFD, parentFD, name, originalStatus in
@@ -94,197 +52,71 @@ final class VaultMutationCoordinator {
                     )
                 }
 
-                let stagingName = ".scholium-swap-\(UUID().uuidString.lowercased()).md"
+                let stagingName = ".scholium-replacement-\(UUID().uuidString.lowercased()).md"
                 let stagingFD = try self.openNewFile(
                     candidate,
                     name: stagingName,
                     parentFD: parentFD
                 )
                 defer { close(stagingFD) }
-                let candidateIdentity = try self.fileIdentity(descriptor: stagingFD)
-                var shouldRemoveStaging = true
-                defer {
-                    if shouldRemoveStaging { _ = unlinkat(parentFD, stagingName, 0) }
-                }
-                let cleanupTask = VaultMutationCleanupTask(
-                    relativePath: path.rawValue,
-                    stagingName: stagingName,
-                    stagedCandidate: VaultMutationCleanupIdentity(
-                        device: UInt64(candidateIdentity.device),
-                        inode: UInt64(candidateIdentity.inode),
-                        fingerprint: DocumentFingerprint(data: candidate)
-                    ),
-                    displacedSource: VaultMutationCleanupIdentity(
-                        device: UInt64(originalIdentity.device),
-                        inode: UInt64(originalIdentity.inode),
-                        fingerprint: DocumentFingerprint(data: expected)
-                    )
+                defer { _ = unlinkat(parentFD, stagingName, 0) }
+                try self.hooks.didReach?(.staged)
+
+                let rechecked = try self.readFile(at: name, parentFD: parentFD)
+                let recheckedIdentity = try VaultDescriptorAccess.identity(
+                    name: name,
+                    parentDescriptor: parentFD
                 )
-                shouldRemoveStaging = false
-                var replacementOccurred = false
-                do {
-                    try persistCleanupTask(cleanupTask)
-                    let metadata = try self.copyAndVerifyMetadata(
-                        from: originalFD,
-                        originalStatus: originalStatus,
-                        to: stagingFD
+                try self.hooks.didReach?(.finalCheck)
+                guard rechecked == expected,
+                      recheckedIdentity == originalIdentity else {
+                    throw VaultRepositoryError.conflict(
+                        expected: DocumentFingerprint(data: expected),
+                        current: DocumentFingerprint(data: rechecked)
                     )
-                    try self.hooks.didReach?(.staged)
-
-                    let rechecked = try self.readFile(at: name, parentFD: parentFD)
-                    let recheckedIdentity = try VaultDescriptorAccess.identity(
-                        name: name,
-                        parentDescriptor: parentFD
-                    )
-                    try self.hooks.didReach?(.finalCheck)
-                    guard rechecked == expected,
-                          recheckedIdentity == originalIdentity else {
-                        throw VaultRepositoryError.conflict(
-                            expected: DocumentFingerprint(data: expected),
-                            current: DocumentFingerprint(data: rechecked)
-                        )
-                    }
-                    try self.descriptorAccess.verifyCurrentParent(
-                        path,
-                        retainedDescriptor: parentFD
-                    )
-
-                    guard renameatx_np(parentFD, stagingName, parentFD, name, UInt32(RENAME_SWAP)) == 0 else {
-                        let code = errno
-                        if code == ENOTSUP || code == EINVAL || code == ENOSYS {
-                            throw VaultRepositoryError.atomicCommitUnsupported(String(cString: strerror(code)))
-                        }
-                        throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-                    }
-                    replacementOccurred = true
-
-                    let canonical: Data
-                    let displaced: Data
-                    do {
-                        try self.hooks.didReach?(.swapped)
-                        try self.hooks.didReach?(.readback)
-                        canonical = try self.readFile(at: name, parentFD: parentFD)
-                        displaced = try self.readFile(at: stagingName, parentFD: parentFD)
-                    } catch {
-                    // The swap happened, so an unreadable or replaced side is
-                    // never a normal I/O failure. Attempt one guarded swap-back
-                    // and retain staging regardless of the rollback result.
-                    let restored = self.guardedSwapBack(
-                        parentFD: parentFD,
-                        canonicalName: name,
-                        expectedCanonical: candidateIdentity,
-                        stagingName: stagingName,
-                        expectedStaging: originalIdentity
-                    )
-                    shouldRemoveStaging = false
-                    throw VaultRepositoryError.commitUncertain(
-                        "Post-swap bytes became unreadable or changed identity; guarded swap-back \(restored ? "succeeded" : "was refused or failed"): \(error.localizedDescription)"
-                    )
-                    }
-                    guard canonical == candidate, displaced == expected else {
-                    if canonical == candidate,
-                       let observedStagingIdentity = try? VaultDescriptorAccess.identity(
-                           name: stagingName,
-                           parentDescriptor: parentFD
-                       ) {
-                        // Restore the observed displaced bytes, even when they
-                        // are not the expected preimage. The outcome remains
-                        // uncertain and every staged byte is retained.
-                        _ = self.guardedSwapBack(
-                            parentFD: parentFD,
-                            canonicalName: name,
-                            expectedCanonical: candidateIdentity,
-                            stagingName: stagingName,
-                            expectedStaging: observedStagingIdentity
-                        )
-                        shouldRemoveStaging = false
-                    } else {
-                        shouldRemoveStaging = false
-                    }
-                    throw VaultRepositoryError.commitUncertain(
-                        "Expected candidate \(DocumentFingerprint(data: candidate).sha256) and displaced preimage \(DocumentFingerprint(data: expected).sha256); observed canonical \(DocumentFingerprint(data: canonical).sha256) and staging \(DocumentFingerprint(data: displaced).sha256)."
-                    )
-                    }
-                    do {
-                    guard fchflags(stagingFD, metadata.status.st_flags) == 0 else {
-                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                    }
-                    try self.verifyCommittedMetadata(
-                        descriptor: stagingFD,
-                        metadata: metadata,
-                        verifyFlags: true
-                    )
-                    guard fsync(stagingFD) == 0 else {
-                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                    }
-                    } catch {
-                    let restored = self.guardedSwapBack(
-                        parentFD: parentFD,
-                        canonicalName: name,
-                        expectedCanonical: candidateIdentity,
-                        stagingName: stagingName,
-                        expectedStaging: originalIdentity
-                    )
-                    shouldRemoveStaging = false
-                    throw VaultRepositoryError.commitUncertain(
-                        "Committed metadata could not be verified; guarded swap-back \(restored ? "succeeded" : "failed"): \(error.localizedDescription)"
-                    )
-                    }
-                    guard fsync(parentFD) == 0 else {
-                    let code = errno
-                    let restored = self.guardedSwapBack(
-                        parentFD: parentFD,
-                        canonicalName: name,
-                        expectedCanonical: candidateIdentity,
-                        stagingName: stagingName,
-                        expectedStaging: originalIdentity
-                    )
-                    shouldRemoveStaging = false
-                    throw VaultRepositoryError.commitUncertain(
-                        "The parent directory could not be synchronized after the swap (errno \(code)); guarded swap-back \(restored ? "succeeded" : "was refused or failed")."
-                    )
-                    }
-                    do {
-                    try self.descriptorAccess.verifyCurrentParent(
-                        path,
-                        retainedDescriptor: parentFD
-                    )
-                    } catch {
-                    let restored = self.guardedSwapBack(
-                        parentFD: parentFD,
-                        canonicalName: name,
-                        expectedCanonical: candidateIdentity,
-                        stagingName: stagingName,
-                        expectedStaging: originalIdentity
-                    )
-                    shouldRemoveStaging = false
-                    throw VaultRepositoryError.commitUncertain(
-                        "The committed parent changed identity; guarded swap-back \(restored ? "succeeded" : "was refused or failed"): \(error.localizedDescription)"
-                    )
-                    }
-                    try self.hooks.didReach?(.completedReplacement)
-                    updateResult = VaultMutationUpdateResult(cleanupTask: cleanupTask)
-                } catch {
-                    if !replacementOccurred {
-                        do {
-                            try cleanupStagedCandidate(cleanupTask)
-                        } catch let cleanupError {
-                            throw VaultMutationPreSwapCleanupFailure(
-                                cause: error,
-                                cleanup: cleanupError
-                            )
-                        }
-                    }
-                    throw error
                 }
+                try self.descriptorAccess.verifyCurrentParent(
+                    path,
+                    retainedDescriptor: parentFD
+                )
+
+                let stagingURL = targetURL.deletingLastPathComponent()
+                    .appendingPathComponent(stagingName, isDirectory: false)
+                try self.hooks.didReach?(.replacing)
+                do {
+                    _ = try FileManager.default.replaceItemAt(
+                        targetURL,
+                        withItemAt: stagingURL,
+                        backupItemName: nil,
+                        options: []
+                    )
+                } catch {
+                    throw VaultRepositoryError.commitUncertain(
+                        "The coordinated system replacement did not return a proven result: \(error.localizedDescription)"
+                    )
+                }
+                try self.hooks.didReach?(.replaced)
+                try self.hooks.didReach?(.readback)
+                let canonical = try self.readFile(at: name, parentFD: parentFD)
+                guard canonical == candidate else {
+                    throw VaultRepositoryError.readbackMismatch(
+                        expected: DocumentFingerprint(data: candidate),
+                        current: DocumentFingerprint(data: canonical)
+                    )
+                }
+                try self.descriptorAccess.verifyCurrentParent(
+                    path,
+                    retainedDescriptor: parentFD
+                )
+                try self.hooks.didReach?(.completedReplacement)
+                replacementCompleted = true
             }
         }
-        guard let updateResult else {
+        guard replacementCompleted else {
             throw VaultRepositoryError.commitUncertain(
-                "The coordinated replacement did not produce a cleanup result."
+                "The coordinated replacement did not produce an exact canonical readback."
             )
         }
-        return updateResult
     }
 
     func create(path: MarkdownRelativePath, data: Data) throws {
@@ -714,45 +546,6 @@ final class VaultMutationCoordinator {
         return try VaultDescriptorAccess.readAll(from: descriptor)
     }
 
-    private func fileIdentity(
-        descriptor: Int32
-    ) throws -> VaultDescriptorAccess.FileIdentity {
-        var status = stat()
-        guard fstat(descriptor, &status) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        return VaultDescriptorAccess.FileIdentity(status)
-    }
-
-    /// Swaps back only while both directory entries still name the exact
-    /// inodes held open across the original commit. An external replacement
-    /// therefore turns rollback into retained evidence, never another write.
-    private func guardedSwapBack(
-        parentFD: Int32,
-        canonicalName: String,
-        expectedCanonical: VaultDescriptorAccess.FileIdentity,
-        stagingName: String,
-        expectedStaging: VaultDescriptorAccess.FileIdentity
-    ) -> Bool {
-        guard let canonical = try? VaultDescriptorAccess.identity(
-            name: canonicalName,
-            parentDescriptor: parentFD
-        ), canonical == expectedCanonical,
-        let staging = try? VaultDescriptorAccess.identity(
-            name: stagingName,
-            parentDescriptor: parentFD
-        ), staging == expectedStaging else {
-            return false
-        }
-        return renameatx_np(
-            parentFD,
-            stagingName,
-            parentFD,
-            canonicalName,
-            UInt32(RENAME_SWAP)
-        ) == 0
-    }
-
     private func writeNewFile(_ data: Data, name: String, parentFD: Int32) throws {
         let fd = try openNewFile(data, name: name, parentFD: parentFD)
         close(fd)
@@ -790,274 +583,5 @@ final class VaultMutationCoordinator {
     private func filePresence(name: String, parentFD: Int32) -> FilePresence {
         if let overridden = hooks.presenceOverride?(name) { return overridden }
         return VaultDescriptorAccess.presence(name: name, parentDescriptor: parentFD)
-    }
-
-    private func copyAndVerifyMetadata(
-        from originalFD: Int32,
-        originalStatus: stat,
-        to stagingFD: Int32
-    ) throws -> MetadataSnapshot {
-        var candidateStatus = stat()
-        guard fstat(stagingFD, &candidateStatus) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        let metadata = MetadataSnapshot(
-            status: originalStatus,
-            extendedAttributes: try extendedAttributes(descriptor: originalFD),
-            accessControlList: try accessControlList(descriptor: originalFD)
-        )
-        guard fcopyfile(originalFD, stagingFD, nil, copyfile_flags_t(COPYFILE_METADATA)) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        // Immutable/append flags would block final timestamp work and
-        // readback. Reapply the complete captured flag word only after the
-        // candidate has been swapped and its bytes have been verified.
-        guard fchflags(stagingFD, 0) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-
-        var attributes = attrlist()
-        attributes.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
-        attributes.commonattr = attrgroup_t(ATTR_CMN_CRTIME)
-        var birthTime = originalStatus.st_birthtimespec
-        guard fsetattrlist(
-            stagingFD,
-            &attributes,
-            &birthTime,
-            MemoryLayout<timespec>.size,
-            0
-        ) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-
-        var candidateModification = candidateStatus.st_mtimespec
-        if Self.compare(candidateModification, originalStatus.st_mtimespec) <= 0 {
-            candidateModification = originalStatus.st_mtimespec
-            candidateModification.tv_nsec += 1
-            if candidateModification.tv_nsec >= 1_000_000_000 {
-                candidateModification.tv_sec += 1
-                candidateModification.tv_nsec = 0
-            }
-        }
-        let times = [originalStatus.st_atimespec, candidateModification]
-        guard times.withUnsafeBufferPointer({ futimens(stagingFD, $0.baseAddress) }) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        try verifyCommittedMetadata(
-            descriptor: stagingFD,
-            metadata: metadata,
-            verifyFlags: false
-        )
-        guard fsync(stagingFD) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        return metadata
-    }
-
-    private func verifyCommittedMetadata(
-        descriptor: Int32,
-        metadata: MetadataSnapshot,
-        verifyFlags: Bool
-    ) throws {
-        var observed = stat()
-        guard fstat(descriptor, &observed) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        let originalStatus = metadata.status
-        let permissionMask = mode_t(S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISVTX)
-        let observedExtendedAttributes = try extendedAttributes(descriptor: descriptor)
-        let observedAccessControlList = try accessControlList(descriptor: descriptor)
-        guard observed.st_mode & permissionMask == originalStatus.st_mode & permissionMask,
-              observed.st_uid == originalStatus.st_uid,
-              observed.st_gid == originalStatus.st_gid,
-              (!verifyFlags || observed.st_flags == originalStatus.st_flags),
-              observed.st_birthtimespec.tv_sec == originalStatus.st_birthtimespec.tv_sec,
-              observed.st_birthtimespec.tv_nsec == originalStatus.st_birthtimespec.tv_nsec,
-              Self.extendedAttributesAreEquivalent(
-                  expected: metadata.extendedAttributes,
-                  observed: observedExtendedAttributes
-              ),
-              observedAccessControlList == metadata.accessControlList,
-              Self.compare(observed.st_mtimespec, originalStatus.st_mtimespec) > 0 else {
-            let expectedAttributeNames = Set(metadata.extendedAttributes.keys)
-            let observedAttributeNames = Set(observedExtendedAttributes.keys)
-            let missingAttributes = expectedAttributeNames
-                .subtracting(observedAttributeNames)
-                .sorted()
-            let addedAttributes = observedAttributeNames
-                .subtracting(expectedAttributeNames)
-                .sorted()
-            let changedAttributes = expectedAttributeNames
-                .intersection(observedAttributeNames)
-                .filter {
-                    guard let expected = metadata.extendedAttributes[$0],
-                          let current = observedExtendedAttributes[$0] else {
-                        return true
-                    }
-                    return !Self.extendedAttributeIsEquivalent(
-                        name: $0,
-                        expected: expected,
-                        observed: current
-                    )
-                }
-                .sorted()
-            throw VaultRepositoryError.commitUncertain(
-                "The staged file did not preserve the authorized metadata envelope "
-                    + "(mode \(String(observed.st_mode & permissionMask, radix: 8))/\(String(originalStatus.st_mode & permissionMask, radix: 8)), "
-                    + "owner \(observed.st_uid):\(observed.st_gid)/\(originalStatus.st_uid):\(originalStatus.st_gid), "
-                    + "flags \(observed.st_flags)/\(originalStatus.st_flags), "
-                    + "birth \(observed.st_birthtimespec.tv_sec).\(observed.st_birthtimespec.tv_nsec)/\(originalStatus.st_birthtimespec.tv_sec).\(originalStatus.st_birthtimespec.tv_nsec), "
-                    + "mtime \(observed.st_mtimespec.tv_sec).\(observed.st_mtimespec.tv_nsec)/\(originalStatus.st_mtimespec.tv_sec).\(originalStatus.st_mtimespec.tv_nsec), "
-                    + "xattrs missing \(missingAttributes), added \(addedAttributes), changed \(changedAttributes), "
-                    + "ACL equal \(observedAccessControlList == metadata.accessControlList))."
-            )
-        }
-    }
-
-    private func extendedAttributes(
-        descriptor: Int32
-    ) throws -> [String: Data] {
-        let required = flistxattr(descriptor, nil, 0, 0)
-        guard required >= 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        guard required > 0 else { return [:] }
-        var names = [CChar](repeating: 0, count: required)
-        let received = flistxattr(descriptor, &names, names.count, 0)
-        guard received == required else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-
-        var result: [String: Data] = [:]
-        var start = 0
-        while start < received {
-            var end = start
-            while end < received, names[end] != 0 { end += 1 }
-            guard end < received else {
-                throw POSIXError(.EIO)
-            }
-            let name = names.withUnsafeBufferPointer { buffer in
-                String(cString: buffer.baseAddress!.advanced(by: start))
-            }
-            let valueSize = name.withCString {
-                fgetxattr(descriptor, $0, nil, 0, 0, 0)
-            }
-            guard valueSize >= 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            var value = Data(count: valueSize)
-            let valueCount = value.withUnsafeMutableBytes { bytes in
-                name.withCString {
-                    fgetxattr(
-                        descriptor,
-                        $0,
-                        bytes.baseAddress,
-                        bytes.count,
-                        0,
-                        0
-                    )
-                }
-            }
-            guard valueCount == valueSize else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            result[name] = value
-            start = end + 1
-        }
-        return result
-    }
-
-    private static func extendedAttributesAreEquivalent(
-        expected: [String: Data],
-        observed: [String: Data]
-    ) -> Bool {
-        let expectedNames = Set(expected.keys)
-        let observedNames = Set(observed.keys)
-        guard expectedNames.isSubset(of: observedNames) else { return false }
-        let addedNames = observedNames.subtracting(expectedNames)
-        if !addedNames.isEmpty {
-            // A sandboxed process may attach a quarantine envelope to the
-            // newly created staging inode. Keep that system security metadata
-            // in place, but accept no other addition and no malformed value.
-            guard addedNames == [quarantineAttributeName],
-                  let addedQuarantine = observed[quarantineAttributeName],
-                  QuarantineAttribute(addedQuarantine) != nil else {
-                return false
-            }
-        }
-        return expected.allSatisfy { name, expectedValue in
-            guard let observedValue = observed[name] else { return false }
-            return extendedAttributeIsEquivalent(
-                name: name,
-                expected: expectedValue,
-                observed: observedValue
-            )
-        }
-    }
-
-    private static func extendedAttributeIsEquivalent(
-        name: String,
-        expected: Data,
-        observed: Data
-    ) -> Bool {
-        guard expected != observed else { return true }
-        guard name == quarantineAttributeName,
-              let expectedValue = QuarantineAttribute(expected),
-              let observedValue = QuarantineAttribute(observed) else {
-            return false
-        }
-        // LaunchServices may replace the setting process and timestamp. The
-        // security flags and event identity remain the stable authority.
-        return observedValue.flags == expectedValue.flags
-            && observedValue.eventIdentifier == expectedValue.eventIdentifier
-            && observedValue.timestamp >= expectedValue.timestamp
-    }
-
-    private static let quarantineAttributeName = "com.apple.quarantine"
-
-    private func accessControlList(descriptor: Int32) throws -> Data? {
-        errno = 0
-        guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
-            if errno == ENOENT { return nil }
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        defer { acl_free(UnsafeMutableRawPointer(acl)) }
-        let size = acl_size(acl)
-        guard size >= 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        var bytes = Data(count: size)
-        let copied = bytes.withUnsafeMutableBytes {
-            acl_copy_ext_native($0.baseAddress, acl, size)
-        }
-        guard copied == size else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        return bytes
-    }
-
-    private static func compare(_ lhs: timespec, _ rhs: timespec) -> Int {
-        if lhs.tv_sec != rhs.tv_sec { return lhs.tv_sec < rhs.tv_sec ? -1 : 1 }
-        if lhs.tv_nsec != rhs.tv_nsec { return lhs.tv_nsec < rhs.tv_nsec ? -1 : 1 }
-        return 0
-    }
-
-    private struct QuarantineAttribute {
-        let flags: UInt64
-        let timestamp: UInt64
-        let eventIdentifier: String
-
-        init?(_ data: Data) {
-            guard let source = String(data: data, encoding: .utf8) else { return nil }
-            let fields = source.split(separator: ";", omittingEmptySubsequences: false)
-            guard fields.count == 4,
-                  let flags = UInt64(fields[0], radix: 16),
-                  let timestamp = UInt64(fields[1], radix: 16) else {
-                return nil
-            }
-            self.flags = flags
-            self.timestamp = timestamp
-            eventIdentifier = fields[3].lowercased()
-        }
     }
 }

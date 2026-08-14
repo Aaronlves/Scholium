@@ -18,10 +18,11 @@
   owner. Document reads are usable immediately; Search and Research Actions
   fail closed until Graph, Search, and research projections are complete.
 - Exact Markdown bytes remain authoritative. Repository reads and mutations
-  enforce containment, regular-file identity, expected revisions, atomic
-  replacement, metadata preservation, readback, conflict, and recoverable
-  uncertainty. Derived refresh failure cannot turn a proven source commit into
-  a failed mutation.
+  enforce containment, regular-file identity, expected revisions, coordinated
+  system replacement, exact canonical readback, conflict, and recoverable
+  uncertainty. Filesystem metadata and machine-local housekeeping are not save
+  predicates. Derived refresh failure cannot turn a proven source commit into a
+  failed mutation.
 - Frontmatter edits are bounded to a uniquely proven range and preserve all
   unrelated bytes. Unsupported source shapes remain editable in Source.
 - Managed New Note copies the selected role's exact validated Settings seed in
@@ -169,3 +170,9 @@
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot
   bypass source, Action, Session, recovery, or Record authority.
+- First-launch Agent preparation and Research Guidance Settings use one
+  Application-owned installer for the version-matched CLI and protected
+  resources under the login account's `~/.local/bin`. A stale complete copy in
+  the App sandbox is not installation evidence; status verifies the real files,
+  reports current-process `PATH` visibility separately, and leaves shell or
+  Agent configuration changes to an explicit copied instruction.

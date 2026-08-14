@@ -346,6 +346,10 @@ struct WorkspaceRuntimeTests {
             id: fixture.assignment.id,
             openingVault: .paperAnalysis
         )
+        let activationGate = OpeningActivationReconciliationGate()
+        await handle.setProgressiveActivationReconciliationBarrierForTesting {
+            await activationGate.wait()
+        }
         let stream = await handle.events.events()
         var iterator = stream.makeAsyncIterator()
         let openingEvent = try #require(await iterator.next())
@@ -385,6 +389,12 @@ struct WorkspaceRuntimeTests {
             availableVault: .paperAnalysis
         ))
         await handle.openingPresentationDidComplete()
+        await activationGate.waitUntilArrived()
+        let phaseWhileReconciling = try? await handle.snapshot().phase
+        #expect(phaseWhileReconciling == .opening(availableVault: .paperAnalysis))
+        #expect(await handle.watcherReadinessEvidence == nil)
+        await activationGate.release()
+        await handle.setProgressiveActivationReconciliationBarrierForTesting(nil)
 
         var completed = false
         for _ in 0..<100 {
@@ -1000,6 +1010,29 @@ struct WorkspaceRuntimeTests {
         try await Task.sleep(for: .seconds(1))
         #expect(await handle.events.publishedGeneration == committedGeneration)
         await runtime.shutdown()
+    }
+}
+
+private actor OpeningActivationReconciliationGate {
+    private var arrived = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        arrived = true
+        arrivalContinuation?.resume()
+        arrivalContinuation = nil
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilArrived() async {
+        if arrived { return }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
     }
 }
 

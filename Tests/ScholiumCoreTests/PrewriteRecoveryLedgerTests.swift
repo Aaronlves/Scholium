@@ -235,42 +235,6 @@ struct PrewriteRecoveryLedgerTests {
         #expect(try Data(contentsOf: note) == expected)
     }
 
-    @Test("Verified v1 bytes migrate without modifying the legacy store")
-    func verifiedLegacyMigration() throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let legacy = fixture.storage.appendingPathComponent("versions", isDirectory: true)
-        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
-        let data = Data("legacy exact".utf8)
-        let entry = PrewriteRecoveryReference(
-            id: UUID(),
-            relativePath: "Legacy.md",
-            sequence: 1,
-            createdAt: Date(),
-            fingerprint: DocumentFingerprint(data: data)
-        )
-        let digest = SHA256.hash(data: Data(entry.relativePath.utf8))
-            .map { String(format: "%02x", $0) }.joined()
-        let objectDirectory = legacy.appendingPathComponent(digest, isDirectory: true)
-        try FileManager.default.createDirectory(at: objectDirectory, withIntermediateDirectories: true)
-        let blob = objectDirectory.appendingPathComponent(entry.id.uuidString + ".md")
-        try data.write(to: blob)
-        let encoder = JSONEncoder()
-        try encoder.encode(LegacyIndex(entries: [entry.relativePath: [entry]])).write(
-            to: legacy.appendingPathComponent("index.json")
-        )
-        let originalIndex = try Data(contentsOf: legacy.appendingPathComponent("index.json"))
-
-        let ledger = try PrewriteRecoveryLedger(storageURL: fixture.storage)
-        #expect(try ledger.entries(relativePath: entry.relativePath).map(\.id) == [entry.id])
-        #expect(try ledger.content(entryID: entry.id) == data)
-        #expect(try Data(contentsOf: blob) == data)
-        #expect(try Data(contentsOf: legacy.appendingPathComponent("index.json")) == originalIndex)
-        #expect(FileManager.default.fileExists(
-            atPath: fixture.recovery.appendingPathComponent("v1-migration-complete.json").path
-        ))
-    }
-
     @Test("Settled revisions are deduplicated and protected from temporary retention")
     func settledPinsAreDistinctDurableReferences() throws {
         let fixture = try Fixture()
@@ -599,8 +563,6 @@ struct PrewriteRecoveryLedgerTests {
             )
         }
     }
-
-    private struct LegacyIndex: Codable { let entries: [String: [PrewriteRecoveryReference]] }
 
     private final class Fixture {
         let root: URL

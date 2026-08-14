@@ -135,9 +135,10 @@
   read-only content, a named open route, and a keyboard-scrollable bounded
   viewport without repeating relationship-type copy. Their nested content
   never adds a second writable source, focus owner, or recursive embed tree.
-- Autosave Failed, Conflict, and cleanup warnings state the retained-buffer or
-  committed-source consequence and expose the applicable recovery. Checkpoint
-  Restored is transient and never moves Document focus.
+- Autosave Failed and Conflict state the retained-buffer consequence and expose
+  the applicable recovery. A proven save and machine-local housekeeping add no
+  status announcement or Document accessibility item. Checkpoint Restored is
+  transient and never moves Document focus.
 
 ### Properties and portable settings
 

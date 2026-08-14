@@ -414,6 +414,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         (@Sendable () async -> Void)?
     var researchFunctionControlledObservationBarrierForTesting:
         (@Sendable () async -> Void)?
+    private var progressiveActivationReconciliationBarrierForTesting:
+        (@Sendable () async -> Void)?
     private var didCompleteActivationReconciliation = false
 
     func beginResearchRecoveryMutation() throws {
@@ -455,6 +457,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ barrier: (@Sendable () async -> Void)?
     ) {
         researchFunctionControlledObservationBarrierForTesting = barrier
+    }
+
+    func setProgressiveActivationReconciliationBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        progressiveActivationReconciliationBarrierForTesting = barrier
     }
     private init(
         assignment: TriptychAssignment,
@@ -2067,8 +2075,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             return .committed(WorkspaceMutationOutcome(
                 committedValue: result,
-                derivedRefreshWarning: derivedRefreshWarning,
-                cleanupWarnings: result.cleanupWarning.map { [$0] } ?? []
+                derivedRefreshWarning: derivedRefreshWarning
             ))
         }
     }
@@ -2486,8 +2493,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            derivedRefreshWarning: derivedRefreshWarning,
-            cleanupWarnings: commit.saveCleanupWarning.map { [$0] } ?? []
+            derivedRefreshWarning: derivedRefreshWarning
         )
     }
 
@@ -2583,7 +2589,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
         do {
-            try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
+            if mode == .live,
+               !currentSnapshot.phase.isComplete,
+               !didCompleteActivationReconciliation {
+                await progressiveActivationReconciliationBarrierForTesting?()
+                try Task.checkCancellation()
+                try requireActive()
+                // Observation already owns all three Vault streams. Complete
+                // one full post-observation reconciliation before the first
+                // complete snapshot can be built or published, closing the
+                // initial-open blind interval as one completion boundary.
+                try await prepareSourceCatalogs(.fullReconcile)
+                didCompleteActivationReconciliation = true
+            } else {
+                try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
+            }
             guard nextGraphGeneration < Int.max else {
                 throw WorkspaceRefreshCycleError.graphGenerationExhausted
             }
@@ -2877,9 +2897,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             openingCompletionTask = Task(priority: .utility) { [weak self] in
                 await Self.waitForOpeningPresentationOrFallback(presentationEvents)
                 guard !Task.isCancelled, let self else { return }
-                await self.completeLiveOpening(
-                    preOpenInventory: preOpenInventory
-                )
+                await self.completeLiveOpening()
             }
             return
         }
@@ -2903,9 +2921,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    private func completeLiveOpening(
-        preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]
-    ) async {
+    private func completeLiveOpening() async {
         defer { openingCompletionTask = nil }
         guard !isShutDown, !Task.isCancelled else { return }
         do {
@@ -2918,7 +2934,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     sourceCatalogPreparation: .fullReconcile
                 )
             }
-            await reconcileLiveActivation(preOpenInventory: preOpenInventory)
             startLiveIndexRefreshIfNeeded()
         } catch {
             // `refresh` already published a typed failure while retaining the
@@ -3702,8 +3717,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            identityRecoveryWarning: identityFailure?.localizedDescription,
-            cleanupWarnings: commit.cleanupWarnings
+            identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
 
@@ -3853,8 +3867,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            identityRecoveryWarning: identityFailure?.localizedDescription,
-            cleanupWarnings: commit.cleanupWarnings
+            identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
 

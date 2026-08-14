@@ -15,7 +15,6 @@ public actor TriptychFolderMoveCoordinator {
     private struct AppliedRewrite {
         let prepared: PreparedRewrite
         let committed: NoteDocument
-        let cleanupWarning: SaveCleanupWarning?
     }
 
     private let triptychID: UUID
@@ -181,8 +180,7 @@ public actor TriptychFolderMoveCoordinator {
                 )
                 applied.append(AppliedRewrite(
                     prepared: rewrite,
-                    committed: saved.document,
-                    cleanupWarning: saved.cleanupWarning
+                    committed: saved.document
                 ))
             }
         } catch {
@@ -235,8 +233,7 @@ public actor TriptychFolderMoveCoordinator {
             destinationFolder: plan.destinationFolder,
             graphGeneration: plan.graphGeneration,
             noteMoves: noteCommits,
-            rewrites: rewriteCommits,
-            cleanupWarnings: applied.compactMap(\.cleanupWarning)
+            rewrites: rewriteCommits
         )
     }
 

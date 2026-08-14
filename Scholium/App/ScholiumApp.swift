@@ -1612,7 +1612,6 @@ final class WindowModel: ObservableObject {
         let failures: [MarkdownImportFailure]
         let derivedRefreshWarnings: [String]
         let identityRecoveryWarnings: [String]
-        let cleanupWarnings: [SaveCleanupWarning]
         let presentationWarning: String?
 
         init(
@@ -1621,7 +1620,6 @@ final class WindowModel: ObservableObject {
             failures: [MarkdownImportFailure],
             derivedRefreshWarnings: [String],
             identityRecoveryWarnings: [String],
-            cleanupWarnings: [SaveCleanupWarning] = [],
             presentationWarning: String?
         ) {
             self.destinationName = destinationName
@@ -1629,7 +1627,6 @@ final class WindowModel: ObservableObject {
             self.failures = failures
             self.derivedRefreshWarnings = derivedRefreshWarnings
             self.identityRecoveryWarnings = identityRecoveryWarnings
-            self.cleanupWarnings = cleanupWarnings
             self.presentationWarning = presentationWarning
         }
     }
@@ -4317,13 +4314,6 @@ final class WindowModel: ObservableObject {
             documentDidCommit: { [weak self] result in
                 guard let self else { return }
                 _ = await self.replaceSavedDocument(result.document)
-                if let warning = result.cleanupWarning {
-                    self.reportCommittedMutationWarnings(
-                        derivedRefreshWarnings: [],
-                        identityRecoveryWarnings: [],
-                        cleanupWarnings: [warning]
-                    )
-                }
             }
         )
         researchController.bind(
@@ -4599,13 +4589,6 @@ final class WindowModel: ObservableObject {
                 "The checkpoint restore committed successfully, but Scholium could not reload every restored setting or derived view. \(error.localizedDescription)"
             )
         }
-        if !result.cleanupWarnings.isEmpty {
-            reportCommittedMutationWarnings(
-                derivedRefreshWarnings: [],
-                identityRecoveryWarnings: [],
-                cleanupWarnings: result.cleanupWarnings
-            )
-        }
         return result
     }
 
@@ -4663,7 +4646,6 @@ final class WindowModel: ObservableObject {
         var failures: [MarkdownImportFailure] = []
         var derivedRefreshWarnings: [String] = []
         var identityRecoveryWarnings: [String] = []
-        var cleanupWarnings: [SaveCleanupWarning] = []
         for url in urls {
             try Task.checkCancellation()
             guard workspaceAssignment?.id == destinationWorkspaceID else {
@@ -4681,7 +4663,6 @@ final class WindowModel: ObservableObject {
                 if let warning = outcome.identityRecoveryWarning {
                     identityRecoveryWarnings.append(warning)
                 }
-                cleanupWarnings.append(contentsOf: outcome.cleanupWarnings)
                 guard workspaceAssignment?.id == destinationWorkspaceID else {
                     throw CancellationError()
                 }
@@ -4716,7 +4697,6 @@ final class WindowModel: ObservableObject {
             failures: failures,
             derivedRefreshWarnings: derivedRefreshWarnings,
             identityRecoveryWarnings: identityRecoveryWarnings,
-            cleanupWarnings: cleanupWarnings,
             presentationWarning: presentationWarning
         )
     }
@@ -4766,14 +4746,6 @@ final class WindowModel: ObservableObject {
                 bundle: .module
             ))
             warnings.append(outcome.identityRecoveryWarnings.joined(separator: " "))
-        }
-        if !outcome.cleanupWarnings.isEmpty {
-            warnings.append(String(
-                localized: "The imported source is committed, but machine-local cleanup is still pending. Do not import the files again; Scholium will retry cleanup when the vault reopens.",
-                table: "Localizable",
-                bundle: .module
-            ))
-            warnings.append(localizedCleanupWarnings(outcome.cleanupWarnings).joined(separator: " "))
         }
         if let presentationWarning = outcome.presentationWarning {
             warnings.append(String(
@@ -6002,10 +5974,6 @@ final class WindowModel: ObservableObject {
                 bundle: .module
             ))
         }
-        if let cleanup = outcome.committedValue.recoveryCleanupWarning {
-            warnings.append(cleanup)
-        }
-        warnings.append(contentsOf: localizedCleanupWarnings(outcome.cleanupWarnings))
         if warnings.isEmpty {
             showToast(
                 outcome.committedValue.didReplaceSource
@@ -7027,7 +6995,6 @@ final class WindowModel: ObservableObject {
         reportCommittedMutationWarnings(
             derivedRefreshWarnings: outcome.derivedRefreshWarning.map { [$0] } ?? [],
             identityRecoveryWarnings: outcome.identityRecoveryWarning.map { [$0] } ?? [],
-            cleanupWarnings: outcome.cleanupWarnings,
             presentationWarning: presentationWarning
         )
     }
@@ -7036,7 +7003,6 @@ final class WindowModel: ObservableObject {
     private func reportCommittedMutationWarnings(
         derivedRefreshWarnings: [String],
         identityRecoveryWarnings: [String],
-        cleanupWarnings: [SaveCleanupWarning] = [],
         presentationWarning: String? = nil
     ) -> Bool {
         var messages: [String] = []
@@ -7056,14 +7022,6 @@ final class WindowModel: ObservableObject {
             ))
             messages.append(identityRecoveryWarnings.joined(separator: " "))
         }
-        if !cleanupWarnings.isEmpty {
-            messages.append(String(
-                localized: "The file operation completed, but machine-local cleanup is still pending. Do not repeat the action; Scholium will retry cleanup when the vault reopens.",
-                table: "Localizable",
-                bundle: .module
-            ))
-            messages.append(localizedCleanupWarnings(cleanupWarnings).joined(separator: " "))
-        }
         if let presentationWarning {
             messages.append(String(
                 localized: "The file operation completed, but this window could not refresh its document view. Use Refresh instead of repeating the action.",
@@ -7075,27 +7033,6 @@ final class WindowModel: ObservableObject {
         guard !messages.isEmpty else { return false }
         showToast(messages.joined(separator: " "), kind: .warning)
         return true
-    }
-
-    private func localizedCleanupWarnings(
-        _ warnings: [SaveCleanupWarning]
-    ) -> [String] {
-        warnings.map { warning in
-            switch warning.kind {
-            case .displacedSourceCopy:
-                String(
-                    localized: "The old exact source copy could not be removed. Scholium will retry cleanup when this vault reopens.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            case .transactionRecord:
-                String(
-                    localized: "The machine-local transaction record could not be removed. Scholium will retry cleanup when this vault reopens.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            }
-        }
     }
 
     private func refreshIdentityState() async {

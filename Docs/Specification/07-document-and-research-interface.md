@@ -610,8 +610,8 @@ state. Its terms are not a second cross-functional state dictionary.
 | --- | --- |
 | **Edited** | Active buffer differs from committed source. |
 | **Saving** | Revision-checked commit is running. |
-| **Saved** | Authoritative source committed; derived consumers may still refresh. |
-| **Save Failed** | Source did not commit; retain buffer and offer Retry/comparison. |
+| **Saved** | Exact canonical Markdown readback matches the validated candidate; derived consumers may still refresh. |
+| **Autosave Failed** | Source commit cannot be proven; retain the buffer and offer Retry or recovery. |
 | **Conflict** | Expected revision differs from disk; retain buffer and compare before destructive reload. |
 | **Refreshing** | Derived consumers are catching up to committed source. |
 | **Derived State Stale** | A consumer represents an older committed revision. |
@@ -628,25 +628,22 @@ Record are never interchangeable; editor `Command-Z` never means checkpoint
 restoration.
 
 Autosave, conflict, and checkpoint-result presentation belongs to Document,
-never Actions or Research Inspector. Ordinary autosave creates no Save button
-and no success toast. **Save Failed** appears there as a persistent
-**Autosave Failed** bottom status toast that states the editor buffer remains
-available; the existing Retry/comparison recovery routes remain Document-owned
-and never become Research Actions. An unresolved **Conflict** uses the same
-Document-owned position, states that autosave is paused because the file
-changed outside Scholium, preserves the editor buffer, and exposes **Compare
-Changes**. These failure toasts remain until the state changes or the
-researcher chooses the applicable recovery path; they do not time out as if
-the failure were resolved.
+never Actions or Research Inspector. After Saving, autosave has exactly three
+terminal Document outcomes: silent **Saved**, persistent **Autosave Failed**,
+or persistent **Conflict**. Ordinary autosave creates no Save button, success
+toast, or saved-with-warning state. Autosave Failed states that the editor
+buffer remains available and retains the existing Retry or recovery route. An
+unresolved Conflict uses the same Document-owned position, states that
+autosave is paused because the file changed outside Scholium, preserves the
+editor buffer, and exposes **Compare Changes**. These failure states remain
+until the state changes or the researcher chooses the applicable recovery
+path; they do not time out as if the failure were resolved.
 
-A source replacement whose canonical bytes are proven but whose displaced
-same-directory cleanup is pending remains a saved document. Its Document-owned
-warning says that the old exact source copy is retained temporarily and that
-Scholium will retry cleanup when the vault reopens; it does not invite the
-researcher to repeat the mutation.
-Note Move and Folder Move may commit several source replacements while
-rewriting incoming links. Their Document warning aggregates every pending
-cleanup item rather than reporting only the moved Note or the last rewrite.
+Filesystem metadata and redundant machine-local housekeeping are not Document
+states. Once exact canonical readback proves the candidate, the Document is
+Saved without a technical warning or another write request. If that readback
+cannot prove the candidate, Scholium reports Autosave Failed rather than
+softening uncertainty into success.
 
 Checkpoint availability is not a document state, toast, or Action row; its
 entry remains under File. A successful restore alone produces one transient

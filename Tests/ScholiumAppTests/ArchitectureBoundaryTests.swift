@@ -172,6 +172,17 @@ struct ArchitectureBoundaryTests {
             "Scholium/Styling/ScholiumPreviewStyles.swift",
         ]
         let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]
+        let verificationScript = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Tools/Scripts/verify.sh"),
+            encoding: .utf8
+        )
+        for relativePath in allowedFiles {
+            let deliveryRelativePath = relativePath.dropFirst("Scholium/".count)
+            #expect(
+                verificationScript.contains("--glob '!**/\(deliveryRelativePath)'"),
+                "verify.sh is missing the frontend I/O allowlist entry for \(relativePath)"
+            )
+        }
         var violations: [String] = []
         for file in try swiftFiles(beneath: appRoot) {
             let source = try String(contentsOf: file, encoding: .utf8)

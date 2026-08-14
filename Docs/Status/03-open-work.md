@@ -101,10 +101,13 @@
 
 - Exercise a real File Provider domain, dataless materialization/eviction,
   provider-side replacement, sync rename, concurrent external edits, and
-  packaged-process interruption.
-- Recheck Finder metadata, ACL/xattr behavior, conflict focus, selective/full
-  checkpoint restore, retained candidates, and recovery with assistive
-  technology.
+  packaged-process interruption. Prove silent Saved only after exact canonical
+  readback, Conflict on revision change, Autosave Failed on unproven commit,
+  and retained editor bytes in both exceptional outcomes.
+- Recheck conflict focus, selective/full checkpoint restore, retained
+  interrupted candidates, and recovery with assistive technology. Finder
+  metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
+  completion are not save-success acceptance criteria.
 - Verify packaged-sandbox reopen after an external Method, Practice, Skill
   folder, or Analyze source moves, loses scope, is evicted, or is restored.
 - Complete direct acceptance of Zotero attachment selection and the built-in

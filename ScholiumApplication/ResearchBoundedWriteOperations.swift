@@ -711,10 +711,11 @@ extension WorkspaceHandle {
                     state: .committed,
                     observedRevision: outcome.committedValue.document.fingerprint,
                     warning: boundedResearchDocumentWriteWarning(
-                        outcome.cleanupWarnings.map { Optional($0.message) } + [
-                        outcome.derivedRefreshWarning,
-                        outcome.identityRecoveryWarning,
-                    ]),
+                        [
+                            outcome.derivedRefreshWarning,
+                            outcome.identityRecoveryWarning,
+                        ]
+                    ),
                     recoveryRecordID: nil,
                     finishedAt: Date()
                 )
@@ -1092,9 +1093,7 @@ extension WorkspaceHandle {
                outcome.identityRecoveryWarning == nil {
                 state = .committed
                 warning = boundedResearchDocumentWriteWarning(
-                    outcome.cleanupWarnings.map { Optional($0.message) } + [
-                        outcome.derivedRefreshWarning,
-                    ]
+                    [outcome.derivedRefreshWarning]
                 )
             } else {
                 let observation = await observeResearchCreation(entry)

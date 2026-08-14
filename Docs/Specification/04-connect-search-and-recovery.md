@@ -320,12 +320,24 @@ available for inspection and copying. If the candidate is already canonical,
 Recovery verifies that fact and removes only the completed machine-local
 record.
 
-If source replacement and readback succeed but cleanup of the displaced exact
-copy does not, the save remains committed and shows a cleanup warning rather
-than inviting another write. Reopen retries only the recorded unchanged copy;
-a missing, substituted, changed, unsafe, or inaccessible candidate remains a
-diagnostic and is never deleted by guesswork. Pre-commit cleanup follows the
-same exact task boundary.
+An ordinary Note save has exactly three terminal Document outcomes after
+Saving: **Saved**, **Conflict**, or **Autosave Failed**. Saved requires the
+current canonical Markdown to read back exactly as the validated candidate and
+is otherwise silent. Conflict means the expected revision no longer matches;
+Scholium preserves the editor buffer and routes to comparison rather than
+overwriting the external revision. Autosave Failed means replacement did not
+complete or exact canonical readback cannot prove the candidate; Scholium
+retains the editor buffer and any independently useful recovery candidate.
+
+There is no fourth "saved with a technical warning" outcome. Exact source,
+containment, regular-file identity, expected revision, replacement, and
+canonical readback remain save authority. Filesystem metadata equality,
+parent-directory synchronization, temporary replacement entries, and
+machine-local recovery cleanup are not Document success predicates and never
+turn a readback-proven commit into a warning or invite another write. Redundant
+machine-local housekeeping remains invisible and automatic; it may remove only
+an exact app-owned artifact and never canonical source or an unknown file by
+guesswork.
 
 Settle may pin one exact researcher-selected revision without turning it into a
 truth claim. Temporary write recovery and settled retention remain separate.

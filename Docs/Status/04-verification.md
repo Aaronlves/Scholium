@@ -4,17 +4,22 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-08-12, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
+**Environment:** 2026-08-14, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on the Zotero-binding, presentation-
-ownership, and Editor-performance collector integration. It validated the
-closed documentation manifests and shipped Skill resources; TypeScript checking
-and 199 Web editor tests; reproducible editor, mathematics, and Mermaid bundles;
-492 Core tests plus 3 Search performance tests; 138 Contracts tests; 220
+The latest complete current-tree coverage includes the existing-Note save,
+progressive-opening, and CLI-installation integrations. It validated the closed
+documentation manifests and shipped Skill resources; TypeScript checking and
+199 Web editor tests; reproducible editor, mathematics, and Mermaid bundles;
+472 Core tests plus 3 Search performance tests; 138 Contracts tests; 227
 Application tests, 11 bridge tests, and 1 serialized architecture measurement;
-600 App tests; 7 executable Research Action CLI lifecycles; the sandboxed local
+625 App tests; 7 executable Research Action CLI lifecycles; the sandboxed local
 bridge probe; symbol/import/residue guards; and Debug and Release builds. The
-Release build completed in 224.01 seconds.
+final Release build completed in 186.52 seconds. The first App attempt exposed
+only a stale architecture-test allowlist that counted one rather than the two
+current activation-snapshot reads; the owning test and the complete serial App
+target passed after synchronizing that inventory, and the remaining gate then
+completed. Passing expensive targets were not repeated after that test-only
+correction.
 
 This proves deterministic repository conformance for that checkout and toolchain.
 It is not a packaged release, complete UI-suite result, human accessibility
@@ -22,6 +27,38 @@ exercise, source-fidelity review of private research, or researcher acceptance.
 
 ## Focused interface evidence
 
+- On 2026-08-14, the CLI installation repair passed 6 focused Application
+  tests. They reproduce a complete CLI copy under the App sandbox while the
+  login account has no installation, reject fallback when account-home
+  resolution fails, verify install/update and current `PATH` reporting, reject
+  executable and parent-directory symbolic links, and require the packaged
+  sandbox's sole home-relative write exception to be `~/.local/`. A disposable
+  signed sandbox probe under repository-local `.build/` separately proved that
+  authorizing only the final nested directory cannot create a missing parent,
+  while authorizing the installation root can. The ad-hoc Release packager
+  completed with strict nested-code and App signature verification plus both
+  bundled and standalone CLI smoke checks. This is deterministic packaging and
+  containment evidence, not a real install into a clean external account or
+  proof that an external Agent inherits the configured `PATH`.
+- On 2026-08-14, the existing-Note save cutover passed 228 focused tests: 86
+  Core, 8 Contracts, 31 Application, and 103 App tests. The fixtures cover
+  coordinated system replacement, exact BOM/CRLF readback, metadata changes
+  remaining outside save authority, external-writer conflict, symlink and
+  parent exchange, readback mismatch, pre- and post-replacement interruption,
+  `SIGKILL` restart reconciliation, checkpoint and move propagation, removal of
+  cleanup-warning presentation, and rejection of unsupported pre-use recovery
+  data without mutation. Documentation authority also passed. The frontend I/O
+  guard was then aligned with its existing App architecture allowlist, and its
+  owning synchronization test passed. The subsequent complete-gate attempt
+  passed 199 Web tests, 472 Core tests, 3 Search performance tests, and 138
+  Contracts tests before one parallel Application test failed to observe
+  watcher-readiness evidence before activation reconciliation completed. The
+  opening boundary was then repaired so the first complete publication follows
+  that reconciliation. A controlled barrier proved the Workspace remains
+  Opening while reconciliation is paused; both progressive-opening tests passed
+  together, and the same parallel Application batch passed 223/223. The latest
+  complete current-tree coverage above now includes that repair. Real packaged
+  File Provider acceptance remains open.
 - On 2026-08-13, the progressive-opening Application contract test proved that
   one selected live Vault publishes first, its Note remains loadable, Search
   fails closed with `workspaceStillLoading`, and the same handle later publishes

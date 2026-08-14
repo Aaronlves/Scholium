@@ -42,7 +42,7 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         case .recoveryRequired(let recovery):
             return "The note save remains unresolved. Recovery transaction \(recovery.id.transactionID.uuidString) requires exact source reconciliation before the write can be finalized."
         case .atomicCommitUnsupported(let reason):
-            return "This volume cannot provide Scholium's displaced-byte-preserving commit guarantee. The note remains open and unchanged. \(reason)"
+            return "This volume cannot provide the coordinated atomic commit required for this operation. The note remains open and unchanged. \(reason)"
         }
     }
 }
@@ -150,25 +150,17 @@ public struct InterruptedSaveRecoveryContent: Hashable, Sendable {
     }
 }
 
-/// A successful recovery commit. Cleanup can remain incomplete after the exact
-/// source commit; callers must present that as a nonretryable warning instead
-/// of asking the researcher to repeat the write.
+/// A successful recovery commit after exact canonical source readback.
 public struct InterruptedSaveRecoveryRestoreCommit: Sendable {
     public let document: NoteDocument
     public let didReplaceSource: Bool
-    public let saveCleanupWarning: SaveCleanupWarning?
-    public let recoveryCleanupWarning: String?
 
     public init(
         document: NoteDocument,
-        didReplaceSource: Bool,
-        saveCleanupWarning: SaveCleanupWarning? = nil,
-        recoveryCleanupWarning: String?
+        didReplaceSource: Bool
     ) {
         self.document = document
         self.didReplaceSource = didReplaceSource
-        self.saveCleanupWarning = saveCleanupWarning
-        self.recoveryCleanupWarning = recoveryCleanupWarning
     }
 }
 
@@ -200,33 +192,12 @@ public struct SettledRevisionSnapshot: Codable, Hashable, Identifiable, Sendable
     }
 }
 
-public struct SaveCleanupWarning: Hashable, Sendable {
-    public enum Kind: Hashable, Sendable {
-        case displacedSourceCopy
-        case transactionRecord
-    }
-
-    public let kind: Kind
-    public let message: String
-
-    public init(kind: Kind, message: String) {
-        self.kind = kind
-        self.message = message
-    }
-}
-
-/// Result of one proven source replacement. A non-nil cleanup warning never
-/// changes the committed source into a retryable write failure.
+/// Result of one source replacement proven by exact canonical readback.
 public struct SaveResult: Sendable {
     public let document: NoteDocument
-    public let cleanupWarning: SaveCleanupWarning?
 
-    public init(
-        document: NoteDocument,
-        cleanupWarning: SaveCleanupWarning? = nil
-    ) {
+    public init(document: NoteDocument) {
         self.document = document
-        self.cleanupWarning = cleanupWarning
     }
 }
 

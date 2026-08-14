@@ -2230,7 +2230,7 @@ struct WindowControllerArchitectureTests {
             "workspaceCapabilities": 2,
             "refreshPendingResearchAgentPermissions": 1,
             "vaultConfig": 2,
-            "snapshot": 1,
+            "snapshot": 2,
         ]
         var approved: [String: Int] = [:]
         for category in [
@@ -2245,7 +2245,7 @@ struct WindowControllerArchitectureTests {
 
         #expect(compositionAndSubscription.values.reduce(0, +) == 11)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 8)
-        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
+        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 14)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))

@@ -116,6 +116,9 @@ plutil -insert sdk_version -string "${SDK_VERSION}" "${PROVENANCE}"
   "${ROOT}/Tools/Packaging/Scholium.entitlements")" == "group.com.scholium.app" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' \
   "${ROOT}/Tools/Packaging/ScholiumCLI.entitlements")" == "group.com.scholium.app" ]]
+[[ "$(/usr/libexec/PlistBuddy -c \
+  'Print :com.apple.security.temporary-exception.files.home-relative-path.read-write:0' \
+  "${ROOT}/Tools/Packaging/Scholium.entitlements")" == "/.local/" ]]
 
 # The beta SwiftPM linker may record the deployment target as both minOS and SDK
 # in LC_BUILD_VERSION. Preserve the product's macOS 26 minimum while recording

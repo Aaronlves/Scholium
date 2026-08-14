@@ -31724,22 +31724,6 @@
         }
       }
     },
-    "The file operation completed, but machine-local cleanup is still pending. Do not repeat the action; Scholium will retry cleanup when the vault reopens." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The file operation completed, but machine-local cleanup is still pending. Do not repeat the action; Scholium will retry cleanup when the vault reopens."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件操作已完成，但机器本地清理仍待完成。请勿重复该操作；Scholium 将在研究库重新打开时重试清理。"
-          }
-        }
-      }
-    },
     "The file operation completed, but stable note identity recovery is incomplete. Identity-dependent actions remain unavailable until recovery succeeds." : {
       "localizations" : {
         "en" : {
@@ -31852,22 +31836,6 @@
         }
       }
     },
-    "The imported source is committed, but machine-local cleanup is still pending. Do not import the files again; Scholium will retry cleanup when the vault reopens." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The imported source is committed, but machine-local cleanup is still pending. Do not import the files again; Scholium will retry cleanup when the vault reopens."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "导入的原文已提交，但机器本地清理仍待完成。请勿再次导入这些文件；Scholium 将在研究库重新打开时重试清理。"
-          }
-        }
-      }
-    },
     "The improvement handoff could not be copied." : {
       "localizations" : {
         "zh-Hans" : {
@@ -31952,22 +31920,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本机方法改进运行已就绪。请将完整交接信息复制给智能体。"
-          }
-        }
-      }
-    },
-    "The machine-local transaction record could not be removed. Scholium will retry cleanup when this vault reopens." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The machine-local transaction record could not be removed. Scholium will retry cleanup when this vault reopens."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法移除机器本地事务记录。Scholium 将在研究库重新打开时重试清理。"
           }
         }
       }
@@ -32068,22 +32020,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "笔记的 YAML 表头格式不正确。请在源文本中编辑。"
-          }
-        }
-      }
-    },
-    "The old exact source copy could not be removed. Scholium will retry cleanup when this vault reopens." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The old exact source copy could not be removed. Scholium will retry cleanup when this vault reopens."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法移除旧的精确原文副本。Scholium 将在研究库重新打开时重试清理。"
           }
         }
       }
