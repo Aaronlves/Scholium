@@ -1431,6 +1431,7 @@ struct DocumentLifecycleOperationsTests {
         try expected.write(to: transactionDirectory.appendingPathComponent("expected.md"))
         try candidate.write(to: transactionDirectory.appendingPathComponent("candidate.md"))
         let manifest = InterruptedSaveManifestFixture(
+            schemaVersion: 1,
             id: transactionID,
             relativePath: fixture.targetID.relativePath,
             expected: DocumentFingerprint(data: expected),
@@ -1481,7 +1482,6 @@ struct DocumentLifecycleOperationsTests {
 
         let outcome = try await handle.documents.restoreInterruptedSaveRecovery(recovery)
         #expect(outcome.committedValue.didReplaceSource)
-        #expect(outcome.committedValue.recoveryCleanupWarning == nil)
         #expect(outcome.derivedRefreshWarning == nil)
         #expect(outcome.committedValue.document.sourceBytes == candidate)
         #expect(try Data(
@@ -1495,6 +1495,7 @@ struct DocumentLifecycleOperationsTests {
 }
 
 private struct InterruptedSaveManifestFixture: Codable {
+    let schemaVersion: Int
     let id: UUID
     let relativePath: String
     let expected: DocumentFingerprint

@@ -46,8 +46,8 @@ struct WorkspaceCatalogTests {
         #expect(try #require(stale.notes.first).title == "Authoritative Title")
     }
 
-    @Test("A legacy catalog note without aliases remains readable")
-    func legacyCatalogNoteDefaultsAliases() throws {
+    @Test("Incomplete retired catalog projections are rejected")
+    func incompleteCatalogNoteIsRejected() throws {
         let topics = vault("Topics", .topicKnowledge)
         let document = note("Topic.md", "---\ntitle: Topic\n---\nBody")
         let note = try #require(WorkspaceCatalogBuilder.build(
@@ -61,9 +61,34 @@ struct WorkspaceCatalogTests {
         object["aliases"] = nil
         let legacy = try JSONSerialization.data(withJSONObject: object)
 
-        let decoded = try JSONDecoder().decode(WorkspaceCatalogNote.self, from: legacy)
-        #expect(decoded.aliases.isEmpty)
-        #expect(decoded.reference == note.reference)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(WorkspaceCatalogNote.self, from: legacy)
+        }
+    }
+
+    @Test("Analysis catalog notes project authored academic identity fields")
+    func analysisAcademicIdentity() throws {
+        let analyses = vault("Analyses", .sourceCorpus)
+        let document = note(
+            "Scanlon.md",
+            """
+            ---
+            title: What We Owe to Each Other
+            authors:
+              - family: Scanlon
+                given: T. M.
+            publication_date: 1998-01-01
+            ---
+            Analysis
+            """
+        )
+        let catalog = WorkspaceCatalogBuilder.build(
+            vaults: [analyses],
+            documents: [analyses.id: [document]]
+        )
+        let result = try #require(catalog.notes.first)
+        #expect(result.authors == ["T. M. Scanlon"])
+        #expect(result.publicationDate == "1998-01-01T00:00:00.000Z")
     }
 
     @Test("Retired workflow metadata does not create Attention")

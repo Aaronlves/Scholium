@@ -36,9 +36,9 @@
   AppKit preserve the initiating modality: keyboard dismissal returns to the
   initiating control or the next valid semantic target, while pointer dismissal
   does not synthesize a keyboard-only focus ring. Feature call sites do not add
-  unconditional `FocusState` restoration around native Buttons, sheets, or
-  segmented controls. The shared activation-focus adapter remains limited to
-  custom controls whose keyboard owner cannot be expressed natively. Removal
+  unconditional `FocusState` restoration around native Buttons or sheets. The
+  shared Scholium segmented component alone owns its focus and Left/Right
+  traversal; feature call sites add none. Removal
   follows a stable next, previous, then owning-container sequence.
 - Custom controls expose current names, roles, values, selected state,
   availability, errors, consequences, and recovery actions. Decoration and
@@ -60,6 +60,11 @@
   selected state, Up/Down traversal, localized Note totals, and inert hidden
   workspaces. Switching preserves focus on the selected destination until the
   resulting Document route requires another focus target.
+- During progressive live opening, the available workspace keeps its complete
+  Library keyboard and accessibility routes. Unavailable workspace rows expose
+  an unavailable Note count and do not accept pointer or Arrow-key selection.
+  The persistent derived-state status names background progress without moving
+  focus; completion enables the remaining rows and updates their counts once.
 - Back and Forward expose stable names and current availability in both the
   toolbar and View menu. A successful visit updates them without moving focus;
   revisiting a document uses the ordinary source-safe transition and preserves
@@ -96,6 +101,26 @@
 - Edit suggestions retain document focus and one listbox selection. Up/Down
   moves, Return accepts, Escape closes, and pointer acceptance has the same
   result. Marked-text composition opens no suggestion list or forced selection.
+- Document Find exposes its query, options, current/total result, navigation,
+  replacement availability, and close route in one keyboard order. Opening it
+  focuses Find; Escape closes it and returns to the exact editor selection.
+  Match highlighting, current-match state, and replacement availability never
+  rely on color alone.
+- Wikilink alias and Analysis Reference rows expose visible label, canonical
+  target, note role, and path without reading Markdown delimiters aloud.
+  Analysis metadata absence remains absence and never receives an invented
+  author, year, or citation key.
+- Document statistics expose one complete localized accessibility value and
+  identify whether it describes the selection or body. The visual status may
+  yield at narrow widths, but the Edit menu retains a named **Document
+  Statistics** command that announces the same current value.
+- Spelling and grammar retain the standard macOS Edit submenu, shortcuts,
+  contextual commands, correction state, and installed-language behavior.
+- Import Image and Index Image use native file panels with corresponding
+  **Import** and **Index** actions. They expose the copy-versus-absolute-path
+  consequence by name, report copy, catalog, bookmark, source, stale-path, and
+  cleanup failures without losing editor focus or source, and never make drag,
+  paste, or Finder the only route. A pasted image is announced as an Import.
 - English, Simplified Chinese, and mixed English/Chinese Source lines keep the
   visual cursor, selection, and installed input method consistent with visible
   content. Other Unicode source remains exact and Source-visible without a
@@ -110,28 +135,37 @@
   read-only content, a named open route, and a keyboard-scrollable bounded
   viewport without repeating relationship-type copy. Their nested content
   never adds a second writable source, focus owner, or recursive embed tree.
-- Autosave Failed, Conflict, and cleanup warnings state the retained-buffer or
-  committed-source consequence and expose the applicable recovery. Checkpoint
-  Restored is transient and never moves Document focus.
+- Autosave Failed and Conflict state the retained-buffer consequence and expose
+  the applicable recovery. A proven save and machine-local housekeeping add no
+  status announcement or Document accessibility item. Checkpoint Restored is
+  transient and never moves Document focus.
 
 ### Properties and portable settings
 
 - Settings names the selected role, exact YAML editor, fixed delimiters,
-  source-type picker, Agent-required checkboxes, About fields, structured-edit
-  fields, validation location, dirty/save/conflict state, and separate restore
-  or clear consequences in one keyboard order. Its multiline YAML editor keeps
+  source-type picker, Agent-required checkboxes, About fields, validation
+  location, dirty/save/conflict state, and separate restore or clear
+  consequences in one keyboard order. Its multiline YAML editor keeps
   selection, Undo/Redo, Find, mixed-script text, and an LTR technical region.
 - Source-type switching retains every unsaved requirements draft. Invalid
   fields in another role or type remain named and prevent the single atomic
   save. Revision conflict preserves the draft and offers **Reload Saved
   Settings**; errors are never color-only or a generic alert.
-- Complete Properties exposes existing key, label, value/summary, editability,
-  source-only state, and not-typical status. **Add a Property…** is a searchable
+- Complete Properties exposes existing key, label, value/summary, direct-edit
+  or source-only state, and not-typical status. Its spacing-defined semantic
+  groups retain accessible group names without duplicate visible headings.
+  Concise field definitions use pointer Help instead of persistent copy.
+  Low-frequency field actions reveal on pointer hover or keyboard focus without
+  reflow and remain in the keyboard and accessibility order when not visible.
+  Each direct editor has one persistent accessible label; contributor items
+  retain their number, kind, subfield labels, and contextual Add/Remove action
+  at 200% text and narrow widths.
+  **Add a Property…** is a searchable
   grouped chooser with one listbox selection, keyboard acceptance, Escape
   cancellation, and focus return. YAML-free insertion explicitly distinguishes
   **Add YAML Properties…** from **Keep Without YAML**.
-- About group headings participate in the reading hierarchy without becoming
-  duplicate top-level sections. The complete fact grid preserves row/column
+- About uses the same spacing-defined groups and accessible group names as
+  Complete Properties. The complete fact grid preserves row/column
   association under enlargement and reflow. Tags are individually readable
   neutral tokens in source order, not color-coded status or unlabeled chips.
 
@@ -142,12 +176,14 @@
   listbox position; only one owns selection. Explain Query is keyboard and
   VoiceOver reachable and presents the Application explanation without
   reparsing the query.
+- Research Search and Document Find have distinct accessible names, shortcuts,
+  focus owners, scopes, and results; neither is announced as the other.
 - Invalid, ambiguous, provider-mismatch, unavailable, stale, and empty Search
   states remain distinct and retain an edit or retry target. Note and Record
   results identify their source context and restore focus at the exact available
   destination.
-- Inspector's Overview, Connect, and Actions form one horizontal single-choice
-  group. Selection remains identifiable without hover. At regular, compact,
+- Inspector's Overview, Connect, and Actions form one shared horizontal
+  segmented single-choice group. Selection remains identifiable without hover. At regular, compact,
   enlarged-text, and supported English, Simplified Chinese, and mixed-script
   presentations, About fields adapt as one complete grid and error/recovery
   text remains untruncated.

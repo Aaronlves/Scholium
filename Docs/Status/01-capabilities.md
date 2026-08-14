@@ -12,26 +12,33 @@
   constructing a runtime. Malformed current-schema registry data can be
   preserved and relinked; unsupported schema and I/O failures remain
   nonauthorizing. No temporary workspace fallback is reachable.
+- Live app activation can publish the selected Vault's authoritative source,
+  metadata, and stable identities first, then replace that explicit opening
+  phase with one complete three-Vault generation through the existing refresh
+  owner. Document reads are usable immediately; Search and Research Actions
+  fail closed until Graph, Search, and research projections are complete.
 - Exact Markdown bytes remain authoritative. Repository reads and mutations
-  enforce containment, regular-file identity, expected revisions, atomic
-  replacement, metadata preservation, readback, conflict, and recoverable
-  uncertainty. Derived refresh failure cannot turn a proven source commit into
-  a failed mutation.
+  enforce containment, regular-file identity, expected revisions, coordinated
+  system replacement, exact canonical readback, conflict, and recoverable
+  uncertainty. Filesystem metadata and machine-local housekeeping are not save
+  predicates. Derived refresh failure cannot turn a proven source commit into a
+  failed mutation.
 - Frontmatter edits are bounded to a uniquely proven range and preserve all
   unrelated bytes. Unsupported source shapes remain editable in Source.
 - Managed New Note copies the selected role's exact validated Settings seed in
   the same source claim. YAML-free first-Property insertion is a separate
   explicit expected-revision transaction and never writes empty delimiters.
 - Portable Properties settings independently own each role's exact New Note
-  YAML, About order, and structured-edit allowlist plus per-source-type Analysis
+  YAML and About order plus per-source-type Analysis
   Agent requirements. One strict candidate validation and exact settings
   target identity plus revision guard the atomic save; uncertain or
   committed-with-refresh-warning outcomes are authoritatively reconciled.
-  Unavailable or invalid settings remain nonauthorizing rather than exposing
-  writable defaults.
+  Unavailable or invalid settings remain nonauthorizing for managed creation,
+  Agent requirements, and About rather than exposing defaults.
 - Complete Properties retains every safely bounded present top-level value,
-  marks unsupported shapes read-only, recommends only applicable missing
-  canonical keys, supports structured CreatorLists and authored date text, and
+  derives direct editability from exact source rather than Settings, marks
+  unsupported shapes read-only, recommends only applicable missing canonical
+  keys, supports structured CreatorLists and authored date text, and
   removes a property only through the same targeted expected-revision write.
 
 ## Notes, documents, and lifecycle
@@ -45,7 +52,14 @@
   handling, and recovery remain bound to the same exact source.
 - The editor supports the declared Markdown dialect, semantic Callouts, tables,
   footnotes, mathematics, Wiki and Vector Links, task items, formatting,
-  caret-anchored suggestions, and nonmutating search-result reveal.
+  caret-anchored Wikilink and Analysis Reference suggestions, Document
+  Find/Replace, Document statistics, native spelling routes, and nonmutating
+  search-result reveal.
+- Image Import copies selected or pasted bytes exactly into the current
+  vault's UUID-scoped `Attachments` folder and inserts a relative Markdown
+  destination. Image Index retains the selected absolute path without copying;
+  its read-only bookmark is machine-local, and a moved, missing, stale,
+  or inaccessible path produces a reminder without repair or mutation.
 - Editor Undo, Triptych checkpoints, Before Agent Work recovery, settled
   revision pins, and interrupted-write candidates remain distinct. Restore
   rechecks the current revision and preserves evidence when replacement cannot
@@ -143,9 +157,22 @@
   one recovery point per edited file, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external
   locators, and settled-version retention.
-- Built-in Zotero access reads local bibliographic metadata and opens a keyed
-  Analysis in Zotero. The optional Zotero MCP is a separate Agent transport;
+- Built-in Zotero access reads local bibliographic metadata, searches exact
+  user/group library items for researcher selection, revision-checks portable
+  Analysis set/rebind/clear, and opens a keyed Analysis in Zotero. An eligible authenticated Analysis Run with frozen Zotero
+  context receives the exact release-managed Zotero Integration Adapter; Runs
+  without that context receive none, and adapter delivery grants no capability
+  or write authority. Separately authorized Agent
+  `set_zotero_binding`/`clear_zotero_binding` use their own strict intent,
+  bridge/CLI route, one-use capability, binding-revision check, and Local
+  Execution ledger; they cannot write Markdown, Properties, or Zotero. The optional Zotero MCP is a separate Agent transport;
   guarded imports require an exact request, dry run, confirmation, unchanged
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot
   bypass source, Action, Session, recovery, or Record authority.
+- First-launch Agent preparation and Research Guidance Settings copy the same
+  fixed official installation instruction for the independently packaged CLI.
+  The App has no CLI installer or machine-status owner and never embeds,
+  inspects, executes, updates, or removes the CLI. The external Agent may place
+  only the release executable and resource bundle under `~/.local/bin`, then
+  verifies the required version fields while ignoring unrelated JSON fields.

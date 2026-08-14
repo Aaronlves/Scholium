@@ -16,6 +16,7 @@ rm -rf -- "${temporary_root}"
 source_file="${repository_root}/Scholium/Localization/ScholiumL10n.swift"
 interface_catalog="${repository_root}/Scholium/Resources/Interface.xcstrings"
 localizable_catalog="${repository_root}/Scholium/Resources/Localizable.xcstrings"
+webkit_catalog="${repository_root}/Scholium/Resources/WebKitInterface.xcstrings"
 extracted_directory="${temporary_root}/extracted"
 all_extracted_directory="${temporary_root}/all-extracted"
 compiled_directory="${temporary_root}/compiled"
@@ -67,7 +68,7 @@ missing_simplified_chinese="$({
     | to_entries[]
     | select(.value.localizations["zh-Hans"].stringUnit.state != "translated")
     | .key
-  ' "${interface_catalog}" "${localizable_catalog}"
+  ' "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
 })"
 
 if [[ -n "${missing_simplified_chinese}" ]]; then
@@ -85,7 +86,7 @@ placeholder_mismatches="$({
     | ([.value.localizations["zh-Hans"].stringUnit.value | scan("%(?:[0-9]+\\$)?(?:arg|@|d|lld|ld|f)")] | sort) as $zh
     | select($en != $zh)
     | $key
-  ' "${interface_catalog}" "${localizable_catalog}"
+  ' "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
 })"
 if [[ -n "${placeholder_mismatches}" ]]; then
   print -u2 "Localized format placeholders changed:"
@@ -102,7 +103,7 @@ ascii_chinese_punctuation="$({
         | test("\\.\\.\\.|[,;!?()]|: ")
       )
     | .key
-  ' "${interface_catalog}" "${localizable_catalog}"
+  ' "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"
 })"
 if [[ -n "${ascii_chinese_punctuation}" ]]; then
   print -u2 "Simplified Chinese interface prose uses ASCII punctuation:"
@@ -110,7 +111,7 @@ if [[ -n "${ascii_chinese_punctuation}" ]]; then
   exit 1
 fi
 
-for catalog_file in "${interface_catalog}" "${localizable_catalog}"; do
+for catalog_file in "${interface_catalog}" "${localizable_catalog}" "${webkit_catalog}"; do
   DEVELOPER_DIR="${developer_dir}" xcrun xcstringstool compile \
     --output-directory "${compiled_directory}" \
     "${catalog_file}"
@@ -127,4 +128,11 @@ compiled_catalog="${compiled_directory}/zh-Hans.lproj/Interface.strings"
   exit 1
 }
 
-print "Interface localization validation passed (Interface + Localizable)."
+[[ -f "${compiled_directory}/zh-Hans.lproj/WebKitInterface.strings" ]] || {
+  print -u2 "The compiled Simplified Chinese WebKitInterface table is missing."
+  exit 1
+}
+
+node "${repository_root}/WebEditor/validate-localization.mjs"
+
+print "Interface localization validation passed (Interface + Localizable + WebKitInterface)."

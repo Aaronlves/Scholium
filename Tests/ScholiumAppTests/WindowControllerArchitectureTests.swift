@@ -1576,9 +1576,9 @@ struct WindowControllerArchitectureTests {
 
     @Test("Settings constructs independently of any document window")
     func standaloneSettingsConstruction() {
-        let model = WorkspaceSettingsModel(selectedPane: .properties)
+        let model = WorkspaceSettingsModel(selectedPane: .propertyProfiles)
 
-        #expect(model.selectedPane == .properties)
+        #expect(model.selectedPane == .propertyProfiles)
         #expect(model.snapshot.registeredVaults.isEmpty)
         #expect(model.snapshot.registeredTriptychs.isEmpty)
         model.selectPane(.researchGuidance)
@@ -1857,12 +1857,6 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let commandLineContracts = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumContracts/CommandLineToolContracts.swift"
-            ),
-            encoding: .utf8
-        )
         let researchActivityContracts = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "ScholiumContracts/ResearchActivityContracts.swift"
@@ -1885,7 +1879,6 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!contracts.contains(unconsumedPort))
         }
-        #expect(!commandLineContracts.contains("protocol CommandLineToolUseCases"))
         #expect(!researchActivityContracts.contains("PendingResearchState"))
         #expect(!researchActivityContracts.contains("PendingResearchRoute"))
         #expect(!workspaceModels.contains("pendingResearchStates"))
@@ -2230,7 +2223,7 @@ struct WindowControllerArchitectureTests {
             "workspaceCapabilities": 2,
             "refreshPendingResearchAgentPermissions": 1,
             "vaultConfig": 2,
-            "snapshot": 1,
+            "snapshot": 2,
         ]
         var approved: [String: Int] = [:]
         for category in [
@@ -2245,7 +2238,7 @@ struct WindowControllerArchitectureTests {
 
         #expect(compositionAndSubscription.values.reduce(0, +) == 11)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 8)
-        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
+        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 14)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))

@@ -84,6 +84,7 @@ struct ResearchOverviewPresentation {
     let propertiesConfiguration: VaultPropertiesConfiguration?
     let zoteroBinding: AnalysisZoteroBinding?
     let noteReviewState: WorkspaceNoteReviewState?
+    let stableNoteID: UUID?
 }
 
 struct ResearchInspectorContentContext {
@@ -94,6 +95,7 @@ struct ResearchInspectorContentContext {
     let openNoteReview: () -> Void
     let retryRefresh: () -> Void
     let openZoteroItem: (AnalysisZoteroBinding) async -> Void
+    let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
 
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
@@ -104,6 +106,7 @@ struct ResearchInspectorContentContext {
     var noteReviewState: WorkspaceNoteReviewState? {
         presentation.noteReviewState
     }
+    var stableNoteID: UUID? { presentation.stableNoteID }
 }
 
 /// Document-local research context. Authoritative note content remains the
@@ -274,32 +277,31 @@ struct ResearchOverviewView: View {
 
             VStack(
                 alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+                spacing: 0
             ) {
-                ForEach(aboutGroups) { group in
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
+                ForEach(Array(aboutGroups.enumerated()), id: \.element.group) { index, group in
+                    ScholiumPropertyGroup(
+                        label: group.group.label,
+                        separatesFromPrevious: index > 0
                     ) {
-                        Text(group.group.label)
-                            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                            .scholiumForeground(.secondaryText)
-                            .accessibilityHeading(.h3)
-
-                        if !group.facts.isEmpty {
-                            ScholiumApparatusFactGrid(facts: group.facts)
-                        }
-                        ForEach(Array(group.readingBlocks.enumerated()), id: \.offset) { _, block in
-                            ScholiumApparatusReadingBlock(
-                                label: block.label,
-                                text: block.text
-                            )
-                        }
-                        if !group.tags.isEmpty {
-                            AboutTagsView(tags: group.tags)
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumMetrics.Properties.fieldBlockSeparation
+                        ) {
+                            if !group.facts.isEmpty {
+                                ScholiumApparatusFactGrid(facts: group.facts)
+                            }
+                            ForEach(Array(group.readingBlocks.enumerated()), id: \.offset) { _, block in
+                                ScholiumApparatusReadingBlock(
+                                    label: block.label,
+                                    text: block.text
+                                )
+                            }
+                            if !group.tags.isEmpty {
+                                AboutTagsView(tags: group.tags)
+                            }
                         }
                     }
-                    .accessibilityElement(children: .contain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -323,6 +325,29 @@ struct ResearchOverviewView: View {
                 .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
                 .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
                 .accessibilityIdentifier("scholium.researchOverview.openInZotero")
+            }
+
+            if let noteID = context.stableNoteID {
+                Button {
+                    context.manageZoteroBinding(noteID, context.zoteroBinding)
+                } label: {
+                    ScholiumApparatusActionRowContent(
+                        title: Text(
+                            context.zoteroBinding == nil
+                                ? "Link Zotero Item…"
+                                : "Manage Zotero Link…"
+                        ),
+                        systemImage: "link",
+                        showsChevron: true
+                    )
+                }
+                .buttonStyle(ScholiumQuietRowButtonStyle(
+                    minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    verticalInset: 0
+                ))
+                .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+                .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
+                .accessibilityIdentifier("scholium.researchOverview.manageZoteroBinding")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -460,17 +485,7 @@ private struct AboutTagsView: View {
     var body: some View {
         FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
             ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
-                Text(tag)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                    .padding(.vertical, ScholiumMetrics.Properties.tagVerticalInset)
-                    .background(
-                        ScholiumColorRole.raisedSurfaceBackground.color,
-                        in: Capsule()
-                    )
-                    .overlay(Capsule().stroke(ScholiumColorRole.separator.color, lineWidth: 1))
+                ScholiumTagCapsuleLabel(tag)
                     .accessibilityLabel(tag)
             }
         }
@@ -491,14 +506,16 @@ private struct AboutTagsView: View {
                 freshness: .unavailable("No workspace is open."),
                 propertiesConfiguration: nil,
                 zoteroBinding: nil,
-                noteReviewState: nil
+                noteReviewState: nil,
+                stableNoteID: nil
             ),
             attentionPopoverSession: nil,
             openProperties: {},
             openAttention: {},
             openNoteReview: {},
             retryRefresh: {},
-            openZoteroItem: { _ in }
+            openZoteroItem: { _ in },
+            manageZoteroBinding: { _, _ in }
         )
     )
     .frame(width: 320, height: 620)

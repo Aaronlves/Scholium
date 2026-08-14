@@ -40,26 +40,17 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         didSet { visibleFields = Self.unique(visibleFields) }
     }
 
-    /// Top-level YAML fields the researcher may change through structured
-    /// controls. Exact Source editing remains a separate, unrestricted mode.
-    public var editableFields: [String] {
-        didSet { editableFields = Self.unique(editableFields) }
-    }
-
     public init(
         newNoteYAML: String? = nil,
-        visibleFields: [String] = [],
-        editableFields: [String] = []
+        visibleFields: [String] = []
     ) {
         self.newNoteYAML = Self.normalizedNewNoteYAML(newNoteYAML)
         self.visibleFields = Self.unique(visibleFields)
-        self.editableFields = Self.unique(editableFields)
     }
 
     private enum CodingKeys: String, CodingKey {
         case newNoteYAML
         case visibleFields
-        case editableFields
     }
 
     /// Decoding deliberately retains current-schema bytes semantically as
@@ -69,14 +60,12 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         newNoteYAML = try container.decodeIfPresent(String.self, forKey: .newNoteYAML)
         visibleFields = try container.decode([String].self, forKey: .visibleFields)
-        editableFields = try container.decode([String].self, forKey: .editableFields)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(newNoteYAML, forKey: .newNoteYAML)
         try container.encode(visibleFields, forKey: .visibleFields)
-        try container.encode(editableFields, forKey: .editableFields)
     }
 
     /// Adds or removes a field without losing the explicit order of the
@@ -97,15 +86,6 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         let value = visibleFields.remove(at: sourceIndex)
         let boundedIndex = min(max(0, destinationIndex), visibleFields.count)
         visibleFields.insert(value, at: boundedIndex)
-    }
-
-    public mutating func setHumanEditable(_ isEditable: Bool, field: String) {
-        guard let field = Self.normalized(field) else { return }
-        if isEditable {
-            if !editableFields.contains(field) { editableFields.append(field) }
-        } else {
-            editableFields.removeAll { $0 == field }
-        }
     }
 
     private static func unique(_ fields: [String]) -> [String] {
@@ -181,51 +161,30 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public var properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
         didSet { properties = Self.completeProperties(properties) }
     }
     public var analysisAgentCreation: AnalysisAgentCreationConfiguration
-    public var promptTemplates: [ResearchPromptTemplate]
-    public var activePromptTemplateIDs: [ResearchPromptKind: UUID]
     public var attentionDismissalDays: Int
 
     public init(
         properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = Self.defaultProperties,
         analysisAgentCreation: AnalysisAgentCreationConfiguration = .init(),
-        promptTemplates: [ResearchPromptTemplate]? = nil,
-        activePromptTemplateIDs: [ResearchPromptKind: UUID]? = nil,
         attentionDismissalDays: Int = 7
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.properties = Self.completeProperties(properties)
         self.analysisAgentCreation = analysisAgentCreation
-        var templates = promptTemplates ?? [.defaultDialogue, .defaultCritique]
-        let activeIDs = activePromptTemplateIDs ?? [
-            .dialogue: ResearchPromptTemplate.defaultDialogue.id,
-            .critique: ResearchPromptTemplate.defaultCritique.id,
-        ]
-        for kind in ResearchPromptKind.allCases {
-            let bundled = kind == .dialogue
-                ? ResearchPromptTemplate.defaultDialogue
-                : ResearchPromptTemplate.defaultCritique
-            guard let index = templates.firstIndex(where: { $0.id == bundled.id }) else { continue }
-            templates[index] = bundled
-        }
-        self.promptTemplates = Self.completeTemplates(templates)
-        self.activePromptTemplateIDs = activeIDs
         self.attentionDismissalDays = max(1, attentionDismissalDays)
-        repairActiveTemplateIDs()
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
         case properties
         case analysisAgentCreation
-        case promptTemplates
-        case activePromptTemplateIDs
         case attentionDismissalDays
     }
 
@@ -256,24 +215,10 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
             AnalysisAgentCreationConfiguration.self,
             forKey: .analysisAgentCreation
         )
-        promptTemplates = try container.decode(
-            [ResearchPromptTemplate].self,
-            forKey: .promptTemplates
-        )
-        activePromptTemplateIDs = try container.decode(
-            [ResearchPromptKind: UUID].self,
-            forKey: .activePromptTemplateIDs
-        )
         attentionDismissalDays = try container.decode(
             Int.self,
             forKey: .attentionDismissalDays
         )
-        for bundled in [ResearchPromptTemplate.defaultDialogue, .defaultCritique] {
-            if let index = promptTemplates.firstIndex(where: { $0.id == bundled.id }) {
-                promptTemplates[index] = bundled
-            }
-        }
-        promptTemplates = Self.completeTemplates(promptTemplates)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -281,8 +226,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(properties, forKey: .properties)
         try container.encode(analysisAgentCreation, forKey: .analysisAgentCreation)
-        try container.encode(promptTemplates, forKey: .promptTemplates)
-        try container.encode(activePromptTemplateIDs, forKey: .activePromptTemplateIDs)
         try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
     }
 
@@ -290,16 +233,13 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
                 "type", "publication_date", "limitations", "summary", "source_basis", "tags",
-            ],
-            editableFields: PropertyContractCatalog.analysisCanonicalKeys
+            ]
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["summary", "aliases", "limitations", "tags"],
-            editableFields: ["aliases", "summary", "limitations", "tags"]
+            visibleFields: ["summary", "aliases", "limitations", "tags"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["work_type", "coauthors", "summary", "limitations", "tags"],
-            editableFields: ["work_type", "coauthors", "summary", "limitations", "tags"]
+            visibleFields: ["work_type", "coauthors", "summary", "limitations", "tags"]
         ),
     ]
 
@@ -310,116 +250,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         for (slot, configuration) in properties {
             result[slot] = configuration
         }
-        return result
-    }
-
-    public static let defaultCritiquePromptTemplate = """
-    Critique the Work identified in the Scholium request using the standards and
-    questions of a careful specialist in the relevant field. Apply those standards
-    without presenting yourself as a human specialist.
-
-    Critique scope: {{critique_scope}}
-    Critique lens: {{critique_lens}}
-    Selected passages or requested focus: {{selected_ranges}}
-    Additional instructions: {{additional_instructions}}
-
-    Inspect the relevant Analyses and Topics in the Triptych. Distinguish what those
-    notes report, support, dispute, or leave uncertain from your own reconstruction
-    or evaluation. Do not treat neutral links or transitive paths as evidence.
-
-    Use the sections Overall Assessment, Strengths, Major Concerns, Source Support,
-    Objections and Alternatives, Revision Priorities, Specific Findings, and
-    Materials Consulted and Limitations. Identify the materials actually consulted
-    and any limitations. Write the result only to the designated Critique document.
-    The target Work and all contextual Materials remain read-only. If a later change
-    is warranted, prepare an independent Revise function through Scholium.
-    """
-
-    public static let defaultDialoguePromptTemplate = """
-    Scholium researcher instructions
-
-    Researcher instruction:
-    {{researcher_instruction}}
-
-    Selected notes (focal context, not an authorization boundary):
-    {{selected_notes}}
-
-    Triptych context:
-    {{triptych_context}}
-
-    Researcher comments:
-    {{researcher_comments}}
-
-    Relevant linked-note context:
-    {{linked_note_context}}
-
-    Requested destination:
-    {{requested_destination}}
-
-    Discuss boundary:
-    {{editing_rules}}
-    The selected Target and contextual Materials are read-only. Inspect their current
-    revisions before relying on them. If the request requires changing the Target,
-    stop the Discuss exchange and prepare Develop for an Analysis or Topic, or Revise
-    for a Work, through Scholium's Research Function API. Treat fingerprints as
-    revision checks, not permission tokens. Neutral links and transitive paths are
-    not evidence.
-
-    Closing response:
-    Conclude with a concise attributed academic result. Identify any unresolved
-    question, warranted promotion, or required researcher review. Discuss itself
-    creates no checkpoint and authorizes no research-note mutation.
-    """
-
-    public func activePromptTemplate(for kind: ResearchPromptKind) -> ResearchPromptTemplate {
-        if let id = activePromptTemplateIDs[kind],
-           let template = promptTemplates.first(where: { $0.id == id && $0.kind == kind }) {
-            return template
-        }
-        return kind == .dialogue ? .defaultDialogue : .defaultCritique
-    }
-
-    public mutating func savePromptTemplate(_ template: ResearchPromptTemplate) {
-        if let index = promptTemplates.firstIndex(where: { $0.id == template.id }) {
-            promptTemplates[index] = template
-        } else {
-            promptTemplates.append(template)
-        }
-        activePromptTemplateIDs[template.kind] = template.id
-    }
-
-    public mutating func deletePromptTemplate(id: UUID) {
-        guard let template = promptTemplates.first(where: { $0.id == id }),
-              template.origin == .researcher else { return }
-        promptTemplates.removeAll { $0.id == id }
-        if activePromptTemplateIDs[template.kind] == id {
-            activePromptTemplateIDs[template.kind] = template.kind == .dialogue
-                ? ResearchPromptTemplate.defaultDialogue.id
-                : ResearchPromptTemplate.defaultCritique.id
-        }
-    }
-
-    public mutating func resetPromptTemplate(for kind: ResearchPromptKind) {
-        activePromptTemplateIDs[kind] = kind == .dialogue
-            ? ResearchPromptTemplate.defaultDialogue.id
-            : ResearchPromptTemplate.defaultCritique.id
-    }
-
-    private mutating func repairActiveTemplateIDs() {
-        for kind in ResearchPromptKind.allCases {
-            let id = activePromptTemplateIDs[kind]
-            if !promptTemplates.contains(where: { $0.id == id && $0.kind == kind }) {
-                activePromptTemplateIDs[kind] = kind == .dialogue
-                    ? ResearchPromptTemplate.defaultDialogue.id
-                    : ResearchPromptTemplate.defaultCritique.id
-            }
-        }
-    }
-
-    private static func completeTemplates(_ templates: [ResearchPromptTemplate]) -> [ResearchPromptTemplate] {
-        var result = templates
-        if !result.contains(where: { $0.id == ResearchPromptTemplate.defaultDialogue.id }) { result.append(.defaultDialogue) }
-        if !result.contains(where: { $0.id == ResearchPromptTemplate.defaultCritique.id }) { result.append(.defaultCritique) }
         return result
     }
 

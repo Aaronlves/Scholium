@@ -11,6 +11,7 @@ enum WindowSheetRoute: Identifiable {
     case folderLifecycle(FolderLifecycleRequest)
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
+    case zoteroBinding(ZoteroBindingPanelRoute)
 
     var id: String {
         switch self {
@@ -25,8 +26,16 @@ enum WindowSheetRoute: Identifiable {
         case .folderLifecycle(let request): "folder-lifecycle:\(request.id)"
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
+        case .zoteroBinding(let route): route.id
         }
     }
+}
+
+struct ZoteroBindingPanelRoute: Identifiable, Hashable {
+    let noteID: UUID
+    let currentBinding: AnalysisZoteroBinding?
+
+    var id: String { "zotero-binding:\(noteID.uuidString.lowercased())" }
 }
 
 struct WindowOverlayRoute: OptionSet, Sendable {

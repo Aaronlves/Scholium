@@ -114,7 +114,7 @@ transaction.
 
 Portable `TriptychSettings` is a separate strict owner for role Properties.
 Its current schema contains exact delimiter-free New Note YAML, About order,
-structured-edit allowlists, and per-source-type Analysis Agent requirements.
+and per-source-type Analysis Agent requirements.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -131,12 +131,14 @@ an uncertain replacement is authoritatively reread before another save can be
 attempted, and a failed reread keeps that Triptych mutation-blocked. A commit
 that began in one Triptych remains truthfully attributed there if the active
 Triptych changes while it is in flight; its snapshot is never installed into
-the new target. Only a validated current state authorizes About or structured
-Note editing; every other state supplies an explicit empty display/edit
-allowlist, never default authority.
-Current bundled prompt bodies are app projections selected by stable IDs; load
-may replace or supply those in memory without writing the portable file. It
-does not repair researcher templates or invalid active-template IDs.
+the new target. Only a validated current state authorizes About; every other
+state supplies an explicit empty display profile, never default authority.
+Current-note structured editing instead depends only on the exact Note source
+and targeted patch contract.
+Portable Triptych Settings does not store prompt bodies or active prompt
+selection. Exact Markdown Methods and Practices remain the sole persisted
+owners of Research Guidance intellectual configuration; runtime action
+contracts consume those owners without a second template representation.
 
 `PropertyContractCatalog` owns shapes; `AnalysisSourceTypeProfileCatalog` owns
 applicable/recommended/serialization order; Settings owns only selection and
@@ -161,12 +163,15 @@ replacing their workspace snapshot.
 
 `BundledResearchSkillResources` is the one reader for release-managed Skill
 bytes. [Research Actions and Execution](02-research-actions-and-execution.md)
-owns loading and delivering the protected Core Skill during an authenticated
-Run. Research Guidance distinguishes those release-managed bytes from
+owns loading and delivering the protected Core Skill and any eligible typed
+Integration Adapter during an authenticated Run. Application selects the
+adapter from frozen Run facts; bundle discovery and Agent inference do not.
+Research Guidance distinguishes those release-managed bytes from
 researcher-owned Methods and Practices, which contain the Action's intellectual
-procedure. Run Brief, Method context, Result Contract, capability availability,
-command inputs, and Research Context remain typed current data. Installed CLI
-help owns current invocation syntax.
+procedure. Run Brief, Method context, Result Contract, adapter payload,
+capability availability, command inputs, and Research Context remain typed
+current data. Installed CLI help and tool schemas own current invocation
+syntax.
 
 The bundle is not a package manager or second prompt store. Research Guidance
 has no staged installer, resource preview, package validation, version

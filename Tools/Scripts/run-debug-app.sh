@@ -20,19 +20,11 @@ DEVELOPER_DIR="${DEVELOPER_DIR}" swift build \
   --scratch-path "${SCRATCH}" \
   --configuration debug \
   --product ScholiumApp
-DEVELOPER_DIR="${DEVELOPER_DIR}" swift build \
-  --package-path "${ROOT}" \
-  --scratch-path "${SCRATCH}" \
-  --configuration debug \
-  --product scholium
-
 mkdir -p \
   "${APP}/Contents/MacOS" \
-  "${APP}/Contents/Helpers" \
   "${APP}/Contents/Resources"
 cp "${SCRATCH}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"
-cp "${SCRATCH}/debug/scholium" "${APP}/Contents/Helpers/scholium"
-chmod +x "${APP}/Contents/MacOS/Scholium" "${APP}/Contents/Helpers/scholium"
+chmod +x "${APP}/Contents/MacOS/Scholium"
 cp -R \
   "${SCRATCH}/debug/Scholium_ScholiumApp.bundle" \
   "${APP}/Contents/Resources/"

@@ -56,8 +56,7 @@ public actor VaultRepository {
             .appendingPathComponent(identity.id.uuidString, isDirectory: true)
         self.recoveryLedger = try PrewriteRecoveryLedger(
             storageURL: storageURL,
-            vaultURL: self.vaultURL,
-            cleanupHooks: mutationHooks
+            vaultURL: self.vaultURL
         )
     }
 
@@ -88,8 +87,11 @@ public actor VaultRepository {
     ) throws -> (
         document: NoteDocument,
         version: SourceVersion,
-        fileMetadata: WorkspaceFileMetadata
+        fileMetadata: WorkspaceFileMetadata,
+        readDuration: Duration
     ) {
+        let clock = ContinuousClock()
+        let readStart = clock.now
         let path = try markdownRelativePath(relativePath)
         let loaded = try descriptorAccess.withOpenRegularFile(path) {
             descriptor, parentDescriptor, name, initialStatus in
@@ -135,7 +137,8 @@ public actor VaultRepository {
         return (
             document,
             Self.sourceVersion(status: loaded.1, fingerprint: document.fingerprint),
-            Self.fileMetadata(status: loaded.1)
+            Self.fileMetadata(status: loaded.1),
+            readStart.duration(to: clock.now)
         )
     }
 
@@ -385,8 +388,8 @@ public actor VaultRepository {
 
     /// Executes one exact-byte save and reports only a Core-observed outcome.
     /// Callers must not infer an unknown post-transaction result from a thrown
-    /// repository error: once replacement may have occurred, the retained
-    /// mutation ledger is the only source of recovery authority.
+    /// repository error. Core first uses exact canonical readback to prove a
+    /// commit; only a still-unknown result enters retained recovery.
     public func saveOutcome(
         relativePath: String,
         changeSet: NoteChangeSet,
@@ -413,7 +416,7 @@ public actor VaultRepository {
 
         let candidateData = Data(updatedContent.utf8)
         let snapshot = try prepareSnapshot(relativePath: relativePath, data: currentData)
-        var mutation: PrewriteRecoveryLedger.MutationTransaction
+        let mutation: PrewriteRecoveryLedger.MutationTransaction
         do {
             mutation = try recoveryLedger.beginMutation(
                 relativePath: relativePath,
@@ -424,7 +427,6 @@ public actor VaultRepository {
             try? discardPreparedSnapshot(snapshot)
             throw error
         }
-        var canonicalReplacementMayHaveOccurred = false
         do {
             let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
@@ -433,33 +435,11 @@ public actor VaultRepository {
                 try recoveryLedger.completeMutation(mutation)
                 return .notWritten(.conflict(recheckedFingerprint))
             }
-            let replacement = try mutationCoordinator.updateExisting(
+            try mutationCoordinator.updateExisting(
                 path: markdownRelativePath(relativePath),
                 expected: currentData,
-                candidate: candidateData,
-                persistCleanupTask: { cleanupTask in
-                    mutation.cleanupPending = cleanupTask
-                    try recoveryLedger.persistCleanupPending(mutation)
-                },
-                cleanupStagedCandidate: { cleanupTask in
-                    try recoveryLedger.cleanupStagedCandidate(
-                        mutation,
-                        task: cleanupTask,
-                        vaultURL: vaultURL
-                    )
-                }
+                candidate: candidateData
             )
-            canonicalReplacementMayHaveOccurred = true
-            guard mutation.cleanupPending == replacement.cleanupTask else {
-                throw VaultRepositoryError.recoveryLedgerUnavailable(
-                    "The durable cleanup task changed before source readback."
-                )
-            }
-            var cleanupWarning = recoveryLedger.attemptCommittedCleanup(
-                mutation,
-                vaultURL: vaultURL
-            )
-            let cleanupCompleted = cleanupWarning == nil
             let readback = try readSource(relativePath: relativePath)
             let expectedFingerprint = DocumentFingerprint(content: updatedContent)
             let readbackFingerprint = DocumentFingerprint(data: readback)
@@ -470,18 +450,14 @@ public actor VaultRepository {
                 )
             }
             try commitPreparedSnapshot(snapshot)
-            cleanupWarning = recoveryLedger.finishCommittedMutation(
-                mutation,
-                cleanupCompleted: cleanupCompleted,
-                cleanupWarning: cleanupWarning
-            )
-            return .committed(SaveResult(
-                document: updated,
-                cleanupWarning: cleanupWarning
-            ))
+            // The canonical source commit is already proven. Removing the
+            // redundant machine-local transaction is invisible housekeeping;
+            // if it fails, startup can observe the candidate revision and
+            // retry without changing Document state.
+            try? recoveryLedger.completeMutation(mutation)
+            return .committed(SaveResult(document: updated))
         } catch {
-            if !canonicalReplacementMayHaveOccurred,
-               let knownOutcome = knownNotWrittenOutcome(for: error) {
+            if let knownOutcome = knownNotWrittenOutcome(for: error) {
                 if let repositoryError = error as? VaultRepositoryError,
                    case .conflict = repositoryError {
                     do {
@@ -502,10 +478,29 @@ public actor VaultRepository {
                 return knownOutcome
             }
 
-            // A completed swap, failed readback, or an otherwise unprovable
-            // transaction is never downgraded to a revision conflict. Keep
-            // the exact preimage and candidate, then expose that one durable
-            // transaction for reconciliation.
+            // File Provider and coordinated replacement APIs can finish the
+            // replacement and still report an error. Exact canonical bytes,
+            // not that advisory error, determine the user-visible save state.
+            if let canonical = try? readSource(relativePath: relativePath),
+               canonical == candidateData {
+                try? commitPreparedSnapshot(snapshot)
+                try? recoveryLedger.completeMutation(mutation)
+                return .committed(SaveResult(document: updated))
+            }
+
+            // An unchanged canonical source proves that this attempt wrote
+            // nothing. Remove its redundant local transaction and preserve
+            // the original error rather than presenting a recovery candidate.
+            if let canonical = try? readSource(relativePath: relativePath),
+               canonical == currentData {
+                try? discardPreparedSnapshot(snapshot)
+                try? recoveryLedger.completeMutation(mutation)
+                throw VaultRepositoryError.writeFailed(error.localizedDescription)
+            }
+
+            // A replacement failure, failed readback, or otherwise unprovable
+            // transaction is never softened into Saved. Keep the exact
+            // preimage and candidate for reconciliation.
             try? commitPreparedSnapshot(snapshot)
             do {
                 try recoveryLedger.retainMutation(
@@ -945,11 +940,10 @@ public actor VaultRepository {
                 relativePath: transaction.relativePath,
                 rawContent: candidateContent
             )
+            completeInterruptedSaveRecovery(transaction)
             return InterruptedSaveRecoveryRestoreCommit(
                 document: document,
-                didReplaceSource: false,
-                saveCleanupWarning: nil,
-                recoveryCleanupWarning: completeInterruptedSaveRecovery(transaction)
+                didReplaceSource: false
             )
         }
         guard current == transaction.expected else {
@@ -964,11 +958,10 @@ public actor VaultRepository {
             changeSet: .exactContent(candidateContent),
             expectedRevision: transaction.expected
         )
+        completeInterruptedSaveRecovery(transaction)
         return InterruptedSaveRecoveryRestoreCommit(
             document: result.document,
-            didReplaceSource: true,
-            saveCleanupWarning: result.cleanupWarning,
-            recoveryCleanupWarning: completeInterruptedSaveRecovery(transaction)
+            didReplaceSource: true
         )
     }
 
@@ -1077,6 +1070,7 @@ public actor VaultRepository {
              .recoveryPathConflict,
              .recoveryLedgerUnavailable,
              .pathCollision,
+             .writeFailed,
              .commitUncertain,
              .recoveryRequired:
             return nil
@@ -1116,18 +1110,12 @@ public actor VaultRepository {
         }
     }
 
-    /// Cleanup is intentionally nonauthoritative after a proven source commit.
-    /// Returning a warning prevents a repeated restore from being presented as
-    /// the repair for bookkeeping that can be retried independently.
+    /// Redundant machine-local bookkeeping is never a Document state after a
+    /// proven source commit.
     private func completeInterruptedSaveRecovery(
         _ transaction: PrewriteRecoveryLedger.MutationTransaction
-    ) -> String? {
-        do {
-            try recoveryLedger.completeMutation(transaction)
-            return nil
-        } catch {
-            return "The candidate is canonical, but its interrupted-save record could not be removed. \(error.localizedDescription)"
-        }
+    ) {
+        try? recoveryLedger.completeMutation(transaction)
     }
 
     package func pinSettledSnapshot(

@@ -613,14 +613,19 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var scopePicker: some View {
-        Picker("Search scope", selection: scope) {
-            ForEach(SearchPresentationScope.visibleModes, id: \.self) { mode in
-                Text(localizedScopeTitle(mode)).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .accessibilityIdentifier("scholium.searchMode")
+        ScholiumSegmentedControl(
+            selection: scope,
+            options: SearchPresentationScope.visibleModes.map { mode in
+                ScholiumSegmentedControlOption(
+                    mode,
+                    title: localizedScopeTitle(mode),
+                    accessibilityIdentifier: "scholium.searchScope.\(mode.rawValue)"
+                )
+            },
+            label: String(localized: "Search scope"),
+            size: .compact,
+            accessibilityIdentifier: "scholium.searchMode"
+        )
     }
 
     @ViewBuilder

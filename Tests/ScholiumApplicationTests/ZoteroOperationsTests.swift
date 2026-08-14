@@ -125,6 +125,53 @@ struct ZoteroOperationsTests {
         ])
     }
 
+    @Test("Binding search keeps exact user and group library identities")
+    func bindingSearchAcrossLibraries() async throws {
+        let groups = Data("""
+        [{"id":42,"name":"Shared Ethics"}]
+        """.utf8)
+        let userItems = Data("""
+        [{
+          "key": "USER0001",
+          "data": {
+            "key": "USER0001",
+            "itemType": "journalArticle",
+            "title": "Agency in Practice",
+            "creators": []
+          }
+        }]
+        """.utf8)
+        let groupItems = Data("""
+        [{
+          "key": "GROUP001",
+          "data": {
+            "key": "GROUP001",
+            "itemType": "book",
+            "title": "Reasons and Agency",
+            "creators": []
+          }
+        }]
+        """.utf8)
+        let script = AttachmentRequestScript(responses: [
+            (200, groups),
+            (200, userItems),
+            (200, groupItems),
+        ])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+
+        let hits = try await operations.searchLibrary(query: "agency")
+
+        #expect(hits.map(\.library.identity) == [.user, .group(42)])
+        #expect(hits.map(\.item.key) == ["USER0001", "GROUP001"])
+        #expect(await script.paths() == [
+            "/api/users/0/groups",
+            "/api/users/0/items",
+            "/api/groups/42/items",
+        ])
+    }
+
     @Test("A Zotero attachment from another parent fails before file lookup")
     func attachmentParentMismatch() async throws {
         let envelope = """

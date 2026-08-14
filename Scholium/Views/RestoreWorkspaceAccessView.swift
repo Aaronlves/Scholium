@@ -7,7 +7,7 @@ struct RestoreWorkspaceAccessView: View {
 
     let recovery: WorkspaceAccessRecovery
     let restore: (URL) async throws -> Void
-    let closeWindow: () -> Void
+    let quitApplication: () -> Void
 
     @State private var isRestoring = false
     @State private var errorMessage: String?
@@ -34,7 +34,7 @@ struct RestoreWorkspaceAccessView: View {
             }
 
             HStack {
-                Button("Close Window") { closeWindow() }
+                Button("Quit Scholium") { quitApplication() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Choose Folder…") { chooseFolder() }

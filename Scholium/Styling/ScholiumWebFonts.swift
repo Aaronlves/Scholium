@@ -1,4 +1,3 @@
-import ScholiumContracts
 import Foundation
 
 enum ScholiumWebFonts {
@@ -20,12 +19,10 @@ enum ScholiumWebFonts {
         weight: String,
         style: String
     ) -> String {
-        guard let url = Bundle.module.url(forResource: resource, withExtension: "ttf"),
-              let data = try? Data(contentsOf: url) else { return "" }
         return """
         @font-face {
           font-family: "\(family)";
-          src: url("data:font/ttf;base64,\(data.base64EncodedString())") format("truetype");
+          src: url("\(ScholiumWebFontResources.url(for: resource + ".ttf"))") format("truetype");
           font-weight: \(weight);
           font-style: \(style);
           font-display: swap;

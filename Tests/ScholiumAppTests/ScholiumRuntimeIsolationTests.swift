@@ -16,6 +16,40 @@ struct ScholiumRuntimeIsolationTests {
         #expect(resolved == explicit.standardizedFileURL)
     }
 
+    @Test("A packaged Release accepts an isolated home only for the explicit performance driver")
+    func packagedReleaseIsolationIsBounded() {
+        let environment = [
+            "SCHOLIUM_HOME": "/fixture/home",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": "release-smoke",
+        ]
+        let marker = ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument
+
+        #expect(ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: environment,
+            arguments: [marker],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ))
+        #expect(!ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: environment,
+            arguments: [],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ))
+        #expect(!ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: ["SCHOLIUM_HOME": "/fixture/home"],
+            arguments: [marker],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ))
+        #expect(!ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: environment,
+            arguments: [marker],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier,
+            isDebugBuild: false
+        ))
+    }
+
     @Test("The QA bundle requires an explicit isolated home")
     func qaBundleRequiresExplicitHome() throws {
         #expect(ScholiumRuntimeIsolation.homeURL(
@@ -39,6 +73,32 @@ struct ScholiumRuntimeIsolationTests {
         #expect(ScholiumRuntimeIsolation.fixtureRootURL(
             environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": root.path]
         ) == root.standardizedFileURL)
+    }
+
+    @Test("The Restore Access proof is bounded to the QA bundle and fixture")
+    func fileSelectionRecoveryProofIsQABounded() {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let environment = [
+            "SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY": "1",
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": root.path,
+        ]
+        let expected = root
+            .appendingPathComponent("01-analyses", isDirectory: true)
+            .standardizedFileURL
+
+        #expect(ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL(
+            environment: environment,
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == expected)
+        #expect(ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL(
+            environment: environment,
+            bundleIdentifier: "com.scholium.app"
+        ) == nil)
+        #expect(ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL(
+            environment: ["SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY": "1"],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == nil)
     }
 
     @Test("Only the QA bundle accepts a deterministic initial window identity")

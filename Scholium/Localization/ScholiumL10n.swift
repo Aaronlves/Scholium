@@ -43,13 +43,13 @@ enum ScholiumL10n {
     }
 
     enum Settings {
-        static var vaults: LocalizedStringResource {
+        static var triptychs: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.vaults",
-                defaultValue: "Vaults",
+                "settings.tab.triptychs",
+                defaultValue: "Triptychs",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for configuring the three research vaults."
+                comment: "Settings tab for managing registered Triptychs and their folders."
             )
         }
 
@@ -63,13 +63,13 @@ enum ScholiumL10n {
             )
         }
 
-        static var properties: LocalizedStringResource {
+        static var propertyProfiles: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.properties",
-                defaultValue: "Properties",
+                "settings.tab.propertyProfiles",
+                defaultValue: "Property Profiles",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for configured note properties."
+                comment: "Settings tab for New Note YAML, Agent requirements, and About fields."
             )
         }
 
@@ -79,7 +79,7 @@ enum ScholiumL10n {
                 defaultValue: "Research Guidance",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for prompts, skills, and research methods."
+                comment: "Settings tab for Methods, Profiles, Collaboration, Sources, and Recovery."
             )
         }
 
@@ -90,16 +90,6 @@ enum ScholiumL10n {
                 table: "Interface",
                 bundle: .module,
                 comment: "Settings tab for derived attention reminders."
-            )
-        }
-
-        static var zotero: LocalizedStringResource {
-            LocalizedStringResource(
-                "settings.tab.zotero",
-                defaultValue: "Zotero",
-                table: "Interface",
-                bundle: .module,
-                comment: "Settings tab for the Zotero integration. Do not translate the brand name."
             )
         }
     }

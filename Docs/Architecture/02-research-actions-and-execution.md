@@ -99,7 +99,7 @@ that complete copied handoff; it is not separately rendered or exposed to the
 accessibility tree. **Copy New Handoff** invalidates the prior pairing, obtains
 a replacement, and copies it while retaining the same Run and recovery state.
 The Agent enters the code through CLI standard input. Pair exchange over the
-protected App Group Unix socket returns a hidden
+loopback-only framed bridge returns a hidden
 Connection Session and the first layered delivery packet. The UI's End Action
 route calls the same Application cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
@@ -182,12 +182,18 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 3 and authenticated Run Context schema 5 carry the
+Continue Result schema 3 and authenticated Run Context schema 6 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 11 persists the same child handoff. All prior Result,
-authenticated Context, and Local Execution schemas fail closed instead of
-interpreting expanded continuation semantics under an old version.
+Execution schema 12 persists the same child handoff and the independent
+Zotero-binding write ledger. Authenticated Run Context
+schema 6 also carries one optional typed Zotero Integration Adapter containing
+the exact release-managed System Skill and capability contract. Application
+includes it only for an Analysis target with frozen Zotero context and a
+Zotero-capable Platform Action; the adapter contains no authority or transport.
+All prior Result, authenticated Context, and Local Execution schemas fail
+closed instead of interpreting expanded continuation or adapter semantics under
+an old version.
 
 Opaque reference resolution rechecks Session, Run, scope, current owner, and
 revision. Ending/re-pairing/revocation, Triptych change, deletion, or source
@@ -234,6 +240,15 @@ resolves current roles/lifecycle/containment and the Triptych policy before
 presenting one optional subset sheet or binding a Full Access set. Researcher
 approval remains an exact Run-local fact until expiry/revocation/end.
 
+Schema 3 members may independently authorize `set_zotero_binding` or
+`clear_zotero_binding` only for an existing Analysis. Such a member freezes the
+global portable binding revision in addition to the Analysis source revision.
+The separate `ResearchZoteroBindingWriteIntent`, Local Execution binding-write
+ledger, bridge payload, and `agent write-zotero-binding` command contain no
+Markdown or Property payload and never call a Zotero write. Core set/clear is
+the sole portable mutation owner; stable Analysis identity, operation, one-use
+capability, and current binding revision are rechecked before commit.
+
 Tightening the Triptych policy revokes an unused member added only by Full
 Access and affects later extension/continuation. An explicit researcher-approved
 member remains until its recorded expiry/revocation. Loosening policy affects
@@ -252,9 +267,9 @@ replaces, and reads back. Result truth is written into the same Run operation
 entry before the response. An I/O timeout after delivery returns outcome
 unknown and subsequent calls query the same operation ID.
 
-Member transactions are independent. Confirmed changes stay committed when a
+Member transactions are independent. Confirmed source or binding changes stay committed when a
 sibling conflicts or fails. Only Scholium-confirmed success advances that
-member's expected revision. External changes invalidate one member. The Run
+member's applicable revision. External changes invalidate one member. The Run
 cannot finalize or safely clear the write set until every started operation is
 written, not written, explicitly abandoned before mutation, or reconciled to a
 recovery duty. Manual End cancels a no-write Run; confirmed changes require
@@ -334,7 +349,7 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-11 Local Execution, exact
+`noteReviewStates`, and `resultArrivals` from schema-12 Local Execution, exact
 schema-9 Record reads, and schema-1 Note Reviews. The projections
 contains only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
@@ -364,7 +379,7 @@ preparation sheet, while failure leaves its inputs intact. The Action row
 derives Waiting, Running, Needs Attention, and its first repair only from the
 privacy-bounded activity projection. A
 compact status sheet reloads the exact Run for recopy, ending, or recovery and
-does not reconstruct the former academic-input/result surface.
+constructs no second academic-input/result surface.
 Confirmed reload rereads the exact Record ID through the existing Record use
 case and accepts no differently identified response; it adds no presentation
 cache or Evaluation owner.
@@ -433,7 +448,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-11
+the one current `methodImprovementRun` in its parent Local Execution schema-12
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every

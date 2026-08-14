@@ -3,12 +3,11 @@ import Combine
 import Foundation
 
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
-    case vaults
+    case triptychs
+    case propertyProfiles = "property-profiles"
     case appearance
-    case properties
-    case researchGuidance = "research-guidance"
     case attention
-    case zotero
+    case researchGuidance = "research-guidance"
 
     var id: String { rawValue }
 }
@@ -110,15 +109,13 @@ struct WorkspaceSettingsWorkspaceCapabilities {
     let portableContainerURL: (URL) async -> URL?
 }
 
-/// Machine-local installation and external-opening operations used by Settings.
+/// Delivery-neutral external-opening operations used by Settings.
 @MainActor
 struct WorkspaceSettingsMachineCapabilities {
-    let commandLineToolStatus: () async -> CommandLineToolStatus
-    let installCommandLineTool: () async throws -> CommandLineToolStatus
     let openExternal: (URL) -> Bool
 }
 
-/// Zotero operations used by the dedicated Settings pane.
+/// Zotero operations used by Research Guidance's Sources & Integrations pane.
 @MainActor
 struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo
@@ -252,7 +249,7 @@ final class WorkspaceSettingsModel: ObservableObject {
     init(
         capabilities: WorkspaceSettingsCapabilities,
         cssSnippetStore: CSSSnippetStore,
-        selectedPane: WorkspaceSettingsPane = .vaults
+        selectedPane: WorkspaceSettingsPane = .triptychs
     ) {
         self.selectedPane = selectedPane
         self.snapshot = WorkspaceSettingsSnapshot()
@@ -266,7 +263,7 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     /// Pure construction seam for feature tests and previews.
     init(
-        selectedPane: WorkspaceSettingsPane = .vaults,
+        selectedPane: WorkspaceSettingsPane = .triptychs,
         snapshot: WorkspaceSettingsSnapshot = WorkspaceSettingsSnapshot(),
         loadSnapshot: SnapshotLoader? = nil,
         activateTriptych: TriptychActivator? = nil,
@@ -330,26 +327,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             return await perform { try await loadSnapshot() }
         }
         return false
-    }
-
-    func commandLineToolStatus() async -> CommandLineToolStatus {
-        guard let capabilities else {
-            return CommandLineToolStatus(
-                state: .bundledToolUnavailable,
-                version: "Unknown",
-                installPath: "~/.local/bin/scholium",
-                isOnCurrentPATH: false,
-                repairMessage: "The command-line installer is unavailable in this preview."
-            )
-        }
-        return await capabilities.machine.commandLineToolStatus()
-    }
-
-    func installCommandLineTool() async throws -> CommandLineToolStatus {
-        guard let capabilities else {
-            throw CommandLineToolInstallationError.bundledToolUnavailable
-        }
-        return try await capabilities.machine.installCommandLineTool()
     }
 
     func refreshRegisteredVaults() async {

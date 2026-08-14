@@ -29,9 +29,31 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.zotero,
+                ScholiumL10n.Settings.triptychs,
                 locale: simplifiedChinese
-            ) == "Zotero"
+            ) == "脉络"
+        )
+        #expect(
+            ScholiumL10n.localized(
+                ScholiumL10n.Settings.propertyProfiles,
+                locale: simplifiedChinese
+            ) == "属性配置"
+        )
+        #expect(
+            ScholiumL10n.string("Ready to install", locale: simplifiedChinese)
+                == "可安装"
+        )
+        #expect(
+            ScholiumL10n.string("Installed and discoverable", locale: simplifiedChinese)
+                == "已安装且可发现"
+        )
+        #expect(
+            ScholiumL10n.string("Connected", locale: simplifiedChinese)
+                == "已连接"
+        )
+        #expect(
+            ScholiumL10n.string("Zotero Not Available", locale: simplifiedChinese)
+                == "Zotero 不可用"
         )
     }
 
@@ -82,6 +104,10 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Source basis", locale: simplifiedChinese) == "来源依据")
         #expect(ScholiumL10n.string("Research Record", locale: simplifiedChinese) == "研究记录")
         #expect(ScholiumL10n.string("Restore Access", locale: simplifiedChinese) == "恢复访问权限")
+        #expect(
+            ScholiumL10n.string("Quit Scholium", locale: simplifiedChinese)
+                == "退出 Scholium"
+        )
         #expect(ScholiumL10n.string("Hide Sidebar", locale: simplifiedChinese) == "隐藏边栏")
         #expect(ScholiumL10n.string("Show Sidebar", locale: simplifiedChinese) == "显示边栏")
         #expect(

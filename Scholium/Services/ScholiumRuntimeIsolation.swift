@@ -1,28 +1,54 @@
 import Foundation
 
-/// Resolves only an explicitly supplied Debug/QA isolation root. Release
-/// production never accepts this environment override or invents a fallback.
+/// Resolves an explicit Debug/QA root or the bounded packaged-performance
+/// driver root. Ordinary Release launches never accept an environment override
+/// or invent a fallback.
 enum ScholiumRuntimeIsolation {
     enum LayoutDirectionOverride: Equatable {
         case leftToRight
         case rightToLeft
     }
 
+    static let productionBundleIdentifier = "com.scholium.app"
     static let qaBundleIdentifier = "com.scholium.qa"
+    static let packagedPerformanceIsolationArgument =
+        "--scholium-performance-driver-isolation"
+
     static func homeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = CommandLine.arguments,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> URL? {
-#if DEBUG
-        if let explicit = nonempty(environment["SCHOLIUM_HOME"]) {
-            return URL(
-                fileURLWithPath: (explicit as NSString).expandingTildeInPath,
-                isDirectory: true
-            ).standardizedFileURL
+        guard let explicit = nonempty(environment["SCHOLIUM_HOME"]) else {
+            return nil
         }
+#if DEBUG
+        let isDebugBuild = true
+#else
+        let isDebugBuild = false
 #endif
-        _ = bundleIdentifier
-        return nil
+        guard allowsExplicitHome(
+            environment: environment,
+            arguments: arguments,
+            bundleIdentifier: bundleIdentifier,
+            isDebugBuild: isDebugBuild
+        ) else { return nil }
+        return URL(
+            fileURLWithPath: (explicit as NSString).expandingTildeInPath,
+            isDirectory: true
+        ).standardizedFileURL
+    }
+
+    static func allowsExplicitHome(
+        environment: [String: String],
+        arguments: [String],
+        bundleIdentifier: String?,
+        isDebugBuild: Bool
+    ) -> Bool {
+        if isDebugBuild { return true }
+        return bundleIdentifier == productionBundleIdentifier
+            && arguments.contains(packagedPerformanceIsolationArgument)
+            && nonempty(environment["SCHOLIUM_PERFORMANCE_RUN_ID"]) != nil
     }
 
     static func fixtureRootURL(
@@ -35,6 +61,26 @@ enum ScholiumRuntimeIsolation {
             ).standardizedFileURL
         }
         return nil
+    }
+
+    /// Supplies one synthetic existing vault path so XCUITest can exercise the
+    /// real Restore Access sheet without corrupting a persisted registration.
+    static func fileSelectionRecoveryProofURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> URL? {
+#if DEBUG
+        guard bundleIdentifier == qaBundleIdentifier,
+              environment["SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"] == "1",
+              let root = fixtureRootURL(environment: environment) else {
+            return nil
+        }
+        return root
+            .appendingPathComponent("01-analyses", isDirectory: true)
+            .standardizedFileURL
+#else
+        return nil
+#endif
     }
 
     /// Resolves the one deterministic native-window identity requested by UI

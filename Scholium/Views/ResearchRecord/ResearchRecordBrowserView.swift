@@ -907,53 +907,25 @@ private struct ResearchRecordAttentionPresentation {
 }
 
 @MainActor
-struct ResearchRecordsViewIndex: NSViewRepresentable {
+struct ResearchRecordsViewIndex: View {
     @Bindable var model: ResearchRecordBrowserModel
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(model: model)
-    }
-
-    func makeNSView(context: Context) -> NSSegmentedControl {
-        let control = NSSegmentedControl(
-            labels: Self.viewKinds.map(Self.title),
-            trackingMode: .selectOne,
-            target: context.coordinator,
-            action: #selector(Coordinator.selectionChanged(_:))
+    var body: some View {
+        ScholiumSegmentedControl(
+            selection: Binding(
+                get: { model.viewKind },
+                set: { model.viewKind = $0 }
+            ),
+            options: Self.viewKinds.map { viewKind in
+                ScholiumSegmentedControlOption(
+                    viewKind,
+                    title: Self.title(viewKind)
+                )
+            },
+            label: String(localized: "View"),
+            size: .compact,
+            accessibilityIdentifier: "scholium.researchRecords.view"
         )
-        control.segmentStyle = .capsule
-        control.segmentDistribution = .fillEqually
-        control.controlSize = .small
-        control.font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        control.borderShape = .capsule
-        control.selectedSegmentBezelColor =
-            ScholiumColorRole.raisedSurfaceBackground.nsColor
-        if #available(macOS 27.0, *) {
-            control.role = .tabs
-        }
-        control.identifier = NSUserInterfaceItemIdentifier(
-            "scholium.researchRecords.view"
-        )
-        control.setAccessibilityLabel(String(localized: "View"))
-        for (index, viewKind) in Self.viewKinds.enumerated() {
-            control.setTag(index, forSegment: index)
-            control.setToolTip(Self.title(viewKind), forSegment: index)
-        }
-        update(control)
-        return control
-    }
-
-    func updateNSView(_ nsView: NSSegmentedControl, context: Context) {
-        context.coordinator.model = model
-        update(nsView)
-    }
-
-    private func update(_ control: NSSegmentedControl) {
-        let selectedIndex = Self.viewKinds.firstIndex(of: model.viewKind) ?? 0
-        if control.selectedSegment != selectedIndex {
-            control.selectedSegment = selectedIndex
-        }
-        control.setAccessibilityValue(Self.title(model.viewKind))
     }
 
     private static let viewKinds = ResearchRecordsViewKind.allCases
@@ -967,25 +939,6 @@ struct ResearchRecordsViewIndex: NSViewRepresentable {
         }
     }
 
-    @MainActor
-    final class Coordinator: NSObject {
-        var model: ResearchRecordBrowserModel
-
-        init(model: ResearchRecordBrowserModel) {
-            self.model = model
-        }
-
-        @objc func selectionChanged(_ sender: NSSegmentedControl) {
-            guard Self.validSegment(sender.selectedSegment) else { return }
-            model.viewKind = ResearchRecordsViewIndex.viewKinds[
-                sender.selectedSegment
-            ]
-        }
-
-        private static func validSegment(_ segment: Int) -> Bool {
-            ResearchRecordsViewIndex.viewKinds.indices.contains(segment)
-        }
-    }
 }
 
 private struct ResearchRecordsRoundedLinkButton<Label: View>: View {

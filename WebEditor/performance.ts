@@ -39,6 +39,19 @@ export function recordEditorMetric(
   }
 }
 
+/// Runs after the browser has received one animation-frame opportunity and
+/// crossed into the following task. The frame callback itself runs before
+/// paint, so it is not a valid key-to-painted-edit endpoint.
+export function scheduleAfterNextPaint(
+  callback: () => void,
+  requestFrame: (callback: FrameRequestCallback) => number =
+    window.requestAnimationFrame.bind(window),
+  scheduleTask: (callback: () => void) => number =
+    (task) => window.setTimeout(task, 0),
+) {
+  requestFrame(() => { scheduleTask(callback); });
+}
+
 export function sampleEditorMemory(documentLength: number) {
   const memory = (performance as Performance & {memory?: {usedJSHeapSize?: number}}).memory;
   const usedBytes = memory?.usedJSHeapSize;

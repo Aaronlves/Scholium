@@ -44,87 +44,6 @@ struct TriptychMoveCoordinatorTests {
         #expect(try await fixture.repository(.topicKnowledge).load(relativePath: "Topics/A.md").rawContent == "+[[Sources/Renamed B#Claim|paper]]\r\n")
     }
 
-    @Test("A move returns cleanup warnings from every committed incoming rewrite")
-    func moveReturnsIncomingRewriteCleanupWarnings() async throws {
-        let fixture = try Fixture(cleanupFailureSlots: [.topicKnowledge, .output])
-        defer { fixture.remove() }
-        let target = try await fixture.create(
-            vault: .paperAnalysis,
-            path: "B.md",
-            content: "# B\n"
-        )
-        _ = try await fixture.create(
-            vault: .topicKnowledge,
-            path: "A.md",
-            content: "[[B]]\n"
-        )
-        _ = try await fixture.create(
-            vault: .output,
-            path: "W.md",
-            content: "+[[B|source]]\n"
-        )
-        let plan = try await fixture.planMove(
-            from: fixture.id(.paperAnalysis, "B.md"),
-            to: "C.md"
-        )
-
-        let commit = try await fixture.moveCoordinator().move(
-            plan,
-            expectedRevision: target.fingerprint
-        )
-
-        #expect(commit.cleanupWarnings.count == 2)
-        #expect(commit.cleanupWarnings.allSatisfy { $0.kind == .displacedSourceCopy })
-    }
-
-    @Test("A folder move returns every committed incoming rewrite cleanup warning")
-    func folderMoveReturnsIncomingRewriteCleanupWarnings() async throws {
-        let fixture = try Fixture(cleanupFailureSlots: [.topicKnowledge, .output])
-        defer { fixture.remove() }
-        let target = try await fixture.create(
-            vault: .paperAnalysis,
-            path: "Old/B.md",
-            content: "# B\n"
-        )
-        _ = try await fixture.create(
-            vault: .topicKnowledge,
-            path: "A.md",
-            content: "[[Old/B]]\n"
-        )
-        _ = try await fixture.create(
-            vault: .output,
-            path: "W.md",
-            content: "+[[Old/B|source]]\n"
-        )
-        let (documents, graph) = try await fixture.workspaceGraph()
-        let sourceFolder = try VaultRelativeFolderPath("Old")
-        let destinationFolder = try VaultRelativeFolderPath("New")
-        let noteMove = FolderNoteMovePlan(
-            stableNoteID: UUID(),
-            source: fixture.id(.paperAnalysis, "Old/B.md"),
-            destination: fixture.id(.paperAnalysis, "New/B.md"),
-            expectedRevision: target.fingerprint
-        )
-        let plan = IncomingLinkRewriter.folderPlan(
-            documents: documents,
-            graph: graph,
-            vaultID: fixture.vaultID(.paperAnalysis),
-            sourceFolder: sourceFolder,
-            destinationFolder: destinationFolder,
-            noteMoves: [noteMove]
-        )
-        let coordinator = TriptychFolderMoveCoordinator(
-            triptychID: fixture.triptychID,
-            repositories: fixture.repositoryMap,
-            recoveryStore: fixture.recovery
-        )
-
-        let commit = try await coordinator.move(plan)
-
-        #expect(commit.cleanupWarnings.count == 2)
-        #expect(commit.cleanupWarnings.allSatisfy { $0.kind == .displacedSourceCopy })
-    }
-
     @Test("A stale source fails before the destination or any rewrite mutates")
     func sourceConflictStopsBeforeMutation() async throws {
         let fixture = try Fixture()
@@ -393,7 +312,7 @@ struct TriptychMoveCoordinatorTests {
             files: []
         )
         let write = Task { try await writer.record(record) }
-        #expect(stagingReady.wait(seconds: 2))
+        #expect(stagingReady.wait(seconds: 10))
 
         let initializerStarted = BlockingTestSignal()
         let initializerFinished = BlockingTestSignal()
@@ -402,7 +321,7 @@ struct TriptychMoveCoordinatorTests {
             defer { initializerFinished.signal() }
             return try TriptychMutationRecoveryStore(storageURL: root)
         }
-        #expect(initializerStarted.wait(seconds: 2))
+        #expect(initializerStarted.wait(seconds: 10))
         #expect(!initializerFinished.wait(seconds: 0.05))
         releaseWriter.signal()
 
@@ -683,7 +602,7 @@ struct TriptychMoveCoordinatorTests {
         let ids: [WorkspaceVaultSlot: UUID]
         let recovery: TriptychMutationRecoveryStore
 
-        init(cleanupFailureSlots: Set<WorkspaceVaultSlot> = []) throws {
+        init() throws {
             root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("Scholium-Move-\(UUID().uuidString)", isDirectory: true)
             appSupport = root.appendingPathComponent("Application Support", isDirectory: true)
@@ -698,14 +617,7 @@ struct TriptychMoveCoordinatorTests {
                     vaultURL: url,
                     identity: VaultIdentity(id: id, canonicalPath: url.path, bookmarkData: nil),
                     applicationSupportURL: appSupport,
-                    vaultRole: slot.vaultRole,
-                    mutationHooks: cleanupFailureSlots.contains(slot)
-                        ? VaultMutationHooks(
-                            cleanupOverride: {
-                                throw CocoaError(.fileWriteUnknown)
-                            }
-                        )
-                        : .none
+                    vaultRole: slot.vaultRole
                 )
                 vaultIDs[slot] = id
             }

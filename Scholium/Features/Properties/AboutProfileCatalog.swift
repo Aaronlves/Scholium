@@ -5,7 +5,7 @@ struct AboutProfileGroup: Hashable {
     let keys: [String]
 }
 
-enum WorkspacePropertyAuthorization {
+enum WorkspaceAboutConfiguration {
     static func configuration(
         settings: TriptychSettings,
         slot: WorkspaceVaultSlot,
@@ -14,8 +14,7 @@ enum WorkspacePropertyAuthorization {
         guard isAuthoritative else {
             return VaultPropertiesConfiguration(
                 newNoteYAML: nil,
-                visibleFields: [],
-                editableFields: []
+                visibleFields: []
             )
         }
         return settings.properties[slot]
@@ -49,9 +48,6 @@ enum PropertiesSettingsCandidateBuilder {
                 for: profile,
                 visibleFields: configuration.visibleFields
             ).flatMap(\.keys)
-            configuration.editableFields.removeAll {
-                !ResearcherPropertyPolicy.isHumanEditable($0)
-            }
             configuration.newNoteYAML = seedDrafts[slot]
             candidates[slot] = configuration
         }
@@ -81,7 +77,6 @@ enum AboutProfileCatalog {
     }
 
     static func allowsOptionalField(_ key: String, profile: SchemaProfileID) -> Bool {
-        guard !ResearcherPropertyPolicy.isHidden(key) else { return false }
         return !(profile == .analysis && key == "title")
     }
 

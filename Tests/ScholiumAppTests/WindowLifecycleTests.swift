@@ -522,6 +522,7 @@ struct WindowLifecycleTests {
         #expect(first.splitViewItems[0].canCollapseFromWindowResize)
         #expect(!first.splitViewItems[1].canCollapse)
         #expect(!first.splitViewItems[1].canCollapseFromWindowResize)
+        #expect(!first.splitViewItems[2].canCollapse)
 
         first.setLibraryVisible(false, animated: false)
         first.setResearchInspectorVisible(true, animated: false)
@@ -545,6 +546,7 @@ struct WindowLifecycleTests {
         )
 
         let inspectorItem = try #require(controller.splitViewItems.last)
+        #expect(!inspectorItem.canCollapse)
         #expect(
             inspectorItem.collapseBehavior
                 == .preferResizingSiblingsWithFixedSplitView
@@ -555,6 +557,63 @@ struct WindowLifecycleTests {
         #expect(inspectorItem.isCollapsed)
         controller.setResearchInspectorVisible(true, animated: false)
         #expect(!inspectorItem.isCollapsed)
+    }
+
+    @Test("Library collapse assigns released width to Document without resizing Inspector")
+    func libraryCollapseKeepsResearchInspectorWidthStable() throws {
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+            initialLibraryVisible: true,
+            initialApparatusVisible: true,
+            documentTabs: [],
+            selectedDocumentTabID: nil,
+            selectDocumentTab: { _ in },
+            closeDocumentTab: { _ in },
+            libraryVisibilityDidChange: { _ in },
+            researchInspectorVisibilityDidChange: { _ in },
+            splitControllerDidAttach: { _ in },
+            splitControllerDidDetach: { _ in },
+            library: Text("Library"),
+            document: Text("Document"),
+            apparatus: Text("Research")
+        )
+        _ = controller.view
+        controller.view.frame = NSRect(x: 0, y: 0, width: 1_180, height: 760)
+        controller.viewWillAppear()
+        controller.view.layoutSubtreeIfNeeded()
+
+        let libraryItem = try #require(controller.splitViewItems.first)
+        let documentItem = controller.splitViewItems[1]
+        let inspectorItem = try #require(controller.splitViewItems.last)
+        let documentView = controller.splitView.arrangedSubviews[1]
+        let inspectorView = try #require(controller.splitView.arrangedSubviews.last)
+        #expect(
+            documentItem.holdingPriority.rawValue
+                < inspectorItem.holdingPriority.rawValue
+        )
+        controller.splitView.setPosition(
+            ScholiumMetrics.Library.minimumReadableWidth,
+            ofDividerAt: 0
+        )
+        controller.splitView.setPosition(
+            controller.splitView.bounds.maxX - 360,
+            ofDividerAt: 1
+        )
+        controller.view.layoutSubtreeIfNeeded()
+
+        let initialDocumentWidth = documentView.frame.width
+        let initialInspectorWidth = inspectorView.frame.width
+        controller.setLibraryVisible(false, animated: false)
+
+        #expect(libraryItem.isCollapsed)
+        #expect(documentView.frame.width > initialDocumentWidth)
+        #expect(abs(inspectorView.frame.width - initialInspectorWidth) < 1)
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
+
+        controller.setLibraryVisible(true, animated: false)
+        #expect(!libraryItem.isCollapsed)
+        #expect(abs(documentView.frame.width - initialDocumentWidth) < 1)
+        #expect(abs(inspectorView.frame.width - initialInspectorWidth) < 1)
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
     }
 
     @Test("Research Inspector divider resizes one pane while its trailing edge stays fixed")
@@ -591,7 +650,12 @@ struct WindowLifecycleTests {
             ofDividerAt: dividerIndex
         )
         controller.view.layoutSubtreeIfNeeded()
-        #expect(abs(inspectorView.frame.width - 440) < 1)
+        #expect(
+            abs(
+                inspectorView.frame.width
+                    - (440 - controller.splitView.dividerThickness)
+            ) < 1
+        )
         #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
 
         controller.splitView.setPosition(
@@ -599,7 +663,17 @@ struct WindowLifecycleTests {
             ofDividerAt: dividerIndex
         )
         controller.view.layoutSubtreeIfNeeded()
+        #expect(!inspectorItem.isCollapsed)
+        #expect(
+            inspectorView.frame.width
+                >= ScholiumMetrics.Apparatus.minimumReadableWidth
+        )
+        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
+
+        controller.setResearchInspectorVisible(false, animated: false)
         #expect(inspectorItem.isCollapsed)
+        controller.setResearchInspectorVisible(true, animated: false)
+        #expect(!inspectorItem.isCollapsed)
 
         controller.splitView.setPosition(
             controller.splitView.bounds.maxX - 360,
@@ -607,7 +681,12 @@ struct WindowLifecycleTests {
         )
         controller.view.layoutSubtreeIfNeeded()
         #expect(!inspectorItem.isCollapsed)
-        #expect(abs(inspectorView.frame.width - 360) < 1)
+        #expect(
+            abs(
+                inspectorView.frame.width
+                    - (360 - controller.splitView.dividerThickness)
+            ) < 1
+        )
         #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
 
         let apparatusContainer = try #require(

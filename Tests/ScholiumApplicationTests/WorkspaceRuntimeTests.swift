@@ -5,6 +5,286 @@ import Testing
 
 @Suite("Headless workspace runtime")
 struct WorkspaceRuntimeTests {
+    @Test("Portable Analysis Zotero bindings project through a reopened workspace")
+    func portableAnalysisZoteroBindingProjectsOnOpen() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let firstRuntime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
+        let firstSnapshot = try await firstHandle.snapshot()
+        let firstProjection = try #require(firstSnapshot.discovery.catalog.notes.first {
+            $0.reference.vaultID == fixture.analysisNoteID.vaultID
+                && $0.reference.relativePath == fixture.analysisNoteID.relativePath
+        })
+        let noteID = try #require(
+            firstProjection.reference.stableNoteID.flatMap(UUID.init(uuidString:))
+        )
+        let original = try await firstHandle.zoteroBindings.zoteroBindings()
+        let expected = try AnalysisZoteroBinding(
+            noteID: noteID,
+            library: .user,
+            itemKey: "QAITEM01"
+        )
+        _ = try await firstHandle.zoteroBindings.setZoteroBinding(
+            expected,
+            expectedRevision: original.revision
+        )
+        await firstRuntime.shutdown()
+
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.snapshot()
+        let projected = try #require(snapshot.discovery.catalog.notes.first {
+            $0.reference.vaultID == fixture.analysisNoteID.vaultID
+                && $0.reference.relativePath == fixture.analysisNoteID.relativePath
+        })
+
+        #expect(projected.reference.stableNoteID == noteID.uuidString.lowercased())
+        #expect(projected.zoteroBinding == expected)
+        await runtime.shutdown()
+    }
+
+    @Test("Fresh machine registration preserves a portable Triptych and vault identities")
+    func freshRegistrationPreservesPortableIdentities() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let manifestURL = fixture.rootURL.appendingPathComponent(
+            ".scholium/manifest.json"
+        )
+        let originalManifest = try Data(contentsOf: manifestURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let manifest = try decoder.decode(
+            TriptychManifest.self,
+            from: originalManifest
+        )
+        let freshSupport = fixture.rootURL.appendingPathComponent(
+            "Fresh Application Support",
+            isDirectory: true
+        )
+        let freshRegistry = fixture.rootURL.appendingPathComponent(
+            "Fresh Registry",
+            isDirectory: true
+        )
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: freshSupport,
+            workspaceRegistryStorageURL: freshRegistry
+        )))
+
+        let handle = try await runtime.configureTriptych(
+            paperAnalysisURL: fixture.analysesURL,
+            topicKnowledgeURL: fixture.topicsURL,
+            outputURL: fixture.worksURL,
+            portableContainerURL: fixture.rootURL,
+            triptychName: "Reopened Fixture"
+        )
+
+        #expect(handle.assignment.id == manifest.id)
+        for slot in WorkspaceVaultSlot.allCases {
+            #expect(handle.assignment.vault(for: slot)?.id == manifest.vaultIDs[slot])
+        }
+        #expect(try Data(contentsOf: manifestURL) == originalManifest)
+        await runtime.shutdown()
+    }
+
+    @Test("Invalid portable identity fails before fresh machine registration mutates local state")
+    func invalidPortableIdentityFailsBeforeRegistration() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let manifestURL = fixture.rootURL.appendingPathComponent(
+            ".scholium/manifest.json"
+        )
+        let invalidManifest = Data("{\"schemaVersion\":999}".utf8)
+        try invalidManifest.write(to: manifestURL, options: .atomic)
+        let freshSupport = fixture.rootURL.appendingPathComponent(
+            "Invalid Fresh Application Support",
+            isDirectory: true
+        )
+        let freshRegistry = fixture.rootURL.appendingPathComponent(
+            "Invalid Fresh Registry",
+            isDirectory: true
+        )
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: freshSupport,
+            workspaceRegistryStorageURL: freshRegistry
+        )))
+
+        await #expect(throws: (any Error).self) {
+            _ = try await runtime.configureTriptych(
+                paperAnalysisURL: fixture.analysesURL,
+                topicKnowledgeURL: fixture.topicsURL,
+                outputURL: fixture.worksURL,
+                portableContainerURL: fixture.rootURL
+            )
+        }
+
+        #expect(try Data(contentsOf: manifestURL) == invalidManifest)
+        #expect(!FileManager.default.fileExists(
+            atPath: freshSupport.appendingPathComponent("vault-registry.json").path
+        ))
+        await runtime.shutdown()
+    }
+
+    @Test("Rejected overlapping vaults leave every machine-local registry unchanged")
+    func overlapFailsBeforeAnyRegistrationMutation() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let registryURLs = [
+            fixture.applicationSupportURL.appendingPathComponent("vault-registry.json"),
+            fixture.applicationSupportURL.appendingPathComponent(
+                "portable-control-access.json"
+            ),
+            fixture.registryStorageURL.appendingPathComponent(
+                "workspace-registry-v2.json"
+            ),
+        ]
+        let originalBytes = try registryURLs.map { try Data(contentsOf: $0) }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+
+        await #expect(throws: WorkspaceRegistryError.self) {
+            _ = try await runtime.configureTriptych(
+                paperAnalysisURL: fixture.analysesURL,
+                topicKnowledgeURL: fixture.analysesURL,
+                outputURL: fixture.worksURL,
+                portableContainerURL: fixture.rootURL
+            )
+        }
+
+        for (url, expected) in zip(registryURLs, originalBytes) {
+            #expect(try Data(contentsOf: url) == expected)
+        }
+        await runtime.shutdown()
+    }
+
+    @Test("Two portable manifests cannot assign different identities to one shared vault")
+    func sharedVaultIdentityConflictLeavesRegistriesUnchanged() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let secondRoot = fixture.rootURL.appendingPathComponent(
+            "Second Triptych",
+            isDirectory: true
+        )
+        let secondTopics = secondRoot.appendingPathComponent("Topics", isDirectory: true)
+        let secondWorks = secondRoot.appendingPathComponent("Works", isDirectory: true)
+        let secondControl = secondRoot.appendingPathComponent(".scholium", isDirectory: true)
+        for url in [secondTopics, secondWorks, secondControl] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let secondManifest = TriptychManifest(vaultIDs: [
+            .paperAnalysis: UUID(),
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let secondManifestURL = secondControl.appendingPathComponent("manifest.json")
+        try encoder.encode(secondManifest).write(to: secondManifestURL, options: .atomic)
+
+        let registryURLs = [
+            fixture.applicationSupportURL.appendingPathComponent("vault-registry.json"),
+            fixture.applicationSupportURL.appendingPathComponent(
+                "portable-control-access.json"
+            ),
+            fixture.registryStorageURL.appendingPathComponent(
+                "workspace-registry-v2.json"
+            ),
+        ]
+        let originalRegistryBytes = try registryURLs.map { try Data(contentsOf: $0) }
+        let originalManifestBytes = try Data(contentsOf: secondManifestURL)
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+
+        await #expect(throws: VaultIdentityRegistryError.self) {
+            _ = try await runtime.configureTriptych(
+                paperAnalysisURL: fixture.analysesURL,
+                topicKnowledgeURL: secondTopics,
+                outputURL: secondWorks,
+                portableContainerURL: secondRoot
+            )
+        }
+
+        for (url, expected) in zip(registryURLs, originalRegistryBytes) {
+            #expect(try Data(contentsOf: url) == expected)
+        }
+        #expect(try Data(contentsOf: secondManifestURL) == originalManifestBytes)
+        await runtime.shutdown()
+    }
+
+    @Test("One shared vault identity cannot be assigned two Triptych roles")
+    func sharedVaultRoleConflictLeavesRegistriesUnchanged() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let analysesID = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)?.id
+        )
+        let secondRoot = fixture.rootURL.appendingPathComponent(
+            "Role Conflict Triptych",
+            isDirectory: true
+        )
+        let secondAnalyses = secondRoot.appendingPathComponent(
+            "Analyses",
+            isDirectory: true
+        )
+        let secondWorks = secondRoot.appendingPathComponent("Works", isDirectory: true)
+        let secondControl = secondRoot.appendingPathComponent(".scholium", isDirectory: true)
+        for url in [secondAnalyses, secondWorks, secondControl] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let secondManifest = TriptychManifest(vaultIDs: [
+            .paperAnalysis: UUID(),
+            .topicKnowledge: analysesID,
+            .output: UUID(),
+        ])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let secondManifestURL = secondControl.appendingPathComponent("manifest.json")
+        try encoder.encode(secondManifest).write(to: secondManifestURL, options: .atomic)
+
+        let registryURLs = [
+            fixture.applicationSupportURL.appendingPathComponent("vault-registry.json"),
+            fixture.applicationSupportURL.appendingPathComponent(
+                "portable-control-access.json"
+            ),
+            fixture.registryStorageURL.appendingPathComponent(
+                "workspace-registry-v2.json"
+            ),
+        ]
+        let originalRegistryBytes = try registryURLs.map { try Data(contentsOf: $0) }
+        let originalManifestBytes = try Data(contentsOf: secondManifestURL)
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+
+        await #expect(throws: WorkspaceRegistryError.self) {
+            _ = try await runtime.configureTriptych(
+                paperAnalysisURL: secondAnalyses,
+                topicKnowledgeURL: fixture.analysesURL,
+                outputURL: secondWorks,
+                portableContainerURL: secondRoot
+            )
+        }
+
+        for (url, expected) in zip(registryURLs, originalRegistryBytes) {
+            #expect(try Data(contentsOf: url) == expected)
+        }
+        #expect(try Data(contentsOf: secondManifestURL) == originalManifestBytes)
+        await runtime.shutdown()
+    }
+
     @Test("Document preview API is source-revision and graph-generation checked")
     func revisionCheckedDocumentPreviewCatalog() async throws {
         let fixture = try await ApplicationFixture.make()
@@ -320,6 +600,143 @@ struct WorkspaceRuntimeTests {
         #expect(await handle.ownedBackgroundTaskCount == 0)
         #expect(await handle.watcherReadinessEvidence == nil)
         #expect(await iterator.next() == nil)
+    }
+
+    @Test("Live opening publishes one usable vault before the complete Triptych")
+    func progressiveLiveOpening() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let measurementDocumentCount = 16
+        let measurementBody = String(
+            repeating: "A bounded catalog measurement paragraph.\n\n",
+            count: 96
+        )
+        for index in 0..<measurementDocumentCount {
+            try Data(
+                "# Catalog Measurement \(index)\n\n\(measurementBody)".utf8
+            ).write(to: fixture.analysesURL.appendingPathComponent(
+                "Catalog Measurement \(index).md"
+            ))
+        }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(
+            id: fixture.assignment.id,
+            openingVault: .paperAnalysis
+        )
+        let activationGate = OpeningActivationReconciliationGate()
+        await handle.setProgressiveActivationReconciliationBarrierForTesting {
+            await activationGate.wait()
+        }
+        let stream = await handle.events.events()
+        var iterator = stream.makeAsyncIterator()
+        let openingEvent = try #require(await iterator.next())
+        let openingMeasurement = await handle.latestRefreshMeasurement
+
+        #expect(openingEvent.snapshot.phase == .opening(
+            availableVault: .paperAnalysis
+        ))
+        #expect(openingMeasurement.readDuration <= openingMeasurement.totalDuration)
+        #expect(openingEvent.snapshot.vaults.map(\.slot) == [.paperAnalysis])
+        #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
+        #expect(openingEvent.snapshot.discovery.catalog.graph == nil)
+        #expect(!openingEvent.snapshot.research.finishedResearchRecordProjectionIsComplete)
+        #expect(await handle.ownedBackgroundTaskCount >= 2)
+
+        let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
+        #expect(openedDocument.rawContent.contains("Freedom enables action"))
+        do {
+            _ = try await handle.discovery.search(SearchRequest(
+                query: "freedom",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 20
+            ))
+            Issue.record("Opening Search presented an incomplete Triptych as complete.")
+        } catch let error as ScholiumApplicationError {
+            guard case .workspaceStillLoading(let id) = error else {
+                Issue.record("Unexpected opening Search error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            #expect(id == fixture.assignment.id)
+        }
+
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(try await handle.snapshot().phase == .opening(
+            availableVault: .paperAnalysis
+        ))
+        await handle.openingPresentationDidComplete()
+        await activationGate.waitUntilArrived()
+        let phaseWhileReconciling = try? await handle.snapshot().phase
+        #expect(phaseWhileReconciling == .opening(availableVault: .paperAnalysis))
+        #expect(await handle.watcherReadinessEvidence == nil)
+        await activationGate.release()
+        await handle.setProgressiveActivationReconciliationBarrierForTesting(nil)
+
+        var completed = false
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(20))
+            if try await handle.snapshot().phase.isComplete {
+                completed = true
+                break
+            }
+        }
+        #expect(completed)
+        let completeEvent = try #require(await iterator.next())
+        #expect(completeEvent.snapshot.phase == .complete)
+        #expect(completeEvent.snapshot.vaults.count == 3)
+        #expect(
+            completeEvent.snapshot.vaults.flatMap(\.documents).count
+                == 3 + measurementDocumentCount
+        )
+        #expect(completeEvent.snapshot.discovery.searchGeneration != nil)
+        #expect(completeEvent.snapshot.discovery.catalog.graph != nil)
+
+        let response = try await handle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        #expect(!response.results.isEmpty)
+        #expect(await handle.watcherReadinessEvidence != nil)
+
+        await runtime.shutdown()
+        #expect(await handle.ownedBackgroundTaskCount == 0)
+        #expect(await iterator.next() == nil)
+    }
+
+    @Test("Library-only progressive opening completes through its bounded fallback")
+    func progressiveLiveOpeningWithoutDocumentPresentation() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(
+            id: fixture.assignment.id,
+            openingVault: .paperAnalysis
+        )
+        #expect(try await handle.snapshot().phase == .opening(
+            availableVault: .paperAnalysis
+        ))
+
+        var completed = false
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(20))
+            if try await handle.snapshot().phase.isComplete {
+                completed = true
+                break
+            }
+        }
+        #expect(completed)
+
+        await runtime.shutdown()
+        #expect(await handle.ownedBackgroundTaskCount == 0)
     }
 
     @Test("Native live events publish one stable-identity move to every window")
@@ -769,6 +1186,45 @@ struct WorkspaceRuntimeTests {
         await cleanRuntime.shutdown()
     }
 
+    @Test("Library projection defers Search offsets without rereading source")
+    func sourceCatalogDefersSearchProjection() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let services = await handle.services
+        let catalog = VaultSourceCatalog(
+            repository: try #require(
+                services.repositories[fixture.analysisNoteID.vaultID]
+            ),
+            vaultRole: .sourceCorpus
+        )
+
+        let library = try await catalog.snapshot(
+            refreshFolders: false,
+            projectionRequirement: .library
+        )
+        #expect(!library.documents.isEmpty)
+        #expect(library.semantics.count == library.documents.count)
+        #expect(library.searchProjections.isEmpty)
+        #expect(library.measurement.readFiles == library.documents.count)
+        #expect(library.measurement.projectedDocuments == 0)
+
+        let search = try await catalog.snapshot(
+            refreshFolders: false,
+            projectionRequirement: .search
+        )
+        #expect(search.documents.map(\.fingerprint) == library.documents.map(\.fingerprint))
+        #expect(search.searchProjections.count == search.documents.count)
+        #expect(search.measurement.readFiles == 0)
+        #expect(search.measurement.parsedDocuments == 0)
+        #expect(search.measurement.projectedDocuments == search.documents.count)
+        await runtime.shutdown()
+    }
+
     @Test("A failed source reconcile retains the prior complete catalog generation")
     func failedCatalogReconcileIsTransactional() async throws {
         let fixture = try await ApplicationFixture.make()
@@ -834,6 +1290,29 @@ struct WorkspaceRuntimeTests {
         try await Task.sleep(for: .seconds(1))
         #expect(await handle.events.publishedGeneration == committedGeneration)
         await runtime.shutdown()
+    }
+}
+
+private actor OpeningActivationReconciliationGate {
+    private var arrived = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        arrived = true
+        arrivalContinuation?.resume()
+        arrivalContinuation = nil
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilArrived() async {
+        if arrived { return }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
     }
 }
 

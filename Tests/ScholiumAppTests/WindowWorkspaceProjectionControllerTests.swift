@@ -61,6 +61,50 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(commit.retainedDeletedDocumentPath == nil)
     }
 
+    @Test("Opening phase keeps the available Library and advances to complete")
+    func openingPhaseProjection() throws {
+        let fixture = try Fixture()
+        let opening = fixture.snapshot(
+            activeSource: "# Available\n",
+            searchSequence: 1,
+            phase: .opening(availableVault: .paperAnalysis)
+        )
+        let controller = WindowWorkspaceProjectionController {
+            opening.discovery.catalog
+        }
+
+        let openingCommit = controller.activate(
+            snapshot: opening,
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(location: .workspace)
+        )
+        #expect(openingCommit.snapshotPhase == .opening(
+            availableVault: .paperAnalysis
+        ))
+        #expect(controller.snapshotPhase == openingCommit.snapshotPhase)
+        #expect(controller.notes.map(\.relativePath) == ["Active.md"])
+        guard case .opening? = controller.derivedRefreshStatus else {
+            Issue.record("The usable-vault projection was presented as complete.")
+            return
+        }
+
+        let complete = fixture.snapshot(
+            activeSource: "# Available\n",
+            searchSequence: 2
+        )
+        let completeCommit = controller.receive(
+            .snapshot(WorkspaceSnapshotEvent(generation: 1, snapshot: complete)),
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(location: .workspace)
+        )
+        #expect(completeCommit?.snapshotPhase == .complete)
+        #expect(controller.snapshotPhase == .complete)
+        guard case .current? = controller.derivedRefreshStatus else {
+            Issue.record("The complete projection did not clear opening state.")
+            return
+        }
+    }
+
     @Test("Runtime and generation gates reject stale projection events")
     func runtimeAndGenerationGate() throws {
         let fixture = try Fixture()
@@ -686,7 +730,8 @@ struct WindowWorkspaceProjectionControllerTests {
             activeSource: String?,
             activePath: String = "Active.md",
             folders: [VaultRelativeFolderPath] = [],
-            searchSequence: Int
+            searchSequence: Int,
+            phase: WorkspaceSnapshotPhase = .complete
         ) -> WorkspaceSnapshot {
             var documents: [WorkspaceNoteSnapshot] = []
             if let activeSource {
@@ -729,15 +774,18 @@ struct WindowWorkspaceProjectionControllerTests {
             return WorkspaceSnapshot(
                 triptych: triptych,
                 mode: .live,
+                phase: phase,
                 generatedAt: Date(),
                 vaults: [vaultSnapshot],
                 discovery: WorkspaceDiscoverySnapshot(
                     catalog: catalog,
-                    searchGeneration: SearchGenerationID(
-                        triptychID: triptych.id,
-                        sequence: searchSequence,
-                        sourceManifestHash: "manifest-\(searchSequence)"
-                    )
+                    searchGeneration: phase.isComplete
+                        ? SearchGenerationID(
+                            triptychID: triptych.id,
+                            sequence: searchSequence,
+                            sourceManifestHash: "manifest-\(searchSequence)"
+                        )
+                        : nil
                 ),
                 research: WorkspaceResearchSnapshot(
                     critiques: [],

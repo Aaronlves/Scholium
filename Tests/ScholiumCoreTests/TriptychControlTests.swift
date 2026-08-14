@@ -5,72 +5,104 @@ import ScholiumContracts
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
-    @Test("Stored Scholium templates adopt the current bundled response contract")
-    func bundledTemplateUpdateDoesNotBecomeResearcherCustomization() throws {
-        let encoder = JSONEncoder()
-        var object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(TriptychSettings())) as? [String: Any]
+    @Test("Portable attachment records retain only stable identity and typed location")
+    func attachmentCatalogRegistrationAndRemoval() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
         )
-        var templates = try #require(object["promptTemplates"] as? [[String: Any]])
-        let dialogueIndex = try #require(templates.firstIndex {
-            ($0["id"] as? String) == ResearchPromptTemplate.defaultDialogue.id.uuidString
-        })
-        templates[dialogueIndex]["source"] = "Old bundled {{researcher_instruction}} {{selected_notes}} {{editing_rules}}"
-        templates[dialogueIndex]["origin"] = ResearchPromptOrigin.scholium.rawValue
-        object["promptTemplates"] = templates
-        let data = try JSONSerialization.data(withJSONObject: object)
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let vaultID = try #require(vaultIDs[.output])
+        let path = try AttachmentRelativePath("Attachments/id/Figure.png")
+        let preferredID = UUID()
 
+        let first = try await store.registerAttachment(
+            vaultID: vaultID,
+            location: .vaultRelative(path),
+            preferredID: preferredID
+        )
+        let reused = try await store.registerAttachment(
+            vaultID: vaultID,
+            location: .vaultRelative(path),
+            preferredID: UUID()
+        )
+
+        #expect(first.created)
+        #expect(first.record.id == preferredID)
+        #expect(!reused.created)
+        #expect(reused.record == first.record)
+        #expect(try await store.attachmentRecords() == [first.record])
+        let recordURL = fixture.root
+            .appendingPathComponent(".scholium/attachments/v1")
+            .appendingPathComponent("\(preferredID.uuidString.lowercased()).json")
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
+                as? [String: Any]
+        )
+        #expect(Set(object.keys) == ["schemaVersion", "id", "vaultID", "location"])
+
+        try await store.removeAttachment(first.record)
+        #expect(try await store.attachmentRecords().isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: recordURL.path))
+    }
+
+    @Test("Portable Settings schema has one bounded set of owners")
+    func portableSettingsSchemaOwners() throws {
+        let object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
+        )
+
+        #expect(Set(object.keys) == [
+            "schemaVersion",
+            "properties",
+            "analysisAgentCreation",
+            "attentionDismissalDays",
+        ])
+        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 4)
+    }
+
+    @Test("The isolated QA Settings fixture uses only the current schema")
+    func qaSettingsFixtureUsesCurrentSchema() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
+            "Tools/Fixtures/qa-triptych-settings-v4.json"
+        ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
-        #expect(settings.activePromptTemplate(for: .dialogue) == .defaultDialogue)
-        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("concise attributed academic result"))
-        #expect(settings.activePromptTemplate(for: .dialogue).source.localizedCaseInsensitiveContains("authorizes no research-note mutation"))
-        #expect(!settings.promptTemplates.contains { $0.name == "Migrated Dialogue" })
-    }
-
-    @Test("Deleting an active researcher template restores the Scholium default")
-    func deletingActiveTemplateRestoresDefault() {
-        var settings = TriptychSettings()
-        let custom = ResearchPromptTemplate(
-            kind: .dialogue,
-            name: "Focused Dialogue",
-            source: TriptychSettings.defaultDialoguePromptTemplate + "\nKeep the comparison narrow."
+        #expect(settings.schemaVersion == TriptychSettings.currentSchemaVersion)
+        try TriptychSettingsValidator.validate(settings)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        settings.savePromptTemplate(custom)
-        #expect(settings.activePromptTemplate(for: .dialogue).id == custom.id)
-
-        settings.deletePromptTemplate(id: custom.id)
-
-        #expect(settings.activePromptTemplate(for: .dialogue).id == ResearchPromptTemplate.defaultDialogue.id)
-    }
-
-    @Test("Prompt validation reports every missing required placeholder")
-    func promptValidationRequiresStructuralPlaceholders() {
-        let template = ResearchPromptTemplate(kind: .critique, name: "Incomplete", source: "Critique this Work.")
-
-        #expect(template.validationIssues.count == ResearchPromptKind.critique.requiredPlaceholders.count)
-        #expect(template.validationIssues.allSatisfy { $0.contains("Missing required placeholder") })
+        #expect(Set(object.keys) == [
+            "schemaVersion",
+            "properties",
+            "analysisAgentCreation",
+            "attentionDismissalDays",
+        ])
     }
 
     @Test("Properties configuration preserves order and removes duplicate fields")
     func propertiesConfigurationOrderingAndDeduplication() {
         var configuration = VaultPropertiesConfiguration(
             newNoteYAML: "tags: [draft]\r\n\r\n",
-            visibleFields: [" authors ", "publication_date", "authors", "", "type"],
-            editableFields: ["title", " title ", "tags"]
+            visibleFields: [" authors ", "publication_date", "authors", "", "type"]
         )
 
         #expect(configuration.newNoteYAML == "tags: [draft]\n\n")
         #expect(configuration.visibleFields == ["authors", "publication_date", "type"])
-        #expect(configuration.editableFields == ["title", "tags"])
 
         configuration.moveVisibleField("type", to: 0)
         configuration.setVisible(true, field: " access ")
         configuration.setVisible(false, field: "publication_date")
-        configuration.editableFields.append(" tags ")
 
         #expect(configuration.visibleFields == ["type", "authors", "access"])
-        #expect(configuration.editableFields == ["title", "tags"])
     }
 
     @Test("Seed normalization preserves keep-chomping trailing blank lines exactly")
@@ -80,8 +112,7 @@ struct TriptychControlTests {
         var settings = TriptychSettings()
         settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
             newNoteYAML: exact,
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         #expect(settings.properties[.paperAnalysis]?.newNoteYAML == expected)
         try TriptychSettingsValidator.validate(settings)
@@ -103,16 +134,13 @@ struct TriptychControlTests {
         let expected = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
                 newNoteYAML: "language: en\n",
-                visibleFields: ["authors", "publication_date", "type"],
-                editableFields: ["title", "authors"]
+                visibleFields: ["authors", "publication_date", "type"]
             ),
             .topicKnowledge: VaultPropertiesConfiguration(
-                visibleFields: ["aliases"],
-                editableFields: []
+                visibleFields: ["aliases"]
             ),
             .output: VaultPropertiesConfiguration(
-                visibleFields: ["work_type", "coauthors"],
-                editableFields: ["work_type", "coauthors"]
+                visibleFields: ["work_type", "coauthors"]
             ),
         ], analysisAgentCreation: AnalysisAgentCreationConfiguration(
             requiredFieldsBySourceType: [.journalArticle: ["title", "authors"]]
@@ -125,7 +153,6 @@ struct TriptychControlTests {
         #expect(loaded.settings.properties == expected.properties)
         #expect(loaded.settings.properties[.paperAnalysis]?.newNoteYAML == "language: en\n")
         #expect(loaded.settings.properties[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
-        #expect(loaded.settings.properties[.topicKnowledge]?.editableFields == [])
         #expect(loaded.settings.properties[.output]?.visibleFields == ["work_type", "coauthors"])
         #expect(loaded.settings.analysisAgentCreation.requiredFields(for: .journalArticle) == ["title", "authors"])
     }
@@ -134,8 +161,7 @@ struct TriptychControlTests {
     func propertiesConfigurationCompletesTriptych() {
         let settings = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                visibleFields: ["authors"],
-                editableFields: ["title"]
+                visibleFields: ["authors"]
             ),
         ])
 
@@ -145,8 +171,6 @@ struct TriptychControlTests {
         #expect(settings.properties[.output] == TriptychSettings.defaultProperties[.output])
         #expect(settings.properties[.output]?.visibleFields.contains("work_type") == true)
         #expect(settings.properties[.output]?.visibleFields.contains("kind") == false)
-        #expect(settings.properties[.output]?.editableFields.contains("coauthors") == true)
-        #expect(settings.properties[.output]?.editableFields.contains("authors") == false)
     }
 
     @Test("Settings save rejects a stale exact-byte revision without overwriting")
@@ -181,8 +205,7 @@ struct TriptychControlTests {
         var invalid = initial.settings
         invalid.properties[.paperAnalysis] = VaultPropertiesConfiguration(
             newNoteYAML: "authors:\n  - family: Scanlon\n",
-            visibleFields: invalid.properties[.paperAnalysis]?.visibleFields ?? [],
-            editableFields: invalid.properties[.paperAnalysis]?.editableFields ?? []
+            visibleFields: invalid.properties[.paperAnalysis]?.visibleFields ?? []
         )
         invalid.analysisAgentCreation = AnalysisAgentCreationConfiguration(
             requiredFieldsBySourceType: [.journalArticle: ["authors"]]
@@ -205,8 +228,7 @@ struct TriptychControlTests {
         var settings = TriptychSettings()
         settings.properties[.output] = VaultPropertiesConfiguration(
             newNoteYAML: "doi: custom-looking-but-analysis-canonical\n",
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validate(settings)
@@ -214,8 +236,7 @@ struct TriptychControlTests {
 
         settings.properties[.output] = VaultPropertiesConfiguration(
             newNoteYAML: "researcher_method: dialectical\n",
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         try TriptychSettingsValidator.validate(settings)
     }
@@ -229,12 +250,15 @@ struct TriptychControlTests {
         ))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
 
-        var invalidActive = TriptychSettings()
-        invalidActive.activePromptTemplateIDs[.dialogue] = UUID()
-        let invalidActiveBytes = try JSONEncoder().encode(invalidActive)
-        try invalidActiveBytes.write(to: url, options: .atomic)
+        var invalidObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
+        )
+        invalidObject["attentionDismissalDays"] = 0
+        let invalidBytes = try JSONSerialization.data(withJSONObject: invalidObject)
+        try invalidBytes.write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
-        #expect(try Data(contentsOf: url) == invalidActiveBytes)
+        #expect(try Data(contentsOf: url) == invalidBytes)
 
         try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsOldSchema(nil) = $0 { true } else { false } })
@@ -242,14 +266,20 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsFutureSchema(999) = $0 { true } else { false } })
 
-        try Data(#"{"schemaVersion":2,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        let oldSchemaBytes = Data(
+            #"{"schemaVersion":3,"promptTemplates":[],"activePromptTemplateIDs":{}}"#.utf8
+        )
+        try oldSchemaBytes.write(to: url, options: .atomic)
+        await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
+        #expect(try Data(contentsOf: url) == oldSchemaBytes)
+
+        try Data(#"{"schemaVersion":4,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
         var reviewed = TriptychSettings()
         reviewed.properties[.paperAnalysis] = VaultPropertiesConfiguration(
             newNoteYAML: "title: reserved\n",
-            visibleFields: [],
-            editableFields: []
+            visibleFields: []
         )
         try JSONEncoder().encode(reviewed).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
@@ -263,11 +293,15 @@ struct TriptychControlTests {
             uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
         ))
         let url = fixture.root.appendingPathComponent(".scholium/settings.json")
-        #expect((try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect((try await store.settingsLoadState()).authorizesAboutProjection)
 
-        var reviewable = TriptychSettings()
-        reviewable.activePromptTemplateIDs[.dialogue] = UUID()
-        let reviewableBytes = try JSONEncoder().encode(reviewable)
+        var reviewableObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
+        )
+        reviewableObject["attentionDismissalDays"] = 0
+        let reviewableBytes = try JSONSerialization.data(withJSONObject: reviewableObject)
+        let reviewable = try JSONDecoder().decode(TriptychSettings.self, from: reviewableBytes)
         try reviewableBytes.write(to: url, options: .atomic)
         guard case .needsReview(let decoded, let revision, let reason) =
             try await store.settingsLoadState() else {
@@ -277,7 +311,7 @@ struct TriptychControlTests {
         #expect(decoded == reviewable)
         #expect(revision.fingerprint == DocumentFingerprint(data: reviewableBytes))
         #expect(!reason.isEmpty)
-        #expect(!(try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)
         #expect(try Data(contentsOf: url) == reviewableBytes)
 
         try Data(#"{"properties":{}}"#.utf8).write(to: url, options: .atomic)
@@ -286,10 +320,10 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .futureSchema(999))
 
-        try Data(#"{"schemaVersion":2,"properties":"damaged"}"#.utf8)
+        try Data(#"{"schemaVersion":4,"properties":"damaged"}"#.utf8)
             .write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .corrupted)
-        #expect(!(try await store.settingsLoadState()).authorizesPropertyEditing)
+        #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)
     }
 
     @Test("An uncoordinated final-window replacement is preserved instead of overwritten")

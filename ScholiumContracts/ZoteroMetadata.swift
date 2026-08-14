@@ -88,15 +88,15 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
 
 /// The complete network boundary for Zotero reads. The generated request is
 /// always a bodyless GET to Zotero Desktop's loopback API and can address only
-/// item searches, one exact item, one exact collection label, or one exact
-/// attachment's local `/file/view/url` endpoint.
+/// the current user's group list, item searches, one exact item, one exact
+/// collection label, or one exact attachment's local `/file/view/url` endpoint.
 public enum ZoteroLocalRequestPolicy {
     public static func makeReadRequest(
         library: ZoteroLibraryIdentity = .user,
         path: String,
         query: [URLQueryItem] = []
     ) -> URLRequest? {
-        guard allowed(path: path),
+        guard allowed(path: path, library: library),
               (!isAttachmentFileURL(path) || query.isEmpty),
               Set(query.map(\.name)).isSubset(of: [
                 "format", "itemType", "q", "qmode", "limit",
@@ -136,7 +136,14 @@ public enum ZoteroLocalRequestPolicy {
         }
     }
 
-    private static func allowed(path: String) -> Bool {
+    private static func allowed(
+        path: String,
+        library: ZoteroLibraryIdentity
+    ) -> Bool {
+        if path == "groups" {
+            if case .user = library { return true }
+            return false
+        }
         if path == "items" { return true }
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         if components.count == 2,
@@ -362,6 +369,41 @@ public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
             collections: names,
             dateModified: dateModified
         )
+    }
+}
+
+/// One local Zotero library available to the first-party read-only adapter.
+/// The stable identity, rather than the display name, is persisted in a
+/// portable Analysis binding.
+public struct ZoteroLibraryMetadata: Codable, Hashable, Sendable, Identifiable {
+    public var id: ZoteroLibraryIdentity { identity }
+
+    public let identity: ZoteroLibraryIdentity
+    public let name: String
+
+    public init(identity: ZoteroLibraryIdentity, name: String) {
+        self.identity = identity
+        self.name = name
+    }
+}
+
+/// A bounded search projection retains the exact library identity beside the
+/// Zotero item so choosing a same-key item in another library cannot silently
+/// create the wrong portable relationship.
+public struct ZoteroSearchHit: Codable, Hashable, Sendable, Identifiable {
+    public var id: String {
+        switch library.identity {
+        case .user: "user:\(item.key)"
+        case .group(let groupID): "group:\(groupID):\(item.key)"
+        }
+    }
+
+    public let library: ZoteroLibraryMetadata
+    public let item: ZoteroItemMetadata
+
+    public init(library: ZoteroLibraryMetadata, item: ZoteroItemMetadata) {
+        self.library = library
+        self.item = item
     }
 }
 

@@ -56,7 +56,7 @@ ApplicationBootstrapController (one app-owned storage gate)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
         ├── ResearchConnectionCoordinator (one process generation)
-        ├── LocalAgentBridge (App Group AF_UNIX transport only)
+        ├── LocalAgentBridge (127.0.0.1 framed transport only)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
@@ -125,10 +125,10 @@ only durable owners.
 
 ### Runtime bootstrap, refresh, and Search
 
-`ApplicationBootstrapController` is the only production composition route to
-`WorkspaceStore`. Its Starting, Registry Recovery, Ready, and Storage
-Unavailable states validate the real per-user Application Support directory
-and the machine-local workspace registry before constructing any runtime.
+`ApplicationBootstrapController` is the sole production route to
+`WorkspaceStore`. Its states validate `Scholium/State-v1` beneath real per-user
+Application Support before runtime construction; unsupported pre-release
+parent bytes remain unread and nonauthorizing.
 `WorkspaceStore.init(applicationSupportURL:)` is explicit and failable; there
 is no temporary-directory fallback or empty-registry fallback. A malformed
 current registry enters the app-root Registry Recovery state. An explicit
@@ -142,6 +142,30 @@ live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
 any app window needs them; snapshot performs one-shot loading without watchers
 and shuts down after each CLI invocation.
 
+The live macOS activation may ask `WorkspaceHandle.open` for one selected
+`WorkspaceVaultSlot`. The handle constructs all three repositories, pooled
+catalogs, watchers, and capability objects once, but first publishes an explicit
+`WorkspaceSnapshotPhase.opening` snapshot from only that Vault's authoritative
+catalog and portable identities. `DocumentOperations.load` is usable at this
+phase; Search and Research Action resolution fail closed with
+`workspaceStillLoading`, and absent Graph, Search, and Research projections are
+not complete evidence. The handle owns one utility-priority opening-completion
+task. Watcher events enter the existing bounded journals while a complete
+three-catalog reconcile, Graph build, Search synchronization, research
+projection, and atomic event publication run through the same refresh
+coordinator and source-operation gate. The first live refresh that can replace
+an opening snapshot completes its full post-observation activation reconcile
+before building or publishing `.complete`; Search availability and watcher
+readiness therefore cross one actor-owned completion boundary. The completion
+task waits until the opening Vault's first Document crosses its native
+visible-layout boundary, so
+the full reconcile cannot contend with that initial presentation; a bounded
+fallback still completes a Library-only window or a failed renderer. The
+complete snapshot replaces the opening phase; no second repository, catalog,
+watcher, index, or source owner is created. Cancellation and shutdown cancel
+and await that task. Snapshot/CLI opens and live callers without a selected
+opening Vault retain the complete one-shot path.
+
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
 `Triptychs/<triptych-id>/indexes/search-v7.sqlite`; pooled vault runtimes own
 repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
@@ -151,6 +175,11 @@ source-bound part of
 `SearchDocumentProjection` as disposable state. Review and broken-link fields
 are reapplied with a lightweight projection-hash update, so ordinary Search
 deltas do not rebuild visible text and exact offset maps for unchanged notes.
+An opening-Vault catalog pass retains the exact document and Library semantic
+projection while deferring Search-specific visible text and offset maps. The
+same catalog actor completes those missing maps from its retained exact
+documents, without a second source read, before any complete Triptych Search
+generation may publish.
 Projection construction advances monotonic UTF-16 cursors, preserving exact
 source mapping without repeatedly rescanning an accumulated String.
 Watchers start before the initial
@@ -268,13 +297,18 @@ Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 checkpoint, Skill/Practice/Profile, collaboration, Action/Run, Research
 Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
+Configuration preflights roots and reads the portable manifest before
+registration. Valid Triptych and role Vault UUIDs remain authoritative;
+`VaultIdentityRegistry` binds them to new bookmarks. Missing manifest creates
+identity. Rejected selection or manifest leaves registries unchanged; renewed
+access rebinds identity.
 `WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
-starts it with a complete `WorkspaceSnapshot`, and accepts only increasing
+starts it with the handle's explicitly phased latest `WorkspaceSnapshot`, and accepts only increasing
 generations. Commands remain direct capability calls, not event-bus messages.
 
 `WorkspaceStore` owns the live runtime, accepted Application-event
-subscription, latest complete immutable snapshots used by direct app adapters,
+subscription, latest explicitly phased immutable snapshots used by direct app adapters,
 cross-window editor-flush registry, and macOS adapters. The app-wide registry
 implements the client-owned `WorkspaceEditorFlushRegistry` port. One
 `WindowEditorFlushCoordinator` per exact window owns the current editor and
@@ -288,13 +322,15 @@ mirrors. Each window receives one atomic capability generation. CSS/App
 Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
 store owns no Core authority.
 
-Direct local Agent connection is one App-wide Application boundary owned by
-`WorkspaceStore` through `ResearchConnectionCoordinator` and the App Group
-Unix bridge. The coordinator owns only current-process Pairing Codes/Sessions;
-each Run remains owned by its exact `WorkspaceHandle`. The bridge is a transport
-adapter and neither launches an Agent nor owns Run, context, authorization,
-research source, or recovery. Manual provider-neutral copy collaboration
-remains presentation-only and is never recorded as a Session.
+`WorkspaceStore` owns direct Agent connection through
+`ResearchConnectionCoordinator` and a loopback-only TCP bridge. App and CLI
+derive one private-range port from a logical per-user namespace that is never
+created. The App listens only on `127.0.0.1`; Pairing Code and Session
+credentials authorize operations without an App Group. The coordinator
+owns only process-local Pairing Codes/Sessions;
+each Run belongs to its exact `WorkspaceHandle`. The transport neither launches
+an Agent nor owns Run context, authorization, source, or recovery. Manual
+provider-neutral copy remains presentation-only and unrecorded.
 
 ### Window state and feature controllers
 
@@ -621,24 +657,28 @@ AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
 binding, window search, persisted divider geometry, or continuous correction
 intervenes. Library receives the specified 300pt native content minimum,
-without a preferred/maximum width or second geometry owner. Apparatus clears
-the system Inspector item's fixed maximum, installs its initial collapsed state
-before adding the item to the native split, and uses a controller-lifetime
-adapter that offers the provisional 320pt ideal exactly once after the first explicit
-reveal, only when Document can retain at least that width. The offer is neither
-persisted nor replayed; all later resizing, hiding, showing, and restoration
-remain AppKit-owned. No item receives a Scholium fraction, holding priority, or
-restoration state. A scene/window minimum remains contingent on the complete
-adaptation matrix.
+without a preferred/maximum width or second geometry owner. Apparatus uses a
+standard resizable `NSSplitViewItem` with the 270pt system Inspector minimum,
+no application-defined maximum, and its initial collapsed state installed
+before the item enters the native split. A controller-lifetime adapter offers
+the provisional 320pt ideal exactly once when the first explicit reveal
+finishes and Document can retain at least that width. The adapter is never
+called by the split resize callback, so the offer cannot override a user drag.
+The offer is neither persisted nor replayed; all later resizing, hiding,
+showing, and restoration remain AppKit-owned. No item receives a Scholium
+fraction, holding priority, or restoration state. A scene/window minimum
+remains contingent on the complete adaptation matrix.
 
-Apparatus uses `NSSplitViewItem(inspectorWithViewController:)`; production does
-not replace its native minimum, divider, safe area, separator, or collapse
-policy. The one initial ideal-width offer above is released immediately after
-application; the native item and `toggleInspector(_:)` own transitions. Because
-the nested split may sit outside the responder chain, the visibility route is a
-borderless hosted item, not the platform-wrapped standard toolbar item, and bridges with the View command
-through the exact per-window coordinator. Selected-document state supplies
-availability when showing, while a visible Inspector can always be hidden.
+Apparatus remains the semantic Inspector, but does not use
+`NSSplitViewItem(inspectorWithViewController:)`: on macOS 14 and later that
+factory is a fixed-width presentation whose committed drag behavior returns to
+the system Inspector thickness. Explicit toolbar and View commands set the
+retained split item's native collapsed state directly; divider interaction only
+changes width and never enters the collapse path. Because the nested split may
+sit outside the responder chain, the visibility route is a borderless hosted
+item, not the platform-wrapped standard toolbar item, and bridges with the View
+command through the exact per-window coordinator. Selected-document state
+supplies availability when showing, while a visible Inspector can always be hidden.
 `WindowShellState` mirrors native visibility for commands, toolbar labels, and
 restoration. The toolbar controller installs one stable item list; its hosted
 controls observe shell visibility without reasserting split state or storing
@@ -653,10 +693,13 @@ About keeps selectable values and routes editing through its heading button.
 For a current Analysis only, `WorkspaceSnapshotBuilder` joins a portable typed
 Zotero binding through the resolved stable Note UUID. The window root supplies
 its exact user/group library identity and item key as one immutable navigation
-value plus the existing
-`ZoteroBridge` presentation effect. About renders that value as one quiet
-**Open in Zotero** row without exposing the key, fetched metadata, matching, or
-confirmation. Frontmatter never participates in this projection. Connect
+value plus the existing `ZoteroBridge` presentation effect. About renders
+**Link Zotero Item…** or **Manage Zotero Link…**, and a bound value also renders
+**Open in Zotero**, without exposing key or fetched metadata in Inspector. The
+central `ZoteroBindingPanelView` searches disposable local metadata while
+`ZoteroBindingOperations` alone revision-checks set/clear against the stable
+Analysis identity and republishes derived state. Frontmatter never participates
+in this projection. Connect
 projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source
@@ -702,15 +745,25 @@ Document retain Markdown, autosave, conflict, and recovery authority.
 
 Bootstrap is a separate data-routed `WindowGroup`; `ScholiumBootstrapModel`
 owns launch resolution and `WorkspaceSetupView` for first/new/missing setup,
-never the workspace split, toolbar, or `WindowModel`. After the first successful
-registration only, the same model holds workspace routing closed while the
-setup view borrows the existing Application-owned `CommandLineToolInstaller`
-for optional machine preparation. Prompt-copy and researcher-confirmation state
-remain presentation-local and create no Agent, Session, Run, research-access,
-or durable readiness owner. When Agent preparation follows, the setup view
-starts Application registration before presenting Agent and retains only the
-local gate that prevents Ready until registration succeeds; Application still
-owns the registration transaction and failure. Bootstrap and Workspace
+never the workspace split, toolbar, or `WindowModel`. After first registration,
+the model keeps workspace routing closed while optional Agent preparation
+copies immutable instructions. Prompt-copy and confirmation remain
+presentation-local and create no durable readiness, machine-status, or
+research-access owner. No Application service embeds, locates, fingerprints,
+executes, installs, updates, or removes a CLI.
+
+Packaging emits a sandboxed App archive and an independent CLI archive with
+`scholium`, its Core resource bundle, and a user-local installer. Both carry
+matching provenance. The CLI has no App Sandbox or App Group entitlement. The
+App retains sandboxing, user-selected read-write access, app-scoped bookmarks,
+Zotero client access, and loopback server access. One home-relative exception
+exposes only `Library/Application Support/Scholium`; the App has no `.local`
+access or embedded CLI. The copied Agent instruction limits installation to
+`~/.local/bin/scholium` and its adjacent resource bundle and never authorizes
+`sudo`, `PATH`, shell-profile, Agent-configuration, or quarantine mutation.
+Agent preparation starts Application registration before
+presenting Agent; its local gate prevents Ready until registration succeeds,
+while Application owns the transaction and failure. Bootstrap and Workspace
 use nonoptional Codable route bindings with a `defaultValue`; the route's
 `windowID` is their only session identity. Workspace restoration is automatic,
 while Bootstrap restoration is disabled. Success opens one workspace and waits

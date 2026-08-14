@@ -18,7 +18,8 @@ struct ActionCLIExecutableLifecycleTests {
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
             "pair", "context", "reload", "query", "extend-write-set",
-            "write", "resolve-write-conflict", "submit-result", "continue",
+            "write", "write-zotero-binding", "resolve-write-conflict",
+            "submit-result", "continue",
             "method-context", "improve-method", "end",
         ]
 
@@ -111,7 +112,7 @@ struct ActionCLIExecutableLifecycleTests {
             practices: []
         )
         let profileRevision = try profile.contentRevision()
-        let context = ResearchAuthenticatedRunContext(
+        let context = try ResearchAuthenticatedRunContext(
             coreProtocol: "Scholium Core Protocol",
             brief: ResearchRunBrief(
                 run: run,
@@ -139,6 +140,20 @@ struct ActionCLIExecutableLifecycleTests {
             ),
             boundedWriteSet: []
         )
+        let adapter = try ResearchZoteroIntegrationAdapter(
+            skillMarkdown: "# Zotero Integration\n",
+            capabilityContractMarkdown: "# Capability Contract\n"
+        )
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchAuthenticatedRunContext(
+                coreProtocol: context.coreProtocol,
+                brief: context.brief,
+                method: context.method,
+                zoteroIntegrationAdapter: adapter,
+                resultContract: context.resultContract,
+                boundedWriteSet: context.boundedWriteSet
+            )
+        }
         let endReceipt = try ResearchRunEndReceipt(
             run: run,
             recoveryRetained: false,
@@ -163,7 +178,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .query, .extendWriteSet, .writeDocument,
+            case .query, .extendWriteSet, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
                 throw LocalAgentBridgeError.invalidRequest
@@ -245,7 +260,7 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!FileManager.default.fileExists(atPath: credentialURL.path))
     }
 
-    @Test("The real CLI hides write identities while extending and retrying one bounded document write")
+    @Test("The real CLI hides write identities for document and Zotero-binding writes")
     func agentBoundedWriteCLI() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
@@ -277,6 +292,7 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let hiddenRequestID = UUID()
         let hiddenOperationID = UUID()
+        let hiddenBindingOperationID = UUID()
         let entry = try ResearchBoundedWriteSetEntry(
             handle: ResearchWriteTargetHandle(runID: UUID(), noteID: UUID()),
             noteID: UUID(),
@@ -293,6 +309,26 @@ struct ActionCLIExecutableLifecycleTests {
             expiresAt: Date().addingTimeInterval(600)
         )
         let observedIDs = LockedAgentWriteRequestIDs()
+        let observedBindingIDs = LockedAgentWriteRequestIDs()
+        let analysisID = UUID()
+        let analysisEntry = try ResearchBoundedWriteSetEntry(
+            handle: ResearchWriteTargetHandle(runID: UUID(), noteID: analysisID),
+            noteID: analysisID,
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: "Analysis.md"
+            ),
+            role: .analysis,
+            title: "Analysis",
+            allowedOperations: [.setZoteroBinding, .clearZoteroBinding],
+            expectedRevision: DocumentFingerprint(content: "analysis"),
+            checkpointID: UUID(),
+            zoteroBindingsRevision: DocumentFingerprint(content: "[]"),
+            authorizationBasis: .collaborationPolicy,
+            authorizationPolicy: .fullAccess,
+            policyRevision: DocumentFingerprint(content: "full-access"),
+            expiresAt: Date().addingTimeInterval(600)
+        )
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
         ) { request in
@@ -331,7 +367,25 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(entry),
                     message: "The exact document write committed and read back."
                 ))
-            case .context, .query, .resolveWriteConflict, .submitResult,
+            case .writeZoteroBinding:
+                guard request.credential == credential,
+                      let intent = request.zoteroBindingWriteIntent,
+                      intent.role == .analysis,
+                      intent.relativePath == "Analysis.md",
+                      intent.operation == .setZoteroBinding,
+                      intent.library == .group(42),
+                      intent.itemKey == "ITEM_42" else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                observedBindingIDs.append(intent.requestID)
+                return .zoteroBindingWrite(ResearchZoteroBindingWriteResult(
+                    operationID: hiddenBindingOperationID,
+                    state: .committed,
+                    target: ResearchBoundedWriteSetViewEntry(analysisEntry),
+                    message: "The portable Zotero binding committed and read back."
+                ))
+            case .context, .query,
+                    .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
                 throw LocalAgentBridgeError.invalidRequest
@@ -426,6 +480,37 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!writeOutput.contains("operation_id"))
         #expect(observedIDs.values.count == 4)
         #expect(Set(observedIDs.values).count == 3)
+
+        let bindingJSON = try JSONSerialization.data(withJSONObject: [
+            "role": "analysis",
+            "relative_path": "Analysis.md",
+            "operation": "set_zotero_binding",
+            "library": ["kind": "group", "group_id": 42],
+            "item_key": "item_42",
+        ])
+        let firstBinding = try cli.run(
+            [
+                "agent", "write-zotero-binding", "--run", run.rawValue,
+                "--from", "-",
+            ],
+            stdin: bindingJSON,
+            environment: environment
+        )
+        let secondBinding = try cli.run(
+            [
+                "agent", "write-zotero-binding", "--run", run.rawValue,
+                "--from", "-",
+            ],
+            stdin: bindingJSON,
+            environment: environment
+        )
+        #expect(firstBinding.stdout == secondBinding.stdout)
+        let bindingOutput = String(decoding: firstBinding.stdout, as: UTF8.self)
+        #expect(bindingOutput.contains("committed"))
+        #expect(!bindingOutput.contains(hiddenBindingOperationID.uuidString))
+        #expect(!bindingOutput.contains("operation_id"))
+        #expect(observedBindingIDs.values.count == 2)
+        #expect(Set(observedBindingIDs.values).count == 1)
     }
 
     @Test("The real CLI exposes the provider-discriminated Search v7 text and JSONL contracts")
@@ -733,6 +818,7 @@ struct ActionCLIExecutableLifecycleTests {
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
             case .context, .query, .extendWriteSet, .writeDocument,
+                    .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
                     .submitMethodImprovement, .end:
                 throw LocalAgentBridgeError.invalidRequest
@@ -800,7 +886,12 @@ struct ActionCLIExecutableLifecycleTests {
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
 
         let version = try cli.run(["version", "--format", "json"])
-        #expect(String(decoding: version.stdout, as: UTF8.self).contains("cli_version"))
+        let versionObject = try #require(
+            JSONSerialization.jsonObject(with: version.stdout) as? [String: Any]
+        )
+        #expect(versionObject["cli_version"] as? String == "0.1.0")
+        #expect(versionObject["release_label"] as? String == "development")
+        #expect(versionObject["build_number"] as? String == "0")
         let help = try cli.run(["action", "prepare", "--help", "--format", "json"])
         #expect(String(decoding: help.stdout, as: UTF8.self).contains("action prepare"))
         let retiredCommand = ["biblio", "graphy"].joined()
@@ -931,6 +1022,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 return .endReceipt(endReceipt)
             case .context, .query, .extendWriteSet, .writeDocument,
+                    .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
                 throw LocalAgentBridgeError.invalidRequest
             }

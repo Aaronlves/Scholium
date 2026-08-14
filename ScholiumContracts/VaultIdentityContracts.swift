@@ -14,11 +14,14 @@ public struct VaultIdentity: Codable, Hashable, Sendable {
 
 public enum VaultIdentityRegistryError: LocalizedError, Sendable {
     case corruptRegistry(String)
+    case identityConflict(existing: UUID, requested: UUID, path: String)
 
     public var errorDescription: String? {
         switch self {
         case .corruptRegistry(let reason):
             "Scholium could not safely load the vault-access registry. The existing file was left unchanged. \(reason)"
+        case .identityConflict(let existing, let requested, let path):
+            "The vault at '\(path)' is already registered as \(existing.uuidString) and cannot also use \(requested.uuidString)."
         }
     }
 }

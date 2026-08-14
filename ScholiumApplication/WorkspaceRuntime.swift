@@ -1,6 +1,7 @@
 import ScholiumContracts
 import Foundation
 import ScholiumCore
+import OSLog
 
 /// Application-facing bridge for the machine-local registry recovery actions.
 /// It does not inspect or mutate any vault source files.
@@ -21,6 +22,11 @@ public enum WorkspaceRegistryRecoveryOperations {
 
 /// Process-level composition root for headless Scholium workspaces.
 public actor WorkspaceRuntime {
+    private nonisolated static let openLogger = Logger(
+        subsystem: "com.scholium.app",
+        category: "WorkspaceOpen"
+    )
+
     public struct LiveConfiguration: Sendable {
         public let applicationSupportURL: URL
         public let workspaceRegistryStorageURL: URL
@@ -412,8 +418,11 @@ public actor WorkspaceRuntime {
         outputURL: URL,
         portableContainerURL: URL,
         triptychID: UUID? = nil,
-        triptychName: String? = nil
+        triptychName: String? = nil,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
+        let clock = ContinuousClock()
+        let totalStart = clock.now
         try requireActive()
         guard case .live(
             let registry,
@@ -430,29 +439,65 @@ public actor WorkspaceRuntime {
                 portableContainerURL.stopAccessingSecurityScopedResource()
             }
         }
-        _ = try await portableRegistry.register(
+        let portableManifest = try await existingPortableManifest(
+            forWorksURL: outputURL
+        )
+        try await portableRegistry.preflightRegistration(
             containerURL: portableContainerURL,
             forWorksURL: outputURL
         )
-
+        try await registry.preflightIndependentVaultRoots(
+            paperAnalysisURL: paperAnalysisURL,
+            topicKnowledgeURL: topicKnowledgeURL,
+            outputURL: outputURL
+        )
         let selections: [(WorkspaceVaultSlot, URL)] = [
             (.paperAnalysis, paperAnalysisURL),
             (.topicKnowledge, topicKnowledgeURL),
             (.output, outputURL),
         ]
+        var plannedIdentityIDs: [WorkspaceVaultSlot: UUID] = [:]
+        for (slot, url) in selections {
+            plannedIdentityIDs[slot] = try await identityRegistry.plannedIdentityID(
+                for: url,
+                preferredID: portableManifest?.vaultIDs[slot]
+            )
+        }
+        guard let analysesID = plannedIdentityIDs[.paperAnalysis],
+              let topicsID = plannedIdentityIDs[.topicKnowledge],
+              let worksID = plannedIdentityIDs[.output] else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let requestedPortableID = portableManifest?.id ?? triptychID ?? worksID
+        try await registry.preflightTriptychConfiguration(
+            id: requestedPortableID,
+            paperAnalysis: (paperAnalysisURL, analysesID),
+            topicKnowledge: (topicKnowledgeURL, topicsID),
+            output: (outputURL, worksID)
+        )
+        _ = try await portableRegistry.register(
+            containerURL: portableContainerURL,
+            forWorksURL: outputURL
+        )
+        let portableReady = clock.now
+
         var identities: [WorkspaceVaultSlot: VaultIdentity] = [:]
         for (slot, url) in selections {
             let scopeStarted = url.startAccessingSecurityScopedResource()
             defer { if scopeStarted { url.stopAccessingSecurityScopedResource() } }
-            identities[slot] = try await identityRegistry.identity(for: url)
+            identities[slot] = try await identityRegistry.identity(
+                for: url,
+                preferredID: plannedIdentityIDs[slot]
+            )
         }
+        let identitiesReady = clock.now
         guard let analysesIdentity = identities[.paperAnalysis],
               let topicsIdentity = identities[.topicKnowledge],
               let worksIdentity = identities[.output] else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
 
-        let portableID = await portableManifestID(forWorksURL: outputURL)
+        let portableID = portableManifest?.id
         var remappedWorkspaceIDs: [UUID: UUID] = [:]
         if let triptychID,
            let portableID,
@@ -469,6 +514,7 @@ public actor WorkspaceRuntime {
             topicKnowledge: (topicKnowledgeURL, topicsIdentity.id),
             output: (outputURL, worksIdentity.id)
         )
+        let registryReady = clock.now
         let prepared = await prepareChangedReplacements(
             registry: registry,
             remappingWorkspaceIDs: remappedWorkspaceIDs
@@ -478,10 +524,45 @@ public actor WorkspaceRuntime {
             prepared.replacements,
             detachedVaults: detachedVaults
         )
+        let replacementsReady = clock.now
         if let replacement = replacements[assignment.id] {
+            Self.logOpen(
+                portable: totalStart.duration(to: portableReady),
+                identities: portableReady.duration(to: identitiesReady),
+                registry: identitiesReady.duration(to: registryReady),
+                replacements: registryReady.duration(to: replacementsReady),
+                workspace: .zero,
+                total: totalStart.duration(to: replacementsReady)
+            )
             return replacement
         }
-        return try await openWorkspace(id: assignment.id)
+        let handle = try await openWorkspace(
+            id: assignment.id,
+            openingVault: openingVault
+        )
+        let completed = clock.now
+        Self.logOpen(
+            portable: totalStart.duration(to: portableReady),
+            identities: portableReady.duration(to: identitiesReady),
+            registry: identitiesReady.duration(to: registryReady),
+            replacements: registryReady.duration(to: replacementsReady),
+            workspace: replacementsReady.duration(to: completed),
+            total: totalStart.duration(to: completed)
+        )
+        return handle
+    }
+
+    private nonisolated static func logOpen(
+        portable: Duration,
+        identities: Duration,
+        registry: Duration,
+        replacements: Duration,
+        workspace: Duration,
+        total: Duration
+    ) {
+        openLogger.info(
+            "configure portable=\(String(describing: portable), privacy: .public) identities=\(String(describing: identities), privacy: .public) registry=\(String(describing: registry), privacy: .public) replacements=\(String(describing: replacements), privacy: .public) workspace=\(String(describing: workspace), privacy: .public) total=\(String(describing: total), privacy: .public)"
+        )
     }
 
     public func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
@@ -506,8 +587,27 @@ public actor WorkspaceRuntime {
 
     public func portableManifestID(forWorksURL worksURL: URL) async -> UUID? {
         guard !isShutDown else { return nil }
-        let store = TriptychControlStore(worksVaultURL: worksURL)
-        return try? await store.manifest().id
+        return try? await existingPortableManifest(forWorksURL: worksURL)?.id
+    }
+
+    private func existingPortableManifest(
+        forWorksURL worksURL: URL
+    ) async throws -> TriptychManifest? {
+        let manifestURL = worksURL.standardizedFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".scholium/manifest.json", isDirectory: false)
+        guard FileManager.default.fileExists(atPath: manifestURL.path) else {
+            return nil
+        }
+        let manifest = try await TriptychControlStore(
+            worksVaultURL: worksURL
+        ).manifest()
+        guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
+              Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
+              Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count else {
+            throw TriptychControlError.invalidManifest
+        }
+        return manifest
     }
 
     /// Returns the persisted default Triptych.
@@ -532,7 +632,10 @@ public actor WorkspaceRuntime {
 
     /// Repeated opens for one Triptych return the same actor identity until
     /// the runtime is shut down.
-    public func openWorkspace(id: UUID) async throws -> WorkspaceHandle {
+    public func openWorkspace(
+        id: UUID,
+        openingVault: WorkspaceVaultSlot? = nil
+    ) async throws -> WorkspaceHandle {
         try requireActive()
         if let handle = handles[id] { return handle }
         if let opening = openings[id] { return try await opening.task.value }
@@ -558,7 +661,8 @@ public actor WorkspaceRuntime {
                     researchAgentSessions: researchAgentSessions,
                     access: .live(
                         portableControlAccessRegistry: portableRegistry
-                    )
+                    ),
+                    openingVault: openingVault
                 )
             }
         case .snapshot(_, _, let supportURL):

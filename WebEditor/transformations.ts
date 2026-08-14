@@ -57,6 +57,40 @@ function labelFor(command: MarkdownEditorCommand) {
   return command.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
 }
 
+function imageArgument(argument: string | undefined): {alt: string; destination: string} | null {
+  if (!argument || new TextEncoder().encode(argument).byteLength > 8_192) return null;
+  try {
+    const value = JSON.parse(argument) as {alt?: unknown; destination?: unknown};
+    if (!value || typeof value !== "object"
+        || typeof value.alt !== "string" || typeof value.destination !== "string"
+        || value.alt.length > 1_024 || /[\u0000-\u001f\u007f]/.test(value.alt)
+        || value.destination.length === 0 || value.destination.length > 4_096
+        || /[\u0000-\u0020\u007f\\]/.test(value.destination)
+        || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value.destination)
+        || !validImageDestination(value.destination)) return null;
+    return {alt: value.alt, destination: value.destination};
+  } catch {
+    return null;
+  }
+}
+
+function validImageDestination(destination: string) {
+  if (/%(?![0-9A-Fa-f]{2})/.test(destination)) return false;
+  const absolute = destination.startsWith("/");
+  const components = destination.split("/");
+  if (absolute) components.shift();
+  if (components.length === 0 || components.some((component) => component.length === 0)) {
+    return false;
+  }
+  return components.every((component) =>
+    (!absolute && component === "..")
+      || (component !== "." && component !== ".." && /^[A-Za-z0-9._~%-]+$/.test(component)));
+}
+
+function escapedImageAlt(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/([\[\]])/g, "\\$1");
+}
+
 function inlineChange(
   source: string,
   range: {from: number; to: number},
@@ -132,6 +166,21 @@ function transformOne(
   if (command === "insertTable") {
     const insert = "| Column 1 | Column 2 |\n|---|---|\n|  |  |";
     return {change: {...range, insert}, selection: {anchor: range.from + 2, head: range.from + 10}, label: "Insert Table"};
+  }
+  if (command === "insertImage") {
+    const image = imageArgument(argument);
+    if (!image) return null;
+    const selected = source.slice(range.from, range.to);
+    const usableSelection = selected.length <= 1_024
+      && !/[\u0000-\u001f\u007f]/.test(selected) ? selected : "";
+    const alt = escapedImageAlt(usableSelection || image.alt);
+    const insert = `![${alt}](${image.destination})`;
+    const position = range.from + insert.length;
+    return {
+      change: {...range, insert},
+      selection: {anchor: position, head: position},
+      label: "Insert Image",
+    };
   }
 
   const bounds = lineBounds(source, range);

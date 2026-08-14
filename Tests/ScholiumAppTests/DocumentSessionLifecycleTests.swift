@@ -7,6 +7,27 @@ import Combine
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Repeated Review preparation preserves a finalized retained revision")
+    func repeatedReadProjectionPreparationPreservesReadiness() {
+        let session = DocumentSessionModel(key: nil)
+        let currentFingerprint = "current-revision"
+
+        session.renderedReadFingerprint = currentFingerprint
+        session.renderedReadReadyFingerprint = currentFingerprint
+        session.failedReadFingerprint = currentFingerprint
+
+        session.prepareReadProjection(for: currentFingerprint)
+
+        #expect(session.failedReadFingerprint == nil)
+        #expect(
+            session.renderedReadReadyFingerprint == currentFingerprint
+        )
+
+        session.prepareReadProjection(for: "new-revision")
+
+        #expect(session.renderedReadReadyFingerprint.isEmpty)
+    }
+
     @Test("Note Review task auto-presents once per retained pending set")
     func noteReviewTaskPresentationLifecycle() {
         let session = DocumentSessionModel(key: nil)
@@ -251,6 +272,16 @@ struct DocumentSessionLifecycleTests {
             conflict: conflict,
             canRetrySave: true
         ) == .conflict)
+
+        #expect(DocumentController.saveFailureAllowsRetry(
+            VaultRepositoryError.writeFailed("Temporary provider failure")
+        ))
+        #expect(!DocumentController.saveFailureAllowsRetry(
+            VaultRepositoryError.conflict(
+                expected: DocumentFingerprint(content: "before"),
+                current: DocumentFingerprint(content: "external")
+            )
+        ))
     }
 
     @Test("A clean detached zero-lease session is fully reaped")

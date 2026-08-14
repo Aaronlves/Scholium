@@ -16,6 +16,19 @@ public struct RenderedMarkdownDocument: Hashable, Sendable {
 public enum SafeMarkdownRenderer {
     public static func render(_ document: NoteDocument) -> RenderedMarkdownDocument {
         let semantic = MarkdownSemanticDocument(parsing: document)
+        return render(document, semantic: semantic)
+    }
+
+    /// Reuses an immutable source-bound semantic projection when its exact
+    /// fingerprint matches. A stale or unrelated projection is nonauthorizing
+    /// and falls back to the ordinary parse path.
+    public static func render(
+        _ document: NoteDocument,
+        semantic: MarkdownSemanticDocument
+    ) -> RenderedMarkdownDocument {
+        guard semantic.fingerprint == document.fingerprint else {
+            return render(document)
+        }
         let html = renderBody(document: document, semantic: semantic, depth: 0)
         return RenderedMarkdownDocument(htmlBody: html, semanticDocument: semantic)
     }

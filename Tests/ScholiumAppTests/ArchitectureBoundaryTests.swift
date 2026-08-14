@@ -126,7 +126,9 @@ struct ArchitectureBoundaryTests {
             encoding: .utf8
         )
 
-        #expect(source.contains("private func workspaceHandle(id: UUID)"))
+        #expect(source.contains("private func workspaceHandle(\n        id: UUID,"))
+        #expect(source.contains("openingVault: WorkspaceVaultSlot? = nil"))
+        #expect(source.contains("openingVault: openingVault"))
         #expect(source.contains("private func configureTriptych("))
         #expect(!source.contains("func reloadTriptychCapabilities("))
 
@@ -158,8 +160,10 @@ struct ArchitectureBoundaryTests {
         let allowedFiles: Set<String> = [
             "Scholium/Services/WindowSession.swift",
             "Scholium/Services/PerformanceProbe.swift",
+            "Scholium/Localization/WebKitInterfaceLocalization.swift",
             "Scholium/Views/Note/MarkdownEditorWebView.swift",
             "Scholium/Styling/ScholiumWebFonts.swift",
+            "Scholium/Styling/ScholiumWebFontResources.swift",
             "Scholium/Styling/ScholiumCalloutStyles.swift",
             "Scholium/Styling/ScholiumTableStyles.swift",
             "Scholium/Styling/ScholiumFootnoteStyles.swift",
@@ -168,6 +172,17 @@ struct ArchitectureBoundaryTests {
             "Scholium/Styling/ScholiumPreviewStyles.swift",
         ]
         let prohibited = ["URLSession", "SQLite", "FSEventStream", "Data(contentsOf:", "String(contentsOf:", "FileManager"]
+        let verificationScript = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("Tools/Scripts/verify.sh"),
+            encoding: .utf8
+        )
+        for relativePath in allowedFiles {
+            let deliveryRelativePath = relativePath.dropFirst("Scholium/".count)
+            #expect(
+                verificationScript.contains("--glob '!**/\(deliveryRelativePath)'"),
+                "verify.sh is missing the frontend I/O allowlist entry for \(relativePath)"
+            )
+        }
         var violations: [String] = []
         for file in try swiftFiles(beneath: appRoot) {
             let source = try String(contentsOf: file, encoding: .utf8)

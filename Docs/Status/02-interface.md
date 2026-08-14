@@ -24,6 +24,11 @@
   with stable selection, keyboard navigation, and ordinary-active-Note totals.
   Switching saves or fails safely, then restores that workspace's Location,
   filters, ordering, disclosure, tabs, Document mode, and Inspector mode.
+- On live opening, the selected Vault's usable Library can replace the initial
+  full-page Loading state before the remaining two Vaults finish. Their rows
+  retain unavailable counts and selection until the complete generation; the
+  existing derived-state progress presentation remains visible without
+  blocking the available list or moving focus.
 - Library, Set Aside, and Trash share one native hierarchical source list while
   retaining their distinct actions. Add, context-menu, keyboard, drag, menu,
   and accessibility routes converge on the same source mutations.
@@ -45,19 +50,32 @@
   source-preserving semantic projection, formatting, suggestions, and task
   interaction. Source exposes the complete exact text. Conflict comparison and
   recovery remain Document-owned.
-- Complete Properties is a grouped Note sheet with raw YAML keys, structured
-  controls, a searchable source-type-aware Add a Property chooser, reversible
-  pending removal, and an Edit in Source route for unsupported or malformed
-  source. A YAML-free Note first presents Add YAML Properties… and Keep Without
-  YAML; choosing insertion opens only a draft and Save remains unavailable
-  until at least one concrete canonical value is valid.
-- Inspector presents Overview, Connect, and Actions as one mutually exclusive
-  index. Overview shows Needs Attention, Review, then About; Connect switches Incoming
+- Document Find stays inside the Document rather than opening workspace Search.
+  Edit and Source expose explicit Import Image and Index Image commands in the
+  formatting, Format, and Insert routes; native selection and native image
+  paste converge on the same editor transaction. The lower status reports
+  body/selection statistics, while missing indexed absolute paths produce a
+  nonauthorizing reminder.
+- Complete Properties is one Analysis/Topic/Work Note sheet with direct
+  source-safe controls, a searchable source-type-aware Add a Property chooser,
+  reversible pending removal, and an Edit in Source route for unsupported or
+  malformed source. Semantic groups use shared whitespace rather than repeated
+  visible headings; labels carry concise Help, and the reserved field-action
+  slot reveals on hover or focus without reflow. Custom fields remain together. A YAML-free Note first
+  presents Add YAML Properties… and Keep Without YAML; choosing insertion opens
+  only a draft and Save remains unavailable until one canonical value is valid.
+- Inspector presents Overview, Connect, and Actions through the shared
+  segmented control. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
   Settle. A pending Review is one full-row route. Its exact pending activity set
   auto-presents the retained Document session's attached Review task once;
   closing suppresses that set without changing Review truth, and a later Agent
   activity presents again.
+- Every current Analysis Overview exposes **Link Zotero Item…** or **Manage
+  Zotero Link…**; a bound Analysis also exposes **Open in Zotero**. The central
+  binding sheet searches local user and group libraries, keeps exact library
+  identity visible during selection, supports Rebind, and confirms Clear while
+  changing neither Markdown nor Zotero data.
 - Action sheets expose academic inputs, target and mutation consequence,
   handoff, active Run state, continuation, cancellation, and recovery without
   exposing credentials, registration keys, protocol internals, or
@@ -97,8 +115,8 @@
   Inspect, Resynthesize, Leave Unchanged, dismiss, and Retry routes.
 - Research Records opens to Records or Reading Leads with toolbar View,
   window-local Scope, search, filters, sorting, exact total, and incremental
-  loading. View is an AppKit capsule segmented control with Scholium semantic
-  selection color and no shared Liquid Glass background. Selecting a row
+  loading. View uses the same quiet-track, raised-selection segmented control
+  as the Workspace surfaces and has no shared Liquid Glass background. Selecting a row
   replaces the collection with one retained detail route; Back restores the
   collection state. Record detail omits the generic toolbar title.
 - Record detail uses a dominant reading plane and optional Evidence
@@ -108,14 +126,14 @@
 - Record deletion, Response editing, folding comparison,
   evidence popovers, unresolved provenance, and recommendation handling retain
   named keyboard and accessibility routes. Native Response and comparison
-  presentation no longer installs unconditional feature-local focus return, so
+  presentation installs no unconditional feature-local focus return, so
   pointer dismissal does not paint a keyboard-only focus ring while AppKit
   retains keyboard focus behavior.
 
 ## Appearance, adaptation, and localization
 
-- Settings → Properties uses one role selector and the ordered New Notes,
-  Agent-Created Analyses, About, and Structured Editing sections. Exact seed
+- Settings → Properties uses the shared segmented role selector and the ordered New Notes,
+  Agent-Created Analyses, and About sections. Exact seed
   delimiters are visible but not editable; source errors stay inline; Agent
   requirements remain source-type-specific; reset, clear, revert, reload after
   conflict, and atomic Save are separate actions. Current-schema repair keeps
@@ -129,6 +147,10 @@
 - System, Light, and Dark use one semantic resolver across native and document surfaces. Accent and
   Paper are the only configurable color inputs; Interface, Scholarly, and Exact
   are the native text families.
+- Inspector Mode, Connect direction, Search scope, Properties role and creator
+  kind, and Records View now share one equal-segment control with an adaptive
+  neutral track and selection plate, continuous corners, Left/Right traversal,
+  and no Accent-filled selection.
 - Shared semantic owners cover surfaces, boundaries, transient elevation,
   structural depth, interaction feedback, corner geometry, symbols, typography,
   spacing, component cadence, and purpose-named motion. Native system controls

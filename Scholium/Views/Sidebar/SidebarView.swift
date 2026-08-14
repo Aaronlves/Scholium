@@ -128,6 +128,21 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(ScholiumColorRole.navigationSurfaceBackground.color)
+        .overlay(alignment: .topLeading) {
+            if PerformanceProbe.shared.measuresWarmLibraryLaunch,
+               sourceListUsesOutlineView,
+               !context.allNotes.isEmpty {
+                PerformanceReadyBoundary(
+                    generation: "\(treeProjection.revision):\(context.allNotes.count)"
+                ) {
+                    PerformanceProbe.shared.markLibraryReady(
+                        noteCount: context.allNotes.count
+                    )
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+        }
         .onChange(of: context.currentWorkspaceSlot) { oldSlot, newSlot in
             guard oldSlot != nil, newSlot != nil, oldSlot != newSlot else { return }
             revealSourceRegion()

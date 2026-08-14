@@ -8,12 +8,12 @@ import ScholiumContracts
 struct FileProviderProcessInterruptionFixtureTests {
     enum InterruptionPoint: CaseIterable, Sendable, CustomTestStringConvertible {
         case staged
-        case swapped
+        case replaced
 
         var testDescription: String {
             switch self {
             case .staged: "before canonical replacement"
-            case .swapped: "after canonical replacement"
+            case .replaced: "after canonical replacement"
             }
         }
     }
@@ -75,11 +75,6 @@ struct FileProviderProcessInterruptionFixtureTests {
         repository = nil
         let reopened = try fixture.repository()
         #expect(try fixture.stagedFiles().isEmpty)
-        #expect(
-            await reopened.recoveryLedgerHealthDiagnostic()?.contains(
-                "observed bytes other than its expected or candidate revision"
-            ) == true
-        )
         #expect(try fixture.pendingMutationDirectories().count == 1)
         #expect(try await reopened.load(relativePath: fixture.relativePath).rawContent == fixture.external)
         let retained = try #require(
@@ -114,7 +109,7 @@ struct FileProviderProcessInterruptionFixtureTests {
         let identityString = fixture.identity.id.uuidString
         let relativePath = fixture.relativePath
         let candidate = fixture.candidate
-        let killAfterSwap = point == .swapped
+        let killAfterReplacement = point == .replaced
 
         await #expect(processExitsWith: .failure) {
             [
@@ -123,7 +118,7 @@ struct FileProviderProcessInterruptionFixtureTests {
                 identityString = identityString as String,
                 relativePath = relativePath as String,
                 candidate = candidate as String,
-                killAfterSwap = killAfterSwap as Bool,
+                killAfterReplacement = killAfterReplacement as Bool,
             ] in
             let root = URL(fileURLWithPath: rootPath, isDirectory: true)
             let support = URL(fileURLWithPath: supportPath, isDirectory: true)
@@ -132,7 +127,7 @@ struct FileProviderProcessInterruptionFixtureTests {
                 canonicalPath: root.path,
                 bookmarkData: nil
             )
-            let interruptionPhase: VaultMutationPhase = killAfterSwap ? .swapped : .staged
+            let interruptionPhase: VaultMutationPhase = killAfterReplacement ? .replaced : .staged
             let repository = try VaultRepository(
                 vaultURL: root,
                 identity: identity,
@@ -155,24 +150,16 @@ struct FileProviderProcessInterruptionFixtureTests {
         let expectedCanonical = point == .staged
             ? fixture.original
             : fixture.candidateData
-        let expectedStaging = point == .staged
-            ? fixture.candidateData
-            : fixture.original
         #expect(try Data(contentsOf: fixture.note) == expectedCanonical)
         let stagedFiles = try fixture.stagedFiles()
-        #expect(stagedFiles.count == 1)
-        #expect(try Data(contentsOf: stagedFiles[0]) == expectedStaging)
-
-        let reopened = try fixture.repository(
-            hooks: point == .staged
-                ? VaultMutationHooks(
-                    cleanupOverride: { throw CocoaError(.fileWriteUnknown) }
-                )
-                : .none
-        )
-        if point == .swapped {
-            #expect(try fixture.stagedFiles().isEmpty)
+        if point == .staged {
+            #expect(stagedFiles.count == 1)
+            #expect(try Data(contentsOf: stagedFiles[0]) == fixture.candidateData)
+        } else {
+            #expect(stagedFiles.isEmpty)
         }
+
+        let reopened = try fixture.repository()
         let reopenedDocument = try await reopened.load(relativePath: fixture.relativePath)
         let expectedCanonicalContent = point == .staged
             ? fixture.originalContent
@@ -240,8 +227,6 @@ struct FileProviderProcessInterruptionFixtureTests {
 
             let restored = try await reopened.restoreInterruptedSaveRecovery(retained)
             #expect(restored.didReplaceSource)
-            #expect(restored.saveCleanupWarning?.kind == .displacedSourceCopy)
-            #expect(restored.recoveryCleanupWarning == nil)
             #expect(restored.document.rawContent == fixture.candidate)
             #expect(try Data(contentsOf: fixture.note) == fixture.candidateData)
             #expect(try await reopened.interruptedSaveRecoveries().isEmpty)
@@ -383,7 +368,7 @@ struct FileProviderProcessInterruptionFixtureTests {
             try FileManager.default.contentsOfDirectory(
                 at: note.deletingLastPathComponent(),
                 includingPropertiesForKeys: nil
-            ).filter { $0.lastPathComponent.hasPrefix(".scholium-swap-") }
+            ).filter { $0.lastPathComponent.hasPrefix(".scholium-replacement-") }
         }
 
         func remove() {

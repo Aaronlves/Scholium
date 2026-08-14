@@ -8,6 +8,48 @@ function apply(source: string, command: Parameters<typeof transformMarkdown>[2],
 }
 
 describe("exact Markdown transformations", () => {
+  it("inserts a validated relative Markdown image link in one transaction", () => {
+    const argument = JSON.stringify({
+      alt: "Figure [one]",
+      destination: "../Attachments/id/Figure%201.png",
+    });
+    const result = transformMarkdown(
+      "Before ",
+      [{anchor: 7, head: 7}],
+      "insertImage",
+      {argument},
+    );
+    expect(result).not.toBeNull();
+    expect(applySourceChanges("Before ", result!.changes))
+      .toBe("Before ![Figure \\[one\\]](../Attachments/id/Figure%201.png)");
+    expect(result!.undoLabel).toBe("Insert Image");
+  });
+
+  it("rejects unsafe image destinations", () => {
+    for (const destination of [
+      "https://example.com/image.png",
+      "bad%2.png",
+      "bad image.png",
+      "/Users/researcher/../image.png",
+    ]) {
+      expect(transformMarkdown("", [{anchor: 0, head: 0}], "insertImage", {
+        argument: JSON.stringify({alt: "Image", destination}),
+      })).toBeNull();
+    }
+  });
+
+  it("accepts a percent-encoded absolute path for an indexed image", () => {
+    const result = transformMarkdown("", [{anchor: 0, head: 0}], "insertImage", {
+      argument: JSON.stringify({
+        alt: "External figure",
+        destination: "/Users/researcher/Figures/Figure%201.png",
+      }),
+    });
+    expect(result).not.toBeNull();
+    expect(applySourceChanges("", result!.changes))
+      .toBe("![External figure](/Users/researcher/Figures/Figure%201.png)");
+  });
+
   it("implements the closed inline command vocabulary exactly", () => {
     const cases = [
       ["bold", "**claim**"], ["emphasis", "*claim*"], ["strikethrough", "~~claim~~"],

@@ -106,6 +106,7 @@ final class ScholiumUITests: XCTestCase {
             || name.contains("testNativeToolbarVisualProofAtDefaultWindowSize")
             || name.contains("testNoDocumentKeepsTrailingToolbarControlsVisibleAndDisabled")
             || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
+            || name.contains("testInspectorDividerResizesWithoutInteractiveCollapse")
             || name.contains("testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates")
             || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
             || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
@@ -115,7 +116,10 @@ final class ScholiumUITests: XCTestCase {
         return 1_380
     }
 
-    private var initialOpenNoteForCurrentTest: String {
+    private var initialOpenNoteForCurrentTest: String? {
+        if name.contains("testRestoreAccessQuitScholiumTerminatesApplication") {
+            return nil
+        }
         if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
             return "QA Document Heading Study.md"
         }
@@ -170,11 +174,15 @@ final class ScholiumUITests: XCTestCase {
             )
             return
         }
-        let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
-        XCTAssertTrue(
-            waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },
-            "The isolated QA window appeared without reaching a usable document surface."
-        )
+        if let initialOpenNote = initialOpenNoteForCurrentTest {
+            let renderedDocument = app.descendants(matching: .any)[
+                "scholium.renderedDocument.\(initialOpenNote)"
+            ]
+            XCTAssertTrue(
+                waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },
+                "The isolated QA window appeared without reaching a usable document surface."
+            )
+        }
     }
 
     @MainActor

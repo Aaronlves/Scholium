@@ -1,8 +1,9 @@
+import Darwin
 import Foundation
 import ScholiumContracts
 
 extension ScholiumCLI {
-    static let productVersion = ScholiumProductIdentity.releaseLabel
+    static let productVersion = ScholiumProductIdentity.marketingVersion
 
     static func renderMetaCommandIfPresent(_ arguments: [String]) throws -> Bool {
         guard let first = arguments.first else { return false }
@@ -95,23 +96,114 @@ extension ScholiumCLI {
     }
 
     private static func renderVersion(format: CLIOutputFormat) throws {
-        let bundleVersion = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String
-        let version = bundleVersion?.isEmpty == false ? bundleVersion! : productVersion
+        let identity = currentBuildIdentity()
         if format == .json {
             let data = try JSONSerialization.data(
                 withJSONObject: [
                     "schema_version": 1,
                     "product": "Scholium",
-                    "cli_version": version,
+                    "cli_version": identity.marketingVersion,
+                    "release_label": identity.releaseLabel,
+                    "build_number": identity.buildNumber,
                 ],
                 options: [.prettyPrinted, .sortedKeys]
             )
             write(String(decoding: data, as: UTF8.self) + "\n")
         } else {
-            write("Scholium CLI \(version)\n")
+            write(
+                "Scholium CLI \(identity.marketingVersion) "
+                    + "(\(identity.releaseLabel); build \(identity.buildNumber))\n"
+            )
         }
+    }
+
+    private struct BuildIdentity {
+        let marketingVersion: String
+        let releaseLabel: String
+        let buildNumber: String
+    }
+
+    private static func currentBuildIdentity() -> BuildIdentity {
+        for candidate in buildProvenanceCandidates() {
+            guard let data = try? Data(contentsOf: candidate),
+                  let values = try? PropertyListSerialization.propertyList(
+                      from: data,
+                      options: [],
+                      format: nil
+                  ) as? [String: Any],
+                  values["schema"] as? String == "scholium-build-provenance-v1",
+                  let marketingVersion = values["marketing_version"] as? String,
+                  !marketingVersion.isEmpty,
+                  let releaseLabel = values["release_label"] as? String,
+                  !releaseLabel.isEmpty,
+                  let buildNumber = values["build_number"] as? String,
+                  !buildNumber.isEmpty else {
+                continue
+            }
+            return BuildIdentity(
+                marketingVersion: marketingVersion,
+                releaseLabel: releaseLabel,
+                buildNumber: buildNumber
+            )
+        }
+        return BuildIdentity(
+            marketingVersion: productVersion,
+            releaseLabel: "development",
+            buildNumber: "0"
+        )
+    }
+
+    private static func buildProvenanceCandidates() -> [URL] {
+        let executable = currentExecutableURL()
+        let directory = executable.deletingLastPathComponent()
+        var candidates = [
+            directory
+                .appendingPathComponent(
+                    "Scholium_ScholiumCore.bundle/Contents/Resources",
+                    isDirectory: true
+                )
+                .appendingPathComponent("ScholiumBuildProvenance.plist"),
+        ]
+        if directory.lastPathComponent == "Helpers" {
+            candidates.append(
+                directory.deletingLastPathComponent()
+                    .appendingPathComponent("Resources", isDirectory: true)
+                    .appendingPathComponent("ScholiumBuildProvenance.plist")
+            )
+        }
+        if let resources = Bundle.main.resourceURL {
+            candidates.append(
+                resources.appendingPathComponent("ScholiumBuildProvenance.plist")
+            )
+        }
+        return candidates
+    }
+
+    private static func currentExecutableURL() -> URL {
+        var size: UInt32 = 0
+        _ = _NSGetExecutablePath(nil, &size)
+        if size > 0 {
+            var buffer = [CChar](repeating: 0, count: Int(size))
+            let status = buffer.withUnsafeMutableBufferPointer { pointer in
+                _NSGetExecutablePath(pointer.baseAddress, &size)
+            }
+            if status == 0 {
+                let pathBytes = buffer.prefix { $0 != 0 }.map {
+                    UInt8(bitPattern: $0)
+                }
+                return URL(
+                    fileURLWithPath: String(decoding: pathBytes, as: UTF8.self),
+                    isDirectory: false
+                ).standardizedFileURL.resolvingSymlinksInPath()
+            }
+        }
+        if let executable = Bundle.main.executableURL {
+            return executable.standardizedFileURL.resolvingSymlinksInPath()
+        }
+        return URL(
+            fileURLWithPath: CommandLine.arguments[0],
+            isDirectory: false
+        ).standardizedFileURL.resolvingSymlinksInPath()
     }
 
     static func runDoctor(_ arguments: [String], context: CLIContext) async throws {
@@ -121,7 +213,7 @@ extension ScholiumCLI {
             throw CLIError.usage("Doctor supports --format text or json.")
         }
         let assignments = try await context.assignments()
-        let executable = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
+        let executable = currentExecutableURL().path
         let report = CLIDoctorReport(
             cliVersion: productVersion,
             executable: executable,

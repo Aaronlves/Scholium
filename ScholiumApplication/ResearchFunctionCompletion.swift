@@ -1415,6 +1415,7 @@ extension ResearchFunctionCoordinator {
     ) async throws -> ResearchFunctionConfirmedWriteSet {
         let writeSet = stored.boundedWriteSet
         let writes = stored.documentWriteRecords
+        let bindingWrites = stored.zoteroBindingWriteRecords
         let resolvedConflictIDs = Set(
             stored.writeConflictResolutionRecords.map(\.conflictOperationID)
         )
@@ -1431,11 +1432,14 @@ extension ResearchFunctionCoordinator {
               writes.allSatisfy({
                   ![.writing, .recoveryRequired].contains($0.state)
               }),
+              bindingWrites.allSatisfy({
+                  ![.writing, .recoveryRequired].contains($0.state)
+              }),
               writes.filter({ $0.state == .conflict }).allSatisfy({
                   resolvedConflictIDs.contains($0.id)
               }), !hasPendingWriteRecovery else {
             throw ResearchFunctionContractError.invalidCompletion(
-                "Every started bounded document write must have a known, recoverable outcome before Result finalization."
+                "Every started bounded document or Zotero-binding write must have a known, recoverable outcome before Result finalization."
             )
         }
         var currentFingerprints: [UUID: DocumentFingerprint] = [:]

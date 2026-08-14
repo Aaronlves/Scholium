@@ -4,6 +4,17 @@ import ScholiumCore
 
 private enum VaultSourceCatalogError: Error {
     case generationExhausted
+    case incompleteAuthorization(String)
+}
+
+enum VaultSourceCatalogProjectionRequirement: Equatable, Sendable {
+    /// Authoritative source plus the semantic projection needed by Library and
+    /// Document presentation. Search-specific visible text and offset maps may
+    /// be completed later by the same catalog actor.
+    case library
+    /// The complete source-bound Search projection required by a Triptych
+    /// generation.
+    case search
 }
 
 struct VaultSourceCatalogMeasurement: Equatable, Sendable {
@@ -50,6 +61,11 @@ actor VaultSourceCatalog {
         let projectionDuration: Duration
     }
 
+    private struct CandidateAuthorization: Sendable {
+        let relativePath: String
+        let authorizedRecord: AuthorizedRecord
+    }
+
     private let repository: VaultRepository
     private let vaultRole: VaultRole
     private var records: [String: Record] = [:]
@@ -77,17 +93,27 @@ actor VaultSourceCatalog {
 
     func snapshot(
         refreshFolders: Bool = true,
-        consumePendingMeasurement: Bool = false
+        consumePendingMeasurement: Bool = false,
+        projectionRequirement: VaultSourceCatalogProjectionRequirement = .search
     ) async throws -> VaultSourceCatalogSnapshot {
         if !isInitialized || needsFullReconcile {
-            try await reconcile()
-        } else if refreshFolders {
-            let observedFolders = try await repository.folderRelativePaths(
-                includeLifecycle: true
-            )
-            if observedFolders != folders {
-                try advanceGeneration()
-                folders = observedFolders
+            try await reconcile(projectionRequirement: projectionRequirement)
+        } else {
+            if projectionRequirement == .search,
+               records.contains(where: {
+                   WorkspaceDocumentLifecycle(relativePath: $0.key) == .active
+                       && $0.value.searchProjection == nil
+               }) {
+                try completeSearchProjections()
+            }
+            if refreshFolders {
+                let observedFolders = try await repository.folderRelativePaths(
+                    includeLifecycle: true
+                )
+                if observedFolders != folders {
+                    try advanceGeneration()
+                    folders = observedFolders
+                }
             }
         }
         let measurement = consumePendingMeasurement
@@ -99,7 +125,9 @@ actor VaultSourceCatalog {
         return makeSnapshot(measurement: measurement)
     }
 
-    func reconcile() async throws {
+    func reconcile(
+        projectionRequirement: VaultSourceCatalogProjectionRequirement = .search
+    ) async throws {
         let clock = ContinuousClock()
         let enumerationStart = clock.now
         let paths = try await repository.markdownRelativePaths(includeLifecycle: true)
@@ -118,13 +146,17 @@ actor VaultSourceCatalog {
         var projectionDuration = Duration.zero
 
         let candidates = pathSet.union(nextRecords.keys).sorted()
+        let authorizations = try await authorizeCandidates(
+            candidates,
+            existingRecords: nextRecords,
+            projectionRequirement: projectionRequirement
+        )
         for path in candidates {
             try Task.checkCancellation()
             let existing = nextRecords[path]
-            let authorized = try await authorizedRecord(
-                relativePath: path,
-                existing: existing
-            )
+            guard let authorized = authorizations[path] else {
+                throw VaultSourceCatalogError.incompleteAuthorization(path)
+            }
             readDuration += authorized.readDuration
             parseDuration += authorized.parseDuration
             projectionDuration += authorized.projectionDuration
@@ -133,7 +165,7 @@ actor VaultSourceCatalog {
             if authorized.didProject { projectedDocuments += 1 }
             if let record = authorized.record {
                 nextRecords[path] = record
-                if authorized.didRead { changed = true }
+                if authorized.didRead || authorized.didProject { changed = true }
             } else {
                 nextRecords[path] = nil
                 if existing != nil { changed = true }
@@ -178,7 +210,8 @@ actor VaultSourceCatalog {
             let existing = nextRecords[path]
             let authorized = try await authorizedRecord(
                 relativePath: path,
-                existing: existing
+                existing: existing,
+                projectionRequirement: .search
             )
             readDuration += authorized.readDuration
             parseDuration += authorized.parseDuration
@@ -188,7 +221,7 @@ actor VaultSourceCatalog {
             if authorized.didProject { projectedDocuments += 1 }
             if let record = authorized.record {
                 nextRecords[path] = record
-                if authorized.didRead { changed = true }
+                if authorized.didRead || authorized.didProject { changed = true }
             } else {
                 nextRecords[path] = nil
                 if existing != nil { changed = true }
@@ -259,9 +292,90 @@ actor VaultSourceCatalog {
         generation += 1
     }
 
+    /// Keeps descriptor-authorized repository reads serialized by their actor,
+    /// while allowing pure semantic parsing from an earlier read to overlap a
+    /// later read. Results remain local until every candidate succeeds, so a
+    /// failed reconcile cannot partially replace the retained catalog.
+    private func authorizeCandidates(
+        _ candidates: [String],
+        existingRecords: [String: Record],
+        projectionRequirement: VaultSourceCatalogProjectionRequirement
+    ) async throws -> [String: AuthorizedRecord] {
+        guard !candidates.isEmpty else { return [:] }
+        let repository = repository
+        let vaultRole = vaultRole
+        let workerCount = min(
+            candidates.count,
+            max(2, ProcessInfo.processInfo.activeProcessorCount)
+        )
+        return try await withThrowingTaskGroup(
+            of: CandidateAuthorization.self,
+            returning: [String: AuthorizedRecord].self
+        ) { group in
+            for index in 0..<workerCount {
+                let path = candidates[index]
+                let existing = existingRecords[path]
+                group.addTask {
+                    CandidateAuthorization(
+                        relativePath: path,
+                        authorizedRecord: try await Self.authorizedRecord(
+                            repository: repository,
+                            vaultRole: vaultRole,
+                            relativePath: path,
+                            existing: existing,
+                            projectionRequirement: projectionRequirement
+                        )
+                    )
+                }
+            }
+
+            var nextIndex = workerCount
+            var results: [String: AuthorizedRecord] = [:]
+            results.reserveCapacity(candidates.count)
+            while let candidate = try await group.next() {
+                results[candidate.relativePath] = candidate.authorizedRecord
+                if nextIndex < candidates.count {
+                    let path = candidates[nextIndex]
+                    let existing = existingRecords[path]
+                    nextIndex += 1
+                    group.addTask {
+                        CandidateAuthorization(
+                            relativePath: path,
+                            authorizedRecord: try await Self.authorizedRecord(
+                                repository: repository,
+                                vaultRole: vaultRole,
+                                relativePath: path,
+                                existing: existing,
+                                projectionRequirement: projectionRequirement
+                            )
+                        )
+                    }
+                }
+            }
+            return results
+        }
+    }
+
     private func authorizedRecord(
         relativePath: String,
-        existing: Record?
+        existing: Record?,
+        projectionRequirement: VaultSourceCatalogProjectionRequirement
+    ) async throws -> AuthorizedRecord {
+        try await Self.authorizedRecord(
+            repository: repository,
+            vaultRole: vaultRole,
+            relativePath: relativePath,
+            existing: existing,
+            projectionRequirement: projectionRequirement
+        )
+    }
+
+    private static func authorizedRecord(
+        repository: VaultRepository,
+        vaultRole: VaultRole,
+        relativePath: String,
+        existing: Record?,
+        projectionRequirement: VaultSourceCatalogProjectionRequirement
     ) async throws -> AuthorizedRecord {
         if let existing {
             do {
@@ -269,6 +383,26 @@ actor VaultSourceCatalog {
                     relativePath: relativePath,
                     version: existing.version
                 ) {
+                    if projectionRequirement == .search,
+                       existing.semantic != nil,
+                       existing.searchProjection == nil {
+                        let projectionStart = ContinuousClock().now
+                        let completed = recordByCompletingSearchProjection(
+                            existing,
+                            vaultRole: vaultRole
+                        )
+                        return AuthorizedRecord(
+                            record: completed,
+                            didRead: false,
+                            didParse: false,
+                            didProject: true,
+                            readDuration: .zero,
+                            parseDuration: .zero,
+                            projectionDuration: projectionStart.duration(
+                                to: ContinuousClock().now
+                            )
+                        )
+                    }
                     return AuthorizedRecord(
                         record: existing,
                         didRead: false,
@@ -293,12 +427,10 @@ actor VaultSourceCatalog {
         }
 
         let clock = ContinuousClock()
-        let readStart = clock.now
         do {
             let loaded = try await repository.loadCatalogSource(
                 relativePath: relativePath
             )
-            let readDuration = readStart.duration(to: clock.now)
             let parseStart = clock.now
             let semantic: MarkdownSemanticDocument? =
                 WorkspaceDocumentLifecycle(relativePath: relativePath) == .active
@@ -306,8 +438,9 @@ actor VaultSourceCatalog {
                     : nil
             let parseDuration = parseStart.duration(to: clock.now)
             let projectionStart = clock.now
-            let searchProjection = semantic.map { semantic in
-                SearchDocumentProjection(
+            let searchProjection: SearchDocumentProjection?
+            if projectionRequirement == .search, let semantic {
+                searchProjection = SearchDocumentProjection(
                     document: loaded.document,
                     profile: WorkflowProfileResolver.resolve(
                         vaultRole: vaultRole,
@@ -316,6 +449,8 @@ actor VaultSourceCatalog {
                     ),
                     semantic: semantic
                 )
+            } else {
+                searchProjection = nil
             }
             return AuthorizedRecord(
                 record: Record(
@@ -328,7 +463,7 @@ actor VaultSourceCatalog {
                 didRead: true,
                 didParse: semantic != nil,
                 didProject: searchProjection != nil,
-                readDuration: readDuration,
+                readDuration: loaded.readDuration,
                 parseDuration: parseDuration,
                 projectionDuration: projectionStart.duration(to: clock.now)
             )
@@ -338,11 +473,63 @@ actor VaultSourceCatalog {
                 didRead: false,
                 didParse: false,
                 didProject: false,
-                readDuration: readStart.duration(to: clock.now),
+                readDuration: .zero,
                 parseDuration: .zero,
                 projectionDuration: .zero
             )
         }
+    }
+
+    private func completeSearchProjections() throws {
+        let clock = ContinuousClock()
+        let projectionStart = clock.now
+        var nextRecords = records
+        var projectedDocuments = 0
+        for (path, record) in records where record.semantic != nil
+            && record.searchProjection == nil {
+            try Task.checkCancellation()
+            nextRecords[path] = Self.recordByCompletingSearchProjection(
+                record,
+                vaultRole: vaultRole
+            )
+            projectedDocuments += 1
+        }
+        guard projectedDocuments > 0 else { return }
+        try advanceGeneration()
+        records = nextRecords
+        record(VaultSourceCatalogMeasurement(
+            enumeratedFiles: 0,
+            readFiles: 0,
+            parsedDocuments: 0,
+            projectedDocuments: projectedDocuments,
+            enumerationDuration: .zero,
+            readDuration: .zero,
+            parseDuration: .zero,
+            projectionDuration: projectionStart.duration(to: clock.now)
+        ))
+    }
+
+    private static func recordByCompletingSearchProjection(
+        _ record: Record,
+        vaultRole: VaultRole
+    ) -> Record {
+        Record(
+            document: record.document,
+            version: record.version,
+            fileMetadata: record.fileMetadata,
+            semantic: record.semantic,
+            searchProjection: record.semantic.map { semantic in
+                SearchDocumentProjection(
+                    document: record.document,
+                    profile: WorkflowProfileResolver.resolve(
+                        vaultRole: vaultRole,
+                        frontmatter: record.document.parsedFrontmatter,
+                        relativePath: record.document.relativePath
+                    ),
+                    semantic: semantic
+                )
+            }
+        )
     }
 
     private func record(_ measurement: VaultSourceCatalogMeasurement) {

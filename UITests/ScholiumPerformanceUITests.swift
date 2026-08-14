@@ -8,14 +8,34 @@ import notify
 /// gate. `run-performance-benchmarks.sh` owns those fail-closed checks and
 /// invokes this single method against an explicitly registered app bundle.
 final class ScholiumPerformanceUITests: XCTestCase {
+    private let packagedIsolationArgument =
+        "--scholium-performance-driver-isolation"
+
+    private enum WarmReadScrollDirection {
+        case towardEarlierRows
+        case towardLaterRows
+    }
+
     private enum Metric: String {
         case warmLibraryLaunch = "warm_library_launch"
         case indexedSearch = "indexed_search"
         case warmReadActivation = "warm_read_activation"
-        case coldReadActivation = "cold_read_activation"
+        case firstReadActivation = "first_read_activation"
+        case editorKeyToPaint = "editor_key_to_paint"
+        case editorModeTransition = "editor_mode_transition"
+        case editorCachedPreview = "editor_cached_preview"
+        case warmEditActivation = "warm_edit_activation"
+        case firstEditActivation = "first_edit_activation"
+        case editorVisibleProjection = "editor_visible_projection"
 
         var usesBatchedWarmProcess: Bool {
-            self == .indexedSearch || self == .warmReadActivation
+            self == .indexedSearch
+                || self == .warmReadActivation
+                || self == .editorKeyToPaint
+                || self == .editorModeTransition
+                || self == .editorCachedPreview
+                || self == .warmEditActivation
+                || self == .editorVisibleProjection
         }
     }
 
@@ -85,23 +105,87 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 sampleCount: 1
             )
 
-            application.launchEnvironment["SCHOLIUM_PERFORMANCE_STARTED_NS"] = String(
-                DispatchTime.now().uptimeNanoseconds
-            )
+            if metric == .warmLibraryLaunch {
+                application.launchEnvironment["SCHOLIUM_PERFORMANCE_STARTED_NS"] = String(
+                    DispatchTime.now().uptimeNanoseconds
+                )
+            }
             application.launch()
             XCTAssertTrue(
                 application.windows.firstMatch.waitForExistence(timeout: 30),
                 "Sample \(sample): the performance app window did not appear."
             )
-            XCTAssertTrue(
-                waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
-                "Sample \(sample): the app did not publish exactly one performance record."
-            )
+            if metric == .firstReadActivation {
+                performFirstReadActivation(
+                    in: application,
+                    resultsPath: resultsPath,
+                    sample: sample
+                )
+            } else if metric == .firstEditActivation {
+                performFirstEditActivation(
+                    in: application,
+                    resultsPath: resultsPath,
+                    sample: sample
+                )
+            } else {
+                XCTAssertTrue(
+                    waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
+                    "Sample \(sample): the app did not publish exactly one performance record."
+                )
+            }
             application.terminate()
             if sample + 1 < total, relaunchCooldownMilliseconds > 0 {
                 Thread.sleep(forTimeInterval: Double(relaunchCooldownMilliseconds) / 1_000)
             }
         }
+    }
+
+    /// Proves the exact packaged Release artifact starts at Bootstrap when its
+    /// isolated machine-state root is empty. No fixture registration is
+    /// supplied, so Restore Access is never a valid first-launch route.
+    @MainActor
+    func testPackagedFirstLaunchUsesBootstrap() throws {
+        continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_PACKAGED_FIRST_LAUNCH_PROOF"] == "1" else {
+            throw XCTSkip("The packaged first-launch proof is not configured.")
+        }
+        let applicationPath = try required(
+            "SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH",
+            in: environment
+        )
+        let homeRoot = try required(
+            "SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT",
+            in: environment
+        )
+        let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
+        let application = XCUIApplication(
+            url: URL(fileURLWithPath: applicationPath, isDirectory: true)
+        )
+        application.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
+        ]
+        application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = runID
+        defer { application.terminate() }
+
+        application.launch()
+        XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(
+            application.descendants(matching: .any)["scholium.bootstrap"]
+                .waitForExistence(timeout: 20),
+            "A clean packaged Release launch must enter Bootstrap."
+        )
+        XCTAssertTrue(
+            application.buttons["Get Started"].waitForExistence(timeout: 5),
+            "Bootstrap must expose its ordinary first-launch action."
+        )
+        XCTAssertFalse(
+            application.descendants(matching: .any)["scholium.restoreAccess"].exists,
+            "Restore Access is valid only for an already configured Triptych."
+        )
     }
 
     /// Samples only the app and WebKit service PIDs attributed to this exact
@@ -133,6 +217,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         )
         application.launchArguments = [
             "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
             "--scholium-performance-editor-mode-notifications",
         ]
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
@@ -166,7 +251,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application: application,
             documentID: "Long/Canonical-5000-Word-Work.md"
         )
-        Thread.sleep(forTimeInterval: 0.5)
         waitForMemoryAcknowledgment(
             index: 0,
             acknowledgmentPath: acknowledgmentPath
@@ -174,21 +258,189 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
         for transition in 1...transitions {
             let sourceMode = transition.isMultiple(of: 2) == false
-            selectEditorMode(
-                sourceMode ? "Source" : "Edit",
-                accessibilityLabel: sourceMode
-                    ? "Markdown source editor"
-                    : "Markdown editor, Edit mode",
-                modeMenu: modeMenu,
-                application: application,
-                documentID: "Long/Canonical-5000-Word-Work.md"
+            requestMeasuredEditorMode(sourceMode ? "Source" : "Edit")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: progressPath) == transition + 1
+                },
+                "The app did not acknowledge retained-memory transition \(transition)."
             )
-            _ = XCUIScreen.main.screenshot()
-            Thread.sleep(forTimeInterval: 0.1)
             waitForMemoryAcknowledgment(
                 index: transition,
                 acknowledgmentPath: acknowledgmentPath
             )
+        }
+
+        let finalModeIsSource = transitions.isMultiple(of: 2) == false
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (modeMenu.value as? String) == (finalModeIsSource ? "Source" : "Edit")
+                    && application.descendants(matching: .any)[
+                        finalModeIsSource
+                            ? "Markdown source editor"
+                            : "Markdown editor, Edit mode"
+                    ].exists
+            },
+            "The final retained Editor mode was not visibly accessible."
+        )
+    }
+
+    /// Exercises the frozen packaged RDF-1 CJK document without leaving a
+    /// modified fixture behind. Beginning and middle edits are immediately
+    /// undone; the end edit is saved across mode switches, then undone and
+    /// saved back to the original exact bytes.
+    @MainActor
+    func testRDF1HundredThousandCJKCorrectness() throws {
+        continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH"] != nil else {
+            throw XCTSkip("The packaged RDF-1 CJK correctness driver is not configured.")
+        }
+        let applicationPath = try required("SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH", in: environment)
+        let fixtureRoot = try required("SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT", in: environment)
+        let homeRoot = try required("SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT", in: environment)
+        let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
+        let resultsPath = try required("SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH", in: environment)
+        let relativePath = "Long/Canonical-100000-CJK-Work.md"
+        let noteURL = URL(fileURLWithPath: fixtureRoot, isDirectory: true)
+            .appendingPathComponent("03-works", isDirectory: true)
+            .appendingPathComponent(relativePath, isDirectory: false)
+        let originalData = try Data(contentsOf: noteURL)
+        let originalSource = try XCTUnwrap(String(data: originalData, encoding: .utf8))
+        let cjkCharacterCount = originalSource.unicodeScalars.reduce(into: 0) { count, scalar in
+            if (0x4E00...0x9FFF).contains(scalar.value) { count += 1 }
+        }
+        XCTAssertEqual(cjkCharacterCount, 100_000)
+        let application = XCUIApplication(
+            url: URL(fileURLWithPath: applicationPath, isDirectory: true)
+        )
+        application.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
+            "--scholium-performance-editor-mode-notifications",
+        ]
+        application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
+        application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
+        application.launchEnvironment["SCHOLIUM_UI_TEST_SESSION_ID"] = "cjk-\(runID)"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"] = "1380"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
+        application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = relativePath
+        application.launchEnvironment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"] = "300000"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = resultsPath
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_METRIC"] =
+            "editor_large_cjk_correctness"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = runID
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE"] = "0"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_SAMPLE_COUNT"] = "1"
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = relativePath
+        defer {
+            let stopped = stopPackagedApplication(
+                application,
+                bundleURL: URL(fileURLWithPath: applicationPath, isDirectory: true)
+            )
+            // Never race a live editor buffer with an out-of-process repair.
+            // A process that refuses termination leaves the disposable fixture
+            // dirty so the runner's final RDF-1 manifest check fails closed.
+            if stopped, (try? Data(contentsOf: noteURL)) != originalData {
+                try? originalData.write(to: noteURL, options: .atomic)
+            }
+        }
+
+        application.launch()
+        XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
+        let modeMenu = application.descendants(matching: .any)["scholium.documentModeButton"]
+        XCTAssertTrue(modeMenu.waitForExistence(timeout: 30))
+        selectCJKDocumentMode(
+            "Edit",
+            accessibilityLabel: "Markdown editor, Edit mode",
+            modeMenu: modeMenu,
+            application: application,
+            documentID: relativePath
+        )
+        let editor = application.descendants(matching: .any)["Markdown editor, Edit mode"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 60))
+        editor.click()
+
+        let beginningToken = "QA-CJK-BEGIN-\(UUID().uuidString)"
+        application.typeKey(.home, modifierFlags: [.command])
+        try paste(beginningToken, into: application)
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (editor.value as? String)?.contains(beginningToken) == true
+            }
+        )
+        application.typeKey("z", modifierFlags: [.command])
+
+        for _ in 0..<24 { application.typeKey(.pageDown, modifierFlags: []) }
+        let middleToken = "QA-CJK-MIDDLE-\(UUID().uuidString)"
+        try paste(middleToken, into: application)
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (editor.value as? String)?.contains(middleToken) == true
+            }
+        )
+        application.typeKey("z", modifierFlags: [.command])
+
+        let endToken = "QA-CJK-END-\(UUID().uuidString)"
+        application.typeKey(.end, modifierFlags: [.command])
+        try paste(endToken, into: application)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalData)
+
+        application.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 60) {
+                (try? String(contentsOf: noteURL, encoding: .utf8).contains(endToken)) == true
+            },
+            "The 100,000-CJK end edit did not reach the revision-checked save path."
+        )
+        let committedSource = try String(contentsOf: noteURL, encoding: .utf8)
+        XCTAssertEqual(committedSource.components(separatedBy: endToken).count, 2)
+        XCTAssertEqual(committedSource.replacingOccurrences(of: endToken, with: ""), originalSource)
+
+        selectCJKDocumentMode(
+            "Source",
+            accessibilityLabel: "Markdown source editor",
+            modeMenu: modeMenu,
+            application: application,
+            documentID: relativePath
+        )
+        selectCJKDocumentMode(
+            "Edit",
+            accessibilityLabel: "Markdown editor, Edit mode",
+            modeMenu: modeMenu,
+            application: application,
+            documentID: relativePath
+        )
+        editor.click()
+        application.typeKey("z", modifierFlags: [.command])
+        application.typeKey("s", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 60) { (try? Data(contentsOf: noteURL)) == originalData },
+            "Undo after mode switching did not restore the exact RDF-1 CJK bytes."
+        )
+
+        XCTAssertEqual(
+            notify_post("com.scholium.qa.performance-editor-cjk-correctness"),
+            UInt32(NOTIFY_STATUS_OK),
+            "The packaged CJK correctness handshake could not be posted."
+        )
+        XCTAssertTrue(
+            waitUntil(timeout: 20) { self.lineCount(at: resultsPath) == 1 },
+            "The packaged app did not publish the CJK correctness record."
+        )
+        let recorded = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: URL(fileURLWithPath: resultsPath))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(recorded["run_id"] as? String, runID)
+        XCTAssertEqual(recorded["character_count"] as? Int, cjkCharacterCount)
+        for key in [
+            "beginning_edit_undo", "middle_edit_undo", "end_edit_save",
+            "mode_switching", "exact_source_restored",
+        ] {
+            XCTAssertEqual(recorded[key] as? Bool, true)
         }
     }
 
@@ -206,7 +458,19 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let application = XCUIApplication(
             url: URL(fileURLWithPath: applicationPath, isDirectory: true)
         )
-        application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        application.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
+        ]
+        if metric == .editorModeTransition
+            || metric == .editorCachedPreview
+            || metric == .warmEditActivation
+            || metric == .firstEditActivation
+            || metric == .editorVisibleProjection {
+            application.launchArguments.append(
+                "--scholium-performance-editor-mode-notifications"
+            )
+        }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
         application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = fixtureRoot
@@ -231,10 +495,17 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "paper_analysis"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Cluster-01/analysis-note-002.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Cluster-00/analysis-note-001.md"
-        case .coldReadActivation:
+        case .firstReadActivation, .firstEditActivation:
+            application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
+            application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
+        case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
+             .warmEditActivation, .editorVisibleProjection:
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "output"
             application.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_NOTE"] = "Long/Canonical-5000-Word-Work.md"
             application.launchEnvironment["SCHOLIUM_PERFORMANCE_EXPECTED_DOCUMENT"] = "Long/Canonical-5000-Word-Work.md"
+        }
+        if metric == .editorKeyToPaint {
+            application.launchEnvironment["SCHOLIUM_UI_TEST_AUTOSAVE_DELAY_MS"] = "300000"
         }
         return application
     }
@@ -250,7 +521,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
             setupDocument = "Cluster-00/analysis-note-001.md"
         case .warmReadActivation:
             setupDocument = "Cluster-01/analysis-note-002.md"
-        case .warmLibraryLaunch, .coldReadActivation:
+        case .editorKeyToPaint, .editorModeTransition, .editorCachedPreview,
+             .warmEditActivation, .editorVisibleProjection:
+            setupDocument = "Long/Canonical-5000-Word-Work.md"
+        case .warmLibraryLaunch, .firstReadActivation, .firstEditActivation:
             return
         }
         XCTAssertTrue(
@@ -261,11 +535,62 @@ final class ScholiumPerformanceUITests: XCTestCase {
             try prepareWarmReadLibraryTargets(in: application)
             return
         }
-        application.typeKey("f", modifierFlags: [.command])
+        if metric == .editorModeTransition || metric == .editorKeyToPaint
+            || metric == .editorCachedPreview
+            || metric == .warmEditActivation
+            || metric == .editorVisibleProjection {
+            application.typeKey("r", modifierFlags: [.command])
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            XCTAssertTrue(
+                waitUntil(timeout: 20) {
+                    (modeMenu.value as? String) == "Edit"
+                        && application.descendants(matching: .any)[
+                            "Markdown editor, Edit mode"
+                        ].exists
+                },
+                "The Editor transition setup did not reach accessible Edit mode."
+            )
+            if metric == .editorKeyToPaint {
+                let editor = application.descendants(matching: .any)[
+                    "Markdown editor, Edit mode"
+                ]
+                XCTAssertTrue(editor.waitForExistence(timeout: 10))
+                let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+                XCTAssertTrue(
+                    waitUntil(timeout: 10) {
+                        keyboardFocus.evaluate(with: editor)
+                    },
+                    "The key-to-paint setup did not receive the Editor's native focus handoff."
+                )
+                application.typeKey(.end, modifierFlags: [.command])
+            }
+            if metric == .warmEditActivation {
+                requestPerformanceEditorAction("review")
+                XCTAssertTrue(
+                    waitUntil(timeout: 20) {
+                        (modeMenu.value as? String) == "Review"
+                            && self.waitForRenderedDocument(
+                                setupDocument,
+                                in: application,
+                                timeout: 0.1
+                            )
+                    },
+                    "The warm Edit setup did not return to accessible Review."
+                )
+            }
+            if metric == .editorCachedPreview {
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            return
+        }
+        application.typeKey("f", modifierFlags: [.command, .shift])
         let field = application.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         replaceCommittedText("scopeSetup", in: field, application: application)
-        let thisVault = application.radioButtons["This Vault"]
+        let thisVault = application.buttons["scholium.searchScope.currentVault"]
         XCTAssertTrue(thisVault.waitForExistence(timeout: 5))
         thisVault.click()
         clearSearchField(field, application: application)
@@ -281,7 +606,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         total: Int
     ) throws {
         switch metric {
-        case .warmLibraryLaunch, .coldReadActivation:
+        case .warmLibraryLaunch, .firstReadActivation, .firstEditActivation:
             return
         case .indexedSearch:
             let field = application.descendants(matching: .any)["scholium.searchField"]
@@ -315,7 +640,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "scholium.noteRow.Cluster-00/analysis-note-001.md"
             ]
             XCTAssertTrue(target.waitForExistence(timeout: 15))
-            XCTAssertTrue(target.isHittable, "Sample \(sample): the warm Read Library target is not hittable.")
+            scrollReadTargetIntoView(
+                target,
+                in: application,
+                sample: sample,
+                role: "measured",
+                direction: .towardEarlierRows
+            )
             target.click()
             XCTAssertTrue(
                 waitForRenderedDocument(
@@ -334,9 +665,12 @@ final class ScholiumPerformanceUITests: XCTestCase {
                     "scholium.noteRow.Cluster-01/analysis-note-002.md"
                 ]
                 XCTAssertTrue(alternate.waitForExistence(timeout: 15))
-                XCTAssertTrue(
-                    alternate.isHittable,
-                    "Sample \(sample): the alternate warm Read Library target is not hittable."
+                scrollReadTargetIntoView(
+                    alternate,
+                    in: application,
+                    sample: sample,
+                    role: "alternate",
+                    direction: .towardLaterRows
                 )
                 alternate.click()
                 XCTAssertTrue(
@@ -346,6 +680,93 @@ final class ScholiumPerformanceUITests: XCTestCase {
                         timeout: 30
                     ),
                     "Sample \(sample): navigation did not restore the alternate warm document."
+                )
+            }
+        case .editorKeyToPaint:
+            let editor = application.descendants(matching: .any)[
+                "Markdown editor, Edit mode"
+            ]
+            XCTAssertTrue(editor.waitForExistence(timeout: 10))
+            if sample.isMultiple(of: 2) {
+                application.typeKey("x", modifierFlags: [])
+            } else {
+                application.typeKey(.delete, modifierFlags: [])
+            }
+            let recordPublished = waitUntil(timeout: 30) {
+                self.lineCount(at: resultsPath) == sample + 1
+            }
+            if !recordPublished {
+                XCTFail(
+                    "Sample \(sample): painted key input did not publish exactly one performance record."
+                )
+                return
+            }
+        case .editorModeTransition:
+            let sourceMode = sample.isMultiple(of: 2)
+            requestMeasuredEditorMode(
+                sourceMode ? "Source" : "Edit"
+            )
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): Editor mode transition did not publish exactly one performance record."
+            )
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            let accessibilityLabel = sourceMode
+                ? "Markdown source editor"
+                : "Markdown editor, Edit mode"
+            XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            XCTAssertTrue(
+                waitUntil(timeout: 20) {
+                    (modeMenu.value as? String) == (sourceMode ? "Source" : "Edit")
+                        && application.descendants(matching: .any)[accessibilityLabel].exists
+                },
+                "Sample \(sample): the measured Editor mode was not accessible after publication."
+            )
+        case .editorCachedPreview:
+            requestPerformanceEditorAction("cached-preview")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): cached preview did not publish exactly one performance record."
+            )
+        case .editorVisibleProjection:
+            requestPerformanceEditorAction("visible-projection")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): visible projection did not publish exactly one performance record."
+            )
+        case .warmEditActivation:
+            requestPerformanceEditorAction("activation")
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    self.lineCount(at: resultsPath) == sample + 1
+                },
+                "Sample \(sample): warm Edit activation did not publish exactly one performance record."
+            )
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            XCTAssertTrue(
+                waitUntil(timeout: 20) {
+                    (modeMenu.value as? String) == "Edit"
+                        && application.descendants(matching: .any)[
+                            "Markdown editor, Edit mode"
+                        ].exists
+                }
+            )
+            if sample + 1 < total {
+                requestPerformanceEditorAction("review")
+                XCTAssertTrue(
+                    waitUntil(timeout: 20) {
+                        (modeMenu.value as? String) == "Review"
+                    }
                 )
             }
         }
@@ -369,6 +790,147 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.descendants(matching: .any)[
                 "scholium.noteRow.Cluster-01/analysis-note-002.md"
             ].waitForExistence(timeout: 10)
+        )
+    }
+
+    @MainActor
+    private func performFirstReadActivation(
+        in application: XCUIApplication,
+        resultsPath: String,
+        sample: Int
+    ) {
+        _ = selectFirstUseReviewDocument(in: application, sample: sample)
+        XCTAssertTrue(
+            waitUntil(timeout: 60) { self.lineCount(at: resultsPath) == sample + 1 },
+            "Sample \(sample): first Review did not publish exactly one performance record."
+        )
+    }
+
+    @MainActor
+    private func performFirstEditActivation(
+        in application: XCUIApplication,
+        resultsPath: String,
+        sample: Int
+    ) {
+        _ = selectFirstUseReviewDocument(in: application, sample: sample)
+        XCTAssertEqual(
+            lineCount(at: resultsPath),
+            sample,
+            "Sample \(sample): first Edit setup published a record before the Edit request."
+        )
+
+        requestPerformanceEditorAction("activation")
+        XCTAssertTrue(
+            waitUntil(timeout: 30) { self.lineCount(at: resultsPath) == sample + 1 },
+            "Sample \(sample): first Edit did not publish exactly one performance record."
+        )
+        let modeMenu = application.descendants(matching: .any)[
+            "scholium.documentModeButton"
+        ]
+        XCTAssertTrue(
+            waitUntil(timeout: 20) {
+                (modeMenu.value as? String) == "Edit"
+                    && application.descendants(matching: .any)[
+                        "Markdown editor, Edit mode"
+                    ].exists
+            },
+            "Sample \(sample): the first Editor was not visible and accessible."
+        )
+    }
+
+    @MainActor
+    private func selectFirstUseReviewDocument(
+        in application: XCUIApplication,
+        sample: Int
+    ) -> String {
+        let noDocumentState = application.descendants(matching: .any)[
+            "scholium.noDocumentState"
+        ]
+        XCTAssertTrue(
+            noDocumentState.waitForExistence(timeout: 30),
+            "Sample \(sample): cold launch did not settle on an empty Workspace."
+        )
+
+        let folder = application.descendants(matching: .any)[
+            "scholium.folderRow.Long"
+        ]
+        XCTAssertTrue(folder.waitForExistence(timeout: 15))
+        scrollReadTargetIntoView(
+            folder,
+            in: application,
+            sample: sample,
+            role: "first-use folder",
+            direction: .towardLaterRows
+        )
+        if (folder.value as? String) != "Expanded" {
+            folder.click()
+        }
+
+        let documentID = "Long/Canonical-5000-Word-Work.md"
+        let target = application.descendants(matching: .any)[
+            "scholium.noteRow.\(documentID)"
+        ]
+        XCTAssertTrue(target.waitForExistence(timeout: 15))
+        scrollReadTargetIntoView(
+            target,
+            in: application,
+            sample: sample,
+            role: "first-use document",
+            direction: .towardLaterRows
+        )
+        XCTAssertTrue(
+            noDocumentState.exists,
+            "Sample \(sample): setup selected a document before the measured action."
+        )
+
+        target.click()
+        XCTAssertTrue(
+            waitForRenderedDocument(documentID, in: application, timeout: 60),
+            "Sample \(sample): the first selected Review document did not render."
+        )
+        return documentID
+    }
+
+    /// Reconciles the native Sidebar viewport before a measured Note click.
+    /// `PerformanceProbe.beginReadActivation` starts inside the click action,
+    /// so these setup swipes never enter the Read duration. Offscreen
+    /// NSOutlineView rows expose document rather than viewport coordinates;
+    /// the caller therefore supplies the frozen RDF-1 row-order direction.
+    @MainActor
+    private func scrollReadTargetIntoView(
+        _ target: XCUIElement,
+        in application: XCUIApplication,
+        sample: Int,
+        role: String,
+        direction: WarmReadScrollDirection
+    ) {
+        let noteList = application.descendants(matching: .any)[
+            "scholium.noteList"
+        ].firstMatch
+        XCTAssertTrue(
+            noteList.waitForExistence(timeout: 10),
+            "Sample \(sample): the native Note list did not remain accessible."
+        )
+
+        func isVisiblyHittable() -> Bool {
+            guard target.isHittable else { return false }
+            let intersection = target.frame.intersection(noteList.frame)
+            return !intersection.isNull
+                && intersection.width >= 8
+                && intersection.height >= 8
+        }
+
+        for _ in 0..<12 where !isVisiblyHittable() {
+            switch direction {
+            case .towardEarlierRows:
+                noteList.swipeDown(velocity: .slow)
+            case .towardLaterRows:
+                noteList.swipeUp(velocity: .slow)
+            }
+        }
+        XCTAssertTrue(
+            isVisiblyHittable(),
+            "Sample \(sample): the \(role) Read target did not become visibly hittable."
         )
     }
 
@@ -411,6 +973,90 @@ final class ScholiumPerformanceUITests: XCTestCase {
         XCTFail(
             "The \(title) editor surface for \(documentID) did not become accessible."
         )
+    }
+
+    @MainActor
+    private func requestMeasuredEditorMode(
+        _ title: String
+    ) {
+        let notificationName = title == "Edit"
+            ? "com.scholium.qa.performance-editor-mode.live-preview"
+            : "com.scholium.qa.performance-editor-mode.source"
+        XCTAssertEqual(
+            notify_post(notificationName),
+            UInt32(NOTIFY_STATUS_OK),
+            "The measured QA Editor mode request could not be posted."
+        )
+    }
+
+    private func requestPerformanceEditorAction(_ action: String) {
+        XCTAssertEqual(
+            notify_post("com.scholium.qa.performance-editor-\(action)"),
+            UInt32(NOTIFY_STATUS_OK),
+            "The QA Editor performance action could not be posted."
+        )
+    }
+
+    @MainActor
+    private func paste(_ text: String, into application: XCUIApplication) throws {
+        let process = Process()
+        let input = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+        process.standardInput = input
+        try process.run()
+        input.fileHandleForWriting.write(Data(text.utf8))
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        application.typeKey("v", modifierFlags: [.command])
+    }
+
+    @MainActor
+    private func selectCJKDocumentMode(
+        _ title: String,
+        accessibilityLabel: String,
+        modeMenu: XCUIElement,
+        application: XCUIApplication,
+        documentID: String
+    ) {
+        if (modeMenu.value as? String) != title {
+            let notificationName = title == "Edit"
+                ? "com.scholium.qa.performance-editor-mode.live-preview"
+                : "com.scholium.qa.performance-editor-mode.source"
+            XCTAssertEqual(
+                notify_post(notificationName),
+                UInt32(NOTIFY_STATUS_OK),
+                "The packaged CJK mode request could not be posted."
+            )
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 60) {
+                (modeMenu.value as? String) == title
+                    && application.descendants(matching: .any)[accessibilityLabel].exists
+            },
+            "The packaged CJK \(title) surface for \(documentID) did not become accessible."
+        )
+    }
+
+    private func stopPackagedApplication(
+        _ application: XCUIApplication,
+        bundleURL: URL
+    ) -> Bool {
+        let expectedURL = bundleURL.standardizedFileURL
+        func matchingApplications() -> [NSRunningApplication] {
+            NSRunningApplication.runningApplications(
+                withBundleIdentifier: "com.scholium.app"
+            ).filter { $0.bundleURL?.standardizedFileURL == expectedURL }
+        }
+
+        application.terminate()
+        if waitUntil(timeout: 10) { matchingApplications().isEmpty } {
+            return true
+        }
+        matchingApplications().forEach { $0.forceTerminate() }
+        return waitUntil(timeout: 10) { matchingApplications().isEmpty }
     }
 
     private func waitForMemoryAcknowledgment(

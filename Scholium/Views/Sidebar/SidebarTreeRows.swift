@@ -212,7 +212,12 @@ struct SidebarTreeNodeRow: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(SidebarNavigationButtonStyle())
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                tracksHover: false,
+                in: Rectangle()
+            )
+        )
         .help(node.name)
         .accessibilityLabel(node.name)
         .accessibilityValue(node.children.isEmpty ? "Empty folder" : isExpanded ? "Expanded" : "Collapsed")
@@ -245,7 +250,12 @@ struct SidebarTreeNodeRow: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(SidebarNavigationButtonStyle())
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                tracksHover: false,
+                in: Rectangle()
+            )
+        )
         .frame(minWidth: 0, maxWidth: .infinity)
         .accessibilityLabel(note.title ?? note.displayName)
         .accessibilityAddTraits(
@@ -485,12 +495,6 @@ struct SidebarTreeNodeRow: View {
         }
     }
 
-}
-
-private struct SidebarNavigationButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-    }
 }
 
 struct SidebarNoteRow: View {

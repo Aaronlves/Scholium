@@ -234,41 +234,6 @@ struct TriptychCheckpointTests {
         #expect(!automaticAfterRestore.contains { $0.id == oldest.id })
     }
 
-    @Test("Checkpoint restore returns committed cleanup warnings without retrying source")
-    func restoreReportsCleanupWarning() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = TriptychCheckpointStore(
-            triptychID: fixture.triptychID,
-            applicationSupportURL: fixture.support
-        )
-        let checkpoint = try await store.create(
-            name: "Cleanup warning",
-            kind: .manual,
-            roots: fixture.roots
-        )
-        try Data("# Changed after checkpoint\n".utf8).write(to: fixture.analysis)
-        let analysisKey = TriptychCheckpointFileKey(
-            area: .analyses,
-            relativePath: "Paper.md"
-        )
-
-        let result = try await store.restore(
-            checkpointID: checkpoint.id,
-            selection: .files([analysisKey]),
-            roots: fixture.roots,
-            repositories: fixture.repositories(
-                analysisHooks: VaultMutationHooks(
-                    cleanupOverride: { throw CocoaError(.fileWriteUnknown) }
-                )
-            )
-        )
-
-        #expect(try Data(contentsOf: fixture.analysis) == Data("# Analysis\n".utf8))
-        #expect(result.cleanupWarnings.count == 1)
-        #expect(result.cleanupWarnings.first?.kind == .displacedSourceCopy)
-    }
-
     @Test("Comparison distinguishes created, changed, moved, and deleted files")
     func comparison() async throws {
         let fixture = try Fixture()

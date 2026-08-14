@@ -234,14 +234,62 @@ public struct ResearchMethodContext: Codable, Hashable, Sendable {
     }
 }
 
+/// Protected, release-managed instructions for the optional Zotero adapter.
+/// Delivery explains how to use an already-authorized integration; it grants
+/// no capability, transport, library access, or write authority.
+public struct ResearchZoteroIntegrationAdapter: Codable, Hashable, Sendable {
+    public let skillMarkdown: String
+    public let capabilityContractMarkdown: String
+
+    public init(
+        skillMarkdown: String,
+        capabilityContractMarkdown: String
+    ) throws {
+        guard Self.isValid(skillMarkdown),
+              Self.isValid(capabilityContractMarkdown) else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.skillMarkdown = skillMarkdown
+        self.capabilityContractMarkdown = capabilityContractMarkdown
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case skillMarkdown = "skill_markdown"
+        case capabilityContractMarkdown = "capability_contract_markdown"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentConnectionCoding.rejectUnknownFields(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            skillMarkdown: container.decode(String.self, forKey: .skillMarkdown),
+            capabilityContractMarkdown: container.decode(
+                String.self,
+                forKey: .capabilityContractMarkdown
+            )
+        )
+    }
+
+    private static func isValid(_ markdown: String) -> Bool {
+        !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && markdown.utf8.count <= 1_048_576
+    }
+}
+
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.
     public let coreProtocol: String?
     public let brief: ResearchRunBrief
     public let method: ResearchMethodContext
+    /// Present only for an eligible Analysis Run whose immutable Action
+    /// snapshot contains Zotero bibliographic context.
+    public let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter?
     public let resultContract: ResearchResultContract
     /// Current, capability-free view of the Run-local bounded write set. The
     /// Application retains Note identity, expected revisions, checkpoints,
@@ -254,14 +302,21 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         coreProtocol: String?,
         brief: ResearchRunBrief,
         method: ResearchMethodContext,
+        zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter? = nil,
         resultContract: ResearchResultContract,
         boundedWriteSet: [ResearchBoundedWriteSetViewEntry],
         continuationHandoff: ResearchContinuationHandoffContext? = nil
-    ) {
+    ) throws {
+        guard zoteroIntegrationAdapter == nil
+                || (brief.initialObjectRole == .analysis
+                    && brief.capabilities.zotero) else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
         schemaVersion = Self.currentSchemaVersion
         self.coreProtocol = coreProtocol
         self.brief = brief
         self.method = method
+        self.zoteroIntegrationAdapter = zoteroIntegrationAdapter
         self.resultContract = resultContract
         self.boundedWriteSet = boundedWriteSet.sorted {
             if $0.role != $1.role { return $0.role.rawValue < $1.role.rawValue }
@@ -274,6 +329,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         case schemaVersion = "schema_version"
         case coreProtocol = "core_protocol"
         case brief, method
+        case zoteroIntegrationAdapter = "zotero_integration_adapter"
         case resultContract = "result_contract"
         case boundedWriteSet = "bounded_write_set"
         case continuationHandoff = "continuation_handoff"
@@ -297,13 +353,17 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
               Set(boundedWriteSet.map(\.id)).count == boundedWriteSet.count else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
-        self.init(
+        try self.init(
             coreProtocol: try container.decodeIfPresent(
                 String.self,
                 forKey: .coreProtocol
             ),
             brief: try container.decode(ResearchRunBrief.self, forKey: .brief),
             method: try container.decode(ResearchMethodContext.self, forKey: .method),
+            zoteroIntegrationAdapter: try container.decodeIfPresent(
+                ResearchZoteroIntegrationAdapter.self,
+                forKey: .zoteroIntegrationAdapter
+            ),
             resultContract: try container.decode(
                 ResearchResultContract.self,
                 forKey: .resultContract

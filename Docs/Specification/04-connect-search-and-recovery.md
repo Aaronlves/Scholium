@@ -47,11 +47,10 @@ the selected provider:
 - **Triptych** searches all active Notes or all Research Records in the
   Triptych.
 
-There is no All Workspace, Selected Roles, separate in-note Find, advanced
-Search workspace, Quick Open, Recents, or Back/Forward history. Exact title,
-alias, filename, and path matches rank above body matches, so Search also owns
-known-note navigation. Library, Document tabs, and windows support ordinary or
-parallel navigation.
+There is no All Workspace, Selected Roles, advanced Search workspace, Quick
+Open, Recents, or Back/Forward history. Exact title, alias, filename, and path
+matches rank above body matches, so Search also owns known-note navigation.
+Library, Document tabs, and windows support ordinary or parallel navigation.
 
 Search is a centered, compact Spotlight-style command surface. Scope is visible
 before typing; empty Search shows no results sheet. Text expands a bounded
@@ -68,10 +67,21 @@ the native selected accessibility trait, and retains native scrolling, focus,
 and keyboard mechanics. Search never layers a partial dark system-selection
 slab behind only part of a result row.
 
-Each window remembers its ordinary scope. `Command-F` requires an open note and
-temporarily selects **This Note**. Dismissal restores the prior scope unless the
-researcher explicitly changed it, cancels work, rejects stale results, and
-clears query/results while retaining scope and saved searches.
+Each window remembers its ordinary scope. **Search…** uses `Shift-Command-F`.
+Dismissal cancels work, rejects stale results, and clears query/results while
+retaining scope and saved searches.
+
+Document Find is a separate lightweight editor operation rather than a Search
+provider, result, index, saved query, or navigation owner. `Command-F` opens one
+inline Find bar for the current unsaved buffer. It supports literal text,
+case-sensitive and whole-word options, a current/total match count, Previous and
+Next, and `Command-E`, `Command-G`, `Shift-Command-G`, and Escape with their
+standard meanings. Review exposes Find only. Edit and Source additionally expose
+Replace Current and Replace All; each accepted replacement is one editor
+transaction and one Undo event. A mode change retains the query but immediately
+recomputes against the same buffer and disables replacement in Review. Closing
+the bar restores focus and selection to the editor without changing Search
+scope, saving source, or creating history.
 
 Search has a closed **Note / Record** provider contract. Omitting `kind:` means
 `kind:note`; `kind:record` selects Research Records. There is no `kind:any`,
@@ -310,12 +320,24 @@ available for inspection and copying. If the candidate is already canonical,
 Recovery verifies that fact and removes only the completed machine-local
 record.
 
-If source replacement and readback succeed but cleanup of the displaced exact
-copy does not, the save remains committed and shows a cleanup warning rather
-than inviting another write. Reopen retries only the recorded unchanged copy;
-a missing, substituted, changed, unsafe, or inaccessible candidate remains a
-diagnostic and is never deleted by guesswork. Pre-commit cleanup follows the
-same exact task boundary.
+An ordinary Note save has exactly three terminal Document outcomes after
+Saving: **Saved**, **Conflict**, or **Autosave Failed**. Saved requires the
+current canonical Markdown to read back exactly as the validated candidate and
+is otherwise silent. Conflict means the expected revision no longer matches;
+Scholium preserves the editor buffer and routes to comparison rather than
+overwriting the external revision. Autosave Failed means replacement did not
+complete or exact canonical readback cannot prove the candidate; Scholium
+retains the editor buffer and any independently useful recovery candidate.
+
+There is no fourth "saved with a technical warning" outcome. Exact source,
+containment, regular-file identity, expected revision, replacement, and
+canonical readback remain save authority. Filesystem metadata equality,
+parent-directory synchronization, temporary replacement entries, and
+machine-local recovery cleanup are not Document success predicates and never
+turn a readback-proven commit into a warning or invite another write. Redundant
+machine-local housekeeping remains invisible and automatic; it may remove only
+an exact app-owned artifact and never canonical source or an unknown file by
+guesswork.
 
 Settle may pin one exact researcher-selected revision without turning it into a
 truth claim. Temporary write recovery and settled retention remain separate.

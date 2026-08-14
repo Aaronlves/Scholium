@@ -33,15 +33,26 @@ relationship; permanent deletion removes it. The Zotero integration surface
 provides visible open, clear, and rebind paths. Single-Note Markdown restore
 leaves it unchanged; complete Triptych restore follows §14.
 
-When the current Analysis has a valid binding, Overview exposes one quiet
-**Open in Zotero** action for that exact library item. It displays neither the
-key nor fetched metadata and is absent without a current binding.
+Overview gives every current Analysis one quiet **Link Zotero Item…** or
+**Manage Zotero Link…** action. Its central sheet searches the local user and
+group libraries, displays enough bibliographic and library context for an
+exact researcher selection, and persists only stable library identity plus the
+normalized item key. A bound Analysis also exposes quiet **Open in Zotero**;
+Manage supports explicit Rebind and confirmed Clear. The Inspector displays
+neither the key nor fetched metadata, and no binding action changes Markdown or
+Zotero data.
 
 When Analyze or another eligible Analysis Action begins preparation with a
 binding, Application performs one exact local item read and automatically
 attaches the catalogued `scholium-zotero-integration` System Skill. The
-immutable Action snapshot is labelled **Zotero bibliographic metadata** and
-may carry item key, item type, title, complete creator roles, date/year,
+authenticated Run Context carries that Skill and its capability contract in one
+typed optional Zotero Integration Adapter. The adapter is present only when the
+Action targets an Analysis, its immutable snapshot contains Zotero context, and
+the Platform Action permits Zotero use. It explains how to handle the already
+bounded integration but grants no transport, capability, read, write, or
+Markdown authority. The immutable Action snapshot is labelled **Zotero
+bibliographic metadata** and may carry item key, item type, title, complete
+creator roles, date/year,
 language, container, volume, issue, pages, edition, series, publisher, place,
 DOI, ISBN, ISSN, citation key, URL, abstract, tags, Collections, and
 modification time.
@@ -50,7 +61,8 @@ The same Run reuses that snapshot when resumed; every new Run reads Zotero
 again. No metadata cache crosses tasks. Unavailable Zotero, a missing item, or
 an invalid response adds one nonblocking warning and never prevents the Agent
 from continuing with available evidence or leaving unnecessary fields absent.
-No binding and non-Analysis targets perform no read and emit no warning.
+No binding and non-Analysis targets perform no read, emit no warning, attach no
+adapter, and authorize no independent integration discovery.
 
 Task metadata is never written into Markdown or displayed in Inspector.
 Abstract, tags, and Collections remain bibliographic metadata, never source
@@ -95,7 +107,9 @@ their parent Records.
 
 Beta also supplies a protected `scholium-zotero-integration` System Skill and a
 supported local MCP service or installation route. The skill is an instruction
-contract; MCP is transport, not an embedded runtime.
+contract; MCP is transport, not an embedded runtime. The Skill routes stable
+capabilities and safety rules; installed CLI help and MCP tool schemas own
+current command names, fields, and return shapes.
 
 It may report readiness, search, inspect exact metadata and bounded attachment
 pointers, identify an import target, and import BibTeX/RIS. A real import needs
@@ -148,23 +162,32 @@ After any create-new filesystem transaction succeeds, a confirmed selection
 advances directly to Agent while Application registration continues in the
 background. Routine registration success adds no status page or confirmation;
 failure returns to the retained Triptych review with the exact error. Agent
-completion cannot advance to Ready until registration succeeds. The step uses
-the Application-owned bundled CLI
-status and installer, presents the exact authorized Triptych container as the
-external Agent's project and workspace root, and offers **Set Up Later** without
-warning, nagging, or reduced workspace capability.
+completion cannot advance to Ready until registration succeeds. The step
+presents the exact authorized Triptych container as the external Agent's
+project and workspace root and offers **Set Up Later** without warning,
+nagging, or reduced workspace capability.
 
-After the CLI is installed, **Copy Prompt** copies one provider-neutral setup
-instruction. It tells the external Agent to verify the absolute CLI path and
-read `scholium help agent`; inspect applicable ancestor and root `AGENTS.md` and
-`CLAUDE.md`; create only the applicable missing instruction file without
-overwriting, merging, or shadowing an existing one; prefer Scholium tools for
-research work; preserve Scholium's exact-source and `.scholium/` boundaries;
-make no research read, pairing request, shell-profile edit, or Agent
-configuration edit before the stated authorization; and await a specific Run
-handoff. Copying is not readiness. After the Agent reports Ready, **I’ve Set Up
-My Agent** requires a second researcher confirmation. Scholium accepts only
-that confirmation and never claims to inspect or verify the external project.
+**Copy Prompt** is immediately available. It copies one provider-neutral setup
+instruction that authorizes the external Agent to download the independently
+distributed, compatible Scholium CLI only from the fixed official release URL
+and install only its executable and adjacent resource bundle under the
+researcher's user-local directory. The instruction forbids `sudo`, shell or
+Agent-configuration edits, alternative download sources, and quarantine
+mutation. It verifies the absolute CLI path, accepts the version JSON only from
+the required `product` and `cli_version` fields while ignoring additional
+fields, runs `doctor`, and reads `scholium help agent`. The App never embeds,
+installs, updates, removes, executes, fingerprints, or reports machine status
+for the CLI.
+
+The same prompt tells the Agent to inspect applicable ancestor and root
+`AGENTS.md` and `CLAUDE.md`; create only the applicable missing instruction
+file without overwriting, merging, or shadowing an existing one; prefer
+Scholium tools for research work; preserve Scholium's exact-source and
+`.scholium/` boundaries; make no research read or pairing request before the
+stated authorization; and await a specific Run handoff. Copying is not
+readiness. After the Agent reports Ready, **I’ve Set Up My Agent** requires a
+second researcher confirmation. Scholium accepts only that confirmation and
+never claims to inspect or verify the external project or CLI.
 The illustration and its key metaphor are decorative and absent from the
 accessibility tree; the numbered text and native controls provide the complete
 linear task.
@@ -207,9 +230,12 @@ hidden Manuscript; academic-only Action Profiles; one Triptych collaboration
 policy; Run-owned Bounded Write Sets; portable Research Records; and protected
 Zotero and local Agent transports.
 
-Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
+Outside the Beta/1.0 scope: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
-inheritance and sharing; and Work finding overlays.
+inheritance and sharing; Work finding overlays; active-table-cell hybrid
+editing; and PDF attachment presentation. A later PDF attachment route uses
+Quick Look, Open, and Reveal in Finder over ordinary attachment bytes and never
+becomes an embedded PDF reader.
 
 Additional researcher-facing interface translations beyond English and
 Simplified Chinese, right-to-left interface chrome and navigation, and complete
@@ -230,8 +256,12 @@ File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
 remains authoritative for Markdown, ordinary Skill-folder contents,
-attachments, and checkpoint folders; Zotero for bibliography/PDFs; external
-Agents for optional open-ended work.
+attachment bytes, and checkpoint folders. The portable attachment catalog under
+`.scholium/attachments/v1/` records stable identities plus either an imported
+vault-relative path or an indexed absolute path. Machine-local read-only
+bookmark data for an indexed path stays outside the Triptych and cannot repair
+or replace that path. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
+external Agents remain authoritative for optional open-ended work.
 
 Scholium defines no separate durable research-handoff packet, memory object, or ontology.
 Analyses, Topics, Works, and researcher-authored Markdown remain the durable

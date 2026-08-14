@@ -20,6 +20,8 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
     public let reference: VaultNoteReference
     public let title: String
     public let aliases: [String]
+    public let authors: [String]
+    public let publicationDate: String?
     public let zoteroBinding: AnalysisZoteroBinding?
     public let fingerprint: DocumentFingerprint
     public let validationWarnings: [String]
@@ -28,6 +30,8 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         reference: VaultNoteReference,
         title: String,
         aliases: [String] = [],
+        authors: [String] = [],
+        publicationDate: String? = nil,
         zoteroBinding: AnalysisZoteroBinding? = nil,
         fingerprint: DocumentFingerprint,
         validationWarnings: [String]
@@ -35,13 +39,15 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         self.reference = reference
         self.title = title
         self.aliases = aliases
+        self.authors = authors
+        self.publicationDate = publicationDate
         self.zoteroBinding = zoteroBinding
         self.fingerprint = fingerprint
         self.validationWarnings = validationWarnings
     }
 
     private enum CodingKeys: String, CodingKey {
-        case reference, title, aliases, zoteroBinding
+        case reference, title, aliases, authors, publicationDate, zoteroBinding
         case fingerprint, validationWarnings
     }
 
@@ -49,7 +55,9 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         reference = try container.decode(VaultNoteReference.self, forKey: .reference)
         title = try container.decode(String.self, forKey: .title)
-        aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
+        aliases = try container.decode([String].self, forKey: .aliases)
+        authors = try container.decode([String].self, forKey: .authors)
+        publicationDate = try container.decodeIfPresent(String.self, forKey: .publicationDate)
         zoteroBinding = try container.decodeIfPresent(
             AnalysisZoteroBinding.self,
             forKey: .zoteroBinding
@@ -391,6 +399,14 @@ public enum WorkspaceCatalogBuilder {
                         : [])
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty },
+                    authors: vault.role == .sourceCorpus
+                        ? document.parsedFrontmatter["authors"]
+                            .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
+                            .map(\.displayName) ?? []
+                        : [],
+                    publicationDate: vault.role == .sourceCorpus
+                        ? document.parsedFrontmatter["publication_date"]?.canonicalSearchText
+                        : nil,
                     zoteroBinding: vault.role == .sourceCorpus
                         ? stableNoteID.flatMap { zoteroBindingsByNoteID[$0] }
                         : nil,

@@ -249,8 +249,10 @@ fi
 if rg -n --glob '*.swift' \
   --glob '!**/Services/WindowSession.swift' \
   --glob '!**/Services/PerformanceProbe.swift' \
+  --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
   --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
+  --glob '!**/Styling/ScholiumWebFontResources.swift' \
   --glob '!**/Styling/ScholiumCalloutStyles.swift' \
   --glob '!**/Styling/ScholiumTableStyles.swift' \
   --glob '!**/Styling/ScholiumFootnoteStyles.swift' \
@@ -330,7 +332,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/verify-action-cli.sh" \
-  "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh" \
+  "${ROOT}/Tools/Scripts/verify-agent-bridge.sh" \
   "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"; do
   zsh -n "${shell_script}"
 done
@@ -343,6 +345,7 @@ PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
 python3 "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py" self-test
 python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
+python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test
 "${ROOT}/Tools/Scripts/verify-editor-bundle.sh"
 "${ROOT}/Tools/Scripts/verify-rdf1-fixture.sh"
 # Xcode beta's Swift Testing helper can crash while multiple test products
@@ -491,7 +494,7 @@ fi
   "${SCRATCH}/debug/scholium" \
   "${SCRATCH}"
 SCHOLIUM_AGENT_BRIDGE_BUILD="${SCRATCH}" \
-  "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh"
+  "${ROOT}/Tools/Scripts/verify-agent-bridge.sh"
 mkdir -p "${RELEASE_SCRATCH}"
 release_log="${RELEASE_SCRATCH}/release-build.log"
 set +e

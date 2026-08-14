@@ -12,40 +12,90 @@ public actor VaultIdentityRegistry {
         self.registryURL = applicationSupportURL.appendingPathComponent("vault-registry.json")
     }
 
-    public func identity(for vaultURL: URL) throws -> VaultIdentity {
+    public func identity(
+        for vaultURL: URL,
+        preferredID: UUID? = nil
+    ) throws -> VaultIdentity {
         let bookmark = try? vaultURL.bookmarkData(
             options: [.withSecurityScope],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        return try identity(for: vaultURL, bookmarkData: bookmark)
+        return try identity(
+            for: vaultURL,
+            bookmarkData: bookmark,
+            preferredID: preferredID
+        )
     }
 
     /// Records a newly granted bookmark while preserving the stable vault ID.
-    /// This also repairs an earlier registration whose bookmark became stale
-    /// or was created by a differently sandboxed development build.
-    func identity(for vaultURL: URL, bookmarkData: Data?) throws -> VaultIdentity {
+    /// This also repairs a registration whose bookmark became stale after a
+    /// path change.
+    func identity(
+        for vaultURL: URL,
+        bookmarkData: Data?,
+        preferredID: UUID? = nil
+    ) throws -> VaultIdentity {
         let canonical = vaultURL.resolvingSymlinksInPath().standardizedFileURL.path
         var (registry, loadFailure) = load()
         if let loadFailure {
             throw VaultIdentityRegistryError.corruptRegistry(loadFailure)
         }
         if let existing = registry.vaults[canonical] {
-            guard let bookmarkData, bookmarkData != existing.bookmarkData else { return existing }
+            if let preferredID, preferredID != existing.id {
+                throw VaultIdentityRegistryError.identityConflict(
+                    existing: existing.id,
+                    requested: preferredID,
+                    path: canonical
+                )
+            }
+            let resolvedBookmark = bookmarkData ?? existing.bookmarkData
+            guard resolvedBookmark != existing.bookmarkData else { return existing }
             let refreshed = VaultIdentity(
                 id: existing.id,
                 canonicalPath: canonical,
-                bookmarkData: bookmarkData
+                bookmarkData: resolvedBookmark
             )
             registry.vaults[canonical] = refreshed
             try save(registry)
             return refreshed
         }
+        if let preferredID,
+           let oldPath = registry.vaults.first(where: {
+               $0.value.id == preferredID && $0.key != canonical
+           })?.key {
+            registry.vaults.removeValue(forKey: oldPath)
+        }
 
-        let identity = VaultIdentity(id: UUID(), canonicalPath: canonical, bookmarkData: bookmarkData)
+        let identity = VaultIdentity(
+            id: preferredID ?? UUID(),
+            canonicalPath: canonical,
+            bookmarkData: bookmarkData
+        )
         registry.vaults[canonical] = identity
         try save(registry)
         return identity
+    }
+
+    /// Resolves the identity that a later registration will use without
+    /// changing the machine-local registry.
+    public func plannedIdentityID(for vaultURL: URL, preferredID: UUID?) throws -> UUID {
+        let canonical = vaultURL.resolvingSymlinksInPath().standardizedFileURL.path
+        let (registry, loadFailure) = load()
+        if let loadFailure {
+            throw VaultIdentityRegistryError.corruptRegistry(loadFailure)
+        }
+        if let existing = registry.vaults[canonical] {
+            if let preferredID, existing.id != preferredID {
+                throw VaultIdentityRegistryError.identityConflict(
+                    existing: existing.id,
+                    requested: preferredID,
+                    path: canonical
+                )
+            }
+            return existing.id
+        }
+        return preferredID ?? UUID()
     }
 
     public func identity(id: UUID) -> VaultIdentity? {
@@ -101,6 +151,17 @@ public actor PortableControlAccessRegistry {
     }
 
     public func register(containerURL: URL, forWorksURL worksURL: URL) throws -> PortableControlAccess {
+        try preflightRegistration(containerURL: containerURL, forWorksURL: worksURL)
+        let container = canonicalDirectory(containerURL)
+        let bookmark = try container.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        return try register(containerURL: container, bookmarkData: bookmark)
+    }
+
+    public func preflightRegistration(containerURL: URL, forWorksURL worksURL: URL) throws {
         let container = canonicalDirectory(containerURL)
         let expected = canonicalDirectory(worksURL.deletingLastPathComponent())
         guard container.path == expected.path else {
@@ -109,12 +170,9 @@ public actor PortableControlAccessRegistry {
                 selected: container.path
             )
         }
-        let bookmark = try container.bookmarkData(
-            options: [.withSecurityScope],
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
-        return try register(containerURL: container, bookmarkData: bookmark)
+        if let failure = load().failure {
+            throw PortableControlAccessRegistryError.corruptRegistry(failure)
+        }
     }
 
     public func access(forWorksURL worksURL: URL) -> PortableControlAccess? {

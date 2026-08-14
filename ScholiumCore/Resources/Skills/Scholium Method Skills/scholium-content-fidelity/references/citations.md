@@ -11,3 +11,10 @@ Check each citation as separate questions:
 5. Does the citation and reference express the verified facts in the selected style?
 
 Formatting cannot repair uncertain identity, a missing source, an inaccurate quotation, or unsupported philosophical use. Return one attributed finding per defective or unavailable item and propose the smallest correction. Do not mutate the Target during Check Fidelity.
+
+State the atomic outcome for identity and metadata, source version or edition,
+quotation, locator, and claim support separately. Use only outcomes warranted
+by the inspected evidence—for example verified, partly verified, unverified,
+unsupported by available evidence, needs page check, or needs edition check.
+When source text is unavailable, metadata alone cannot verify quotation,
+locator, interpretation, or claim support.

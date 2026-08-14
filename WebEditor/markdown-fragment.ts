@@ -7,6 +7,7 @@ import {
 } from "./table-presentation";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
 import type {VectorLinkKind} from "./previews";
+import {localized} from "./localization";
 
 export interface MarkdownFragmentCallout {
   identifier: string;
@@ -25,10 +26,10 @@ export const vectorLinkSemantics: Record<
   VectorLinkKind,
   {label: string; symbol: WebSystemSymbolKey}
 > = {
-  neutral: {label: "Related note", symbol: "link"},
-  supports: {label: "Supports", symbol: "plus"},
-  opposes: {label: "Opposes", symbol: "minus"},
-  incompatible: {label: "Incompatible", symbol: "xmark"},
+  neutral: {label: localized("Related note"), symbol: "link"},
+  supports: {label: localized("Supports"), symbol: "plus"},
+  opposes: {label: localized("Opposes"), symbol: "minus"},
+  incompatible: {label: localized("Incompatible"), symbol: "xmark"},
 };
 
 interface MarkdownTreeCursor {
@@ -298,7 +299,7 @@ export function createTableDOM(
   scroller.dataset.scholiumProtected = "table";
   const table = document.createElement("table");
   table.className = "scholium-table";
-  table.setAttribute("aria-label", "Markdown table");
+  table.setAttribute("aria-label", localized("Markdown table"));
   const head = document.createElement("thead");
   const headRow = document.createElement("tr");
   headRow.append(...presentation.header.map((cell) => tableCellDOM(cell, true, document, options)));

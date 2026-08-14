@@ -16,6 +16,8 @@ export function compositionRequestPolicy(operationType: string): CompositionRequ
     "restoreRecovery",
     "acknowledgeCommittedSnapshot",
     "command",
+    "documentFind",
+    "clearDocumentFind",
   ].includes(operationType)) return "defer";
   return "allow";
 }

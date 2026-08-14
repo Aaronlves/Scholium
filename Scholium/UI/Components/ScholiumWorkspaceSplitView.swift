@@ -322,40 +322,24 @@ private final class ScholiumFirstApparatusWidthOffer {
     private weak var splitView: NSSplitView?
     private weak var apparatusItem: NSSplitViewItem?
     private var didOffer = false
-    private var isPending = false
-    private var awaitsRevealAnimation = false
 
     func connect(splitView: NSSplitView, apparatusItem: NSSplitViewItem) {
         self.splitView = splitView
         self.apparatusItem = apparatusItem
     }
 
-    func prepareForReveal(animated: Bool) {
-        guard !didOffer else { return }
-        isPending = true
-        awaitsRevealAnimation = animated
-    }
-
-    func revealAnimationDidFinish() {
-        awaitsRevealAnimation = false
-        offerIfReady()
-    }
-
     /// Offer the wider study width exactly once after the first explicit
     /// reveal. If the window cannot preserve a document region at least as
     /// wide as the Inspector, keep AppKit's result and never reassert it.
-    func offerIfReady() {
-        guard isPending,
-              !didOffer,
-              !awaitsRevealAnimation,
-              let splitView,
+    func offerAfterReveal() {
+        guard !didOffer else { return }
+        didOffer = true
+        guard let splitView,
               let apparatusItem,
               !apparatusItem.isCollapsed,
               let apparatusView = splitView.arrangedSubviews.last,
               let documentView = splitView.arrangedSubviews.dropLast().last
         else { return }
-        isPending = false
-        didOffer = true
         splitView.layoutSubtreeIfNeeded()
 
         let proposedWidth = ScholiumMetrics.Apparatus.firstRevealWidth
@@ -588,21 +572,34 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
             documentItem.allowsFullHeightLayout = true
             documentItem.titlebarSeparatorStyle = .line
 
+            // AppKit's Inspector factory is a fixed-width presentation on
+            // macOS 14 and later. The Workspace needs a resizable semantic
+            // Inspector, so use the standard native split item and configure
+            // its range and visibility contract explicitly.
             apparatusItem = NSSplitViewItem(
-                inspectorWithViewController: apparatusBackgroundController
+                viewController: apparatusBackgroundController
             )
             // Seed restoration before AppKit installs the item. NSSplitViewItem
             // otherwise begins expanded and can briefly draw before
             // viewWillAppear applies the window-scoped visibility state.
             apparatusItem.isCollapsed = !initialApparatusVisible
-            // The system Inspector defaults to a fixed 270-point column on
-            // macOS 14 and later. Reset only its maximum so the researcher can
-            // resize it; retain AppKit's native minimum and divider.
+            apparatusItem.minimumThickness =
+                ScholiumMetrics.Apparatus.minimumReadableWidth
             apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+            // Document is the elastic Workspace plane. Keep the user's current
+            // Inspector width stable when Sidebar visibility changes the space
+            // available to the two sibling panes.
+            apparatusItem.holdingPriority = NSLayoutConstraint.Priority(
+                rawValue: documentItem.holdingPriority.rawValue + 1
+            )
+            // Keep divider tracking exclusively about width: the native toolbar
+            // and View command are the explicit, accessible visibility routes.
+            apparatusItem.canCollapse = false
+            apparatusItem.canCollapseFromWindowResize = false
             // Keep the workspace frame and the trailing edge fixed when the
-            // native Inspector collapses or returns. AppKit documents that the
-            // behavior-specific default may change across macOS releases; the
-            // Workspace contract instead lets Document absorb this transition.
+            // native Inspector is hidden or shown through those explicit routes.
+            // AppKit documents that the behavior-specific default may change
+            // across macOS releases; Document absorbs this transition.
             apparatusItem.collapseBehavior =
                 .preferResizingSiblingsWithFixedSplitView
 
@@ -691,34 +688,34 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                   apparatusItem != nil,
                   researchInspectorIsVisible != visible
             else { return }
-            if visible {
-                firstApparatusWidthOffer.prepareForReveal(animated: animated)
-            }
             if animated {
                 let firstApparatusWidthOffer = self.firstApparatusWidthOffer
                 NSAnimationContext.runAnimationGroup { context in
                     context.allowsImplicitAnimation = true
-                    toggleInspector(nil)
+                    apparatusItem.isCollapsed = !visible
                 } completionHandler: {
                     Task { @MainActor in
-                        firstApparatusWidthOffer.revealAnimationDidFinish()
+                        if visible {
+                            firstApparatusWidthOffer.offerAfterReveal()
+                        }
                     }
                 }
             } else {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = 0
                     context.allowsImplicitAnimation = false
-                    toggleInspector(nil)
+                    apparatusItem.isCollapsed = !visible
                 }
                 splitView.layoutSubtreeIfNeeded()
-                firstApparatusWidthOffer.offerIfReady()
+                if visible {
+                    firstApparatusWidthOffer.offerAfterReveal()
+                }
             }
             reportVisibility()
         }
 
         override func splitViewDidResizeSubviews(_ notification: Notification) {
             super.splitViewDidResizeSubviews(notification)
-            firstApparatusWidthOffer.offerIfReady()
             reportVisibility()
         }
 

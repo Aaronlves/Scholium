@@ -118,6 +118,9 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     /// this exact fingerprint. Presentation consumers must not parse Markdown
     /// again merely to build document navigation.
     public let headings: [HeadingNode]
+    /// Exact-fingerprint derived semantics prepared by the workspace opening
+    /// generation. Package consumers may reuse it but never write from it.
+    package let cachedSemanticDocument: MarkdownSemanticDocument?
     package let cachedTitleProjection: WorkspaceNoteTitleProjection?
 
     public var fingerprint: DocumentFingerprint { document.fingerprint }
@@ -166,6 +169,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             graphCounts: graphCounts,
             headings: headings,
             derivedProjectionState: derivedProjectionState,
+            cachedSemanticDocument: nil,
             cachedTitleProjection: nil
         )
     }
@@ -180,6 +184,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         graphCounts: WorkspaceGraphCounts,
         headings: [HeadingNode],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
+        cachedSemanticDocument: MarkdownSemanticDocument? = nil,
         cachedTitleProjection: WorkspaceNoteTitleProjection?
     ) {
         self.id = id
@@ -191,6 +196,9 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.graphCounts = graphCounts
         self.headings = headings
         self.derivedProjectionState = derivedProjectionState
+        self.cachedSemanticDocument = cachedSemanticDocument?.fingerprint == document.fingerprint
+            ? cachedSemanticDocument
+            : nil
         self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
             ? cachedTitleProjection
             : nil
@@ -508,10 +516,26 @@ public struct CritiquePreparation: Sendable {
     }
 }
 
-/// A complete, generation-independent projection of one Triptych.
+/// The completeness boundary carried by every immutable Triptych projection.
+/// An opening snapshot contains one trustworthy, usable vault while the
+/// remaining vaults and cross-vault derived state are still loading.
+public enum WorkspaceSnapshotPhase: Equatable, Sendable {
+    case opening(availableVault: WorkspaceVaultSlot)
+    case complete
+
+    public var isComplete: Bool {
+        if case .complete = self { return true }
+        return false
+    }
+}
+
+/// A generation-independent projection of one Triptych. `phase` states
+/// whether the projection covers the complete Triptych or only the first
+/// usable vault during live application opening.
 public struct WorkspaceSnapshot: Sendable {
     public let triptych: ScholiumTriptych
     public let mode: WorkspaceConfigurationMode
+    public let phase: WorkspaceSnapshotPhase
     public let generatedAt: Date
     public let vaults: [WorkspaceVaultSnapshot]
     public let discovery: WorkspaceDiscoverySnapshot
@@ -520,6 +544,7 @@ public struct WorkspaceSnapshot: Sendable {
     public init(
         triptych: ScholiumTriptych,
         mode: WorkspaceConfigurationMode,
+        phase: WorkspaceSnapshotPhase = .complete,
         generatedAt: Date,
         vaults: [WorkspaceVaultSnapshot],
         discovery: WorkspaceDiscoverySnapshot,
@@ -527,6 +552,7 @@ public struct WorkspaceSnapshot: Sendable {
     ) {
         self.triptych = triptych
         self.mode = mode
+        self.phase = phase
         self.generatedAt = generatedAt
         self.vaults = vaults
         self.discovery = discovery
@@ -602,19 +628,22 @@ public struct WorkspaceInventoryChangedEvent: Sendable {
     }
 }
 
-/// Evidence identifying the complete derived projection represented by a
-/// workspace snapshot. Consumers can compare the graph and Triptych lexical
-/// generations without reaching into an index implementation.
+/// Evidence identifying the derived projection represented by a workspace
+/// snapshot. `snapshotPhase` prevents an opening vault projection from being
+/// mistaken for a complete cross-vault generation.
 public struct WorkspaceDerivedRefreshEvidence: Sendable, Equatable {
+    public let snapshotPhase: WorkspaceSnapshotPhase
     public let snapshotGeneratedAt: Date
     public let graphGeneration: Int?
     public let searchGeneration: SearchGenerationID?
 
     public init(
+        snapshotPhase: WorkspaceSnapshotPhase = .complete,
         snapshotGeneratedAt: Date,
         graphGeneration: Int?,
         searchGeneration: SearchGenerationID?
     ) {
+        self.snapshotPhase = snapshotPhase
         self.snapshotGeneratedAt = snapshotGeneratedAt
         self.graphGeneration = graphGeneration
         self.searchGeneration = searchGeneration
@@ -622,6 +651,7 @@ public struct WorkspaceDerivedRefreshEvidence: Sendable, Equatable {
 
     public init(snapshot: WorkspaceSnapshot) {
         self.init(
+            snapshotPhase: snapshot.phase,
             snapshotGeneratedAt: snapshot.generatedAt,
             graphGeneration: snapshot.discovery.catalog.graph?.generation,
             searchGeneration: snapshot.discovery.searchGeneration
@@ -630,8 +660,8 @@ public struct WorkspaceDerivedRefreshEvidence: Sendable, Equatable {
 }
 
 /// Diagnostic context for a projection whose freshness can no longer be
-/// guaranteed. `lastKnownGood` always describes the snapshot carried by the
-/// event; it never describes a partially rebuilt index.
+/// guaranteed. `lastKnownGood` always describes the explicitly phased snapshot
+/// carried by the event; it never describes an unpublished partial rebuild.
 public struct WorkspaceDerivedRefreshIssue: Sendable, Equatable {
     public let reason: String
     public let affectedVaultIDs: Set<UUID>
@@ -651,14 +681,17 @@ public struct WorkspaceDerivedRefreshIssue: Sendable, Equatable {
 /// Delivery-neutral freshness of search, relationship, diagnostic, and other
 /// derived workspace state.
 ///
+/// - `opening`: one vault is trustworthy and usable, but cross-vault derived
+///   state is deliberately unavailable until a complete snapshot publishes.
 /// - `current`: the event's complete snapshot and evidence were rebuilt
 ///   successfully.
 /// - `stale`: a durable mutation or watcher discontinuity may be ahead of the
 ///   last known good snapshot. The mutation must not be retried merely to make
 ///   derived state catch up.
-/// - `failed`: an attempted rebuild failed. The complete last known good
+/// - `failed`: an attempted rebuild failed. The last explicitly phased good
 ///   snapshot remains readable while a later refresh retries the projection.
 public enum WorkspaceDerivedRefreshStatus: Sendable, Equatable {
+    case opening(WorkspaceDerivedRefreshEvidence)
     case current(WorkspaceDerivedRefreshEvidence)
     case stale(WorkspaceDerivedRefreshIssue)
     case failed(WorkspaceDerivedRefreshIssue)
@@ -740,7 +773,7 @@ public struct TriptychRuntimeIdentity: Codable, Hashable, Sendable {
 }
 
 /// Closed application event vocabulary. Each case carries only the projection
-/// relevant to its change plus the resulting complete snapshot for resync.
+/// relevant to its change plus the resulting latest snapshot for resync.
 public enum WorkspaceEvent: Sendable {
     case snapshot(WorkspaceSnapshotEvent)
     case sourceCommitted(WorkspaceSourceCommittedEvent)
@@ -776,10 +809,9 @@ public enum WorkspaceEvent: Sendable {
         }
     }
 
-    /// The freshness represented by this complete generation. Non-derived
-    /// cases are emitted only after a successful workspace rebuild, so they
-    /// also clear an earlier stale/failed status without requiring a second
-    /// event that could obscure the primary source or inventory change.
+    /// The freshness represented by this generation. An opening snapshot is
+    /// explicitly non-complete; later non-derived cases are emitted only after
+    /// a successful complete rebuild and clear the opening/stale/failed state.
     public var derivedRefreshStatus: WorkspaceDerivedRefreshStatus {
         switch self {
         case .derivedStateChanged(let event):
@@ -790,7 +822,9 @@ public enum WorkspaceEvent: Sendable {
              .researchRecordsChanged,
              .researchConfigurationInvalidated,
              .runtimeReloaded:
-            .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
+            snapshot.phase.isComplete
+                ? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
+                : .opening(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
         }
     }
 }
@@ -803,18 +837,15 @@ public struct WorkspaceMutationOutcome<CommittedValue: Sendable>: Sendable {
     public let committedValue: CommittedValue
     public let derivedRefreshWarning: String?
     public let identityRecoveryWarning: String?
-    public let cleanupWarnings: [SaveCleanupWarning]
 
     public init(
         committedValue: CommittedValue,
         derivedRefreshWarning: String? = nil,
-        identityRecoveryWarning: String? = nil,
-        cleanupWarnings: [SaveCleanupWarning] = []
+        identityRecoveryWarning: String? = nil
     ) {
         self.committedValue = committedValue
         self.derivedRefreshWarning = derivedRefreshWarning
         self.identityRecoveryWarning = identityRecoveryWarning
-        self.cleanupWarnings = cleanupWarnings
     }
 }
 
@@ -826,6 +857,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case ambiguousWorkspaceSelector(String)
     case incompleteTriptych(UUID)
     case vaultNotInWorkspace(UUID)
+    case workspaceStillLoading(UUID)
     case manifestIdentityMismatch(expected: UUID, actual: UUID)
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case operationCommitUncertain(operation: String, reason: String)
@@ -887,6 +919,8 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "The Scholium Triptych \(id.uuidString) does not contain all three vaults."
         case .vaultNotInWorkspace(let id):
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
+        case .workspaceStillLoading(let id):
+            "Scholium is still loading the complete Triptych \(id.uuidString). Search, relationships, and Research Actions will become available when loading finishes."
         case .manifestIdentityMismatch(let expected, let actual):
             "The portable Triptych identity is \(actual.uuidString), not \(expected.uuidString)."
         case .operationCommittedButRefreshFailed(let operation, let reason):

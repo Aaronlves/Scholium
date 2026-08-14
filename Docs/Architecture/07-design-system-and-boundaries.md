@@ -58,7 +58,8 @@ accessibility, and mirrors in right-to-left presentation. The native modifiers
 consume the named structural-shadow exception, while
 `ScholiumWebDesignTokens` exports only the transient role names as CSS shadow
 declarations without converting points to CSS pixels.
-Selection bars consume `floatingControl`; custom selection menus, the shared
+Selection bars and the shared segmented selection plate consume
+`floatingControl`; custom selection menus, the shared
 link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
 consumes `searchOverlay`. The shared preview uses the complete opaque bounded-
 panel surface, separator, semantic text, and elevation roles; it owns no Canvas
@@ -97,17 +98,21 @@ ring into both retained document surfaces. The overloaded
 in the complete keyboard chain, clears pointer-generated keyboard-only focus,
 and locally replaces the native focus effect with that shared surface without
 inspecting AppKit events or changing window-wide focus behavior.
-Native Buttons, sheets, alerts, and segmented controls do not consume this
-adapter: AppKit owns their modality-sensitive focus return. Feature views do
+Native Buttons, sheets, and alerts do not consume this adapter: AppKit owns
+their modality-sensitive focus return. `ScholiumSegmentedControl` is the one
+custom group that consumes the adapter; feature views do
 not add unconditional `FocusState` assignments after native presentation
 dismissal, which prevents pointer interactions from manufacturing keyboard
 focus rings while retaining native keyboard traversal and return behavior.
 `ScholiumContentControlButtonFeedbackModifier` is the single transient-state
 owner for custom SwiftUI Buttons. The generic
 `ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both
-delegate to it. It owns one lightweight SwiftUI hover state, consumes
+delegate to it. It normally owns one lightweight SwiftUI hover state, consumes
 `ButtonStyle.Configuration.isPressed`, and resolves semantic ink, one
-continuous surface, and immediate press dimming. Borderless native Menus
+continuous surface, and immediate press dimming. A Button hosted inside the
+native Source List suppresses that SwiftUI hover tracker while retaining the
+shared press path, so the AppKit row remains the sole hover and selection
+owner. Borderless native Menus
 instead use `scholiumContentControlPointerFeedback`: a zero-hit-test AppKit
 adapter observes the complete Menu frame because the host does not reliably
 forward pointer state into its label. The enclosing Button or Menu retains
@@ -128,9 +133,11 @@ the three vertical workspace rows, neutral Note totals, selection/hover
 surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous
 surface consumes the purpose-named workspace-navigation corner recipe and has
 no Accent mark, underline, border, or shadow.
-`ScholiumInspectorModeIndex` instead owns one selected shallow raised surface
-and a quieter same-shape hover surface using the semantic editorial-control
-corner recipe and a 4pt gap between adjacent state surfaces.
+`ScholiumSegmentedControl` owns every horizontal local single-choice group. It
+receives only a binding and finite option labels, then owns equal layout, the
+Paper-derived track, adaptive raised selection plate, continuous corners,
+pointer and press feedback, Left/Right traversal, and accessibility state.
+`ScholiumInspectorModeIndex` is now a semantic adapter into that component.
 `ScholiumEditorialIconControl` is the single presentation owner for Filter,
 disclosure, and Add in LocationHeader. It gives all three one exact 28pt target,
 semantic ink, and one rounded-rectangle hover, focus, and press surface. Its Button or
@@ -144,8 +151,7 @@ Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
 Workspace toolbar hosts bridge live window observations into native AppKit
-toolbar-bezel buttons and pull-downs. `NSButton`, `NSPopUpButton`, and
-`NSSegmentedControl` own their
+toolbar-bezel buttons and pull-downs. `NSButton` and `NSPopUpButton` own their
 small control-size geometry, hover, press, focus, menu tracking, and disabled
 rendering. The same semantic recipe pairs that geometry with the system body
 font and body-medium SF Symbol scale that the original SwiftUI toolbar used;
@@ -154,11 +160,10 @@ toolbar interaction surface or persistent active state.
 
 Research Records uses one continuous semantic Document surface, collection-
 first routing, native TextField/Menu/Toggle/sheet behavior, structural rules,
-and two independent detail scroll owners. Its View index is an AppKit
-`NSSegmentedControl` with explicit capsule segment and border shape, small
-control size, equal distribution, and the Scholium raised-surface color for the
-selected segment. The toolbar item hides macOS shared background material so
-the control receives no automatic Liquid Glass enclosure. Scope and Filters
+and two independent detail scroll owners. Its toolbar View index consumes the
+shared compact segmented component and hides macOS shared background material,
+so the quiet track and raised selection plate receive no automatic Liquid Glass
+enclosure. Scope and Filters
 remain borderless native Menus. The View index and detail navigation are native-
 toolbar content; the adaptive
 collection header owns identity, search, Scope, Filters, and count. The selected
@@ -178,10 +183,9 @@ continuous without Liquid Glass or a painted masking layer.
 
 Every custom Records Button routes hover, keyboard focus, and press through
 the shared Button feedback owner; Scope and Filters use the bounded Menu
-adapter and plain presentation. The Inspector ModeIndex resolves persistent
-selection through the shared shallow surface. The native toolbar View index
-instead lets AppKit own segment focus and selection while using only Scholium's
-semantic selected color; neither index adds an Accent underline. View items, menu labels, search clear,
+adapter and plain presentation. Inspector ModeIndex and the toolbar View index
+both resolve selection, focus, and traversal through the same segmented owner;
+neither adds an Accent underline or fill. View items, menu labels, search clear,
 ordinary actions, evidence links, and continuity links use the editorial-
 control continuous shape; native toolbar Back and Evidence controls retain
 system interaction geometry. Collection destinations and their leading Handled
@@ -203,7 +207,7 @@ icon, category tint, or independent control semantics. The visually unlabeled
 32pt Handled track keeps an accessible label and independent native-control
 semantics.
 System confirmation actions remain native-owned.
-Evidence rows reuse one prototype-derived ledger component with an aligned
+Evidence rows reuse one shared ledger component with an aligned
 symbol column and no trailing action button. Academic evidence remains visible
 when the rail is shown; the evaluation editor and technical identity use
 separate disclosure controls, and permanent deletion remains in the Record

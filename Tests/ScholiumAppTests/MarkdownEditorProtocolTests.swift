@@ -50,7 +50,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 10")
+    @Test("Request envelope and operation round trip with protocol version 15")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -66,10 +66,32 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 10)
+        #expect(object["protocolVersion"] as? Int == 15)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
+    }
+
+    @Test("Document find round trips and only replacements serialize source mutation")
+    func documentFindRoundTrip() throws {
+        let update = MarkdownEditorOperation.documentFind(DocumentFindQuery(
+            query: "value",
+            replacement: "replacement",
+            caseSensitive: false,
+            wholeWord: true,
+            action: .update
+        ))
+        let replacement = MarkdownEditorOperation.documentFind(DocumentFindQuery(
+            query: "value",
+            replacement: "replacement",
+            caseSensitive: false,
+            wholeWord: true,
+            action: .replaceAll
+        ))
+        let encoded = try JSONEncoder().encode(update)
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: encoded) == update)
+        #expect(!update.serializesSourceMutation)
+        #expect(replacement.serializesSourceMutation)
     }
 
     @Test("Markdown comment is a typed formatting command")
@@ -79,6 +101,18 @@ struct MarkdownEditorProtocolTests {
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["type"] as? String == "command")
         #expect(object["command"] as? String == "markdownComment")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
+    }
+
+    @Test("Image insertion is a typed, argument-bearing editor command")
+    func imageInsertionCommandRoundTrip() throws {
+        let argument = #"{"alt":"Figure","destination":"../Attachments/id/Figure.png"}"#
+        let operation = MarkdownEditorOperation.command(.insertImage, argument: argument)
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "command")
+        #expect(object["command"] as? String == "insertImage")
+        #expect(object["argument"] as? String == argument)
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
@@ -335,6 +369,34 @@ struct MarkdownEditorProtocolTests {
         #expect(session.context?.selections == initialRange)
         #expect(session.line == 1)
         #expect(session.column == 3)
+    }
+
+    @MainActor
+    @Test("Editor statistics follow the unsaved selection without publishing cursor movement")
+    func editorStatistics() async throws {
+        let session = MarkdownEditorSession()
+        let source = "Hello world 价值"
+        session.loadDocument(source, documentID: "statistics-test", mode: .livePreview)
+        try await Task.sleep(for: .milliseconds(90))
+        #expect(session.documentStatistics.englishWords == 2)
+        #expect(session.documentStatistics.chineseCharacters == 2)
+        #expect(session.documentStatistics.scope == .body)
+
+        session.updateInteraction(
+            selections: [MarkdownEditorSelectionRange(anchor: 12, head: 14)],
+            line: 1,
+            column: 15,
+            lineCount: 1,
+            documentVersion: 0,
+            context: nil
+        )
+        try await Task.sleep(for: .milliseconds(90))
+        #expect(session.documentStatistics == DocumentStatistics(
+            englishWords: 0,
+            chineseCharacters: 2,
+            characters: 2,
+            scope: .selection
+        ))
     }
 
     @Test("Semantic scroll anchors are revision-bound and bounded")

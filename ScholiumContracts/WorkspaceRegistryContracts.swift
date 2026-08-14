@@ -226,6 +226,8 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
     case triptychControlDirectoryInUse(String)
     case overlappingVaults(String, String)
     case vaultIdentityMismatch(UUID, String, String)
+    case duplicateVaultIdentity(UUID)
+    case vaultRoleMismatch(UUID, VaultRole, VaultRole)
     case incompleteWorkspace
     case vaultAccessUnavailable(String)
     case portableControlAccessUnavailable(String)
@@ -251,6 +253,10 @@ public enum WorkspaceRegistryError: LocalizedError, Sendable {
             return "Vault folders in one Triptych must be independent. '\(first)' overlaps '\(second)'."
         case .vaultIdentityMismatch(let id, let existing, let selected):
             return "Vault identity \(id.uuidString) already belongs to '\(existing)', not '\(selected)'."
+        case .duplicateVaultIdentity(let id):
+            return "Analyses, Topics, and Works must use different identities. \(id.uuidString) was selected more than once."
+        case .vaultRoleMismatch(let id, let existing, let requested):
+            return "Vault identity \(id.uuidString) is already registered as \(existing.displayName), not \(requested.displayName)."
         case .incompleteWorkspace:
             return "The Triptych is incomplete. Choose Analyses, Topics, and Works again."
         case .vaultAccessUnavailable(let path):

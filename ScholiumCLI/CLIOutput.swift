@@ -184,6 +184,7 @@ private extension ScholiumCLI {
         "agent query",
         "agent extend-write-set",
         "agent write",
+        "agent write-zotero-binding",
         "agent resolve-write-conflict",
         "agent submit-result",
         "agent continue",
@@ -202,6 +203,10 @@ private extension ScholiumCLI {
         let roles = ResearchActionTargetRole.allCases.map(\.rawValue)
             .joined(separator: ", ")
         let writeOperations = ResearchDocumentWriteOperation.allCases
+            .map(\.rawValue)
+            .joined(separator: ", ")
+        let documentWriteOperations = ResearchDocumentWriteOperation.allCases
+            .filter { !$0.isZoteroBindingOperation }
             .map(\.rawValue)
             .joined(separator: ", ")
         let contextClauses = ResearchContextClauseKind.allCases.map(\.rawValue)
@@ -258,16 +263,27 @@ private extension ScholiumCLI {
                 nextSteps: [
                     "scholium agent reload --run <locator> after a pending researcher decision",
                     "scholium agent write --run <locator> --from <json|-> for one returned ready member",
+                    "scholium agent write-zotero-binding --run <locator> --from <json|-> for one returned Analysis binding operation",
                 ]
             ),
             "agent write": AgentCLICommandHelp(
                 usage: "scholium agent write --run <locator> --from <json|->",
                 inputContract: "AgentDocumentWriteDraft",
-                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(writeOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body). create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Complete Markdown is never accepted here.",
+                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body). create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Complete Markdown is never accepted here.",
                 output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, revision, checkpoint, and retry authority.",
                 nextSteps: [
                     "scholium agent resolve-write-conflict --run <locator> --from <json|-> when the returned state is conflict",
                     "Continue with another ready member or scholium agent submit-result after a confirmed write",
+                ]
+            ),
+            "agent write-zotero-binding": AgentCLICommandHelp(
+                usage: "scholium agent write-zotero-binding --run <locator> --from <json|->",
+                inputContract: "AgentZoteroBindingWriteDraft",
+                input: "Strict JSON fields: role=analysis, relative_path, and operation set_zotero_binding or clear_zotero_binding. set_zotero_binding also requires library ({kind:user} or {kind:group,group_id:<positive integer>}) and item_key; clear_zotero_binding accepts neither. This command cannot write Markdown, Properties, or Zotero library data.",
+                output: "AgentZoteroBindingWriteReport with state, current target view, message, and any bounded recovery warning. Scholium supplies stable Analysis identity, portable binding revision, and one-use write authority.",
+                nextSteps: [
+                    "scholium agent reload --run <locator> after conflict or uncertain recovery state",
+                    "Continue with another ready member or submit the Result after a confirmed binding update",
                 ]
             ),
             "agent resolve-write-conflict": AgentCLICommandHelp(

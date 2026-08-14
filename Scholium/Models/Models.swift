@@ -73,18 +73,6 @@ enum NoteProfile: String, Codable, Hashable {
   }
 }
 
-/// Researcher-facing property policy. Keys hidden here remain present in the
-/// exact Markdown source and in the agent-facing semantic projection.
-enum ResearcherPropertyPolicy {
-  static func isHidden(_ key: String) -> Bool {
-    false
-  }
-
-  static func isHumanEditable(_ key: String) -> Bool {
-    true
-  }
-}
-
 // MARK: - Window Document Location
 
 /// One window-visible document location backed by the shared immutable
@@ -276,9 +264,7 @@ extension WindowDocumentLocation {
     default:
       inactiveAnalysisKeys = []
     }
-    for (key, value) in frontmatter
-      where !inactiveAnalysisKeys.contains(key)
-        && !ResearcherPropertyPolicy.isHidden(key) {
+    for (key, value) in frontmatter where !inactiveAnalysisKeys.contains(key) {
       if case .object(let nested) = value {
         for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
           result["\(key).\(path)"] = [nestedValue]

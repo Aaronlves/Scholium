@@ -242,7 +242,8 @@ final class DocumentController: ObservableObject {
         relativePath: String,
         source: String,
         fingerprint: DocumentFingerprint,
-        workspaceID: UUID?
+        workspaceID: UUID?,
+        semantic: MarkdownSemanticDocument? = nil
     ) async -> String {
         let stableTarget: String
         switch target {
@@ -258,11 +259,13 @@ final class DocumentController: ObservableObject {
                 relativePath: relativePath,
                 fingerprint: fingerprint
             ),
-            source: source
+            source: source,
+            semantic: semantic
         )
     }
 
     func editorLinkCompletions(
+        kind: EditorLinkCompletionKind,
         matching query: String,
         sourcePath: String,
         currentVaultID: UUID,
@@ -274,6 +277,7 @@ final class DocumentController: ObservableObject {
             generation: graphGeneration
         )
         return (try? await linkCompletionIndex.query(
+            kind: kind,
             query,
             sourcePath: sourcePath,
             currentVaultID: currentVaultID,
@@ -292,6 +296,62 @@ final class DocumentController: ObservableObject {
         try await requireOperations().importMarkdown(
             at: sourceURL,
             intoVault: vaultID
+        )
+    }
+
+    func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().importImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws {
+        try await requireOperations().rollbackImageAttachment(preparation)
+    }
+
+    func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().indexImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().importPastedImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try await requireOperations().importPastedImageAttachment(
+            data: data,
+            preferredFilename: preferredFilename,
+            for: note
+        )
+    }
+
+    func unavailableIndexedImagePaths(
+        in markdownSource: String
+    ) async throws -> [String] {
+        try await requireOperations().unavailableIndexedImagePaths(
+            in: markdownSource
         )
     }
 
@@ -1512,11 +1572,20 @@ final class DocumentController: ObservableObject {
             session.canRetrySave = false
         } else {
             session.conflict = nil
-            let documentIsUnavailable = (error as? DocumentControllerError) == .documentUnavailable
-            session.canRetrySave = !(error is VaultRepositoryError)
-                && !documentIsUnavailable
+            session.canRetrySave = Self.saveFailureAllowsRetry(error)
         }
         session.editError = message
+    }
+
+    static func saveFailureAllowsRetry(_ error: Error) -> Bool {
+        if (error as? DocumentControllerError) == .documentUnavailable {
+            return false
+        }
+        guard let repositoryError = error as? VaultRepositoryError else {
+            return true
+        }
+        if case .writeFailed = repositoryError { return true }
+        return false
     }
 
     func setSaveError(_ message: String?) {

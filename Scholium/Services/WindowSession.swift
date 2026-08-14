@@ -53,6 +53,8 @@ struct WindowWorkspaceCapabilities: Sendable {
     let documents: any DocumentUseCases
     let discovery: any DiscoveryUseCases
     let research: WindowResearchCapabilities
+    let zoteroBindings: any ZoteroBindingUseCases
+    let openingPresentationDidComplete: @Sendable () async -> Void
 }
 
 /// The delivery-facing research capabilities for one activated Triptych.
@@ -82,7 +84,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
-    let commandLineToolInstaller: CommandLineToolInstaller
     let researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator
     private(set) var localAgentBridge: LocalAgentBridgeServer?
     private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
@@ -122,7 +123,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         applicationRuntime = runtime
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
-        commandLineToolInstaller = CommandLineToolInstaller()
         let researchAgentPermissionClaims =
             ResearchAgentPermissionClaimCoordinator()
         self.researchAgentPermissionClaims = researchAgentPermissionClaims
@@ -199,6 +199,19 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                         run: run,
                         intent: intent
                     ))
+                case .writeZoteroBinding:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let intent = request.zoteroBindingWriteIntent else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .zoteroBindingWrite(
+                        try await runtime.writeResearchZoteroBinding(
+                            credential: credential,
+                            run: run,
+                            intent: intent
+                        )
+                    )
                 case .resolveWriteConflict:
                     guard let run = request.run,
                           let credential = request.credential,
@@ -496,14 +509,26 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
-    private func workspaceHandle(id: UUID) async throws -> WorkspaceHandle {
-        let handle = try await applicationRuntime.openWorkspace(id: id)
+    private func workspaceHandle(
+        id: UUID,
+        openingVault: WorkspaceVaultSlot? = nil
+    ) async throws -> WorkspaceHandle {
+        let handle = try await applicationRuntime.openWorkspace(
+            id: id,
+            openingVault: openingVault
+        )
         try await install(handle: handle)
         return handle
     }
 
-    func workspaceCapabilities(id: UUID) async throws -> WindowWorkspaceCapabilities {
-        capabilities(from: try await workspaceHandle(id: id))
+    func workspaceCapabilities(
+        id: UUID,
+        openingVault: WorkspaceVaultSlot? = nil
+    ) async throws -> WindowWorkspaceCapabilities {
+        capabilities(from: try await workspaceHandle(
+            id: id,
+            openingVault: openingVault
+        ))
     }
 
     private func configureTriptych(
@@ -512,7 +537,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         outputURL: URL,
         portableContainerURL: URL,
         triptychID: UUID? = nil,
-        triptychName: String? = nil
+        triptychName: String? = nil,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
         let selectedPaths = Set([
             paperAnalysisURL,
@@ -529,7 +555,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             outputURL: outputURL,
             portableContainerURL: portableContainerURL,
             triptychID: triptychID,
-            triptychName: triptychName
+            triptychName: triptychName,
+            openingVault: openingVault
         )
         try await install(handle: handle, replacing: previous)
         return handle
@@ -541,7 +568,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         outputURL: URL,
         portableContainerURL: URL,
         triptychID: UUID? = nil,
-        triptychName: String? = nil
+        triptychName: String? = nil,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WindowWorkspaceCapabilities {
         capabilities(from: try await configureTriptych(
             paperAnalysisURL: paperAnalysisURL,
@@ -549,7 +577,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             outputURL: outputURL,
             portableContainerURL: portableContainerURL,
             triptychID: triptychID,
-            triptychName: triptychName
+            triptychName: triptychName,
+            openingVault: openingVault
         ))
     }
 
@@ -715,12 +744,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 }
             ),
             machine: WorkspaceSettingsMachineCapabilities(
-                commandLineToolStatus: { [self] in
-                    await commandLineToolInstaller.commandLineToolStatus()
-                },
-                installCommandLineTool: { [self] in
-                    try await commandLineToolInstaller.installCommandLineTool()
-                },
                 openExternal: { [self] url in openExternal(url) }
             ),
             zotero: WorkspaceSettingsZoteroCapabilities(
@@ -856,8 +879,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
-    func snapshot(for triptychID: UUID) -> WorkspaceSnapshot? {
-        workspaceSnapshots[triptychID]
+    func snapshot(
+        for runtimeIdentity: TriptychRuntimeIdentity
+    ) -> WorkspaceSnapshot? {
+        guard workspaceActivations[runtimeIdentity.triptychID]?.runtimeIdentity
+                == runtimeIdentity else { return nil }
+        return workspaceSnapshots[runtimeIdentity.triptychID]
     }
 
     func registerEditorFlush(
@@ -1050,7 +1077,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
         // A caller and the old handle's runtimeReloaded event can converge on
         // the same successor. Recheck after both suspension points so only one
-        // complete installation is committed and retained.
+        // explicitly phased installation is committed and retained.
         if let existing = handles[handle.id],
            existing.runtimeIdentity == handle.runtimeIdentity,
            previousIdentity == nil || previousIdentity?.triptychID == handle.id {
@@ -1122,7 +1149,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 actions: research,
                 sourceAccess: research,
                 recoveryRecordsURL: research.recoveryRecordsURL
-            )
+            ),
+            zoteroBindings: handle.zoteroBindings,
+            openingPresentationDidComplete: {
+                await handle.openingPresentationDidComplete()
+            }
         )
     }
 

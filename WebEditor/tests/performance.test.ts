@@ -4,6 +4,7 @@ import {
   editorPerformanceSamples,
   recordEditorMetric,
   sampleEditorMemory,
+  scheduleAfterNextPaint,
 } from "../performance";
 
 describe("editor performance instrumentation", () => {
@@ -27,5 +28,24 @@ describe("editor performance instrumentation", () => {
     expect(samples[0].name).toBe("sample-44");
     expect(samples.at(-1)?.name).toBe("sample-299");
     expect(performance.getEntriesByName("scholium-editor:sample-299")).toHaveLength(0);
+  });
+
+  it("crosses a frame and the following task before reporting painted input", () => {
+    const frames: FrameRequestCallback[] = [];
+    const tasks: Array<() => void> = [];
+    let reported = false;
+    scheduleAfterNextPaint(
+      () => { reported = true; },
+      (callback) => { frames.push(callback); return 1; },
+      (callback) => { tasks.push(callback); return 1; },
+    );
+
+    expect(reported).toBe(false);
+    expect(tasks).toHaveLength(0);
+    frames[0](0);
+    expect(reported).toBe(false);
+    expect(tasks).toHaveLength(1);
+    tasks[0]();
+    expect(reported).toBe(true);
   });
 });

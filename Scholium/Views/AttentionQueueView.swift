@@ -401,6 +401,13 @@ struct AttentionQueueView: View {
             )
         }
         switch session.derivedRefreshStatus {
+        case .opening:
+            return RefreshStatus(
+                symbol: "arrow.triangle.2.circlepath",
+                message: "Refreshing — showing the last available results.",
+                colorRole: .information,
+                offersRetry: false
+            )
         case .stale(let issue):
             return RefreshStatus(
                 symbol: "clock.badge.exclamationmark",

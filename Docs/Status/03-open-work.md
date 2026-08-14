@@ -21,11 +21,16 @@
   ordinary/minimum-width, and source-conflict acceptance for the Properties Settings seed editor,
   per-type Agent requirements, Complete Properties chooser, CreatorList editor,
   YAML-free first insertion, removal/Undo, and Source recovery routes.
+- Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
+  error, conflict, set, rebind, confirmed-clear, and minimum-width acceptance
+  for the Analysis Overview Zotero relationship sheet.
 
 ## Agent collaboration and research quality
 
-- Exercise a version-matched installed App and CLI through the production App
-  Group: pairing, restart invalidation, re-pairing, Research Context, bounded
+- Exercise the separately downloaded CLI archive and sandboxed installed App
+  in a clean external account, including the copied Agent instruction,
+  user-local installation, and production bridge: pairing, restart
+  invalidation, re-pairing, Research Context, bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
   and credential cleanup.
 - Conduct sustained real research use and an independent source-fidelity and
@@ -33,9 +38,6 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Complete the separately authorized `set_zotero_binding` and
-  `clear_zotero_binding` Agent operations. Current creation, body, and property
-  authority cannot mutate portable Zotero bindings.
 - Decide whether finished Local Execution should compact the nonauthorizing
   Bounded Write Set after copying every target fact needed by historical
   recovery into self-describing transaction evidence. Completion already
@@ -50,9 +52,14 @@
 - Exercise pointer and keyboard behavior for construct-scoped syntax, completed-
   selection toolbar timing, context menus, Callouts, footnotes, lists, tables,
   suggestions, previews, and source-return navigation.
-- Measure retained editor memory and visible latency during sustained input and
-  repeated Note/mode switching. Extend shared source-range fixtures before
-  changing parser or syntax rules.
+- Complete direct keyboard, VoiceOver, relaunch, missing-path, and
+  cleanup acceptance for image Import, pasted-image Import, absolute-path
+  Index, and indexed-attachment reminders. Focused tests prove the typed
+  transactions and path/bookmark boundaries but are not human acceptance.
+- Run the complete Editor latency, correctness, and retained-memory series on
+  the exact clean tagged packaged artifact. Focused scenario measurements remain
+  in Verification and do not satisfy G7. Extend shared source-range fixtures
+  before changing parser or syntax rules.
 - The disposable Debug QA journey now proves direct Edit presentation, exact
   body focus, first-keystroke persistence, and source fidelity with and without
   a role YAML seed. Still measure command dispatch to acknowledged selection
@@ -67,20 +74,24 @@
   remain keyboard and VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
-- Approve packaged performance thresholds, freeze the exact source/artifact and
-  fixture, then run the complete warm-up/sample protocol for Search, large
-  Library, cold start, editor latency, and retained memory.
+- Freeze the exact source, artifact, and fixture, then rerun every approved G7
+  series from one reviewed, committed, exactly tagged package on the cooled
+  reference machine. Working-tree and scenario evidence is not release
+  acceptance.
 
 ## Source coordination, recovery, and external locators
 
 - Exercise a real File Provider domain, dataless materialization/eviction,
   provider-side replacement, sync rename, concurrent external edits, and
-  packaged-process interruption.
-- Recheck Finder metadata, ACL/xattr behavior, conflict focus, selective/full
-  checkpoint restore, retained candidates, and recovery with assistive
-  technology.
-- Verify packaged-sandbox reopen after an external Method, Practice, Skill
-  folder, or Analyze source moves, loses scope, is evicted, or is restored.
+  packaged-process interruption. Prove silent Saved only after exact canonical
+  readback, Conflict on revision change, Autosave Failed on unproven commit,
+  and retained editor bytes in both exceptional outcomes.
+- Recheck conflict focus, selective/full checkpoint restore, retained
+  interrupted candidates, and recovery with assistive technology. Finder
+  metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
+  completion are not save-success acceptance criteria.
+- Verify packaged reopen after an external Method, Practice, Skill folder, or
+  Analyze source moves, disappears, is evicted, or is restored.
 - Complete direct acceptance of Zotero attachment selection and the built-in
   reader versus MCP boundary.
 
@@ -90,7 +101,8 @@
   material; run the repository and release gates from that checkout.
 - Exercise the exact expanded artifact in a clean external account through
   setup, read/edit/autosave/restart, Search, conflict/recovery, Inspector,
-  Agent Action, CLI, unavailable integrations, and restoration.
+  Agent Action, independent CLI download/install, unavailable integrations,
+  and restoration.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Publish source, artifact, checksum, license, architecture, and signing

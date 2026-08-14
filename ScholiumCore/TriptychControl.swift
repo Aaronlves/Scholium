@@ -109,6 +109,7 @@ public actor TriptychControlStore {
     private let settingsURL: URL
     private let identitiesURL: URL
     private let analysisZoteroBindingsURL: URL
+    private let attachmentCatalogURL: URL
     private let fileManager: FileManager
     private let controlWriteHook: (@Sendable (URL) throws -> Void)?
     private let controlPostSwapHook: (@Sendable (URL) throws -> Void)?
@@ -123,6 +124,9 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
+        attachmentCatalogURL = controlURL
+            .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         controlWriteHook = nil
         controlPostSwapHook = nil
@@ -142,6 +146,9 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
+        attachmentCatalogURL = controlURL
+            .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         controlWriteHook = nil
         controlPostSwapHook = nil
@@ -179,6 +186,9 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
+        attachmentCatalogURL = controlURL
+            .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
         self.controlPostSwapHook = controlPostSwapHook
@@ -199,6 +209,9 @@ public actor TriptychControlStore {
         settingsURL = controlURL.appendingPathComponent("settings.json")
         identitiesURL = controlURL.appendingPathComponent("identities.json")
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
+        attachmentCatalogURL = controlURL
+            .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
         controlPostSwapHook = nil
@@ -251,6 +264,7 @@ public actor TriptychControlStore {
             AnalysisZoteroBindingFile(bindings: []),
             at: analysisZoteroBindingsURL
         )
+        try ensureAttachmentCatalogDirectory()
 
         let manifestData = try Data(
             contentsOf: manifestURL,
@@ -367,6 +381,130 @@ public actor TriptychControlStore {
             bindings: payload.bindings,
             revision: DocumentFingerprint(data: data)
         )
+    }
+
+    public func attachmentRecords() throws -> [PortableAttachmentRecord] {
+        guard fileManager.fileExists(atPath: attachmentCatalogURL.path) else {
+            return []
+        }
+        try validateAttachmentCatalogDirectory()
+        let urls = try fileManager.contentsOfDirectory(
+            at: attachmentCatalogURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ).filter { $0.pathExtension == "json" }
+        var records: [PortableAttachmentRecord] = []
+        for url in urls {
+            let values = try url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isRegularFile == true,
+                  values.isSymbolicLink != true,
+                  let record = try? decoder().decode(
+                    PortableAttachmentRecord.self,
+                    from: Data(contentsOf: url, options: [.mappedIfSafe])
+                  ),
+                  url.deletingPathExtension().lastPathComponent
+                    == record.id.uuidString.lowercased() else {
+                throw ImageAttachmentError.invalidCatalog
+            }
+            records.append(record)
+        }
+        guard Set(records.map(\.id)).count == records.count,
+              Set(records.map { "\($0.vaultID.uuidString):\($0.location)" })
+                .count == records.count else {
+            throw ImageAttachmentError.invalidCatalog
+        }
+        return records.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    public func registerAttachment(
+        vaultID: UUID,
+        location: AttachmentLocation,
+        preferredID: UUID = UUID()
+    ) throws -> (record: PortableAttachmentRecord, created: Bool) {
+        try withPortableControlLock {
+            try ensureAttachmentCatalogDirectory()
+            if let existing = try attachmentRecords().first(where: {
+                $0.vaultID == vaultID && $0.location == location
+            }) {
+                return (existing, false)
+            }
+            let record = PortableAttachmentRecord(
+                id: preferredID,
+                vaultID: vaultID,
+                location: location
+            )
+            let url = attachmentRecordURL(id: record.id)
+            guard !fileManager.fileExists(atPath: url.path) else {
+                throw ImageAttachmentError.catalogConflict
+            }
+            let candidate = try encodedData(record)
+            try controlCreateHook?(url)
+            do {
+                try candidate.write(to: url, options: .withoutOverwriting)
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                throw ImageAttachmentError.catalogConflict
+            } catch {
+                if let current = try? Data(contentsOf: url, options: [.mappedIfSafe]) {
+                    if current == candidate { return (record, true) }
+                    throw ImageAttachmentError.catalogCommitUncertain(
+                        error.localizedDescription
+                    )
+                }
+                throw error
+            }
+            let readback: Data
+            do {
+                readback = try Data(contentsOf: url, options: [.mappedIfSafe])
+            } catch {
+                throw ImageAttachmentError.catalogCommitUncertain(
+                    error.localizedDescription
+                )
+            }
+            guard readback == candidate,
+                  (try? decoder().decode(PortableAttachmentRecord.self, from: readback))
+                    == record else {
+                throw ImageAttachmentError.catalogCommitUncertain(
+                    "The record readback did not match the exact candidate bytes."
+                )
+            }
+            return (record, true)
+        }
+    }
+
+    public func removeAttachment(_ expected: PortableAttachmentRecord) throws {
+        try withPortableControlLock {
+            let url = attachmentRecordURL(id: expected.id)
+            guard fileManager.fileExists(atPath: url.path) else { return }
+            let expectedData = try encodedData(expected)
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var coordinationError: NSError?
+            var outcome: Result<Void, Error>?
+            coordinator.coordinate(
+                writingItemAt: url,
+                options: .forDeleting,
+                error: &coordinationError
+            ) { coordinatedURL in
+                outcome = Result {
+                    let current = try Data(
+                        contentsOf: coordinatedURL,
+                        options: [.mappedIfSafe]
+                    )
+                    guard current == expectedData else {
+                        throw ImageAttachmentError.catalogConflict
+                    }
+                    try self.fileManager.removeItem(at: coordinatedURL)
+                    guard !self.fileManager.fileExists(atPath: coordinatedURL.path) else {
+                        throw ImageAttachmentError.catalogConflict
+                    }
+                }
+            }
+            if let coordinationError { throw coordinationError }
+            guard let outcome else { throw ImageAttachmentError.catalogConflict }
+            try outcome.get()
+        }
     }
 
     @discardableResult
@@ -1379,6 +1517,45 @@ public actor TriptychControlStore {
 
     private func ensureControlDirectory() throws {
         try fileManager.createDirectory(at: controlURL, withIntermediateDirectories: true)
+    }
+
+    private func ensureAttachmentCatalogDirectory() throws {
+        try ensureControlDirectory()
+        try fileManager.createDirectory(
+            at: attachmentCatalogURL,
+            withIntermediateDirectories: true
+        )
+        try validateAttachmentCatalogDirectory()
+    }
+
+    private func validateAttachmentCatalogDirectory() throws {
+        let attachmentsURL = attachmentCatalogURL.deletingLastPathComponent()
+        for url in [controlURL, attachmentsURL, attachmentCatalogURL] {
+            let values = try url.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isDirectory == true, values.isSymbolicLink != true else {
+                throw ImageAttachmentError.invalidCatalog
+            }
+        }
+        let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
+        let canonicalCatalog = attachmentCatalogURL
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let rootPath = canonicalControl.path.hasSuffix("/")
+            ? canonicalControl.path
+            : canonicalControl.path + "/"
+        guard canonicalCatalog.path.hasPrefix(rootPath) else {
+            throw ImageAttachmentError.invalidCatalog
+        }
+    }
+
+    private func attachmentRecordURL(id: UUID) -> URL {
+        attachmentCatalogURL.appendingPathComponent(
+            "\(id.uuidString.lowercased()).json",
+            isDirectory: false
+        )
     }
 
     private func decodeIfPresent<T: Decodable>(_ type: T.Type, from url: URL) throws -> T? {

@@ -1,5 +1,11 @@
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
+
+enum EditorPastedImageSource: Sendable {
+    case file(URL)
+    case data(Data, preferredFilename: String)
+}
 
 /// The AppKit half of the retained editor surface.
 ///
@@ -10,6 +16,7 @@ import WebKit
 /// menu loop.
 final class WindowAttachedWebView: WKWebView {
     var onFirstWindowAttachment: (() -> Void)?
+    var onPasteImage: ((EditorPastedImageSource) -> Bool)?
     weak var editorSession: MarkdownEditorSession?
 
     override func viewDidMoveToWindow() {
@@ -33,6 +40,7 @@ final class WindowAttachedWebView: WKWebView {
             context: context,
             mode: mode,
             canPaste: NSPasteboard.general.string(forType: .string) != nil
+                || Self.pastedImageSource(in: .general) != nil
         )
         let x = min(max(0, clientX), bounds.width)
         let webY = min(max(0, clientY), bounds.height)
@@ -48,6 +56,52 @@ final class WindowAttachedWebView: WKWebView {
             guard let self, self.window != nil else { return }
             menu.popUp(positioning: nil, at: point, in: self)
         }
+    }
+
+    static func pastedImageSource(
+        in pasteboard: NSPasteboard
+    ) -> EditorPastedImageSource? {
+        if let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL],
+           let url = urls.first,
+           let contentType = try? url.resourceValues(
+            forKeys: [.contentTypeKey]
+           ).contentType,
+           contentType.conforms(to: .image) {
+            return .file(url)
+        }
+
+        let preferredTypes = [
+            NSPasteboard.PasteboardType("public.png"),
+            .tiff,
+        ]
+        let candidates = preferredTypes + (pasteboard.types ?? []).filter {
+            !preferredTypes.contains($0)
+        }
+        for pasteboardType in candidates {
+            guard let type = UTType(pasteboardType.rawValue),
+                  type.conforms(to: .image),
+                  let data = pasteboard.data(forType: pasteboardType),
+                  !data.isEmpty else { continue }
+            let pathExtension = type.preferredFilenameExtension ?? "png"
+            return .data(
+                data,
+                preferredFilename: "Pasted Image.\(pathExtension)"
+            )
+        }
+        return nil
+    }
+
+    func consumePastedImage() -> Bool {
+        guard let source = Self.pastedImageSource(in: .general) else { return false }
+        return onPasteImage?(source) == true
+    }
+
+    @objc private func performPaste(_ sender: Any?) {
+        if consumePastedImage() { return }
+        NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender)
     }
 
     func makeEditorContextMenu(
@@ -72,12 +126,14 @@ final class WindowAttachedWebView: WKWebView {
             identifier: "copy",
             isEnabled: hasSelection
         ))
-        menu.addItem(standardEditItem(
+        let pasteItem = standardEditItem(
             ScholiumL10n.string("Paste"),
-            action: #selector(NSText.paste(_:)),
+            action: #selector(performPaste(_:)),
             identifier: "paste",
             isEnabled: canPaste && !context.composing
-        ))
+        )
+        pasteItem.target = self
+        menu.addItem(pasteItem)
         menu.addItem(.separator())
         menu.addItem(standardEditItem(
             ScholiumL10n.string("Select All"),
@@ -85,6 +141,8 @@ final class WindowAttachedWebView: WKWebView {
             identifier: "selectAll",
             isEnabled: !context.composing
         ))
+        menu.addItem(.separator())
+        menu.addItem(spellingAndGrammarItem())
 
         // System edit actions are always first. Scholium adds only commands
         // whose meaning depends on one collapsed, clicked Edit construct.
@@ -142,6 +200,35 @@ final class WindowAttachedWebView: WKWebView {
         item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.\(identifier)")
         item.target = nil
         item.isEnabled = isEnabled
+        return item
+    }
+
+    private func spellingAndGrammarItem() -> NSMenuItem {
+        let submenu = NSMenu(title: ScholiumL10n.string("Spelling and Grammar"))
+        submenu.autoenablesItems = true
+        let commands: [(String, String)] = [
+            (ScholiumL10n.string("Show Spelling and Grammar"), "showGuessPanel:"),
+            (ScholiumL10n.string("Check Document Now"), "checkSpelling:"),
+            (ScholiumL10n.string("Check Spelling While Typing"), "toggleContinuousSpellChecking:"),
+            (ScholiumL10n.string("Check Grammar With Spelling"), "toggleGrammarChecking:"),
+            (ScholiumL10n.string("Correct Spelling Automatically"), "toggleAutomaticSpellingCorrection:"),
+        ]
+        for (title, selector) in commands {
+            let item = NSMenuItem(
+                title: title,
+                action: NSSelectorFromString(selector),
+                keyEquivalent: ""
+            )
+            item.target = nil
+            submenu.addItem(item)
+        }
+        let item = NSMenuItem(
+            title: ScholiumL10n.string("Spelling and Grammar"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        item.identifier = NSUserInterfaceItemIdentifier("scholium.editor.spellingAndGrammar")
+        item.submenu = submenu
         return item
     }
 

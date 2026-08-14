@@ -25,8 +25,8 @@ struct WindowPropertyFilterOptions: Equatable {
     }
 }
 
-/// Immutable inputs that select one window's visible projection from a complete
-/// Triptych snapshot. Document state is consulted only to preserve a dirty
+/// Immutable inputs that select one window's visible projection from the
+/// latest Triptych snapshot. Document state is consulted only to preserve a dirty
 /// editor whose source disappeared; this controller never owns the buffer.
 struct WindowWorkspaceProjectionContext {
     let selectedVaultID: UUID?
@@ -36,10 +36,11 @@ struct WindowWorkspaceProjectionContext {
     let retainedDeletedDocumentPath: String?
 }
 
-/// One atomic result from accepting a complete Workspace generation.
+/// One atomic result from accepting a Workspace generation.
 struct WindowWorkspaceProjectionCommit {
     let searchGenerationChanged: Bool
     let retainedDeletedDocumentPath: String?
+    let snapshotPhase: WorkspaceSnapshotPhase
     let derivedRefreshStatus: WorkspaceDerivedRefreshStatus
 }
 
@@ -67,6 +68,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var documentRevisions: [String: DocumentFingerprint] = [:]
         var relationshipGraph: GraphSnapshot?
         var searchGeneration: SearchGenerationID?
+        var snapshotPhase: WorkspaceSnapshotPhase?
         var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
         var propertyFilterOptions = WindowPropertyFilterOptions(notes: [])
         var isRefreshingCatalog = false
@@ -109,6 +111,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     var documentRevisions: [String: DocumentFingerprint] { state.documentRevisions }
     var relationshipGraph: GraphSnapshot? { state.relationshipGraph }
     var searchGeneration: SearchGenerationID? { state.searchGeneration }
+    var snapshotPhase: WorkspaceSnapshotPhase? { state.snapshotPhase }
     var derivedRefreshStatus: WorkspaceDerivedRefreshStatus? {
         state.derivedRefreshStatus
     }
@@ -129,7 +132,9 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         acceptedGeneration = generation
         return commit(
             snapshot: snapshot,
-            status: .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
+            status: snapshot.phase.isComplete
+                ? .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot))
+                : .opening(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
             context: context
         )
     }
@@ -164,7 +169,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         )
     }
 
-    /// Installs a caller-authenticated complete snapshot without advancing the
+    /// Installs a caller-authenticated snapshot without advancing the
     /// Application event generation, as used by an explicit retry.
     func replaceSnapshot(
         _ snapshot: WorkspaceSnapshot,
@@ -390,6 +395,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                 graphCounts: source.graphCounts,
                 headings: source.headings,
                 derivedProjectionState: .sourceAhead,
+                cachedSemanticDocument: source.cachedSemanticDocument,
                 cachedTitleProjection: source.cachedTitleProjection
             )
             documents[sourceIndex] = destination
@@ -491,6 +497,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             graphCounts: source.graphCounts,
             headings: source.headings,
             derivedProjectionState: .sourceAhead,
+            cachedSemanticDocument: source.cachedSemanticDocument,
             cachedTitleProjection: source.cachedTitleProjection
         )
 
@@ -609,9 +616,10 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         )
         next.relationshipGraph = snapshot.discovery.catalog.graph
         next.searchGeneration = snapshot.discovery.searchGeneration
+        next.snapshotPhase = snapshot.phase
         next.derivedRefreshStatus = status
         next.catalogError = switch status {
-        case .current: nil
+        case .opening, .current: nil
         case .stale(let issue), .failed(let issue): issue.reason
         }
         next.isRefreshingCatalog = false
@@ -641,6 +649,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             searchGenerationChanged: previousSearchGeneration != nil
                 && previousSearchGeneration != snapshot.discovery.searchGeneration,
             retainedDeletedDocumentPath: retainedDeletedDocumentPath,
+            snapshotPhase: snapshot.phase,
             derivedRefreshStatus: status
         )
     }
@@ -664,7 +673,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state: inout State
     ) {
         let lastKnownGood: WorkspaceDerivedRefreshEvidence? = switch state.derivedRefreshStatus {
-        case .current(let evidence): evidence
+        case .opening(let evidence), .current(let evidence): evidence
         case .stale(let issue), .failed(let issue): issue.lastKnownGood
         case nil: nil
         }

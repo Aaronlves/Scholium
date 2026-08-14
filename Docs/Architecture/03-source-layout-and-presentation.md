@@ -115,7 +115,7 @@ content view. Its Welcome, Triptych, optional Agent, and Ready stages share one
 adaptive full-bleed illustration field beside a linear native task pane and
 fixed footer; narrow windows move the field above the task. Triptych folder
 selection and bounded authorization remain the registration owner's native
-controls behind the approved prototype's path cards and review pages. An
+controls behind the specified path cards and review pages. An
 Application-owned structure preparer exclusively creates a confirmed new root
 and its four fixed children; it refuses an existing destination. The setup view
 presents Agent while Application registration continues, returns a
@@ -279,7 +279,7 @@ contains at most one typed user/group-library plus item-key binding for the curr
 the view neither derives nor displays protected machine data.
 
 `ConnectionsInspectorView` owns one nonpersistent `ConnectionDirection`,
-defaulting each new presentation to Outgoing. Its native segmented `Picker`
+defaulting each new presentation to Outgoing. The shared segmented component
 projects the same immutable direct graph into Incoming or Outgoing rows;
 Neutral and Incompatible edges enter both projections with their original
 source occurrence. Relationship subheadings and Note rows use system Sans,

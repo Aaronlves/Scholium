@@ -883,6 +883,41 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("A plain Editor loads mathematics only after the first authored expression")
+    func plainEditorLoadsMathRuntimeOnDemand() async throws {
+        let plainSource = "Other paragraph.\n\nInline "
+        #expect(!MarkdownEditorWebView.requiresMathRuntime(
+            source: plainSource,
+            linkPreviews: []
+        ))
+        let end = plainSource.utf16.count
+        let harness = EditorHarness(
+            source: plainSource,
+            initialSourceRange: end..<end
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        try await harness.session.perform(.pastePlain, argument: "$x$.\n")
+        harness.synchronizeLifecycleSourceFromSession()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0)
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        harness.session.setMode(.livePreview)
+        try await harness.waitUntilPresentedMode(.livePreview)
+        let presentation = try await harness.waitUntilPresentation(
+            stage: "on-demand mathematics runtime"
+        ) {
+            $0.renderedMathCount == 1 && $0.mathErrorCount == 0
+        }
+        #expect(presentation.renderedMathCount == 1)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "Other paragraph.\n\nInline $x$.\n"
+        )
+    }
+
     @Test("Exact UTF-16 reveal selects source without changing bytes, generation, or undo")
     func exactSourceRangeRevealIsNonmutating() async throws {
         let source = "# Search\n\nBefore 🧭 autonomy after.\n"
@@ -2775,6 +2810,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             "Lists",
             "Blockquote",
             "Comment",
+            "Import Image…",
+            "Index Image…",
         ])
         #expect(more.visibleMenuCommands == [
             "inlineCode",
@@ -2782,6 +2819,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             "",
             "blockQuotation",
             "markdownComment",
+            "",
+            "",
         ])
         #expect(more.visibleMenuSystemSymbolNames == [
             "curlybraces",
@@ -3048,6 +3087,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Cut"))?.isEnabled == true)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Copy"))?.isEnabled == true)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Paste"))?.isEnabled == true)
+        let spelling = selectedMenu.item(
+            withTitle: ScholiumL10n.string("Spelling and Grammar")
+        )?.submenu
+        #expect(spelling?.item(withTitle: ScholiumL10n.string("Show Spelling and Grammar"))?.action == NSSelectorFromString("showGuessPanel:"))
+        #expect(spelling?.item(withTitle: ScholiumL10n.string("Check Spelling While Typing"))?.action == NSSelectorFromString("toggleContinuousSpellChecking:"))
         #expect(selectedMenu.item(withTitle: "Autofill") == nil)
         #expect(selectedMenu.item(withTitle: "Services") == nil)
         #expect(selectedMenu.item(withTitle: ScholiumL10n.string("Bold")) == nil)
@@ -3077,6 +3121,27 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Toggle Task")) == nil)
         #expect(sourceMenu.item(withTitle: ScholiumL10n.string("Table")) == nil)
+    }
+
+    @Test("Native pasteboard image bytes route to attachment import")
+    func nativeImagePasteboardRouting() throws {
+        let pasteboard = NSPasteboard(
+            name: NSPasteboard.Name("scholium-image-paste-\(UUID().uuidString)")
+        )
+        pasteboard.clearContents()
+        let png = try #require(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        #expect(pasteboard.setData(png, forType: .init("public.png")))
+
+        guard case .data(let data, let preferredFilename) =
+                WindowAttachedWebView.pastedImageSource(in: pasteboard) else {
+            Issue.record("Expected native PNG pasteboard bytes.")
+            return
+        }
+        #expect(data == png)
+        #expect(preferredFilename == "Pasted Image.png")
+        pasteboard.clearContents()
     }
 
     @Test("Bridge v10 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
@@ -3651,6 +3716,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         private let window: NSWindow
         private var hostingController: NSViewController?
         private var isClosed = false
+
+        func synchronizeLifecycleSourceFromSession() {
+            sourceBox.source = session.checkedSource
+        }
 
         init(
             documentID: String = "Argument.md",
@@ -4283,17 +4352,25 @@ struct MarkdownEditorWebViewIntegrationTests {
             MarkdownEditorWebView(
                     session: session,
                     documentID: documentID,
+                    performanceDocumentID: documentID,
                     source: sourceBox.source,
                     mode: sourceBox.mode,
                     presentationCSS: sourceBox.presentationCSS,
                     userCSS: sourceBox.userCSS,
-                    linkCompletionQuery: { _ in [] },
+                    requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
+                        source: sourceBox.source,
+                        linkPreviews: linkPreviews
+                    ),
+                    linkCompletionQuery: { _, _ in [] },
                     linkPreviews: linkPreviews,
                     initialScrollFraction: 0,
                     initialScrollAnchor: sourceBox.scrollAnchor,
                     onDocumentActivity: {},
                     onRequestSave: {},
-                    onRequestSearch: {},
+                    onRequestFind: { _ in },
+                    onRequestImportImage: {},
+                    onRequestIndexImage: {},
+                    onPasteImage: { _ in false },
                     onLinkActivation: { sourceBox.activatedLinks.append($0) },
                     onScrollFractionChange: { _ in },
                     onScrollAnchorChange: { sourceBox.scrollAnchor = $0 }

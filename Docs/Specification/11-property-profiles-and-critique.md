@@ -6,8 +6,8 @@
 
 Existing/custom YAML remains authoritative and losslessly preserved. Canonical
 vocabulary defines recognized shape and meaning; source-type profiles define
-applicability, recommendation, and serialization order; About and structured
-editing are independent role settings; exact New Note YAML defines only source
+applicability, recommendation, and serialization order; About is a role
+setting; exact New Note YAML defines only source
 copied at creation; Agent-required fields apply only to typed Analysis create.
 None materializes an absent key. Every built-in seed and Agent-required set is
 empty. App facts and integrations remain outside frontmatter.
@@ -77,8 +77,8 @@ Note, researcher CLI creation, an existing Note, or later property permission.
 Default About order is Source `type`; Publication `publication_date`; Research
 `limitations`, `summary`, `source_basis`; then Tags. `title` remains visible in
 Complete Properties and participates in Analysis identity but is not repeated
-in About. Every canonical Analysis key is in the default structured-edit
-allowlist; this enables on-demand creation and does not create empty YAML.
+in About. Applicable canonical fields can be added on demand without creating
+empty YAML, and present source-safe values can be edited directly.
 
 ### Topics
 
@@ -91,8 +91,8 @@ Topic YAML is optional.
 | `limitations` | Nonempty text list | Research | Material boundaries. |
 | `tags` | Nonempty text list | Tags | Researcher retrieval terms. |
 
-All four fields are structured-editable by default. Topic identity is first
-H1, then filename. YAML `title`, `research_unit`, and `scope` are not
+All four fields are directly editable when their exact source shape is safe.
+Topic identity is first H1, then filename. YAML `title`, `research_unit`, and `scope` are not
 recognized.
 
 ### Works
@@ -105,8 +105,8 @@ recognized.
 | `limitations` | Nonempty text list | Research | Material boundaries. |
 | `tags` | Nonempty text list | Tags | Researcher retrieval terms. |
 
-All five fields are structured-editable by default. Work identity is first H1,
-then filename. YAML `title`, `kind`, `authors`, `venue`, `research_unit`,
+All five fields are directly editable when their exact source shape is safe.
+Work identity is first H1, then filename. YAML `title`, `kind`, `authors`, `venue`, `research_unit`,
 `scope`, `status`, and `deadline` are not recognized. Only canonical keys
 receive typed semantics; all other source remains custom and targeted edits
 never normalize it.
@@ -117,13 +117,15 @@ Group order is Analysis **Source → Publication → Access & Identifiers →
 Research → Other Properties → Tags**, Topic **Topic Description → Research →
 Other Properties → Tags**, and Work **Work Description → Research → Other
 Properties → Tags**. One catalog owns membership. **Other Properties** contains
-safe custom projections without granting type or creation semantics. About
-shows only groups with nonempty selected values; group headings are subordinate
-reading hierarchy, not cards or filters. Tags are neutral content capsules.
+all safe custom projections together without granting type or creation
+semantics. Complete Properties and About use the same order and distinguish
+groups through whitespace, while retaining group names for assistive technology
+instead of visible repeated headings. About shows only groups with nonempty
+selected values. Tags are neutral content capsules.
 
-`settings.json` schema, exact seed, About profile, edit allowlist, and Analysis
-Agent requirements share one exact-byte revision and one atomic save. Restore
-About/edit defaults never changes seed; clearing seed never changes profiles or
+`settings.json` schema, exact seed, About profile, and Analysis Agent
+requirements share one exact-byte revision and one atomic save. Restore About
+defaults never changes seed; clearing seed never changes profiles or
 requirements. Seeds contain delimiter-free YAML mapping source, normalize only
 configuration newlines to LF, require a terminating LF, and preserve comments, order,
 quoting, scalar style, and meaningful blank lines. They never contain title;

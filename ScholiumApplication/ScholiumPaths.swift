@@ -1,13 +1,14 @@
 import ScholiumContracts
+import Darwin
 import Foundation
 
 public enum ScholiumPaths {
     public static let applicationSupportDirectoryName = "Scholium"
-    public static let applicationBundleIdentifier = "com.scholium.app"
-    public static let applicationGroupIdentifier = "group.com.scholium.app"
+    public static let machineStateDirectoryName = "State-v1"
 
-    /// Returns Scholium's own app-support directory. Pre-release application
-    /// state from other product identities is never imported automatically.
+    /// Returns the current machine-state namespace. Unsupported pre-release
+    /// bytes at the parent Scholium directory remain untouched and cannot
+    /// authorize the current application.
     public static func applicationSupportURL(
         baseURL: URL? = nil,
         fileManager: FileManager = .default
@@ -24,7 +25,9 @@ public enum ScholiumPaths {
             throw CocoaError(.fileNoSuchFile)
         }
 
-        let current = base.appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
+        let current = base
+            .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
         try fileManager.createDirectory(at: current, withIntermediateDirectories: true)
         return current
     }
@@ -42,34 +45,38 @@ public enum ScholiumPaths {
             .appendingPathComponent(".scholium", isDirectory: true)
     }
 
-    /// Returns the Application Support directory shared by the sandboxed app
-    /// and the ordinary local CLI. Outside the sandbox, the CLI explicitly
-    /// discovers the app container when it exists; otherwise development and
-    /// unsandboxed builds fall back to the ordinary user Application Support.
+    /// Returns the login account's ordinary Application Support directory
+    /// shared by the sandboxed app and independently delivered CLI. Supplying
+    /// a base URL keeps tests and explicit isolated launches deterministic.
     public static func sharedApplicationSupportURL(
-        homeURL: URL? = nil,
-        fallbackBaseURL: URL? = nil,
+        baseURL: URL? = nil,
         fileManager: FileManager = .default
     ) throws -> URL {
-        let home = homeURL ?? fileManager.homeDirectoryForCurrentUser
-        let container = home
-            .appendingPathComponent("Library/Containers", isDirectory: true)
-            .appendingPathComponent(applicationBundleIdentifier, isDirectory: true)
-            .appendingPathComponent("Data/Library/Application Support", isDirectory: true)
-            .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
-        if fileManager.fileExists(atPath: container.path) {
-            return container
+        if let baseURL {
+            return try applicationSupportURL(baseURL: baseURL, fileManager: fileManager)
         }
-        return try applicationSupportURL(baseURL: fallbackBaseURL, fileManager: fileManager)
+        guard let loginHome = loginAccountHomeURL(
+            accountHomePath: currentLoginAccountHomePath()
+        ) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return try applicationSupportURL(
+            baseURL: loginHome.appendingPathComponent(
+                "Library/Application Support",
+                isDirectory: true
+            ),
+            fileManager: fileManager
+        )
     }
 
-    /// Supported rendezvous location for the sandboxed App and signed CLI.
-    /// This container owns only the Unix socket and its minimal owner lock;
+    /// Stable logical namespace used by the local App and CLI to derive the
+    /// same loopback port. The path is never created or used as IPC storage;
     /// research content, Runs, Records, recovery state, and Session semantics
     /// remain in their existing owners.
     public static func agentBridgeContainerURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,
+        homeURL: URL? = nil,
         debugFallbackURL: URL? = nil
     ) throws -> URL {
         if let explicit = environment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"],
@@ -83,20 +90,49 @@ public enum ScholiumPaths {
             return cliHomeURL(environment: environment, fileManager: fileManager)
                 .appendingPathComponent("AgentBridge", isDirectory: true)
         }
-        if let group = fileManager.containerURL(
-            forSecurityApplicationGroupIdentifier: applicationGroupIdentifier
-        ) {
-            return group
-                .appendingPathComponent("Library/Application Support", isDirectory: true)
-                .appendingPathComponent("ScholiumAgentBridge", isDirectory: true)
-        }
 #if DEBUG
         if let debugFallbackURL {
             return debugFallbackURL
                 .appendingPathComponent("AgentBridge", isDirectory: true)
         }
 #endif
-        throw CocoaError(.fileNoSuchFile)
+        let loginHome = homeURL ?? loginAccountHomeURL(
+            accountHomePath: currentLoginAccountHomePath()
+        ) ?? fileManager.homeDirectoryForCurrentUser
+        return loginHome
+            .appendingPathComponent(".scholium/AgentBridge", isDirectory: true)
+    }
+
+    public static func loginAccountHomeURL(accountHomePath: String?) -> URL? {
+        guard let accountHomePath,
+              accountHomePath.hasPrefix("/") else {
+            return nil
+        }
+        return URL(
+            fileURLWithPath: accountHomePath,
+            isDirectory: true
+        ).standardizedFileURL
+    }
+
+    public static func currentLoginAccountHomePath() -> String? {
+        var account = passwd()
+        var result: UnsafeMutablePointer<passwd>?
+        let configuredSize = sysconf(_SC_GETPW_R_SIZE_MAX)
+        let bufferSize = configuredSize > 0 ? Int(configuredSize) : 16_384
+        var buffer = [CChar](repeating: 0, count: bufferSize)
+        let status = getpwuid_r(
+            getuid(),
+            &account,
+            &buffer,
+            buffer.count,
+            &result
+        )
+        guard status == 0,
+              result != nil,
+              account.pw_dir != nil else {
+            return nil
+        }
+        return String(cString: account.pw_dir)
     }
 
     /// The app and the ordinary CLI share one role-aware vault registry. An

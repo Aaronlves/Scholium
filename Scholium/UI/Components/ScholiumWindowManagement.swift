@@ -384,6 +384,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var closeIsAuthorized = false
     private var flushInFlight = false
     private var closeAttemptGeneration: UInt64 = 0
+    private var terminatesApplicationAfterClose = false
     private var readinessWasMarked = false
     private var isRegistered = false
     private var pendingLibraryVisibility: Bool?
@@ -639,6 +640,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         closeAttemptGeneration &+= 1
         flushInFlight = false
         closeIsAuthorized = false
+        terminatesApplicationAfterClose = false
         appState.finalizeWindowClose()
         removeToolbar()
         splitController = nil
@@ -808,6 +810,26 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             isRegistered = false
         }
         previousDelegate?.windowWillClose?(notification)
+        if terminatesApplicationAfterClose {
+            terminatesApplicationAfterClose = false
+            DispatchQueue.main.async {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+    }
+
+    /// The Restore Access route has no usable document session to flush. Close
+    /// that exact unavailable window first, then let application termination
+    /// flush every remaining registered workspace through the normal owner.
+    func closeUnavailableWorkspaceAndTerminateApplication() {
+        guard let window else {
+            NSApplication.shared.terminate(nil)
+            return
+        }
+        closeAttemptGeneration &+= 1
+        flushInFlight = false
+        terminatesApplicationAfterClose = true
+        window.close()
     }
 
     private struct PreferredAttentionRoute {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import UniformTypeIdentifiers
@@ -87,17 +88,51 @@ struct ScholiumFileSelectionTests {
                 includingPropertiesForKeys: nil
             )
         )
-        var constructors: [String] = []
+        var nativePanelOwners: [String] = []
+        var requestOwners: [String: Int] = [:]
         while let url = enumerator.nextObject() as? URL {
             guard url.pathExtension == "swift" else { continue }
             let source = try String(contentsOf: url, encoding: .utf8)
-            if source.contains("NSOpenPanel()") {
-                constructors.append(url.lastPathComponent)
+            let relativePath = String(
+                url.path.dropFirst(sourceRoot.path.count + 1)
+            )
+            if source.contains("NSOpenPanel") {
+                nativePanelOwners.append(relativePath)
+            }
+            let requestCount = source.components(
+                separatedBy: "ScholiumFileSelectionRequest("
+            ).count - 1
+            if requestCount > 0 {
+                requestOwners[relativePath] = requestCount
+                if relativePath != "App/ScholiumApp.swift" {
+                    #expect(source.contains(
+                        "@Environment(\\.scholiumFileSelectionPresenter)"
+                    ))
+                }
+            }
+            for forbiddenAPI in [
+                "NSSavePanel(",
+                ".fileImporter(",
+                ".fileExporter(",
+            ] {
+                #expect(
+                    !source.contains(forbiddenAPI),
+                    "\(relativePath) bypasses the scene-owned file-selection presenter with \(forbiddenAPI)"
+                )
             }
             #expect(!source.contains("panel.runModal()"))
         }
 
-        #expect(constructors == ["ScholiumFileSelection.swift"])
+        #expect(nativePanelOwners == ["UI/Components/ScholiumFileSelection.swift"])
+        #expect(requestOwners == [
+            "App/ScholiumApp.swift": 1,
+            "Views/ContentView.swift": 1,
+            "Views/Note/NoteContentView.swift": 1,
+            "Views/ResearchMethodsSettingsView.swift": 2,
+            "Views/RestoreWorkspaceAccessView.swift": 1,
+            "Views/WorkspaceSettingsView.swift": 3,
+            "Views/WorkspaceSetupView.swift": 2,
+        ])
 
         let appSource = try String(
             contentsOf: sourceRoot.appendingPathComponent("App/ScholiumApp.swift"),
@@ -105,9 +140,111 @@ struct ScholiumFileSelectionTests {
         )
         #expect(
             appSource.components(
-                separatedBy: "ScholiumFileSelectionWindowAttachment("
+                separatedBy: ".scholiumFileSelectionScene("
             ).count == 4
         )
+        #expect(appSource.contains("fileSelectionPresenter.selectURLs("))
+
+        let workspaceRootStart = try #require(appSource.range(
+            of: "private struct ScholiumWindowObservedRoot"
+        ))
+        let settingsRootStart = try #require(appSource.range(
+            of: "private struct ScholiumSettingsRoot",
+            range: workspaceRootStart.upperBound..<appSource.endIndex
+        ))
+        let workspaceRoot = appSource[
+            workspaceRootStart.lowerBound..<settingsRootStart.lowerBound
+        ]
+        let recoverySheet = try #require(workspaceRoot.range(of: ".sheet(item:"))
+        let sceneOwner = try #require(workspaceRoot.range(
+            of: ".scholiumFileSelectionScene("
+        ))
+        #expect(
+            recoverySheet.lowerBound < sceneOwner.lowerBound,
+            "Restore Access must remain inside the scene presenter's environment boundary."
+        )
+    }
+
+    @Test("A stale attachment cannot detach the current scene window")
+    func staleAttachmentCannotDetachCurrentWindow() {
+        let presenter = ScholiumFileSelectionPresenter()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let firstAttachment = ScholiumFileSelectionAttachmentView()
+        firstAttachment.presenter = presenter
+        window.contentView?.addSubview(firstAttachment)
+        #expect(presenter.presentationWindow === window)
+
+        let replacementAttachment = ScholiumFileSelectionAttachmentView()
+        replacementAttachment.presenter = presenter
+        window.contentView?.addSubview(replacementAttachment)
+        #expect(presenter.presentationWindow === window)
+
+        firstAttachment.removeFromSuperview()
+        #expect(
+            presenter.presentationWindow === window,
+            "Removing an obsolete SwiftUI attachment must not clear the replacement binding."
+        )
+
+        replacementAttachment.removeFromSuperview()
+        #expect(presenter.presentationWindow == nil)
+    }
+
+    @Test("Replacing a presenter detaches only the attachment's former owner")
+    func replacingPresenterTransfersWindowOwnership() {
+        let originalPresenter = ScholiumFileSelectionPresenter()
+        let replacementPresenter = ScholiumFileSelectionPresenter()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let attachment = ScholiumFileSelectionAttachmentView()
+        attachment.presenter = originalPresenter
+        window.contentView?.addSubview(attachment)
+        #expect(originalPresenter.presentationWindow === window)
+
+        attachment.presenter = replacementPresenter
+        #expect(originalPresenter.presentationWindow == nil)
+        #expect(replacementPresenter.presentationWindow === window)
+
+        attachment.removeFromSuperview()
+        #expect(replacementPresenter.presentationWindow == nil)
+    }
+
+    @Test("Selection follows the scene window's currently attached sheet")
+    func selectionUsesAttachedSheet() {
+        let presenter = ScholiumFileSelectionPresenter()
+        let sceneWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let featureSheet = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let attachment = ScholiumFileSelectionAttachmentView()
+        attachment.presenter = presenter
+        sceneWindow.contentView?.addSubview(attachment)
+
+        sceneWindow.beginSheet(featureSheet)
+        #expect(sceneWindow.attachedSheet === featureSheet)
+        #expect(
+            presenter.presentationWindow === featureSheet,
+            "A chooser requested from Restore Access or another feature sheet must attach to that sheet."
+        )
+
+        sceneWindow.endSheet(featureSheet)
+        #expect(presenter.presentationWindow === sceneWindow)
     }
 
     private func makeFixtureRoot() throws -> URL {

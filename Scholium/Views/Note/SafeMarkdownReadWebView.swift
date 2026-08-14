@@ -33,9 +33,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
     var selectionSurfaceIsActive = true
+    /// The caller's acknowledgement of the coordinator's finalized revision.
+    /// A retained page can re-announce readiness when a reconstructed outer
+    /// session has lost this derived state without forcing a duplicate load.
+    var renderingReadinessIsAcknowledged = false
     let onRenderingFailure: ((String) -> Void)?
     var onRenderingLoading: (() -> Void)? = nil
     var onRenderingReady: (() -> Void)? = nil
+    var findRequest: DocumentFindPresentationRequest? = nil
+    var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)? = nil
     var observedScrollPosition = ObservedScrollPosition()
     var scrollRestoreRequest: ScrollRestoreRequest? = nil
     var onScrollRestoreConsumed: ((UInt64, String) -> Void)? = nil
@@ -59,9 +65,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
+            renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
+            findRequest: findRequest,
+            onFindResult: onFindResult,
             observedScrollPosition: observedScrollPosition,
             scrollRestoreRequest: scrollRestoreRequest,
             onScrollRestoreConsumed: onScrollRestoreConsumed,
@@ -78,19 +87,26 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        let contentController = WKUserContentController()
+        let webView: WKWebView
+        let contentController: WKUserContentController
+        if let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
+            webView = prepared
+            contentController = prepared.configuration.userContentController
+        } else {
+            contentController = WKUserContentController()
+            let configuration = WKWebViewConfiguration()
+            configuration.userContentController = contentController
+            configuration.websiteDataStore = ScholiumWebKitRuntime.nonPersistentDataStore
+            configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+            configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+            ScholiumWebFontResources.install(in: configuration)
+            webView = WKWebView(frame: .zero, configuration: configuration)
+        }
         contentController.add(
             context.coordinator,
             contentWorld: Self.bridgeContentWorld,
             name: Coordinator.messageHandlerName
         )
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController = contentController
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         webView.setAccessibilityElement(true)
@@ -124,9 +140,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: commentResolution,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
+            renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
             onRenderingFailure: onRenderingFailure,
             onRenderingLoading: onRenderingLoading,
             onRenderingReady: onRenderingReady,
+            findRequest: findRequest,
+            onFindResult: onFindResult,
             observedScrollPosition: observedScrollPosition,
             scrollRestoreRequest: scrollRestoreRequest,
             onScrollRestoreConsumed: onScrollRestoreConsumed,
@@ -206,9 +225,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private var selectionSurfaceIsActive: Bool
         private var appliedSelectionSurfaceIsActive: Bool?
+        private var renderingReadinessIsAcknowledged: Bool
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
+        private var findRequest: DocumentFindPresentationRequest?
+        private var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?
+        private var appliedFindRequestID: UInt64?
         private var scrollRestoreRequest: ScrollRestoreRequest?
         private var scrollRestoreOwnership: ScrollRestoreOwnership?
         private var observedScrollPosition: ObservedScrollPosition
@@ -225,6 +248,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var linkPreviewUpdateTask: Task<Void, Never>?
         private var selectionSurfaceUpdateTask: Task<Void, Never>?
+        private var findUpdateTask: Task<Void, Never>?
         private var mermaidRuntimeLoadTask: Task<Void, Never>?
         private var mermaidRuntimeLoadID: UUID?
         private var desiredLinkPreviewRevision = ""
@@ -241,6 +265,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onSourceLineReached: (() -> Void)?
         private var lastReachedSourceLine: Int?
         private var loadedSignature: String?
+        private var finalizedSignature: String?
         private var pageIsReady = false
         weak var activeWebView: WKWebView?
         #if DEBUG
@@ -258,9 +283,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
+            renderingReadinessIsAcknowledged: Bool,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
+            findRequest: DocumentFindPresentationRequest?,
+            onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?,
             observedScrollPosition: ObservedScrollPosition,
             scrollRestoreRequest: ScrollRestoreRequest?,
             onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
@@ -278,9 +306,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.commentResolution = commentResolution
             self.onSelectionChange = onSelectionChange
             self.selectionSurfaceIsActive = selectionSurfaceIsActive
+            self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
+            self.findRequest = findRequest
+            self.onFindResult = onFindResult
             self.scrollRestoreRequest = scrollRestoreRequest
             scrollRestoreOwnership = scrollRestoreRequest == nil ? nil : .caller
             self.observedScrollPosition = observedScrollPosition
@@ -301,9 +332,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentResolution: PassageCommentResolution?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
+            renderingReadinessIsAcknowledged: Bool,
             onRenderingFailure: ((String) -> Void)?,
             onRenderingLoading: (() -> Void)?,
             onRenderingReady: (() -> Void)?,
+            findRequest: DocumentFindPresentationRequest?,
+            onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?,
             observedScrollPosition: ObservedScrollPosition,
             scrollRestoreRequest: ScrollRestoreRequest?,
             onScrollRestoreConsumed: ((UInt64, String) -> Void)?,
@@ -316,11 +350,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let documentChanged = self.documentID != documentID || self.fingerprint != fingerprint
             if documentChanged {
                 loadedSignature = nil
+                finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
                 loadingLinkPreviewRevision = ""
                 lastReachedSourceLine = nil
                 pageIsReady = false
                 appliedSelectionSurfaceIsActive = nil
+                appliedFindRequestID = nil
                 hasLoadedPage = false
                 cancelPendingPageWork()
                 webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
@@ -333,9 +369,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onCommentSelection = onCommentSelection
             self.onSelectionChange = onSelectionChange
             self.selectionSurfaceIsActive = selectionSurfaceIsActive
+            self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
+            self.findRequest = findRequest
+            self.onFindResult = onFindResult
             self.observedScrollPosition = observedScrollPosition
             if self.observedScrollPosition.anchor?.sourceFingerprint != fingerprint {
                 self.observedScrollPosition.anchor = nil
@@ -348,6 +387,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onSourceLineReached = onSourceLineReached
             schedulePostLoadPositioningIfNeeded(in: webView)
             applySelectionSurfaceActivityIfNeeded(in: webView)
+            applyFindRequestIfNeeded(in: webView)
             requestCommentComposerIfNeeded(commentComposerRequestID, in: webView)
             resolveCommentIfNeeded(commentResolution, in: webView)
         }
@@ -418,10 +458,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             linkPreviewRevision: String?,
             in webView: WKWebView
         ) {
+            let interfaceLocalization = WebKitInterfaceLocalization.current()
             let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
             let previewRevision = linkPreviewRevision ?? String(linkPreviews.hashValue)
             let signature = configurationRevision.map {
-                "revision:\($0):\(capabilitySignature)"
+                "revision:\($0):\(capabilitySignature):\(interfaceLocalization.languageTag)"
             } ?? [
                 fingerprint,
                 String(body.utf8.count),
@@ -433,13 +474,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             desiredLinkPreviews = linkPreviews
             desiredLinkPreviewRevision = previewRevision
             guard loadedSignature != signature else {
+                reannounceFinalizedRenderingIfNeeded(
+                    signature: signature,
+                    in: webView
+                )
                 applyLinkPreviewsIfNeeded(in: webView)
                 applySelectionSurfaceActivityIfNeeded(in: webView)
+                applyFindRequestIfNeeded(in: webView)
                 return
             }
             self.source = source
             sourceUTF16Length = source.utf16.count
             sourceUTF8Length = source.utf8.count
+            let publishesLoadingTransition = hasLoadedPage
+                || renderingReadinessIsAcknowledged
             ensureScrollRestoreRequest(
                 reason: hasLoadedPage ? .webViewRebuild : .documentLoad
             )
@@ -450,21 +498,44 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             activeNavigation = nil
             cancelPendingPageWork(keepingLoadIdentity: true)
             loadedSignature = signature
+            finalizedSignature = nil
+            renderingReadinessIsAcknowledged = false
             loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
             appliedSelectionSurfaceIsActive = nil
+            appliedFindRequestID = nil
             activeWebView = webView
+            let includesMathRuntime = Self.requiresMathRuntime(
+                body: body,
+                linkPreviews: linkPreviews
+            )
             installBridgeScripts(
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 linkPreviews: linkPreviews,
+                includesMathRuntime: includesMathRuntime,
                 loadGeneration: loadGeneration,
+                localization: interfaceLocalization,
                 in: webView
             )
             let html = Self.documentHTML(
-                body: body
+                body: body,
+                includesMathRuntime: includesMathRuntime,
+                localization: interfaceLocalization
             )
             let expectedSignature = signature
+            if !publishesLoadingTransition {
+                PerformanceProbe.shared.markReadNavigationStarted(
+                    documentID: documentID
+                )
+                let navigation = webView.loadHTMLString(html, baseURL: nil)
+                guard activeWebView === webView,
+                      loadedSignature == expectedSignature,
+                      activeLoadSignature == expectedSignature,
+                      loadGeneration == expectedLoadGeneration else { return }
+                activeNavigation = navigation
+                return
+            }
             Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView,
                       self.activeWebView === webView,
@@ -475,6 +546,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       self.loadedSignature == expectedSignature,
                       self.activeLoadSignature == expectedSignature,
                       self.loadGeneration == expectedLoadGeneration else { return }
+                PerformanceProbe.shared.markReadNavigationStarted(
+                    documentID: self.documentID
+                )
                 let navigation = webView.loadHTMLString(html, baseURL: nil)
                 guard self.activeWebView === webView,
                       self.loadedSignature == expectedSignature,
@@ -492,12 +566,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: String,
             userCSS: String,
             linkPreviews: [DocumentLinkPreview],
+            includesMathRuntime: Bool,
             loadGeneration: UInt64,
+            localization: WebKitInterfaceLocalization,
             in webView: WKWebView
         ) {
             let contentController = webView.configuration.userContentController
             contentController.removeAllUserScripts()
-            if !ScholiumMathAssets.runtimeJavaScript.isEmpty {
+            if includesMathRuntime, !ScholiumMathAssets.runtimeJavaScript.isEmpty {
                 contentController.addUserScript(WKUserScript(
                     source: ScholiumMathAssets.runtimeJavaScript,
                     injectionTime: .atDocumentStart,
@@ -514,12 +590,75 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     selectionEnabled: onSelectionChange != nil,
                     linkPreviews: linkPreviews,
                     presentationCSS: presentationCSS,
-                    userCSS: userCSS
+                    userCSS: userCSS,
+                    localization: localization
                 ),
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true,
                 in: SafeMarkdownReadWebView.bridgeContentWorld
             ))
+            contentController.addUserScript(WKUserScript(
+                source: SafeMarkdownReadWebView.reviewFindScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true,
+                in: SafeMarkdownReadWebView.bridgeContentWorld
+            ))
+        }
+
+        private func applyFindRequestIfNeeded(in webView: WKWebView) {
+            guard pageIsReady,
+                  activeWebView === webView,
+                  let findRequest,
+                  findRequest.id != appliedFindRequestID else { return }
+            appliedFindRequestID = findRequest.id
+            let requestedGeneration = loadGeneration
+            let arguments: [String: Any]
+            switch findRequest.operation {
+            case .clear:
+                arguments = ["operation": "clear"]
+            case .execute(let action):
+                arguments = [
+                    "operation": "execute",
+                    "action": action.rawValue,
+                    "query": findRequest.query,
+                    "replacement": findRequest.replacement,
+                    "caseSensitive": findRequest.caseSensitive,
+                    "wholeWord": findRequest.wholeWord,
+                ]
+            }
+            findUpdateTask?.cancel()
+            findUpdateTask = Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView else { return }
+                do {
+                    let raw = try await webView.callAsyncJavaScript(
+                        "return window.scholiumReviewFind?.perform(request)",
+                        arguments: ["request": arguments],
+                        in: nil,
+                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                    )
+                    guard !Task.isCancelled,
+                          self.activeWebView === webView,
+                          self.pageIsReady,
+                          self.loadGeneration == requestedGeneration,
+                          self.findRequest?.id == findRequest.id,
+                          let payload = raw as? [String: Any],
+                          let current = (payload["current"] as? NSNumber)?.intValue,
+                          let total = (payload["total"] as? NSNumber)?.intValue,
+                          current >= 0,
+                          total >= 0,
+                          current <= total else { return }
+                    self.onFindResult?(
+                        findRequest.id,
+                        .success(DocumentFindResult(current: current, total: total))
+                    )
+                } catch {
+                    guard !Task.isCancelled,
+                          self.activeWebView === webView,
+                          self.loadGeneration == requestedGeneration,
+                          self.findRequest?.id == findRequest.id else { return }
+                    self.onFindResult?(findRequest.id, .failure(error))
+                }
+            }
         }
 
         private func applyLinkPreviewsIfNeeded(in webView: WKWebView) {
@@ -695,10 +834,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   let expectedSignature = activeLoadSignature,
                   loadedSignature == expectedSignature else { return }
             let expectedLoadGeneration = loadGeneration
+            PerformanceProbe.shared.markReadNavigationFinished(
+                documentID: documentID
+            )
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)
             applySelectionSurfaceActivityIfNeeded(in: webView)
+            applyFindRequestIfNeeded(in: webView)
             let restoreClaim = claimScrollRestoreRequest()
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
@@ -774,6 +917,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     webView.setAccessibilityIdentifier(
                         "scholium.renderedDocument.\(expectedDocumentID)"
                     )
+                    self.finalizedSignature = expectedSignature
+                    self.renderingReadinessIsAcknowledged = true
                     self.onRenderingReady?()
                 } catch {
                     self.failCurrentLoadFinalization(
@@ -816,6 +961,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadFinalizationTask = nil
             pageIsReady = false
             loadedSignature = nil
+            finalizedSignature = nil
+            renderingReadinessIsAcknowledged = false
             loadGeneration &+= 1
             activeLoadSignature = nil
             activeNavigation = nil
@@ -826,9 +973,35 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             pageIsReady = false
             loadedSignature = nil
+            finalizedSignature = nil
+            renderingReadinessIsAcknowledged = false
             cancelPendingPageWork()
             webView.setAccessibilityIdentifier("scholium.renderedDocument.failed")
-            onRenderingFailure?("The Read renderer stopped unexpectedly.")
+            onRenderingFailure?(
+                WebKitInterfaceLocalization.current()
+                    .string("The Review renderer stopped unexpectedly.")
+            )
+        }
+
+        /// Reconnects a finalized retained page to reconstructed SwiftUI
+        /// session state. Yielding avoids publishing ObservableObject state
+        /// during `updateNSView`; the acknowledgement prevents an update loop.
+        private func reannounceFinalizedRenderingIfNeeded(
+            signature: String,
+            in webView: WKWebView
+        ) {
+            guard finalizedSignature == signature,
+                  !renderingReadinessIsAcknowledged else { return }
+            Task { @MainActor [weak self, weak webView] in
+                await Task.yield()
+                guard let self, let webView,
+                      self.activeWebView === webView,
+                      self.loadedSignature == signature,
+                      self.finalizedSignature == signature,
+                      !self.renderingReadinessIsAcknowledged else { return }
+                self.renderingReadinessIsAcknowledged = true
+                self.onRenderingReady?()
+            }
         }
 
         private func restoreScrollPosition(
@@ -1101,6 +1274,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             linkPreviewUpdateTask = nil
             selectionSurfaceUpdateTask?.cancel()
             selectionSurfaceUpdateTask = nil
+            findUpdateTask?.cancel()
+            findUpdateTask = nil
             mermaidRuntimeLoadTask?.cancel()
             mermaidRuntimeLoadTask = nil
             mermaidRuntimeLoadID = nil
@@ -1258,22 +1433,29 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             decisionHandler(.cancel)
         }
 
-        static func documentHTML(body: String) -> String {
+        static func documentHTML(
+            body: String,
+            includesMathRuntime: Bool? = nil,
+            localization: WebKitInterfaceLocalization = .current()
+        ) -> String {
             #if DEBUG
             let qaCommentSubmitControl = Bundle.main.bundleIdentifier == "com.scholium.qa"
-                ? #"<button id="qa-submit-comment" class="scholium-qa-only-control" type="button">Submit Comment for QA</button>"#
+                ? #"<button id="qa-submit-comment" class="scholium-qa-only-control" type="button"></button>"#
                 : ""
             #else
             let qaCommentSubmitControl = ""
             #endif
+            let includesMathRuntime = includesMathRuntime
+                ?? requiresMathRuntime(body: body, linkPreviews: [])
+            let mathCSS = includesMathRuntime ? ScholiumMathAssets.css : ""
             return """
             <!doctype html>
-            <html lang="en">
+            <html lang="\(localization.languageTag)">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
-              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src data:">
-              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(ScholiumMathAssets.css)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
+              <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; connect-src 'none'; font-src scholium-font: data:">
+              <style>\(ScholiumWebFonts.css)\n\(ScholiumTableStyles.css)\n\(ScholiumFootnoteStyles.css)\n\(mathCSS)\n\(ScholiumMermaidAssets.css)\n\(ScholiumPreviewStyles.css)\n\(baseCSS)</style>
               <style id="scholium-presentation-css"></style>
               <style id="scholium-user-css"></style>
             </head>
@@ -1285,20 +1467,36 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 <div class="scholium-preview-body scholium-document"></div>
               </aside>
               <div id="selection-actions" class="scholium-selection-actions" hidden>
-                <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar" aria-label="Selection actions">
+                <div id="selection-toolbar" class="scholium-selection-toolbar" role="toolbar">
                   <button id="comment-selection" class="scholium-selection-control" type="button">
-                    <span class="scholium-selection-label">Comment</span>
+                    <span class="scholium-selection-label"></span>
                   </button>
                 </div>
                 <div id="comment-composer" aria-busy="false" hidden>
-                  <textarea id="comment-text" rows="2" maxlength="16384" placeholder="Comment" aria-label="Comment" aria-describedby="comment-help"></textarea>
-                  <span id="comment-help" role="status" aria-live="polite" aria-atomic="true">Return saves · Shift-Return adds a line · Escape cancels</span>
+                  <textarea id="comment-text" rows="2" maxlength="16384" aria-describedby="comment-help"></textarea>
+                  <span id="comment-help" role="status" aria-live="polite" aria-atomic="true"></span>
                   \(qaCommentSubmitControl)
                 </div>
               </div>
             </body>
             </html>
             """
+        }
+
+        /// Mathematics is an immutable optional projection. Avoid parsing the
+        /// large runtime and embedded font stylesheet for ordinary prose, but
+        /// retain the exact existing path whenever the document or an initial
+        /// bounded preview contains a rendered mathematics node.
+        static func requiresMathRuntime(
+            body: String,
+            linkPreviews: [DocumentLinkPreview]
+        ) -> Bool {
+            func containsMath(_ html: String) -> Bool {
+                html.contains("data-math-source=\"")
+                    && html.contains("data-math-kind=\"")
+            }
+            return containsMath(body)
+                || linkPreviews.contains { containsMath($0.htmlBody) }
         }
 
         /// App-owned Read bridge executed in the named content world.
@@ -1314,12 +1512,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             selectionEnabled: Bool,
             linkPreviews: [DocumentLinkPreview],
             presentationCSS: String,
-            userCSS: String
+            userCSS: String,
+            localization: WebKitInterfaceLocalization = .current()
         ) -> String {
             let encodedDocumentID = jsonLiteral(documentID)
             let encodedFingerprint = jsonLiteral(fingerprint)
             let commentFlag = commentEnabled ? "true" : "false"
             let selectionFlag = selectionEnabled ? "true" : "false"
+            let localizationPayload = base64JSON(localization)
             #if DEBUG
             let readScrollTestingMembers = """
                   restoreCount: 0,
@@ -1369,6 +1569,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const loadGeneration = \(loadGeneration);
                 const commentEnabled = \(commentFlag);
                 const selectionEnabled = \(selectionFlag);
+                const localization = JSON.parse(new TextDecoder().decode(
+                  Uint8Array.from(atob(\(jsonLiteral(localizationPayload))), character => character.charCodeAt(0))
+                ));
+                const strings = localization.strings || {};
+                const localized = (key, replacements = {}) => String(strings[key] || key).replace(
+                  /\\{([A-Za-z]+)\\}/g,
+                  (placeholder, name) => Object.prototype.hasOwnProperty.call(replacements, name)
+                    ? String(replacements[name])
+                    : placeholder
+                );
                 const linkPreviews = JSON.parse(new TextDecoder().decode(
                   Uint8Array.from(atob(\(jsonLiteral(previewPayload))), character => character.charCodeAt(0))
                 ));
@@ -1385,7 +1595,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 const commentText = document.getElementById('comment-text');
                 const commentHelp = document.getElementById('comment-help');
                 const qaCommentSubmit = document.getElementById('qa-submit-comment');
-                const defaultCommentHelpText = 'Return saves · Shift-Return adds a line · Escape cancels';
+                const defaultCommentHelpText = localized('Return saves · Shift-Return adds a line · Escape cancels');
+                selectionToolbar.setAttribute('aria-label', localized('Selection actions'));
+                commentButton.querySelector('.scholium-selection-label').textContent = localized('Comment');
+                commentText.placeholder = localized('Comment');
+                commentText.setAttribute('aria-label', localized('Comment'));
+                commentHelp.textContent = defaultCommentHelpText;
+                if (qaCommentSubmit) qaCommentSubmit.textContent = localized('Submit Comment for QA');
                 const viewportRoot = document.documentElement;
                 const viewportResizeScrollBarClass = 'scholium-viewport-resize-suppresses-overlay-scrollbar';
                 const viewportResizeSettleDelay = 80;
@@ -1482,10 +1698,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 ]));
                 const origins = new Map();
                 const vectorSemantics = {
-                  neutral: {label: 'Related note', symbolName: 'link', symbol: \(jsonLiteral(vectorSymbolDataURIs["neutral"] ?? ""))},
-                  supports: {label: 'Supports', symbolName: 'plus', symbol: \(jsonLiteral(vectorSymbolDataURIs["supports"] ?? ""))},
-                  opposes: {label: 'Opposes', symbolName: 'minus', symbol: \(jsonLiteral(vectorSymbolDataURIs["opposes"] ?? ""))},
-                  incompatible: {label: 'Incompatible', symbolName: 'xmark', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
+                  neutral: {label: localized('Related note'), symbolName: 'link', symbol: \(jsonLiteral(vectorSymbolDataURIs["neutral"] ?? ""))},
+                  supports: {label: localized('Supports'), symbolName: 'plus', symbol: \(jsonLiteral(vectorSymbolDataURIs["supports"] ?? ""))},
+                  opposes: {label: localized('Opposes'), symbolName: 'minus', symbol: \(jsonLiteral(vectorSymbolDataURIs["opposes"] ?? ""))},
+                  incompatible: {label: localized('Incompatible'), symbolName: 'xmark', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
                 };
 
                 function renderMathNodes() {
@@ -1499,7 +1715,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       const result = runtime.render({source, kind: element.dataset.mathKind});
                       if (!result.ok) {
                         element.classList.add('scholium-math-error');
-                        element.setAttribute('aria-label', 'Mathematics could not be rendered. Source is shown.');
+                        element.setAttribute(
+                          'aria-label',
+                          localized('Mathematics could not be rendered. Source is shown.')
+                        );
                         return;
                       }
                       const fallback = element.querySelector('.scholium-math-source');
@@ -1562,21 +1781,30 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   const runtime = await ensureMermaidRuntime();
                   if (!runtime) {
                     wrapper.classList.add('scholium-mermaid-error');
-                    mermaidDiagnostic(wrapper, 'Diagram rendering is unavailable. Mermaid source is shown.');
+                    mermaidDiagnostic(
+                      wrapper,
+                      localized('Diagram rendering is unavailable. Mermaid source is shown.')
+                    );
                     return;
                   }
                   try {
                     const result = await runtime.render({source, themeRoot: document.documentElement});
                     if (!result.ok) {
                       wrapper.classList.add('scholium-mermaid-error');
-                      mermaidDiagnostic(wrapper, 'This Mermaid diagram is unsupported or could not be rendered. Source is shown.');
+                      mermaidDiagnostic(
+                        wrapper,
+                        localized('This Mermaid diagram is unsupported or could not be rendered. Source is shown.')
+                      );
                       return;
                     }
                     const output = document.createElement('div');
                     output.className = 'scholium-mermaid-output';
                     if (!runtime.mount(output, result.svg)) {
                       wrapper.classList.add('scholium-mermaid-error');
-                      mermaidDiagnostic(wrapper, 'This Mermaid diagram could not be isolated safely. Source is shown.');
+                      mermaidDiagnostic(
+                        wrapper,
+                        localized('This Mermaid diagram could not be isolated safely. Source is shown.')
+                      );
                       return;
                     }
                     wrapper.prepend(output);
@@ -1584,13 +1812,19 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     if (result.accessibilityWarning) {
                       const accessibleSource = document.createElement('span');
                       accessibleSource.className = 'scholium-mermaid-accessible-source';
-                      accessibleSource.textContent = 'Mermaid source: ' + source;
+                      accessibleSource.textContent = localized('Mermaid source: {source}', {source});
                       wrapper.append(accessibleSource);
-                      mermaidDiagnostic(wrapper, 'Add accTitle and accDescr to provide a concise nonvisual account of this diagram.');
+                      mermaidDiagnostic(
+                        wrapper,
+                        localized('Add accTitle and accDescr to provide a concise nonvisual account of this diagram.')
+                      );
                     }
                   } catch (_) {
                     wrapper.classList.add('scholium-mermaid-error');
-                    mermaidDiagnostic(wrapper, 'This Mermaid diagram could not be rendered. Source is shown.');
+                    mermaidDiagnostic(
+                      wrapper,
+                      localized('This Mermaid diagram could not be rendered. Source is shown.')
+                    );
                   }
                 }
 
@@ -1716,7 +1950,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   shell.dataset.embedHref = anchor.getAttribute('href') || '';
                   shell.dataset.embedLabel = (anchor.textContent || preview.title).trim();
                   shell.setAttribute('role', 'group');
-                  shell.setAttribute('aria-label', 'Embedded note ' + preview.title);
+                  shell.setAttribute(
+                    'aria-label',
+                    localized('Embedded note {title}', {title: preview.title})
+                  );
                   for (const name of [
                     'data-source-utf16-start', 'data-source-utf16-end',
                     'data-source-start-line', 'data-source-end-line', 'data-source-line'
@@ -1731,15 +1968,21 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   open.dir = 'auto';
                   open.href = shell.dataset.embedHref;
                   open.append(document.createTextNode(preview.title));
-                  open.setAttribute('aria-label', 'Open embedded note ' + preview.title);
-                  open.title = 'Open embedded note ' + preview.title;
+                  open.setAttribute(
+                    'aria-label',
+                    localized('Open embedded note {title}', {title: preview.title})
+                  );
+                  open.title = localized('Open embedded note {title}', {title: preview.title});
                   header.append(open);
 
                   const viewport = document.createElement('div');
                   viewport.className = 'scholium-embedded-note-viewport';
                   viewport.tabIndex = 0;
                   viewport.setAttribute('role', 'region');
-                  viewport.setAttribute('aria-label', 'Embedded note content for ' + preview.title);
+                  viewport.setAttribute(
+                    'aria-label',
+                    localized('Embedded note content for {title}', {title: preview.title})
+                  );
                   const body = document.createElement('div');
                   body.className = 'scholium-embedded-note-body scholium-document';
                   installInertDocumentContent(body, preview);
@@ -1753,7 +1996,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   fallback.className = 'wiki-link scholium-embed';
                   fallback.dir = 'auto';
                   fallback.href = shell.dataset.embedHref || '';
-                  fallback.textContent = shell.dataset.embedLabel || 'Embedded note';
+                  fallback.textContent = shell.dataset.embedLabel || localized('Embedded note');
                   fallback.dataset.scholiumProtected = 'embed';
                   for (const name of [
                     'data-source-utf16-start', 'data-source-utf16-end',
@@ -1780,10 +2023,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     if (open) {
                       const label = open.firstChild;
                       if (label) label.textContent = preview.title;
-                      open.setAttribute('aria-label', 'Open embedded note ' + preview.title);
-                      open.title = 'Open embedded note ' + preview.title;
+                      open.setAttribute(
+                        'aria-label',
+                        localized('Open embedded note {title}', {title: preview.title})
+                      );
+                      open.title = localized('Open embedded note {title}', {title: preview.title});
                     }
-                    shell.setAttribute('aria-label', 'Embedded note ' + preview.title);
+                    shell.setAttribute(
+                      'aria-label',
+                      localized('Embedded note {title}', {title: preview.title})
+                    );
                   }
                   const anchors = [...documentRoot.querySelectorAll('a.scholium-embed')]
                     .filter(anchor => !anchor.parentElement?.closest('.scholium-embedded-note'));
@@ -1824,8 +2073,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   const definition = document.getElementById('fn-' + ordinal);
                   const content = definition && definition.querySelector('.footnote-content');
                   if (!content) return;
-                  previewTitle.textContent = 'Footnote ' + ordinal;
-                  previewMetadata.textContent = 'Referenced footnote';
+                  previewTitle.textContent = localized('Footnote {ordinal}', {ordinal});
+                  previewMetadata.textContent = localized('Referenced footnote');
                   previewMetadata.hidden = false;
                   previewBody.replaceChildren(content.cloneNode(true));
                   sanitizeInertContent(previewBody);
@@ -1949,10 +2198,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       || !commentButton.dataset.startLine) return false;
                   const startLine = Number(commentButton.dataset.startLine);
                   const endLine = Number(commentButton.dataset.endLine || commentButton.dataset.startLine);
-                  const lineLabel = startLine === endLine
-                    ? 'line ' + startLine
-                    : 'lines ' + startLine + ' through ' + endLine;
-                  commentText.setAttribute('aria-label', 'Comment for ' + lineLabel);
+                  commentText.setAttribute(
+                    'aria-label',
+                    startLine === endLine
+                      ? localized('Comment for line {start}', {start: startLine})
+                      : localized('Comment for lines {start} through {end}', {start: startLine, end: endLine})
+                  );
                   selectionToolbar.hidden = true;
                   commentComposer.hidden = false;
                   suspendedCommentComposer = false;
@@ -2044,7 +2295,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   commentText.readOnly = false;
                   commentComposer.setAttribute('aria-busy', 'false');
                   if (!succeeded) {
-                    commentHelp.textContent = 'Could not save. Your Comment is still here.';
+                    commentHelp.textContent = localized('Could not save. Your Comment is still here.');
                     commentComposer.dataset.state = 'error';
                     if (reviewSelectionSurfaceActive) commentText.focus();
                     return true;
@@ -2231,14 +2482,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     const comment = commentText.value.trim();
                     if (!comment || pendingCommentRequestID) return;
                     if (new TextEncoder().encode(comment).byteLength > 16384) {
-                      commentHelp.textContent = 'This Comment is too long to save here.';
+                      commentHelp.textContent = localized('This Comment is too long to save here.');
                       commentComposer.dataset.state = 'error';
                       return;
                     }
                     pendingCommentRequestID = makeRequestID();
                     commentText.readOnly = true;
                     commentComposer.setAttribute('aria-busy', 'true');
-                    commentHelp.textContent = 'Saving…';
+                    commentHelp.textContent = localized('Saving…');
                     commentComposer.dataset.state = 'saving';
                     post('commentSubmitted', {
                       requestID: pendingCommentRequestID,

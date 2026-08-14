@@ -53,14 +53,15 @@ Edit's formatting bar keeps the frequent commands visible in this order:
 **More**. Wiki applies a Wikilink directly; its adjacent, undivided chevron
 opens **Supports**, **Opposes**, and **Incompatible** Vector Link actions.
 More contains **Inline Code**, **Code Block**, one **Lists** submenu for bullet,
-numbered, and checkbox lists, **Blockquote**, and **Comment** (the Markdown
-Comment wrapper). A
+numbered, and checkbox lists, **Blockquote**, **Comment** (the Markdown Comment
+wrapper), **Import Image…**, and **Index Image…**. Both image routes also appear
+in Format and Insert. A
 constrained-width presentation may also move Strikethrough and Highlight into
 More without changing command availability. Familiar formatting actions and
 all Vector Link relationship actions use direct monochrome SF Symbols with one
 quiet optical weight; Scholium does not redraw equivalent marks. Wiki remains
-a short text label. Menu rows show action names, never Markdown delimiters or
-syntax examples, and no submenu nests beyond the single Lists level.
+a short text label. Menu rows show action names, never syntax examples; only
+Lists nests.
 
 Edit's Wikilink and slash-command suggestions use one caret-anchored bounded
 panel rather than a window, sheet, toolbar, or second text field. It follows the
@@ -149,7 +150,7 @@ those managed copies.
 
 Toolbar: Sidebar and Back/Forward; Library separator; Heading Outline
 and identity; flexible space; Search, Document Mode, and **This Note Records**
-at **8pt** inline spacing; Apparatus separator; trailing Inspector. Mode icon/help
+at §19.3's inline-control spacing; Apparatus separator; trailing Inspector. Mode icon/help
 report Review, Edit, or Source. Activation switches Review/Edit and returns
 Source to Review.
 Source remains selectable only under **View > Document Mode**; `Command-R`
@@ -159,10 +160,12 @@ Properties remains in Research. Compact identity stays secondary and static;
 H1 stays primary without handoff or scroll animation.
 Document Text Size is per-window and source-neutral.
 
-Properties lists safe top-level keys, routes unsupported shapes to Source, and
-adds only valid values. YAML-free insertion is explicit. About remains one
-grouped section with a shared fact grid, reading blocks, and final neutral Tag
-capsules. Binding metadata remains a Zotero action.
+Properties uses the shared sheet. Labels and values remain; definitions use
+Help. Its action slot reveals on hover/focus without reflow and stays
+accessible. Whitespace groups fields. Contributors
+retain numbered subfields and the shared neutral segmented kind selector. Save stays emphasized.
+It edits values, groups custom fields, routes shapes to Source, and inserts
+YAML. About reuses order.
 
 ## 18.5 Contextual research and Actions
 
@@ -170,15 +173,14 @@ Apparatus contains Research Inspector only; active Discussion, Research Records,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
 Action sheet. Research Records is an independent, nonrestored native auxiliary
 window keyed to one Triptych. It reads that Triptych rather than following
-unrelated window focus, defaults to **760 × 680pt**, and is resizable down to
+unrelated window focus, uses §19.4's initial size, and is resizable down to
 **700 × 520pt**. It has no Workspace Sidebar control or alternate primary-
 interface mode and never appears inside Inspector.
 
 The ordinary entry is a full-window collection on one continuous semantic
-Document surface. The native toolbar owns the restrained **Records / Reading
-Leads** index as an equal-width native capsule segmented control. It uses the
-Scholium raised selection surface, hides shared Liquid Glass, and adds no
-underline or custom ModeIndex skin. Below it, one adaptive header places search and the borderless native
+Document surface. The native toolbar hosts the shared **Records / Reading
+Leads** segmented index: equal text segments, a quiet track, and one raised
+selection plate without Accent fill or shared Liquid Glass. Below it, one adaptive header places search and the borderless native
 Scope and filter menus on one scanning row at wide widths and stacks them only
 when space requires it. The toolbar index is the visible collection identity
 without a count; search fills the header. Ready, empty, filtered-empty,
@@ -357,11 +359,10 @@ never Note Review.
 There is exactly one native trailing Inspector per window, with **Overview,
 Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
-tabs, panels, or windows. The index uses three equal columns with each label
-centered and a 4pt semantic gap between local state surfaces; it has no shared
-control band, capsule, border, underline, Accent mark, shadow, or full-width
-bottom rule. Only the selected mode receives one shallow
-opaque raised surface using the purpose-owned editorial-control corner recipe;
+tabs, panels, or windows. The index uses the shared segmented control with
+three equal centered labels, its quiet track, and one raised selection plate.
+It has no underline, Accent fill, or full-width bottom rule. The selected mode uses
+the shared continuous selection corner;
 its label uses Semibold primary ink. An unselected label uses Regular secondary
 ink. Hover gives an unselected item the same-shaped but quieter local surface
 and primary ink without changing its weight; press and native focus remain
@@ -388,11 +389,13 @@ Overview presents only compact current-note projections, in this order:
 2. **Review:** distinct from Attention. It states **No Agent changes to review**,
    **Needs Review · N Agent activities** as one full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** nonempty fields in fixed groups. Research fields
-   use reading blocks; final Tags use neutral capsules. Its heading is **Edit Properties**, while values remain
-   static and selectable; no bottom Edit or Customize exists. A current
-   Analysis with a valid portable typed Zotero binding adds quiet **Open in Zotero**
-   without exposing the library, key, or metadata. Research Status, Key Properties,
+3. **About:** nonempty fields use spacing-only groups with accessible names.
+   Research fields use reading blocks and Tags use neutral capsules. Its **Edit
+   Properties** heading opens the shared sheet; values remain static and
+   selectable. Analysis adds **Link Zotero
+   Item…** or **Manage Zotero Link…**; a bound Analysis also adds **Open in
+   Zotero**. The sheet owns selection, Rebind, and confirmed
+   Clear without exposing identity or metadata in Inspector. Research Status, Key Properties,
    Provenance, Derived State, and a Zotero section remain absent.
 
 A pending activity set automatically presents a once-announced, focus-neutral
@@ -410,7 +413,7 @@ offers Retry where applicable; it never claims reading, truth, or evidence.
 In Overview it follows the About projection and its Edit Properties route; it
 is not promoted to a separate section or card.
 
-Connect begins with a native macOS two-segment single-choice control labelled
+Connect begins with the shared two-segment single-choice control labelled
 **Incoming Links** and **Outgoing Links**, immediately after its freshness
 state and before the relationship groups. It is centered on the Inspector
 content axis rather than aligned as a leading list row. This is a local Connect view switch,
@@ -464,8 +467,8 @@ retains its heading and `0` without **None**. Connect shows the same freshness
 state before its direction control and groups. Stale or failed state keeps the
 last complete graph readable and offers a full-row Retry action.
 
-Relation rows remain single full-row native buttons with a provisional 36pt
-minimum rhythm, no default separators, and no trailing diagonal-open glyph.
+Relation rows remain single full-row native buttons using the Connect Note-row
+metric owned by §19.3, with no default separators or trailing diagonal-open glyph.
 Their concise pointer help and accessible name state the relationship from the
 current Note's perspective. Primary activation opens the connected Note,
 using the source line when that peer owns the relation occurrence. When the
@@ -504,8 +507,8 @@ remain keyboard-accessible. Its modular sheet shows the necessary scholarly inpu
 and app-owned authority or recovery facts without exposing assembled prompts,
 registration keys, Session secrets, or technical mode names. The active Action and its sheet
 retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
-All Action launchers use one shared visual row recipe with a **44pt** minimum
-operation rhythm and no default row or group separator. Availability checking,
+All Action launchers use one shared visual row recipe with the Action target
+metric owned by §19.3 and no default row or group separator. Availability checking,
 ready, unavailable, running, error, cancellation recovery, Settle, and Settled
 remain distinct states without changing Action routing or ownership. A default
 Action whose title already identifies the task shows no ordinary explanation.
@@ -530,8 +533,9 @@ the sheet and inputs. A prepared Run's compact status sheet offers Run status,
 **Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
 prior pairing without replacing the Run.
 Closing the sheet leaves an unfinished Action active; the explicit **End
-Action** route revokes Agent access and closes it while preserving confirmed
-changes, conflicts, and recovery truth. **End Discussion** also preserves the
+Action** route revokes Agent access and closes a cancellable no-write Run.
+Confirmed changes instead require Result finalization; conflicts, unknown
+writes, and recovery duties retain their owning repair path. **Finish Discussion** preserves the
 current exchange as a finished Research Record, even when the Agent has not
 replied. Pairing,
 re-pairing, Session expiry or revocation, missing local Skill-folder path,
@@ -562,16 +566,14 @@ semibold, 0.7pt tracking, and secondary text color. English localization
 supplies uppercase strings; runtime code never forces case, so Chinese and
 other languages retain natural writing.
 
-Inspector layout uses purpose-named Apparatus metrics rather than leaf-view
-literals. Its provisional native content inset is **28pt**. Short
-facts form one section-level two-column grid with a shared, trailing-aligned
-label column of at least **78pt**, a **14pt** column gap, one common leading
-axis for values, and first-baseline alignment. The horizontal candidate keeps
-at least **204pt** of content width; ordinary canonical labels therefore remain
+Inspector layout uses the purpose-named Apparatus content-inset and fact-grid
+metrics owned by §19.3 rather than leaf-view literals. Short facts form one
+section-level two-column grid with a shared, trailing-aligned label column, one
+common leading axis for values, and first-baseline alignment. Ordinary canonical labels therefore remain
 horizontal in **300pt** and **278pt** Inspector scenarios after the content
 insets. If available width, 200% readability, or localized labels cannot fit,
 one container-level adaptation stacks the complete grid; individual rows never
-switch independently. Empty values do not create rows. Scope, Research Scope,
+switch independently. Empty values do not create rows. Summary, Source Basis,
 Limitations, and other long researcher prose always use a reading block: label
 on its own line and Alegreya content on the next line with a 12pt leading
 indent. Labels, diagnostic/state names, and action names remain system sans semibold; field values,
@@ -579,7 +581,8 @@ explanations, and research prose use Alegreya; exact paths and revisions remain
 monospaced. Counts use monospaced digits without changing the surrounding
 face.
 
-Provisional rhythm is a 28pt minimum scanning/action row, the Scholarly body
+Provisional rhythm uses the Apparatus scanning and Action-row metrics owned by
+§19.3, the Scholarly body
 role with approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
 reading blocks, and 16pt between sections. Apparatus sections, ordinary Action
 rows, and relation rows draw no boundary by default. A local boundary must be
@@ -607,8 +610,8 @@ state. Its terms are not a second cross-functional state dictionary.
 | --- | --- |
 | **Edited** | Active buffer differs from committed source. |
 | **Saving** | Revision-checked commit is running. |
-| **Saved** | Authoritative source committed; derived consumers may still refresh. |
-| **Save Failed** | Source did not commit; retain buffer and offer Retry/comparison. |
+| **Saved** | Exact canonical Markdown readback matches the validated candidate; derived consumers may still refresh. |
+| **Autosave Failed** | Source commit cannot be proven; retain the buffer and offer Retry or recovery. |
 | **Conflict** | Expected revision differs from disk; retain buffer and compare before destructive reload. |
 | **Refreshing** | Derived consumers are catching up to committed source. |
 | **Derived State Stale** | A consumer represents an older committed revision. |
@@ -625,25 +628,22 @@ Record are never interchangeable; editor `Command-Z` never means checkpoint
 restoration.
 
 Autosave, conflict, and checkpoint-result presentation belongs to Document,
-never Actions or Research Inspector. Ordinary autosave creates no Save button
-and no success toast. **Save Failed** appears there as a persistent
-**Autosave Failed** bottom status toast that states the editor buffer remains
-available; the existing Retry/comparison recovery routes remain Document-owned
-and never become Research Actions. An unresolved **Conflict** uses the same
-Document-owned position, states that autosave is paused because the file
-changed outside Scholium, preserves the editor buffer, and exposes **Compare
-Changes**. These failure toasts remain until the state changes or the
-researcher chooses the applicable recovery path; they do not time out as if
-the failure were resolved.
+never Actions or Research Inspector. After Saving, autosave has exactly three
+terminal Document outcomes: silent **Saved**, persistent **Autosave Failed**,
+or persistent **Conflict**. Ordinary autosave creates no Save button, success
+toast, or saved-with-warning state. Autosave Failed states that the editor
+buffer remains available and retains the existing Retry or recovery route. An
+unresolved Conflict uses the same Document-owned position, states that
+autosave is paused because the file changed outside Scholium, preserves the
+editor buffer, and exposes **Compare Changes**. These failure states remain
+until the state changes or the researcher chooses the applicable recovery
+path; they do not time out as if the failure were resolved.
 
-A source replacement whose canonical bytes are proven but whose displaced
-same-directory cleanup is pending remains a saved document. Its Document-owned
-warning says that the old exact source copy is retained temporarily and that
-Scholium will retry cleanup when the vault reopens; it does not invite the
-researcher to repeat the mutation.
-Note Move and Folder Move may commit several source replacements while
-rewriting incoming links. Their Document warning aggregates every pending
-cleanup item rather than reporting only the moved Note or the last rewrite.
+Filesystem metadata and redundant machine-local housekeeping are not Document
+states. Once exact canonical readback proves the candidate, the Document is
+Saved without a technical warning or another write request. If that readback
+cannot prove the candidate, Scholium reports Autosave Failed rather than
+softening uncertainty into success.
 
 Checkpoint availability is not a document state, toast, or Action row; its
 entry remains under File. A successful restore alone produces one transient
@@ -691,7 +691,7 @@ punctuation.
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
-| Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
+| Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Comment / Discussion / Response | 评论 / 讨论 / 回应 |

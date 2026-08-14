@@ -7,6 +7,27 @@ public protocol DocumentUseCases: Sendable {
         at sourceURL: URL,
         intoVault vaultID: UUID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment
+    func unavailableIndexedImagePaths(in markdownSource: String) async throws -> [String]
+    func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws
     func create(
         _ id: VaultQualifiedNoteID,
         content: String
@@ -395,6 +416,23 @@ public protocol ZoteroUseCases: Sendable {
     func libraryInfo() async -> ZoteroLibraryInfo
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func clearConnectionHistory() async throws
+    func libraries() async throws -> [ZoteroLibraryMetadata]
+    func searchLibrary(query: String, limit: Int) async throws -> [ZoteroSearchHit]
+}
+
+/// Revision-checked portable Analysis-to-Zotero relationship mutations. This
+/// authority is separate from Zotero's read-only metadata transport and from
+/// Markdown document writes.
+public protocol ZoteroBindingUseCases: Sendable {
+    func zoteroBindings() async throws -> AnalysisZoteroBindingsSnapshot
+    func setZoteroBinding(
+        _ binding: AnalysisZoteroBinding,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> AnalysisZoteroBindingMutationResult
+    func clearZoteroBinding(
+        noteID: UUID,
+        expectedRevision: DocumentFingerprint
+    ) async throws -> AnalysisZoteroBindingMutationResult
 }
 
 /// Delivery-neutral MCP request handling for the local Agent coordination
@@ -424,6 +462,11 @@ public protocol AgentBridgeUseCases: Sendable {
         credential: ResearchConnectionCredential,
         intent: ResearchDocumentWriteIntent
     ) async throws -> ResearchDocumentWriteResult
+    func writeZoteroBinding(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        intent: ResearchZoteroBindingWriteIntent
+    ) async throws -> ResearchZoteroBindingWriteResult
     func resolveWriteConflict(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

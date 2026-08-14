@@ -73,6 +73,12 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
 
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
+    private struct DocumentStatisticsRequestIdentity: Equatable {
+        let documentID: String
+        let fingerprint: String
+        let generation: Int
+        let sourceRanges: [Range<Int>]
+    }
     private struct BridgeRequestContext {
         let requestEpoch: UInt64
         let sessionID: UUID
@@ -114,6 +120,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private(set) var column = 1
     private(set) var lineCount = 1
     @Published private(set) var interactionAvailability: EditorInteractionAvailability?
+    @Published private(set) var documentStatistics = DocumentStatistics.emptyBody
     private(set) var context: MarkdownEditorContext?
     private(set) var sessionID = UUID()
     private(set) var documentID = ""
@@ -140,6 +147,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var startupTask: Task<Void, Never>?
     private var documentLoadTask: Task<Void, Never>?
     private var focusHandoffTask: Task<Void, Never>?
+    private var documentStatisticsTask: Task<Void, Never>?
+    private var documentStatisticsRequestID: UInt64 = 0
+    private var documentStatisticsIdentity: DocumentStatisticsRequestIdentity?
     private var automaticFocusIsAuthorized = false
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
@@ -275,9 +285,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: "")
         recoverySnapshot = nil
         lastKnownSelectionSnapshot = nil
+        documentStatisticsTask?.cancel()
+        documentStatisticsTask = nil
+        documentStatisticsRequestID &+= 1
+        documentStatisticsIdentity = nil
         cancelModeTransition()
         updatePresentation { $0.reset() }
         updatePublished(\.isDirty, to: false)
+        updatePublished(\.documentStatistics, to: .emptyBody)
     }
 
     func editorBecameReady() {
@@ -315,6 +330,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         self.line = max(1, line)
         self.column = max(1, column)
         self.lineCount = max(1, lineCount)
+        scheduleDocumentStatistics(selections: selections)
 
         if let semanticContext {
             let availability = EditorInteractionAvailability(context: semanticContext)
@@ -373,6 +389,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: source)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
+        documentStatisticsIdentity = nil
+        scheduleDocumentStatistics(selections: [])
         pendingMode = mode
         if let initialSourceRange {
             let lowerBound = max(0, initialSourceRange.lowerBound)
@@ -409,7 +427,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         let transitionID = UUID()
         let intendedModeTransitionEpoch = modeTransitionEpoch
         modeTransitionID = transitionID
-        modeTransitionTask = Task { [weak self, weak webView] in
+        modeTransitionTask = Task.immediate { [weak self, weak webView] in
             guard let self, let webView else { return }
             defer {
                 if self.modeTransitionID == transitionID {
@@ -426,6 +444,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                           self.webView === webView else { return }
                     let targetMode = self.pendingMode
                     guard self.presentedMode != targetMode else { return }
+                    PerformanceProbe.shared.markEditorModeBridgeStarted(
+                        mode: targetMode
+                    )
                     // A mode request is idempotent and source-preserving. One
                     // bounded retry safely resolves a transient transport
                     // failure or an acknowledgement lost after the Web side
@@ -443,10 +464,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     guard intendedModeTransitionEpoch == self.modeTransitionEpoch,
                           self.webView === webView else { return }
                     self.updatePresentation { $0.complete(targetMode) }
-                    PerformanceProbe.shared.markEditorModeReady(
-                        documentID: self.documentID,
-                        mode: targetMode
-                    )
                     if self.pendingMode == targetMode { return }
                 }
             } catch is CancellationError {
@@ -602,6 +619,34 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard canAttemptPreview, isReady, isLoaded, let webView else { return }
         Task {
             _ = try? await send(.showPreview, in: webView)
+        }
+    }
+
+    func showPreview(
+        for preview: DocumentLinkPreview,
+        in source: String
+    ) async {
+        guard canAttemptPreview, isReady, isLoaded, let webView else { return }
+        let offsetMap = source == checkedSource
+            ? sourceOffsetMap
+            : EditorSourceOffsetMap(source: source)
+        guard let from = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16LowerBound
+              ),
+              let to = offsetMap.editorUTF16Offset(
+                forSourceUTF16Offset: preview.sourceSpan.utf16UpperBound
+              ), to > from else { return }
+        _ = try? await send(
+            .revealSourceRange(fromUTF16: from, toUTF16: from),
+            in: webView
+        )
+        _ = try? await send(.showPreview, in: webView)
+    }
+
+    func measureVisibleProjection() {
+        guard isReady, isLoaded, let webView else { return }
+        Task {
+            _ = try? await send(.measureVisibleProjection, in: webView)
         }
     }
 
@@ -934,6 +979,23 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         _ = try await send(.command(command, argument: argument), in: webView)
     }
 
+    func performDocumentFind(_ query: DocumentFindQuery) async throws -> DocumentFindResult {
+        guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let result = try await send(.documentFind(query), in: webView)
+        guard let find = result.find,
+              find.current >= 0,
+              find.total >= 0,
+              find.current <= find.total else {
+            throw SessionError.invalidResult
+        }
+        return find
+    }
+
+    func clearDocumentFind() {
+        guard isReady, isLoaded, let webView else { return }
+        Task { _ = try? await send(.clearDocumentFind, in: webView) }
+    }
+
     func acceptEditorChanges(
         _ rawChanges: [EditorBridgeChange],
         baseGeneration: Int,
@@ -1190,10 +1252,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     }
                 }
                 updatePresentation { $0.complete(appliedMode) }
-                PerformanceProbe.shared.markEditorModeReady(
-                    documentID: documentID,
-                    mode: appliedMode
-                )
                 flushPendingLine()
             } catch {
                 guard intendedRequestEpoch == requestEpoch,
@@ -1309,7 +1367,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             webView: webView
         )
         let trackingID = UUID()
-        let task = Task { @MainActor in
+        let task = Task.immediate { @MainActor in
             await previous?.value
             guard isCurrentIdentity(context) else {
                 throw SessionError.staleRequest
@@ -1523,11 +1581,62 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         self[keyPath: keyPath] = value
     }
 
+    private func scheduleDocumentStatistics(
+        selections: [MarkdownEditorSelectionRange]
+    ) {
+        let source = checkedSource
+        let sourceRanges = selections.compactMap { selection -> Range<Int>? in
+            let lower = min(selection.anchor, selection.head)
+            let upper = max(selection.anchor, selection.head)
+            guard upper > lower,
+                  let sourceLower = sourceOffsetMap.sourceUTF16Offset(
+                    forEditorUTF16Offset: lower
+                  ),
+                  let sourceUpper = sourceOffsetMap.sourceUTF16Offset(
+                    forEditorUTF16Offset: upper
+                  ),
+                  sourceUpper > sourceLower else { return nil }
+            return sourceLower..<sourceUpper
+        }
+        let identity = DocumentStatisticsRequestIdentity(
+            documentID: documentID,
+            fingerprint: startingFingerprint,
+            generation: generation,
+            sourceRanges: sourceRanges
+        )
+        guard identity != documentStatisticsIdentity else { return }
+        documentStatisticsIdentity = identity
+        documentStatisticsRequestID &+= 1
+        let requestID = documentStatisticsRequestID
+        documentStatisticsTask?.cancel()
+        documentStatisticsTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(60))
+            } catch {
+                return
+            }
+            let statistics = await Task.detached(priority: .utility) {
+                DocumentStatisticsCalculator.calculate(
+                    markdownSource: source,
+                    selectedUTF16Ranges: sourceRanges
+                )
+            }.value
+            guard let self,
+                  !Task.isCancelled,
+                  self.documentStatisticsRequestID == requestID else { return }
+            self.updatePublished(\.documentStatistics, to: statistics)
+        }
+    }
+
     private func reconcileMirror(with text: String, publish: Bool) throws {
         guard !checkedSourceBuffer.isEqual(to: text) else { return }
         checkedSourceBuffer.replace(with: text)
         sourceOffsetMap = EditorSourceOffsetMap(source: text)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
+        documentStatisticsIdentity = nil
+        scheduleDocumentStatistics(
+            selections: lastKnownSelectionSnapshot?.ranges ?? []
+        )
         if publish { sourceChangeHandler?() }
     }
 

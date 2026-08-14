@@ -1,21 +1,17 @@
 import ScholiumContracts
 import SwiftUI
 
-/// Optional first-launch machine preparation. This view owns only local
-/// presentation state; the installed CLI remains Application-owned and every
-/// research authorization still begins from an exact Run handoff.
+/// Optional first-launch Agent preparation. This view copies researcher-owned
+/// instructions; the external Agent owns CLI installation and every research
+/// authorization still begins from an exact Run handoff.
 struct BootstrapAgentPreparationView: View {
     let triptychRootURL: URL
-    let commandLineToolStatus: () async -> CommandLineToolStatus
-    let installCommandLineTool: () async throws -> CommandLineToolStatus
     let allowsBack: Bool
     let isCompletingBootstrap: Bool
     let goBack: () -> Void
     let setUpLater: () -> Void
     let confirmSetup: () -> Void
 
-    @State private var status: CommandLineToolStatus?
-    @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var promptCopied = false
     @State private var showsPrompt = false
@@ -23,7 +19,6 @@ struct BootstrapAgentPreparationView: View {
 
     var body: some View {
         preparationPane
-        .task { await refreshStatus() }
         .sheet(isPresented: $showsPrompt) {
             BootstrapAgentPromptSheet(prompt: setupPrompt)
         }
@@ -67,56 +62,11 @@ struct BootstrapAgentPreparationView: View {
 
                     Divider()
 
-                    BootstrapAgentTaskRow(number: 1, title: "Install and verify Scholium CLI") {
-                        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                            HStack(alignment: .center, spacing: ScholiumMetrics.Onboarding.agentTaskSpacing) {
-                                if let status {
-                                    Label(statusLabel(status), systemImage: statusSymbol(status))
-                                        .font(ScholiumTypography.interface(.small))
-                                        .scholiumForeground(status.state == .installed ? .confirmed : .secondaryText)
-                                        .accessibilityLabel("Scholium CLI status")
-                                        .accessibilityValue(statusLabel(status))
-                                } else {
-                                    ProgressView("Checking…")
-                                        .controlSize(.small)
-                                }
-                                Spacer(minLength: ScholiumMetrics.Onboarding.decisionActionMinimumSpacing)
-                                if let actionTitle = cliActionTitle {
-                                    Button(actionTitle) {
-                                        Task { await performCLIAction() }
-                                    }
-                                    .disabled(isWorking)
-                                }
-                                if isWorking {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                        .accessibilityLabel("Installing Scholium CLI")
-                                }
-                            }
-                            if let status {
-                                Text(status.installPath)
-                                    .font(ScholiumTypography.exact(.small))
-                                    .scholiumForeground(.secondaryText)
-                                    .textSelection(.enabled)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                if let repairMessage = status.repairMessage {
-                                    Text(repairMessage)
-                                        .font(ScholiumTypography.interface(.small))
-                                        .scholiumForeground(.secondaryText)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    BootstrapAgentTaskRow(number: 2, title: "Copy setup instructions") {
+                    BootstrapAgentTaskRow(number: 1, title: "Copy setup instructions") {
                         VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.agentTaskContentSpacing) {
                             Text(promptCopied
                                 ? "Setup Prompt Copied"
-                                : "Ask the Agent to prepare its project and applicable instruction file.")
+                                : "The prompt authorizes the Agent to install the official CLI, then prepare this project.")
                                 .font(ScholiumTypography.interface(.small))
                                 .scholiumForeground(promptCopied ? .confirmed : .secondaryText)
 
@@ -130,10 +80,18 @@ struct BootstrapAgentPreparationView: View {
                                         systemImage: promptCopied ? "checkmark" : "document.on.document"
                                     )
                                 }
-                                .disabled(!cliIsReady)
                                 .accessibilityHint("Copies the complete Agent setup instructions to the Clipboard")
                             }
                         }
+                    }
+
+                    Divider()
+
+                    BootstrapAgentTaskRow(number: 2, title: "Let the Agent finish setup") {
+                        Text("The Agent installs and verifies the CLI, reads Scholium's Agent help, and prepares the applicable instruction file.")
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Divider()
@@ -183,7 +141,7 @@ struct BootstrapAgentPreparationView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(isCompletingBootstrap || !cliIsReady || !promptCopied)
+                .disabled(isCompletingBootstrap || !promptCopied)
                 if isCompletingBootstrap {
                     ProgressView()
                         .controlSize(.small)
@@ -204,44 +162,6 @@ struct BootstrapAgentPreparationView: View {
         BootstrapAgentPreparationPrompt.text(triptychRootURL: triptychRootURL)
     }
 
-    private var cliIsReady: Bool {
-        status?.state == .installed
-    }
-
-    private var cliActionTitle: LocalizedStringResource? {
-        guard let status else { return nil }
-        return switch status.state {
-        case .notInstalled: "Install and Verify"
-        case .updateAvailable: "Update and Verify"
-        case .installed: "Check Again"
-        case .bundledToolUnavailable, .invalidInstallation: nil
-        }
-    }
-
-    private func refreshStatus() async {
-        status = await commandLineToolStatus()
-    }
-
-    private func performCLIAction() async {
-        guard let status else { return }
-        errorMessage = nil
-        switch status.state {
-        case .notInstalled, .updateAvailable:
-            isWorking = true
-            defer { isWorking = false }
-            do {
-                self.status = try await installCommandLineTool()
-            } catch {
-                errorMessage = error.localizedDescription
-                self.status = await commandLineToolStatus()
-            }
-        case .installed:
-            await refreshStatus()
-        case .bundledToolUnavailable, .invalidInstallation:
-            break
-        }
-    }
-
     private func copySetupPrompt() {
         guard ScholiumPasteboardWriter.general.writeText(setupPrompt) else {
             errorMessage = String(
@@ -255,23 +175,6 @@ struct BootstrapAgentPreparationView: View {
         promptCopied = true
     }
 
-    private func statusLabel(_ status: CommandLineToolStatus) -> String {
-        switch status.state {
-        case .bundledToolUnavailable: "Not included in this build"
-        case .notInstalled: "Ready to install"
-        case .updateAvailable: "Update available"
-        case .installed: status.isOnCurrentPATH ? "Installed and discoverable" : "Installed"
-        case .invalidInstallation: "Needs attention"
-        }
-    }
-
-    private func statusSymbol(_ status: CommandLineToolStatus) -> String {
-        switch status.state {
-        case .installed: status.isOnCurrentPATH ? "checkmark.circle" : "checkmark"
-        case .notInstalled, .updateAvailable: "terminal"
-        case .bundledToolUnavailable, .invalidInstallation: "exclamationmark.triangle"
-        }
-    }
 }
 
 enum BootstrapAgentPreparationPrompt {
@@ -283,25 +186,24 @@ enum BootstrapAgentPreparationPrompt {
         Project root and workspace root (use this exact same folder):
         \(root)
 
+        CLI installation authorization:
+        \(ScholiumCLIInstallationInstructions.text)
+
+        Project preparation:
         1. Open or create a separate Agent project whose project root and workspace root are both the exact folder above.
-        2. Verify the installed Scholium CLI by running:
-           $HOME/.local/bin/scholium version --format json
-           $HOME/.local/bin/scholium doctor --format json
-           Then read: $HOME/.local/bin/scholium help agent
-        3. Inspect this root and its ancestors for applicable AGENTS.md and CLAUDE.md instructions before creating anything.
-        4. If no applicable instruction file exists, create the instruction file yourself at the project root:
+        2. Inspect this root and its ancestors for applicable AGENTS.md and CLAUDE.md instructions before creating anything.
+        3. If no applicable instruction file exists, create the instruction file yourself at the project root:
            - Create AGENTS.md when your Agent supports it.
            - If you are Claude Code, create only the minimal CLAUDE.md needed for Claude and have it refer to AGENTS.md instead of duplicating the rules.
            - Never overwrite, merge, shadow, or silently replace an existing instruction file. Report the exact blocker instead.
            - Read every file back and report the exact paths you created or used.
-        5. In those instructions, prefer Scholium-provided CLI and Agent tools for research work. Ordinary read tools remain your choice.
-        6. Follow Scholium's file rules strictly:
+        4. In those instructions, prefer Scholium-provided CLI and Agent tools for research work. Ordinary read tools remain your choice.
+        5. Follow Scholium's file rules strictly:
            - Treat exact Markdown bytes as authoritative.
            - Never edit .scholium directly.
            - Preserve BOM, newline style, comments, unknown YAML, ordering, quoting, multiline values, and final newlines outside an explicitly changed range.
            - For an existing Note mutation that needs Scholium's bounded-write, checkpoint, conflict, and recovery guarantees, use the current Run's authenticated, fingerprint-checked Scholium mutation path. A raw filesystem write is an external edit, not a Scholium-authorized write.
-        7. Do not read Triptych research files or request a pairing code now. Wait for a specific Research Run handoff from Scholium.
-        8. If PATH, a shell profile, or Agent configuration must change, first name the exact file and proposed change and wait for my confirmation.
+        6. Do not read Triptych research files or request a pairing code now. Wait for a specific Research Run handoff from Scholium.
 
         Finish by reporting either Ready, including the project root, workspace root, CLI result, and instruction-file paths, or one precise blocker.
         """

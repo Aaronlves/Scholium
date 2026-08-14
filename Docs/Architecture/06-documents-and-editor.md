@@ -50,8 +50,8 @@ flush-before-agent-work. The Swift
 model retains these facts across SwiftUI view reconstruction; it never
 reconstructs writable Markdown from HTML, parsed YAML, or another projection.
 `DocumentConflictSnapshot` supplies exact editor/disk inputs to the Contracts-
-owned `ExactSourceComparisonBuilder`; it no longer owns a second line-diff
-algorithm. Document still owns conflict actions and buffer authority, while the
+owned `ExactSourceComparisonBuilder`, the sole line-diff owner. Document still
+owns conflict actions and buffer authority, while the
 comparison value and future shared sheet remain pure disposable presentation.
 
 `DocumentEditorHost` is the persistent presentation boundary for one selected
@@ -139,7 +139,7 @@ code-element responsibilities. `MarkdownEditorSession` alone owns the retained
 WebView lifecycle, checked source mirror, generation, recovery, and pending
 requests. `MarkdownEditorBridgeAdapter` owns the typed wire envelope and
 structured JavaScript dispatcher; `MarkdownEditorNativeWebView` owns AppKit
-attachment and the single native context-menu presentation; and
+attachment, image paste, and the context menu; and
 `MarkdownEditorWebView` is the
 SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
 snapshot probes and interaction drivers live in the two
@@ -297,48 +297,48 @@ whole-document commands that actually require them. The native receiver applies
 the same small deltas directly to `EditorExactSourceBuffer`; one
 deadline-driven autosave task moves its deadline during continued typing
 instead of being cancelled and recreated for every English or IME transaction.
-Its dirty-path publication changes only when the path changes. Document toolbar
-navigation consumes the fingerprint-bound heading projection already carried
-by `WorkspaceNoteSnapshot`; no SwiftUI `body` reparses Markdown.
+Its dirty-path publication changes only when the path changes. Document
+navigation and Review reuse fingerprint-bound semantics from
+`WorkspaceNoteSnapshot`; stale input reparses; SwiftUI `body` never does.
 
-The retained-memory scenario uses an app-owned, run-specific handshake rather
-than inferring readiness from XCUITest timing. The initial editor load and each
-requested Live Preview/Source transition append one progress record only after
-the typed JavaScript bridge acknowledges the mode. The external sampler
-attributes and records the complete app/WebKit process set, appends an
-acknowledgment, and the UI driver advances only after that acknowledgment.
-Its QA-only mode-request transport updates the active retained document
-session directly so repeated transitions cannot be coalesced by SwiftUI's
-one-shot presentation request; the normal WebView update, CodeMirror
-transition, and bridge acknowledgment remain the measured implementation.
+The retained-memory journey uses a run-specific app handshake. Initial load
+and each typed Live Preview/Source transition publish progress after bridge
+acknowledgement; the external sampler records the attributed app/WebKit process
+set and acknowledges before the driver advances. Its QA transport addresses
+the retained session directly to prevent SwiftUI request coalescing. The gate
+applies the convergence rule in [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate).
+A separate attached-WKWebView journey drives 50 transitions and checks the dirty buffer,
+accessibility chrome, and diagnostic ring; it cannot establish memory
+convergence or visible p95.
 
-The retained-state correctness layer is deliberately separate from that
-external authority. A real WKWebView integration journey drives 50 typed
-Source/Live mode transitions through one attached session and requires the
-dirty buffer, accessibility mode chrome, and bounded performance ring to remain
-coherent. It does not infer process-memory convergence or visible p95 latency.
+The connected Editor driver measures visible or accessible boundaries.
+A Document uses a source-free, network-denied view to prime
+nonpersistent WebKit and allowlisted font during opening.
+First-use Review takes it after selection instead of constructing the primed
+page context; bounded expiry otherwise releases it. Initial navigation skips a
+redundant loading publication; replacement retains it. Multi-`WKProcessPool`
+is unused.
 
-Performance verification keeps target, mechanism, and evidence separate.
-`Tools/Scripts/generate-rdf1.py` owns the deterministic RDF-1 bytes and
-manifest; repository verification regenerates and verifies it beneath ignored
-`.build/` state. `Tools/Scripts/run-performance-benchmarks.sh` owns the external
-visible-boundary driver, five-warm-up/30-sample protocol, strict result
-validation, scenario-versus-gate mode, and output inventory. Gate mode accepts
-only the packaged app, requires release-owner threshold approval, and verifies
-`ScholiumBuildProvenance.plist` against a clean exact tag and commit.
+Edit/Source excludes Command-R and ends after matching bridge acknowledgement
+and layout. Key-to-paint registers before native delta delivery and publishes
+after frame plus task for the accepted session/generation. Cached preview ends
+after its surface paints. Warm Edit reuses the prepared Editor. First-use Edit
+launches to no document, reaches the 5,000-word Note's interactive Review as
+setup, then times the Edit request. Both end at the matching visible,
+accessible Editor. Visible projection times one synchronous CodeMirror refresh.
+QA-only notifications drive those paths; `PerformanceProbe` enforces metric,
+fixture, duration, and sample budget.
 
-Metric runs use isolated app state and metric-specific processes. Warm Search
-and Review reuse their post-setup process; launch and cold Review relaunch per
-sample. The driver expands deterministic Library targets rather than routing a
-Search result through Source mode. Native publication, AppKit layout, WebKit
-navigation, bridge acknowledgement, paint, and exact app/WebKit process
-attribution jointly define readiness. Run records contain only timing,
-correctness counts, fixture identity, artifact identity, and environment
-metadata—never queries, Note paths/titles, or research text. The target
-thresholds and evidence-class rules live in
-[Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
-dated measurements and incomplete series live only in
-[Open Work](../Status/03-open-work.md).
+`generate-rdf1.py` owns manifest-listed RDF-1 bytes;
+`run-performance-benchmarks.sh` owns isolated driving, sampling, inventory
+recheck, evidence class, and production-state nonmutation. Packaged Release
+honors `SCHOLIUM_HOME` only with the marker. Warm metrics reuse
+processes; launch/first-use metrics relaunch. Records retain timing,
+correctness, and provenance without research content. Gate mode requires
+clean-tag package and every series; scenario omissions remain explicit. Limits
+and evidence rules belong to [Specification
+§21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
+dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).
 
 `ScholiumContracts` owns durable Markdown meanings and the immutable editing
 dialect. TypeScript may parse an uncommitted buffer for immediate projection
@@ -665,7 +665,10 @@ fixtures compare definition content as well as identifiers so Swift and
 TypeScript cannot silently choose different block ownership.
 
 Mathematics uses a locally bundled, exactly pinned KaTeX runtime and matching
-CSS/fonts. The first admissible integration must use `htmlAndMathml`,
+CSS/fonts. Bundled fonts use a read-only filename allowlist scheme, never
+filesystem/network access or base64 HTML. Review and Editor load the math runtime
+only for a source/preview candidate; a later validated request refreshes only
+disposable projection. The first admissible integration must use `htmlAndMathml`,
 `trust: false`, bounded `maxExpand` and `maxSize`, no remote resources, and
 escaped plain-source diagnostics for failures. KaTeX output is a projection;
 only the original delimiter span is editable or writable. Inactive display
@@ -709,8 +712,8 @@ motion rules bound generated Mermaid CSS. The same boundary preserves the
 intrinsic size of narrow SVGs, proportionally caps wide or overly tall SVGs at
 the document and viewport measures, and replaces generated multicolor scales
 with protected semantic document variables plus an app-owned final Mindmap
-override in both Review and inactive Edit. Review and Edit no longer parse the
-returned SVG through a second `innerHTML` sink. The returned binding callback
+override in both Review and inactive Edit. Review and Edit use no second
+`innerHTML` sink for the returned SVG. The returned binding callback
 is never invoked. Failure keeps escaped source and a text diagnostic. Missing
 authored `accTitle` or `accDescr` keeps a source-based assistive alternative and
 adds an ordinary visible diagnostic, not a repeatedly announced live region,

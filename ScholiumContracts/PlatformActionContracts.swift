@@ -4,8 +4,6 @@ public enum PlatformActionSelector: String, Codable, CaseIterable, Hashable, Sen
     case source
     case focalNotes = "focal_notes"
     case passage
-    case citationStyle = "citation_style"
-    case feedback
     case fidelityChecks = "fidelity_checks"
 }
 
@@ -40,7 +38,15 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
     public var extensionWriteOperations: [ResearchDocumentWriteOperation] {
         guard operations.contains(.modifyInitialNote),
               operations.contains(.extendWriteSet) else { return [] }
-        return [.createNote, .modifyMarkdown, .modifyProperties]
+        var operations: [ResearchDocumentWriteOperation] = [
+            .createNote, .modifyMarkdown, .modifyProperties,
+        ]
+        if self.operations.contains(.useZotero) {
+            operations.append(contentsOf: [
+                .setZoteroBinding, .clearZoteroBinding,
+            ])
+        }
+        return operations
     }
 
     public init(
@@ -132,7 +138,7 @@ public enum PlatformActionCatalog {
             actionID: .write,
             executionKind: .writing,
             allowedTargetRoles: [.work],
-            optionalSelectors: [.focalNotes, .passage, .citationStyle, .feedback],
+            optionalSelectors: [.focalNotes, .passage],
             operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
@@ -146,14 +152,14 @@ public enum PlatformActionCatalog {
             actionID: .checkFidelity,
             executionKind: .checkFidelity,
             allowedTargetRoles: ResearchActionTargetRole.allCases,
-            optionalSelectors: [.focalNotes, .passage, .citationStyle, .fidelityChecks],
+            optionalSelectors: [.focalNotes, .passage, .fidelityChecks],
             operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .manuscript,
             executionKind: .manuscript,
             allowedTargetRoles: [.work],
-            optionalSelectors: [.focalNotes, .citationStyle, .feedback],
+            optionalSelectors: [.focalNotes],
             operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
         ),
     ]

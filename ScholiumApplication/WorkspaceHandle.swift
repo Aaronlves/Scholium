@@ -20,6 +20,7 @@ struct WorkspaceServices: Sendable {
     let researchAgentSessions: ResearchAgentSessionAuthority?
     let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
+    let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
     let portableResearchRecordStore: PortableResearchRecordStore
     let localResearchExecutionStore: LocalResearchExecutionStore
@@ -362,6 +363,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         subsystem: "com.scholium.app",
         category: "WorkspaceRefresh"
     )
+    private nonisolated static let openLogger = Logger(
+        subsystem: "com.scholium.app",
+        category: "WorkspaceOpen"
+    )
     public nonisolated let id: UUID
     public nonisolated let runtimeIdentity: TriptychRuntimeIdentity
     public nonisolated let assignment: TriptychAssignment
@@ -370,6 +375,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let documents: DocumentOperations
     public nonisolated let discovery: DiscoveryOperations
     public nonisolated let research: ResearchOperations
+    public nonisolated let zoteroBindings: ZoteroBindingOperations
 
     let services: WorkspaceServices
     let researchFunctionCoordinator: ResearchFunctionCoordinator
@@ -384,6 +390,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var derivedStateRequiresRefresh = false
     private var isShutDown = false
     private var liveWatcherTask: Task<Void, Never>?
+    private var openingCompletionTask: Task<Void, Never>?
+    private let openingPresentationSignal = AsyncStream<Void>.makeStream(
+        bufferingPolicy: .bufferingNewest(1)
+    )
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var sourceCommitRefreshTask: Task<Void, Never>?
     private var pendingSourceCommitRefreshes: [WorkspaceRefreshPayload] = []
@@ -403,6 +413,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var researchDocumentSavePreflightBarrierForTesting:
         (@Sendable () async -> Void)?
     var researchFunctionControlledObservationBarrierForTesting:
+        (@Sendable () async -> Void)?
+    private var progressiveActivationReconciliationBarrierForTesting:
         (@Sendable () async -> Void)?
     private var didCompleteActivationReconciliation = false
 
@@ -446,6 +458,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) {
         researchFunctionControlledObservationBarrierForTesting = barrier
     }
+
+    func setProgressiveActivationReconciliationBarrierForTesting(
+        _ barrier: (@Sendable () async -> Void)?
+    ) {
+        progressiveActivationReconciliationBarrierForTesting = barrier
+    }
     private init(
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
@@ -458,7 +476,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         researchFunctionCoordinator: ResearchFunctionCoordinator,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
-        research: ResearchOperations
+        research: ResearchOperations,
+        zoteroBindings: ZoteroBindingOperations
     ) {
         id = assignment.id
         runtimeIdentity = TriptychRuntimeIdentity(
@@ -475,6 +494,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.documents = documents
         self.discovery = discovery
         self.research = research
+        self.zoteroBindings = zoteroBindings
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
         refreshCoordinator = WorkspaceRefreshCoordinator(
             startingAfter: initialWorkspaceGeneration
@@ -496,8 +516,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         vaultPool: WorkspaceVaultPool,
         zotero: ZoteroOperations,
         researchAgentSessions: ResearchAgentSessionAuthority?,
-        access: WorkspaceAccessConfiguration
+        access: WorkspaceAccessConfiguration,
+        openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
+        let clock = ContinuousClock()
+        let totalStart = clock.now
         try Task.checkCancellation()
         guard Set(assignment.vaults.keys) == Set(WorkspaceVaultSlot.allCases) else {
             throw ScholiumApplicationError.incompleteTriptych(assignment.id)
@@ -519,6 +542,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 pooledVaults[vault.id] = pooled
                 resolvedURLs[slot] = pooled.rootURL
             }
+            let vaultsReady = clock.now
 
             guard let worksVault = assignment.vault(for: .output),
                   let worksURL = resolvedURLs[.output],
@@ -634,6 +658,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
                 ),
+                indexedAttachmentAccessStore: try IndexedAttachmentAccessStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                ),
                 zotero: zotero,
                 portableResearchRecordStore: portableResearchRecordStore,
                 localResearchExecutionStore: localResearchExecutionStore,
@@ -655,28 +683,45 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     control: controlURL
                 )
             )
+            let servicesReady = clock.now
             var watcherStreams: [UUID: AsyncStream<VaultWatchEvent>] = [:]
             if mode == .live {
                 for (vaultID, pooled) in pooledVaults {
                     watcherStreams[vaultID] = await pooled.events()
                 }
             }
-            // Native observation is live before either inventory pass. The
-            // buffered stream plus the post-publication reconciliation closes
-            // edits that race either scan.
-            let preOpenInventory = mode == .live
+            let watchersReady = clock.now
+            let usesProgressiveOpening = mode == .live && openingVault != nil
+            // Native observation is live before either inventory pass. A
+            // progressive open inventories only its first usable vault; the
+            // buffered stream and complete background reconcile close edits
+            // that race either scan.
+            let preOpenInventory = mode == .live && !usesProgressiveOpening
                 ? try await sourceInventory(
                     assignment: assignment,
                     sourceCatalogs: services.sourceCatalogs
                 )
                 : nil
-            let initialBuild = try await WorkspaceSnapshotBuilder.build(
-                assignment: assignment,
-                mode: mode,
-                services: services,
-                graphGeneration: 1,
-                workspaceGeneration: initialWorkspaceGeneration
-            )
+            let inventoryReady = clock.now
+            let initialBuild: WorkspaceSnapshotBuildResult
+            if let openingVault, usesProgressiveOpening {
+                initialBuild = try await WorkspaceSnapshotBuilder.buildOpening(
+                    assignment: assignment,
+                    mode: mode,
+                    services: services,
+                    availableVault: openingVault,
+                    workspaceGeneration: initialWorkspaceGeneration
+                )
+            } else {
+                initialBuild = try await WorkspaceSnapshotBuilder.build(
+                    assignment: assignment,
+                    mode: mode,
+                    services: services,
+                    graphGeneration: 1,
+                    workspaceGeneration: initialWorkspaceGeneration
+                )
+            }
+            let snapshotReady = clock.now
             let initialSnapshot = initialBuild.snapshot
             logRefresh(initialBuild.measurement, publicationDuration: nil)
             try Task.checkCancellation()
@@ -705,6 +750,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 functionCoordinator: researchFunctionCoordinator,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
+            let zoteroBindingOperations = ZoteroBindingOperations(
+                reference: reference
+            )
             let handle = WorkspaceHandle(
                 assignment: assignment,
                 mode: mode,
@@ -717,15 +765,37 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 researchFunctionCoordinator: researchFunctionCoordinator,
                 documents: documentOperations,
                 discovery: discoveryOperations,
-                research: researchOperations
+                research: researchOperations,
+                zoteroBindings: zoteroBindingOperations
             )
             await reference.bind(handle)
             if case .live = access {
+                let activationInventory: [
+                    VaultQualifiedNoteID: DocumentFingerprint
+                ]
+                if let preOpenInventory {
+                    activationInventory = preOpenInventory
+                } else {
+                    activationInventory = await handle.sourceRevisions(
+                        in: initialSnapshot
+                    )
+                }
                 await handle.startLiveTasks(
                     streams: watcherStreams,
-                    preOpenInventory: preOpenInventory ?? [:]
+                    preOpenInventory: activationInventory,
+                    completesOpeningInBackground: usesProgressiveOpening
                 )
             }
+            let completed = clock.now
+            Self.logOpen(
+                vaults: totalStart.duration(to: vaultsReady),
+                services: vaultsReady.duration(to: servicesReady),
+                watchers: servicesReady.duration(to: watchersReady),
+                inventory: watchersReady.duration(to: inventoryReady),
+                snapshot: inventoryReady.duration(to: snapshotReady),
+                finalization: snapshotReady.duration(to: completed),
+                total: totalStart.duration(to: completed)
+            )
             return handle
         } catch {
             for lease in leases.reversed() where lease.started {
@@ -733,6 +803,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             throw error
         }
+    }
+
+    private nonisolated static func logOpen(
+        vaults: Duration,
+        services: Duration,
+        watchers: Duration,
+        inventory: Duration,
+        snapshot: Duration,
+        finalization: Duration,
+        total: Duration
+    ) {
+        openLogger.info(
+            "handle vaults=\(String(describing: vaults), privacy: .public) services=\(String(describing: services), privacy: .public) watchers=\(String(describing: watchers), privacy: .public) inventory=\(String(describing: inventory), privacy: .public) snapshot=\(String(describing: snapshot), privacy: .public) finalization=\(String(describing: finalization), privacy: .public) total=\(String(describing: total), privacy: .public)"
+        )
     }
 
     public func snapshot() throws -> WorkspaceSnapshot {
@@ -784,14 +868,19 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         sourceCommitRefresh?.cancel()
         await refreshCoordinator.shutdown()
         let watcher = liveWatcherTask
+        let openingCompletion = openingCompletionTask
         let refresh = liveIndexRefreshTask?.task
         liveWatcherTask = nil
+        openingCompletionTask = nil
         liveIndexRefreshTask = nil
         pendingLiveEvents.removeAll()
         shutDownWorkspaceSourceOperationGate()
         watcher?.cancel()
+        openingCompletion?.cancel()
+        openingPresentationSignal.continuation.finish()
         refresh?.cancel()
         await watcher?.value
+        await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
         await events.finish(finalSnapshot: currentSnapshot)
@@ -804,6 +893,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try requireActive()
         let repository = try repository(vaultID: id.vaultID)
         return try await repository.load(relativePath: id.relativePath)
+    }
+
+    /// Releases the deferred complete-Triptych reconcile after the opening
+    /// Vault's first Document has crossed its native visible-layout boundary.
+    /// The signal is idempotent and carries no document identity or source.
+    public func openingPresentationDidComplete() {
+        openingPresentationSignal.continuation.yield()
+        openingPresentationSignal.continuation.finish()
     }
 
     func importMarkdown(
@@ -871,6 +968,255 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             document: committedDocument,
             identityRecoveryWarning: identityRecoveryWarning
         )
+    }
+
+    func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.prepareImage(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath,
+            management: .importIntoAttachments
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: nil
+        )
+    }
+
+    func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.prepareImage(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath,
+            management: .indexAbsolutePath
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: sourceURL
+        )
+    }
+
+    func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.prepareImage(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath,
+            management: .importIntoAttachments
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: nil
+        )
+    }
+
+    func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try repository(vaultID: note.vaultID)
+        _ = try await repository.load(relativePath: note.relativePath)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let preparedFile = try await fileStore.preparePastedImage(
+            data: data,
+            preferredFilename: preferredFilename,
+            attachmentID: attachmentID,
+            noteRelativePath: note.relativePath
+        )
+        return try await registerPreparedImageFile(
+            preparedFile,
+            attachmentID: attachmentID,
+            vaultID: note.vaultID,
+            fileStore: fileStore,
+            indexedSourceURL: nil
+        )
+    }
+
+    private func registerPreparedImageFile(
+        _ preparedFile: PreparedVaultImageFile,
+        attachmentID: UUID,
+        vaultID: UUID,
+        fileStore: VaultAttachmentStore,
+        indexedSourceURL: URL?
+    ) async throws -> PreparedImageAttachment {
+        let registration: (record: PortableAttachmentRecord, created: Bool)
+        do {
+            registration = try await services.controlStore.registerAttachment(
+                vaultID: vaultID,
+                location: preparedFile.location,
+                preferredID: attachmentID
+            )
+        } catch {
+            if let fingerprint = preparedFile.copiedFileFingerprint,
+               let copiedRelativePath = preparedFile.copiedRelativePath {
+                if let imageError = error as? ImageAttachmentError,
+                   case .catalogCommitUncertain = imageError {
+                    throw error
+                }
+                do {
+                    try await fileStore.removeCopiedImageIfExact(
+                        relativePath: copiedRelativePath,
+                        expectedFingerprint: fingerprint
+                    )
+                } catch let cleanupError {
+                    throw ImageAttachmentError.preparationCleanupFailed(
+                        operation: error.localizedDescription,
+                        cleanup: cleanupError.localizedDescription
+                    )
+                }
+            }
+            throw error
+        }
+
+        var createdLocalAccessRecord = false
+        if case .absolutePath(let path) = registration.record.location {
+            guard let indexedSourceURL else {
+                throw IndexedAttachmentAccessError.bookmarkUnavailable(path)
+            }
+            do {
+                createdLocalAccessRecord = try await services
+                    .indexedAttachmentAccessStore.register(
+                        attachmentID: registration.record.id,
+                        selectedURL: indexedSourceURL,
+                        expectedAbsolutePath: path
+                    )
+            } catch {
+                if registration.created {
+                    do {
+                        try await services.controlStore.removeAttachment(
+                            registration.record
+                        )
+                    } catch let cleanupError {
+                        throw ImageAttachmentError.preparationCleanupFailed(
+                            operation: error.localizedDescription,
+                            cleanup: cleanupError.localizedDescription
+                        )
+                    }
+                }
+                throw error
+            }
+        }
+        return PreparedImageAttachment(
+            record: registration.record,
+            markdownDestination: preparedFile.markdownDestination,
+            altText: preparedFile.altText,
+            copiedFileFingerprint: preparedFile.copiedFileFingerprint,
+            createdCatalogRecord: registration.created,
+            createdLocalAccessRecord: createdLocalAccessRecord
+        )
+    }
+
+    func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        if preparation.createdCatalogRecord {
+            // Keep Finder bytes when catalog cleanup is uncertain: a remaining
+            // portable record must never be made to point at a missing file.
+            try await services.controlStore.removeAttachment(preparation.record)
+        }
+        if preparation.createdLocalAccessRecord {
+            try await services.indexedAttachmentAccessStore.removeIfPresent(
+                attachmentID: preparation.record.id
+            )
+        }
+        if let fingerprint = preparation.copiedFileFingerprint {
+            guard case .vaultRelative(let relativePath) = preparation.record.location else {
+                throw ImageAttachmentError.cleanupRefused(
+                    preparation.record.location.path
+                )
+            }
+            let repository = try repository(vaultID: preparation.record.vaultID)
+            let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+            try await fileStore.removeCopiedImageIfExact(
+                relativePath: relativePath,
+                expectedFingerprint: fingerprint
+            )
+        }
+    }
+
+    func unavailableIndexedImagePaths(
+        in markdownSource: String
+    ) async throws -> [String] {
+        let referencedPaths = IndexedImageReferences.absolutePaths(
+            in: markdownSource
+        )
+        guard !referencedPaths.isEmpty else { return [] }
+        let records = try await services.controlStore.attachmentRecords()
+        var unavailable: [String] = []
+        for record in records {
+            guard case .absolutePath(let path) = record.location,
+                  referencedPaths.contains(path) else { continue }
+            if try await services.indexedAttachmentAccessStore.isAvailable(
+                attachmentID: record.id,
+                expectedAbsolutePath: path
+            ) == false {
+                unavailable.append(path)
+            }
+        }
+        return unavailable.sorted()
     }
 
     func createDocument(
@@ -1729,8 +2075,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             return .committed(WorkspaceMutationOutcome(
                 committedValue: result,
-                derivedRefreshWarning: derivedRefreshWarning,
-                cleanupWarnings: result.cleanupWarning.map { [$0] } ?? []
+                derivedRefreshWarning: derivedRefreshWarning
             ))
         }
     }
@@ -2148,8 +2493,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            derivedRefreshWarning: derivedRefreshWarning,
-            cleanupWarnings: commit.saveCleanupWarning.map { [$0] } ?? []
+            derivedRefreshWarning: derivedRefreshWarning
         )
     }
 
@@ -2189,7 +2533,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func refresh() async throws -> WorkspaceSnapshot {
-        try await refresh(publication: .explicit)
+        let snapshot = try await refresh(publication: .explicit)
+        if snapshot.phase.isComplete {
+            startLiveIndexRefreshIfNeeded()
+        }
+        return snapshot
     }
 
     /// Refreshes disposable projections after a durable non-document
@@ -2241,7 +2589,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let snapshot: WorkspaceSnapshot
         let measurement: WorkspaceRefreshMeasurement
         do {
-            try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
+            if mode == .live,
+               !currentSnapshot.phase.isComplete,
+               !didCompleteActivationReconciliation {
+                await progressiveActivationReconciliationBarrierForTesting?()
+                try Task.checkCancellation()
+                try requireActive()
+                // Observation already owns all three Vault streams. Complete
+                // one full post-observation reconciliation before the first
+                // complete snapshot can be built or published, closing the
+                // initial-open blind interval as one completion boundary.
+                try await prepareSourceCatalogs(.fullReconcile)
+                didCompleteActivationReconciliation = true
+            } else {
+                try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
+            }
             guard nextGraphGeneration < Int.max else {
                 throw WorkspaceRefreshCycleError.graphGenerationExhausted
             }
@@ -2402,6 +2764,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 await events.publishDerivedStateChanged(snapshot: snapshot)
             }
         case .liveInventory:
+            if previous.phase != snapshot.phase {
+                await events.publishDerivedStateChanged(snapshot: snapshot)
+                return
+            }
             guard changes.hasChanges else {
                 if confirmsEarlierFailure {
                     await events.publishDerivedStateChanged(snapshot: snapshot)
@@ -2509,7 +2875,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func startLiveTasks(
         streams: [UUID: AsyncStream<VaultWatchEvent>],
-        preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint]
+        preOpenInventory: [VaultQualifiedNoteID: DocumentFingerprint],
+        completesOpeningInBackground: Bool
     ) async {
         guard mode == .live, !isShutDown, liveWatcherTask == nil else { return }
         liveWatcherTask = Task { [weak self] in
@@ -2525,7 +2892,53 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 await group.waitForAll()
             }
         }
+        if completesOpeningInBackground {
+            let presentationEvents = openingPresentationSignal.stream
+            openingCompletionTask = Task(priority: .utility) { [weak self] in
+                await Self.waitForOpeningPresentationOrFallback(presentationEvents)
+                guard !Task.isCancelled, let self else { return }
+                await self.completeLiveOpening()
+            }
+            return
+        }
         await reconcileLiveActivation(preOpenInventory: preOpenInventory)
+    }
+
+    private nonisolated static func waitForOpeningPresentationOrFallback(
+        _ events: AsyncStream<Void>
+    ) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in events { return }
+            }
+            group.addTask {
+                // A Library-only window must still converge when no Document
+                // is selected or its renderer fails before becoming visible.
+                try? await Task.sleep(for: .seconds(2))
+            }
+            _ = await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func completeLiveOpening() async {
+        defer { openingCompletionTask = nil }
+        guard !isShutDown, !Task.isCancelled else { return }
+        do {
+            if !currentSnapshot.phase.isComplete {
+                _ = try await refresh(
+                    publication: .liveInventory,
+                    failureDisposition: .failed(
+                        affectedVaultIDs: Set(assignment.vaults.values.map(\.id))
+                    ),
+                    sourceCatalogPreparation: .fullReconcile
+                )
+            }
+            startLiveIndexRefreshIfNeeded()
+        } catch {
+            // `refresh` already published a typed failure while retaining the
+            // usable opening vault. Explicit Retry performs a full reconcile.
+        }
     }
 
     /// Closes the interval between the pre-open inventory and watcher
@@ -2579,7 +2992,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         startLiveIndexRefreshIfNeeded()
     }
 
-    private func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
+    func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
         try requireActive()
         do {
             let lease = try await acquireWorkspaceSourceOperation(.sourceMutation)
@@ -2609,7 +3022,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try await beginSourceMutation()
     }
 
-    private func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
+    func endSourceMutation(_ lease: WorkspaceSourceOperationLease) {
         releaseWorkspaceSourceOperation(lease)
         startLiveIndexRefreshIfNeeded()
     }
@@ -2652,6 +3065,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func startLiveIndexRefreshIfNeeded() {
         guard !isShutDown,
+              currentSnapshot.phase.isComplete,
               !sourceOperationGate.sourceMutationIsActive,
               !pendingLiveEvents.isEmpty,
               sourceCommitRefreshTask == nil,
@@ -2881,7 +3295,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     // Internal evidence for lifecycle tests; capabilities do not expose tasks.
     var ownedBackgroundTaskCount: Int {
-        (liveWatcherTask == nil ? 0 : 1) + (liveIndexRefreshTask == nil ? 0 : 1)
+        (liveWatcherTask == nil ? 0 : 1)
+            + (openingCompletionTask == nil ? 0 : 1)
+            + (liveIndexRefreshTask == nil ? 0 : 1)
     }
 
     var activationReconciliationCompleted: Bool {
@@ -2889,7 +3305,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     var watcherReadinessEvidence: WorkspaceWatcherReadinessEvidence? {
-        guard liveWatcherTask != nil, didCompleteActivationReconciliation else { return nil }
+        guard liveWatcherTask != nil,
+              currentSnapshot.phase.isComplete,
+              didCompleteActivationReconciliation else { return nil }
         return WorkspaceWatcherReadinessEvidence(
             watchedVaultIDs: Set(assignment.vaults.values.map(\.id)),
             activationReconciliationCompleted: true
@@ -2898,6 +3316,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func search(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
+        guard currentSnapshot.phase.isComplete else {
+            throw ScholiumApplicationError.workspaceStillLoading(id)
+        }
         if let diagnostic = searchScopeDiagnostic(request) {
             return await searchDiagnosticResponse(
                 request: request,
@@ -3296,8 +3717,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            identityRecoveryWarning: identityFailure?.localizedDescription,
-            cleanupWarnings: commit.cleanupWarnings
+            identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
 
@@ -3447,8 +3867,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ownsMutation = false
         return WorkspaceMutationOutcome(
             committedValue: commit,
-            identityRecoveryWarning: identityFailure?.localizedDescription,
-            cleanupWarnings: commit.cleanupWarnings
+            identityRecoveryWarning: identityFailure?.localizedDescription
         )
     }
 
@@ -3788,6 +4207,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func requireActive() throws {
         if isShutDown { throw ScholiumApplicationError.workspaceShutDown(id) }
+    }
+
+    func requireCompleteWorkspace() throws {
+        try requireActive()
+        guard currentSnapshot.phase.isComplete else {
+            throw ScholiumApplicationError.workspaceStillLoading(id)
+        }
     }
 
     private static func resolvePortableControlAccess(

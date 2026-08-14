@@ -22,7 +22,7 @@ extension WorkspaceHandle {
     func researchActionAvailability(
         for target: ResearchActionNoteSnapshot
     ) async throws -> [ResearchActionAvailability] {
-        try requireActive()
+        try requireCompleteWorkspace()
         let functionTarget = target.functionTarget
         return try await resolvedResearchActions(
             for: functionTarget,
@@ -34,6 +34,7 @@ extension WorkspaceHandle {
     func prepareResearchAction(
         _ request: ResearchActionExecutionRequest
     ) async throws -> ResearchActionPreparation {
+        try requireCompleteWorkspace()
         let resolved = try await resolvedResearchActionExecution(request)
         let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
             resolved.request,
@@ -62,6 +63,7 @@ extension WorkspaceHandle {
         for target: ResearchActionNoteSnapshot,
         actionID: ResearchActionID
     ) async throws -> [ResearchActionNoteSnapshot] {
+        try requireCompleteWorkspace()
         let candidates = try await resolvedResearchActions(
             for: target.functionTarget,
             checkingSourceAccess: false
@@ -79,7 +81,8 @@ extension WorkspaceHandle {
     }
 
     func researchActionRun(id: UUID) async throws -> ResearchActionPreparation {
-        try await publicActionPreparation(
+        try requireCompleteWorkspace()
+        return try await publicActionPreparation(
             from: researchFunctionCoordinator.researchFunctionRun(
                 id: id,
                 host: self
@@ -90,6 +93,7 @@ extension WorkspaceHandle {
     func prepareResearchActionFidelity(
         parentRunID: UUID
     ) async throws -> ResearchActionFidelityPreparation {
+        try requireCompleteWorkspace()
         let prepared = try await researchFunctionCoordinator.prepareAutomaticFidelity(
             parentRunID: parentRunID,
             host: self
@@ -111,6 +115,7 @@ extension WorkspaceHandle {
         _ request: ResearchActionExecutionRequest,
         context: MaterialChangedSinceUseAttentionContext
     ) async throws -> ResearchActionPreparation {
+        try requireCompleteWorkspace()
         guard request.actionID == .synthesize,
               request.expectedExecutionKind == .synthesis,
               context.triptychID == services.manifest.id,

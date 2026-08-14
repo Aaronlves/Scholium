@@ -149,11 +149,9 @@ enum SecureResearchConfigurationIO {
                 "Research configuration requires an absolute directory path."
             )
         }
-        // A security-scoped bookmark grants the selected directory, not each
-        // ancestor needed to walk there from `/`. Opening the authorized path
-        // in one operation lets App Sandbox apply that grant while Darwin's
-        // O_NOFOLLOW_ANY preserves the stronger invariant that no component
-        // in the complete path may be a symbolic link.
+        // Open the complete selected path in one operation. Darwin's
+        // O_NOFOLLOW_ANY preserves the invariant that no component in that
+        // path may be a symbolic link.
         let descriptor = path.withCString {
             Darwin.open(
                 $0,

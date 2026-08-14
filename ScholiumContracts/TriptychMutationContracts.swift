@@ -185,7 +185,6 @@ public struct TriptychMoveCommit: Hashable, Sendable {
     public let committedRevision: DocumentFingerprint
     public let graphGeneration: Int
     public let rewrites: [CoordinatedIncomingLinkRewriteResult]
-    public let cleanupWarnings: [SaveCleanupWarning]
 
     public init(
         movedNote: VaultQualifiedNoteID,
@@ -193,8 +192,7 @@ public struct TriptychMoveCommit: Hashable, Sendable {
         previousRevision: DocumentFingerprint,
         committedRevision: DocumentFingerprint,
         graphGeneration: Int,
-        rewrites: [CoordinatedIncomingLinkRewriteResult],
-        cleanupWarnings: [SaveCleanupWarning] = []
+        rewrites: [CoordinatedIncomingLinkRewriteResult]
     ) {
         self.movedNote = movedNote
         self.destination = destination
@@ -202,7 +200,6 @@ public struct TriptychMoveCommit: Hashable, Sendable {
         self.committedRevision = committedRevision
         self.graphGeneration = graphGeneration
         self.rewrites = rewrites
-        self.cleanupWarnings = cleanupWarnings
     }
 }
 

@@ -209,7 +209,6 @@ private let connectionScrollTopID = "scholium.connect.top"
 struct ConnectionsInspectorView: View {
     let context: RelationshipInspectorContext
 
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
     @State private var expandedGroups = Set(ConnectionPeerGroup.allCases)
     @State private var direction: ConnectionDirection = .outgoing
 
@@ -237,21 +236,23 @@ struct ConnectionsInspectorView: View {
                         )
                     }
 
-                    Picker("Link Direction", selection: $direction) {
-                        ForEach(ConnectionDirection.allCases) { candidate in
-                            Text(ScholiumL10n.dynamicString(candidate.title))
-                                .tag(candidate)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    ScholiumSegmentedControl(
+                        selection: $direction,
+                        options: ConnectionDirection.allCases.map { candidate in
+                            ScholiumSegmentedControlOption(
+                                candidate,
+                                title: ScholiumL10n.dynamicString(candidate.title)
+                            )
+                        },
+                        label: ScholiumL10n.dynamicString("Link Direction"),
+                        size: .compact,
+                        accessibilityIdentifier: "scholium.connectionDirection"
+                    )
                     .frame(
                         maxWidth: ScholiumMetrics.Apparatus
                             .connectionDirectionControlMaximumWidth
                     )
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityLabel("Link Direction")
-                    .accessibilityIdentifier("scholium.connectionDirection")
 
                     ForEach(ConnectionPeerGroup.allCases, id: \.self) { group in
                         connectionGroup(group, items: projection.groups[group] ?? [])
@@ -310,43 +311,30 @@ struct ConnectionsInspectorView: View {
         itemCount: Int,
         isExpanded: Bool
     ) -> some View {
-        Button {
-            if isExpanded { expandedGroups.remove(group) }
-            else { expandedGroups.insert(group) }
-        } label: {
-            ScholiumApparatusRow(
-                leading: {
-                    Image(systemName: "chevron.right")
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .scholiumForeground(.mutedText)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(
-                            ScholiumMotion.disclosure(reduceMotion: reduceMotion),
-                            value: isExpanded
-                        )
-                        .accessibilityHidden(true)
-                },
-                content: {
-                    Text(group.title(currentRole: projection.currentRole))
-                        .scholiumApparatusHeadingStyle()
-                        .fixedSize(horizontal: false, vertical: true)
-                },
-                trailing: {
-                    Text(itemCount.formatted())
-                        .font(
-                            ScholiumTypography.interface(.small, tabularDigits: true)
-                        )
-                        .scholiumForeground(.secondaryText)
-                }
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        let title = group.title(currentRole: projection.currentRole)
+        return ScholiumDisclosureHeaderButton(
+            isExpanded: isExpanded,
+            accessibilityLabel: Text(title),
+            accessibilityIdentifier: "scholium.connectionGroup.\(group.rawValue)",
+            minimumHeight: ScholiumGrid.Dimension.compactHierarchyRowHeight,
+            action: {
+                if isExpanded { expandedGroups.remove(group) }
+                else { expandedGroups.insert(group) }
+            },
+            label: {
+                Text(title)
+                    .scholiumApparatusHeadingStyle()
+                    .fixedSize(horizontal: false, vertical: true)
+            },
+            trailing: {
+                Text(itemCount.formatted())
+                    .font(
+                        ScholiumTypography.interface(.small, tabularDigits: true)
+                    )
+                    .scholiumForeground(.secondaryText)
+            }
+        )
         .scholiumSurface(.apparatus)
-        .frame(minHeight: ScholiumGrid.Dimension.compactHierarchyRowHeight)
-        .accessibilityLabel(group.title(currentRole: projection.currentRole))
-        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-        .accessibilityIdentifier("scholium.connectionGroup.\(group.rawValue)")
     }
 
     private func relationshipClusters(

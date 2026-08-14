@@ -1426,13 +1426,9 @@ extension WorkspaceHandle {
         } else if current.fingerprint == write.expectedRevision {
             try await repository.abandonInterruptedSaveRecovery(sourceRecovery!)
         } else {
-            let commit = try await repository.restoreInterruptedSaveRecovery(
+            _ = try await repository.restoreInterruptedSaveRecovery(
                 sourceRecovery!
             )
-            guard commit.recoveryCleanupWarning == nil,
-                  commit.saveCleanupWarning == nil else {
-                throw ResearchBoundedWriteSetError.recoveryRequired
-            }
         }
         try await services.transactionRecoveryStore.resolve(record)
         return (

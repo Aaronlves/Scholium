@@ -33,7 +33,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(10);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(15);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -41,6 +41,23 @@ describe("editor protocol", () => {
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);
+  });
+  it("accepts only bounded literal document-find requests", () => {
+    const value = {
+      query: "value",
+      replacement: "replacement",
+      caseSensitive: false,
+      wholeWord: true,
+      action: "replaceAll",
+    };
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "documentFind", value},
+    })).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "documentFind", value: {...value, action: "regex"}},
+    })).toBe(false);
   });
   it("accepts only ordered UTF-16 source ranges", () => {
     expect(isEditorRequest({

@@ -17,11 +17,12 @@ Architecture, Status, and evidence rather than copying them into another pack.
 **Usable Core** covers:
 
 - Bootstrap success/failure, registration/restoration, and independent windows;
-- create/open/read/edit/save, versioned Note Search, and explicit cross-vault
-  navigation;
+- create/open/read/edit/save, Document Find/Replace, versioned Note Search, and
+  explicit cross-vault navigation;
 - Edit/Source fidelity, formatting, Review passage Comment, and Markdown
-  Callout authoring,
-  and mode changes;
+  Callout authoring, Wikilink aliases, Analysis Reference completion, image
+  attachment Import/Index, Document statistics, native spelling routes, and mode
+  changes;
 - categorized About/Properties, optional top-level Research fields, Settle,
   and simplified Actions;
 - native split resize/visibility, Document tabs without shell reconstruction,
@@ -29,7 +30,7 @@ Architecture, Status, and evidence rather than copying them into another pack.
 - external edits, conflicts, stable rename, Set Aside, Trash, checkpoints,
   restore/interruption, and cross-window dirty-peer behavior.
 
-Later Beta/1.0 additionally cover applicable Research Actions, Skill
+Beta/1.0 additionally cover applicable Research Actions, Skill
 registrations, exact-Wikilink Practices, Action Profiles and Result Contracts,
 Triptych collaboration, process-bound pairing/Sessions, Bounded Write Sets,
 Research Context, portable Research Records and Researcher Evaluation,
@@ -93,24 +94,47 @@ Performance evidence has three noninterchangeable classes:
 Only the third class can satisfy G7. Debug builds, unit tests, internal timers,
 human stopwatches, and partial memory series are never substitutes.
 
-The candidate Beta thresholds remain subject to explicit release-owner
-approval. Once approved, use nearest-rank p95 over exactly 30 valid samples
-after five excluded warm-ups:
+The release owner has approved these non-Editor Beta limits. Use nearest-rank
+p95 over exactly 30 valid samples after five excluded warm-ups:
 
-| Interaction | Candidate p95 limit |
+| Interaction | p95 limit |
 | --- | ---: |
 | Warm library launch to a usable note list | `< 1,000 ms` |
-| Indexed Note Search query to complete visible results | `< 100 ms` |
+| Indexed Note Search query to complete visible results | `< 200 ms` |
 | Warm Review-note activation to interactive rendering | `< 300 ms` |
-| Application-cold 5,000-word Review-note activation to interactive rendering | `< 1,000 ms` |
+| First-use 5,000-word Review activation from a no-document Workspace to interactive rendering | `< 1,000 ms` |
 
-Editor candidate limits remain separately unapproved: `< 100 ms` for key to
-first painted edit, visible Edit/Source transition, and cached preview;
-`< 300 ms` for warm Edit activation; `< 1,000 ms` for application-cold
-5,000-word Edit activation; and `< 5 ms` for one visible-range projection.
-Continuous scrolling must add no uninterrupted Editor task longer than one
-display refresh interval, and neither native nor Web UI work may add an
-uninterrupted task over 100 ms.
+The first-use Review series launches to the no-document Workspace, makes the
+frozen 5,000-word RDF-1 target visibly reachable without selecting it, then
+measures from the researcher's selection action to interactive Review. It has
+no every-sample maximum.
+
+The release owner has approved these Editor Beta limits. Each p95 uses the same
+five-warm-up/30-retained-sample nearest-rank protocol; every retained sample
+must also remain below its maximum:
+
+| Editor interaction | p95 limit | Every-sample maximum |
+| --- | ---: | ---: |
+| Committed key input to first painted edit | `< 100 ms` | `< 200 ms` |
+| Edit/Source request to visible and accessible requested mode | `< 100 ms` | `< 200 ms` |
+| Cached-preview request to visible and accessible preview | `< 100 ms` | `< 200 ms` |
+| Warm Edit activation to visible, accessible, interactive editor | `< 200 ms` | `< 300 ms` |
+| First-use Edit request after cold-launch first Review to visible, accessible, interactive editor | `< 750 ms` | `< 1,000 ms` |
+| One visible-range projection | `< 3 ms` | `< 5 ms` |
+
+The first-use Edit series cold-launches to the no-document Workspace, selects
+the frozen 5,000-word RDF-1 Note through Library, and waits for interactive
+Review as unmeasured setup. It then measures the researcher's Edit request to
+the first visible, accessible, interactive editor. It does not auto-open a
+document or include process launch in the Edit interaction.
+
+An interaction that cannot complete within 100 ms must expose nonblocking,
+accessible progress feedback within `< 100 ms`; feedback does not convert an
+unfinished interaction into a latency pass. During input and scrolling,
+Editor work on the main thread targets `< 5 ms` per callback and must yield
+before one display-refresh interval. A product-gate report that omits any
+approved Editor latency metric, its every-sample maximum, correctness, or the
+retained-memory series fails closed.
 
 RDF-1 is the frozen deterministic 800-Note fixture for Library, Search, Review,
 Edit, large CJK source, folders, links, and malformed-frontmatter coverage.
@@ -127,6 +151,12 @@ record covers macOS, hardware, power mode, display, foreground applications,
 window size, accessibility settings, and logging. Each metric uses isolated
 Application Support, preferences, bookmarks, and derived state.
 
+Compile and sign the UI measurement driver in a separate preparation phase
+from that same clean exact tag, record its commit, tag, Xcode build, and
+architecture, then let the reference machine cool before measurement. The
+product-gate phase must verify and reuse that prepared driver and must not
+compile code after cooling is confirmed.
+
 The measured boundary is user-visible and accessible: a selectable, unblocked
 library; complete visible Search results; or rendered, interactive Review/Edit
 content after native publication and editor-renderer readiness. Semantic
@@ -138,40 +168,51 @@ mismatch, incomplete samples, or unapproved thresholds fail closed.
 
 The 100,000-CJK fixture must remain editable at beginning, middle, and end with
 working undo, mode switching, and byte-exact save. After 50 note/mode switches,
-retained editor-renderer counts and total app-plus-renderer memory must converge
-rather than grow monotonically. These are correctness and stability conditions,
-not percentile results. Current measurements and remaining activation work
-belong only in [Implementation Status](../IMPLEMENTATION_STATUS.md).
+retained editor-renderer counts must remain stable and total
+app-plus-renderer memory must demonstrate bounded, decelerating tail growth:
+the median of the final 10 samples may exceed the preceding 10-sample median
+by no more than 5%, and the final 10-sample span must be smaller than the
+preceding 10-sample span unless both spans are zero. Requiring one incidental
+RSS decrease is not convergence; a monotone sequence can converge, while a
+constant leak fails the deceleration
+condition. These are correctness and stability conditions, not percentile
+results. Current measurements and remaining activation work belong only in
+[Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 ### 21.5 Source-first Beta distribution
 
-The first external release identity is:
+Each source-first Beta release requires:
 
-- tag and public label `v0.1.0-beta.1`;
-- app marketing version `0.1.0`, build `1`, minimum macOS 26;
-- exact tagged source under `GPL-3.0-or-later`; and
-- an optional architecture-labelled, ad-hoc-signed Scholium app ZIP plus its
-  SHA-256 checksum on the same release page.
+- a public prerelease tag and label that exactly match package provenance;
+- app marketing version `0.1.0`, its recorded build number, and minimum macOS
+  26;
+- the corresponding exact tagged source under `GPL-3.0-or-later`; and
+- an architecture-labelled, ad-hoc-signed Scholium App ZIP and an independent
+  `Scholium-CLI-macos.zip`, each with a SHA-256 checksum on the same release
+  page and exact architecture recorded in provenance.
 
-The app bundle includes its version-matched `scholium` helper. There is no
-separate public CLI asset. The release also includes applicable license texts
-and notices, identifies verified architectures without overstating universal
-support, and contains no real vault, Application Support state, bookmark,
-credential, index, absolute private path, or research content.
+The App bundle contains no CLI executable and has no CLI installation access.
+The CLI ZIP contains the version-matched `scholium` executable, its adjacent
+release resource bundle, and one user-local installer. Both artifacts include
+applicable license texts and notices, identify verified architectures without
+overstating universal support, and contain no real vault, Application Support
+state, bookmark, credential, index, absolute private path, or research content.
 
 Ad-hoc signing is not Developer ID signing, notarization, publisher
 verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub
 download through **System Settings → Privacy & Security → Open Anyway** after
 the first launch attempt. Documentation must never advise disabling Gatekeeper,
-recursively removing quarantine, or installing an untrusted root certificate.
+recursively removing quarantine, mutating quarantine from an installer or
+Agent prompt, or installing an untrusted root certificate.
 
 Before tagging or upload, freeze a reviewed clean commit; audit the tree and
 history for private material; run complete repository verification with
-disposable fixtures; package with the clean-source requirement; inspect app and
-helper metadata, resources, entitlements, architecture, signatures, icon, ZIP,
-checksum, and licenses; pass G7; and exercise the exact expanded ZIP in a clean
-macOS account through first launch, Triptych setup, read/edit/save, Search,
-conflict/recovery, Inspector/Action, restoration, and unavailable integrations.
+disposable fixtures; package with the clean-source requirement; inspect App and
+standalone CLI metadata, resources, entitlements, architecture, signatures,
+icon, ZIPs, checksums, and licenses; pass G7; and exercise both exact expanded
+ZIPs in a clean macOS account through first launch, Triptych setup, independent
+CLI installation, read/edit/save, Search, conflict/recovery, Inspector/Action,
+restoration, and unavailable integrations.
 No real research vault may be opened during release verification.
 
 Developer ID signing, notarization, and stapling are optional future channel
@@ -198,8 +239,7 @@ rules and decision chronology. Implementation and acceptance gaps belong in
 Only questions that can still change the target remain here:
 
 - promote or revise provisional interface metrics only after the complete
-  adaptation and human visual-acceptance matrix; and
-- approve the packaged G7 p95 thresholds before they become release limits.
+  adaptation and human visual-acceptance matrix.
 
 Resolving an item updates its owning canonical section and removes the item
 from this list in the same patch.

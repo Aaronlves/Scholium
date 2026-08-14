@@ -23,54 +23,29 @@ complete deletion.
 
 `VaultMutationCoordinator` performs short `NSFileCoordinator` accessors around
 that descriptor authority. Create and move use exclusive rename. Existing-file
-update holds the original descriptor, writes and synchronizes a same-directory
-candidate, copies metadata with descriptor APIs, preserves the candidate
-content mtime, rechecks the exact preimage, uses displaced-byte-preserving swap,
-and verifies bytes, mode, owner/group, ACL/xattrs, flags, birth metadata, and
-the parent-directory synchronization boundary. Ordinary xattrs and Finder tags
-remain byte-exact. For the LaunchServices-managed `com.apple.quarantine`
-attribute only, verification accepts either one valid sandbox-added envelope
-on a previously unquarantined staging inode or a valid system normalization
-when its security flags and event identifier are unchanged and its timestamp
-does not move backward. Scholium retains an added quarantine envelope; a
-missing attribute, malformed value, other added attribute, or quarantine
-authority change still fails closed.
-Unsupported swap fails closed.
-Any post-swap identity, readback, metadata, permission, or synchronization
-uncertainty attempts a guarded swap-back, keeps observed staging evidence, and
-returns `commitUncertain`; Application persists a `.noteSave` Transaction
-Recovery record and never reports Saved.
+update retains the original descriptor, writes and synchronizes one
+same-directory candidate, rechecks the exact expected bytes and parent
+identity, and delegates the atomic replacement to
+`FileManager.replaceItemAt` inside a `.forReplacing` coordinated accessor. The
+default replacement options let the system preserve or adjust standard
+filesystem metadata; Scholium neither copies nor compares the complete
+mode/owner/ACL/xattr/flags/birth-metadata envelope. It then performs canonical
+no-follow exact-byte readback and rechecks the current parent. Only that source
+authority determines whether the save committed.
 
 Before canonical replacement can occur, the coordinator records the relative
-path, staging name, candidate and preimage device/inode, and both exact
-fingerprints; `VaultRepository` durably persists that task before the final
-authorization check and swap. If authorization or swap aborts before canonical
-replacement, that task is also the sole authority for removing only the
-unchanged staged candidate; failed cleanup retains the task for reopening
-instead of abandoning an unauthorized hidden file. Once swap, readback,
-metadata, and parent synchronization prove the candidate canonical, the
-displaced preimage becomes cleanup-only state. The already-persisted task therefore survives process
-termination or later repository readback and history failure without creating
-a second cleanup authority. The recovery ledger then atomically isolates the exact
-staging inode inside a mode-0700 same-parent cleanup directory, revalidates its
-bytes, and rechecks the isolated path identity immediately before removal. A
-cleanup failure therefore keeps the source commit successful and returns a
-`SaveResult.cleanupWarning`; it does not become `Save Failed` or
-authorize a repeated source mutation.
-Composite Note and Folder moves retain every cleanup warning produced by their
-incoming-link rewrites in the move commit and application outcome.
-Startup retries only after the candidate remains canonical and the recorded
-task still matches the transaction. A missing staging and isolated path
-completes the task; an inode, byte, type, containment, access, or task-binding
-mismatch retains it and publishes a health diagnostic without deleting a
-replacement observed at either checked path, including a staging name that
-reappears during cleanup. The public macOS APIs still do
-not provide descriptor-bound unlink; the final checked-name removal is bounded
-by the random restricted directory rather than claimed as protection against
-an adversarial same-UID process racing the last system call.
+path and exact expected/candidate fingerprints in a schema-versioned
+machine-local transaction; `VaultRepository` durably persists both byte sets
+before the final authorization check. A failure before replacement leaves
+canonical source unchanged and removes the same-directory candidate on a
+best-effort basis. A failure after replacement never initiates a compensating
+source write: exact canonical readback may prove the candidate committed, while
+any other state retains the transaction for recovery and reports no Saved
+outcome. Successful readback makes transaction removal redundant, invisible
+housekeeping. There is no cleanup-warning contract or fourth Document outcome.
 
-The retained pre-swap candidate contributes a workspace health issue and a
-vault-qualified entry in the existing Recovery sheet. Core no-follow reads
+The retained interrupted-save candidate contributes a workspace health issue
+and a vault-qualified entry in the existing Recovery sheet. Core no-follow reads
 revalidate its manifest plus expected/candidate bytes; read-only source, Copy,
 and Finder reveal grant no write authority. Restore carries the displayed
 vault, path, revisions, creation identity, and retained reason back to Core,
@@ -95,7 +70,10 @@ the descriptor boundary. A canonical
 candidate proves the interrupted save committed and completes its mutation
 journal; a still-canonical expected revision retains the distinct candidate
 bytes and publishes a health diagnostic instead of deleting the only
-structured copy of interrupted editor work.
+structured copy of interrupted editor work. Current mutation manifests require
+their exact schema version. Unsupported pre-use machine data remains
+byte-unchanged and nonauthorizing; no legacy save schema is migrated or
+interpreted.
 
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
 bounded machine-local JSON state. It owns no-follow containment, byte limits,
@@ -126,10 +104,11 @@ Workspace, Search, Link Graph, and Research Actions. App's independent
 `PropertyPresentation` adds label, help, one group, and control style only.
 The app's Properties feature composes those owners without creating another
 schema: Settings edits exact role seeds, per-source-type Agent requirements,
-About order, and structured-edit allowlists as one revision-bound candidate;
-the Note sheet lists every present safe top-level value and offers only
-applicable canonical missing keys. Unsupported shapes remain read-only with a
-Source route. Creator controls produce the canonical ordered mapping sequence.
+and About order as one revision-bound candidate. One shared Analysis/Topic/Work
+Note sheet lists every present safe top-level value and offers only applicable
+canonical missing keys. Editability is derived from the current exact source
+and targeted planner, never Settings. Unsupported shapes remain read-only with
+a Source route. Creator controls produce the canonical ordered mapping sequence.
 Quoted strings remain structured-editable. Any YAML scalar resolved as a
 timestamp, whether implicit or explicitly tagged and regardless of its field,
 is shown as its exact authored token and remains Source-only, so no text value
@@ -203,3 +182,14 @@ Analysis Note UUID. Reads return an exact-byte revision; set and clear require
 that revision, atomically replace, and readback. `WorkspaceSnapshotBuilder`
 joins bindings only through resolved portable identities. The catalog and
 Overview never derive a binding from frontmatter or bibliographic similarity.
+
+`TriptychControlStore` also owns one strict JSON record per attachment under
+`.scholium/attachments/v1/`. Each record contains a stable attachment UUID,
+vault UUID, and typed location: Import uses a vault-relative path; Index uses a
+standardized absolute path. The record contains neither bytes nor access
+credentials. `VaultAttachmentStore` alone performs no-follow image validation,
+descriptor-relative exact Import creation, and fingerprint-bound rollback.
+`IndexedAttachmentAccessStore` retains read-only security-scoped bookmarks in
+Triptych-keyed Application Support. It requires the bookmark to resolve to the
+authored absolute path and reports unavailable rather than following a moved
+file or rewriting source.

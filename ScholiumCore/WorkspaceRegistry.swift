@@ -196,10 +196,16 @@ public actor WorkspaceRegistry {
             output: output
         )
         try validateIndependentRoots(canonical)
+        try validateIndependentIdentities(canonical)
 
         var registry = try writableRegistry()
         let triptychID = requestedID ?? output.identityID
         try validatePortableControlDirectory(
+            selections: canonical,
+            triptychID: triptychID,
+            registry: registry
+        )
+        try validateRegistrationConflicts(
             selections: canonical,
             triptychID: triptychID,
             registry: registry
@@ -211,20 +217,7 @@ public actor WorkspaceRegistry {
 
         var registered: [WorkspaceVaultSlot: RegisteredVault] = [:]
         for selection in canonical {
-            if let conflicting = registry.vaults.first(where: {
-                $0.id == selection.identityID && $0.canonicalPath != selection.url.path
-            }) {
-                throw WorkspaceRegistryError.vaultIdentityMismatch(
-                    selection.identityID,
-                    conflicting.canonicalPath,
-                    selection.url.path
-                )
-            }
-
             let samePath = registry.vaults.first(where: { $0.canonicalPath == selection.url.path })
-            if let samePath, samePath.id != selection.identityID {
-                replaceVaultID(samePath.id, with: selection.identityID, in: &registry.triptychs)
-            }
             let registeredAt = samePath?.registeredAt
                 ?? registry.vaults.first(where: { $0.id == selection.identityID })?.registeredAt
                 ?? Date()
@@ -274,6 +267,51 @@ public actor WorkspaceRegistry {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return result
+    }
+
+    /// Validates one complete selection without changing the machine-local
+    /// registry. Application calls this before bookmarks or identities are
+    /// recorded so a rejected selection has no partial registration effects.
+    public func preflightTriptychConfiguration(
+        id requestedID: UUID,
+        paperAnalysis: (url: URL, identityID: UUID),
+        topicKnowledge: (url: URL, identityID: UUID),
+        output: (url: URL, identityID: UUID)
+    ) throws {
+        let selections = try canonicalSelections(
+            paperAnalysis: paperAnalysis,
+            topicKnowledge: topicKnowledge,
+            output: output
+        )
+        try validateIndependentRoots(selections)
+        try validateIndependentIdentities(selections)
+        let registry = try load()
+        try validatePortableControlDirectory(
+            selections: selections,
+            triptychID: requestedID,
+            registry: registry
+        )
+        try validateRegistrationConflicts(
+            selections: selections,
+            triptychID: requestedID,
+            registry: registry
+        )
+    }
+
+    /// Validates only directory existence and separation. Application calls
+    /// this before planning identities so an obvious duplicate or nested
+    /// selection receives the directory error without any registry mutation.
+    public func preflightIndependentVaultRoots(
+        paperAnalysisURL: URL,
+        topicKnowledgeURL: URL,
+        outputURL: URL
+    ) throws {
+        let selections = try canonicalSelections(
+            paperAnalysis: (paperAnalysisURL, UUID()),
+            topicKnowledge: (topicKnowledgeURL, UUID()),
+            output: (outputURL, UUID())
+        )
+        try validateIndependentRoots(selections)
     }
 
     public func allTriptychs() throws -> [TriptychAssignment] {
@@ -411,6 +449,15 @@ public actor WorkspaceRegistry {
         }
     }
 
+    private func validateIndependentIdentities(
+        _ selections: [CanonicalSelection]
+    ) throws {
+        var seen: Set<UUID> = []
+        for selection in selections where !seen.insert(selection.identityID).inserted {
+            throw WorkspaceRegistryError.duplicateVaultIdentity(selection.identityID)
+        }
+    }
+
     private func validatePortableControlDirectory(
         selections: [CanonicalSelection],
         triptychID: UUID,
@@ -434,6 +481,48 @@ public actor WorkspaceRegistry {
                 .standardizedFileURL.path
             if existingControlPath == selectedControlPath {
                 throw WorkspaceRegistryError.triptychControlDirectoryInUse(selectedControlPath)
+            }
+        }
+    }
+
+    private func validateRegistrationConflicts(
+        selections: [CanonicalSelection],
+        triptychID: UUID,
+        registry: RegistryFile
+    ) throws {
+        let previousVaultIDs = registry.triptychs
+            .first(where: { $0.id == triptychID })
+            .map { triptych in
+                Set(WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) })
+            } ?? []
+
+        for selection in selections {
+            if let conflicting = registry.vaults.first(where: {
+                $0.id == selection.identityID && $0.canonicalPath != selection.url.path
+            }), !previousVaultIDs.contains(selection.identityID) {
+                throw WorkspaceRegistryError.vaultIdentityMismatch(
+                    selection.identityID,
+                    conflicting.canonicalPath,
+                    selection.url.path
+                )
+            }
+            if let samePath = registry.vaults.first(where: {
+                $0.canonicalPath == selection.url.path
+            }) {
+                guard samePath.id == selection.identityID else {
+                    throw WorkspaceRegistryError.vaultIdentityMismatch(
+                        selection.identityID,
+                        samePath.canonicalPath,
+                        selection.url.path
+                    )
+                }
+                guard samePath.role == selection.slot.vaultRole else {
+                    throw WorkspaceRegistryError.vaultRoleMismatch(
+                        selection.identityID,
+                        samePath.role,
+                        selection.slot.vaultRole
+                    )
+                }
             }
         }
     }
@@ -580,24 +669,6 @@ public actor WorkspaceRegistry {
             let nameOrder = $0.name.localizedStandardCompare($1.name)
             if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
             return $0.id.uuidString < $1.id.uuidString
-        }
-    }
-
-    private func replaceVaultID(
-        _ oldID: UUID,
-        with newID: UUID,
-        in triptychs: inout [ScholiumTriptych]
-    ) {
-        for index in triptychs.indices {
-            if triptychs[index].paperAnalysisVaultID == oldID {
-                triptychs[index].paperAnalysisVaultID = newID
-            }
-            if triptychs[index].topicKnowledgeVaultID == oldID {
-                triptychs[index].topicKnowledgeVaultID = newID
-            }
-            if triptychs[index].outputVaultID == oldID {
-                triptychs[index].outputVaultID = newID
-            }
         }
     }
 

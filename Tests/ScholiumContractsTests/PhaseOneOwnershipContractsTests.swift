@@ -9,15 +9,44 @@ struct PhaseOneOwnershipContractsTests {
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchAuthenticatedRunContext.self,
-                from: Data("{\"schema_version\":4}".utf8)
+                from: Data("{\"schema_version\":5}".utf8)
             )
         }
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchAuthenticatedRunContext.self,
                 from: Data(
-                    "{\"schema_version\":5,\"blanket_write\":true}".utf8
+                    "{\"schema_version\":6,\"blanket_write\":true}".utf8
                 )
+            )
+        }
+    }
+
+    @Test("The Zotero adapter is strict instruction data without authority fields")
+    func zoteroAdapterContract() throws {
+        let adapter = try ResearchZoteroIntegrationAdapter(
+            skillMarkdown: "# Zotero Integration\n\nUse the bounded snapshot.\n",
+            capabilityContractMarkdown: "# Capability Contract\n\nStatus is read-only.\n"
+        )
+        let encoder = JSONEncoder()
+        let encoded = try encoder.encode(adapter)
+        let encodedText = String(decoding: encoded, as: UTF8.self)
+        #expect(!encodedText.contains("capabilities"))
+        #expect(!encodedText.contains("permission"))
+        #expect(!encodedText.contains("write_authority"))
+        #expect(try JSONDecoder().decode(
+            ResearchZoteroIntegrationAdapter.self,
+            from: encoded
+        ) == adapter)
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object["library_write"] = true
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchZoteroIntegrationAdapter.self,
+                from: JSONSerialization.data(withJSONObject: object)
             )
         }
     }

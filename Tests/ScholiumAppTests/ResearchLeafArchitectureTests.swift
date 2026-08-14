@@ -17,6 +17,7 @@ struct ResearchLeafArchitectureTests {
             "Scholium/Views/Note/CritiqueProvenanceView.swift",
             "Scholium/Views/Sidebar/ResearchInspectorContentView.swift",
             "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift",
+            "Scholium/Views/Sidebar/ZoteroBindingPanelView.swift",
         ]
         let sources = try Dictionary(uniqueKeysWithValues: relativePaths.map { path in
             (
@@ -77,10 +78,23 @@ struct ResearchLeafArchitectureTests {
         #expect(overview.contains(
             "let openZoteroItem: (AnalysisZoteroBinding) async -> Void"
         ))
+        #expect(overview.contains(
+            "let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void"
+        ))
         #expect(overview.contains("Open in Zotero"))
+        #expect(overview.contains("Link Zotero Item…"))
+        #expect(overview.contains("Manage Zotero Link…"))
         #expect(!overview.contains("resolveSource:"))
         #expect(!overview.contains("openItem:"))
         #expect(!overview.contains("confirmItem:"))
+
+        let bindingPanel = try #require(sources[relativePaths[5]])
+        #expect(bindingPanel.contains("struct ZoteroBindingPanelView: View"))
+        #expect(bindingPanel.contains("let search: (String) async throws"))
+        #expect(bindingPanel.contains("let setBinding: (ZoteroSearchHit)"))
+        #expect(bindingPanel.contains("let clearBinding: () async throws"))
+        #expect(bindingPanel.contains("Clear Zotero Link?"))
+        #expect(!bindingPanel.contains("ZoteroItemMetadata?"))
     }
 
     @Test("Relationships navigation emits a typed document route with its source locator")

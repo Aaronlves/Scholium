@@ -9,6 +9,302 @@ import Testing
 @Suite("Frontend architecture")
 @MainActor
 struct FrontendArchitectureTests {
+    @Test("Transient workspace notices are owned by the Document split region")
+    func transientNoticesFollowDocumentRegionWidth() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let documentStart = try #require(source.range(of: "} document: {"))
+        let apparatusStart = try #require(
+            source.range(
+                of: "} apparatus: {",
+                range: documentStart.upperBound..<source.endIndex
+            )
+        )
+        let documentRegion = source[
+            documentStart.lowerBound..<apparatusStart.lowerBound
+        ]
+
+        #expect(documentRegion.contains("ToastView(toast: toast)"))
+        #expect(documentRegion.contains("refreshStatusNotice"))
+        #expect(
+            source.components(separatedBy: "ToastView(toast: toast)").count
+                == 2
+        )
+        #expect(
+            source.components(
+                separatedBy: ".accessibilityIdentifier(\"scholium.refreshStatus\")"
+            ).count == 2
+        )
+    }
+
+    @Test("Research Action availability reconverges after progressive loading")
+    func researchActionsRefreshWhenWorkspaceBecomesComplete() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains(
+            "let snapshotPhase: WorkspaceSnapshotPhase?"
+        ))
+        #expect(source.contains(
+            "snapshotPhase: workspaceProjectionController.snapshotPhase"
+        ))
+        #expect(source.contains(
+            ".task(id: researchActionAvailabilityRefreshIdentity)"
+        ))
+        #expect(!source.contains(
+            ".task(id: appState.currentResearchFunctionTarget)"
+        ))
+    }
+
+    @Test("Packaged performance prepares its UI driver before the cooled gate")
+    func performanceGateUsesPreparedDriver() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let runner = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/run-performance-benchmarks.sh"
+            ),
+            encoding: .utf8
+        )
+        let preparer = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/prepare-performance-driver.sh"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(runner.contains(
+            "A product gate requires --prepared-driver from prepare-performance-driver.sh."
+        ))
+        #expect(runner.contains("if [[ -z \"${PREPARED_DRIVER}\" ]]; then"))
+        #expect(runner.contains("scholium-performance-driver-v1"))
+        #expect(runner.contains("plutil -extract git_commit"))
+        #expect(runner.contains("plutil -extract xcode_build"))
+        #expect(preparer.contains("build-for-testing"))
+        #expect(preparer.contains("source_clean -bool true"))
+        #expect(preparer.contains("Cool the reference machine before invoking"))
+        #expect(runner.contains("testRDF1HundredThousandCJKCorrectness"))
+        #expect(runner.contains("SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH"))
+    }
+
+    @Test("Fixture launch opens the requested Vault once before its document")
+    func fixtureLaunchDoesNotReopenConfiguredVault() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded() async"))
+        let fixtureEnd = try #require(source.range(
+            of: "await refreshRegisteredVaults()\n        await refreshWorkspaceAssignment()",
+            range: restore.upperBound..<source.endIndex
+        ))
+        let fixtureBranch = source[restore.lowerBound..<fixtureEnd.lowerBound]
+
+        #expect(fixtureBranch.contains("try await configureTriptych("))
+        #expect(fixtureBranch.contains("await refreshRegisteredVaults()"))
+        #expect(fixtureBranch.contains("shellState.selectWorkspace(requestedInitialWorkspaceSlot)"))
+        #expect(fixtureBranch.contains("try await openRegisteredVault(openingVault)"))
+        #expect(fixtureBranch.contains("openRequestedTestNoteIfNeeded()"))
+        #expect(!fixtureBranch.contains("try await openWorkspaceVault("))
+    }
+
+    @Test("Initial Vault publication reuses its runtime-bound accepted snapshot")
+    func initialVaultPublicationReusesAcceptedSnapshot() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let loadVault = try #require(source.range(of: "private func loadVault("))
+        let restore = try #require(source.range(
+            of: "func restoreWorkspaceIfNeeded() async",
+            range: loadVault.upperBound..<source.endIndex
+        ))
+        let initialPublication = source[loadVault.lowerBound..<restore.lowerBound]
+
+        #expect(initialPublication.contains("workspaceProjectionController.activate("))
+        #expect(initialPublication.contains("applyWorkspaceProjectionCommit(commit)"))
+        #expect(initialPublication.contains("workspaceStore.snapshot("))
+        #expect(initialPublication.contains("for: capabilities.runtimeIdentity"))
+        #expect(initialPublication.contains("markVaultConfigurationReady()"))
+        #expect(initialPublication.contains("markWarmLibraryProjectionReady()"))
+        #expect(initialPublication.contains("isLoading = false"))
+        #expect(!initialPublication.contains("documentController.workspaceSnapshots()"))
+        #expect(!initialPublication.contains("researchController.researchSnapshot()"))
+        #expect(!initialPublication.contains("await refreshWindowProjection()"))
+
+        let adoptionStart = try #require(source.range(
+            of: "private func adoptWorkspaceActivation("
+        ))
+        let adoptionEnd = try #require(source.range(
+            of: "var currentWorkspaceSlot:",
+            range: adoptionStart.upperBound..<source.endIndex
+        ))
+        let adoption = source[adoptionStart.lowerBound..<adoptionEnd.lowerBound]
+        #expect(adoption.contains(
+            "if currentRegisteredVault != nil {\n"
+                + "            PerformanceProbe.shared.markWarmLibraryProjectionReady()"
+        ))
+
+        let storeSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let acceptedSnapshot = try #require(storeSource.range(
+            of: "func snapshot(\n        for runtimeIdentity: TriptychRuntimeIdentity"
+        ))
+        let registration = try #require(storeSource.range(
+            of: "func registerEditorFlush(",
+            range: acceptedSnapshot.upperBound..<storeSource.endIndex
+        ))
+        let implementation = storeSource[acceptedSnapshot.lowerBound..<registration.lowerBound]
+        #expect(implementation.contains("workspaceActivations[runtimeIdentity.triptychID]"))
+        #expect(implementation.contains("== runtimeIdentity"))
+    }
+
+    @Test("Retained-memory driver synchronizes on app records without observer artifacts")
+    func retainedMemoryDriverAvoidsRepeatedAccessibilitySnapshots() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumPerformanceUITests.swift"
+            ),
+            encoding: .utf8
+        )
+        let start = try #require(source.range(of: "func testRDF1EditorRetainedMemory()"))
+        let end = try #require(source.range(
+            of: "func testRDF1HundredThousandCJKCorrectness()",
+            range: start.upperBound..<source.endIndex
+        ))
+        let journey = source[start.lowerBound..<end.lowerBound]
+
+        #expect(journey.contains("lineCount(at: progressPath) == transition + 1"))
+        #expect(!journey.contains("XCUIScreen.main.screenshot()"))
+        #expect(!journey.contains("Thread.sleep"))
+    }
+
+    @Test("Performance environment records accessibility settings as booleans")
+    func performanceEnvironmentHasNoUnrecordedAccessibilitySentinel() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/capture-performance-environment.py"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(source.contains("process_is_running(\"VoiceOver\")"))
+        #expect(source.contains("FullKeyboardAccessEnabled"))
+        #expect(source.contains("AppleKeyboardUIMode"))
+        #expect(!source.contains("voiceOverOnOffKey"))
+        #expect(!source.contains("not_recorded_by_automation"))
+    }
+
+    @Test("Packaged Search performance uses the product global Search shortcut")
+    func performanceSearchDriverUsesGlobalSearchShortcut() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let driver = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumPerformanceUITests.swift"
+            ),
+            encoding: .utf8
+        )
+        let app = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(driver.contains(
+            "application.typeKey(\"f\", modifierFlags: [.command, .shift])"
+        ))
+        #expect(app.contains(".keyboardShortcut(\"f\", modifiers: [.command, .shift])"))
+    }
+
+    @Test("Packaged editor performance actions remain reachable only in an explicit run")
+    func packagedEditorPerformanceActionsHaveReleaseReachability() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let tokenOwner = try #require(
+            source.range(of: "private var performanceModeNotificationTokens")
+        )
+        let registrationEnd = try #require(
+            source.range(
+                of: "if let saved = UserDefaults.standard.string",
+                range: tokenOwner.lowerBound..<source.endIndex
+            )
+        )
+        let registration = source[
+            tokenOwner.lowerBound..<registrationEnd.lowerBound
+        ]
+        let requestOwner = try #require(
+            source.range(of: "private func requestPerformanceEditorMode")
+        )
+        let requestEnd = try #require(
+            source.range(
+                of: "func openResearchAction(",
+                range: requestOwner.lowerBound..<source.endIndex
+            )
+        )
+        let requests = source[requestOwner.lowerBound..<requestEnd.lowerBound]
+
+        #expect(registration.contains("PerformanceProbe.shared.isEnabled"))
+        #expect(registration.contains(
+            "--scholium-performance-editor-mode-notifications"
+        ))
+        #expect(!registration.contains("#if DEBUG"))
+        #expect(!registration.contains("Bundle.main.bundleIdentifier"))
+        #expect(requests.contains("PerformanceProbe.shared.isEnabled"))
+        #expect(requests.contains("exercisesLargeCJKCorrectness"))
+        #expect(requests.contains("requestDocumentMode(mode)"))
+        #expect(!requests.contains("#if DEBUG"))
+    }
+
     @Test("EditorHost presentation preserves mounted Read and editor surfaces")
     func editorHostRetainsMountedSurfaces() throws {
         let repository = URL(fileURLWithPath: #filePath)
@@ -92,6 +388,40 @@ struct FrontendArchitectureTests {
         let readyEnd = try #require(readySuffix.range(of: "private func validEnvelope"))
         let readyBody = readySuffix[..<readyEnd.lowerBound]
         #expect(!readyBody.contains("loadDocument("))
+    }
+
+    @Test("Read readiness preserves the native per-document accessibility identity")
+    func readReadinessKeepsDocumentIdentityQueryable() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let noteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let webViewSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        let uiSupport = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumUITests+Support.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!noteSource.contains("scholium.readProjection."))
+        #expect(webViewSource.contains(
+            #"scholium.renderedDocument.\(expectedDocumentID)"#
+        ))
+        #expect(uiSupport.contains("identifier BEGINSWITH %@"))
+        #expect(uiSupport.contains("scholium.renderedDocument.loading"))
+        #expect(uiSupport.contains("scholium.renderedDocument.failed"))
     }
 
     @Test(
@@ -638,7 +968,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(!splitSource.contains("libraryItem.canCollapseFromWindowResize = false"))
         #expect(
-            splitSource.contains(
+            !splitSource.contains(
                 "inspectorWithViewController: apparatusBackgroundController"
             ))
         #expect(!workspaceSplitSource.contains("preferredThicknessFraction"))
@@ -653,12 +983,17 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("libraryItem.maximumThickness"))
         #expect(!splitSource.contains("libraryItem.automaticMaximumThickness"))
         #expect(!splitSource.contains("documentItem.minimumThickness"))
-        #expect(!splitSource.contains("apparatusItem.minimumThickness"))
+        #expect(
+            splitSource.contains(
+                "ScholiumMetrics.Apparatus.minimumReadableWidth"
+            ))
         #expect(
             splitSource.contains(
                 "apparatusItem.maximumThickness = NSSplitViewItem.unspecifiedDimension"
             ))
-        #expect(splitSource.contains("toggleInspector(nil)"))
+        #expect(splitSource.contains("apparatusItem.canCollapse = false"))
+        #expect(splitSource.contains("apparatusItem.isCollapsed = !visible"))
+        #expect(!workspaceSplitSource.contains("toggleInspector(nil)"))
         #expect(!splitSource.contains("effectiveRect proposedEffectiveRect"))
         #expect(!splitSource.contains("dividerHitExpansion"))
         #expect(!splitSource.contains("ScholiumInteractiveSplitView"))
@@ -671,9 +1006,15 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("sizingOptions = [.minSize]"))
         #expect(!splitSource.contains("scholium.library.preferred-width"))
         #expect(splitSource.contains("ScholiumFirstApparatusWidthOffer"))
-        #expect(splitSource.contains("prepareForReveal(animated:"))
-        #expect(splitSource.contains("revealAnimationDidFinish()"))
-        #expect(splitSource.contains("firstApparatusWidthOffer.offerIfReady()"))
+        #expect(splitSource.contains("firstApparatusWidthOffer.offerAfterReveal()"))
+        #expect(
+            splitSource.components(
+                separatedBy: "firstApparatusWidthOffer.offerAfterReveal()"
+            ).count == 3
+        )
+        #expect(!splitSource.contains("prepareForReveal(animated:"))
+        #expect(!splitSource.contains("revealAnimationDidFinish()"))
+        #expect(!splitSource.contains("firstApparatusWidthOffer.offerIfReady()"))
         #expect(splitSource.contains("ScholiumMetrics.Apparatus.firstRevealWidth"))
         #expect(!splitSource.contains("splitView.adjustSubviews"))
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
@@ -801,11 +1142,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
-        #expect(
-            apparatusComponentsSource.contains(
-                ".scholiumActivationFocus(focusedMode, equals: mode)"
-            ))
-        #expect(apparatusComponentsSource.contains(".onMoveCommand(perform: move)"))
+        #expect(apparatusComponentsSource.contains("ScholiumSegmentedControl("))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
@@ -1073,8 +1410,8 @@ struct FrontendArchitectureTests {
         #expect(depthCounts == [1, 0, 0])
     }
 
-    @Test("Research Inspector keeps AppKit behavior after removing its fixed maximum")
-    func researchInspectorKeepsAppKitBehavior() throws {
+    @Test("Research Inspector separates divider resizing from explicit visibility")
+    func researchInspectorSeparatesResizeAndVisibility() throws {
         let controller = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: false,
@@ -1094,9 +1431,14 @@ struct FrontendArchitectureTests {
         _ = controller.view
         let item = try #require(controller.splitViewItems.last)
 
-        #expect(item.behavior == .inspector)
-        #expect(item.canCollapse)
+        #expect(item.behavior == .default)
+        #expect(!item.canCollapse)
+        #expect(!item.canCollapseFromWindowResize)
         #expect(item.isCollapsed)
+        #expect(
+            item.minimumThickness
+                == ScholiumMetrics.Apparatus.minimumReadableWidth
+        )
         #expect(item.maximumThickness == NSSplitViewItem.unspecifiedDimension)
         #expect(
             item.collapseBehavior
@@ -1133,6 +1475,12 @@ struct FrontendArchitectureTests {
             designSystemSource.contains(
                 "ScholiumContentControlButtonFeedbackModifier"
             ))
+        #expect(designSystemSource.contains("let tracksHover: Bool"))
+        #expect(
+            designSystemSource.contains(
+                "let effectiveIsHovering = tracksHover && isHovering"
+            ))
+        #expect(designSystemSource.contains("if tracksHover {"))
         #expect(designSystemSource.contains("ScholiumPointerInteractionReader"))
         #expect(designSystemSource.contains("ScholiumPointerTrackingView"))
         #expect(designSystemSource.contains("override func hitTest"))
@@ -1157,6 +1505,13 @@ struct FrontendArchitectureTests {
                 isFocused: true,
                 increasedContrast: false
             ) == 0.42)
+        #expect(
+            ScholiumContentInteractionSurface.opacity(
+                isHovering: false,
+                isFocused: false,
+                isPressed: true,
+                increasedContrast: false
+            ) == 0.05)
         #expect(
             ScholiumContentInteractionSurface.opacity(
                 isHovering: true,
@@ -1693,7 +2048,6 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains(".onMoveCommand(perform: move)"))
         #expect(componentsSource.contains("case .up:"))
         #expect(componentsSource.contains("case .down:"))
-        #expect(!componentsSource.contains("@Environment(\\.layoutDirection)"))
         #expect(!sidebarSource.contains("private var scopeIndex"))
         #expect(!sidebarSource.contains(".font(.system(size: 12"))
     }
@@ -1809,12 +2163,24 @@ struct FrontendArchitectureTests {
             ))
         let treeRowEnd = try #require(
             treeRowsSource.range(
-                of: "private struct SidebarNavigationButtonStyle",
+                of: "struct SidebarNoteRow: View",
                 range: treeRowStart.upperBound..<treeRowsSource.endIndex
             ))
-        let treeRowSource = treeRowsSource[
-            treeRowStart.lowerBound..<treeRowEnd.lowerBound
-        ]
+        let treeRowSource = String(
+            treeRowsSource[treeRowStart.lowerBound..<treeRowEnd.lowerBound]
+        )
+        #expect(
+            treeRowSource.components(
+                separatedBy: "ScholiumContentControlButtonStyle("
+            ).count == 3
+        )
+        #expect(
+            treeRowSource.components(
+                separatedBy: "tracksHover: false"
+            ).count == 3
+        )
+        #expect(treeRowSource.contains("in: Rectangle()"))
+        #expect(!treeRowsSource.contains("SidebarNavigationButtonStyle"))
         #expect(treeRowSource.contains("surface: .contextMenu"))
         #expect(treeRowSource.contains("surface: .accessibility"))
         #expect(treeRowSource.contains("noteCommandButton(command"))
@@ -2133,11 +2499,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Apparatus.relationClusterSpacing == 12)
         #expect(ScholiumMetrics.Apparatus.relationRowMinimumHeight == 28)
         #expect(ScholiumMetrics.Apparatus.actionRowMinimumHeight == 44)
-        #expect(
-            ScholiumMetrics.Apparatus.modeColumnSpacing
-                == ScholiumGrid.Spacing.labelAccessoryGap
-        )
-
         #expect(componentsSource.contains("struct ScholiumApparatusSection"))
         #expect(componentsSource.contains("struct ScholiumApparatusRow"))
         #expect(componentsSource.contains("struct ScholiumApparatusFactGrid"))
@@ -2147,36 +2508,22 @@ struct FrontendArchitectureTests {
         #expect(sharedComponentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(componentsSource.contains("struct ScholiumApparatusSectionHeaderButton"))
         #expect(componentsSource.contains("struct ScholiumInspectorModeIndex"))
-        let modeButtonStart = try #require(
-            componentsSource.range(
-                of: "private struct ScholiumInspectorModeButton"
-            ))
-        let modeButtonEnd = try #require(
-            componentsSource.range(
-                of: "/// One Inspector section",
-                range: modeButtonStart.upperBound..<componentsSource.endIndex
-            ))
-        let modeButton = componentsSource[
-            modeButtonStart.lowerBound..<modeButtonEnd.lowerBound
-        ]
-        #expect(!modeButton.contains("ScholiumColorRole.raisedSurfaceBackground"))
-        #expect(modeButton.contains("ScholiumShape.editorialControlCornerRadius"))
-        #expect(modeButton.contains("ScholiumContentControlButtonStyle("))
-        #expect(modeButton.contains(".scholiumContentControlInk()"))
-        #expect(modeButton.contains("Button(action: select)"))
+        #expect(componentsSource.contains("ScholiumSegmentedControl("))
+        #expect(sharedComponentsSource.contains("struct ScholiumSegmentedControl<Value: Hashable>"))
+        #expect(sharedComponentsSource.contains("ScholiumShape.segmentedControlCornerRadius"))
+        #expect(sharedComponentsSource.contains("ScholiumColorRole.surfaceBackground.color"))
         #expect(
-            modeButton.contains(
-                ".scholiumActivationFocus(focusedMode, equals: mode)"
-            ))
-        #expect(!modeButton.contains("ScholiumControlActivation"))
-        #expect(!modeButton.contains(".onHover"))
-        #expect(!modeButton.contains(".buttonStyle(.plain)"))
-        #expect(!modeButton.contains("ScholiumEditorialIndexUnderline"))
-        #expect(!modeButton.contains("ScholiumColorRole.accent"))
-        #expect(!modeButton.contains("Capsule"))
+            sharedComponentsSource.contains(
+                "ScholiumContentInteractionSurface.selectionColor("
+            )
+        )
+        #expect(!sharedComponentsSource.contains("private var selectedSurfaceColor"))
+        #expect(sharedComponentsSource.contains(".scholiumElevation(.floatingControl)"))
+        #expect(sharedComponentsSource.contains(".scholiumActivationFocus(focusedValue, equals: value)"))
+        #expect(sharedComponentsSource.contains(".onMoveCommand(perform: move)"))
+        #expect(sharedComponentsSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
+        #expect(!sharedComponentsSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(!componentsSource.contains("struct ScholiumConnectionGlyph"))
-        #expect(!componentsSource.contains("select(mode)\n        focusedMode = mode"))
-        #expect(componentsSource.contains("select(nextMode)\n        focusedMode = nextMode"))
         #expect(componentsSource.contains("ViewThatFits(in: .horizontal)"))
         #expect(componentsSource.contains("ForEach(visibleFacts)"))
         #expect(
@@ -2214,6 +2561,12 @@ struct FrontendArchitectureTests {
             ))
         #expect(researchSource.contains("aboutSection"))
         #expect(researchSource.contains("aboutGroups"))
+        #expect(researchSource.contains("ScholiumPropertyGroup("))
+        #expect(!researchSource.contains("Text(group.group.label)"))
+        #expect(sharedComponentsSource.contains("struct ScholiumPropertyGroup"))
+        #expect(sharedComponentsSource.contains("semanticGroupSeparation"))
+        #expect(sharedComponentsSource.contains("isVisuallyRevealed"))
+        #expect(sharedComponentsSource.contains(".opacity(isVisuallyRevealed || isFocused ? 1 : 0)"))
         #expect(researchSource.contains("ScholiumApparatusFactGrid(facts: group.facts)"))
         #expect(researchSource.contains("ResearchProjectionFreshnessView("))
         #expect(researchSource.contains("ScholiumApparatusStateView("))
@@ -2225,11 +2578,13 @@ struct FrontendArchitectureTests {
             connectionsSource.contains(
                 "Image(systemName: cluster.presentation.systemSymbol.systemName)"
             ))
-        #expect(connectionsSource.contains("Image(systemName: \"chevron.right\")"))
+        #expect(componentsSource.contains("struct ScholiumDisclosureHeaderButton"))
+        #expect(componentsSource.contains("Image(systemName: \"chevron.right\")"))
         #expect(
-            connectionsSource.contains(
+            componentsSource.contains(
                 "ScholiumMotion.disclosure(reduceMotion: reduceMotion)"
             ))
+        #expect(connectionsSource.contains("ScholiumDisclosureHeaderButton("))
         #expect(
             connectionsSource.contains(
                 "ScholiumTypography.interface(.body)"
@@ -2276,6 +2631,11 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains(".accessibilityIdentifier(\"scholium.about\")"))
         #expect(researchSource.contains("title: Text(\"Open in Zotero\")"))
         #expect(researchSource.contains("systemImage: \"arrow.up.forward.app\""))
+        #expect(researchSource.contains("\"Link Zotero Item…\""))
+        #expect(researchSource.contains("\"Manage Zotero Link…\""))
+        #expect(researchSource.contains(
+            ".accessibilityIdentifier(\"scholium.researchOverview.manageZoteroBinding\")"
+        ))
         #expect(
             researchSource.contains(
                 ".accessibilityIdentifier(\"scholium.researchOverview.openInZotero\")"
@@ -2293,8 +2653,8 @@ struct FrontendArchitectureTests {
         #expect(!connectionsSource.contains("ScholiumColorRole.surfaceBackground.color"))
         #expect(connectionsSource.contains("ConnectionRelationshipCluster"))
         #expect(connectionsSource.contains("relationGlyphColumnWidth"))
-        #expect(connectionsSource.contains("Picker(\"Link Direction\""))
-        #expect(connectionsSource.contains(".pickerStyle(.segmented)"))
+        #expect(connectionsSource.contains("ScholiumSegmentedControl("))
+        #expect(!connectionsSource.contains(".pickerStyle(.segmented)"))
         #expect(
             connectionsSource.contains(
                 ".connectionDirectionControlMaximumWidth"
@@ -2331,6 +2691,55 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(appSource.contains("case .researchConfigurationInvalidated = event"))
         #expect(appSource.contains("refreshResearchActionAvailability()"))
+    }
+
+    @Test("Every segmented local choice uses the shared Scholium presentation")
+    func segmentedControlPresentationOwner() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let consumerPaths = [
+            "Scholium/UI/Components/ScholiumApparatusComponents.swift",
+            "Scholium/Views/Backlinks/ConnectionsInspectorView.swift",
+            "Scholium/Views/WorkspaceSettingsView.swift",
+            "Scholium/Views/SearchWorkspaceView.swift",
+            "Scholium/Views/Frontmatter/FrontmatterEditorView.swift",
+            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift",
+        ]
+        let consumerSources = try consumerPaths.map { path in
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
+        }
+        let sharedSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for source in consumerSources {
+            #expect(source.contains("ScholiumSegmentedControl("))
+            #expect(!source.contains(".pickerStyle(.segmented)"))
+            #expect(!source.contains("NSSegmentedControl("))
+        }
+        #expect(
+            consumerSources.reduce(0) {
+                $0 + $1.components(separatedBy: "ScholiumSegmentedControl(").count - 1
+            } == consumerPaths.count
+        )
+        #expect(sharedSource.contains("ScholiumColorRole.surfaceBackground.color"))
+        #expect(
+            sharedSource.contains(
+                "ScholiumContentInteractionSurface.selectionColor("
+            )
+        )
+        #expect(!sharedSource.contains("private var selectedSurfaceColor"))
+        #expect(sharedSource.contains("ScholiumShape.segmentedControlCornerRadius"))
+        #expect(sharedSource.contains("ScholiumShape.editorialControlCornerRadius"))
+        #expect(sharedSource.contains(".accessibilityValue(Text(verbatim: selectedTitle))"))
     }
 
     @Test("The Library plane is opaque, Liquid Glass is absent, and no-note is restrained")
@@ -2967,11 +3376,9 @@ struct FrontendArchitectureTests {
             ))
         #expect(browser.contains("sharedBackgroundVisibility(.hidden)"))
         #expect(browser.contains("ResearchRecordsViewIndex"))
-        #expect(browser.contains("NSSegmentedControl("))
-        #expect(browser.contains("control.segmentStyle = .capsule"))
-        #expect(browser.contains("control.borderShape = .capsule"))
-        #expect(browser.contains("control.selectedSegmentBezelColor"))
-        #expect(browser.contains("ScholiumColorRole.raisedSurfaceBackground.nsColor"))
+        #expect(browser.contains("ScholiumSegmentedControl("))
+        #expect(!browser.contains("NSSegmentedControl("))
+        #expect(!browser.contains("control.selectedSegmentBezelColor"))
         #expect(!browser.contains("ResearchRecordsViewIndexButton"))
         #expect(!browser.contains("ResearchRecordsViewIndexUnderline"))
         #expect(!browser.contains("ResearchRecordsRouteToolbarTitle(title: \"Record\")"))
@@ -3159,7 +3566,7 @@ struct FrontendArchitectureTests {
                 "sidebarWithViewController: libraryBackgroundController"
             ))
         #expect(
-            splitSource.contains(
+            !splitSource.contains(
                 "inspectorWithViewController: apparatusBackgroundController"
             ))
         #expect(splitSource.contains("splitControllerDidAttach(self)"))
@@ -3570,6 +3977,7 @@ struct FrontendArchitectureTests {
                 == Set([
                     .inlineStatus,
                     .editorialControl,
+                    .segmentedControl,
                     .workspaceNavigation,
                     .editorialPanel,
                     .loadingSurface,
@@ -3733,7 +4141,7 @@ struct FrontendArchitectureTests {
         }
 
         #expect(matchCount(preferredTargetFrame, in: search) == 3)
-        #expect(matchCount(preferredTargetFrame, in: frontmatter) == 3)
+        #expect(matchCount(preferredTargetFrame, in: frontmatter) == 2)
         #expect(
             search.contains(
                 ".frame(height: ScholiumGrid.Dimension.regionHeaderHeight)"
@@ -4380,7 +4788,7 @@ struct FrontendArchitectureTests {
             to: "private func coordinatedMoveFolder("
         )
         #expect(documentMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
-        #expect(documentMove.contains("cleanupWarnings: commit.cleanupWarnings"))
+        #expect(!documentMove.contains("cleanupWarnings"))
         #expect(!documentMove.contains("await refreshCoordinator.request(refreshPayload)"))
 
         let folderMove = try sourceSection(
@@ -4389,7 +4797,7 @@ struct FrontendArchitectureTests {
             to: "private func workspaceFolderMovePlan("
         )
         #expect(folderMove.contains("scheduleCommittedMutationRefresh(refreshPayload)"))
-        #expect(folderMove.contains("cleanupWarnings: commit.cleanupWarnings"))
+        #expect(!folderMove.contains("cleanupWarnings"))
         #expect(!folderMove.contains("try await refresh("))
 
         let folderPlan = try sourceSection(
@@ -4435,12 +4843,12 @@ struct FrontendArchitectureTests {
             from: "documentController.bind(",
             to: "researchController.bind("
         )
-        #expect(documentBinding.contains("result.cleanupWarning"))
-        #expect(documentBinding.contains("cleanupWarnings: [warning]"))
-        #expect(appSource.contains("private func localizedCleanupWarnings("))
-        #expect(appSource.contains("case .displacedSourceCopy:"))
-        #expect(appSource.contains("case .transactionRecord:"))
-        #expect(!appSource.contains("cleanupWarnings.map(\\.message)"))
+        #expect(documentBinding.contains("replaceSavedDocument(result.document)"))
+        #expect(!documentBinding.contains("cleanupWarning"))
+        #expect(!appSource.contains("private func localizedCleanupWarnings("))
+        #expect(!appSource.contains("case .displacedSourceCopy:"))
+        #expect(!appSource.contains("case .transactionRecord:"))
+        #expect(!appSource.contains("cleanupWarnings"))
 
         let toolbarSource = try String(
             contentsOf: repository.appendingPathComponent(
@@ -5374,7 +5782,8 @@ struct FrontendArchitectureTests {
 
         #expect(ScholiumMathAssets.runtimeJavaScript.contains("scholiumMath"))
         #expect(css.contains(".katex"))
-        #expect(css.contains("data:font/woff2;base64,"))
+        #expect(css.contains("scholium-font://bundled/KaTeX_"))
+        #expect(!css.contains("data:font/woff2;base64,"))
         #expect(!css.contains("url(fonts/"))
         #expect(css.contains(".scholium-math-display"))
         #expect(
@@ -5386,6 +5795,70 @@ struct FrontendArchitectureTests {
         #expect(css.contains("content: \"(\" counter(scholium-equation) \")\""))
         #expect(css.contains(".scholium-math-display .katex { font-style: italic; }"))
         #expect(editorHTML.contains(css))
+
+        let plainReadHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<p>Ordinary prose</p>"
+        )
+        let mathReadHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: #"<span class="scholium-math scholium-math-inline" data-math-source="eA==" data-math-kind="inline"></span>"#
+        )
+        #expect(!plainReadHTML.contains(css))
+        #expect(mathReadHTML.contains(css))
+    }
+
+    @Test("Read and Editor fonts use one allowlisted offline WebKit resource route")
+    func sharedOfflineFontResources() throws {
+        let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
+        let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<p>Ordinary prose</p>"
+        )
+        let regularURL = try #require(URL(
+            string: ScholiumWebFontResources.url(for: "Alegreya-Regular.ttf")
+        ))
+        let regular = try #require(ScholiumWebFontResources.resource(for: regularURL))
+
+        #expect(regular.mimeType == "font/ttf")
+        #expect(!regular.data.isEmpty)
+        #expect(ScholiumWebFonts.css.contains(regularURL.absoluteString))
+        #expect(!ScholiumWebFonts.css.contains("data:font/ttf;base64,"))
+        #expect(editorHTML.contains("font-src scholium-font: data:"))
+        #expect(readHTML.contains("font-src scholium-font: data:"))
+        #expect(ScholiumWebFontResources.resource(
+            for: URL(string: "scholium-font://bundled/../../Private.md")!
+        ) == nil)
+        #expect(ScholiumWebFontResources.resource(
+            for: URL(string: "https://example.com/Alegreya-Regular.ttf")!
+        ) == nil)
+    }
+
+    @Test("Initial WebKit prewarm is nonpersistent, source-free, and bounded")
+    func initialWebKitPrewarmIsBounded() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Styling/ScholiumWebKitRuntime.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains("WKWebsiteDataStore.nonPersistent()"))
+        #expect(source.contains("default-src 'none'"))
+        #expect(source.contains("font-src scholium-font:"))
+        #expect(source.contains("ScholiumWebFonts.css"))
+        #expect(source.contains("Task.sleep(for: .seconds(5))"))
+        #expect(source.contains("func takeReadWebView() -> WKWebView?"))
+        #expect(!source.contains("WKProcessPool"))
+        #expect(!source.contains("URLSession"))
+
+        let readSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(readSource.contains("takeReadWebView()"))
     }
 
     @Test("Review and Edit share one offline fail-closed Mermaid runtime")
@@ -5660,7 +6133,11 @@ struct FrontendArchitectureTests {
             userCSS: ""
         )
 
-        #expect(readHTML.contains("Return saves · Shift-Return adds a line · Escape cancels"))
+        #expect(
+            readBridge.contains(
+                "localized('Return saves · Shift-Return adds a line · Escape cancels')"
+            )
+        )
         #expect(readBridge.contains("commentSubmitted"))
         #expect(readBridge.contains("Comment for"))
         #expect(readHTML.contains(#"class="scholium-selection-actions""#))
@@ -5669,7 +6146,8 @@ struct FrontendArchitectureTests {
             readHTML.contains(
                 #"id="comment-selection" class="scholium-selection-control""#
             ))
-        #expect(readHTML.contains(#"class="scholium-selection-label">Comment"#))
+        #expect(readHTML.contains(#"class="scholium-selection-label"></span>"#))
+        #expect(readBridge.contains("textContent = localized('Comment')"))
         #expect(readBridge.contains("scholium-selection-keyboard-focus"))
         #expect(readBridge.contains("ResolveCommentSubmission"))
         #expect(readBridge.contains("Your Comment is still here"))
@@ -5714,7 +6192,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             selectionActionsSource.contains(
-                #"addMenuItem(moreMenu, "Comment", "markdownComment", "", false, "eye-slash")"#
+                #"addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash")"#
             ))
         #expect(selectionActionsSource.contains("systemSymbolElement"))
         #expect(selectionActionsSource.contains("synchronizeKeyboardFocusFeedback"))
@@ -5764,7 +6242,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(!editorSource.contains("commentSubmitted"))
         #expect(!editorSource.contains("showCommentComposer"))
-        #expect(selectionActionsSource.contains(#"wikiLabel.textContent = "Wiki""#))
+        #expect(selectionActionsSource.contains(#"wikiLabel.textContent = localized("Wiki")"#))
         #expect(!editorMenuSource.contains("Comment on Selection"))
         #expect(!editorMenuSource.contains("commentSubmitted"))
         #expect(!editorMenuSource.contains("onRequestComment"))

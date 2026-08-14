@@ -1,11 +1,17 @@
 import Foundation
 import WebKit
 
+enum EditorLinkCompletionKind: String, Codable, Hashable, Sendable {
+    case wikilink
+    case analysisReference
+}
+
 struct EditorLinkCompletion: Codable, Hashable, Sendable {
     let label: String
     let insertion: String
     let detail: String
     let path: String
+    let displayText: String?
     let isAmbiguous: Bool
 }
 
@@ -37,10 +43,14 @@ struct EditorBridgeMessage: Codable {
     let target: String?
     let requestID: String?
     let query: String?
+    let completionKind: EditorLinkCompletionKind?
+    let action: DocumentFindShortcut?
     let context: MarkdownEditorContext?
     let clientX: Double?
     let clientY: Double?
     let mode: MarkdownEditorMode?
+    let metric: String?
+    let durationMilliseconds: Double?
 }
 
 @MainActor

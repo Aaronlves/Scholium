@@ -115,6 +115,28 @@ extension WorkspaceRuntime {
         )
     }
 
+    public func writeResearchZoteroBinding(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        intent: ResearchZoteroBindingWriteIntent
+    ) async throws -> ResearchZoteroBindingWriteResult {
+        guard let sessions = researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let authenticated = try await sessions.authenticate(
+            credential,
+            run: run,
+            requiresWrite: true,
+            claimCoreProtocol: false
+        )
+        let handle = try await openWorkspace(id: authenticated.triptychID)
+        return try await handle.writeResearchZoteroBinding(
+            credential: credential,
+            run: run,
+            intent: intent
+        )
+    }
+
     public func resolveResearchWriteConflict(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
@@ -159,6 +181,19 @@ extension ResearchOperations {
     ) async throws -> ResearchDocumentWriteResult {
         let handle = try await reference.requireHandle()
         return try await handle.writeResearchDocument(
+            credential: credential,
+            run: run,
+            intent: intent
+        )
+    }
+
+    public func writeAgentZoteroBinding(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        intent: ResearchZoteroBindingWriteIntent
+    ) async throws -> ResearchZoteroBindingWriteResult {
+        let handle = try await reference.requireHandle()
+        return try await handle.writeResearchZoteroBinding(
             credential: credential,
             run: run,
             intent: intent
@@ -524,7 +559,7 @@ extension WorkspaceHandle {
                 ($0.key, try Self.frontmatterEditValue($0.value))
             })
             changeSet = .frontmatter(edits)
-        case .createNote:
+        case .createNote, .setZoteroBinding, .clearZoteroBinding:
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         let candidate = try current.applying(changeSet, timestampKey: nil)
@@ -676,10 +711,11 @@ extension WorkspaceHandle {
                     state: .committed,
                     observedRevision: outcome.committedValue.document.fingerprint,
                     warning: boundedResearchDocumentWriteWarning(
-                        outcome.cleanupWarnings.map { Optional($0.message) } + [
-                        outcome.derivedRefreshWarning,
-                        outcome.identityRecoveryWarning,
-                    ]),
+                        [
+                            outcome.derivedRefreshWarning,
+                            outcome.identityRecoveryWarning,
+                        ]
+                    ),
                     recoveryRecordID: nil,
                     finishedAt: Date()
                 )
@@ -734,6 +770,236 @@ extension WorkspaceHandle {
         return writeResult(
             completed,
             entry: try requiredEntry(entry.handle, in: execution)
+        )
+    }
+
+    func writeResearchZoteroBinding(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        intent: ResearchZoteroBindingWriteIntent
+    ) async throws -> ResearchZoteroBindingWriteResult {
+        try requireActive()
+        let authenticated = try await authenticateResearchAgent(
+            credential: credential,
+            run: run,
+            requiresWrite: true
+        )
+        var execution = try await services.localResearchExecutionStore.record(
+            id: authenticated.runID
+        )
+        _ = try activeResearchAction(execution)
+        guard var entry = execution.boundedWriteSet.entries.first(where: {
+            $0.role == intent.role && $0.note.relativePath == intent.relativePath
+        }) else {
+            throw ResearchBoundedWriteSetError.targetNotAuthorized
+        }
+        guard entry.role == .analysis,
+              entry.state == .ready,
+              entry.expiresAt > Date(),
+              entry.allowedOperations.contains(intent.operation),
+              intent.operation.isZoteroBindingOperation,
+              let expectedRevision = entry.zoteroBindingsRevision else {
+            if !entry.allowedOperations.contains(intent.operation) {
+                throw ResearchBoundedWriteSetError.operationNotAuthorized
+            }
+            throw ResearchBoundedWriteSetError.staleAuthorization
+        }
+        try await validateCurrentPolicy(
+            for: entry,
+            runID: authenticated.runID,
+            wasUsed: execution.documentWriteRecords.contains {
+                $0.target == entry.handle && $0.state == .committed
+            } || execution.zoteroBindingWriteRecords.contains {
+                $0.target == entry.handle && $0.state == .committed
+            }
+        )
+        let currentDocument = try await exactCurrentDocument(for: entry)
+        guard currentDocument.fingerprint == entry.expectedRevision else {
+            throw ResearchBoundedWriteSetError.staleAuthorization
+        }
+        let intendedBinding: AnalysisZoteroBinding? = switch intent.operation {
+        case .setZoteroBinding:
+            try AnalysisZoteroBinding(
+                noteID: entry.noteID,
+                library: intent.library!,
+                itemKey: intent.itemKey!
+            )
+        case .clearZoteroBinding:
+            nil
+        case .createNote, .modifyMarkdown, .modifyProperties:
+            throw ResearchBoundedWriteSetError.invalidWrite
+        }
+        let requestFingerprint = try Self.fingerprint(intent)
+        let operationID = Self.stableOperationID(
+            material: "\(authenticated.runID.uuidString.lowercased()):zotero-binding-write:\(intent.requestID.uuidString.lowercased())"
+        )
+        if let existing = execution.zoteroBindingWriteRecords.first(where: {
+            $0.id == operationID
+        }) {
+            return try await reconcileOrReturnZoteroBindingWrite(
+                existing,
+                execution: execution,
+                entry: entry,
+                intent: intent
+            )
+        }
+
+        guard let sessions = services.researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let writeSetRevision = try execution.boundedWriteSet.authorizationRevision()
+        let capability = try await sessions.issueWriteCapability(
+            credential: credential,
+            run: run,
+            writeSetRevision: writeSetRevision,
+            target: entry.handle,
+            expectedRevision: expectedRevision,
+            operationID: operationID
+        )
+        try await sessions.consumeWriteCapability(
+            capability,
+            credential: credential,
+            run: run,
+            writeSetRevision: writeSetRevision,
+            target: entry.handle,
+            expectedRevision: expectedRevision,
+            operationID: operationID
+        )
+        let before = try await services.controlStore.zoteroBindings()
+        let startedAt = Date()
+        let writing = try ResearchZoteroBindingWriteRecord(
+            id: operationID,
+            runID: authenticated.runID,
+            target: entry.handle,
+            operation: intent.operation,
+            requestFingerprint: requestFingerprint,
+            expectedRevision: expectedRevision,
+            intendedBinding: intendedBinding,
+            state: .writing,
+            startedAt: startedAt
+        )
+        _ = try await services.localResearchExecutionStore
+            .beginZoteroBindingWrite(writing)
+
+        let state: ResearchZoteroBindingWriteState
+        let observedRevision: DocumentFingerprint?
+        var warning: String?
+        do {
+            let result: AnalysisZoteroBindingMutationResult
+            if let intendedBinding {
+                result = try await setPortableZoteroBinding(
+                    intendedBinding,
+                    expectedRevision: expectedRevision
+                )
+            } else {
+                result = try await clearPortableZoteroBinding(
+                    noteID: entry.noteID,
+                    expectedRevision: expectedRevision
+                )
+            }
+            observedRevision = result.snapshot.revision
+            warning = result.derivedRefreshWarning
+            state = before.binding(for: entry.noteID) == intendedBinding
+                ? .unchanged
+                : .committed
+        } catch {
+            let observed = try? await services.controlStore.zoteroBindings()
+            observedRevision = observed?.revision
+            warning = error.localizedDescription
+            if observed?.binding(for: entry.noteID) == intendedBinding,
+               observed?.revision != expectedRevision {
+                state = .committed
+            } else if let controlError = error as? TriptychControlError,
+                      case .zoteroBindingsRevisionConflict = controlError {
+                state = .conflict
+            } else if observed?.revision == expectedRevision {
+                state = .abandoned
+            } else {
+                state = .recoveryRequired
+            }
+        }
+        execution = try await services.localResearchExecutionStore
+            .finishZoteroBindingWrite(
+                runID: authenticated.runID,
+                operationID: operationID,
+                state: state,
+                observedRevision: observedRevision,
+                warning: warning,
+                finishedAt: Date()
+            )
+        entry = try requiredEntry(entry.handle, in: execution)
+        guard let completed = execution.zoteroBindingWriteRecords.first(where: {
+            $0.id == operationID
+        }) else {
+            throw ResearchBoundedWriteSetError.invalidWriteRecord
+        }
+        return zoteroBindingWriteResult(completed, entry: entry)
+    }
+
+    private func reconcileOrReturnZoteroBindingWrite(
+        _ write: ResearchZoteroBindingWriteRecord,
+        execution: LocalResearchExecutionRecord,
+        entry: ResearchBoundedWriteSetEntry,
+        intent: ResearchZoteroBindingWriteIntent
+    ) async throws -> ResearchZoteroBindingWriteResult {
+        guard write.requestFingerprint == (try Self.fingerprint(intent)),
+              write.target == entry.handle,
+              write.operation == intent.operation else {
+            throw ResearchBoundedWriteSetError.invalidWriteRecord
+        }
+        guard write.state == .writing else {
+            return zoteroBindingWriteResult(write, entry: entry)
+        }
+        let observed = try await services.controlStore.zoteroBindings()
+        let state: ResearchZoteroBindingWriteState
+        if observed.binding(for: entry.noteID) == write.intendedBinding,
+           observed.revision != write.expectedRevision {
+            state = .committed
+        } else if observed.revision == write.expectedRevision {
+            state = .abandoned
+        } else {
+            state = .recoveryRequired
+        }
+        let updated = try await services.localResearchExecutionStore
+            .finishZoteroBindingWrite(
+                runID: write.runID,
+                operationID: write.id,
+                state: state,
+                observedRevision: observed.revision,
+                warning: state == .recoveryRequired
+                    ? "The portable Zotero binding changed to neither the expected nor intended relationship."
+                    : nil,
+                finishedAt: Date()
+            )
+        guard let completed = updated.zoteroBindingWriteRecords.first(where: {
+            $0.id == write.id
+        }) else {
+            throw ResearchBoundedWriteSetError.invalidWriteRecord
+        }
+        return zoteroBindingWriteResult(
+            completed,
+            entry: try requiredEntry(entry.handle, in: updated)
+        )
+    }
+
+    private func zoteroBindingWriteResult(
+        _ write: ResearchZoteroBindingWriteRecord,
+        entry: ResearchBoundedWriteSetEntry
+    ) -> ResearchZoteroBindingWriteResult {
+        let message = switch write.state {
+        case .writing: "The Zotero binding write is still in progress."
+        case .committed: "The Zotero binding was updated."
+        case .unchanged: "The Zotero binding already matched the requested relationship."
+        case .conflict: "The Zotero binding changed before the authorized write began."
+        case .recoveryRequired: "The Zotero binding outcome requires recovery."
+        case .abandoned: "The Zotero binding was not changed."
+        }
+        return ResearchZoteroBindingWriteResult(
+            operationID: write.id,
+            state: write.state,
+            target: ResearchBoundedWriteSetViewEntry(entry),
+            message: message,
+            warning: write.warning
         )
     }
 
@@ -827,9 +1093,7 @@ extension WorkspaceHandle {
                outcome.identityRecoveryWarning == nil {
                 state = .committed
                 warning = boundedResearchDocumentWriteWarning(
-                    outcome.cleanupWarnings.map { Optional($0.message) } + [
-                        outcome.derivedRefreshWarning,
-                    ]
+                    [outcome.derivedRefreshWarning]
                 )
             } else {
                 let observation = await observeResearchCreation(entry)
@@ -1243,6 +1507,9 @@ extension WorkspaceHandle {
         let settings = selectors.contains(where: { $0.operations == [.createNote] })
             ? try await services.controlStore.settings()
             : nil
+        let zoteroBindings = selectors.contains(where: {
+            $0.operations.contains(where: \.isZoteroBindingOperation)
+        }) ? try await services.controlStore.zoteroBindings() : nil
         var candidates: [ResearchWriteSetCandidate] = []
         for selector in selectors {
             guard Set(selector.operations).isSubset(of: allowed),
@@ -1336,8 +1603,12 @@ extension WorkspaceHandle {
                     role: selector.role,
                     document: document
                 )
+                let bindingsRevision = mergedOperations.contains(
+                    where: \.isZoteroBindingOperation
+                ) ? zoteroBindings?.revision : nil
                 if Set(mergedOperations) == priorOperations,
-                   Set(mergedKeys) == Set(existingEntry.allowedPropertyKeys) {
+                   Set(mergedKeys) == Set(existingEntry.allowedPropertyKeys),
+                   bindingsRevision == existingEntry.zoteroBindingsRevision {
                     continue
                 }
                 candidates.append(try ResearchWriteSetCandidate(
@@ -1349,7 +1620,8 @@ extension WorkspaceHandle {
                     operations: mergedOperations,
                     expectedRevision: document.fingerprint,
                     propertyKeys: mergedKeys,
-                    propertyWritePlans: propertyWritePlans
+                    propertyWritePlans: propertyWritePlans,
+                    zoteroBindingsRevision: bindingsRevision
                 ))
                 continue
             }
@@ -1368,6 +1640,9 @@ extension WorkspaceHandle {
                 role: selector.role,
                 document: note.document
             )
+            let bindingsRevision = selector.operations.contains(
+                where: \.isZoteroBindingOperation
+            ) ? zoteroBindings?.revision : nil
             candidates.append(try ResearchWriteSetCandidate(
                 handle: ResearchWriteTargetHandle(runID: runID, noteID: noteID),
                 noteID: noteID,
@@ -1380,7 +1655,8 @@ extension WorkspaceHandle {
                 operations: selector.operations,
                 expectedRevision: note.fingerprint,
                 propertyKeys: selector.propertyKeys,
-                propertyWritePlans: propertyWritePlans
+                propertyWritePlans: propertyWritePlans,
+                zoteroBindingsRevision: bindingsRevision
             ))
         }
         return candidates.sorted { $0.handle.rawValue < $1.handle.rawValue }
@@ -1464,6 +1740,12 @@ extension WorkspaceHandle {
                     guard current.fingerprint == expectedRevision else {
                         throw ResearchBoundedWriteSetError.staleAuthorization
                     }
+                    if let expectedBindingsRevision = candidate.zoteroBindingsRevision {
+                        guard try await services.controlStore.zoteroBindings().revision
+                                == expectedBindingsRevision else {
+                            throw ResearchBoundedWriteSetError.staleAuthorization
+                        }
+                    }
                     let checkpoint = try await services.checkpointStore
                         .createResearchContinuation(
                             name: "Before Agent Work",
@@ -1483,6 +1765,7 @@ extension WorkspaceHandle {
                         checkpointID: checkpoint.id,
                         allowedPropertyKeys: candidate.propertyKeys,
                         propertyWritePlans: candidate.propertyWritePlans,
+                        zoteroBindingsRevision: candidate.zoteroBindingsRevision,
                         authorizationBasis: basis,
                         authorizationPolicy: basis == .collaborationPolicy
                             ? request.policy

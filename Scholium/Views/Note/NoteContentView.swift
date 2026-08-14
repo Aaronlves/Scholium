@@ -1,10 +1,17 @@
+import AppKit
 import ScholiumContracts
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum DocumentNotificationKind {
     case success
     case information
     case error
+}
+
+private enum ImageAttachmentSelectionMode: Equatable {
+    case importFile
+    case index
 }
 
 enum DocumentIntegrityPresentation: Hashable {
@@ -180,6 +187,7 @@ struct DocumentFeatureActions {
         DocumentFingerprint,
         String
     ) async throws -> Void
+    let openingDocumentPresentationDidComplete: @MainActor () -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
 
@@ -864,6 +872,7 @@ private struct DiscussionPanel: View {
 }
 
 struct NoteContentView: View {
+    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
     let target: DocumentEditingTarget
@@ -877,6 +886,11 @@ struct NoteContentView: View {
     @State private var isMarkingNoteReviewed = false
     @State private var noteReviewError: String?
     @State private var noteReviewRequiresReload = false
+    @StateObject private var documentFind = DocumentFindPresentationModel()
+    @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
+    @State private var isInsertingImage = false
+    @State private var announcedUnavailableIndexedImages: Set<String> = []
+    @State private var indexedImageAvailabilityGeneration = 0
 
     init(
         controller: DocumentController,
@@ -981,9 +995,18 @@ struct NoteContentView: View {
                 )
             }
 
+            if documentFind.isPresented {
+                DocumentFindBar(
+                    model: documentFind,
+                    allowsReplacement: isEditing
+                )
+            }
+
             documentBodySurface
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+
+            DocumentStatisticsStatus(statistics: currentDocumentStatistics)
         }
         .scholiumSurface(.document)
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
@@ -998,6 +1021,7 @@ struct NoteContentView: View {
             ScholiumFocusedEditorActions(
                 documentID: isEditing ? editorSession.documentID : note.relativePath,
                 isComposing: isEditing && editorSession.context?.composing == true,
+                allowsReplace: isEditing,
                 isAvailable: { command in
                     isEditing && editorSession.context?.availableCommands.contains(command) == true
                 },
@@ -1022,7 +1046,14 @@ struct NoteContentView: View {
                         }
                     }
                 },
-                startComment: requestCommentFromDocument
+                startComment: requestCommentFromDocument,
+                presentFind: documentFind.present,
+                findNext: documentFind.next,
+                findPrevious: documentFind.previous,
+                useSelectionForFind: useSelectionForDocumentFind,
+                announceDocumentStatistics: announceDocumentStatistics,
+                importImage: requestImageImport,
+                indexImage: requestImageIndex
             )
         ))
         .overlay(alignment: .bottom) {
@@ -1101,6 +1132,7 @@ struct NoteContentView: View {
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
             openRequestedDiscussion(state.requestedDiscussionID)
+            updateReviewDocumentStatistics(selection: nil)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -1112,19 +1144,36 @@ struct NoteContentView: View {
         }
         .onChange(of: isEditing) { _, _ in
             documentSession.readSelection = nil
+            updateReviewDocumentStatistics(selection: nil)
+            documentFind.refresh()
             focusEditorIfPresented()
             if !isEditing,
                documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256 {
-                PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+                markReadPresentationReady(documentID: note.relativePath)
             }
         }
-        .onChange(of: editorSession.presentedMode) { _, _ in
+        .onChange(of: editorSession.presentedMode) { _, presentedMode in
             focusEditorIfPresented()
+            if let presentedMode {
+                PerformanceProbe.shared.markEditorModeAcknowledged(
+                    documentID: note.relativePath,
+                    mode: presentedMode
+                )
+                PerformanceProbe.shared.markEditorModeReady(
+                    documentID: note.relativePath,
+                    mode: presentedMode
+                )
+            }
         }
         .onChange(of: editorSession.isLoaded) { _, loaded in
             guard loaded else { return }
             consumePendingSourceLocation()
             focusEditorIfPresented()
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSApplication.didBecomeActiveNotification
+        )) { _ in
+            indexedImageAvailabilityGeneration &+= 1
         }
         .onChange(of: state.noteReviewState) { _, reviewState in
             documentSession.reconcileNoteReviewTask(with: reviewState)
@@ -1136,8 +1185,13 @@ struct NoteContentView: View {
             ).post()
         }
         .task(id: readProjectionTaskIdentity) {
-            failedReadFingerprint = nil
-            documentSession.renderedReadReadyFingerprint = ""
+            PerformanceProbe.shared.markReadTaskStarted(
+                documentID: note.relativePath
+            )
+            documentSession.prepareReadProjection(
+                for: noteFingerprint.sha256
+            )
+            updateReviewDocumentStatistics(selection: nil)
             let source = note.rawContent
             let relativePath = note.relativePath
             let fingerprint = noteFingerprint
@@ -1156,7 +1210,7 @@ struct NoteContentView: View {
                 renderedReadFingerprint = fingerprint.sha256
                 documentSession.renderedReadReadyFingerprint = fingerprint.sha256
                 if !isEditing {
-                    PerformanceProbe.shared.markReadReady(documentID: relativePath)
+                    markReadPresentationReady(documentID: relativePath)
                 }
                 return
             }
@@ -1165,17 +1219,36 @@ struct NoteContentView: View {
                 relativePath: relativePath,
                 source: source,
                 fingerprint: fingerprint,
-                workspaceID: state.currentVaultID
+                workspaceID: state.currentVaultID,
+                semantic: note.workspaceSnapshot?.cachedSemanticDocument
             )
             guard !Task.isCancelled, fingerprint == noteFingerprint else { return }
+            PerformanceProbe.shared.markReadHTMLReady(documentID: relativePath)
             renderedReadHTML = html
             renderedReadFingerprint = fingerprint.sha256
+        }
+        .task(id: indexedImageAvailabilityTaskIdentity) {
+            await checkIndexedImageAvailability()
         }
         .task(id: discussionProjectionPollIdentity) {
             await pollPortableDiscussionProjection()
         }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
+        }
+        .task(id: documentFind.request) {
+            guard let request = documentFind.request else { return }
+            if case .clear = request.operation {
+                editorSession.clearDocumentFind()
+                return
+            }
+            guard isEditing, let query = request.editorQuery else { return }
+            do {
+                let result = try await editorSession.performDocumentFind(query)
+                documentFind.accept(result, for: request.id)
+            } catch {
+                documentFind.fail(error, for: request.id)
+            }
         }
     }
 
@@ -1457,10 +1530,15 @@ struct NoteContentView: View {
         AnyView(MarkdownEditorWebView(
             session: editorSession,
             documentID: editorSession.bridgeDocumentID,
+            performanceDocumentID: note.relativePath,
             source: editingSource,
             mode: documentSession.retainedEditorMode,
             presentationCSS: documentPresentationCSS,
             userCSS: state.livePreviewCSS,
+            requiresMathRuntime: MarkdownEditorWebView.requiresMathRuntime(
+                source: editingSource,
+                linkPreviews: documentSession.previewCatalog?.links ?? []
+            ),
             linkCompletionQuery: queryEditorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             initialScrollFraction: state.initialScrollFraction,
@@ -1479,9 +1557,10 @@ struct NoteContentView: View {
                     )
                 }
             },
-            onRequestSearch: {
-                actions.beginSearch(.findInNote(previousScope: state.ordinarySearchScope))
-            },
+            onRequestFind: handleDocumentFindShortcut,
+            onRequestImportImage: requestImageImport,
+            onRequestIndexImage: requestImageIndex,
+            onPasteImage: handlePastedImage,
             onLinkActivation: { target in
                 if let url = URL(string: target),
                    let scheme = url.scheme?.lowercased(),
@@ -1517,6 +1596,38 @@ struct NoteContentView: View {
             bodyEditor
         }
         .scholiumSurface(.document)
+        .overlay(alignment: .topLeading) {
+            if isEditing,
+               editorSession.isLoaded,
+               let presentedMode = editorSession.presentedMode,
+               presentedMode == documentSession.activeEditorMode {
+                PerformanceReadyBoundary(
+                    generation: "\(noteFingerprint.sha256):\(presentedMode.rawValue)"
+                ) {
+                    PerformanceProbe.shared.markEditorModeVisible(
+                        documentID: note.relativePath,
+                        mode: presentedMode
+                    )
+                    PerformanceProbe.shared.markEditorVisible(
+                        documentID: note.relativePath
+                    )
+                    actions.openingDocumentPresentationDidComplete()
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+            if !isEditing,
+               (note.document.hasExactEmptyBody
+                || documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256) {
+                PerformanceReadyBoundary(
+                    generation: "read:\(noteFingerprint.sha256)"
+                ) {
+                    actions.openingDocumentPresentationDidComplete()
+                }
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            }
+        }
     }
 
     @ViewBuilder
@@ -1624,8 +1735,12 @@ struct NoteContentView: View {
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
+                updateReviewDocumentStatistics(selection: selection)
             },
             selectionSurfaceIsActive: !isEditing,
+            renderingReadinessIsAcknowledged:
+                documentSession.renderedReadReadyFingerprint
+                    == noteFingerprint.sha256,
             onRenderingFailure: { reason in
                 actions.enterCSSSafeMode(reason)
                 failedReadFingerprint = noteFingerprint.sha256
@@ -1637,7 +1752,16 @@ struct NoteContentView: View {
             onRenderingReady: {
                 documentSession.renderedReadReadyFingerprint = noteFingerprint.sha256
                 if !isEditing {
-                    PerformanceProbe.shared.markReadReady(documentID: note.relativePath)
+                    markReadPresentationReady(documentID: note.relativePath)
+                }
+            },
+            findRequest: documentFind.request,
+            onFindResult: { requestID, result in
+                switch result {
+                case .success(let value):
+                    documentFind.accept(value, for: requestID)
+                case .failure(let error):
+                    documentFind.fail(error, for: requestID)
                 }
             },
             observedScrollPosition: documentSession.observedScrollPosition,
@@ -1665,6 +1789,10 @@ struct NoteContentView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)
+    }
+
+    private func markReadPresentationReady(documentID: String) {
+        PerformanceProbe.shared.markReadReady(documentID: documentID)
     }
 
     private var editorScrollAnchor: EditorScrollAnchor? {
@@ -1710,6 +1838,7 @@ struct NoteContentView: View {
 
     @MainActor
     private func queryEditorLinkCompletions(
+        _ kind: EditorLinkCompletionKind,
         _ query: String
     ) async -> [EditorLinkCompletion] {
         guard let currentVaultID = state.currentVaultID,
@@ -1718,6 +1847,7 @@ struct NoteContentView: View {
             return []
         }
         return await controller.editorLinkCompletions(
+            kind: kind,
             matching: query,
             sourcePath: note.relativePath,
             currentVaultID: currentVaultID,
@@ -1728,6 +1858,259 @@ struct NoteContentView: View {
 
     private var editorIsComposing: Bool {
         isEditing && editorSession.context?.composing == true
+    }
+
+    private var currentDocumentStatistics: DocumentStatistics {
+        isEditing
+            ? editorSession.documentStatistics
+            : reviewDocumentStatistics.value
+    }
+
+    private var indexedImageAvailabilityTaskIdentity: String {
+        "\(note.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
+    }
+
+    @MainActor
+    private func checkIndexedImageAvailability() async {
+        let source = isEditing ? editingSource : note.rawContent
+        guard source.contains("](/") else {
+            announcedUnavailableIndexedImages = []
+            return
+        }
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            let unavailable = Set(
+                try await controller.unavailableIndexedImagePaths(in: source)
+            )
+            guard !Task.isCancelled else { return }
+            let newlyUnavailable = unavailable.subtracting(
+                announcedUnavailableIndexedImages
+            )
+            announcedUnavailableIndexedImages = unavailable
+            guard !newlyUnavailable.isEmpty else { return }
+            if newlyUnavailable.count == 1, let path = newlyUnavailable.first {
+                actions.notify(
+                    String(localized: "Indexed attachment unavailable: \(path)"),
+                    .information
+                )
+            } else {
+                actions.notify(
+                    String(localized: "\(newlyUnavailable.count) indexed attachments are unavailable."),
+                    .information
+                )
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            // Catalog and local-access health are reported by their owning
+            // workflows. A reminder check never blocks or mutates the Note.
+        }
+    }
+
+    private func updateReviewDocumentStatistics(
+        selection: MarkdownReviewSelection?
+    ) {
+        reviewDocumentStatistics.update(
+            markdownSource: note.rawContent,
+            revision: noteFingerprint.sha256,
+            selection: selection
+        )
+    }
+
+    private func announceDocumentStatistics() {
+        AccessibilityNotification.Announcement(
+            DocumentStatisticsFormatter.accessibilityValue(currentDocumentStatistics)
+        ).post()
+    }
+
+    private func handleDocumentFindShortcut(_ shortcut: DocumentFindShortcut) {
+        switch shortcut {
+        case .present:
+            documentFind.present()
+        case .next:
+            documentFind.next()
+        case .previous:
+            documentFind.previous()
+        case .useSelection:
+            useSelectionForDocumentFind()
+        }
+    }
+
+    private func useSelectionForDocumentFind() {
+        if isEditing {
+            Task { @MainActor in
+                let selection = try? await editorSession.currentSelection(
+                    for: editorSession.documentID,
+                    in: editingSource
+                )
+                documentFind.useSelection(selection?.excerpt)
+            }
+        } else {
+            documentFind.useSelection(documentSession.readSelection?.excerpt)
+        }
+    }
+
+    private func requestImageImport() {
+        requestImageSelection(.importFile)
+    }
+
+    private func requestImageIndex() {
+        requestImageSelection(.index)
+    }
+
+    private func requestImageSelection(_ mode: ImageAttachmentSelectionMode) {
+        guard isEditing,
+              editorSession.isLoaded,
+              editorSession.context?.composing != true,
+              !isInsertingImage else { return }
+        isInsertingImage = true
+        let expectedDocumentID = editorSession.documentID
+        let expectedPath = note.relativePath
+        let noteID = VaultQualifiedNoteID(
+            vaultID: note.vaultID,
+            relativePath: expectedPath
+        )
+
+        Task { @MainActor in
+            defer {
+                isInsertingImage = false
+                focusEditorIfPresented()
+            }
+            var prepared: PreparedImageAttachment?
+            do {
+                guard let fileSelectionPresenter else {
+                    throw ScholiumFileSelectionError.presenterUnavailable
+                }
+                let request = ScholiumFileSelectionRequest(
+                    title: mode == .importFile
+                        ? String(localized: "Import Image")
+                        : String(localized: "Index Image"),
+                    message: mode == .importFile
+                        ? String(localized: "Choose an image to copy into this Vault's Attachments folder.")
+                        : String(localized: "Choose an image to reference at its absolute path without copying it."),
+                    prompt: mode == .importFile
+                        ? String(localized: "Import")
+                        : String(localized: "Index"),
+                    kind: .files(allowedContentTypes: [.image])
+                )
+                guard let sourceURL = try await fileSelectionPresenter.selectURL(request) else {
+                    return
+                }
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                let preparation = switch mode {
+                case .importFile:
+                    try await controller.importImageAttachment(
+                        at: sourceURL,
+                        for: noteID
+                    )
+                case .index:
+                    try await controller.indexImageAttachment(
+                        at: sourceURL,
+                        for: noteID
+                    )
+                }
+                prepared = preparation
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                try await editorSession.perform(
+                    .insertImage,
+                    argument: preparation.editorArgument
+                )
+                prepared = nil
+                AccessibilityNotification.Announcement(
+                    String(localized: "Image inserted.")
+                ).post()
+            } catch {
+                var message = error.localizedDescription
+                if let prepared {
+                    do {
+                        try await controller.rollbackImageAttachment(prepared)
+                    } catch {
+                        message += " " + String(
+                            localized: "Attachment cleanup needs attention: \(error.localizedDescription)"
+                        )
+                    }
+                }
+                actions.notify(message, .error)
+            }
+        }
+    }
+
+    private func handlePastedImage(_ source: EditorPastedImageSource) -> Bool {
+        guard isEditing,
+              editorSession.isLoaded,
+              editorSession.context?.composing != true,
+              !isInsertingImage else { return false }
+        isInsertingImage = true
+        let expectedDocumentID = editorSession.documentID
+        let expectedPath = note.relativePath
+        let noteID = VaultQualifiedNoteID(
+            vaultID: note.vaultID,
+            relativePath: expectedPath
+        )
+
+        Task { @MainActor in
+            defer {
+                isInsertingImage = false
+                focusEditorIfPresented()
+            }
+            var prepared: PreparedImageAttachment?
+            do {
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                let preparation: PreparedImageAttachment
+                switch source {
+                case .file(let url):
+                    preparation = try await controller.importPastedImageAttachment(
+                        at: url,
+                        for: noteID
+                    )
+                case .data(let data, let preferredFilename):
+                    preparation = try await controller.importPastedImageAttachment(
+                        data: data,
+                        preferredFilename: preferredFilename,
+                        for: noteID
+                    )
+                }
+                prepared = preparation
+                guard isEditing,
+                      note.relativePath == expectedPath,
+                      editorSession.documentID == expectedDocumentID else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                try await editorSession.perform(
+                    .insertImage,
+                    argument: preparation.editorArgument
+                )
+                prepared = nil
+                AccessibilityNotification.Announcement(
+                    String(localized: "Image inserted.")
+                ).post()
+            } catch {
+                var message = error.localizedDescription
+                if let prepared {
+                    do {
+                        try await controller.rollbackImageAttachment(prepared)
+                    } catch {
+                        message += " " + String(
+                            localized: "Attachment cleanup needs attention: \(error.localizedDescription)"
+                        )
+                    }
+                }
+                actions.notify(message, .error)
+            }
+        }
+        return true
     }
 
     private func selectPresentationMode(_ mode: NotePresentationMode) {
@@ -2343,6 +2726,7 @@ private extension CritiqueFindingDispositionDecision {
         viewAgentChanges: {},
         reloadNoteReviewState: {},
         markCurrentNoteReviewed: { _, _, _ in },
+        openingDocumentPresentationDidComplete: {},
         notify: { _, _ in }
     )
     let critiqueProvenanceContext = CritiqueProvenanceContext(

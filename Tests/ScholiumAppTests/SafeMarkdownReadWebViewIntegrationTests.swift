@@ -6,6 +6,36 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Initial Review consumes the bounded source-free prewarmed WebView")
+    func readConsumesPreparedWebView() async throws {
+        let prewarmer = ScholiumWebKitProcessPrewarmer.shared
+        prewarmer.finish()
+        prewarmer.start()
+        let preparedIdentity = try #require(prewarmer.testingPreparedWebViewIdentity)
+        let source = "# Prepared Review\n\nThe exact source remains authoritative.\n"
+        let document = NoteDocument(relativePath: "Prepared.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer {
+            harness.close()
+            prewarmer.finish()
+        }
+
+        try await harness.waitUntilReady()
+
+        #expect(try harness.webViewIdentity() == preparedIdentity)
+        #expect(!prewarmer.isActive)
+        #expect(
+            try harness.webViewAccessibilityIdentifier()
+                == "scholium.renderedDocument.ReadFixture.md"
+        )
+    }
+
     @Test("Review renders inert Mermaid and keeps unsupported source visible")
     func reviewMermaidProjectionFailsClosed() async throws {
         let source = """
@@ -52,11 +82,27 @@ extension MarkdownEditorWebViewIntegrationTests {
               const rendered = await window.scholiumMermaid.render({source});
               if (rendered.ok) staticFamilyCount += 1;
             }
+            const architectureSecurityResult = await window.scholiumMermaid.render({
+              source: [
+                'architecture-beta',
+                '  group mermaidPrototypePollutionMarker(cloud)[Marker]',
+                '  service a(server)[A] in __proto__',
+                '  service b(server)[B] in mermaidPrototypePollutionMarker',
+                '  a:R -- L:b'
+              ].join('\\n')
+            });
+            const prototypePolluted = Object.prototype.hasOwnProperty.call(
+              Object.prototype,
+              'mermaidPrototypePollutionMarker'
+            );
+            delete Object.prototype.mermaidPrototypePollutionMarker;
             const outputs = [...document.querySelectorAll('.scholium-mermaid-output')];
             const shadowRoots = outputs.map(output => output.shadowRoot).filter(Boolean);
             return {
               runtime: window.scholiumMermaid?.version || 0,
               staticFamilyCount,
+              architectureSecuritySettled: typeof architectureSecurityResult?.ok === 'boolean',
+              prototypePolluted,
               rendered: shadowRoots.filter(root => root.querySelector('svg')).length,
               errors: document.querySelectorAll('.scholium-mermaid-error').length,
               links: shadowRoots.reduce((count, root) => count + root.querySelectorAll('a').length, 0),
@@ -69,6 +115,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         ) as? [String: Any])
         #expect(result["runtime"] as? Int == 2)
         #expect(result["staticFamilyCount"] as? Int == 5)
+        #expect(result["architectureSecuritySettled"] as? Bool == true)
+        #expect(result["prototypePolluted"] as? Bool == false)
         #expect(result["rendered"] as? Int == 1)
         #expect(result["errors"] as? Int == 1)
         #expect(result["visibleFallbacks"] as? Int == 1)
@@ -88,6 +136,26 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(html.contains("<style id=\"scholium-presentation-css\"></style>"))
         #expect(html.contains("<style id=\"scholium-user-css\"></style>"))
         #expect(html.contains("script-src 'none'"))
+    }
+
+    @Test("Read loads its packaged prose font through the allowlisted scheme")
+    func readLoadsAllowlistedPackagedFont() async throws {
+        let source = "# Exact\n\nA rendered claim.\n"
+        let document = NoteDocument(relativePath: "Font.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        let loaded = try await harness.callBridgeJavaScript(
+            "return document.fonts.check('16px Alegreya');"
+        ) as? Bool
+        #expect(loaded == true)
     }
 
     @Test("Read treats hostile CSS bytes as inert style text")
@@ -1093,6 +1161,40 @@ extension MarkdownEditorWebViewIntegrationTests {
         harness.retryAfterFinalizationFailure()
         try await harness.waitUntilReady()
         #expect(!harness.hasPendingRestoreRequest)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A finalized retained Read page re-acknowledges reconstructed caller state")
+    func finalizedReadPageReacknowledgesCallerReadiness() async throws {
+        let source = "# Retained Review\n\nThe finalized page stays authoritative.\n"
+        let document = NoteDocument(
+            relativePath: "ReadFixture.md",
+            rawContent: source
+        )
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+
+        try await harness.waitUntilReady()
+        let webViewIdentity = try harness.webViewIdentity()
+        #expect(
+            try harness.webViewAccessibilityIdentifier()
+                == "scholium.renderedDocument.ReadFixture.md"
+        )
+
+        harness.forgetCallerReadiness()
+        try await harness.waitUntilReady()
+
+        #expect(try harness.webViewIdentity() == webViewIdentity)
+        #expect(
+            try harness.webViewAccessibilityIdentifier()
+                == "scholium.renderedDocument.ReadFixture.md"
+        )
         await harness.closeAndDrain()
     }
 
@@ -2302,6 +2404,26 @@ extension MarkdownEditorWebViewIntegrationTests {
             sourceBox.isReady
         }
 
+        func forgetCallerReadiness() {
+            sourceBox.isReady = false
+        }
+
+        func webViewIdentity() throws -> ObjectIdentifier {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return ObjectIdentifier(webView)
+        }
+
+        func webViewAccessibilityIdentifier() throws -> String? {
+            guard let rootView = window.contentViewController?.view,
+                  let webView = findWebView(in: rootView) else {
+                throw ReadHarnessError.webViewUnavailable
+            }
+            return webView.accessibilityIdentifier()
+        }
+
         func waitUntilCommentSubmission() async throws -> PassageCommentSubmission {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(2))
@@ -2964,6 +3086,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onCommentSelection: commentHandler,
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
+                renderingReadinessIsAcknowledged: sourceBox.isReady,
                 onRenderingFailure: { sourceBox.failure = $0 },
                 onRenderingLoading: { sourceBox.isReady = false },
                 onRenderingReady: { sourceBox.isReady = true },

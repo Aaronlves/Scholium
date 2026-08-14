@@ -9,6 +9,11 @@ enum DiscussionPresentationError: LocalizedError {
     }
 }
 
+private struct ResearchActionAvailabilityRefreshIdentity: Equatable {
+    let target: ResearchFunctionTarget?
+    let snapshotPhase: WorkspaceSnapshotPhase?
+}
+
 // MARK: - Content View
 
 struct ContentView: View {
@@ -109,6 +114,27 @@ struct ContentView: View {
             }
             .scholiumSurface(.document)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay(alignment: .bottom) {
+                if let toast = appState.toastMessage {
+                    ToastView(toast: toast)
+                        .transition(
+                            ScholiumMotion.transientStatusTransition(
+                                reduceMotion: reduceMotion
+                            )
+                        )
+                        .padding(
+                            .bottom,
+                            ScholiumGrid.Spacing.regionContentInset
+                        )
+                }
+            }
+            .animation(
+                ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
+                value: appState.toastMessage
+            )
+            .overlay(alignment: .topTrailing) {
+                refreshStatusNotice
+            }
         } apparatus: {
             apparatusRegion
             .scholiumSurface(.apparatus)
@@ -128,53 +154,6 @@ struct ContentView: View {
             ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
             value: appState.currentNote != nil
         )
-        .overlay(alignment: .bottom) {
-            if let toast = appState.toastMessage {
-                ToastView(toast: toast)
-                    .transition(
-                        ScholiumMotion.transientStatusTransition(
-                            reduceMotion: reduceMotion
-                        )
-                    )
-                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
-            }
-        }
-        .animation(
-            ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-            value: appState.toastMessage
-        )
-        .overlay(alignment: .topTrailing) {
-            if let status = appState.refreshStatusText {
-                HStack(spacing: ScholiumMetrics.Workspace.refreshStatusSpacing) {
-                    Label(
-                        status,
-                        systemImage: appState.hasDerivedRefreshFailure
-                            ? "exclamationmark.triangle"
-                            : "arrow.triangle.2.circlepath"
-                    )
-                    if appState.hasDerivedRefreshFailure {
-                        Button("Retry Refresh") {
-                            Task { await appState.retryDerivedRefresh() }
-                        }
-                        .buttonStyle(.borderless)
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    }
-                }
-                .font(ScholiumTypography.interface(.small))
-                .padding(.horizontal, ScholiumMetrics.Workspace.refreshStatusHorizontalInset)
-                .padding(.vertical, ScholiumMetrics.Workspace.refreshStatusVerticalInset)
-                .scholiumEditorialSurface(
-                    .floatingControl,
-                    in: RoundedRectangle(
-                        cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                        style: .continuous
-                    )
-                )
-                .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("scholium.refreshStatus")
-            }
-        }
         .overlay {
             if appState.isLoading {
                 LoadingOverlay()
@@ -255,8 +234,61 @@ struct ContentView: View {
                 }
             )
         }
-        .task(id: appState.currentResearchFunctionTarget) {
+        .task(id: researchActionAvailabilityRefreshIdentity) {
             await appState.refreshResearchActionAvailability()
+        }
+    }
+
+    private var researchActionAvailabilityRefreshIdentity:
+        ResearchActionAvailabilityRefreshIdentity {
+        ResearchActionAvailabilityRefreshIdentity(
+            target: appState.currentResearchFunctionTarget,
+            snapshotPhase: workspaceProjectionController.snapshotPhase
+        )
+    }
+
+    @ViewBuilder
+    private var refreshStatusNotice: some View {
+        if let status = appState.refreshStatusText {
+            HStack(spacing: ScholiumMetrics.Workspace.refreshStatusSpacing) {
+                Label(
+                    status,
+                    systemImage: appState.hasDerivedRefreshFailure
+                        ? "exclamationmark.triangle"
+                        : "arrow.triangle.2.circlepath"
+                )
+                if appState.hasDerivedRefreshFailure {
+                    Button("Retry Refresh") {
+                        Task { await appState.retryDerivedRefresh() }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(
+                        ScholiumTypography.interface(
+                            .small,
+                            emphasis: .strong
+                        )
+                    )
+                }
+            }
+            .font(ScholiumTypography.interface(.small))
+            .padding(
+                .horizontal,
+                ScholiumMetrics.Workspace.refreshStatusHorizontalInset
+            )
+            .padding(
+                .vertical,
+                ScholiumMetrics.Workspace.refreshStatusVerticalInset
+            )
+            .scholiumEditorialSurface(
+                .floatingControl,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                    style: .continuous
+                )
+            )
+            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("scholium.refreshStatus")
         }
     }
 
@@ -319,7 +351,8 @@ struct ContentView: View {
                 freshness: researchProjectionFreshness,
                 propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
                 zoteroBinding: currentAnalysisZoteroBinding,
-                noteReviewState: currentNoteReviewState
+                noteReviewState: currentNoteReviewState,
+                stableNoteID: currentAnalysisStableNoteID
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
             openProperties: {
@@ -350,6 +383,14 @@ struct ContentView: View {
             },
             openZoteroItem: { binding in
                 await appState.zoteroBridge.openInZotero(binding: binding)
+            },
+            manageZoteroBinding: { noteID, binding in
+                appState.presentationRouter.present(.zoteroBinding(
+                    ZoteroBindingPanelRoute(
+                        noteID: noteID,
+                        currentBinding: binding
+                    )
+                ))
             }
         )
     }
@@ -386,6 +427,11 @@ struct ContentView: View {
         }?.zoteroBinding
     }
 
+    private var currentAnalysisStableNoteID: UUID? {
+        guard appState.currentDocumentVaultRole == .sourceCorpus else { return nil }
+        return currentNoteStableID
+    }
+
     private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
         guard let note = appState.currentNote,
               let vaultID = appState.currentDocumentVaultID else { return [] }
@@ -398,6 +444,8 @@ struct ContentView: View {
     private var researchProjectionFreshness: ResearchProjectionFreshness {
         if appState.isRefreshingWorkspaceCatalog { return .refreshing }
         switch appState.derivedRefreshStatus {
+        case .opening:
+            return .refreshing
         case .current:
             return .current
         case .stale(let issue):
@@ -593,6 +641,9 @@ struct ContentView: View {
                     expectedRecordSourceManifestHash: manifest
                 )
             },
+            openingDocumentPresentationDidComplete: {
+                appState.openingDocumentPresentationDidComplete()
+            },
             notify: { message, kind in
                 switch kind {
                 case .success: appState.showToast(message)
@@ -737,9 +788,6 @@ struct ContentView: View {
             if let note = note(at: route.path) {
                 FrontmatterEditorView(
                     note: note,
-                    configuredEditableFields: appState.currentDocumentPropertiesConfiguration.map {
-                        Set($0.editableFields)
-                    },
                     expectedRevision: appState.currentDocumentRevisions[note.relativePath],
                     onClose: {
                         finishFrontmatter(route)
@@ -856,9 +904,8 @@ struct ContentView: View {
                         checkpointID,
                         selection: selection
                     )
-                    if result.cleanupWarnings.isEmpty {
-                        appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
-                    }
+                    _ = result
+                    appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
                 },
                 revealCheckpoints: {
                     appState.revealCheckpointsInFinder()
@@ -927,6 +974,26 @@ struct ContentView: View {
             .onDisappear {
                 appState.identityResolutionError = nil
             }
+        case .zoteroBinding(let route):
+            ZoteroBindingPanelView(
+                route: route,
+                search: { query in
+                    try await appState.zoteroBridge.searchLibrary(query: query)
+                },
+                setBinding: { hit in
+                    try await appState.setZoteroBinding(
+                        noteID: route.noteID,
+                        library: hit.library.identity,
+                        itemKey: hit.item.key
+                    )
+                    appState.presentationRouter.dismissSheet()
+                },
+                clearBinding: {
+                    try await appState.clearZoteroBinding(noteID: route.noteID)
+                    appState.presentationRouter.dismissSheet()
+                },
+                dismiss: { appState.presentationRouter.dismissSheet() }
+            )
         }
     }
 

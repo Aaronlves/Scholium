@@ -470,7 +470,7 @@ private struct ResearchAuthorityFacts: View {
                         : "Exact written Notes"
                 )
                 LabeledContent("Conflicts", value: "Revalidated before write")
-                LabeledContent("Conflict recovery", value: "Retained displaced bytes")
+                LabeledContent("Conflict recovery", value: "Retained candidate source")
                 Text("The Method may guide scholarly work, but it cannot hide or expand these app-owned facts.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)

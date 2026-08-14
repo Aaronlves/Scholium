@@ -35,7 +35,7 @@ public enum TriptychSettingsLoadState: Equatable, Sendable {
     case futureSchema(Int)
     case corrupted
 
-    public var authorizesPropertyEditing: Bool {
+    public var authorizesAboutProjection: Bool {
         if case .current = self { true } else { false }
     }
 }
@@ -179,5 +179,18 @@ public struct AnalysisZoteroBindingsSnapshot: Codable, Hashable, Sendable {
 
     public func binding(for noteID: UUID) -> AnalysisZoteroBinding? {
         bindings.first { $0.noteID == noteID }
+    }
+}
+
+public struct AnalysisZoteroBindingMutationResult: Codable, Hashable, Sendable {
+    public let snapshot: AnalysisZoteroBindingsSnapshot
+    public let derivedRefreshWarning: String?
+
+    public init(
+        snapshot: AnalysisZoteroBindingsSnapshot,
+        derivedRefreshWarning: String? = nil
+    ) {
+        self.snapshot = snapshot
+        self.derivedRefreshWarning = derivedRefreshWarning
     }
 }

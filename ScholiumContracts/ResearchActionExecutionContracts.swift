@@ -153,6 +153,11 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
                 "Property keys and the modify-properties operation must be frozen together."
             )
         }
+        guard !operations.contains(where: \.isZoteroBindingOperation) else {
+            throw ResearchActionExecutionContractError.invalidAuthority(
+                "Zotero binding authority is granted only through a later bounded write-set extension."
+            )
+        }
         guard propertyKeys.count <= Self.maximumEditablePropertyKeyCount,
               propertyKeys.allSatisfy({ key in
                   !key.isEmpty

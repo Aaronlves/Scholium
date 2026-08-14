@@ -55,13 +55,13 @@ final class PrewriteRecoveryLedger {
     }
 
     struct MutationTransaction: Codable, Hashable, Sendable {
+        let schemaVersion: Int
         let id: UUID
         let relativePath: String
         let expected: DocumentFingerprint
         let candidate: DocumentFingerprint
         let createdAt: Date
         var retainedReason: String?
-        var cleanupPending: VaultMutationCleanupTask?
     }
 
     private struct VerifiedMutation {
@@ -82,10 +82,7 @@ final class PrewriteRecoveryLedger {
     private let mutationByteAccess: VaultDescriptorAccess
     private let settledPinLock: AdvisoryFileLock
     private let databaseURL: URL
-    private let legacyVersionsURL: URL
-    private let migrationMarkerURL: URL
     private let fileManager: FileManager
-    private let cleanupHooks: VaultMutationHooks
     private var database: OpaquePointer?
     private(set) var healthDiagnostic: String?
     private var writeBlocker: String?
@@ -93,7 +90,6 @@ final class PrewriteRecoveryLedger {
     init(
         storageURL: URL,
         vaultURL: URL? = nil,
-        cleanupHooks: VaultMutationHooks = .none,
         fileManager: FileManager = .default
     ) throws {
         try fileManager.createDirectory(
@@ -101,7 +97,6 @@ final class PrewriteRecoveryLedger {
             withIntermediateDirectories: true
         )
         self.fileManager = fileManager
-        self.cleanupHooks = cleanupHooks
         rootURL = storageURL.appendingPathComponent("recovery-v2", isDirectory: true)
         objectsURL = rootURL.appendingPathComponent("objects", isDirectory: true)
         transactionsURL = rootURL.appendingPathComponent("transactions", isDirectory: true)
@@ -136,8 +131,6 @@ final class PrewriteRecoveryLedger {
             )
         }
         databaseURL = rootURL.appendingPathComponent("history.sqlite")
-        legacyVersionsURL = storageURL.appendingPathComponent("versions", isDirectory: true)
-        migrationMarkerURL = rootURL.appendingPathComponent("v1-migration-complete.json")
         for directory in [
             rootURL, objectsURL, transactionsURL, mutationTransactionsURL,
             remapsURL, tombstonesURL, quarantineURL, settledPinsURL,
@@ -160,7 +153,6 @@ final class PrewriteRecoveryLedger {
             try applyTombstonesBeforeRebuild()
             try reconcileSettledPinManifests()
         }
-        try migrateLegacyV1IfNeeded()
         if let vaultURL {
             try replayMutationTransactions(vaultURL: vaultURL)
         }
@@ -497,13 +489,13 @@ final class PrewriteRecoveryLedger {
     ) throws -> MutationTransaction {
         let path = try MarkdownRelativePath(relativePath)
         let transaction = MutationTransaction(
+            schemaVersion: 1,
             id: UUID(),
             relativePath: path.rawValue,
             expected: DocumentFingerprint(data: expected),
             candidate: DocumentFingerprint(data: candidate),
             createdAt: Date(),
-            retainedReason: nil,
-            cleanupPending: nil
+            retainedReason: nil
         )
         let directory = mutationTransactionURL(transaction.id)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: false)
@@ -533,94 +525,6 @@ final class PrewriteRecoveryLedger {
         }
     }
 
-    func persistCleanupPending(_ transaction: MutationTransaction) throws {
-        guard let cleanup = transaction.cleanupPending else {
-            throw VaultRepositoryError.recoveryLedgerUnavailable(
-                "The source transaction has no cleanup task."
-            )
-        }
-        try cleanupHooks.cleanupPersistenceOverride?()
-        try validateCleanupTask(cleanup, for: transaction)
-        try writeMutationManifest(transaction)
-    }
-
-    func attemptCommittedCleanup(
-        _ transaction: MutationTransaction,
-        vaultURL: URL
-    ) -> SaveCleanupWarning? {
-        guard let cleanup = transaction.cleanupPending else { return nil }
-        do {
-            try cleanupHooks.didReach?(.cleanup)
-            try cleanupHooks.cleanupOverride?()
-            try validateCleanupTask(cleanup, for: transaction)
-            try removeCleanup(
-                cleanup,
-                transactionID: transaction.id,
-                vaultURL: vaultURL,
-                expectedIdentity: cleanup.displacedSource
-            )
-            return nil
-        } catch {
-            healthDiagnostic = "The note was saved, but its displaced source cleanup is pending: \(error.localizedDescription)"
-            return SaveCleanupWarning(
-                kind: .displacedSourceCopy,
-                message: "The note was saved, but its displaced source copy could not be removed. Scholium will retry cleanup when this vault reopens."
-            )
-        }
-    }
-
-    func cleanupStagedCandidate(
-        _ transaction: MutationTransaction,
-        task: VaultMutationCleanupTask,
-        vaultURL: URL
-    ) throws {
-        guard transaction.cleanupPending == task else {
-            throw VaultRepositoryError.recoveryLedgerUnavailable(
-                "The staged-candidate cleanup task changed before removal."
-            )
-        }
-        try cleanupHooks.didReach?(.cleanup)
-        try cleanupHooks.cleanupOverride?()
-        try validateCleanupTask(task, for: transaction)
-        try removeCleanup(
-            task,
-            transactionID: transaction.id,
-            vaultURL: vaultURL,
-            expectedIdentity: task.stagedCandidate
-        )
-    }
-
-    /// Completes a verified source transaction only after its displaced copy
-    /// was removed. Pending cleanup remains durable and never changes the
-    /// already-proven source commit into a save failure.
-    func finishCommittedMutation(
-        _ transaction: MutationTransaction,
-        cleanupCompleted: Bool,
-        cleanupWarning: SaveCleanupWarning?
-    ) -> SaveCleanupWarning? {
-        if transaction.cleanupPending != nil, !cleanupCompleted {
-            if cleanupWarning == nil {
-                healthDiagnostic = "The note was saved, but its displaced source cleanup is pending until the vault reopens."
-            }
-            return cleanupWarning
-                ?? SaveCleanupWarning(
-                    kind: .displacedSourceCopy,
-                    message: "The note was saved, but its displaced source copy could not be removed. Scholium will retry cleanup when this vault reopens."
-                )
-        }
-        do {
-            try cleanupHooks.cleanupRecordRemovalOverride?()
-            try completeMutation(transaction)
-            return cleanupWarning
-        } catch {
-            healthDiagnostic = "The committed save was verified, but its transaction record could not be removed: \(error.localizedDescription)"
-            return SaveCleanupWarning(
-                kind: .transactionRecord,
-                message: "The note was saved, but its machine-local transaction record could not be removed. Scholium will retry cleanup when this vault reopens."
-            )
-        }
-    }
-
     func retainMutation(_ transaction: MutationTransaction, reason: String) throws {
         let directory = mutationTransactionURL(transaction.id)
         guard fileManager.fileExists(atPath: directory.path) else { return }
@@ -637,10 +541,13 @@ final class PrewriteRecoveryLedger {
         ).compactMap { directory in
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return try? decoder.decode(
+            guard let transaction = try? decoder.decode(
                 MutationTransaction.self,
                 from: Data(contentsOf: directory.appendingPathComponent("manifest.json"))
-            )
+            ), transaction.schemaVersion == 1 else {
+                return nil
+            }
+            return transaction
         }.sorted { $0.createdAt < $1.createdAt }
     }
 
@@ -693,7 +600,8 @@ final class PrewriteRecoveryLedger {
                 "The interrupted save manifest could not be verified: \(error.localizedDescription)"
             )
         }
-        guard manifest.id == reference.id,
+        guard manifest.schemaVersion == 1,
+              manifest.id == reference.id,
               manifest.relativePath == reference.relativePath,
               manifest.expected == reference.expected,
               manifest.candidate == reference.candidate,
@@ -803,46 +711,27 @@ final class PrewriteRecoveryLedger {
                 do {
                     observedData = try descriptorAccess.read(path)
                 } catch VaultRepositoryError.fileDoesNotExist {
-                    healthDiagnostic = "A pending save transaction has no unambiguous canonical file and was retained."
+                    try retainMutation(
+                        transaction,
+                        reason: "The interrupted save target is missing. The exact candidate remains available for inspection and copying."
+                    )
                     continue
                 } catch VaultRepositoryError.notRegularFile {
-                    healthDiagnostic = "A pending save transaction resolved to an unsafe file identity and was retained."
+                    try retainMutation(
+                        transaction,
+                        reason: "The interrupted save target is no longer a regular file. The exact candidate remains available for inspection and copying."
+                    )
                     continue
                 }
                 let observed = DocumentFingerprint(data: observedData)
-                if observed == transaction.candidate,
-                   let cleanup = transaction.cleanupPending {
-                    do {
-                        try validateCleanupTask(cleanup, for: transaction)
-                        try removeCleanup(
-                            cleanup,
-                            transactionID: transaction.id,
-                            vaultURL: vaultURL,
-                            expectedIdentity: cleanup.displacedSource
-                        )
-                        try completeMutation(transaction)
-                    } catch {
-                        healthDiagnostic = "A committed save's displaced source cleanup remains pending: \(error.localizedDescription)"
-                    }
-                } else if observed == transaction.candidate {
-                    try completeMutation(transaction)
+                if observed == transaction.candidate {
+                    // Exact canonical readback proves the save. Transaction
+                    // removal is redundant machine-local housekeeping and is
+                    // deliberately invisible if it must be retried later.
+                    try? completeMutation(transaction)
                 } else if observed == transaction.expected {
-                    if let cleanup = transaction.cleanupPending {
-                        do {
-                            try validateCleanupTask(cleanup, for: transaction)
-                            try removeCleanup(
-                                cleanup,
-                                transactionID: transaction.id,
-                                vaultURL: vaultURL,
-                                expectedIdentity: cleanup.stagedCandidate
-                            )
-                        } catch {
-                            healthDiagnostic = "An interrupted save's staged candidate cleanup remains pending: \(error.localizedDescription)"
-                            continue
-                        }
-                    }
                     if transaction.expected == transaction.candidate {
-                        try completeMutation(transaction)
+                        try? completeMutation(transaction)
                     } else {
                         try retainMutation(
                             transaction,
@@ -850,7 +739,10 @@ final class PrewriteRecoveryLedger {
                         )
                     }
                 } else {
-                    healthDiagnostic = "A pending save transaction observed bytes other than its expected or candidate revision and was retained."
+                    try retainMutation(
+                        transaction,
+                        reason: "The canonical source changed after an interrupted save. The exact candidate remains available for inspection and copying."
+                    )
                 }
             } catch {
                 healthDiagnostic = "A pending save transaction could not be verified and was retained: \(error.localizedDescription)"
@@ -858,369 +750,8 @@ final class PrewriteRecoveryLedger {
         }
     }
 
-    private func removeCleanup(
-        _ task: VaultMutationCleanupTask,
-        transactionID: UUID,
-        vaultURL: URL,
-        expectedIdentity: VaultMutationCleanupIdentity
-    ) throws {
-        let path = try MarkdownRelativePath(task.relativePath)
-        guard Self.isValidSwapStagingName(task.stagingName) else {
-            throw VaultRepositoryError.recoveryLedgerUnavailable(
-                "The cleanup task contains an unsafe staging name."
-            )
-        }
-        let descriptorAccess = VaultDescriptorAccess(rootURL: vaultURL)
-        try descriptorAccess.withParentDescriptor(path) { parentDescriptor, _ in
-            let cleanupDirectoryName = Self.cleanupDirectoryName(
-                for: task.stagingName
-            )
-            let isolatedName = "source-\(transactionID.uuidString.lowercased()).md"
-            let stagingPresence = VaultDescriptorAccess.presence(
-                name: task.stagingName,
-                parentDescriptor: parentDescriptor
-            )
-            let directoryPresence = VaultDescriptorAccess.presence(
-                name: cleanupDirectoryName,
-                parentDescriptor: parentDescriptor
-            )
-            if directoryPresence == .absent, stagingPresence == .absent {
-                return
-            }
-            if case .inaccessible(let code) = directoryPresence {
-                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-            }
-            var validatedStagingIdentity: VaultDescriptorAccess.FileIdentity?
-            if directoryPresence == .absent {
-                switch stagingPresence {
-                case .present:
-                    validatedStagingIdentity = try validateCleanupSource(
-                        task,
-                        expectedIdentity: expectedIdentity,
-                        parentDescriptor: parentDescriptor
-                    )
-                case .inaccessible(let code):
-                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-                case .absent:
-                    return
-                }
-                guard mkdirat(parentDescriptor, cleanupDirectoryName, 0o700) == 0 else {
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                }
-            }
-            let cleanupDescriptor = openat(
-                parentDescriptor,
-                cleanupDirectoryName,
-                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
-            )
-            guard cleanupDescriptor >= 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            do {
-                var directoryStatus = stat()
-                guard fstat(cleanupDescriptor, &directoryStatus) == 0,
-                      (directoryStatus.st_mode & S_IFMT) == S_IFDIR,
-                      directoryStatus.st_uid == geteuid(),
-                      (directoryStatus.st_mode & 0o077) == 0 else {
-                    throw VaultRepositoryError.recoveryPathConflict(
-                        cleanupDirectoryName
-                    )
-                }
-                switch VaultDescriptorAccess.presence(
-                    name: isolatedName,
-                    parentDescriptor: cleanupDescriptor
-                ) {
-                case .present:
-                    switch stagingPresence {
-                    case .absent:
-                        break
-                    case .inaccessible(let code):
-                        throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-                    case .present:
-                        throw VaultRepositoryError.recoveryPathConflict(
-                            task.stagingName
-                        )
-                    }
-                    try removeIsolatedCleanup(
-                        name: isolatedName,
-                        expectedIdentity: expectedIdentity,
-                        parentDescriptor: cleanupDescriptor
-                    )
-                case .inaccessible(let code):
-                    throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-                case .absent:
-                    switch stagingPresence {
-                    case .absent:
-                        break
-                    case .inaccessible(let code):
-                        throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-                    case .present:
-                        let openedIdentity: VaultDescriptorAccess.FileIdentity
-                        if let validatedStagingIdentity {
-                            openedIdentity = validatedStagingIdentity
-                        } else {
-                            openedIdentity = try validateCleanupSource(
-                                task,
-                                expectedIdentity: expectedIdentity,
-                                parentDescriptor: parentDescriptor
-                            )
-                        }
-                        guard renameatx_np(
-                            parentDescriptor,
-                            task.stagingName,
-                            cleanupDescriptor,
-                            isolatedName,
-                            UInt32(RENAME_EXCL)
-                        ) == 0 else {
-                            throw POSIXError(
-                                POSIXErrorCode(rawValue: errno) ?? .EIO
-                            )
-                        }
-                        guard try VaultDescriptorAccess.identity(
-                            name: isolatedName,
-                            parentDescriptor: cleanupDescriptor
-                        ) == openedIdentity else {
-                            _ = renameatx_np(
-                                cleanupDescriptor,
-                                isolatedName,
-                                parentDescriptor,
-                                task.stagingName,
-                                UInt32(RENAME_EXCL)
-                            )
-                            throw VaultRepositoryError.recoveryPathConflict(
-                                task.stagingName
-                            )
-                        }
-                        try synchronizeCleanupParent(parentDescriptor)
-                        try synchronizeCleanupParent(cleanupDescriptor)
-                        try removeIsolatedCleanup(
-                            name: isolatedName,
-                            expectedIdentity: expectedIdentity,
-                            parentDescriptor: cleanupDescriptor
-                        )
-                    }
-                }
-                try synchronizeCleanupParent(cleanupDescriptor)
-            } catch {
-                close(cleanupDescriptor)
-                throw error
-            }
-            close(cleanupDescriptor)
-            guard unlinkat(
-                parentDescriptor,
-                cleanupDirectoryName,
-                AT_REMOVEDIR
-            ) == 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            try synchronizeCleanupParent(parentDescriptor)
-            switch VaultDescriptorAccess.presence(
-                name: task.stagingName,
-                parentDescriptor: parentDescriptor
-            ) {
-            case .absent:
-                break
-            case .present:
-                throw VaultRepositoryError.recoveryPathConflict(
-                    task.stagingName
-                )
-            case .inaccessible(let code):
-                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
-            }
-        }
-    }
-
-    private func validateCleanupSource(
-        _ task: VaultMutationCleanupTask,
-        expectedIdentity: VaultMutationCleanupIdentity,
-        parentDescriptor: Int32
-    ) throws -> VaultDescriptorAccess.FileIdentity {
-        let fd = openat(
-            parentDescriptor,
-            task.stagingName,
-            O_RDONLY | O_NOFOLLOW | O_CLOEXEC
-        )
-        guard fd >= 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        defer { close(fd) }
-        var openedStatus = stat()
-        guard fstat(fd, &openedStatus) == 0,
-              (openedStatus.st_mode & S_IFMT) == S_IFREG else {
-            throw VaultRepositoryError.notRegularFile(task.stagingName)
-        }
-        guard openedStatus.st_nlink == 1 else {
-            throw VaultRepositoryError.recoveryPathConflict(task.stagingName)
-        }
-        let openedIdentity = VaultDescriptorAccess.FileIdentity(openedStatus)
-        guard UInt64(openedIdentity.device) == expectedIdentity.device,
-              UInt64(openedIdentity.inode) == expectedIdentity.inode else {
-            throw VaultRepositoryError.recoveryPathConflict(task.stagingName)
-        }
-        let data = try VaultDescriptorAccess.readAll(from: fd)
-        var finalStatus = stat()
-        guard fstat(fd, &finalStatus) == 0,
-              VaultDescriptorAccess.FileIdentity(finalStatus) == openedIdentity,
-              finalStatus.st_nlink == 1,
-              Int(finalStatus.st_size) == data.count,
-              DocumentFingerprint(data: data) == expectedIdentity.fingerprint,
-              try VaultDescriptorAccess.identity(
-                  name: task.stagingName,
-                  parentDescriptor: parentDescriptor
-              ) == openedIdentity else {
-            throw VaultRepositoryError.recoveryPathConflict(task.stagingName)
-        }
-        return openedIdentity
-    }
-
-    private func removeIsolatedCleanup(
-        name: String,
-        expectedIdentity: VaultMutationCleanupIdentity,
-        parentDescriptor: Int32
-    ) throws {
-        let fd = openat(
-            parentDescriptor,
-            name,
-            O_RDONLY | O_NOFOLLOW | O_CLOEXEC
-        )
-        guard fd >= 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        defer { close(fd) }
-        var openedStatus = stat()
-        guard fstat(fd, &openedStatus) == 0,
-              (openedStatus.st_mode & S_IFMT) == S_IFREG else {
-            throw VaultRepositoryError.notRegularFile(name)
-        }
-        guard openedStatus.st_nlink == 1 else {
-            throw VaultRepositoryError.recoveryPathConflict(name)
-        }
-        let openedIdentity = VaultDescriptorAccess.FileIdentity(openedStatus)
-        guard UInt64(openedIdentity.device) == expectedIdentity.device,
-              UInt64(openedIdentity.inode) == expectedIdentity.inode else {
-            throw VaultRepositoryError.recoveryPathConflict(name)
-        }
-        let data = try VaultDescriptorAccess.readAll(from: fd)
-        try cleanupHooks.cleanupIsolationOverride?()
-        guard lseek(fd, 0, SEEK_SET) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        let finalData = try VaultDescriptorAccess.readAll(from: fd)
-        var finalStatus = stat()
-        guard fstat(fd, &finalStatus) == 0,
-              VaultDescriptorAccess.FileIdentity(finalStatus) == openedIdentity,
-              finalStatus.st_nlink == 1,
-              Int(finalStatus.st_size) == finalData.count,
-              DocumentFingerprint(data: data) == expectedIdentity.fingerprint,
-              DocumentFingerprint(data: finalData) == expectedIdentity.fingerprint else {
-            throw VaultRepositoryError.recoveryPathConflict(name)
-        }
-        guard try VaultDescriptorAccess.identity(
-            name: name,
-            parentDescriptor: parentDescriptor
-        ) == openedIdentity else {
-            throw VaultRepositoryError.recoveryPathConflict(name)
-        }
-        guard unlinkat(parentDescriptor, name, 0) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        guard VaultDescriptorAccess.presence(
-            name: name,
-            parentDescriptor: parentDescriptor
-        ) == .absent else {
-            throw VaultRepositoryError.commitUncertain(
-                "The isolated cleanup path was not absent after removal."
-            )
-        }
-    }
-
-    private func synchronizeCleanupParent(_ parentDescriptor: Int32) throws {
-        guard fsync(parentDescriptor) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-    }
-
-    private func validateCleanupTask(
-        _ task: VaultMutationCleanupTask,
-        for transaction: MutationTransaction
-    ) throws {
-        guard task.relativePath == transaction.relativePath,
-              task.displacedSource.fingerprint == transaction.expected,
-              task.stagedCandidate.fingerprint == transaction.candidate,
-              Self.isValidSwapStagingName(task.stagingName) else {
-            throw VaultRepositoryError.recoveryLedgerUnavailable(
-                "The cleanup task does not match its source transaction."
-            )
-        }
-    }
-
-    private static func isValidSwapStagingName(_ name: String) -> Bool {
-        let prefix = ".scholium-swap-"
-        let suffix = ".md"
-        guard name.hasPrefix(prefix), name.hasSuffix(suffix) else { return false }
-        let uuidStart = name.index(name.startIndex, offsetBy: prefix.count)
-        let uuidEnd = name.index(name.endIndex, offsetBy: -suffix.count)
-        let spelling = String(name[uuidStart..<uuidEnd])
-        guard let uuid = UUID(uuidString: spelling) else { return false }
-        return spelling == uuid.uuidString.lowercased()
-    }
-
-    private static func cleanupDirectoryName(for stagingName: String) -> String {
-        let replaced = stagingName.replacingOccurrences(
-            of: ".scholium-swap-",
-            with: ".scholium-cleanup-",
-            options: [.anchored]
-        )
-        return String(replaced.dropLast(3))
-    }
-
     private func mutationTransactionURL(_ id: UUID) -> URL {
         mutationTransactionsURL.appendingPathComponent(id.uuidString.lowercased(), isDirectory: true)
-    }
-
-    private func migrateLegacyV1IfNeeded() throws {
-        guard !fileManager.fileExists(atPath: migrationMarkerURL.path),
-              fileManager.fileExists(atPath: legacyVersionsURL.path) else { return }
-        let indexURL = legacyVersionsURL.appendingPathComponent("index.json")
-        guard fileManager.fileExists(atPath: indexURL.path) else { return }
-        struct LegacyIndex: Codable { let entries: [String: [PrewriteRecoveryReference]] }
-        do {
-            let indexData = try Data(contentsOf: indexURL)
-            let legacy = try JSONDecoder().decode(LegacyIndex.self, from: indexData)
-            var verified: [(PrewriteRecoveryReference, Data)] = []
-            for (path, entries) in legacy.entries {
-                _ = try MarkdownRelativePath(path)
-                for entry in entries {
-                    guard entry.relativePath == path else {
-                        throw VaultRepositoryError.recoveryPathConflict(path)
-                    }
-                    let blob = legacyVersionsURL
-                        .appendingPathComponent(Self.pathDigest(path), isDirectory: true)
-                        .appendingPathComponent(entry.id.uuidString + ".md")
-                    let data = try Data(contentsOf: blob)
-                    guard DocumentFingerprint(data: data) == entry.fingerprint else {
-                        throw VaultRepositoryError.readbackMismatch(
-                            expected: entry.fingerprint,
-                            current: DocumentFingerprint(data: data)
-                        )
-                    }
-                    verified.append((entry, data))
-                }
-            }
-            for (entry, data) in verified where try !contains(id: entry.id) {
-                try importVerified(entry: entry, data: data)
-            }
-            try writeJSON(
-                ["completed_at": ISO8601DateFormatter().string(from: Date()), "entry_count": "\(verified.count)"],
-                to: migrationMarkerURL
-            )
-        } catch {
-            let message = "Legacy recovery bytes remain read-only because migration could not be verified: \(error.localizedDescription)"
-            healthDiagnostic = message
-            writeBlocker = message
-            let diagnostic = quarantineURL.appendingPathComponent("legacy-migration-\(UUID().uuidString).json")
-            try? writeJSON(["error": error.localizedDescription], to: diagnostic)
-        }
     }
 
     private func importVerified(entry: PrewriteRecoveryReference, data: Data) throws {

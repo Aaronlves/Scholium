@@ -63,6 +63,68 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func importImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        let handle = try await reference.requireHandle()
+        return try await handle.importImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    public func rollbackImageAttachment(
+        _ preparation: PreparedImageAttachment
+    ) async throws {
+        let handle = try await reference.requireHandle()
+        try await handle.rollbackImageAttachment(preparation)
+    }
+
+    public func indexImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        let handle = try await reference.requireHandle()
+        return try await handle.indexImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    public func importPastedImageAttachment(
+        at sourceURL: URL,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        let handle = try await reference.requireHandle()
+        return try await handle.importPastedImageAttachment(
+            at: sourceURL,
+            for: note
+        )
+    }
+
+    public func importPastedImageAttachment(
+        data: Data,
+        preferredFilename: String,
+        for note: VaultQualifiedNoteID
+    ) async throws -> PreparedImageAttachment {
+        let handle = try await reference.requireHandle()
+        return try await handle.importPastedImageAttachment(
+            data: data,
+            preferredFilename: preferredFilename,
+            for: note
+        )
+    }
+
+    public func unavailableIndexedImagePaths(
+        in markdownSource: String
+    ) async throws -> [String] {
+        let handle = try await reference.requireHandle()
+        return try await handle.unavailableIndexedImagePaths(
+            in: markdownSource
+        )
+    }
+
     public func create(
         _ id: VaultQualifiedNoteID,
         content: String

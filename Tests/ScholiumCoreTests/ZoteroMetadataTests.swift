@@ -241,6 +241,14 @@ struct ZoteroMetadataTests {
             path: "items/FXS00026"
         ))
         #expect(groupRequest.url?.path == "/api/groups/42/items/FXS00026")
+        let groupsRequest = try #require(ZoteroLocalRequestPolicy.makeReadRequest(
+            path: "groups"
+        ))
+        #expect(groupsRequest.url?.path == "/api/users/0/groups")
+        #expect(ZoteroLocalRequestPolicy.makeReadRequest(
+            library: .group(42),
+            path: "groups"
+        ) == nil)
         #expect(ZoteroLocalRequestPolicy.makeReadRequest(
             library: .group(0),
             path: "items/FXS00026"

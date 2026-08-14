@@ -40,6 +40,10 @@ enum StoredFunctionRecord: Sendable {
         localRecord.documentWriteRecords
     }
 
+    var zoteroBindingWriteRecords: [ResearchZoteroBindingWriteRecord] {
+        localRecord.zoteroBindingWriteRecords
+    }
+
     var writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord] {
         localRecord.writeConflictResolutionRecords
     }
@@ -237,16 +241,20 @@ final class ResearchFunctionCoordinator: Sendable {
         )
         guard !stored.documentWriteRecords.contains(where: {
             [.writing, .recoveryRequired].contains($0.state)
+        }), !stored.zoteroBindingWriteRecords.contains(where: {
+            [.writing, .recoveryRequired].contains($0.state)
         }), !hasPendingWriteRecovery else {
             throw ResearchFunctionContractError.unresolvedWriteRecovery(runID)
         }
         guard !stored.documentWriteRecords.contains(where: {
             $0.state == .committed
+        }), !stored.zoteroBindingWriteRecords.contains(where: {
+            $0.state == .committed
         }) else {
             // A lightweight cancelled completion cannot carry the canonical
             // Result payload required by a portable Research Record. Refuse
             // the lossy terminal transition instead of orphaning confirmed
-            // source changes from Review, comparison, and recovery provenance.
+            // source or portable binding changes from their provenance.
             throw ResearchFunctionContractError.committedWritesRequireCompletion(
                 runID
             )

@@ -497,7 +497,7 @@ struct ResearchContinuationOperationsTests {
         let child = try await handle.services.localResearchExecutionStore.record(
             id: childID
         )
-        #expect(child.schemaVersion == 11)
+        #expect(child.schemaVersion == 12)
         #expect(child.snapshot.continuationHandoff?.referenceChecks.first?.status
             == .unavailable)
 
@@ -513,8 +513,8 @@ struct ResearchContinuationOperationsTests {
         var retiredContext = try #require(
             JSONSerialization.jsonObject(with: contextBytes) as? [String: Any]
         )
-        #expect(retiredContext["schema_version"] as? Int == 5)
-        retiredContext["schema_version"] = 4
+        #expect(retiredContext["schema_version"] as? Int == 6)
+        retiredContext["schema_version"] = 5
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try decoder.decode(
                 ResearchAuthenticatedRunContext.self,

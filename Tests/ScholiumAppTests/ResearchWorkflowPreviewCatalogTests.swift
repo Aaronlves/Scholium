@@ -103,7 +103,7 @@ struct ResearchWorkflowPreviewCatalogTests {
         }
         #expect(source.contains("Ask Me Every Time"))
         #expect(source.contains("Exact written Notes"))
-        #expect(source.contains("Retained displaced bytes"))
+        #expect(source.contains("Retained candidate source"))
         #expect(source.contains("Allow Selected Notes"))
         #expect(source.contains("Continue Without Changes"))
         #expect(source.contains("Cancel Request"))

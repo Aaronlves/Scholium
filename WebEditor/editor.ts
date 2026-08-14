@@ -113,7 +113,12 @@ import {
 } from "./accessibility";
 import {CompositionRequestGate, compositionRequestPolicy} from "./composition";
 import {createMarkdownEditor} from "./bootstrap";
-import {editorPerformanceSamples, recordEditorMetric, sampleEditorMemory} from "./performance";
+import {
+  editorPerformanceSamples,
+  recordEditorMetric,
+  sampleEditorMemory,
+  scheduleAfterNextPaint,
+} from "./performance";
 import {createPreviewPopoverController, populatePreviewDocument} from "./preview-popover";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
@@ -140,6 +145,7 @@ import {
   mermaidPresentation,
   type MermaidPresentation,
 } from "./mermaid-presentation";
+import {localized, localizedCallout, localizedTemplate} from "./localization";
 import {
   appendMarkdownBlocks,
   createTableDOM,
@@ -157,18 +163,26 @@ import {
   type LiveProjectionIndex,
   type SemanticCodeBlockRange,
 } from "./live-projection-index";
+import {
+  clearDocumentFind,
+  documentFindExtension,
+  performDocumentFind,
+} from "./document-find";
 
 const editorStartupStartedAt = performance.now();
 
 interface ScholiumWindow extends Window {
   webkit?: { messageHandlers?: { scholium?: { postMessage(message: unknown): void } } };
   scholiumEditor?: ScholiumEditorAPI;
+  scholiumPerformanceMetric?: "editor_key_to_paint" | "editor_cached_preview"
+    | "editor_visible_projection";
 }
 interface SourceDelta { from: number; to: number; insert: string }
 interface WikilinkPresentation { displayStart: number; displayEnd: number; isLegacyRelationship: boolean }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
+  refreshMathRuntime(): boolean;
 }
 
 const webkitWindow = window as ScholiumWindow;
@@ -202,6 +216,16 @@ const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
   documentVersion,
   ...message,
 });
+
+function postConfiguredPerformanceSample(
+  metric: "editor_cached_preview" | "editor_visible_projection",
+  durationMilliseconds: number,
+) {
+  if (webkitWindow.scholiumPerformanceMetric !== metric
+      || !Number.isFinite(durationMilliseconds)
+      || durationMilliseconds <= 0) return;
+  post({type: "performanceSample", metric, durationMilliseconds});
+}
 
 let mermaidRuntimePromise: Promise<NonNullable<typeof window.scholiumMermaid> | null> | null = null;
 
@@ -268,15 +292,16 @@ function overlaps(ranges: {from: number; to: number}[], from: number, to: number
 const neutralCallout = {
   identifier: "neutral",
   aliases: [] as string[],
-  label: "Note",
-  meaning: "Preserves an unsupported callout without assigning a research role.",
+  label: localized("Note"),
+  meaning: localized("Preserves an unsupported callout without assigning a research role."),
 };
 
 function calloutDefinition(rawKind: string) {
   const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-  return editingDialect?.callouts.find((callout) =>
+  const definition = editingDialect?.callouts.find((callout) =>
     callout.identifier === kind || callout.aliases.includes(kind),
   ) ?? neutralCallout;
+  return {...definition, ...localizedCallout(definition.identifier, definition)};
 }
 
 /** @param {string} text */
@@ -366,7 +391,7 @@ class ListMarkerWidget extends WidgetType {
     checkbox.className = "cm-live-task-checkbox";
     checkbox.checked = this.taskChecked;
     checkbox.tabIndex = -1;
-    checkbox.setAttribute("aria-label", "Task item");
+    checkbox.setAttribute("aria-label", localized("Task item"));
     checkbox.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -463,7 +488,10 @@ class EmbeddedNoteWidget extends WidgetType {
     shell.dataset.scholiumProtected = "embedded-note";
     shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
     shell.setAttribute("role", "group");
-    shell.setAttribute("aria-label", `Embedded note ${this.preview.title}`);
+    shell.setAttribute(
+      "aria-label",
+      localizedTemplate("Embedded note {title}", {title: this.preview.title}),
+    );
 
     const header = document.createElement("header");
     header.className = "scholium-embedded-note-header";
@@ -472,7 +500,10 @@ class EmbeddedNoteWidget extends WidgetType {
     open.dir = "auto";
     open.dataset.scholiumLinkTarget = this.target;
     open.dataset.scholiumSourceCaret = String(this.sourceCaret);
-    open.setAttribute("aria-label", `Open embedded note ${this.preview.title}`);
+    open.setAttribute(
+      "aria-label",
+      localizedTemplate("Open embedded note {title}", {title: this.preview.title}),
+    );
     open.append(document.createTextNode(this.preview.title));
     header.append(open);
 
@@ -480,7 +511,10 @@ class EmbeddedNoteWidget extends WidgetType {
     viewport.className = "scholium-embedded-note-viewport";
     viewport.tabIndex = 0;
     viewport.setAttribute("role", "region");
-    viewport.setAttribute("aria-label", `Embedded note content for ${this.preview.title}`);
+    viewport.setAttribute(
+      "aria-label",
+      localizedTemplate("Embedded note content for {title}", {title: this.preview.title}),
+    );
     const body = document.createElement("div");
     body.className = "scholium-embedded-note-body scholium-document";
     populatePreviewDocument(body, this.preview);
@@ -516,6 +550,7 @@ class MathWidget extends WidgetType {
     element.dataset.scholiumProtected = "math";
 
     const runtime = window.scholiumMath;
+    if (runtime?.version !== 1) post({type: "requestMathRuntime"});
     const rendered = runtime?.version === 1
       ? runtime.render({source: this.expression.content, kind: this.expression.kind})
       : {ok: false as const, reason: "invalid-source" as const};
@@ -533,7 +568,10 @@ class MathWidget extends WidgetType {
         ? `${delimiter}\n${this.expression.content}\n${delimiter}`
         : `${delimiter}${this.expression.content}${delimiter}`;
       element.classList.add("scholium-math-error");
-      element.setAttribute("aria-label", "Mathematics could not be rendered. Source is shown.");
+      element.setAttribute(
+        "aria-label",
+        localized("Mathematics could not be rendered. Source is shown."),
+      );
       element.append(source);
     }
     if (this.expression.kind === "display") {
@@ -837,7 +875,10 @@ class MermaidWidget extends WidgetType {
       if (abortController.signal.aborted || !slot.isConnected) return;
       if (!runtime) {
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "Diagram rendering is unavailable. Mermaid source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("Diagram rendering is unavailable. Mermaid source is shown."),
+        );
         view.requestMeasure();
         return;
       }
@@ -851,7 +892,10 @@ class MermaidWidget extends WidgetType {
           || (!result.ok && result.reason === "cancelled")) return;
       if (!result.ok) {
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "This Mermaid diagram is unsupported or could not be rendered. Source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("This Mermaid diagram is unsupported or could not be rendered. Source is shown."),
+        );
         view.requestMeasure();
         return;
       }
@@ -859,7 +903,10 @@ class MermaidWidget extends WidgetType {
       output.className = "scholium-mermaid-output";
       if (!runtime.mount(output, result.svg)) {
         wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be isolated safely. Source is shown.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("This Mermaid diagram could not be isolated safely. Source is shown."),
+        );
         view.requestMeasure();
         return;
       }
@@ -868,15 +915,24 @@ class MermaidWidget extends WidgetType {
       if (result.accessibilityWarning) {
         const accessibleSource = document.createElement("span");
         accessibleSource.className = "scholium-mermaid-accessible-source";
-        accessibleSource.textContent = `Mermaid source: ${this.presentation.content}`;
+        accessibleSource.textContent = localizedTemplate(
+          "Mermaid source: {source}",
+          {source: this.presentation.content},
+        );
         wrapper.append(accessibleSource);
-        appendMermaidDiagnostic(wrapper, "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.");
+        appendMermaidDiagnostic(
+          wrapper,
+          localized("Add accTitle and accDescr to provide a concise nonvisual account of this diagram."),
+        );
       }
       view.requestMeasure();
     }).catch(() => {
       if (abortController.signal.aborted || !slot.isConnected) return;
       wrapper.classList.add("scholium-mermaid-error");
-      appendMermaidDiagnostic(wrapper, "This Mermaid diagram could not be rendered. Source is shown.");
+      appendMermaidDiagnostic(
+        wrapper,
+        localized("This Mermaid diagram could not be rendered. Source is shown."),
+      );
       view.requestMeasure();
     });
     return slot;
@@ -1346,7 +1402,10 @@ class FootnoteReferenceWidget extends WidgetType {
     marker.className = "footnote-reference";
     marker.dataset.footnote = String(this.reference.ordinal);
     marker.dataset.scholiumProtected = "footnote-marker";
-    marker.setAttribute("aria-label", `Footnote ${this.reference.ordinal}`);
+    marker.setAttribute(
+      "aria-label",
+      localizedTemplate("Footnote {ordinal}", {ordinal: this.reference.ordinal}),
+    );
     marker.textContent = String(this.reference.ordinal);
     if (this.reference.definitionFrom === null) {
       marker.setAttribute("aria-disabled", "true");
@@ -2470,13 +2529,15 @@ class UnclosedFrontmatterWidget extends WidgetType {
     notice.setAttribute("role", "note");
     notice.setAttribute(
       "aria-label",
-      "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
+      localized("Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."),
     );
 
     const title = document.createElement("strong");
-    title.textContent = "Edit mode unavailable";
+    title.textContent = localized("Edit mode unavailable");
     const detail = document.createElement("span");
-    detail.textContent = "Close the YAML frontmatter in Source mode to restore the visual projection.";
+    detail.textContent = localized(
+      "Close the YAML frontmatter in Source mode to restore the visual projection.",
+    );
     notice.append(title, detail);
     return notice;
   }
@@ -2552,7 +2613,8 @@ function mergedChangedLineRanges(transaction: Transaction) {
 }
 
 let dirty = false;
-let pendingKeyStartedAt: number | null = null;
+let pendingKeyDownStartedAt: number | null = null;
+let pendingCommittedKeyStartedAt: number | null = null;
 let pendingInputStartedAt: {startedAt: number; composing: boolean} | null = null;
 let forceNextInteractionContext = true;
 let lastInteractionAvailabilitySignature: string | null = null;
@@ -2581,25 +2643,18 @@ const stateReporter = EditorView.updateListener.of((update) => {
   if (!update.docChanged && !update.selectionSet) return;
 
   if (update.docChanged) {
-    if (pendingInputStartedAt !== null) {
-      const input = pendingInputStartedAt;
-      pendingInputStartedAt = null;
+    const input = pendingInputStartedAt;
+    pendingInputStartedAt = null;
+    if (input !== null) {
       recordEditorMetric("input-to-state", input.startedAt, {
         composing: input.composing ? 1 : 0,
         documentLength: update.state.doc.length,
       });
-      window.requestAnimationFrame(() => recordEditorMetric("input-to-paint", input.startedAt, {
-        composing: input.composing ? 1 : 0,
-        documentLength: update.state.doc.length,
-      }));
     }
-    if (pendingKeyStartedAt !== null) {
-      const keyStartedAt = pendingKeyStartedAt;
-      pendingKeyStartedAt = null;
+    const keyStartedAt = pendingCommittedKeyStartedAt;
+    pendingCommittedKeyStartedAt = null;
+    if (keyStartedAt !== null) {
       recordEditorMetric("key-to-state", keyStartedAt, {documentLength: update.state.doc.length});
-      window.requestAnimationFrame(() => recordEditorMetric("key-to-paint", keyStartedAt, {
-        documentLength: update.state.doc.length,
-      }));
     }
     const baseGeneration = documentVersion;
     documentVersion += 1;
@@ -2623,7 +2678,7 @@ const stateReporter = EditorView.updateListener.of((update) => {
     if (!exactSourceMirror.apply(mirrorChanges)) {
       post({
         type: "editorError",
-        message: "The editor could not preserve the exact source line endings.",
+        message: localized("The editor could not preserve the exact source line endings."),
       });
       return;
     }
@@ -2631,6 +2686,47 @@ const stateReporter = EditorView.updateListener.of((update) => {
       changeCount: mirrorChanges.length,
       documentLength: update.state.doc.length,
     });
+    // Register the paint endpoint before handing the delta to native
+    // reconciliation. Messages remain ordered because documentChanged posts in
+    // this task and the performance sample cannot post until a later frame and
+    // task.
+    if (input !== null || keyStartedAt !== null) {
+      const paintedSessionID = bridgeSessionID;
+      const paintedDocumentID = bridgeDocumentID;
+      const paintedFingerprint = bridgeFingerprint;
+      const paintedDocumentVersion = documentVersion;
+      const paintedDocumentLength = update.state.doc.length;
+      scheduleAfterNextPaint(() => {
+        if (input !== null) {
+          recordEditorMetric("input-to-paint", input.startedAt, {
+            composing: input.composing ? 1 : 0,
+            documentLength: paintedDocumentLength,
+          });
+        }
+        if (keyStartedAt !== null) {
+          recordEditorMetric("key-to-paint", keyStartedAt, {
+            documentLength: paintedDocumentLength,
+          });
+        }
+        // CodeMirror may commit deletion directly from keydown, while macOS
+        // text services may commit text without a DOM keydown. Prefer the
+        // physical-key boundary and fall back to non-composing beforeinput.
+        const committedKeyStartedAt = keyStartedAt
+          ?? (input !== null && !input.composing ? input.startedAt : null);
+        if (committedKeyStartedAt !== null
+            && webkitWindow.scholiumPerformanceMetric === "editor_key_to_paint"
+            && bridgeSessionID === paintedSessionID
+            && bridgeDocumentID === paintedDocumentID
+            && bridgeFingerprint === paintedFingerprint
+            && documentVersion === paintedDocumentVersion) {
+          post({
+            type: "performanceSample",
+            metric: "editor_key_to_paint",
+            durationMilliseconds: Math.max(0, performance.now() - committedKeyStartedAt),
+          });
+        }
+      });
+    }
     post({ type: "documentChanged", baseGeneration, resultingGeneration: documentVersion, changes });
   }
 
@@ -2681,7 +2777,31 @@ const saveKeymap = keymap.of([
     key: "Mod-f",
     preventDefault: true,
     run: () => {
-      post({ type: "requestSearch" });
+      post({type: "requestDocumentFind", action: "present"});
+      return true;
+    },
+  },
+  {
+    key: "Mod-g",
+    preventDefault: true,
+    run: () => {
+      post({type: "requestDocumentFind", action: "next"});
+      return true;
+    },
+  },
+  {
+    key: "Shift-Mod-g",
+    preventDefault: true,
+    run: () => {
+      post({type: "requestDocumentFind", action: "previous"});
+      return true;
+    },
+  },
+  {
+    key: "Mod-e",
+    preventDefault: true,
+    run: () => {
+      post({type: "requestDocumentFind", action: "useSelection"});
       return true;
     },
   },
@@ -2922,6 +3042,8 @@ function applySelectionAction(view: EditorView, command: SelectionActionCommand)
 
 const selectionActions = createSelectionActionsController({
   applyCommand: applySelectionAction,
+  requestImportImage: () => post({type: "requestImportImage"}),
+  requestIndexImage: () => post({type: "requestIndexImage"}),
   selectionForPresentation: (view) => liveSelection.selection(view.state),
   presentationInteractionChanged: (update) => liveSelection.interactionChanged(
     update.startState,
@@ -2934,6 +3056,7 @@ const selectionActions = createSelectionActionsController({
 
 const previewPopover = createPreviewPopoverController({
   previews: () => linkPreviews,
+  postPerformanceSample: postConfiguredPerformanceSample,
 });
 
 const sourceActiveLineDecoration = Decoration.line({class: "cm-activeLine"});
@@ -2969,8 +3092,8 @@ const inputSuggestions = createEditorInputSuggestions({
   dialect: () => editingDialect,
   isComposing: () => editor.composing,
   protectedRanges: protectedCommandRanges,
-  requestLinkCompletions: (requestID, query) => {
-    post({type: "linkCompletionQuery", requestID, query});
+  requestLinkCompletions: (requestID, completionKind, query) => {
+    post({type: "linkCompletionQuery", requestID, completionKind, query});
   },
   didApply: (undoLabel) => {
     lastUndoLabel = undoLabel;
@@ -3045,6 +3168,7 @@ const editorExtensions = [
         ...foldKeymap,
       ]),
       saveKeymap,
+      documentFindExtension,
       editorContextMenu,
       stateReporter,
       linkActivation,
@@ -3056,9 +3180,25 @@ const editorExtensions = [
       }),
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
-editor.contentDOM.addEventListener("keydown", () => { pendingKeyStartedAt = performance.now(); }, {capture: true});
+editor.contentDOM.addEventListener("keydown", (event) => {
+  const key = event.key;
+  const canCommitText = !event.isComposing
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.altKey
+    && (key.length === 1 || key === "Backspace" || key === "Delete" || key === "Enter");
+  pendingKeyDownStartedAt = canCommitText ? performance.now() : null;
+  pendingCommittedKeyStartedAt = pendingKeyDownStartedAt;
+}, {capture: true});
+editor.contentDOM.addEventListener("keyup", () => {
+  pendingKeyDownStartedAt = null;
+  pendingCommittedKeyStartedAt = null;
+}, {capture: true});
 editor.contentDOM.addEventListener("beforeinput", (event) => {
   const input = event as InputEvent;
+  pendingCommittedKeyStartedAt = input.isComposing || editor.composing
+    ? null
+    : pendingKeyDownStartedAt;
   pendingInputStartedAt = {
     startedAt: performance.now(),
     composing: input.isComposing || editor.composing,
@@ -3240,6 +3380,19 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
   case "showPreview": previewPopover.showAtSelection(); break;
+  case "measureVisibleProjection": {
+    const startedAt = performance.now();
+    editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    postConfiguredPerformanceSample(
+      "editor_visible_projection",
+      // WebKit may quantize two readings around a sub-millisecond synchronous
+      // dispatch to the same value. Preserve that real below-clock-resolution
+      // observation as a positive sample so the native collector does not
+      // mistake it for a missing boundary.
+      Math.max(Number.EPSILON, performance.now() - startedAt),
+    );
+    break;
+  }
   case "showPreviewAt": previewPopover.showAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
   case "goToLine": editorOperations.goToLine(operation.line); break;
@@ -3378,6 +3531,18 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     lastRedoLabel = transformed.undoLabel;
     return successfulResult(request.requestID, true, transformed.undoLabel);
   }
+  case "documentFind": {
+    const result = performDocumentFind(editor, operation.value);
+    if (result.undoLabel) {
+      lastUndoLabel = result.undoLabel;
+      lastRedoLabel = result.undoLabel;
+    }
+    return {
+      ...successfulResult(request.requestID, result.sourceChanged, result.undoLabel),
+      find: {current: result.current, total: result.total},
+    };
+  }
+  case "clearDocumentFind": clearDocumentFind(editor); break;
   case "markClean": editorOperations.markClean(); break;
   case "focus": editorOperations.focus(); break;
   case "blur": editorOperations.blur(); break;
@@ -3436,11 +3601,22 @@ editor.contentDOM.addEventListener("compositionstart", () => {
   window.queueMicrotask(publishEditorContext);
 });
 
-function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
+function pasteTransfer(
+  transfer: DataTransfer,
+  dropPosition?: number,
+  requestNativeImageImport = false,
+) {
   if (Array.from(transfer.files).length > 0
       || Array.from(transfer.items).some((item) => item.kind === "file")) {
-    post({type: "failure", message: unsupportedFilePasteMessage});
-    announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage);
+    const image = Array.from(transfer.files).some((file) => file.type.startsWith("image/"))
+      || Array.from(transfer.items).some((item) =>
+        item.kind === "file" && item.type.startsWith("image/"));
+    if (requestNativeImageImport && image) {
+      post({type: "requestImagePaste"});
+      return true;
+    }
+    post({type: "failure", message: unsupportedFilePasteMessage()});
+    announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
     return true;
   }
   const text = transfer.getData("text/plain");
@@ -3459,7 +3635,7 @@ function pasteTransfer(transfer: DataTransfer, dropPosition?: number) {
 
 editor.contentDOM.addEventListener("paste", (event) => {
   if (!event.clipboardData) return;
-  if (pasteTransfer(event.clipboardData)) event.preventDefault();
+  if (pasteTransfer(event.clipboardData, undefined, true)) event.preventDefault();
 }, {capture: true});
 editor.contentDOM.addEventListener("drop", (event) => {
   if (!event.dataTransfer) return;
@@ -3731,6 +3907,10 @@ const editorOperations = {
 webkitWindow.scholiumEditor = {
   dispatch: dispatchEditorRequest,
   resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
+  refreshMathRuntime() {
+    editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+    return true;
+  },
 };
 
 recordEditorMetric("startup", editorStartupStartedAt, {documentLength: editor.state.doc.length});

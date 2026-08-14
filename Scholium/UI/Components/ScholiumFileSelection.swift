@@ -181,15 +181,21 @@ struct ScholiumFileSelectionRequest {
 final class ScholiumFileSelectionPresenter: ObservableObject {
     private weak var window: NSWindow?
     private weak var activePanel: NSOpenPanel?
+    // SwiftUI may attach a replacement bridge before removing its predecessor.
+    // Only the bridge that established the current binding may tear it down.
+    private var windowAttachmentID: UUID?
 
-    func attach(to window: NSWindow) {
+    fileprivate func attach(to window: NSWindow, attachmentID: UUID) {
         self.window = window
+        windowAttachmentID = attachmentID
     }
 
-    func detach() {
+    fileprivate func detach(attachmentID: UUID) {
+        guard windowAttachmentID == attachmentID else { return }
         activePanel?.cancel(nil)
         activePanel = nil
         window = nil
+        windowAttachmentID = nil
     }
 
     func selectURL(_ request: ScholiumFileSelectionRequest) async throws -> URL? {
@@ -230,7 +236,7 @@ final class ScholiumFileSelectionPresenter: ObservableObject {
         return try request.validatedURLs(panel.urls)
     }
 
-    private var presentationWindow: NSWindow? {
+    var presentationWindow: NSWindow? {
         guard var candidate = window else { return nil }
         while let attachedSheet = candidate.attachedSheet {
             candidate = attachedSheet
@@ -254,6 +260,20 @@ extension EnvironmentValues {
     }
 }
 
+extension View {
+    /// Installs the one native file-selection owner for an entire scene.
+    /// Apply this after the scene's presentation modifiers so their sheets
+    /// inherit the presenter as well as the scene's ordinary content.
+    func scholiumFileSelectionScene(
+        presenter: ScholiumFileSelectionPresenter
+    ) -> some View {
+        environment(\.scholiumFileSelectionPresenter, presenter)
+            .background(
+                ScholiumFileSelectionWindowAttachment(presenter: presenter)
+            )
+    }
+}
+
 struct ScholiumFileSelectionWindowAttachment: NSViewRepresentable {
     let presenter: ScholiumFileSelectionPresenter
 
@@ -268,21 +288,27 @@ struct ScholiumFileSelectionWindowAttachment: NSViewRepresentable {
         context: Context
     ) {
         nsView.presenter = presenter
-        if let window = nsView.window {
-            presenter.attach(to: window)
-        }
     }
 }
 
 final class ScholiumFileSelectionAttachmentView: NSView {
-    weak var presenter: ScholiumFileSelectionPresenter?
+    private let attachmentID = UUID()
+    weak var presenter: ScholiumFileSelectionPresenter? {
+        didSet {
+            guard oldValue !== presenter else { return }
+            oldValue?.detach(attachmentID: attachmentID)
+            if let window {
+                presenter?.attach(to: window, attachmentID: attachmentID)
+            }
+        }
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let window {
-            presenter?.attach(to: window)
+            presenter?.attach(to: window, attachmentID: attachmentID)
         } else {
-            presenter?.detach()
+            presenter?.detach(attachmentID: attachmentID)
         }
     }
 }

@@ -23,8 +23,6 @@ struct WorkspaceSetupContext {
     let refreshAssignment: () async -> Void
     let portableContainerURL: (URL) async -> URL?
     let prepareTriptychStructure: (URL, String) async throws -> WorkspaceSetupSelection
-    let commandLineToolStatus: () async -> CommandLineToolStatus
-    let installCommandLineTool: () async throws -> CommandLineToolStatus
     let configure: (WorkspaceSetupSelection) async throws -> Void
     let completeBootstrap: () -> Void
     let dismiss: () -> Void
@@ -98,8 +96,6 @@ private struct BootstrapFlowView: View {
             if step == .agent, let rootURL = triptychRootURL {
                 BootstrapAgentPreparationView(
                     triptychRootURL: rootURL,
-                    commandLineToolStatus: context.commandLineToolStatus,
-                    installCommandLineTool: context.installCommandLineTool,
                     allowsBack: !isRegisteringTriptych,
                     isCompletingBootstrap: pendingAgentOutcome != nil,
                     goBack: moveBack,

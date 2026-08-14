@@ -16,7 +16,8 @@ Analysis, Topic, and ordinary Work notes support:
   authoritative Markdown annotation including semantic Callouts;
 - role-aware Properties and the closed Platform Research Actions with
   researcher-configured academic Profiles;
-- Search in **This Note**, **This Vault**, or **Triptych**, plus Attention; and
+- Search in **This Note**, **This Vault**, or **Triptych**, plus Attention;
+- lightweight Document Find in every mode, with Replace in Edit and Source; and
 - Research Record and independent checkpoint recovery.
 
 Critique bodies are read-only in Scholium but remain ordinary externally
@@ -72,24 +73,80 @@ transaction without moving the document selection; the caret-line **Toggle
 Task** command remains the keyboard/menu route. Source always exposes the exact
 prefix and task bytes.
 
-Edit alone owns two caret-triggered input suggestion lists. Typing `[[` opens
+Edit alone owns three caret-triggered input suggestion lists. Typing `[[` opens
 the current Workspace note catalog and filters it again as the researcher types;
-each insertable result shows its resolved title and quiet path context. Accepting
-one unique result completes exactly one Wikilink, reusing rather than duplicating
-any auto-inserted closing brackets. Ambiguous cross-vault targets remain
-nonauthorizing and are not offered as insertable results. Typing `/` at the
-start of a line or after whitespace opens structured insertion. A bare slash on
-a block-safe line shows only **Callout**, **Date**, **Inline Math**, and
-**Mermaid**; further characters fuzzy-match the complete bounded set:
-**Callout**, **Date**, **Inline Math**, **Display Math**, **Mermaid**, **Table**,
-**Footnote**, **Code Block**, and **Divider**. In ordinary prose, the bare slash
-offers only Date, Inline Math, and Footnote. Date inserts the local calendar date
-as `YYYY-MM-DD`; Callout continues into the canonical role chooser. These lists
-never run during marked-text composition or inside frontmatter, code, raw HTML,
-comments, mathematics, or another protected construct. Source owns neither
-input list. Each accepted suggestion is one editor transaction and one
-Undo event; it never creates another buffer, selection, focus owner, or
-writable projection.
+each insertable result shows its resolved title and quiet path context. Titles,
+paths, and authored aliases participate in matching. Accepting a title or path
+inserts the canonical target as `[[Target]]`; accepting an authored alias inserts
+`[[Target|Alias]]`. When the researcher has already entered `|Visible Text`,
+completion replaces only the target and preserves that exact visible text.
+Accepting one unique result completes exactly one Wikilink, reusing rather than
+duplicating any auto-inserted closing brackets and never rewriting an existing
+link elsewhere. Ambiguous cross-vault targets remain nonauthorizing and are not
+offered as insertable results.
+
+Typing `@` at a text boundary opens **Analysis Reference** completion over only
+the active Analyses vault. It searches the current Analysis identity and
+available author, publication-date, and source-title projections, shows author,
+year, title, and quiet path when present, and performs no Zotero read. Accepting
+one result inserts a neutral Wikilink to the canonical Analysis target with a
+short visible author/year label when those fields permit one, otherwise its
+resolved title. It never invents or inserts a citation key, citation processor
+syntax, evidential relation, or bibliography entry. The candidate set and
+derived display labels are read-only, cancellable, and nonpersistent.
+
+Typing `/` at the start of a line or after whitespace opens structured
+insertion. A bare slash on a block-safe line shows only **Callout**, **Date**,
+**Inline Math**, and **Mermaid**; further characters fuzzy-match the complete
+bounded set: **Callout**, **Date**, **Inline Math**, **Display Math**,
+**Mermaid**, **Table**, **Footnote**, **Code Block**, and **Divider**. In
+ordinary prose, the bare slash offers only Date, Inline Math, and Footnote. Date
+inserts the local calendar date as `YYYY-MM-DD`; Callout continues into the
+canonical role chooser. These lists never run during marked-text composition or
+inside frontmatter, code, raw HTML, comments, mathematics, or another protected
+construct. Source owns none of the input lists. Each accepted suggestion is one
+editor transaction and one Undo event; it never creates another buffer,
+selection, focus owner, or writable projection.
+
+Document statistics are derived from the current unsaved body and never stored.
+A nonempty selection changes the scope to that selection; clearing it returns to
+the complete body. **English words** are Unicode letter-or-number runs in Latin
+script, retaining internal apostrophes or hyphens. **Chinese characters** count
+each Han character. **Characters** count Unicode extended grapheme clusters in
+visible authored text. YAML, Markdown delimiters, code-fence delimiters, and
+link destinations are excluded; visible link labels, image alternative text,
+code content, and punctuation remain in the character total. Other scripts
+remain in Characters without being mislabeled as English words or Chinese
+characters. Statistics never retain history or claim an exact source-byte
+count.
+
+Spelling and grammar use the installed macOS text services. Scholium exposes the
+standard Edit-menu and contextual routes and does not ship a dictionary,
+language detector, correction model, or persistent spelling profile.
+
+Image attachment management has exactly two explicit routes. **Import Image…**
+copies one researcher-selected supported image into the current vault at
+`Attachments/<attachment-uuid>/<original-filename>` without replacement,
+records its stable identity and vault-relative path, and inserts one ordinary
+relative Markdown image link into the current Edit or Source buffer. Pasting
+image bytes or a copied image file always uses this Import route.
+
+**Index Image…** validates but does not copy the selected image, records its
+stable identity and standardized absolute Finder path, and inserts that
+percent-encoded absolute path as the ordinary Markdown image destination. A
+read-only security-scoped bookmark may be retained only in machine-local
+Application Support so Scholium can check access after relaunch; bookmark bytes
+never enter `.scholium` or Markdown and never replace the authored absolute path
+as location authority. If the path later becomes missing, inaccessible, moved,
+or stale, Scholium reports that the indexed attachment is unavailable and does
+not search for, relink, repair, copy, move, or delete it.
+
+In both routes the source link remains authoritative and meaningful in other
+Markdown editors; the catalog never regenerates or silently repairs it. Import,
+Index, catalog, bookmark, stale-source, or editor failure inserts no link and
+rolls back only state exactly created by that failed operation. Scholium never
+uploads, deletes, moves, or rewrites an attachment as a side effect of editing
+or deleting a Note.
 
 Rendered callouts hide generated role names visually but retain them for
 accessibility. A supplied title inherits the role heading style; an untitled
@@ -218,13 +275,15 @@ top clearance belongs to the scrolling document.
 
 ### 5.2 Properties
 
-Properties separates eight states that never imply one another: supported,
-applicable, recommended, Agent-required, creatable, present, About-visible,
-and structured-editable. Their owners are respectively the canonical property
-catalog, Analysis source-type profile, that profile's recommendation order,
-Triptych Agent-creation settings, role creation policy, exact YAML, the About
-profile, and the structured-edit allowlist. Exact New Note YAML and Zotero
-binding are separate contracts again; neither is inferred from these states.
+Properties separates seven states that never imply one another: supported,
+applicable, recommended, Agent-required, creatable, present, and About-visible.
+Their owners are respectively the canonical property catalog, Analysis
+source-type profile, that profile's recommendation order, Triptych
+Agent-creation settings, role creation policy, exact YAML, and the About
+profile. Whether a present value is directly editable depends only on its
+current exact-source shape and the targeted patch contract; it is not a
+portable setting. Exact New Note YAML and Zotero binding are separate
+contracts again; neither is inferred from these states.
 
 Every canonical field is researcher-owned source metadata. Scholium has no
 protected-machine Property. Identity, fingerprints, provenance, bindings,
@@ -260,29 +319,34 @@ Researcher State, acceptance, or writer proof. Researcher and authorized Agent
 edits share the exact-revision, attribution, conflict, and recovery boundary;
 the current value alone never identifies its author.
 
-Each Triptych role stores independent About order, structured-edit allowlist,
-and exact delimiter-free `newNoteYAML`. Analysis additionally stores per-source
-type Agent-required fields. The three built-in seeds and all built-in required
-sets are empty. About and edit defaults never materialize keys. Settings uses
+Each Triptych role stores independent About order and exact delimiter-free
+`newNoteYAML`. Analysis additionally stores per-source-type Agent-required
+fields. The three built-in seeds and all built-in required sets are empty.
+About defaults never materialize keys. Settings uses
 one explicit schema envelope and exact-byte `SettingsRevision`; save is an
 expected-revision atomic transaction with readback. Old, future, damaged,
 conflicting, and current-schema-needs-review states remain distinct and never
 fall back to overwriting defaults.
 
-Bundled prompt-template bodies are the sole decoded-value exception: their
-stable IDs select current app-bundled definitions projected in memory without
-rewriting `settings.json`. Researcher templates and active IDs remain exact
-portable settings; a missing or mismatched active ID needs review rather than
-being repaired.
+The portable Settings schema owns only the three role Property profiles,
+Analysis per-source-type Agent requirements, and the Attention dismissal
+period. It stores no prompt bodies or active prompt selection. Research
+Guidance intellectual configuration remains owned by exact Markdown Methods
+and Practices rather than a second settings representation.
 
-Complete Properties shows every safely bounded existing top-level property.
-Allowed canonical or observably scalar/list values receive structured controls;
-unsupported shapes remain read-only with a Source route. **Add a Property…**
-creates only a missing canonical key with a valid nonempty value. A YAML-free
+Complete Properties uses one role-aware sheet for Analysis, Topic, and Work and
+shows every safely bounded existing top-level property. Canonical or observably
+scalar/list values receive direct controls whenever their exact source range can
+be targeted; unsupported or ambiguous shapes remain read-only with a Source
+route. All custom top-level fields stay together in one final custom group.
+Semantic groups are separated by whitespace rather than repeated visible group
+headings; their names remain available to assistive technology. **Add a
+Property…** creates only a missing applicable canonical key with a valid
+nonempty value. A YAML-free
 Note offers explicit **Add YAML Properties…** or **Keep Without YAML**; insertion
 is a single current-fingerprint-bound source transaction, never automatic or
-batch migration. About omits absent and empty values and follows Appendix A's
-fixed groups; Tags form the final named group and render as neutral capsules.
+batch migration. About omits absent and empty values, follows the same group
+order and whitespace grammar, and renders final Tags as neutral capsules.
 
 ### 5.3 Create, duplicate, rename, and identity
 

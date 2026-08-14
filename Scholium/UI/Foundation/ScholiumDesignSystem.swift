@@ -1293,7 +1293,6 @@ enum ScholiumGrid {
     enum Apparatus {
         static let contentInset = Peripheral.contentInset
         static let modeStripHeight = foundationUnit * 10
-        static let modeColumnGap = Spacing.labelAccessoryGap
         static let firstSectionGap = foundationUnit * 4
         static let sectionGap = foundationUnit * 4
         static let connectionDirectionControlMaximumWidth = foundationUnit * 60
@@ -1323,6 +1322,15 @@ enum ScholiumGrid {
         static let longTextIndent = foundationUnit * 3
         static let readingBlockGap = foundationUnit * 2
         static let bottomInset = contentInset
+    }
+
+    enum SegmentedControl {
+        static let trackInset = Spacing.opticalAlignmentAdjustment
+        static let segmentGap = Spacing.opticalAlignmentAdjustment
+        static let regularSegmentMinimumHeight = Dimension.preferredCustomTarget
+        static let compactSegmentMinimumHeight = Dimension.compactHierarchyRowHeight
+        static let regularHorizontalInset = Spacing.nestedContentInset
+        static let compactHorizontalInset = Spacing.inlineControlGap
     }
 
     enum ResearchRecords {
@@ -1384,6 +1392,19 @@ enum ScholiumMetrics {
     enum Accessibility {
         static let preferredCustomTarget = ScholiumGrid.Dimension.preferredCustomTarget
         static let minimumCustomTarget = ScholiumGrid.Dimension.minimumCustomTarget
+    }
+
+    enum SegmentedControl {
+        static let trackInset = ScholiumGrid.SegmentedControl.trackInset
+        static let segmentSpacing = ScholiumGrid.SegmentedControl.segmentGap
+        static let regularSegmentMinimumHeight =
+            ScholiumGrid.SegmentedControl.regularSegmentMinimumHeight
+        static let compactSegmentMinimumHeight =
+            ScholiumGrid.SegmentedControl.compactSegmentMinimumHeight
+        static let regularHorizontalInset =
+            ScholiumGrid.SegmentedControl.regularHorizontalInset
+        static let compactHorizontalInset =
+            ScholiumGrid.SegmentedControl.compactHorizontalInset
     }
 
     enum Onboarding {
@@ -1478,8 +1499,10 @@ enum ScholiumMetrics {
         enum Action {
             static let minimumWidth: CGFloat = 520
             static let idealWidth: CGFloat = 660
-            static let minimumHeight: CGFloat = 500
-            static let idealHeight: CGFloat = 680
+            static let compactMinimumHeight: CGFloat = 280
+            static let compactIdealHeight: CGFloat = 320
+            static let regularMinimumHeight: CGFloat = 340
+            static let regularIdealHeight: CGFloat = 380
         }
 
         enum ResearcherResponse {
@@ -1531,15 +1554,16 @@ enum ScholiumMetrics {
 
     enum Properties {
         static let headerDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
-        static let groupSpacing = ScholiumGrid.foundationUnit * 2.5
+        static let semanticGroupSeparation = ScholiumGrid.foundationUnit * 6
+        static let fieldBlockSeparation = ScholiumGrid.Spacing.sectionSeparation
+        static let creatorItemSeparation = ScholiumGrid.Spacing.sectionSeparation
         static let optionSpacing = ScholiumGrid.foundationUnit * 1.25
         static let fieldSpacing = ScholiumGrid.foundationUnit * 1.5
         static let labelSpacing = ScholiumGrid.foundationUnit * 1.25
-        static let badgeHorizontalInset = ScholiumGrid.foundationUnit * 1.25
-        static let badgeVerticalInset = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         static let tagContentSpacing = ScholiumGrid.foundationUnit * 0.75
         static let tagVerticalInset = ScholiumGrid.foundationUnit * 0.75
+        static let numberControlMaximumWidth = ScholiumGrid.foundationUnit * 50
+        static let compactControlMaximumWidth = ScholiumGrid.foundationUnit * 60
     }
 
     enum Settings {
@@ -1556,10 +1580,7 @@ enum ScholiumMetrics {
         static let rowStatusSpacing = ScholiumGrid.foundationUnit * 0.75
         static let rowActionMinimumSpacing = ScholiumGrid.Spacing.labelAccessoryGap
         static let rowVerticalInset = ScholiumGrid.foundationUnit * 0.75
-        static let pathHeaderSpacing = ScholiumGrid.foundationUnit * 1.5
         static let pathHorizontalInset = ScholiumGrid.foundationUnit * 6
-        static let pathTopInset = ScholiumGrid.foundationUnit * 5.5
-        static let pathBottomInset = ScholiumGrid.foundationUnit * 4.5
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
     }
 
@@ -1660,6 +1681,10 @@ enum ScholiumMetrics {
     }
 
     enum Apparatus {
+        /// AppKit's standard Inspector thickness is 270 points. Scholium keeps
+        /// that readable lower bound while allowing the native split item to
+        /// grow without an application-defined maximum.
+        static let minimumReadableWidth: CGFloat = 270
         /// One initial suggestion, mirroring the system inspector's ideal-width
         /// semantics. AppKit continues to own subsequent resizing.
         static let firstRevealWidth: CGFloat = 320
@@ -1681,7 +1706,6 @@ enum ScholiumMetrics {
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
         static let rowSpacing = ScholiumGrid.Apparatus.contentRowGap
         static let bodyLineSpacing = ScholiumGrid.Apparatus.contentLineSpacing
-        static let modeColumnSpacing = ScholiumGrid.Apparatus.modeColumnGap
         static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
         static let actionRowMinimumHeight = ScholiumGrid.Apparatus.actionRowMinimumHeight
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
@@ -1854,6 +1878,7 @@ struct ScholiumDocumentPresentationConfiguration: Equatable, Sendable {
 enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     case inlineStatus
     case editorialControl
+    case segmentedControl
     case workspaceNavigation
     case editorialPanel
     case loadingSurface
@@ -1877,7 +1902,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
              .researchRecordCollectionRow, .boundedPanel,
              .documentCalloutSurface, .documentEmbeddedNote:
             8
-        case .editorialPanel, .loadingSurface, .documentCodeBlock:
+        case .editorialPanel, .segmentedControl, .loadingSurface, .documentCodeBlock:
             10
         case .editorialTextEditor:
             6
@@ -1920,7 +1945,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             "--scholium-corner-selection-split-control"
         case .calloutDisclosureFocus:
             "--scholium-corner-callout-disclosure-focus"
-        case .editorialControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
+        case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
              .searchOverlay, .researchRecordCollectionRow:
             nil
         }
@@ -1930,6 +1955,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
 enum ScholiumShape {
     static let inlineStatusCornerRadius = ScholiumCornerRole.inlineStatus.radius
     static let editorialControlCornerRadius = ScholiumCornerRole.editorialControl.radius
+    static let segmentedControlCornerRadius = ScholiumCornerRole.segmentedControl.radius
     static let workspaceNavigationCornerRadius = ScholiumCornerRole.workspaceNavigation.radius
     static let editorialPanelCornerRadius = ScholiumCornerRole.editorialPanel.radius
     static let loadingSurfaceCornerRadius = ScholiumCornerRole.loadingSurface.radius
@@ -2517,8 +2543,23 @@ private struct ScholiumContentControlInkModifier: ViewModifier {
 
 /// The shared transient-state owner for custom SwiftUI Buttons. Native Menu
 /// labels use the AppKit tracking adapter below because SwiftUI does not
-/// reliably forward their pointer state; ordinary Buttons stay on SwiftUI's
-/// lightweight hover and ButtonStyle press path.
+/// reliably forward their pointer state. Ordinary Buttons use SwiftUI's
+/// lightweight hover and ButtonStyle press path; native-container call sites
+/// may leave hover to AppKit while retaining the shared press path.
+private struct ScholiumHoverStateModifier: ViewModifier {
+    let tracksHover: Bool
+    let stateDidChange: (Bool) -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if tracksHover {
+            content.onHover(perform: stateDidChange)
+        } else {
+            content
+        }
+    }
+}
+
 private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
@@ -2527,24 +2568,34 @@ private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModif
     let isSelected: Bool
     let isFocused: Bool
     let isPressed: Bool
+    let tracksHover: Bool
     let pressedOpacity: Double
     let shape: S
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        let hasTransientEmphasis = isEnabled && (isHovering || isFocused || isPressed)
+        let effectiveIsHovering = tracksHover && isHovering
+        let hasTransientEmphasis =
+            isEnabled && (effectiveIsHovering || isFocused || isPressed)
         let isEmphasized = isActive || isSelected || hasTransientEmphasis
 
-        content
+        let feedback = content
             .environment(\.scholiumContentControlIsEmphasized, isEmphasized)
             .scholiumContentInteractionSurface(
                 isSelected: isSelected,
-                isHovering: isHovering,
+                isHovering: effectiveIsHovering,
                 isFocused: isFocused,
                 isPressed: isPressed,
                 in: shape
             )
             .opacity(isEnabled && isPressed ? pressedOpacity : 1)
-            .onHover { isHovering = $0 }
+
+        feedback.modifier(
+            ScholiumHoverStateModifier(
+                tracksHover: tracksHover,
+                stateDidChange: { isHovering = $0 }
+            )
+        )
     }
 }
 
@@ -2552,6 +2603,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
     let isActive: Bool
     let isSelected: Bool
     let isFocused: Bool
+    let tracksHover: Bool
     let pressedOpacity: Double
     let shape: S
 
@@ -2559,12 +2611,14 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
         isActive: Bool = false,
         isSelected: Bool = false,
         isFocused: Bool = false,
+        tracksHover: Bool = true,
         pressedOpacity: Double = 0.78,
         in shape: S
     ) {
         self.isActive = isActive
         self.isSelected = isSelected
         self.isFocused = isFocused
+        self.tracksHover = tracksHover
         self.pressedOpacity = pressedOpacity
         self.shape = shape
     }
@@ -2576,6 +2630,7 @@ struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
                 isSelected: isSelected,
                 isFocused: isFocused,
                 isPressed: configuration.isPressed,
+                tracksHover: tracksHover,
                 pressedOpacity: pressedOpacity,
                 in: shape
             )
@@ -2959,6 +3014,21 @@ enum ScholiumMotion {
 }
 
 extension View {
+    /// Reports SwiftUI pointer presence through the Design System's single
+    /// hover adapter. Feature views may retain semantic reveal state, but do
+    /// not own a second platform presentation path.
+    func scholiumHoverState(
+        tracksHover: Bool = true,
+        _ stateDidChange: @escaping (Bool) -> Void
+    ) -> some View {
+        modifier(
+            ScholiumHoverStateModifier(
+                tracksHover: tracksHover,
+                stateDidChange: stateDidChange
+            )
+        )
+    }
+
     /// Applies the shared pointer-neutral, keyboard-complete focus policy to a
     /// custom button-like control with Boolean focus state.
     func scholiumActivationFocus(
@@ -3011,6 +3081,7 @@ extension View {
         isSelected: Bool = false,
         isFocused: Bool = false,
         isPressed: Bool,
+        tracksHover: Bool = true,
         pressedOpacity: Double = 0.78,
         in shape: S
     ) -> some View {
@@ -3020,6 +3091,7 @@ extension View {
                 isSelected: isSelected,
                 isFocused: isFocused,
                 isPressed: isPressed,
+                tracksHover: tracksHover,
                 pressedOpacity: pressedOpacity,
                 shape: shape
             )

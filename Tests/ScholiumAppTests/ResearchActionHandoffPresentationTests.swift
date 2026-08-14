@@ -74,6 +74,13 @@ struct ResearchActionHandoffPresentationTests {
         #expect(actionPanel.contains("scholium.researchAction.statusSheet"))
         #expect(!actionPanel.contains("Button(\"Review Result\")"))
         #expect(actionPanel.contains("title: \"Copy New Handoff\""))
+        #expect(actionPanel.contains("scholium.researchAction.additionalContext"))
+        #expect(actionPanel.contains("scholium.researchAction.additionalInstructions"))
+        #expect(actionPanel.contains("ScholiumDisclosureHeaderButton("))
+        #expect(!actionPanel.contains("DisclosureGroup"))
+        #expect(actionPanel.contains("Citation checks use the active style from Research Guidance."))
+        #expect(!actionPanel.contains("Scholium retains permission and the fingerprint locally"))
+        #expect(!actionPanel.contains("machineResolvedSelector"))
         #expect(actionPanel.contains("if controller.phase == .failed"))
         #expect(actionPanel.contains("controller.retryHandoff()"))
         #expect(content.contains("restoreResearchActionFocus(ifOwnedBy: actionID)"))
@@ -85,6 +92,8 @@ struct ResearchActionHandoffPresentationTests {
         #expect(content.contains("AccessibilityNotification.Announcement"))
         #expect(app.contains("purpose: .reviewResult"))
         #expect(app.contains("expectedFinalizedResultFingerprint:"))
+        #expect(app.contains("initialInstruction: actionID == .discuss"))
+        #expect(app.contains("Discuss this note, including any existing Comments."))
 
         for implementationCopy in [
             "RUN BOUNDARY",

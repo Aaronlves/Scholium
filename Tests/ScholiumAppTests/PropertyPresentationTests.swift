@@ -44,6 +44,18 @@ struct PropertyPresentationTests {
         ).map(\.code) == [.valueNotAllowed])
     }
 
+    @Test("Choice values keep exact YAML while displaying human labels")
+    func choiceValuesHaveHumanLabels() {
+        #expect(PropertyPresentationCatalog.choiceDisplayName(
+            for: "journal_article",
+            fieldKey: "type"
+        ) == "Journal Article")
+        #expect(PropertyPresentationCatalog.choiceDisplayName(
+            for: "in_press",
+            fieldKey: "publication_status"
+        ) == "In Press")
+    }
+
     @Test("Targeted semantic edit preserves unrelated exact bytes")
     func targetedEditPreservesCustomBytes() throws {
         let source = "\u{FEFF}---\r\n# keep\r\ntype: book\r\ncustom: 'exact'\r\n---\r\nBody\r\n"
@@ -157,10 +169,7 @@ struct PropertyPresentationTests {
             rawContent: "---\n研究.阶段: 草稿\n---\n"
         )
         let note = propertyWorkspaceLocation(document, role: .topicKnowledge)
-        let model = PropertyEditorModel(
-            note: note,
-            configuredEditableFields: ["研究.阶段"]
-        )
+        let model = PropertyEditorModel(note: note)
         let field = try #require(model.presentFields.first {
             $0.key == "研究.阶段"
         })
@@ -174,22 +183,34 @@ struct PropertyPresentationTests {
         ).flatMap(\.keys) == ["研究.阶段"])
     }
 
-    @Test("Unauthoritative portable settings grant no About or edit fields")
-    func invalidSettingsDoNotFallBackToWritableDefaults() {
-        let denied = WorkspacePropertyAuthorization.configuration(
+    @Test("Unauthoritative portable settings grant no About fields")
+    func invalidSettingsDoNotFallBackToAboutDefaults() {
+        let denied = WorkspaceAboutConfiguration.configuration(
             settings: TriptychSettings(),
             slot: .paperAnalysis,
             isAuthoritative: false
         )
-        let allowed = WorkspacePropertyAuthorization.configuration(
+        let allowed = WorkspaceAboutConfiguration.configuration(
             settings: TriptychSettings(),
             slot: .paperAnalysis,
             isAuthoritative: true
         )
 
         #expect(denied.visibleFields.isEmpty)
-        #expect(denied.editableFields.isEmpty)
         #expect(allowed == TriptychSettings.defaultProperties[.paperAnalysis])
+    }
+
+    @Test("Current-note editing is independent of portable About settings")
+    func currentNoteEditabilityComesFromExactSource() throws {
+        let document = NoteDocument(
+            relativePath: "topic.md",
+            rawContent: "---\naliases: [one, two]\ncustom_note: exact\n---\n"
+        )
+        let note = propertyWorkspaceLocation(document, role: .topicKnowledge)
+        let model = PropertyEditorModel(note: note)
+
+        #expect(model.presentFields.first { $0.key == "aliases" }?.isReadOnly == false)
+        #expect(model.presentFields.first { $0.key == "custom_note" }?.isReadOnly == false)
     }
 
     @Test("Analysis without Source Type offers only shared fields and Source Type")

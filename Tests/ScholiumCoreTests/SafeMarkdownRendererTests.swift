@@ -5,6 +5,33 @@ import ScholiumContracts
 
 @Suite("Safe Markdown Read renderer")
 struct SafeMarkdownRendererTests {
+    @Test("A matching workspace semantic projection produces identical safe HTML")
+    func matchingSemanticProjectionIsReusable() {
+        let document = NoteDocument(
+            relativePath: "reused.md",
+            rawContent: "# Exact\n\nA [[Target]] with *emphasis* and $x$.\n"
+        )
+        let semantic = MarkdownSemanticDocument(parsing: document)
+
+        let ordinary = SafeMarkdownRenderer.render(document)
+        let reused = SafeMarkdownRenderer.render(document, semantic: semantic)
+
+        #expect(reused == ordinary)
+        #expect(reused.semanticDocument.fingerprint == document.fingerprint)
+    }
+
+    @Test("A stale semantic projection cannot render newer source")
+    func staleSemanticProjectionFailsClosed() {
+        let original = NoteDocument(relativePath: "note.md", rawContent: "Original.\n")
+        let current = NoteDocument(relativePath: "note.md", rawContent: "Current **claim**.\n")
+        let stale = MarkdownSemanticDocument(parsing: original)
+
+        let rendered = SafeMarkdownRenderer.render(current, semantic: stale)
+
+        #expect(rendered == SafeMarkdownRenderer.render(current))
+        #expect(rendered.semanticDocument.fingerprint == current.fingerprint)
+    }
+
     @Test("Obsidian highlights render outside literal regions only")
     func highlights() {
         let document = NoteDocument(

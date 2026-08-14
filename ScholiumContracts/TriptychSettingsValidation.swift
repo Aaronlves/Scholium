@@ -36,7 +36,6 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
     case requiredFieldNotApplicable(AnalysisSourceType, String)
     case requiredFieldCollidesWithSeed(AnalysisSourceType, String)
     case invalidAttentionDismissalDays
-    case invalidPromptConfiguration
 
     public var errorDescription: String? {
         switch self {
@@ -60,8 +59,6 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
             "\(key) is both Agent-required for \(type.rawValue) and present in the Analysis New Note YAML."
         case .invalidAttentionDismissalDays:
             "Attention dismissal days must be positive."
-        case .invalidPromptConfiguration:
-            "The active prompt-template configuration is incomplete or inconsistent."
         }
     }
 }
@@ -83,13 +80,11 @@ public enum TriptychSettingsValidator {
         guard settings.attentionDismissalDays > 0 else {
             throw TriptychSettingsValidationError.invalidAttentionDismissalDays
         }
-        try validatePromptConfiguration(settings)
 
         var seedKeysByRole: [WorkspaceVaultSlot: Set<String>] = [:]
         for role in WorkspaceVaultSlot.allCases {
             let configuration = settings.properties[role]!
             try validateConfiguredFields(configuration.visibleFields, role: role)
-            try validateConfiguredFields(configuration.editableFields, role: role)
             seedKeysByRole[role] = try validateSeed(configuration.newNoteYAML, role: role)
         }
 
@@ -240,20 +235,6 @@ public enum TriptychSettingsValidator {
                     sourceType,
                     key
                 )
-            }
-        }
-    }
-
-    private static func validatePromptConfiguration(_ settings: TriptychSettings) throws {
-        guard Set(settings.promptTemplates.map(\.id)).count == settings.promptTemplates.count else {
-            throw TriptychSettingsValidationError.invalidPromptConfiguration
-        }
-        for kind in ResearchPromptKind.allCases {
-            guard let active = settings.activePromptTemplateIDs[kind],
-                  settings.promptTemplates.contains(where: {
-                      $0.id == active && $0.kind == kind
-                  }) else {
-                throw TriptychSettingsValidationError.invalidPromptConfiguration
             }
         }
     }

@@ -2,8 +2,12 @@ import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
 import {floatingSurfacePosition} from "./floating-surface-geometry";
-import {recordEditorMetric} from "./performance";
+import {
+  recordEditorMetric,
+  scheduleAfterNextPaint,
+} from "./performance";
 import type {LinkPreview} from "./previews";
+import {localized} from "./localization";
 
 type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
 
@@ -49,6 +53,10 @@ export interface PreviewPopoverController {
 export function createPreviewPopoverController(
   options: {
     previews(): readonly LinkPreview[];
+    postPerformanceSample(
+      metric: "editor_cached_preview",
+      durationMilliseconds: number,
+    ): void;
   },
 ): PreviewPopoverController {
   let editor: EditorView | null = null;
@@ -113,9 +121,16 @@ export function createPreviewPopoverController(
         activeRoot.style.left = `${resolved.left}px`;
         activeRoot.style.top = `${resolved.top}px`;
         activeRoot.style.visibility = "visible";
-        window.requestAnimationFrame(() => recordEditorMetric("cached-preview", startedAt, {
-          documentLength: activeEditor.state.doc.length,
-        }));
+        scheduleAfterNextPaint(() => {
+          const durationMilliseconds = Math.max(0, performance.now() - startedAt);
+          recordEditorMetric("cached-preview", startedAt, {
+            documentLength: activeEditor.state.doc.length,
+          });
+          options.postPerformanceSample(
+            "editor_cached_preview",
+            durationMilliseconds,
+          );
+        });
       },
     });
   }
@@ -143,7 +158,10 @@ export function createPreviewPopoverController(
       show(preview, coords, startedAt);
       return true;
     }
-    announceEditorMessage(editor.contentDOM, "No preview is available at the insertion point.");
+    announceEditorMessage(
+      editor.contentDOM,
+      localized("No preview is available at the insertion point."),
+    );
     return false;
   }
 
@@ -221,7 +239,7 @@ export function createPreviewPopoverController(
     body = document.createElement("div");
     body.className = "scholium-preview-body scholium-document";
     body.setAttribute("role", "group");
-    body.setAttribute("aria-label", "Preview content");
+    body.setAttribute("aria-label", localized("Preview content"));
     root.append(title, metadata, body);
     document.body.append(root);
     root.addEventListener("pointerenter", handlePreviewPointerEnter);

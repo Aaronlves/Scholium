@@ -2046,7 +2046,7 @@ private struct StrictResearchRecordFingerprint: Decodable {
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 11
+    public static let currentSchemaVersion = 12
 
     public let schemaVersion: Int
     public let triptychID: UUID
@@ -2056,6 +2056,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
     public var boundedWriteSet: ResearchBoundedWriteSet
     public var writeSetExtensionRecords: [ResearchWriteSetExtensionRecord]
     public var documentWriteRecords: [ResearchDocumentWriteRecord]
+    public var zoteroBindingWriteRecords: [ResearchZoteroBindingWriteRecord]
     public var writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord]
     public var continuationRequests: [ResearchContinuationRequestRecord]
     public var methodImprovementRun: ResearchMethodImprovementRun?
@@ -2074,6 +2075,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         boundedWriteSet: ResearchBoundedWriteSet? = nil,
         writeSetExtensionRecords: [ResearchWriteSetExtensionRecord] = [],
         documentWriteRecords: [ResearchDocumentWriteRecord] = [],
+        zoteroBindingWriteRecords: [ResearchZoteroBindingWriteRecord] = [],
         writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord] = [],
         continuationRequests: [ResearchContinuationRequestRecord] = [],
         methodImprovementRun: ResearchMethodImprovementRun? = nil,
@@ -2165,11 +2167,23 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               writeSetExtensionRecords.allSatisfy({
                   $0.runID == snapshot.runID && $0.triptychID == triptychID
               }),
-              documentWriteRecords.count
+              documentWriteRecords.count + zoteroBindingWriteRecords.count
                 <= ResearchBoundedWriteSet.maximumWritesPerRun,
               Set(documentWriteRecords.map(\.id)).count
                 == documentWriteRecords.count,
               documentWriteRecords.allSatisfy({ $0.runID == snapshot.runID }),
+              Set(zoteroBindingWriteRecords.map(\.id)).count
+                == zoteroBindingWriteRecords.count,
+              zoteroBindingWriteRecords.allSatisfy({ write in
+                  guard write.runID == snapshot.runID,
+                        let entry = resolvedWriteSet.entry(handle: write.target)
+                  else { return false }
+                  return entry.role == .analysis
+                      && entry.allowedOperations.contains(write.operation)
+                      && write.intendedBinding.map({
+                          $0.noteID == entry.noteID
+                      }) ?? true
+              }),
               writeConflictResolutionRecords.count <= 256,
               Set(writeConflictResolutionRecords.map(\.id)).count
                 == writeConflictResolutionRecords.count,
@@ -2215,6 +2229,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         self.boundedWriteSet = resolvedWriteSet
         self.writeSetExtensionRecords = writeSetExtensionRecords
         self.documentWriteRecords = documentWriteRecords
+        self.zoteroBindingWriteRecords = zoteroBindingWriteRecords
         self.writeConflictResolutionRecords = writeConflictResolutionRecords
         self.continuationRequests = continuationRequests
         self.methodImprovementRun = methodImprovementRun
@@ -2233,6 +2248,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         case boundedWriteSet = "bounded_write_set"
         case writeSetExtensionRecords = "write_set_extension_records"
         case documentWriteRecords = "document_write_records"
+        case zoteroBindingWriteRecords = "zotero_binding_write_records"
         case writeConflictResolutionRecords = "write_conflict_resolution_records"
         case continuationRequests = "continuation_requests"
         case methodImprovementRun = "method_improvement_run"
@@ -2274,6 +2290,10 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
             documentWriteRecords: container.decode(
                 [ResearchDocumentWriteRecord].self,
                 forKey: .documentWriteRecords
+            ),
+            zoteroBindingWriteRecords: container.decode(
+                [ResearchZoteroBindingWriteRecord].self,
+                forKey: .zoteroBindingWriteRecords
             ),
             writeConflictResolutionRecords: container.decode(
                 [ResearchWriteConflictResolutionRecord].self,
@@ -2701,6 +2721,7 @@ public actor LocalResearchExecutionStore {
             }
             guard write.state == .writing,
                   current.documentWriteRecords.count
+                    + current.zoteroBindingWriteRecords.count
                     < ResearchBoundedWriteSet.maximumWritesPerRun,
                   let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
                       $0.handle == write.target
@@ -2734,6 +2755,7 @@ public actor LocalResearchExecutionStore {
             }
             guard write.state != .writing,
                   current.documentWriteRecords.count
+                    + current.zoteroBindingWriteRecords.count
                     < ResearchBoundedWriteSet.maximumWritesPerRun,
                   let index = current.boundedWriteSet.entries.firstIndex(where: {
                       $0.handle == write.target
@@ -2808,6 +2830,89 @@ public actor LocalResearchExecutionStore {
                 current.boundedWriteSet.entries[entryIndex].state = .recoveryRequired
             case .abandoned:
                 current.boundedWriteSet.entries[entryIndex].state = .ready
+            case .writing:
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
+        }
+    }
+
+    @discardableResult
+    public func beginZoteroBindingWrite(
+        _ write: ResearchZoteroBindingWriteRecord
+    ) throws -> LocalResearchExecutionRecord {
+        try update(write.runID) { current in
+            if let existing = current.zoteroBindingWriteRecords.first(where: {
+                $0.id == write.id
+            }) {
+                guard existing == write else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+                return
+            }
+            guard write.state == .writing,
+                  current.documentWriteRecords.count
+                    + current.zoteroBindingWriteRecords.count
+                    < ResearchBoundedWriteSet.maximumWritesPerRun,
+                  let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
+                      $0.handle == write.target
+                  }),
+                  current.boundedWriteSet.entries[entryIndex].state == .ready,
+                  current.boundedWriteSet.entries[entryIndex]
+                    .zoteroBindingsRevision == write.expectedRevision,
+                  current.boundedWriteSet.entries[entryIndex].allowedOperations
+                    .contains(write.operation),
+                  write.intendedBinding.map({
+                      $0.noteID == current.boundedWriteSet.entries[entryIndex].noteID
+                  }) ?? true else {
+                throw ResearchBoundedWriteSetError.staleAuthorization
+            }
+            current.boundedWriteSet.entries[entryIndex].state = .writing
+            current.zoteroBindingWriteRecords.append(write)
+            current.zoteroBindingWriteRecords.sort { $0.startedAt < $1.startedAt }
+        }
+    }
+
+    @discardableResult
+    public func finishZoteroBindingWrite(
+        runID: UUID,
+        operationID: UUID,
+        state: ResearchZoteroBindingWriteState,
+        observedRevision: DocumentFingerprint?,
+        warning: String?,
+        finishedAt: Date
+    ) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            guard let writeIndex = current.zoteroBindingWriteRecords.firstIndex(where: {
+                $0.id == operationID
+            }),
+            let entryIndex = current.boundedWriteSet.entries.firstIndex(where: {
+                $0.handle == current.zoteroBindingWriteRecords[writeIndex].target
+            }) else {
+                throw ResearchBoundedWriteSetError.invalidWriteRecord
+            }
+            var write = current.zoteroBindingWriteRecords[writeIndex]
+            if write.state != .writing {
+                guard write.state == state,
+                      write.observedRevision == observedRevision,
+                      write.warning == warning else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+                return
+            }
+            write.state = state
+            write.observedRevision = observedRevision
+            write.finishedAt = finishedAt
+            write.warning = warning
+            current.zoteroBindingWriteRecords[writeIndex] = write
+            switch state {
+            case .committed, .unchanged, .conflict, .abandoned:
+                if let observedRevision {
+                    current.boundedWriteSet.entries[entryIndex]
+                        .zoteroBindingsRevision = observedRevision
+                }
+                current.boundedWriteSet.entries[entryIndex].state = .ready
+            case .recoveryRequired:
+                current.boundedWriteSet.entries[entryIndex].state = .recoveryRequired
             case .writing:
                 throw ResearchBoundedWriteSetError.invalidWriteRecord
             }

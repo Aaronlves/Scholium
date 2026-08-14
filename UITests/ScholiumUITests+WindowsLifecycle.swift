@@ -244,7 +244,7 @@ extension ScholiumUITests {
         let secondWindow = app.windows[secondWindowID]
         openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: secondWindow)
         focusWorkspaceWindow(firstWindow)
-        app.typeKey("f", modifierFlags: [.command])
+        app.typeKey("f", modifierFlags: [.command, .shift])
         let firstSearch = firstWindow.descendants(matching: .any)["scholium.searchWorkspace"]
         let secondSearch = secondWindow.descendants(matching: .any)["scholium.searchWorkspace"]
         XCTAssertTrue(firstSearch.waitForExistence(timeout: 5))
@@ -253,7 +253,7 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 3) { !firstSearch.exists })
 
         focusWorkspaceWindow(secondWindow)
-        app.typeKey("f", modifierFlags: [.command])
+        app.typeKey("f", modifierFlags: [.command, .shift])
         XCTAssertTrue(secondSearch.waitForExistence(timeout: 5))
         XCTAssertFalse(firstSearch.exists)
         secondWindow.descendants(matching: .any)["scholium.closeSearchButton"].click()
@@ -1051,26 +1051,29 @@ extension ScholiumUITests {
         XCTAssertFalse(app.buttons["Open PDF in Preview"].exists)
         XCTAssertFalse(app.buttons["Open Attachment"].exists)
 
-        let topics = app.buttons["scholium.vault.topic_knowledge"].firstMatch
-        topics.click()
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
         let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
-        XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
         topicRow.click()
         XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
 
-        let works = app.buttons["scholium.vault.output"].firstMatch
-        works.click()
+        selectVault(
+            "scholium.vault.output",
+            waitingFor: "scholium.noteRow.QA Work.md"
+        )
         let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
-        XCTAssertTrue(workRow.waitForExistence(timeout: 8))
         workRow.click()
         XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
 
-        let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
-        analyses.click()
+        selectVault(
+            "scholium.vault.paper_analysis",
+            waitingFor: "scholium.noteRow.QA Autosave A.md"
+        )
         let analysisRow = app.descendants(matching: .any)[
             "scholium.noteRow.QA Autosave A.md"
         ]
-        XCTAssertTrue(analysisRow.waitForExistence(timeout: 8))
         analysisRow.click()
         XCTAssertTrue(openInZotero.waitForExistence(timeout: 8))
     }

@@ -4,24 +4,87 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-08-11, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
+**Environment:** 2026-08-15, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete repository gate passed on the managed YAML/Properties and
-Agent-creation integration. It validated the closed documentation manifests
-and shipped resources; TypeScript checking and 187 Web editor tests;
-reproducible editor, mathematics, and Mermaid bundles; 485 Core tests plus 3
-Search performance tests; 130 Contracts tests; 217 Application tests, 10 bridge
-tests, and 1 serialized architecture measurement; 574 App tests; 7 executable
-Research Action CLI lifecycles; the sandboxed local bridge probe;
-symbol/import/residue guards; and Debug and Release builds. The Release build
-completed in 206.59 seconds.
+The exact `v0.1.0-beta.6` commit passed one uninterrupted complete repository
+gate: closed documentation manifests and shipped Skill resources; TypeScript
+checking and 199 Web editor tests; reproducible editor, mathematics, and Mermaid
+bundles; 475 Core tests plus 3 Search performance tests; 138 Contracts tests;
+231 Application tests, 11 bridge tests, and 1 serialized architecture
+measurement; 627 App tests; 7 executable Research Action CLI lifecycles; the
+sandboxed App-to-standalone-CLI loopback probe; symbol and residue guards; and
+an optimized Release build in 198.60 seconds.
 
-This proves deterministic repository conformance for that checkout and toolchain.
-It is not a packaged release, complete UI-suite result, human accessibility
-exercise, source-fidelity review of private research, or researcher acceptance.
+The same clean tagged commit produced separate ad-hoc-signed App and standalone
+CLI archives with exact provenance. The package smoke extracted and installed
+the CLI into an isolated user prefix, launched it by basename from an unrelated
+working directory, and validated its provenance. A packaged UI journey proved
+that a clean isolated launch enters Bootstrap while production machine state
+remains unchanged. GitHub published both ZIPs and checksums; a fresh download
+through the canonical `latest/download` CLI URL matched the release checksum.
+
+This evidence is not Developer ID signing, notarization, a clean external-account
+Agent journey, a complete UI-suite or human accessibility exercise, a
+source-fidelity review of private research, or researcher acceptance.
 
 ## Focused interface evidence
 
+- On 2026-08-15, the independent-CLI cutover passed 7 Bootstrap, 27 Settings
+  architecture, 7 delivery-path, 11 loopback-bridge, and 7 executable Agent CLI
+  lifecycle tests. The App no longer owns a CLI status or installer and copies
+  one fixed official Agent instruction that accepts only the required product
+  and compatible-version fields while ignoring additional JSON fields. A
+  focused QA journey copied that instruction through the visible Settings
+  button and verified the download, no-`sudo`, no-PATH-edit, and unknown-field
+  clauses. A signed probe proved a sandboxed App and nonsandboxed standalone CLI
+  communicate only over `127.0.0.1`; closed-App requests are unavailable and an
+  invalid pairing code reaches the App without entering logs. This remains
+  disposable focused evidence. The later published-asset download proves exact
+  delivery bytes, not a clean-account Agent installation.
+- On 2026-08-14, the existing-Note save cutover passed 228 focused tests: 86
+  Core, 8 Contracts, 31 Application, and 103 App tests. The fixtures cover
+  coordinated system replacement, exact BOM/CRLF readback, metadata changes
+  remaining outside save authority, external-writer conflict, symlink and
+  parent exchange, readback mismatch, pre- and post-replacement interruption,
+  `SIGKILL` restart reconciliation, checkpoint and move propagation, removal of
+  cleanup-warning presentation, and rejection of unsupported pre-use recovery
+  data without mutation. Documentation authority also passed. The frontend I/O
+  guard was then aligned with its existing App architecture allowlist, and its
+  owning synchronization test passed. The subsequent complete-gate attempt
+  passed 199 Web tests, 472 Core tests, 3 Search performance tests, and 138
+  Contracts tests before one parallel Application test failed to observe
+  watcher-readiness evidence before activation reconciliation completed. The
+  opening boundary was then repaired so the first complete publication follows
+  that reconciliation. A controlled barrier proved the Workspace remains
+  Opening while reconciliation is paused; both progressive-opening tests passed
+  together, and the same parallel Application batch passed 223/223. The latest
+  complete current-tree coverage above now includes that repair. Real packaged
+  File Provider acceptance remains open.
+- On 2026-08-13, the progressive-opening Application contract test proved that
+  one selected live Vault publishes first, its Note remains loadable, Search
+  fails closed with `workspaceStillLoading`, and the same handle later publishes
+  a complete three-Vault Graph/Search generation. The window-projection test
+  proved the corresponding opening-to-current atomic state transition, and the
+  catalog test proved that deferred Search offsets complete without rereading
+  source. The
+  complete pre-existing Workspace runtime suite also passed 16/16 before the
+  new focused case. This is deterministic implementation evidence, not packaged
+  launch performance or human loading-state acceptance.
+- A 2026-08-13 isolated Release diagnostic with RDF-1 and 267 visible Analysis
+  Notes retained three warm Library samples of 785.8–819.0ms after one warm-up
+  (median 797.8ms). Its unretained cold-page-cache sample was 1126.6ms. The
+  diagnostic used the existing test driver against a dirty, ad-hoc-signed
+  diagnostic bundle; it demonstrates margin for integration but is not the
+  clean tagged packaged 5+30 G7 result.
+- The 2026-08-13 integration verification passed the unchanged Web, Core,
+  Contracts, Search-performance, bridge, architecture-measurement, App, CLI,
+  sandbox, symbol-boundary, and Release-build gates. Its initial parallel
+  Application batch stopped making progress after all but one existing test;
+  that test passed alone in 0.51s and the complete Application batch then
+  passed 222/222 serially. After updating one source-signature architecture
+  assertion for the new opening-Vault parameter, App passed 604/604. This is a
+  recovered complete gate, not evidence that the Xcode beta parallel runner's
+  scheduling stall is resolved.
 - On 2026-08-11, one isolated Debug QA journey created an Analysis first with
   no role seed and then with `tags: [seeded]`. Both commands bypassed a naming
   or Properties sheet, presented Edit, exposed keyboard focus at the exact body
@@ -77,7 +140,7 @@ Session regressions, and module/import ownership.
 
 This proves the repository-level Material owner and lineage contract on
 disposable fixtures. It does not prove checkout-external App/CLI installation,
-production App Group behavior, human accessibility, sustained research use, or
+production installed user-local bridge behavior, human accessibility, sustained research use, or
 philosophical quality.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
@@ -195,6 +258,58 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
+On 2026-08-14, the approved Edit gate boundary was aligned with the shipped
+cold-launch behavior: launch settles on a no-document Workspace, Library opens
+the frozen 5,000-word Note into interactive Review as unmeasured setup, and the
+collector then measures the researcher's first Edit request to the matching
+visible and accessible editor. The focused Debug QA scenario completed all five
+excluded warm-ups and 30 retained samples
+without an invalid journey. Retained samples measured 335.648ms p50, 363.570ms
+nearest-rank p95, 328.895ms mean, and 371.997ms maximum; correctness, the
+`< 750ms` p95 limit, and the `< 1,000ms` every-sample limit passed. Report
+SHA-256 is `8dc94f93a3f2b3428185396239bcb47373e3a4578d69be8c66ae874509c5fa31`.
+The release owner records the first-use Edit metric as completely passed and
+closes its implementation acceptance. The report retains its accurate
+`scenario_only` evidence class: this scoped decision does not convert it into a
+packaged product-gate report or accept latency and memory series that were not
+rerun.
+
+On 2026-08-14, the working-tree first-use Review metric began at a verified
+no-document Workspace. The collector requires a real
+Library selection of the frozen 5,000-word RDF-1 Note and reports the complete
+activation-to-interactive phase decomposition. Its focused eight-test
+`PerformanceProbe` suite, summary self-test, documentation validator, shell
+syntax check, fail-closed threshold preflight, and UI-driver test build passed.
+The cooled ad-hoc QA 5+30 scenario then completed all 35 ordered records with
+no invalid trial, passed Review correctness, and preserved the exact 800-Note
+RDF-1 tree. Its 30 retained samples measured 572.096ms p50, 742.752ms
+nearest-rank p95, 612.138ms mean, and 1,442.219ms maximum. The release owner
+therefore approved first-use Review at p95 `< 1,000ms` with no every-sample
+maximum. This working-tree scenario supports the target decision but is not G7
+product-gate evidence.
+
+On 2026-08-13, the exact-tagged packaged `v0.1.0-beta.5` G7 run completed the
+then-required latency and memory series without an invalid trial or visible-
+correctness failure. Warm Library and Search passed; warm Review recorded
+360.937ms p95 and failed its current limit. Key-to-paint, Edit/Source
+transition, cached preview, warm Edit, and visible projection passed. Its cold
+Review/Edit boundaries and RSS rule were later replaced by the current §21.4
+first-use and convergence contracts, so that report establishes neither current
+first-use nor current memory acceptance. G7 remains open pending one complete
+rerun against the current contract.
+
+The subsequent bounded working-tree remediation removes a duplicate initial
+Vault open, avoids loading the Review mathematics runtime and fonts for prose,
+removes repeated accessibility snapshots from the retained-memory driver, and
+adds fail-closed packaged 100,000-CJK and accessibility-environment evidence.
+An ad-hoc-signed dirty Release diagnostic then passed the packaged CJK journey
+in 13.864 seconds and restored the complete 800-Note RDF-1 manifest exactly.
+Its observer-free memory journey kept the same stable process roles; the final
+ten-sample span was 1,605,632 bytes versus 3,473,408 bytes for the preceding
+span, and the final-tail medians grew 0.236%. Under the corrected bounded,
+decelerating convergence rule this is a pass. These diagnostics validate the
+repair paths but do not replace the cooled, clean, exact-tagged packaged rerun.
+
 The latest isolated Search v7 regression report recorded a cold rebuild of
 778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
 21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
@@ -203,10 +318,30 @@ measurements, not the packaged G7 gate or approved release limits.
 
 ## Upgrade and distribution evidence
 
+The current complete-gate snapshot above includes the deployment-remediation
+working tree. The canonical
+Debug UI smoke passed, followed by focused Restore Access application
+termination and portable Analysis/Zotero routing journeys. Headless coverage also
+proved that fresh machine registration preserves portable Triptych, Vault, and
+Note identities without rewriting the manifest, and that renewed folder access
+rebinds one machine-local Vault path. These are disposable-fixture and ad-hoc
+development proofs, not clean-account installed-artifact or human acceptance.
+
+The exact tagged tree produced ad-hoc-signed sandboxed App and independent CLI
+release ZIPs with matching provenance and checksums. Strict signature checks
+found App Sandbox on the App, no App Group, no CLI executable or `.local`
+entitlement in the App, and no App Sandbox or App Group on the CLI. The exact
+CLI ZIP was expanded, installed under an isolated user-local prefix, and invoked
+by basename from an unrelated working directory. The exact App artifact entered
+Bootstrap from empty isolated machine state without changing production state.
+GitHub published the four release assets, and the canonical `latest/download`
+CLI URL returned the same checksum when downloaded independently. Developer ID,
+notarization, and a clean external account remain acceptance gaps.
+
 Distinct-build upgrade fixtures preserve exact vault bytes and reject unsupported
 newer schemas without authorizing a compatibility path. Local source-first
 assembly has passed metadata, license, resource, path-disclosure, signature-
 structure, version-matched CLI, ZIP, checksum, and optimized Release-build
 checks with disposable inputs. The tested bundle was ad hoc signed; clean-account
-artifact smoke testing, packaged performance, publication, notarization if
-adopted, and release acceptance remain open.
+artifact smoke testing, packaged performance, notarization if adopted, and
+release acceptance remain open.

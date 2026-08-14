@@ -203,6 +203,8 @@ struct ResearchWriteSetExtensionView: View {
             case .createNote: String(localized: "Create Note")
             case .modifyMarkdown: String(localized: "Modify Markdown")
             case .modifyProperties: String(localized: "Modify Properties")
+            case .setZoteroBinding: String(localized: "Set Zotero Link")
+            case .clearZoteroBinding: String(localized: "Clear Zotero Link")
             }
         }.joined(separator: ", ")
     }
