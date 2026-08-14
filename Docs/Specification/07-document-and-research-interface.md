@@ -150,7 +150,7 @@ those managed copies.
 
 Toolbar: Sidebar and Back/Forward; Library separator; Heading Outline
 and identity; flexible space; Search, Document Mode, and **This Note Records**
-at **8pt** inline spacing; Apparatus separator; trailing Inspector. Mode icon/help
+at §19.3's inline-control spacing; Apparatus separator; trailing Inspector. Mode icon/help
 report Review, Edit, or Source. Activation switches Review/Edit and returns
 Source to Review.
 Source remains selectable only under **View > Document Mode**; `Command-R`
@@ -173,7 +173,7 @@ Apparatus contains Research Inspector only; active Discussion, Research Records,
 and checkpoint recovery keep distinct ownership. Active Discussion opens as an
 Action sheet. Research Records is an independent, nonrestored native auxiliary
 window keyed to one Triptych. It reads that Triptych rather than following
-unrelated window focus, defaults to **760 × 680pt**, and is resizable down to
+unrelated window focus, uses §19.4's initial size, and is resizable down to
 **700 × 520pt**. It has no Workspace Sidebar control or alternate primary-
 interface mode and never appears inside Inspector.
 
@@ -467,8 +467,8 @@ retains its heading and `0` without **None**. Connect shows the same freshness
 state before its direction control and groups. Stale or failed state keeps the
 last complete graph readable and offers a full-row Retry action.
 
-Relation rows remain single full-row native buttons with a provisional 36pt
-minimum rhythm, no default separators, and no trailing diagonal-open glyph.
+Relation rows remain single full-row native buttons using the Connect Note-row
+metric owned by §19.3, with no default separators or trailing diagonal-open glyph.
 Their concise pointer help and accessible name state the relationship from the
 current Note's perspective. Primary activation opens the connected Note,
 using the source line when that peer owns the relation occurrence. When the
@@ -507,8 +507,8 @@ remain keyboard-accessible. Its modular sheet shows the necessary scholarly inpu
 and app-owned authority or recovery facts without exposing assembled prompts,
 registration keys, Session secrets, or technical mode names. The active Action and its sheet
 retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
-All Action launchers use one shared visual row recipe with a **44pt** minimum
-operation rhythm and no default row or group separator. Availability checking,
+All Action launchers use one shared visual row recipe with the Action target
+metric owned by §19.3 and no default row or group separator. Availability checking,
 ready, unavailable, running, error, cancellation recovery, Settle, and Settled
 remain distinct states without changing Action routing or ownership. A default
 Action whose title already identifies the task shows no ordinary explanation.
@@ -533,8 +533,9 @@ the sheet and inputs. A prepared Run's compact status sheet offers Run status,
 **Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
 prior pairing without replacing the Run.
 Closing the sheet leaves an unfinished Action active; the explicit **End
-Action** route revokes Agent access and closes it while preserving confirmed
-changes, conflicts, and recovery truth. **End Discussion** also preserves the
+Action** route revokes Agent access and closes a cancellable no-write Run.
+Confirmed changes instead require Result finalization; conflicts, unknown
+writes, and recovery duties retain their owning repair path. **Finish Discussion** preserves the
 current exchange as a finished Research Record, even when the Agent has not
 replied. Pairing,
 re-pairing, Session expiry or revocation, missing local Skill-folder path,
@@ -565,16 +566,14 @@ semibold, 0.7pt tracking, and secondary text color. English localization
 supplies uppercase strings; runtime code never forces case, so Chinese and
 other languages retain natural writing.
 
-Inspector layout uses purpose-named Apparatus metrics rather than leaf-view
-literals. Its provisional native content inset is **28pt**. Short
-facts form one section-level two-column grid with a shared, trailing-aligned
-label column of at least **78pt**, a **14pt** column gap, one common leading
-axis for values, and first-baseline alignment. The horizontal candidate keeps
-at least **204pt** of content width; ordinary canonical labels therefore remain
+Inspector layout uses the purpose-named Apparatus content-inset and fact-grid
+metrics owned by §19.3 rather than leaf-view literals. Short facts form one
+section-level two-column grid with a shared, trailing-aligned label column, one
+common leading axis for values, and first-baseline alignment. Ordinary canonical labels therefore remain
 horizontal in **300pt** and **278pt** Inspector scenarios after the content
 insets. If available width, 200% readability, or localized labels cannot fit,
 one container-level adaptation stacks the complete grid; individual rows never
-switch independently. Empty values do not create rows. Scope, Research Scope,
+switch independently. Empty values do not create rows. Summary, Source Basis,
 Limitations, and other long researcher prose always use a reading block: label
 on its own line and Alegreya content on the next line with a 12pt leading
 indent. Labels, diagnostic/state names, and action names remain system sans semibold; field values,
@@ -582,7 +581,8 @@ explanations, and research prose use Alegreya; exact paths and revisions remain
 monospaced. Counts use monospaced digits without changing the surrounding
 face.
 
-Provisional rhythm is a 28pt minimum scanning/action row, the Scholarly body
+Provisional rhythm uses the Apparatus scanning and Action-row metrics owned by
+§19.3, the Scholarly body
 role with approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
 reading blocks, and 16pt between sections. Apparatus sections, ordinary Action
 rows, and relation rows draw no boundary by default. A local boundary must be
@@ -691,7 +691,7 @@ punctuation.
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
-| Completion / Research Scope / Limitation | 完成度 / 研究范围 / 局限 |
+| Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Checkpoint / Snapshot | 恢复点 / 快照 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Comment / Discussion / Response | 评论 / 讨论 / 回应 |

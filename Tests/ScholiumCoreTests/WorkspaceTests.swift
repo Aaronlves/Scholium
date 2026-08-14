@@ -58,6 +58,31 @@ struct WorkspaceTests {
         }
     }
 
+    @Test("Three vault roles reject one repeated portable identity")
+    func threeVaultIdentityValidation() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: base) }
+        let urls = try makeTriptychFolders(in: base)
+        let storage = base.appendingPathComponent("registry", isDirectory: true)
+        let registry = WorkspaceRegistry(storageURL: storage)
+        let repeatedID = UUID()
+
+        await #expect(throws: WorkspaceRegistryError.self) {
+            try await registry.configureTriptych(
+                id: UUID(),
+                paperAnalysis: (urls.analyses, repeatedID),
+                topicKnowledge: (urls.topics, repeatedID),
+                output: (urls.works, repeatedID)
+            )
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: WorkspaceRegistry.registryURL(storageURL: storage).path
+        ))
+    }
+
     @Test("Three independent sibling vaults persist as one workspace")
     func threeVaultWorkspacePersists() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -177,6 +202,7 @@ struct WorkspaceTests {
         let firstID = UUID()
         let secondID = UUID()
         let firstAnalysesID = UUID()
+        let firstTopicsID = UUID()
         let firstWorksID = UUID()
         let secondAnalysesID = UUID()
         let secondTopicsID = UUID()
@@ -184,7 +210,7 @@ struct WorkspaceTests {
         _ = try await registry.configureTriptych(
             id: firstID,
             paperAnalysis: (firstURLs.analyses, firstAnalysesID),
-            topicKnowledge: (firstURLs.topics, UUID()),
+            topicKnowledge: (firstURLs.topics, firstTopicsID),
             output: (firstURLs.works, firstWorksID)
         )
         _ = try await registry.configureTriptych(
@@ -197,11 +223,14 @@ struct WorkspaceTests {
         _ = try await registry.configureTriptych(
             id: firstID,
             paperAnalysis: (firstURLs.analyses, firstAnalysesID),
-            topicKnowledge: (replacementTopics, UUID()),
+            topicKnowledge: (replacementTopics, firstTopicsID),
             output: (firstURLs.works, firstWorksID)
         )
 
         let second = try #require(await registry.triptych(id: secondID))
+        let first = try #require(await registry.triptych(id: firstID))
+        #expect(first.vault(for: .topicKnowledge)?.id == firstTopicsID)
+        #expect(first.vault(for: .topicKnowledge)?.canonicalPath == replacementTopics.path)
         #expect(second.vault(for: .paperAnalysis)?.id == secondAnalysesID)
         #expect(second.vault(for: .topicKnowledge)?.id == secondTopicsID)
         #expect(second.vault(for: .output)?.id == secondWorksID)
@@ -367,18 +396,20 @@ struct WorkspaceTests {
         }
         let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
         let triptychID = UUID()
-        _ = try await registry.configureTriptych(
+        let original = try await registry.configureTriptych(
             id: triptychID,
             paperAnalysis: (papers, UUID()),
             topicKnowledge: (topics, UUID()),
             output: (output, UUID())
         )
+        let paperID = try #require(original.vault(for: .paperAnalysis)?.id)
+        let outputID = try #require(original.vault(for: .output)?.id)
 
         let changed = try await registry.configureTriptych(
             id: triptychID,
-            paperAnalysis: (papers, UUID()),
+            paperAnalysis: (papers, paperID),
             topicKnowledge: (newTopics, UUID()),
-            output: (output, UUID())
+            output: (output, outputID)
         )
 
         #expect(changed.vault(for: .topicKnowledge)?.canonicalPath == newTopics.path)
@@ -395,41 +426,6 @@ struct WorkspaceTests {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
         return (analyses, topics, works)
-    }
-
-    @Test("Workspace registration repairs IDs to match canonical vault identities")
-    func threeVaultWorkspaceRepairsMismatchedIdentityIDs() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let papers = base.appendingPathComponent("papers", isDirectory: true)
-        let topics = base.appendingPathComponent("topics", isDirectory: true)
-        let output = base.appendingPathComponent("output", isDirectory: true)
-        for url in [papers, topics, output] {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        }
-        let registry = WorkspaceRegistry(storageURL: base.appendingPathComponent("registry", isDirectory: true))
-        let triptychID = UUID()
-        _ = try await registry.configureTriptych(
-            id: triptychID,
-            paperAnalysis: (papers, UUID()),
-            topicKnowledge: (topics, UUID()),
-            output: (output, UUID())
-        )
-        let repairedPaperID = UUID()
-        let repairedTopicID = UUID()
-        let repairedOutputID = UUID()
-
-        let repaired = try await registry.configureTriptych(
-            id: triptychID,
-            paperAnalysis: (papers, repairedPaperID),
-            topicKnowledge: (topics, repairedTopicID),
-            output: (output, repairedOutputID)
-        )
-
-        #expect(repaired.vault(for: .paperAnalysis)?.id == repairedPaperID)
-        #expect(repaired.vault(for: .topicKnowledge)?.id == repairedTopicID)
-        #expect(repaired.vault(for: .output)?.id == repairedOutputID)
-        #expect(try await registry.allVaults().filter { [repairedPaperID, repairedTopicID, repairedOutputID].contains($0.id) }.count == 3)
     }
 
     @Test("Vault identity can be restored by its stable ID")
@@ -462,6 +458,60 @@ struct WorkspaceTests {
         #expect(refreshed.id == first.id)
         #expect(refreshed.bookmarkData == Data("second".utf8))
         #expect(await registry.identity(id: first.id)?.bookmarkData == Data("second".utf8))
+    }
+
+    @Test("Portable vault identity follows the newly authorized local path")
+    func portableVaultIdentityCutover() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let vault = base.appendingPathComponent("vault", isDirectory: true)
+        let other = base.appendingPathComponent("other", isDirectory: true)
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        let registry = VaultIdentityRegistry(applicationSupportURL: base)
+        let portableID = UUID()
+        let registered = try await registry.identity(
+            for: vault,
+            bookmarkData: Data("first".utf8),
+            preferredID: portableID
+        )
+        #expect(registered.id == portableID)
+        let moved = try await registry.identity(
+            for: other,
+            bookmarkData: Data("other".utf8),
+            preferredID: portableID
+        )
+        #expect(moved.id == portableID)
+        #expect(await registry.identity(forCanonicalPath: vault.path) == nil)
+        #expect(await registry.identity(id: portableID)?.canonicalPath == other.path)
+    }
+
+    @Test("A portable identity cannot overwrite another identity at the same path")
+    func portableIdentityCannotReplaceSamePathIdentity() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let vault = base.appendingPathComponent("vault", isDirectory: true)
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        let registry = VaultIdentityRegistry(applicationSupportURL: base)
+        let registered = try await registry.identity(
+            for: vault,
+            bookmarkData: Data("first".utf8)
+        )
+        let registryURL = base.appendingPathComponent("vault-registry.json")
+        let originalBytes = try Data(contentsOf: registryURL)
+
+        await #expect(throws: VaultIdentityRegistryError.self) {
+            _ = try await registry.identity(
+                for: vault,
+                bookmarkData: Data("second".utf8),
+                preferredID: UUID()
+            )
+        }
+
+        #expect(try Data(contentsOf: registryURL) == originalBytes)
+        #expect(await registry.identity(forCanonicalPath: vault.path)?.id == registered.id)
     }
 
     @Test("A corrupt vault identity registry is never replaced by a new registration")

@@ -590,8 +590,6 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
     case timeout
     case outcomeUnknown
     case frameTooLarge
-    case unsafeLocation
-    case socketPathTooLong
     case alreadyRunning
     case systemCall(String, Int32)
     case remote(LocalAgentBridgeErrorPayload)
@@ -610,8 +608,6 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
         case .outcomeUnknown:
             "The Agent request outcome is unknown. Query the same request ID before retrying."
         case .frameTooLarge: "The local Agent bridge frame exceeded its size limit."
-        case .unsafeLocation: "The local Agent bridge storage location is unsafe."
-        case .socketPathTooLong: "The local Agent bridge socket path is too long."
         case .alreadyRunning: "Another Scholium Agent bridge already owns this location."
         case .systemCall(let operation, let code):
             "The local Agent bridge could not \(operation) (errno \(code))."
@@ -625,57 +621,54 @@ public enum LocalAgentBridgeLocation {
     public static let timeout: TimeInterval = 5
     public static let clientTimeout: TimeInterval = 6
     public static let cancellationGrace: TimeInterval = 1
+    public static let host = "127.0.0.1"
+    private static let firstPrivatePort: UInt16 = 49_152
+    private static let privatePortCount: UInt64 = 16_384
 
-    public static func socketURL(applicationSupportURL: URL) throws -> URL {
-        let url = applicationSupportURL
-            .appendingPathComponent("b", isDirectory: true)
-            .appendingPathComponent("s", isDirectory: false)
-        guard url.path.utf8.count + 1 <= MemoryLayout.size(
-            ofValue: sockaddr_un().sun_path
-        ) else {
-            throw LocalAgentBridgeError.socketPathTooLong
+    /// Derives one stable private-range loopback port from the existing bridge
+    /// namespace. Production App and CLI resolve the same namespace; isolated
+    /// tests can select independent ports without a machine-global registry.
+    public static func port(applicationSupportURL: URL) -> UInt16 {
+        let bytes = applicationSupportURL.standardizedFileURL.path.utf8
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in bytes {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
         }
-        return url
+        return firstPrivatePort + UInt16(hash % privatePortCount)
     }
 }
 
 public final class LocalAgentBridgeClient: @unchecked Sendable {
-    private let socketURL: URL
+    private let port: UInt16
     private let timeout: TimeInterval
 
     public init(
         applicationSupportURL: URL,
         timeout: TimeInterval = LocalAgentBridgeLocation.clientTimeout
     ) throws {
-        socketURL = try LocalAgentBridgeLocation.socketURL(
-            applicationSupportURL: applicationSupportURL.standardizedFileURL
+        port = LocalAgentBridgeLocation.port(
+            applicationSupportURL: applicationSupportURL
         )
         self.timeout = min(max(timeout, 0.1), 30)
     }
 
     public func send(_ request: LocalAgentBridgeRequest) throws -> LocalAgentBridgeResponse {
-        try LocalAgentBridgeIO.validateClientLocation(socketURL)
-        let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else {
             throw LocalAgentBridgeError.systemCall("create its socket", errno)
         }
         defer { Darwin.close(descriptor) }
         try LocalAgentBridgeIO.configure(descriptor, timeout: timeout)
-        let address = try LocalAgentBridgeIO.address(for: socketURL.path)
+        let address = LocalAgentBridgeIO.address(port: port)
         let result = LocalAgentBridgeIO.withSockAddr(address) { pointer, length in
             Darwin.connect(descriptor, pointer, length)
         }
         guard result == 0 else {
-            if [ENOENT, ECONNREFUSED].contains(errno) {
+            if [ECONNREFUSED, ETIMEDOUT].contains(errno) {
                 throw LocalAgentBridgeError.unavailable
             }
             throw LocalAgentBridgeError.systemCall("connect", errno)
-        }
-        var peerUID = uid_t.max
-        var peerGID = gid_t.max
-        guard getpeereid(descriptor, &peerUID, &peerGID) == 0,
-              peerUID == geteuid() else {
-            throw LocalAgentBridgeError.permissionDenied
         }
         let responseData: Data
         do {
@@ -722,14 +715,12 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         -> LocalAgentBridgeHandlerResult
 
     private let queue = DispatchQueue(label: "com.scholium.agent-bridge")
-    private let socketURL: URL
-    private let ownerURL: URL
+    private let port: UInt16
     private let handler: Handler
     private let timeout: TimeInterval
     private let cancellationGrace: TimeInterval
     private let lock = NSLock()
     private var listener: Int32 = -1
-    private var ownerDescriptor: Int32 = -1
     private var stopping = false
     private var currentHandlerID: UUID?
     private var currentHandlerTask: Task<Void, Never>?
@@ -741,12 +732,9 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         cancellationGrace: TimeInterval = LocalAgentBridgeLocation.cancellationGrace,
         handler: @escaping Handler
     ) throws {
-        let supportURL = applicationSupportURL.standardizedFileURL
-        socketURL = try LocalAgentBridgeLocation.socketURL(
-            applicationSupportURL: supportURL
+        port = LocalAgentBridgeLocation.port(
+            applicationSupportURL: applicationSupportURL
         )
-        ownerURL = socketURL.deletingLastPathComponent()
-            .appendingPathComponent("o", isDirectory: false)
         self.timeout = min(max(timeout, 0.1), 30)
         self.cancellationGrace = min(max(cancellationGrace, 0.1), 5)
         self.handler = handler
@@ -795,13 +783,9 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         stopping = true
         let listener = self.listener
         self.listener = -1
-        let ownerDescriptor = self.ownerDescriptor
-        self.ownerDescriptor = -1
         if listener >= 0 {
             Darwin.shutdown(listener, SHUT_RDWR)
-            Darwin.close(listener)
         }
-        LocalAgentBridgeIO.removeOwnedSocketIfPresent(socketURL)
         let handlerTask = currentHandlerTask
         let handlerID = currentHandlerID
         let stopTask = Task.detached { [weak self] in
@@ -810,9 +794,8 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
             if let handlerID {
                 self?.clearCurrentHandler(id: handlerID)
             }
-            if ownerDescriptor >= 0 {
-                flock(ownerDescriptor, LOCK_UN)
-                Darwin.close(ownerDescriptor)
+            if listener >= 0 {
+                Darwin.close(listener)
             }
         }
         self.stopTask = stopTask
@@ -821,19 +804,7 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
     }
 
     private func start() throws {
-        try LocalAgentBridgeIO.preparePrivateDirectory(ownerURL)
-        ownerDescriptor = Darwin.open(ownerURL.path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
-        guard ownerDescriptor >= 0 else {
-            throw LocalAgentBridgeError.systemCall("open its owner lock", errno)
-        }
-        guard flock(ownerDescriptor, LOCK_EX | LOCK_NB) == 0 else {
-            Darwin.close(ownerDescriptor)
-            ownerDescriptor = -1
-            throw LocalAgentBridgeError.alreadyRunning
-        }
-        LocalAgentBridgeIO.removeOwnedSocketIfPresent(socketURL)
-
-        listener = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        listener = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard listener >= 0 else {
             throw LocalAgentBridgeError.systemCall("create its listener", errno)
         }
@@ -841,15 +812,15 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
             listener,
             timeout: timeout
         )
-        let address = try LocalAgentBridgeIO.address(for: socketURL.path)
+        let address = LocalAgentBridgeIO.address(port: port)
         let bindResult = LocalAgentBridgeIO.withSockAddr(address) { pointer, length in
             Darwin.bind(listener, pointer, length)
         }
         guard bindResult == 0 else {
+            if errno == EADDRINUSE {
+                throw LocalAgentBridgeError.alreadyRunning
+            }
             throw LocalAgentBridgeError.systemCall("bind", errno)
-        }
-        guard chmod(socketURL.path, 0o600) == 0 else {
-            throw LocalAgentBridgeError.systemCall("protect its socket", errno)
         }
         guard Darwin.listen(listener, 8) == 0 else {
             throw LocalAgentBridgeError.systemCall("listen", errno)
@@ -882,12 +853,6 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 peer,
                 timeout: timeout
             )
-            var peerUID = uid_t.max
-            var peerGID = gid_t.max
-            guard getpeereid(peer, &peerUID, &peerGID) == 0,
-                  peerUID == geteuid() else {
-                throw LocalAgentBridgeError.permissionDenied
-            }
             let data = try LocalAgentBridgeIO.readFrame(from: peer)
             let request = try LocalAgentBridgeWireCoding.decode(
                 LocalAgentBridgeRequest.self,
@@ -1129,54 +1094,6 @@ enum LocalAgentBridgeWireCoding {
 }
 
 private enum LocalAgentBridgeIO {
-    static func validateClientLocation(_ socketURL: URL) throws {
-        let directory = socketURL.deletingLastPathComponent()
-        var directoryInfo = stat()
-        var socketInfo = stat()
-        guard lstat(directory.path, &directoryInfo) == 0 else {
-            if errno == ENOENT { throw LocalAgentBridgeError.unavailable }
-            throw LocalAgentBridgeError.unsafeLocation
-        }
-        guard directoryInfo.st_uid == geteuid(),
-              (directoryInfo.st_mode & S_IFMT) == S_IFDIR,
-              (directoryInfo.st_mode & 0o077) == 0 else {
-            throw LocalAgentBridgeError.unsafeLocation
-        }
-        guard lstat(socketURL.path, &socketInfo) == 0 else {
-            if errno == ENOENT { throw LocalAgentBridgeError.unavailable }
-            throw LocalAgentBridgeError.unsafeLocation
-        }
-        guard socketInfo.st_uid == geteuid(),
-              (socketInfo.st_mode & S_IFMT) == S_IFSOCK,
-              (socketInfo.st_mode & 0o177) == 0 else {
-            throw LocalAgentBridgeError.unsafeLocation
-        }
-    }
-
-    static func preparePrivateDirectory(_ ownerURL: URL) throws {
-        let directory = ownerURL.deletingLastPathComponent()
-        if mkdir(directory.path, 0o700) != 0, errno != EEXIST {
-            throw LocalAgentBridgeError.systemCall("create its directory", errno)
-        }
-        var info = stat()
-        guard lstat(directory.path, &info) == 0,
-              info.st_uid == geteuid(),
-              (info.st_mode & S_IFMT) == S_IFDIR else {
-            throw LocalAgentBridgeError.unsafeLocation
-        }
-        guard chmod(directory.path, 0o700) == 0 else {
-            throw LocalAgentBridgeError.systemCall("protect its directory", errno)
-        }
-    }
-
-    static func removeOwnedSocketIfPresent(_ url: URL) {
-        var info = stat()
-        guard lstat(url.path, &info) == 0 else { return }
-        guard info.st_uid == geteuid(),
-              (info.st_mode & S_IFMT) == S_IFSOCK else { return }
-        _ = unlink(url.path)
-    }
-
     static func configure(_ descriptor: Int32, timeout: TimeInterval) throws {
         var enabled: Int32 = 1
         guard setsockopt(
@@ -1187,6 +1104,16 @@ private enum LocalAgentBridgeIO {
             socklen_t(MemoryLayout.size(ofValue: enabled))
         ) == 0 else {
             throw LocalAgentBridgeError.systemCall("configure its socket", errno)
+        }
+        var reuseAddress: Int32 = 1
+        guard setsockopt(
+            descriptor,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            &reuseAddress,
+            socklen_t(MemoryLayout.size(ofValue: reuseAddress))
+        ) == 0 else {
+            throw LocalAgentBridgeError.systemCall("configure address reuse", errno)
         }
         var value = timeval(
             tv_sec: Int(timeout),
@@ -1205,28 +1132,21 @@ private enum LocalAgentBridgeIO {
         }
     }
 
-    static func address(for path: String) throws -> sockaddr_un {
-        let bytes = Array(path.utf8) + [0]
-        guard bytes.count <= MemoryLayout.size(ofValue: sockaddr_un().sun_path) else {
-            throw LocalAgentBridgeError.socketPathTooLong
-        }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-            buffer.initializeMemory(as: UInt8.self, repeating: 0)
-            buffer.copyBytes(from: bytes)
-        }
-        let length = MemoryLayout.offset(of: \sockaddr_un.sun_path)! + bytes.count
-        address.sun_len = UInt8(length)
+    static func address(port: UInt16) -> sockaddr_in {
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr(LocalAgentBridgeLocation.host))
         return address
     }
 
     static func withSockAddr<T>(
-        _ address: sockaddr_un,
+        _ address: sockaddr_in,
         _ body: (UnsafePointer<sockaddr>, socklen_t) throws -> T
     ) rethrows -> T {
         var address = address
-        let length = socklen_t(address.sun_len)
+        let length = socklen_t(MemoryLayout<sockaddr_in>.size)
         return try withUnsafePointer(to: &address) { pointer in
             try pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 try body($0, length)

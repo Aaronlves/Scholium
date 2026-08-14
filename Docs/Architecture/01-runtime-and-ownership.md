@@ -56,7 +56,7 @@ ApplicationBootstrapController (one app-owned storage gate)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
         ├── ResearchConnectionCoordinator (one process generation)
-        ├── LocalAgentBridge (App Group AF_UNIX transport only)
+        ├── LocalAgentBridge (127.0.0.1 framed transport only)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
@@ -125,10 +125,10 @@ only durable owners.
 
 ### Runtime bootstrap, refresh, and Search
 
-`ApplicationBootstrapController` is the only production composition route to
-`WorkspaceStore`. Its Starting, Registry Recovery, Ready, and Storage
-Unavailable states validate the real per-user Application Support directory
-and the machine-local workspace registry before constructing any runtime.
+`ApplicationBootstrapController` is the sole production route to
+`WorkspaceStore`. Its states validate `Scholium/State-v1` beneath real per-user
+Application Support before runtime construction; unsupported pre-release
+parent bytes remain unread and nonauthorizing.
 `WorkspaceStore.init(applicationSupportURL:)` is explicit and failable; there
 is no temporary-directory fallback or empty-registry fallback. A malformed
 current registry enters the app-root Registry Recovery state. An explicit
@@ -297,6 +297,11 @@ Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 checkpoint, Skill/Practice/Profile, collaboration, Action/Run, Research
 Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
+Configuration preflights roots and reads the portable manifest before
+registration. Valid Triptych and role Vault UUIDs remain authoritative;
+`VaultIdentityRegistry` binds them to new bookmarks. Missing manifest creates
+identity. Rejected selection or manifest leaves registries unchanged; renewed
+access rebinds identity.
 `WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
 starts it with the handle's explicitly phased latest `WorkspaceSnapshot`, and accepts only increasing
@@ -317,13 +322,15 @@ mirrors. Each window receives one atomic capability generation. CSS/App
 Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
 store owns no Core authority.
 
-Direct local Agent connection is one App-wide Application boundary owned by
-`WorkspaceStore` through `ResearchConnectionCoordinator` and the App Group
-Unix bridge. The coordinator owns only current-process Pairing Codes/Sessions;
-each Run remains owned by its exact `WorkspaceHandle`. The bridge is a transport
-adapter and neither launches an Agent nor owns Run, context, authorization,
-research source, or recovery. Manual provider-neutral copy collaboration
-remains presentation-only and is never recorded as a Session.
+`WorkspaceStore` owns direct Agent connection through
+`ResearchConnectionCoordinator` and a loopback-only TCP bridge. App and CLI
+derive one private-range port from a logical per-user namespace that is never
+created. The App listens only on `127.0.0.1`; Pairing Code and Session
+credentials authorize operations without an App Group. The coordinator
+owns only process-local Pairing Codes/Sessions;
+each Run belongs to its exact `WorkspaceHandle`. The transport neither launches
+an Agent nor owns Run context, authorization, source, or recovery. Manual
+provider-neutral copy remains presentation-only and unrecorded.
 
 ### Window state and feature controllers
 
@@ -738,22 +745,25 @@ Document retain Markdown, autosave, conflict, and recovery authority.
 
 Bootstrap is a separate data-routed `WindowGroup`; `ScholiumBootstrapModel`
 owns launch resolution and `WorkspaceSetupView` for first/new/missing setup,
-never the workspace split, toolbar, or `WindowModel`. After the first successful
-registration only, the same model holds workspace routing closed while the
-setup view borrows the existing Application-owned `CommandLineToolInstaller`
-for optional machine preparation. Prompt-copy and researcher-confirmation state
-remain presentation-local and create no Agent, Session, Run, research-access,
-or durable readiness owner. The installer resolves the login account's POSIX
-home rather than the sandbox-container home, owns only
-`~/.local/bin/scholium` and its adjacent protected resource bundle, and
-read-verifies both before publishing Installed. The packaged App grants its
-sandbox only the `~/.local/` root needed to create that conventional
-user-local destination; the writer refuses symbolic links in the destination
-or either directory ancestor and never edits `PATH`, shell profiles, or Agent
-configuration. When Agent preparation follows, the setup view
-starts Application registration before presenting Agent and retains only the
-local gate that prevents Ready until registration succeeds; Application still
-owns the registration transaction and failure. Bootstrap and Workspace
+never the workspace split, toolbar, or `WindowModel`. After first registration,
+the model keeps workspace routing closed while optional Agent preparation
+copies immutable instructions. Prompt-copy and confirmation remain
+presentation-local and create no durable readiness, machine-status, or
+research-access owner. No Application service embeds, locates, fingerprints,
+executes, installs, updates, or removes a CLI.
+
+Packaging emits a sandboxed App archive and an independent CLI archive with
+`scholium`, its Core resource bundle, and a user-local installer. Both carry
+matching provenance. The CLI has no App Sandbox or App Group entitlement. The
+App retains sandboxing, user-selected read-write access, app-scoped bookmarks,
+Zotero client access, and loopback server access. One home-relative exception
+exposes only `Library/Application Support/Scholium`; the App has no `.local`
+access or embedded CLI. The copied Agent instruction limits installation to
+`~/.local/bin/scholium` and its adjacent resource bundle and never authorizes
+`sudo`, `PATH`, shell-profile, Agent-configuration, or quarantine mutation.
+Agent preparation starts Application registration before
+presenting Agent; its local gate prevents Ready until registration succeeds,
+while Application owns the transaction and failure. Bootstrap and Workspace
 use nonoptional Codable route bindings with a `defaultValue`; the route's
 `windowID` is their only session identity. Workspace restoration is automatic,
 while Bootstrap restoration is disabled. Success opens one workspace and waits

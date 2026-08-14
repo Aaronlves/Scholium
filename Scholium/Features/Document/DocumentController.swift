@@ -1572,11 +1572,20 @@ final class DocumentController: ObservableObject {
             session.canRetrySave = false
         } else {
             session.conflict = nil
-            let documentIsUnavailable = (error as? DocumentControllerError) == .documentUnavailable
-            session.canRetrySave = !(error is VaultRepositoryError)
-                && !documentIsUnavailable
+            session.canRetrySave = Self.saveFailureAllowsRetry(error)
         }
         session.editError = message
+    }
+
+    static func saveFailureAllowsRetry(_ error: Error) -> Bool {
+        if (error as? DocumentControllerError) == .documentUnavailable {
+            return false
+        }
+        guard let repositoryError = error as? VaultRepositoryError else {
+            return true
+        }
+        if case .writeFailed = repositoryError { return true }
+        return false
     }
 
     func setSaveError(_ message: String?) {

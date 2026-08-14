@@ -11,10 +11,10 @@ extension ScholiumUITests {
         try enterLivePreviewAndAppend(token)
         XCTAssertFalse(try source(at: noteURL).contains(token))
 
-        app.typeKey("f", modifierFlags: [.command])
+        app.typeKey("f", modifierFlags: [.command, .shift])
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
-        let result = app.descendants(matching: .any)["scholium.searchResult.QA Autosave A.md"]
+        let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 8))
         typeCommittedText("searchunsavedtoken", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))

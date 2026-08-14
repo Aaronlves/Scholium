@@ -99,7 +99,7 @@ that complete copied handoff; it is not separately rendered or exposed to the
 accessibility tree. **Copy New Handoff** invalidates the prior pairing, obtains
 a replacement, and copies it while retaining the same Run and recovery state.
 The Agent enters the code through CLI standard input. Pair exchange over the
-protected App Group Unix socket returns a hidden
+loopback-only framed bridge returns a hidden
 Connection Session and the first layered delivery packet. The UI's End Action
 route calls the same Application cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
@@ -379,7 +379,7 @@ preparation sheet, while failure leaves its inputs intact. The Action row
 derives Waiting, Running, Needs Attention, and its first repair only from the
 privacy-bounded activity projection. A
 compact status sheet reloads the exact Run for recopy, ending, or recovery and
-does not reconstruct the former academic-input/result surface.
+constructs no second academic-input/result surface.
 Confirmed reload rereads the exact Record ID through the existing Record use
 case and accepts no differently identified response; it adds no presentation
 cache or Evaluation owner.

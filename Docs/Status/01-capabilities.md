@@ -58,7 +58,7 @@
 - Image Import copies selected or pasted bytes exactly into the current
   vault's UUID-scoped `Attachments` folder and inserts a relative Markdown
   destination. Image Index retains the selected absolute path without copying;
-  its read-only sandbox bookmark is machine-local, and a moved, missing, stale,
+  its read-only bookmark is machine-local, and a moved, missing, stale,
   or inaccessible path produces a reminder without repair or mutation.
 - Editor Undo, Triptych checkpoints, Before Agent Work recovery, settled
   revision pins, and interrupted-write candidates remain distinct. Restore
@@ -170,9 +170,9 @@
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot
   bypass source, Action, Session, recovery, or Record authority.
-- First-launch Agent preparation and Research Guidance Settings use one
-  Application-owned installer for the version-matched CLI and protected
-  resources under the login account's `~/.local/bin`. A stale complete copy in
-  the App sandbox is not installation evidence; status verifies the real files,
-  reports current-process `PATH` visibility separately, and leaves shell or
-  Agent configuration changes to an explicit copied instruction.
+- First-launch Agent preparation and Research Guidance Settings copy the same
+  fixed official installation instruction for the independently packaged CLI.
+  The App has no CLI installer or machine-status owner and never embeds,
+  inspects, executes, updates, or removes the CLI. The external Agent may place
+  only the release executable and resource bundle under `~/.local/bin`, then
+  verifies the required version fields while ignoring unrelated JSON fields.

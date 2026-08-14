@@ -1,28 +1,54 @@
 import Foundation
 
-/// Resolves only an explicitly supplied Debug/QA isolation root. Release
-/// production never accepts this environment override or invents a fallback.
+/// Resolves an explicit Debug/QA root or the bounded packaged-performance
+/// driver root. Ordinary Release launches never accept an environment override
+/// or invent a fallback.
 enum ScholiumRuntimeIsolation {
     enum LayoutDirectionOverride: Equatable {
         case leftToRight
         case rightToLeft
     }
 
+    static let productionBundleIdentifier = "com.scholium.app"
     static let qaBundleIdentifier = "com.scholium.qa"
+    static let packagedPerformanceIsolationArgument =
+        "--scholium-performance-driver-isolation"
+
     static func homeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = CommandLine.arguments,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> URL? {
-#if DEBUG
-        if let explicit = nonempty(environment["SCHOLIUM_HOME"]) {
-            return URL(
-                fileURLWithPath: (explicit as NSString).expandingTildeInPath,
-                isDirectory: true
-            ).standardizedFileURL
+        guard let explicit = nonempty(environment["SCHOLIUM_HOME"]) else {
+            return nil
         }
+#if DEBUG
+        let isDebugBuild = true
+#else
+        let isDebugBuild = false
 #endif
-        _ = bundleIdentifier
-        return nil
+        guard allowsExplicitHome(
+            environment: environment,
+            arguments: arguments,
+            bundleIdentifier: bundleIdentifier,
+            isDebugBuild: isDebugBuild
+        ) else { return nil }
+        return URL(
+            fileURLWithPath: (explicit as NSString).expandingTildeInPath,
+            isDirectory: true
+        ).standardizedFileURL
+    }
+
+    static func allowsExplicitHome(
+        environment: [String: String],
+        arguments: [String],
+        bundleIdentifier: String?,
+        isDebugBuild: Bool
+    ) -> Bool {
+        if isDebugBuild { return true }
+        return bundleIdentifier == productionBundleIdentifier
+            && arguments.contains(packagedPerformanceIsolationArgument)
+            && nonempty(environment["SCHOLIUM_PERFORMANCE_RUN_ID"]) != nil
     }
 
     static func fixtureRootURL(

@@ -84,7 +84,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
-    let commandLineToolInstaller: CommandLineToolInstaller
     let researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator
     private(set) var localAgentBridge: LocalAgentBridgeServer?
     private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
@@ -124,7 +123,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         applicationRuntime = runtime
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
-        commandLineToolInstaller = CommandLineToolInstaller()
         let researchAgentPermissionClaims =
             ResearchAgentPermissionClaimCoordinator()
         self.researchAgentPermissionClaims = researchAgentPermissionClaims
@@ -746,12 +744,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 }
             ),
             machine: WorkspaceSettingsMachineCapabilities(
-                commandLineToolStatus: { [self] in
-                    await commandLineToolInstaller.commandLineToolStatus()
-                },
-                installCommandLineTool: { [self] in
-                    try await commandLineToolInstaller.installCommandLineTool()
-                },
                 openExternal: { [self] url in openExternal(url) }
             ),
             zotero: WorkspaceSettingsZoteroCapabilities(

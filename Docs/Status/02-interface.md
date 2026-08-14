@@ -126,7 +126,7 @@
 - Record deletion, Response editing, folding comparison,
   evidence popovers, unresolved provenance, and recommendation handling retain
   named keyboard and accessibility routes. Native Response and comparison
-  presentation no longer installs unconditional feature-local focus return, so
+  presentation installs no unconditional feature-local focus return, so
   pointer dismissal does not paint a keyboard-only focus ring while AppKit
   retains keyboard focus behavior.
 

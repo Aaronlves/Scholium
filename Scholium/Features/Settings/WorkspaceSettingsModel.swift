@@ -109,11 +109,9 @@ struct WorkspaceSettingsWorkspaceCapabilities {
     let portableContainerURL: (URL) async -> URL?
 }
 
-/// Machine-local installation and external-opening operations used by Settings.
+/// Delivery-neutral external-opening operations used by Settings.
 @MainActor
 struct WorkspaceSettingsMachineCapabilities {
-    let commandLineToolStatus: () async -> CommandLineToolStatus
-    let installCommandLineTool: () async throws -> CommandLineToolStatus
     let openExternal: (URL) -> Bool
 }
 
@@ -329,26 +327,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             return await perform { try await loadSnapshot() }
         }
         return false
-    }
-
-    func commandLineToolStatus() async -> CommandLineToolStatus {
-        guard let capabilities else {
-            return CommandLineToolStatus(
-                state: .bundledToolUnavailable,
-                version: "Unknown",
-                installPath: "~/.local/bin/scholium",
-                isOnCurrentPATH: false,
-                repairMessage: "The command-line installer is unavailable in this preview."
-            )
-        }
-        return await capabilities.machine.commandLineToolStatus()
-    }
-
-    func installCommandLineTool() async throws -> CommandLineToolStatus {
-        guard let capabilities else {
-            throw CommandLineToolInstallationError.bundledToolUnavailable
-        }
-        return try await capabilities.machine.installCommandLineTool()
     }
 
     func refreshRegisteredVaults() async {

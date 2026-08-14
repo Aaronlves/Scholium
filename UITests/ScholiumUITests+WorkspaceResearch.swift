@@ -319,12 +319,12 @@ extension ScholiumUITests {
         }
 
         XCTContext.runActivity(named: "Search, properties, and inspector") { _ in
-            app.typeKey("f", modifierFlags: [.command])
+            app.typeKey("f", modifierFlags: [.command, .shift])
             let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
             let field = app.descendants(matching: .any)["scholium.searchField"]
             XCTAssertTrue(field.waitForExistence(timeout: 5))
             typeCommittedText("Autosave", into: field, in: app)
-            let result = app.descendants(matching: .any)["scholium.searchResult.QA Autosave A.md"]
+            let result = searchResult(named: "QA Autosave A")
             XCTAssertTrue(result.waitForExistence(timeout: 8))
             app.buttons["Close"].click()
             XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
@@ -376,7 +376,9 @@ extension ScholiumUITests {
             topics.click()
             let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
             XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
-            XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+            XCTAssertTrue(app.descendants(matching: .any)[
+                "scholium.noDocumentState"
+            ].waitForExistence(timeout: 5))
             topicRow.click()
             XCTAssertTrue(waitUntil(timeout: 8) {
                 (documentTitle.value as? String) == "QA Topic"
@@ -387,16 +389,12 @@ extension ScholiumUITests {
                 "scholium.noteRow.QA Autosave A.md"
             ]
             XCTAssertTrue(analysisRow.waitForExistence(timeout: 8))
-            XCTAssertEqual(documentTitle.value as? String, "QA Topic")
-            analysisRow.click()
             XCTAssertTrue(waitUntil(timeout: 8) {
                 (documentTitle.value as? String) == "QA Autosave A"
             })
 
             topics.click()
             XCTAssertTrue(topicRow.waitForExistence(timeout: 8))
-            XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
-            topicRow.click()
             XCTAssertTrue(waitUntil(timeout: 8) {
                 (documentTitle.value as? String) == "QA Topic"
             })
@@ -576,7 +574,7 @@ extension ScholiumUITests {
         triptych.click()
         typeCommittedText("Normative QA Nexus", into: field, in: app)
 
-        let result = app.descendants(matching: .any)["scholium.searchResult.QA Topic.md"]
+        let result = searchResult(named: "QA Topic")
         XCTAssertTrue(result.waitForExistence(timeout: 5))
         result.click()
 
@@ -1003,6 +1001,23 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testRestoreAccessQuitScholiumTerminatesApplication() {
+        let restoreSheet = app.sheets.firstMatch
+        XCTAssertTrue(
+            restoreSheet.staticTexts["Restore Access"].waitForExistence(timeout: 8),
+            "The isolated recovery route must present the real Restore Access sheet."
+        )
+        let quitScholium = restoreSheet.buttons["Quit Scholium"]
+        XCTAssertTrue(quitScholium.waitForExistence(timeout: 5))
+        quitScholium.click()
+
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { self.app.state == .notRunning },
+            "Quit Scholium must use the ordinary application termination path."
+        )
+    }
+
+    @MainActor
     func testCleanAccountConfiguresAndRestoresACompleteTriptych() throws {
         app.terminate()
 
@@ -1389,46 +1404,27 @@ extension ScholiumUITests {
 
 
     @MainActor
-    func testScholiumCLIInstallsFromSettings() throws {
+    func testScholiumCLICopiesIndependentInstallationInstructions() throws {
         openResearchGuidance(openAdvanced: true)
 
         let section = app.descendants(matching: .any)["scholium.agentCLI.section"]
-        let status = app.descendants(matching: .any)["scholium.agentCLI.status"]
-        let install = app.descendants(matching: .any)["scholium.agentCLI.install"]
-        XCTAssertTrue(section.waitForExistence(timeout: 10))
-        XCTAssertTrue(status.waitForExistence(timeout: 10))
-        XCTAssertEqual(status.label, "Scholium CLI status")
-        XCTAssertTrue(install.waitForExistence(timeout: 5))
-        XCTAssertTrue(install.isEnabled)
-        install.click()
-
-        let installedTool = testDirectory.appendingPathComponent("cli-bin/scholium")
-        let installedMethodResources = testDirectory.appendingPathComponent(
-            "cli-bin/Scholium_ScholiumCore.bundle/Contents/Resources/Skills/README.md"
-        )
-        XCTAssertTrue(waitUntil(timeout: 15) {
-            FileManager.default.isExecutableFile(atPath: installedTool.path)
-                && FileManager.default.fileExists(atPath: installedMethodResources.path)
-        })
-        XCTAssertTrue(waitUntil(timeout: 10) {
-            (status.value as? String) == "Installed"
-                || (status.value as? String) == "Installed and discoverable"
-        })
-        XCTAssertFalse(install.exists)
-
-        let copyPathSetup = app.descendants(matching: .any)[
-            "scholium.agentCLI.pathSetup"
+        let copyInstructions = app.descendants(matching: .any)[
+            "scholium.agentCLI.copyInstructions"
         ]
-        XCTAssertTrue(copyPathSetup.waitForExistence(timeout: 5))
+        XCTAssertTrue(section.waitForExistence(timeout: 10))
+        XCTAssertTrue(copyInstructions.waitForExistence(timeout: 5))
+        XCTAssertTrue(copyInstructions.isEnabled)
         try setPasteboardText("Scholium QA clipboard sentinel")
-        copyPathSetup.click()
-        let expectedSetup = "export PATH=\"$HOME/.local/bin:$PATH\""
-        XCTAssertTrue(
-            waitUntil(timeout: 5) { (try? self.pasteboardText()) == expectedSetup },
-            "The shared pasteboard writer must copy the exact PATH setup command."
-        )
+        copyInstructions.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            guard let copied = try? self.pasteboardText() else { return false }
+            return copied.contains("releases/latest/download/Scholium-CLI-macos.zip")
+                && copied.contains("Do not use sudo")
+                && copied.contains("Ignore additional JSON fields")
+                && copied.contains("Do not edit PATH")
+        })
         XCTAssertTrue(app.descendants(matching: .any)[
-            "PATH setup copied"
+            "CLI installation instructions copied"
         ].waitForExistence(timeout: 3))
     }
 
@@ -2398,13 +2394,10 @@ extension ScholiumUITests {
         let renderedDocument = app.descendants(matching: .any)["Rendered Markdown"]
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
 
-        app.typeKey("f", modifierFlags: [.command])
+        app.typeKey("f", modifierFlags: [.command, .shift])
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
-        let results = app.descendants(matching: .any).matching(
-            identifier: "scholium.searchResult.QA Autosave A.md"
-        )
-        let result = results.firstMatch
+        let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         let searchMode = app.descendants(matching: .any)["scholium.searchMode"]
         let closeSearch = app.descendants(matching: .any)["scholium.closeSearchButton"]
@@ -2447,9 +2440,7 @@ extension ScholiumUITests {
         app.typeKey("f", modifierFlags: [.command, .shift])
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
-        let result = app.descendants(matching: .any).matching(
-            identifier: "scholium.searchResult.QA Autosave A.md"
-        ).firstMatch
+        let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         let thisNote = app.buttons["scholium.searchScope.thisNote"]
         XCTAssertTrue(thisNote.waitForExistence(timeout: 5))
@@ -2496,13 +2487,9 @@ extension ScholiumUITests {
             in: app
         )
 
-        let relatedAnalysis = app.descendants(matching: .any)[
-            "scholium.searchResult.QA Autosave A.md"
-        ]
+        let relatedAnalysis = searchResult(named: "QA Autosave A")
         XCTAssertTrue(relatedAnalysis.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.searchResult.QA Direct Relation Topic.md"
-        ].exists)
+        XCTAssertFalse(searchResult(named: "QA Direct Relation Topic").exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(
             format: "label CONTAINS %@",
             "directly supported"
@@ -2532,10 +2519,10 @@ extension ScholiumUITests {
         thisVault.click()
         typeCommittedText("deliberative autonomy", into: field, in: app)
 
-        let title = app.descendants(matching: .any)["scholium.searchResult.Ranking Title.md"]
-        let alias = app.descendants(matching: .any)["scholium.searchResult.Ranking Alias.md"]
-        let heading = app.descendants(matching: .any)["scholium.searchResult.Ranking Heading.md"]
-        let body = app.descendants(matching: .any)["scholium.searchResult.Ranking Body.md"]
+        let title = searchResult(named: "Ranking Title")
+        let alias = searchResult(named: "Ranking Alias")
+        let heading = searchResult(named: "Ranking Heading")
+        let body = searchResult(named: "Ranking Body")
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertTrue(alias.waitForExistence(timeout: 10))
         XCTAssertTrue(heading.waitForExistence(timeout: 10))

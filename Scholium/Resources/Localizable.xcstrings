@@ -5045,6 +5045,26 @@
         }
       }
     },
+    "CLI installation instructions copied" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已复制 CLI 安装指令"
+          }
+        }
+      }
+    },
+    "CLI installation instructions could not be copied." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法复制 CLI 安装指令。"
+          }
+        }
+      }
+    },
     "CLI installation path" : {
       "localizations" : {
         "en" : {
@@ -7301,22 +7321,6 @@
         }
       }
     },
-    "Close Window" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Close Window"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭窗口"
-          }
-        }
-      }
-    },
     "Closed" : {
       "localizations" : {
         "en" : {
@@ -8523,6 +8527,16 @@
         }
       }
     },
+    "Copies the official Agent instructions without changing this Mac" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制官方智能体指令，不更改这台 Mac"
+          }
+        }
+      }
+    },
     "Copy" : {
       "localizations" : {
         "en" : {
@@ -8545,6 +8559,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再次复制"
+          }
+        }
+      }
+    },
+    "Copy CLI Installation Instructions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制 CLI 安装指令"
           }
         }
       }
@@ -14980,6 +15004,16 @@
         }
       }
     },
+    "Install with your Agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过智能体安装"
+          }
+        }
+      }
+    },
     "Installed" : {
       "localizations" : {
         "en" : {
@@ -15669,6 +15703,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "留空以进行以中立源为中心的筛选。"
+          }
+        }
+      }
+    },
+    "Let the Agent finish setup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让智能体完成设置"
           }
         }
       }
@@ -19761,6 +19805,16 @@
         }
       }
     },
+    "Official Scholium CLI download" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium CLI 官方下载地址"
+          }
+        }
+      }
+    },
     "One machine or custom property is preserved in Source mode." : {
       "localizations" : {
         "en" : {
@@ -22805,6 +22859,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "退出"
+          }
+        }
+      }
+    },
+    "Quit Scholium" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Quit Scholium"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 Scholium"
           }
         }
       }
@@ -27982,6 +28052,16 @@
         }
       }
     },
+    "Scholium does not inspect or modify command-line installations. Copy the official instructions when an Agent needs to install or update the CLI." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 不检查或修改命令行工具的安装状态。智能体需要安装或更新 CLI 时，请复制官方指令。"
+          }
+        }
+      }
+    },
     "Scholium first creates Before Restore. Files created after this checkpoint move to Trash; files changed, moved, or deleted are restored from the selected checkpoint." : {
       "localizations" : {
         "en" : {
@@ -31125,6 +31205,16 @@
         }
       }
     },
+    "The Agent installs and verifies the CLI, reads Scholium's Agent help, and prepares the applicable instruction file." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能体会安装并验证 CLI，阅读 Scholium 的智能体帮助，并准备适用的指令文件。"
+          }
+        }
+      }
+    },
     "The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active." : {
       "localizations" : {
         "zh-Hans" : {
@@ -32046,6 +32136,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此策略仅控制 Scholium 在何时询问是否扩展单次运行的有界写入集合。它不附属于技能或智能体，也从不授予笼统写入权限。"
+          }
+        }
+      }
+    },
+    "The prompt authorizes the Agent to install the official CLI, then prepare this project." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该提示词授权智能体安装官方 CLI，然后准备这个项目。"
           }
         }
       }

@@ -51,19 +51,18 @@ sibling items:
    projections. It never owns buffers, autosave, Undo, or conflicts;
    full chronology belongs to Research Records.
 
-The workspace starts at **1180 × 760**, not a minimum. Scene state owns route
+The workspace uses the initial content size owned by §19.4, not a minimum. Scene state owns route
 identity and restoration; the native window and split controller own divider,
 compression, collapse, fullscreen, and frame geometry. Scholium never
 persists, restores, observes, or continuously reasserts divider geometry. The only additional
-initial condition is that a newly created window's first explicit Apparatus
-reveal may request a provisional **320pt** readable thickness once, after the
-native split is attached. That request yields to the remaining Document space
+initial condition is the one-time first-Apparatus-reveal request owned by
+§19.3, after the native split is attached. That request yields to the remaining Document space
 and native bounds; it is not a minimum, maximum, restored divider value, or
 later-reveal preference. After that one transition, the native container and
 direct user resizing remain authoritative. Scholium declares no scene/window
 minimum unless the complete adaptation matrix proves one necessary. The
-specified content constraints are the expanded Library's **300pt minimum
-readable thickness** and Apparatus's **270pt system Inspector minimum**. The
+specified content constraints are the Library and Apparatus readable-thickness
+metrics owned by §19.3. The
 native split must keep each expanded peripheral plane at or above its boundary;
 Apparatus has no application-defined maximum. These are neither preferred
 widths, restored divider values, nor parallel geometry owners. Library remains
@@ -143,8 +142,7 @@ save-before-transition. One stable document has at most one tab in a window;
 repeated open or **Open in New Tab** selects its owning workspace and existing
 tab. Close flushes and selects a retained neighbor only inside the current
 group; last close returns that workspace to no-note. Tabs create no window
-group, parallel controller, split, or toolbar owner. Prototype styling has no
-authority; selector styling is provisional.
+group, parallel controller, split, or toolbar owner.
 
 Window close, route handoff, and application termination are bounded. A
 content flush, save, or conflict failure keeps the affected window and exact
@@ -160,7 +158,7 @@ bypass that no-note starting state.
 
 The Library BrandHeader sits below window controls. A static Scholium wordmark
 occupies its own identity line. The next line pairs the Triptych identity menu
-with one logical-trailing Triptych Attention control on the 28pt peripheral
+with one logical-trailing Triptych Attention control on §19.3's peripheral
 page edge; neither turns the wordmark into a second toolbar. The control uses a
 direct `exclamationmark.triangle` SF Symbol and places an exact nonzero Triptych
 total beside, never over, that symbol. Its resting background is transparent;
@@ -241,8 +239,8 @@ Menus follow researcher tasks:
   keyboard focus. Manually browsing a different Scope remains possible until
   the next document navigation.
 - Notes outside folders appear at vault root as ordinary Library rows.
-- Folder/note rows form one hierarchy at one semantic callout size and a
-  provisional **28pt minimum** rhythm that grows rather than clips when text
+- Folder/note rows form one hierarchy at one semantic callout size and use the
+  Library row metric owned by §19.3, growing rather than clipping when text
   requires it. Folder and unselected Note titles use Regular; only the selected
   Note uses Semibold. Use color, indentation, symbols, and this restrained
   selection weight—not size or permanent Folder emphasis. One leading semantic
@@ -360,7 +358,7 @@ Menus follow researcher tasks:
   expandable Folder. Library additionally shows Filter and Add. Set Aside and
   Trash omit only those Library-specific controls. The header keeps the same
   position and height while the source region changes. Its matching icon-only
-  controls use one exact **28 × 28pt** target, secondary ink at rest, primary
+  controls use the location-header target metric owned by §19.3, secondary ink at rest, primary
   ink plus the shared shallow semantic interaction surface on hover, native
   keyboard focus, and the same purpose-owned continuous corner recipe. Filter,
   disclosure, and Add reuse this complete presentation regardless of whether a
@@ -373,7 +371,7 @@ Menus follow researcher tasks:
   the same header without becoming a section heading. Hover or keyboard focus
   promotes the title to primary ink and places the shared shallow interaction
   surface behind its complete native title-and-indicator target at the
-  preferred **28pt** height. Hover, focus, and press use the same continuous
+  preferred location-header height owned by §19.3. Hover, focus, and press use the same continuous
   editorial-control corner recipe and never stack a native hover enclosure
   beneath the Scholium surface.
   Its selected item uses a checkmark; Set Aside and Trash may show a last-
@@ -409,15 +407,15 @@ Menus follow researcher tasks:
   retain inactive presentation solely to preserve disclosure or scroll context
   only while it remains layout-neutral, inert, and accessibility-hidden.
 - Library, Set Aside, and Trash empty, loading, and error states are
-  page-level Location content: they align to the shared **28pt** peripheral
-  edge and begin one **16pt** section step below LocationHeader. They never
-  borrow the tighter **12pt** OutlineRow surface inset. Populated Note and
+  page-level Location content: they align to the peripheral page edge and begin
+  one section step below LocationHeader. They never borrow the tighter
+  OutlineRow surface inset; §19.3 owns all three metrics. Populated Note and
   Folder rows retain that row inset and their existing hierarchy rhythm. An
   initial Library load with no trustworthy projection uses one system
   indeterminate progress indicator and the explicit **Loading Library…** name;
   it does not use a shimmer, skeleton, or moving highlight. Staged replacement
   never places that loading treatment over retained trustworthy content.
-- Lifecycle rows reuse the same provisional 28pt minimum OutlineRow rhythm and
+- Lifecycle rows reuse the same Library minimum OutlineRow rhythm and
   Note semantic slot. A single-line truncated title opens the note in place and
   retains the complete row width. Its quiet secondary-ink **Put Back** control
   appears as a trailing native overlay above a semantic Sidebar material veil

@@ -30,7 +30,7 @@ Architecture, Status, and evidence rather than copying them into another pack.
 - external edits, conflicts, stable rename, Set Aside, Trash, checkpoints,
   restore/interruption, and cross-window dirty-peer behavior.
 
-Later Beta/1.0 additionally cover applicable Research Actions, Skill
+Beta/1.0 additionally cover applicable Research Actions, Skill
 registrations, exact-Wikilink Practices, Action Profiles and Result Contracts,
 Triptych collaboration, process-bound pairing/Sessions, Bounded Write Sets,
 Research Context, portable Research Records and Researcher Evaluation,
@@ -181,33 +181,38 @@ results. Current measurements and remaining activation work belong only in
 
 ### 21.5 Source-first Beta distribution
 
-The first external release identity is:
+Each source-first Beta release requires:
 
-- tag and public label `v0.1.0-beta.1`;
-- app marketing version `0.1.0`, build `1`, minimum macOS 26;
-- exact tagged source under `GPL-3.0-or-later`; and
-- an optional architecture-labelled, ad-hoc-signed Scholium app ZIP plus its
-  SHA-256 checksum on the same release page.
+- a public prerelease tag and label that exactly match package provenance;
+- app marketing version `0.1.0`, its recorded build number, and minimum macOS
+  26;
+- the corresponding exact tagged source under `GPL-3.0-or-later`; and
+- an architecture-labelled, ad-hoc-signed Scholium App ZIP and an independent
+  `Scholium-CLI-macos.zip`, each with a SHA-256 checksum on the same release
+  page and exact architecture recorded in provenance.
 
-The app bundle includes its version-matched `scholium` helper. There is no
-separate public CLI asset. The release also includes applicable license texts
-and notices, identifies verified architectures without overstating universal
-support, and contains no real vault, Application Support state, bookmark,
-credential, index, absolute private path, or research content.
+The App bundle contains no CLI executable and has no CLI installation access.
+The CLI ZIP contains the version-matched `scholium` executable, its adjacent
+release resource bundle, and one user-local installer. Both artifacts include
+applicable license texts and notices, identify verified architectures without
+overstating universal support, and contain no real vault, Application Support
+state, bookmark, credential, index, absolute private path, or research content.
 
 Ad-hoc signing is not Developer ID signing, notarization, publisher
 verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub
 download through **System Settings → Privacy & Security → Open Anyway** after
 the first launch attempt. Documentation must never advise disabling Gatekeeper,
-recursively removing quarantine, or installing an untrusted root certificate.
+recursively removing quarantine, mutating quarantine from an installer or
+Agent prompt, or installing an untrusted root certificate.
 
 Before tagging or upload, freeze a reviewed clean commit; audit the tree and
 history for private material; run complete repository verification with
-disposable fixtures; package with the clean-source requirement; inspect app and
-helper metadata, resources, entitlements, architecture, signatures, icon, ZIP,
-checksum, and licenses; pass G7; and exercise the exact expanded ZIP in a clean
-macOS account through first launch, Triptych setup, read/edit/save, Search,
-conflict/recovery, Inspector/Action, restoration, and unavailable integrations.
+disposable fixtures; package with the clean-source requirement; inspect App and
+standalone CLI metadata, resources, entitlements, architecture, signatures,
+icon, ZIPs, checksums, and licenses; pass G7; and exercise both exact expanded
+ZIPs in a clean macOS account through first launch, Triptych setup, independent
+CLI installation, read/edit/save, Search, conflict/recovery, Inspector/Action,
+restoration, and unavailable integrations.
 No real research vault may be opened during release verification.
 
 Developer ID signing, notarization, and stapling are optional future channel

@@ -312,7 +312,7 @@ struct TriptychMoveCoordinatorTests {
             files: []
         )
         let write = Task { try await writer.record(record) }
-        #expect(stagingReady.wait(seconds: 2))
+        #expect(stagingReady.wait(seconds: 10))
 
         let initializerStarted = BlockingTestSignal()
         let initializerFinished = BlockingTestSignal()
@@ -321,7 +321,7 @@ struct TriptychMoveCoordinatorTests {
             defer { initializerFinished.signal() }
             return try TriptychMutationRecoveryStore(storageURL: root)
         }
-        #expect(initializerStarted.wait(seconds: 2))
+        #expect(initializerStarted.wait(seconds: 10))
         #expect(!initializerFinished.wait(seconds: 0.05))
         releaseWriter.signal()
 

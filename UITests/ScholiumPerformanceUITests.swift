@@ -8,6 +8,9 @@ import notify
 /// gate. `run-performance-benchmarks.sh` owns those fail-closed checks and
 /// invokes this single method against an explicitly registered app bundle.
 final class ScholiumPerformanceUITests: XCTestCase {
+    private let packagedIsolationArgument =
+        "--scholium-performance-driver-isolation"
+
     private enum WarmReadScrollDirection {
         case towardEarlierRows
         case towardLaterRows
@@ -137,6 +140,54 @@ final class ScholiumPerformanceUITests: XCTestCase {
         }
     }
 
+    /// Proves the exact packaged Release artifact starts at Bootstrap when its
+    /// isolated machine-state root is empty. No fixture registration is
+    /// supplied, so Restore Access is never a valid first-launch route.
+    @MainActor
+    func testPackagedFirstLaunchUsesBootstrap() throws {
+        continueAfterFailure = false
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["SCHOLIUM_PACKAGED_FIRST_LAUNCH_PROOF"] == "1" else {
+            throw XCTSkip("The packaged first-launch proof is not configured.")
+        }
+        let applicationPath = try required(
+            "SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH",
+            in: environment
+        )
+        let homeRoot = try required(
+            "SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT",
+            in: environment
+        )
+        let runID = try required("SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID", in: environment)
+        let application = XCUIApplication(
+            url: URL(fileURLWithPath: applicationPath, isDirectory: true)
+        )
+        application.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
+        ]
+        application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
+        application.launchEnvironment["CFFIXED_USER_HOME"] = homeRoot
+        application.launchEnvironment["SCHOLIUM_PERFORMANCE_RUN_ID"] = runID
+        defer { application.terminate() }
+
+        application.launch()
+        XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(
+            application.descendants(matching: .any)["scholium.bootstrap"]
+                .waitForExistence(timeout: 20),
+            "A clean packaged Release launch must enter Bootstrap."
+        )
+        XCTAssertTrue(
+            application.buttons["Get Started"].waitForExistence(timeout: 5),
+            "Bootstrap must expose its ordinary first-launch action."
+        )
+        XCTAssertFalse(
+            application.descendants(matching: .any)["scholium.restoreAccess"].exists,
+            "Restore Access is valid only for an already configured Triptych."
+        )
+    }
+
     /// Samples only the app and WebKit service PIDs attributed to this exact
     /// process while the retained CodeMirror surface changes presentation.
     /// The shell runner fixes the release journey at 50 transitions; a smaller
@@ -166,6 +217,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         )
         application.launchArguments = [
             "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
             "--scholium-performance-editor-mode-notifications",
         ]
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
@@ -264,6 +316,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         )
         application.launchArguments = [
             "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
             "--scholium-performance-editor-mode-notifications",
         ]
         application.launchEnvironment["SCHOLIUM_HOME"] = homeRoot
@@ -405,7 +458,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let application = XCUIApplication(
             url: URL(fileURLWithPath: applicationPath, isDirectory: true)
         )
-        application.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
+        application.launchArguments = [
+            "-ApplePersistenceIgnoreState", "YES",
+            packagedIsolationArgument,
+        ]
         if metric == .editorModeTransition
             || metric == .editorCachedPreview
             || metric == .warmEditActivation

@@ -16,6 +16,40 @@ struct ScholiumRuntimeIsolationTests {
         #expect(resolved == explicit.standardizedFileURL)
     }
 
+    @Test("A packaged Release accepts an isolated home only for the explicit performance driver")
+    func packagedReleaseIsolationIsBounded() {
+        let environment = [
+            "SCHOLIUM_HOME": "/fixture/home",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": "release-smoke",
+        ]
+        let marker = ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument
+
+        #expect(ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: environment,
+            arguments: [marker],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ))
+        #expect(!ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: environment,
+            arguments: [],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ))
+        #expect(!ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: ["SCHOLIUM_HOME": "/fixture/home"],
+            arguments: [marker],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ))
+        #expect(!ScholiumRuntimeIsolation.allowsExplicitHome(
+            environment: environment,
+            arguments: [marker],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier,
+            isDebugBuild: false
+        ))
+    }
+
     @Test("The QA bundle requires an explicit isolated home")
     func qaBundleRequiresExplicitHome() throws {
         #expect(ScholiumRuntimeIsolation.homeURL(

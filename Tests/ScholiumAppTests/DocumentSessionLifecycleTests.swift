@@ -272,6 +272,16 @@ struct DocumentSessionLifecycleTests {
             conflict: conflict,
             canRetrySave: true
         ) == .conflict)
+
+        #expect(DocumentController.saveFailureAllowsRetry(
+            VaultRepositoryError.writeFailed("Temporary provider failure")
+        ))
+        #expect(!DocumentController.saveFailureAllowsRetry(
+            VaultRepositoryError.conflict(
+                expected: DocumentFingerprint(content: "before"),
+                current: DocumentFingerprint(content: "external")
+            )
+        ))
     }
 
     @Test("A clean detached zero-lease session is fully reaped")

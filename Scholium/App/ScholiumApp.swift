@@ -572,8 +572,6 @@ private struct ScholiumBootstrapRoot: View {
                     name: name
                 )
             },
-            commandLineToolStatus: { await model.commandLineToolStatus() },
-            installCommandLineTool: { try await model.installCommandLineTool() },
             configure: { selection in
                 try await model.configure(selection)
             },
@@ -628,7 +626,6 @@ private final class ScholiumBootstrapModel: ObservableObject {
 
     private let workspaceStore: WorkspaceStore
     private let route: BootstrapWindowRoute
-    private let commandLineToolInstaller = CommandLineToolInstaller()
     private let triptychStructurePreparer = BootstrapTriptychStructurePreparer()
 
     init(workspaceStore: WorkspaceStore, route: BootstrapWindowRoute) {
@@ -715,14 +712,6 @@ private final class ScholiumBootstrapModel: ObservableObject {
             triptychID: targetTriptychID,
             triptychName: trimmedName
         )
-    }
-
-    func commandLineToolStatus() async -> CommandLineToolStatus {
-        await commandLineToolInstaller.commandLineToolStatus()
-    }
-
-    func installCommandLineTool() async throws -> CommandLineToolStatus {
-        try await commandLineToolInstaller.installCommandLineTool()
     }
 
     func configure(_ selection: WorkspaceSetupSelection) async throws {
@@ -869,7 +858,10 @@ private struct ScholiumWindowObservedRoot: View {
                 RestoreWorkspaceAccessView(
                     recovery: recovery,
                     restore: { try await appState.restoreWorkspaceAccess(using: $0) },
-                    closeWindow: { dismissWindow() }
+                    quitApplication: {
+                        windowWorkspaceController.setAccessRecovery(nil)
+                        windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
+                    }
                 )
             }
             .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)

@@ -512,15 +512,20 @@ struct AppCompositionRootTests {
         let root = repositoryRoot
             .appendingPathComponent(".build/bridge-startup", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
-        let support = root.appendingPathComponent(
-            String(repeating: "long-path-", count: 8),
-            isDirectory: true
-        )
+        let support = root.appendingPathComponent("state", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 
+        let occupiedNamespace = support.appendingPathComponent(
+            "AgentBridge",
+            isDirectory: true
+        )
+        let existing = try LocalAgentBridgeServer(
+            applicationSupportURL: occupiedNamespace
+        ) { _ in throw LocalAgentBridgeError.permissionDenied }
+        defer { existing.stop() }
         let store = try WorkspaceStore(applicationSupportURL: support)
         #expect(store.localAgentBridge == nil)
-        #expect(store.localAgentBridgeStartupFailure == .socketPathTooLong)
+        #expect(store.localAgentBridgeStartupFailure == .alreadyRunning)
         #expect(try await store.applicationRuntime.availableWorkspaces().isEmpty)
         await store.shutdownApplicationRuntime()
     }

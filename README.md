@@ -214,10 +214,12 @@ current results and gaps are in Implementation Status.
 
 ## Source-first Beta distribution
 
-The planned first external release is `v0.1.0-beta.1`: exact tagged source under
-`GPL-3.0-or-later` plus an optional architecture-labelled, ad-hoc-signed app ZIP
-and SHA-256 checksum on the same GitHub release page. The app contains its
-version-matched CLI helper; there is no separate CLI asset.
+Source-first Beta releases publish exact tagged source under
+`GPL-3.0-or-later` plus an architecture-labelled App ZIP and independent
+`Scholium-CLI-macos.zip`, both ad-hoc signed with SHA-256 checksums on the same
+GitHub release page. The tag and
+both artifacts' package provenance and versions must agree. The App is
+sandboxed and does not contain or install the CLI.
 
 The convenience app is not Developer ID signed or notarized. After downloading
 from the trusted project release and verifying the checksum:
@@ -247,10 +249,13 @@ Triptychs may not share the same Works-side control directory.
 
 ## Scholium CLI
 
-From a packaged app, open **Settings → Research Guidance → Sources &
-Integrations → Scholium CLI** and choose **Install**. Scholium installs its
-version-matched helper at `~/.local/bin/scholium`, verifies it, and reports PATH
-guidance without editing shell profiles.
+During first-launch Agent preparation, or later under **Settings → Research
+Guidance → Sources & Integrations → Scholium CLI**, choose **Copy CLI
+Installation Instructions** and give that prompt to the external Agent. The
+prompt authorizes only the official CLI release archive and only the executable
+and adjacent resource bundle under `~/.local/bin`; it forbids `sudo`, PATH or
+profile edits, alternative downloads, and quarantine mutation. The App does
+not inspect, execute, install, update, remove, or report status for the CLI.
 
 For a source checkout:
 
@@ -268,10 +273,16 @@ Discussion replies, resumable Actions with structured Analyze recommendations,
 and revision-checked Note operations. Existing-note mutations require the current
 SHA-256 returned by `scholium read --format json`.
 
+`Tools/Scripts/package-app.sh` emits the independent
+`Scholium-CLI-macos.zip`, whose provenance reports the verified architecture.
+Its `install.sh` performs the same
+user-local installation used by the copied Agent instructions without changing
+shell or macOS security configuration.
+
 The installed `scholium agent` commands let an external Agent pair with one
 researcher-created Run, obtain its typed context, request bounded writes,
-submit one result, continue research, and end the Run through the private
-same-user app bridge. Pairing reads the one-time code through standard input;
+submit one result, continue research, and end the Run through a loopback-only
+bridge. Pairing reads the one-time code through standard input;
 Scholium does not launch or supervise the Agent. The authenticated
 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
 owns the Agent Run workflow; installed command help owns current CLI syntax.
@@ -291,7 +302,7 @@ execution, recovery, transport state, assembled instructions, and unsupported
 pre-production bytes remain machine-local under:
 
 ```text
-~/Library/Application Support/Scholium/
+~/Library/Application Support/Scholium/State-v1/
 ```
 
 Every authoritative write validates containment and the expected revision,

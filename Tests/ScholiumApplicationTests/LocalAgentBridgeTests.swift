@@ -181,8 +181,8 @@ struct LocalAgentBridgeTests {
         }
     }
 
-    @Test("A current-UID peer is accepted and bridge state persists no credential")
-    func currentUIDAndSecretBoundary() throws {
+    @Test("A loopback peer is accepted and bridge state persists no credential")
+    func loopbackAndSecretBoundary() throws {
         let fixture = try BridgeFixture()
         defer { fixture.remove() }
         let reached = LockedFlag()
@@ -197,17 +197,11 @@ struct LocalAgentBridgeTests {
         }
         defer { server.stop() }
 
-        let socketURL = try LocalAgentBridgeLocation.socketURL(
+        let port = LocalAgentBridgeLocation.port(
             applicationSupportURL: fixture.support
         )
-        let directoryAttributes = try FileManager.default.attributesOfItem(
-            atPath: socketURL.deletingLastPathComponent().path
-        )
-        let socketAttributes = try FileManager.default.attributesOfItem(
-            atPath: socketURL.path
-        )
-        #expect((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
-        #expect((socketAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        #expect(LocalAgentBridgeLocation.host == "127.0.0.1")
+        #expect(port >= 49_152)
         let response = try LocalAgentBridgeClient(
             applicationSupportURL: fixture.support,
             timeout: 0.5
@@ -236,16 +230,16 @@ struct LocalAgentBridgeTests {
             timeout: 0.1
         ) { _ in throw TestFailure.expected }
         defer { server.stop() }
-        let socketURL = try LocalAgentBridgeLocation.socketURL(
+        let port = LocalAgentBridgeLocation.port(
             applicationSupportURL: fixture.support
         )
-        #expect(try sendRawFrame(Data("{}".utf8), to: socketURL).error?.code
+        #expect(try sendRawFrame(Data("{}".utf8), to: port).error?.code
             == .invalidRequest)
         #expect(try sendRawPrefix(
             UInt32(LocalAgentBridgeLocation.maximumFrameByteCount + 1),
-            to: socketURL
+            to: port
         ).error?.code == .invalidFrame)
-        #expect(try sendNothing(to: socketURL).error?.code == .timeout)
+        #expect(try sendNothing(to: port).error?.code == .timeout)
     }
 
     @Test("The largest legal exact-source page fits its complete bridge response envelope")
@@ -474,7 +468,7 @@ struct LocalAgentBridgeTests {
         ).methodImprovementReceipt == receipt)
     }
 
-    @Test("A closed App remains unavailable and unsafe ownership is rejected")
+    @Test("A closed App remains unavailable and a second listener is rejected")
     func absenceAndOwnership() throws {
         let fixture = try BridgeFixture()
         defer { fixture.remove() }
@@ -494,31 +488,18 @@ struct LocalAgentBridgeTests {
             ) { _ in throw TestFailure.expected }
         }
 
-        let unsafe = try BridgeFixture()
-        defer { unsafe.remove() }
-        let target = unsafe.root.appendingPathComponent("elsewhere", isDirectory: true)
-        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(
-            at: unsafe.support.appendingPathComponent("b"),
-            withDestinationURL: target
-        )
-        #expect(throws: LocalAgentBridgeError.self) {
-            _ = try LocalAgentBridgeServer(
-                applicationSupportURL: unsafe.support
-            ) { _ in throw TestFailure.expected }
-        }
     }
 
     private func sendRawFrame(
         _ data: Data,
-        to socketURL: URL
+        to port: UInt16
     ) throws -> LocalAgentBridgeResponse {
         let length = UInt32(data.count)
         let header = Data([
             UInt8((length >> 24) & 0xff), UInt8((length >> 16) & 0xff),
             UInt8((length >> 8) & 0xff), UInt8(length & 0xff),
         ])
-        return try withConnectedSocket(to: socketURL) { descriptor in
+        return try withConnectedSocket(to: port) { descriptor in
             try writeAll(header + data, to: descriptor)
             return try readResponse(from: descriptor)
         }
@@ -526,9 +507,9 @@ struct LocalAgentBridgeTests {
 
     private func sendRawPrefix(
         _ length: UInt32,
-        to socketURL: URL
+        to port: UInt16
     ) throws -> LocalAgentBridgeResponse {
-        try withConnectedSocket(to: socketURL) { descriptor in
+        try withConnectedSocket(to: port) { descriptor in
             try writeAll(Data([
                 UInt8((length >> 24) & 0xff), UInt8((length >> 16) & 0xff),
                 UInt8((length >> 8) & 0xff), UInt8(length & 0xff),
@@ -537,23 +518,23 @@ struct LocalAgentBridgeTests {
         }
     }
 
-    private func sendNothing(to socketURL: URL) throws -> LocalAgentBridgeResponse {
-        try withConnectedSocket(to: socketURL) { try readResponse(from: $0) }
+    private func sendNothing(to port: UInt16) throws -> LocalAgentBridgeResponse {
+        try withConnectedSocket(to: port) { try readResponse(from: $0) }
     }
 
     private func withConnectedSocket<T>(
-        to url: URL,
+        to port: UInt16,
         _ body: (Int32) throws -> T
     ) throws -> T {
-        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw TestFailure.socket }
         defer { close(descriptor) }
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let bytes = Array(url.path.utf8) + [0]
-        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
-        let length = MemoryLayout.offset(of: \sockaddr_un.sun_path)! + bytes.count
-        address.sun_len = UInt8(length)
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr(LocalAgentBridgeLocation.host))
+        let length = MemoryLayout<sockaddr_in>.size
         let connected = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.connect(descriptor, $0, socklen_t(length))

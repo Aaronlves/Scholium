@@ -448,7 +448,7 @@ final class PerformanceProbe {
 
     /// Persists the packaged CJK journey's final privacy-safe handshake only
     /// after the driver has restored the exact source and requested this
-    /// record. The application owns the destination inside its sandbox.
+    /// record. The performance driver owns the isolated destination.
     func recordLargeCJKCorrectness(documentID: String, source: String) {
         guard let configuration,
               configuration.metric == .editorLargeCJKCorrectness,
@@ -627,20 +627,19 @@ final class PerformanceProbe {
             return nil
         }
         let parent = candidate.deletingLastPathComponent().resolvingSymlinksInPath()
-        let sandboxSuffix = "/Library/Containers/\(bundleID)/Data/tmp/"
-            + "scholium-performance-\(runID)/raw"
+        let isolatedSuffix = "/.build/performance-\(runID)/app-state/raw"
         let isSystemTemporary = parent.path == "/tmp"
             || parent.path.hasPrefix("/tmp/")
             || parent.path == "/private/tmp"
             || parent.path.hasPrefix("/private/tmp/")
-        let sandboxRaw = parent.path.components(separatedBy: sandboxSuffix).first.map {
-            $0 + sandboxSuffix
+        let isolatedRaw = parent.path.components(separatedBy: isolatedSuffix).first.map {
+            $0 + isolatedSuffix
         }
-        let isIsolatedSandboxTemporary = parent.path.hasPrefix("/Users/")
-            && sandboxRaw.map {
+        let isIsolatedBuildOutput = parent.path.hasPrefix("/Users/")
+            && isolatedRaw.map {
                 parent.path == $0 || parent.path.hasPrefix($0 + "/")
             } == true
-        guard isSystemTemporary || isIsolatedSandboxTemporary else {
+        guard isSystemTemporary || isIsolatedBuildOutput else {
             return nil
         }
         var isDirectory: ObjCBool = false

@@ -332,7 +332,7 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/verify-action-cli.sh" \
-  "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh" \
+  "${ROOT}/Tools/Scripts/verify-agent-bridge.sh" \
   "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"; do
   zsh -n "${shell_script}"
 done
@@ -494,7 +494,7 @@ fi
   "${SCRATCH}/debug/scholium" \
   "${SCRATCH}"
 SCHOLIUM_AGENT_BRIDGE_BUILD="${SCRATCH}" \
-  "${ROOT}/Tools/Scripts/verify-agent-bridge-sandbox.sh"
+  "${ROOT}/Tools/Scripts/verify-agent-bridge.sh"
 mkdir -p "${RELEASE_SCRATCH}"
 release_log="${RELEASE_SCRATCH}/release-build.log"
 set +e

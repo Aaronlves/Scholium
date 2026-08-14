@@ -45,10 +45,8 @@
 - **Connect** is the Inspector surface for source-located neutral, support,
   opposition, or incompatibility relations. **Attention** contains derived, recoverable
   warnings; it makes no philosophical judgment.
-- **Properties** is the human-facing projection of frontmatter. A **Research
-  Unit** is the minimal YAML declaration of the epistemic scope represented by
-  a note; About presents its Scope and material Limitations with other chosen
-  properties rather than creating another status model.
+- **Properties** is the human-facing projection of frontmatter. About presents
+  selected nonempty source properties without creating another status model.
 - A **Run** is one Action's working object. A hidden **Connection Session**
   authenticates a locally paired Agent to allowed Runs only for the current
   Scholium process. A **Bounded Write Set** is one Run's hidden, short-lived,
@@ -100,7 +98,8 @@ Scholium supplies safety, not transferred responsibility:
 
 - exact paths, stable identities, and Application-owned fingerprint checks;
 - autosave, atomic writes, external-change detection, and conflicts;
-- automatic and manual Triptych checkpoints, comparison, and restoration.
+- automatic per-write recovery plus manual Triptych checkpoints, comparison,
+  and restoration.
 
 Extensive external work without a suitable checkpoint is not guaranteed
 recoverable. Fingerprints detect revisions; they are not permission tokens and
@@ -209,7 +208,7 @@ The portable directory beside Works contains only:
 - typed Analysis-to-Zotero bindings keyed by stable Note identity;
 - the portable attachment catalog under `.scholium/attachments/v1/`, relating
   stable attachment identities to an explicit imported vault-relative path or
-  indexed absolute Finder path without storing attachment bytes, sandbox
+  indexed absolute Finder path without storing attachment bytes, machine-local
   bookmark data, or reconstructing Markdown links;
 - current primary Skill Markdown, optional machine-local folder markers,
   Philosophical Practices, Action Profiles, and explicit Action bindings; and

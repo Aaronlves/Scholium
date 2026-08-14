@@ -1323,9 +1323,6 @@ private struct PropertiesSettingsView: View {
 
 struct AgentCLISettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @State private var status: CommandLineToolStatus?
-    @State private var isWorking = false
-    @State private var errorMessage: String?
 
     var body: some View {
         researchSettingsSection(LocalizedStringResource(
@@ -1334,110 +1331,40 @@ struct AgentCLISettingsView: View {
             bundle: .module
         )) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                if let status {
-                    Label(statusLabel(status), systemImage: statusSymbol(status))
-                        .accessibilityLabel("Scholium CLI status")
-                        .accessibilityValue(statusLabel(status))
-                        .accessibilityIdentifier("scholium.agentCLI.status")
-                    Text(status.installPath)
-                        .font(ScholiumTypography.exact(.small))
-                        .scholiumForeground(.secondaryText)
-                        .textSelection(.enabled)
-                        .accessibilityLabel("CLI installation path")
-                        .accessibilityValue(status.installPath)
-                    if let repair = status.repairMessage {
-                        Text(repair)
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                    }
-                    HStack {
-                        if status.state == .notInstalled || status.state == .updateAvailable {
-                            Button(status.state == .updateAvailable ? "Update" : "Install") {
-                                Task { await install() }
-                            }
-                            .disabled(isWorking)
-                            .accessibilityHint(
-                                "Installs the bundled Scholium command in the displayed user-local path"
-                            )
-                            .accessibilityIdentifier("scholium.agentCLI.install")
-                        }
-                        if !status.isOnCurrentPATH
-                            && (status.state == .installed || status.state == .updateAvailable) {
-                            Button("Copy PATH Setup") {
-                                let copied = ScholiumPasteboardWriter.general.writeText(
-                                    "export PATH=\"$HOME/.local/bin:$PATH\""
-                                )
-                                let message = copied
-                                    ? String(
-                                        localized: "PATH setup copied",
-                                        table: "Localizable",
-                                        bundle: .module
-                                    )
-                                    : String(
-                                        localized: "PATH setup could not be copied.",
-                                        table: "Localizable",
-                                        bundle: .module
-                                    )
-                                settingsModel.showToast(message)
-                            }
-                            .accessibilityHint(
-                                "Copies a shell command; run it in your shell profile and start a new agent task"
-                            )
-                            .accessibilityIdentifier("scholium.agentCLI.pathSetup")
-                        }
-                        if isWorking { ProgressView().controlSize(.small) }
-                    }
-                } else {
-                    ProgressView("Checking command-line tool…")
-                        .controlSize(.small)
+                Label("Install with your Agent", systemImage: "terminal")
+                    .accessibilityIdentifier("scholium.agentCLI.section")
+                Text("Scholium does not inspect or modify command-line installations. Copy the official instructions when an Agent needs to install or update the CLI.")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(ScholiumCLIDistribution.downloadURL)
+                    .font(ScholiumTypography.exact(.small))
+                    .scholiumForeground(.secondaryText)
+                    .textSelection(.enabled)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .accessibilityLabel("Official Scholium CLI download")
+                Button("Copy CLI Installation Instructions") {
+                    let copied = ScholiumPasteboardWriter.general.writeText(
+                        ScholiumCLIInstallationInstructions.text
+                    )
+                    let message = copied
+                        ? String(
+                            localized: "CLI installation instructions copied",
+                            table: "Localizable",
+                            bundle: .module
+                        )
+                        : String(
+                            localized: "CLI installation instructions could not be copied.",
+                            table: "Localizable",
+                            bundle: .module
+                        )
+                    settingsModel.showToast(message)
                 }
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.attention)
-                        .textSelection(.enabled)
-                }
+                .accessibilityHint("Copies the official Agent instructions without changing this Mac")
+                .accessibilityIdentifier("scholium.agentCLI.copyInstructions")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .accessibilityIdentifier("scholium.agentCLI.section")
-        .task { status = await settingsModel.commandLineToolStatus() }
-    }
-
-    private func install() async {
-        isWorking = true
-        errorMessage = nil
-        defer { isWorking = false }
-        do {
-            status = try await settingsModel.installCommandLineTool()
-            settingsModel.showToast(String(localized: "Scholium CLI installed", table: "Localizable", bundle: .module))
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func statusLabel(_ status: CommandLineToolStatus) -> String {
-        switch status.state {
-        case .bundledToolUnavailable:
-            localizedInterfaceString("Not included in this build")
-        case .notInstalled:
-            localizedInterfaceString("Ready to install")
-        case .updateAvailable:
-            localizedInterfaceString("Update available")
-        case .installed:
-            status.isOnCurrentPATH
-                ? localizedInterfaceString("Installed and discoverable")
-                : localizedInterfaceString("Installed")
-        case .invalidInstallation:
-            localizedInterfaceString("Needs attention")
-        }
-    }
-
-    private func statusSymbol(_ status: CommandLineToolStatus) -> String {
-        switch status.state {
-        case .installed: status.isOnCurrentPATH ? "checkmark.circle" : "checkmark"
-        case .notInstalled, .updateAvailable: "terminal"
-        case .bundledToolUnavailable, .invalidInstallation: "exclamationmark.triangle"
         }
     }
 }

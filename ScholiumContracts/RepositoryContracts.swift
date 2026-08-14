@@ -14,6 +14,7 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
     case recoveryPathConflict(String)
     case recoveryLedgerUnavailable(String)
     case pathCollision(existing: String, requested: String)
+    case writeFailed(String)
     case commitUncertain(String)
     case recoveryRequired(InterruptedSaveRecovery)
     case atomicCommitUnsupported(String)
@@ -37,6 +38,8 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
             return "Prewrite recovery is unavailable, so Scholium did not modify the note. Existing recovery evidence remains unchanged. \(reason)"
         case .pathCollision(let existing, let requested):
             return "The requested note path collides with an existing path on this volume: \(requested) (existing: \(existing))"
+        case .writeFailed(let reason):
+            return "Scholium could not save the note. The source remains unchanged and you can retry. \(reason)"
         case .commitUncertain(let reason):
             return "Scholium could not prove which bytes are canonical after the commit. It preserved recovery evidence and did not report the note as saved. \(reason)"
         case .recoveryRequired(let recovery):

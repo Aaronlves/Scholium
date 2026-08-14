@@ -162,23 +162,32 @@ After any create-new filesystem transaction succeeds, a confirmed selection
 advances directly to Agent while Application registration continues in the
 background. Routine registration success adds no status page or confirmation;
 failure returns to the retained Triptych review with the exact error. Agent
-completion cannot advance to Ready until registration succeeds. The step uses
-the Application-owned bundled CLI
-status and installer, presents the exact authorized Triptych container as the
-external Agent's project and workspace root, and offers **Set Up Later** without
-warning, nagging, or reduced workspace capability.
+completion cannot advance to Ready until registration succeeds. The step
+presents the exact authorized Triptych container as the external Agent's
+project and workspace root and offers **Set Up Later** without warning,
+nagging, or reduced workspace capability.
 
-After the CLI is installed, **Copy Prompt** copies one provider-neutral setup
-instruction. It tells the external Agent to verify the absolute CLI path and
-read `scholium help agent`; inspect applicable ancestor and root `AGENTS.md` and
-`CLAUDE.md`; create only the applicable missing instruction file without
-overwriting, merging, or shadowing an existing one; prefer Scholium tools for
-research work; preserve Scholium's exact-source and `.scholium/` boundaries;
-make no research read, pairing request, shell-profile edit, or Agent
-configuration edit before the stated authorization; and await a specific Run
-handoff. Copying is not readiness. After the Agent reports Ready, **I’ve Set Up
-My Agent** requires a second researcher confirmation. Scholium accepts only
-that confirmation and never claims to inspect or verify the external project.
+**Copy Prompt** is immediately available. It copies one provider-neutral setup
+instruction that authorizes the external Agent to download the independently
+distributed, compatible Scholium CLI only from the fixed official release URL
+and install only its executable and adjacent resource bundle under the
+researcher's user-local directory. The instruction forbids `sudo`, shell or
+Agent-configuration edits, alternative download sources, and quarantine
+mutation. It verifies the absolute CLI path, accepts the version JSON only from
+the required `product` and `cli_version` fields while ignoring additional
+fields, runs `doctor`, and reads `scholium help agent`. The App never embeds,
+installs, updates, removes, executes, fingerprints, or reports machine status
+for the CLI.
+
+The same prompt tells the Agent to inspect applicable ancestor and root
+`AGENTS.md` and `CLAUDE.md`; create only the applicable missing instruction
+file without overwriting, merging, or shadowing an existing one; prefer
+Scholium tools for research work; preserve Scholium's exact-source and
+`.scholium/` boundaries; make no research read or pairing request before the
+stated authorization; and await a specific Run handoff. Copying is not
+readiness. After the Agent reports Ready, **I’ve Set Up My Agent** requires a
+second researcher confirmation. Scholium accepts only that confirmation and
+never claims to inspect or verify the external project or CLI.
 The illustration and its key metaphor are decorative and absent from the
 accessibility tree; the numbered text and native controls provide the complete
 linear task.
@@ -221,7 +230,7 @@ hidden Manuscript; academic-only Action Profiles; one Triptych collaboration
 policy; Run-owned Bounded Write Sets; portable Research Records; and protected
 Zotero and local Agent transports.
 
-Deferred beyond experimental release: document/project/HTML/PDF/DOCX export;
+Outside the Beta/1.0 scope: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
 inheritance and sharing; Work finding overlays; active-table-cell hybrid
 editing; and PDF attachment presentation. A later PDF attachment route uses

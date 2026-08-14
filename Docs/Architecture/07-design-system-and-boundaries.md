@@ -207,7 +207,7 @@ icon, category tint, or independent control semantics. The visually unlabeled
 32pt Handled track keeps an accessible label and independent native-control
 semantics.
 System confirmation actions remain native-owned.
-Evidence rows reuse one prototype-derived ledger component with an aligned
+Evidence rows reuse one shared ledger component with an aligned
 symbol column and no trailing action button. Academic evidence remains visible
 when the rail is shown; the evaluation editor and technical identity use
 separate disclosure controls, and permanent deletion remains in the Record

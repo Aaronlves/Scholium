@@ -1857,12 +1857,6 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let commandLineContracts = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumContracts/CommandLineToolContracts.swift"
-            ),
-            encoding: .utf8
-        )
         let researchActivityContracts = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "ScholiumContracts/ResearchActivityContracts.swift"
@@ -1885,7 +1879,6 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!contracts.contains(unconsumedPort))
         }
-        #expect(!commandLineContracts.contains("protocol CommandLineToolUseCases"))
         #expect(!researchActivityContracts.contains("PendingResearchState"))
         #expect(!researchActivityContracts.contains("PendingResearchRoute"))
         #expect(!workspaceModels.contains("pendingResearchStates"))

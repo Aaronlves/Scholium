@@ -4,42 +4,46 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-08-14, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
+**Environment:** 2026-08-15, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The latest complete current-tree coverage includes the existing-Note save,
-progressive-opening, and CLI-installation integrations. It validated the closed
-documentation manifests and shipped Skill resources; TypeScript checking and
-199 Web editor tests; reproducible editor, mathematics, and Mermaid bundles;
-472 Core tests plus 3 Search performance tests; 138 Contracts tests; 227
+The independent-CLI cutover's current-tree integration attempt validated the
+closed documentation manifests and shipped Skill resources; TypeScript checking
+and 199 Web editor tests; reproducible editor, mathematics, and Mermaid bundles;
+475 Core tests plus 3 Search performance tests; 138 Contracts tests; 231
 Application tests, 11 bridge tests, and 1 serialized architecture measurement;
-625 App tests; 7 executable Research Action CLI lifecycles; the sandboxed local
-bridge probe; symbol/import/residue guards; and Debug and Release builds. The
-final Release build completed in 186.52 seconds. The first App attempt exposed
-only a stale architecture-test allowlist that counted one rather than the two
-current activation-snapshot reads; the owning test and the complete serial App
-target passed after synchronizing that inventory, and the remaining gate then
-completed. Passing expensive targets were not repeated after that test-only
-correction.
+and 626 of 627 App tests. Its only failure was a source-boundary test that still
+tried to read the deliberately deleted `CommandLineToolContracts.swift`; that
+obsolete read was removed and the owning test then passed 1/1. The complete gate
+was not rerun after that repair, so this is not represented as one uninterrupted
+complete-gate pass.
 
-This proves deterministic repository conformance for that checkout and toolchain.
-It is not a packaged release, complete UI-suite result, human accessibility
-exercise, source-fidelity review of private research, or researcher acceptance.
+A subsequent fresh diagnostic Release build completed in 177.08 seconds and
+produced separate sandboxed App and standalone CLI archives. The package smoke
+extracted and installed the CLI into an isolated user prefix, launched it by
+basename from an unrelated working directory, and validated its provenance. A
+packaged UI journey proved that a clean isolated launch enters Bootstrap while
+the production machine state remains unchanged. Focused Settings UI and signed
+loopback-bridge probes also passed against disposable fixtures.
+
+This evidence is not a clean tagged, Developer ID signed, notarized release; an
+external Agent download from the published GitHub asset; a complete UI-suite or
+human accessibility exercise; a source-fidelity review of private research; or
+researcher acceptance.
 
 ## Focused interface evidence
 
-- On 2026-08-14, the CLI installation repair passed 6 focused Application
-  tests. They reproduce a complete CLI copy under the App sandbox while the
-  login account has no installation, reject fallback when account-home
-  resolution fails, verify install/update and current `PATH` reporting, reject
-  executable and parent-directory symbolic links, and require the packaged
-  sandbox's sole home-relative write exception to be `~/.local/`. A disposable
-  signed sandbox probe under repository-local `.build/` separately proved that
-  authorizing only the final nested directory cannot create a missing parent,
-  while authorizing the installation root can. The ad-hoc Release packager
-  completed with strict nested-code and App signature verification plus both
-  bundled and standalone CLI smoke checks. This is deterministic packaging and
-  containment evidence, not a real install into a clean external account or
-  proof that an external Agent inherits the configured `PATH`.
+- On 2026-08-15, the independent-CLI cutover passed 7 Bootstrap, 27 Settings
+  architecture, 7 delivery-path, 11 loopback-bridge, and 7 executable Agent CLI
+  lifecycle tests. The App no longer owns a CLI status or installer and copies
+  one fixed official Agent instruction that accepts only the required product
+  and compatible-version fields while ignoring additional JSON fields. A
+  focused QA journey copied that instruction through the visible Settings
+  button and verified the download, no-`sudo`, no-PATH-edit, and unknown-field
+  clauses. A signed probe proved a sandboxed App and nonsandboxed standalone CLI
+  communicate only over `127.0.0.1`; closed-App requests are unavailable and an
+  invalid pairing code reaches the App without entering logs. This remains
+  disposable focused evidence, not an external Agent download or clean-account
+  installation.
 - On 2026-08-14, the existing-Note save cutover passed 228 focused tests: 86
   Core, 8 Contracts, 31 Application, and 103 App tests. The fixtures cover
   coordinated system replacement, exact BOM/CRLF readback, metadata changes
@@ -139,7 +143,7 @@ Session regressions, and module/import ownership.
 
 This proves the repository-level Material owner and lineage contract on
 disposable fixtures. It does not prove checkout-external App/CLI installation,
-production App Group behavior, human accessibility, sustained research use, or
+production installed user-local bridge behavior, human accessibility, sustained research use, or
 philosophical quality.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
@@ -261,9 +265,8 @@ On 2026-08-14, the approved Edit gate boundary was aligned with the shipped
 cold-launch behavior: launch settles on a no-document Workspace, Library opens
 the frozen 5,000-word Note into interactive Review as unmeasured setup, and the
 collector then measures the researcher's first Edit request to the matching
-visible and accessible editor. The former application-cold Edit reports remain
-historical diagnostics and cannot satisfy this replacement metric. The focused
-Debug QA scenario completed all five excluded warm-ups and 30 retained samples
+visible and accessible editor. The focused Debug QA scenario completed all five
+excluded warm-ups and 30 retained samples
 without an invalid journey. Retained samples measured 335.648ms p50, 363.570ms
 nearest-rank p95, 328.895ms mean, and 371.997ms maximum; correctness, the
 `< 750ms` p95 limit, and the `< 1,000ms` every-sample limit passed. Report
@@ -274,9 +277,8 @@ closes its implementation acceptance. The report retains its accurate
 packaged product-gate report or accept latency and memory series that were not
 rerun.
 
-On 2026-08-14, the working-tree Review metric was cut over from external
-process-start timing with an implicitly opened document to first-use activation
-from a verified no-document Workspace. The collector now requires a real
+On 2026-08-14, the working-tree first-use Review metric began at a verified
+no-document Workspace. The collector requires a real
 Library selection of the frozen 5,000-word RDF-1 Note and reports the complete
 activation-to-interactive phase decomposition. Its focused eight-test
 `PerformanceProbe` suite, summary self-test, documentation validator, shell
@@ -289,17 +291,15 @@ therefore approved first-use Review at p95 `< 1,000ms` with no every-sample
 maximum. This working-tree scenario supports the target decision but is not G7
 product-gate evidence.
 
-On 2026-08-13, the exact-tagged packaged `v0.1.0-beta.5` G7 run completed all
-ten latency series at five warm-ups plus 30 retained samples and the separate
-50-transition/51-RSS series with no invalid trial or visible-correctness
-failure. Warm Library recorded 722.933ms p95 and Search 142.733ms p95. Warm
-Review recorded 360.937ms p95, cold Review 1,471.497ms p95, and cold Edit
-1,419.142ms p95/1,437.826ms maximum, so those three missed their approved
-limits. Key-to-paint, Edit/Source transition, cached preview, warm Edit, and
-visible projection passed. The memory series kept stable app, GPU, networking,
-and two Web Content process counts; its final-tail median grew 0.644%, but the
-old jitter-sensitive rule rejected its strictly increasing final ten samples.
-The report therefore correctly failed G7.
+On 2026-08-13, the exact-tagged packaged `v0.1.0-beta.5` G7 run completed the
+then-required latency and memory series without an invalid trial or visible-
+correctness failure. Warm Library and Search passed; warm Review recorded
+360.937ms p95 and failed its current limit. Key-to-paint, Edit/Source
+transition, cached preview, warm Edit, and visible projection passed. Its cold
+Review/Edit boundaries and RSS rule were later replaced by the current §21.4
+first-use and convergence contracts, so that report establishes neither current
+first-use nor current memory acceptance. G7 remains open pending one complete
+rerun against the current contract.
 
 The subsequent bounded working-tree remediation removes a duplicate initial
 Vault open, avoids loading the Review mathematics runtime and fonts for prose,
@@ -313,69 +313,33 @@ span, and the final-tail medians grew 0.236%. Under the corrected bounded,
 decelerating convergence rule this is a pass. These diagnostics validate the
 repair paths but do not replace the cooled, clean, exact-tagged packaged rerun.
 
-On 2026-08-13, the exact-tagged, packaged `v0.1.0-beta.3` G7 attempt completed
-the five-warm-up/30-retained-sample Library and Search series before the warm
-Read driver failed while repositioning its alternate offscreen Sidebar target.
-Library recorded 755.269ms p50, 777.424ms nearest-rank p95, and 784.265ms
-maximum against its `< 1,000ms` limit. Search returned the one expected result
-for every sample and recorded 134.558ms p50, 154.032ms p95, and 217.007ms
-maximum. Those Search durations are below the subsequently approved `< 200ms`
-complete-visible-results p95 limit, but the interrupted run predates that
-decision in source provenance and omitted the remaining required metrics. It
-is partial packaged evidence, not a G7 pass, and cannot be resumed or
-retrospectively accepted.
-
-The corrected warm Read driver was then compiled separately and exercised
-against the unchanged packaged `v0.1.0-beta.3` App in one focused zero-warm-up,
-two-sample RDF-1 scenario. It scrolled the alternate target toward later native
-Sidebar rows, returned the next measured target toward earlier rows, rendered
-both expected documents, and published exactly two records of 487.786ms and
-335.101ms. Correctness passed. The report remains `scenario_only` with G7
-`not_applicable`; two unconditioned samples neither establish the `< 300ms`
-threshold nor repair or resume the interrupted packaged run.
-
 The latest isolated Search v7 regression report recorded a cold rebuild of
 778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
 21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
 144,310,272 bytes on the deterministic 800-Note fixture. These are regression
 measurements, not the packaged G7 gate or approved release limits.
 
-On 2026-08-11, two scenario-only Debug QA samples initially reported 155.325
-and 160.609 ms, but the driver queried the accessibility tree before the app
-published its latency record and therefore interfered with the measured path.
-After removing that observer effect, the same focused RDF-1 journey measured
-88.346 ms. Immediate main-actor bridge-task startup then produced one 78.073 ms
-sample: 1.589 ms request-to-bridge, 73.362 ms bridge roundtrip, and 3.123 ms
-acknowledgement-to-layout. A subsequent focused Debug run retained ten samples
-after three warm-ups: 80.350 ms p50, 102.832 ms nearest-rank p95/maximum, and
-82.172 ms mean. Correctness and the `< 200 ms` maximum passed, while the
-`< 100 ms` p95 limit was missed by 2.832 ms; the largest bridge roundtrip was
-91.231 ms. A later scenario-only Debug QA run exercised one inserted character
-and one deletion through the connected key-to-paint collector. The samples were
-18 and 8 ms (8 ms p50, 18 ms nearest-rank p95/maximum, 13 ms mean); each record
-was emitted only after the matching delta generation was accepted and the Web
-surface crossed an animation-frame opportunity plus the following task.
-
-On 2026-08-12, four additional one-sample scenario-only Debug QA runs proved
-collector and driver reachability for the remaining required Editor metrics:
-cached preview measured 21 ms, warm Edit activation measured 86.082 ms,
-application-cold Edit activation measured 3,953.526 ms, and synchronous visible
-projection measured 1 ms. Correctness passed for all four; cached preview, warm
-Edit, and visible projection met their focused thresholds. Cold Edit retained
-the required pre-launch-to-accessible-editor boundary and therefore missed both
-the 750 ms p95 and 1,000 ms every-sample limits in this Debug/XCTest journey.
-These focused results establish instrumentation reachability, not packaged Beta
-performance acceptance, and the cold boundary must not be shortened to turn
-Debug harness overhead into a passing product claim. The last complete
-retained-memory run kept one exact
-app, GPU, networking, and two
-Web Content processes through 50 mode transitions; 51 RSS samples converged
-with 0.213% final-tail growth. Its report correctly remained `not_applicable`
-for G7 and historically identified five missing required Editor collectors.
-All five collectors are now connected. No real research vault or research text
-entered the evidence.
-
 ## Upgrade and distribution evidence
+
+The current integration snapshot above includes the deployment-remediation
+working tree but is not one uninterrupted complete-gate pass. The canonical
+Debug UI smoke passed, followed by focused Restore Access application
+termination and portable Analysis/Zotero routing journeys. Headless coverage also
+proved that fresh machine registration preserves portable Triptych, Vault, and
+Note identities without rewriting the manifest, and that renewed folder access
+rebinds one machine-local Vault path. These are disposable-fixture and ad-hoc
+development proofs, not clean-account installed-artifact or human acceptance.
+
+The same working tree produced ad-hoc-signed sandboxed App and independent CLI
+diagnostic ZIPs with matching provenance and checksums. Strict signature checks
+found App Sandbox on the App, no App Group, no CLI executable or `.local`
+entitlement in the App, and no App Sandbox or App Group on the CLI. The exact
+CLI ZIP was expanded, installed under an isolated user-local prefix, and invoked
+by basename from an unrelated working directory. The exact App artifact entered
+Bootstrap from empty isolated machine state without changing production state.
+Developer ID/notarization and a clean external account remain acceptance gaps.
+The canonical GitHub `latest/download` CLI URL returned HTTP 404 on 2026-08-15,
+so publication of the same-named asset is a current deployment blocker.
 
 Distinct-build upgrade fixtures preserve exact vault bytes and reject unsupported
 newer schemas without authorizing a compatibility path. Local source-first

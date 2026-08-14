@@ -169,9 +169,6 @@ extension ScholiumUITests {
         }
         application.launchEnvironment["SCHOLIUM_HOME"] = homeDirectory.path
         application.launchEnvironment["CFFIXED_USER_HOME"] = homeDirectory.path
-        application.launchEnvironment["SCHOLIUM_CLI_INSTALL_PATH"] = testDirectory
-            .appendingPathComponent("cli-bin/scholium")
-            .path
         if usesFixtureWorkspace {
             application.launchEnvironment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"] = triptychDirectory.path
         }
@@ -180,7 +177,7 @@ extension ScholiumUITests {
                 "SCHOLIUM_UI_TEST_OPEN_PANEL_DIRECTORY"
             ] = secondTriptychDirectory.path
         }
-        if name.contains("testRestoreAccessFolderSelectionUsesScenePresenter") {
+        if name.contains("testRestoreAccess") {
             application.launchEnvironment[
                 "SCHOLIUM_UI_TEST_FILE_SELECTION_RECOVERY"
             ] = "1"
@@ -682,11 +679,11 @@ extension ScholiumUITests {
         }
         try FileManager.default.copyItem(at: appRegistry, to: cliRegistry)
 
-        let registeredApp = try XCTUnwrap(
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.scholium.qa")
-        )
-        let executable = registeredApp
-            .appendingPathComponent("Contents/Helpers/scholium")
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let executable = repositoryRoot
+            .appendingPathComponent(".build/qa-swiftpm/debug/scholium")
         XCTAssertTrue(FileManager.default.isExecutableFile(atPath: executable.path))
         let process = Process()
         let output = Pipe()
@@ -1462,8 +1459,7 @@ extension ScholiumUITests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: stagedFixtures, to: triptychDirectory)
 
-        if name.contains("testCanonicalAcceptanceJourney")
-            || name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
+        if name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
             || name.contains("testResearchActionsVoiceOverSpeechOrder")
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
             || name.contains("testLineCommentDiscussReopenAndFinish")
@@ -1498,20 +1494,10 @@ extension ScholiumUITests {
         }
         if name.contains("testCanonicalAcceptanceJourney")
             || name.contains("testOverviewRoutesZoteroOnlyFromCurrentAnalysis") {
-            let analysisURL = analyses.appendingPathComponent("QA Autosave A.md")
-            var source = try String(contentsOf: analysisURL, encoding: .utf8)
-            guard let frontmatterStart = source.range(of: "---\n") else {
-                throw NSError(
-                    domain: "ScholiumUITests.Configuration",
-                    code: 4,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "The Analysis fixture has no frontmatter boundary.",
-                    ]
-                )
-            }
-            source.insert(contentsOf: "zotero_item_key: QAITEM01\n", at: frontmatterStart.upperBound)
-            try write(source, to: analysisURL)
+            try seedAnalysisZoteroBinding(
+                relativePath: "QA Autosave A.md",
+                itemKey: "QAITEM01"
+            )
         }
         if name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl") {
             let visualNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
@@ -1755,6 +1741,20 @@ extension ScholiumUITests {
         """# + "\n"
     }
 
+    @MainActor
+    func searchResult(named title: String, in container: XCUIElement? = nil) -> XCUIElement {
+        let buttons = if let container {
+            container.buttons
+        } else {
+            app.buttons
+        }
+        return buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
+            "scholium.searchResult.",
+            "\(title),"
+        )).firstMatch
+    }
+
     /// Preserves the fixture's stable Note identities and editable Working
     /// Methods while removing portable state that belongs to its old Triptych
     /// identity. The QA app can then exercise the real new-Triptych bootstrap
@@ -1782,5 +1782,46 @@ extension ScholiumUITests {
                 "New-Triptych fixture retained identity-bound state: \(component)"
             )
         }
+    }
+
+    private func seedAnalysisZoteroBinding(
+        relativePath: String,
+        itemKey: String
+    ) throws {
+        let controlDirectory = triptychDirectory.appendingPathComponent(
+            ".scholium",
+            isDirectory: true
+        )
+        let identityDocument = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: controlDirectory.appendingPathComponent("identities.json"))
+            ) as? [String: Any]
+        )
+        let matchingRecords = (identityDocument["records"] as? [[String: Any]] ?? [])
+            .filter { $0["relativePath"] as? String == relativePath }
+        let identity = try XCTUnwrap(
+            matchingRecords.count == 1 ? matchingRecords.first : nil,
+            "The Zotero UI fixture requires one exact stable Analysis identity."
+        )
+        let noteID = try XCTUnwrap(identity["id"] as? String)
+        let bindings: [String: Any] = [
+            "schemaVersion": 1,
+            "bindings": [[
+                "note_id": noteID,
+                "library": ["kind": "user"],
+                "item_key": itemKey,
+            ]],
+        ]
+        let destination = controlDirectory.appendingPathComponent(
+            "analysis-zotero-bindings.json"
+        )
+        try JSONSerialization.data(
+            withJSONObject: bindings,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        ).write(to: destination, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: destination.path
+        )
     }
 }

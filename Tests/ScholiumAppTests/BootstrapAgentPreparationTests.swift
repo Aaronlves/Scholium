@@ -1,5 +1,6 @@
 import Foundation
 import ScholiumApplication
+import ScholiumContracts
 import Testing
 @testable import ScholiumApp
 
@@ -96,15 +97,45 @@ struct BootstrapAgentPreparationTests {
             "Project root and workspace root (use this exact same folder):\n"
                 + root.path
         ))
+        #expect(prompt.contains(ScholiumCLIDistribution.downloadURL))
+        #expect(prompt.contains("You may install only these two release-owned items"))
+        #expect(prompt.contains("Do not use sudo"))
+        #expect(prompt.contains("Do not edit PATH, shell profiles, Agent configuration, or macOS quarantine metadata"))
+        #expect(prompt.contains("Ignore additional JSON fields"))
+        #expect(prompt.contains("`product` is `Scholium`"))
+        #expect(prompt.contains("`cli_version` is `\(ScholiumProductIdentity.marketingVersion)`"))
         #expect(prompt.contains("$HOME/.local/bin/scholium version --format json"))
         #expect(prompt.contains("$HOME/.local/bin/scholium doctor --format json"))
-        #expect(prompt.contains("Then read: $HOME/.local/bin/scholium help agent"))
+        #expect(prompt.contains("$HOME/.local/bin/scholium help agent"))
         #expect(prompt.contains("AGENTS.md"))
         #expect(prompt.contains("CLAUDE.md"))
         #expect(prompt.contains("Never overwrite, merge, shadow, or silently replace"))
         #expect(prompt.contains("Never edit .scholium directly"))
         #expect(prompt.contains("Do not read Triptych research files or request a pairing code now"))
         #expect(prompt.contains("Wait for a specific Research Run handoff from Scholium"))
+    }
+
+    @Test("The app exposes no CLI installation or machine-status owner")
+    func appDoesNotOwnCLIInstallation() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        for path in [
+            "Scholium/Views/BootstrapAgentPreparationView.swift",
+            "Scholium/Views/WorkspaceSetupView.swift",
+            "Scholium/Features/Settings/WorkspaceSettingsModel.swift",
+            "Scholium/Services/WindowSession.swift",
+            "Scholium/App/ScholiumApp.swift",
+        ] {
+            let source = try String(
+                contentsOf: repositoryRoot.appendingPathComponent(path),
+                encoding: .utf8
+            )
+            #expect(!source.contains("CommandLineToolInstaller"))
+            #expect(!source.contains("commandLineToolStatus"))
+            #expect(!source.contains("installCommandLineTool"))
+        }
     }
 
     @Test("Agent preparation overlaps registration but Ready remains gated")

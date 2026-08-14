@@ -50,8 +50,8 @@ flush-before-agent-work. The Swift
 model retains these facts across SwiftUI view reconstruction; it never
 reconstructs writable Markdown from HTML, parsed YAML, or another projection.
 `DocumentConflictSnapshot` supplies exact editor/disk inputs to the Contracts-
-owned `ExactSourceComparisonBuilder`; it no longer owns a second line-diff
-algorithm. Document still owns conflict actions and buffer authority, while the
+owned `ExactSourceComparisonBuilder`, the sole line-diff owner. Document still
+owns conflict actions and buffer authority, while the
 comparison value and future shared sheet remain pure disposable presentation.
 
 `DocumentEditorHost` is the persistent presentation boundary for one selected
@@ -330,11 +330,12 @@ QA-only notifications drive those paths; `PerformanceProbe` enforces metric,
 fixture, duration, and sample budget.
 
 `generate-rdf1.py` owns manifest-listed RDF-1 bytes;
-`run-performance-benchmarks.sh` owns isolated visible driving, sampling,
-inventory recheck, and evidence class. Warm metrics reuse processes; launch
-and first-use metrics relaunch. Records retain timing, correctness, and
-provenance but exclude research content. Gate mode requires the clean-tag
-packaged app and every approved series; scenario omissions remain explicit. Limits
+`run-performance-benchmarks.sh` owns isolated driving, sampling, inventory
+recheck, evidence class, and production-state nonmutation. Packaged Release
+honors `SCHOLIUM_HOME` only with the marker. Warm metrics reuse
+processes; launch/first-use metrics relaunch. Records retain timing,
+correctness, and provenance without research content. Gate mode requires
+clean-tag package and every series; scenario omissions remain explicit. Limits
 and evidence rules belong to [Specification
 §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).
@@ -711,8 +712,8 @@ motion rules bound generated Mermaid CSS. The same boundary preserves the
 intrinsic size of narrow SVGs, proportionally caps wide or overly tall SVGs at
 the document and viewport measures, and replaces generated multicolor scales
 with protected semantic document variables plus an app-owned final Mindmap
-override in both Review and inactive Edit. Review and Edit no longer parse the
-returned SVG through a second `innerHTML` sink. The returned binding callback
+override in both Review and inactive Edit. Review and Edit use no second
+`innerHTML` sink for the returned SVG. The returned binding callback
 is never invoked. Failure keeps escaped source and a text diagnostic. Missing
 authored `accTitle` or `accDescr` keeps a source-based assistive alternative and
 adds an ordinary visible diagnostic, not a repeatedly announced live region,

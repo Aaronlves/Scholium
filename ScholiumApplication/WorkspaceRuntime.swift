@@ -439,22 +439,56 @@ public actor WorkspaceRuntime {
                 portableContainerURL.stopAccessingSecurityScopedResource()
             }
         }
+        let portableManifest = try await existingPortableManifest(
+            forWorksURL: outputURL
+        )
+        try await portableRegistry.preflightRegistration(
+            containerURL: portableContainerURL,
+            forWorksURL: outputURL
+        )
+        try await registry.preflightIndependentVaultRoots(
+            paperAnalysisURL: paperAnalysisURL,
+            topicKnowledgeURL: topicKnowledgeURL,
+            outputURL: outputURL
+        )
+        let selections: [(WorkspaceVaultSlot, URL)] = [
+            (.paperAnalysis, paperAnalysisURL),
+            (.topicKnowledge, topicKnowledgeURL),
+            (.output, outputURL),
+        ]
+        var plannedIdentityIDs: [WorkspaceVaultSlot: UUID] = [:]
+        for (slot, url) in selections {
+            plannedIdentityIDs[slot] = try await identityRegistry.plannedIdentityID(
+                for: url,
+                preferredID: portableManifest?.vaultIDs[slot]
+            )
+        }
+        guard let analysesID = plannedIdentityIDs[.paperAnalysis],
+              let topicsID = plannedIdentityIDs[.topicKnowledge],
+              let worksID = plannedIdentityIDs[.output] else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let requestedPortableID = portableManifest?.id ?? triptychID ?? worksID
+        try await registry.preflightTriptychConfiguration(
+            id: requestedPortableID,
+            paperAnalysis: (paperAnalysisURL, analysesID),
+            topicKnowledge: (topicKnowledgeURL, topicsID),
+            output: (outputURL, worksID)
+        )
         _ = try await portableRegistry.register(
             containerURL: portableContainerURL,
             forWorksURL: outputURL
         )
         let portableReady = clock.now
 
-        let selections: [(WorkspaceVaultSlot, URL)] = [
-            (.paperAnalysis, paperAnalysisURL),
-            (.topicKnowledge, topicKnowledgeURL),
-            (.output, outputURL),
-        ]
         var identities: [WorkspaceVaultSlot: VaultIdentity] = [:]
         for (slot, url) in selections {
             let scopeStarted = url.startAccessingSecurityScopedResource()
             defer { if scopeStarted { url.stopAccessingSecurityScopedResource() } }
-            identities[slot] = try await identityRegistry.identity(for: url)
+            identities[slot] = try await identityRegistry.identity(
+                for: url,
+                preferredID: plannedIdentityIDs[slot]
+            )
         }
         let identitiesReady = clock.now
         guard let analysesIdentity = identities[.paperAnalysis],
@@ -463,7 +497,7 @@ public actor WorkspaceRuntime {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
 
-        let portableID = await portableManifestID(forWorksURL: outputURL)
+        let portableID = portableManifest?.id
         var remappedWorkspaceIDs: [UUID: UUID] = [:]
         if let triptychID,
            let portableID,
@@ -553,8 +587,27 @@ public actor WorkspaceRuntime {
 
     public func portableManifestID(forWorksURL worksURL: URL) async -> UUID? {
         guard !isShutDown else { return nil }
-        let store = TriptychControlStore(worksVaultURL: worksURL)
-        return try? await store.manifest().id
+        return try? await existingPortableManifest(forWorksURL: worksURL)?.id
+    }
+
+    private func existingPortableManifest(
+        forWorksURL worksURL: URL
+    ) async throws -> TriptychManifest? {
+        let manifestURL = worksURL.standardizedFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".scholium/manifest.json", isDirectory: false)
+        guard FileManager.default.fileExists(atPath: manifestURL.path) else {
+            return nil
+        }
+        let manifest = try await TriptychControlStore(
+            worksVaultURL: worksURL
+        ).manifest()
+        guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
+              Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
+              Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count else {
+            throw TriptychControlError.invalidManifest
+        }
+        return manifest
     }
 
     /// Returns the persisted default Triptych.

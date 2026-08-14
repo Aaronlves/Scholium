@@ -104,6 +104,10 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Source basis", locale: simplifiedChinese) == "来源依据")
         #expect(ScholiumL10n.string("Research Record", locale: simplifiedChinese) == "研究记录")
         #expect(ScholiumL10n.string("Restore Access", locale: simplifiedChinese) == "恢复访问权限")
+        #expect(
+            ScholiumL10n.string("Quit Scholium", locale: simplifiedChinese)
+                == "退出 Scholium"
+        )
         #expect(ScholiumL10n.string("Hide Sidebar", locale: simplifiedChinese) == "隐藏边栏")
         #expect(ScholiumL10n.string("Show Sidebar", locale: simplifiedChinese) == "显示边栏")
         #expect(

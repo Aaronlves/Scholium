@@ -388,8 +388,8 @@ public actor VaultRepository {
 
     /// Executes one exact-byte save and reports only a Core-observed outcome.
     /// Callers must not infer an unknown post-transaction result from a thrown
-    /// repository error: once replacement may have occurred, the retained
-    /// mutation ledger is the only source of recovery authority.
+    /// repository error. Core first uses exact canonical readback to prove a
+    /// commit; only a still-unknown result enters retained recovery.
     public func saveOutcome(
         relativePath: String,
         changeSet: NoteChangeSet,
@@ -476,6 +476,26 @@ public actor VaultRepository {
                     try? recoveryLedger.completeMutation(mutation)
                 }
                 return knownOutcome
+            }
+
+            // File Provider and coordinated replacement APIs can finish the
+            // replacement and still report an error. Exact canonical bytes,
+            // not that advisory error, determine the user-visible save state.
+            if let canonical = try? readSource(relativePath: relativePath),
+               canonical == candidateData {
+                try? commitPreparedSnapshot(snapshot)
+                try? recoveryLedger.completeMutation(mutation)
+                return .committed(SaveResult(document: updated))
+            }
+
+            // An unchanged canonical source proves that this attempt wrote
+            // nothing. Remove its redundant local transaction and preserve
+            // the original error rather than presenting a recovery candidate.
+            if let canonical = try? readSource(relativePath: relativePath),
+               canonical == currentData {
+                try? discardPreparedSnapshot(snapshot)
+                try? recoveryLedger.completeMutation(mutation)
+                throw VaultRepositoryError.writeFailed(error.localizedDescription)
             }
 
             // A replacement failure, failed readback, or otherwise unprovable
@@ -1050,6 +1070,7 @@ public actor VaultRepository {
              .recoveryPathConflict,
              .recoveryLedgerUnavailable,
              .pathCollision,
+             .writeFailed,
              .commitUncertain,
              .recoveryRequired:
             return nil

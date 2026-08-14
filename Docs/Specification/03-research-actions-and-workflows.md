@@ -152,9 +152,11 @@ authority only; it does not rebuild the Run or discard confirmed writes,
 Records, conflicts, or recovery duties. Keychain does not restore Sessions.
 
 The supported packaged App and version-matched CLI communicate through one
-per-user local bridge with same-user containment, bounded messages, timeouts,
-and contract-version checks. It owns no Triptych, Run, Session semantics,
-research content, Record, checkpoint, or recovery bytes and exposes no relay or
+per-user, loopback-only local bridge with bounded messages, timeouts, and
+contract-version checks. The bridge relies on the unguessable one-time Pairing
+Code and process-bound Session credential rather than filesystem metadata or
+peer-user inference. It owns no Triptych, Run, Session semantics, research
+content, Record, checkpoint, or recovery bytes and exposes no relay, LAN, or
 public network endpoint. Direct pairing is promised only where the Agent can
 reach that local CLI/bridge; manual cloud-Agent copy is not a Session. Transport
 mechanics belong to [Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).

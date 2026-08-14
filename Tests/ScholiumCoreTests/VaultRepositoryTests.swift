@@ -7,6 +7,7 @@ import ScholiumContracts
 @Suite("Transactional vault repository")
 struct VaultRepositoryTests {
     private enum SaveFault: Error {
+        case beforeSwap
         case afterSwap
     }
 
@@ -180,8 +181,8 @@ struct VaultRepositoryTests {
         #expect(try String(contentsOf: f.note, encoding: .utf8) == "External edit")
     }
 
-    @Test("A post-replacement interruption retains the exact candidate for reconciliation")
-    func interruptedReplacementRetainsCandidate() async throws {
+    @Test("Exact canonical candidate proves a save despite a post-replacement error")
+    func postReplacementErrorStillCommits() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(
@@ -205,15 +206,49 @@ struct VaultRepositoryTests {
             expectedRevision: original.fingerprint
         )
 
-        guard case .recoveryRequired(let recovery) = outcome else {
-            Issue.record("An unproven replacement was not retained for recovery.")
+        guard case .committed(let result) = outcome else {
+            Issue.record("Exact canonical readback did not prove the completed save.")
             return
         }
-        #expect(recovery.sourceState == .candidateRevision)
-        #expect(try await repository.interruptedSaveRecoveryContent(recovery).exactSource == candidate)
-        let reconciled = try await repository.restoreInterruptedSaveRecovery(recovery)
-        #expect(!reconciled.didReplaceSource)
-        #expect(reconciled.document.rawContent == candidate)
+        #expect(result.document.rawContent == candidate)
+        #expect(try Data(contentsOf: f.note) == Data(candidate.utf8))
+        #expect(try await repository.interruptedSaveRecoveries().isEmpty)
+    }
+
+    @Test("A failed replacement with unchanged canonical source is retryable")
+    func unchangedCanonicalReplacementFailureIsRetryable() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let identity = VaultIdentity(
+            id: UUID(),
+            canonicalPath: f.root.path,
+            bookmarkData: nil
+        )
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: identity,
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(didReach: { phase in
+                if phase == .replacing { throw SaveFault.beforeSwap }
+            })
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+
+        do {
+            _ = try await repository.saveOutcome(
+                relativePath: original.relativePath,
+                changeSet: .body("Retry this edit"),
+                expectedRevision: original.fingerprint
+            )
+            Issue.record("A failed replacement unexpectedly reported a save.")
+        } catch let error as VaultRepositoryError {
+            guard case .writeFailed = error else {
+                Issue.record("The unchanged source did not produce a retryable failure.")
+                return
+            }
+        }
+
+        #expect(try Data(contentsOf: f.note) == Data(original.rawContent.utf8))
         #expect(try await repository.interruptedSaveRecoveries().isEmpty)
     }
 

@@ -115,7 +115,7 @@ content view. Its Welcome, Triptych, optional Agent, and Ready stages share one
 adaptive full-bleed illustration field beside a linear native task pane and
 fixed footer; narrow windows move the field above the task. Triptych folder
 selection and bounded authorization remain the registration owner's native
-controls behind the approved prototype's path cards and review pages. An
+controls behind the specified path cards and review pages. An
 Application-owned structure preparer exclusively creates a confirmed new root
 and its four fixed children; it refuses an existing destination. The setup view
 presents Agent while Application registration continues, returns a

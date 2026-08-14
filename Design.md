@@ -111,11 +111,11 @@ values to Scholarly typography in the detail or reading surface. Bounded
 evidence previews and detail sections do not become long-list interface merely
 because they repeat entries.
 
-- The default Appearance uses a **72ch** Line width plus **Alegreya 12pt**,
+- The default Appearance uses §18.4's shared Line width plus **Alegreya 12pt**,
   **2.0** line spacing, **1em** paragraph spacing, **0.02em** tracking,
   zero first-line indent, zero word spacing, justified text, no hyphenation,
-  kerning, and common ligatures. Line width is configurable from **48–96ch**
-  in **1ch** steps and is shared by Review, Edit, and Source.
+  kerning, and common ligatures. Line-width values, range, stepping, and
+  cross-mode behavior remain owned by §18.4.
 - Default headings use the Body family, upright style, **500** weight,
   **1.8** line spacing, and zero tracking. H1 is **200%**, centered, with
   **0em** before and **2em** after; its fine separator sits **0.5em** below the
@@ -353,11 +353,10 @@ persisted divider position, or scene minimum.
 Regions scroll independently and Document takes remaining space without a
 fixed size. Native geometry stays outside the grid. Document layout uses
 `rem`, `ch`, CSS px, and viewport units without point conversion. Its selected
-**48–96ch** measure is centered while retaining the **20/32/40 CSS px** minimum
-insets defined in §18.4. Prose reflows without page-level horizontal reading
+measure and adaptive minimum insets remain owned by §18.4. Prose reflows without page-level horizontal reading
 scroll; intrinsically wide objects keep object-local overflow; Source
 soft-wraps exact logical lines without changing source line breaks or line
-numbers. The 72ch default and typography remain valid at narrow widths, with
+numbers. The configured measure and typography remain valid at narrow widths, with
 mixed scripts, and at 100%/200% text. Screenshots and prototype coordinates are
 evidence only and never define native/CSS unit conversion.
 
@@ -452,7 +451,7 @@ One meaning has one presentation:
   It is neither hidden nor truncated to make a button annotation appear short.
 
 Default Actions prefer title-only rows when their group and title already
-identify the task. Researcher-defined Actions may use one terse explanation
+identify the task. Researcher-configured Action names may use one terse explanation
 when the title cannot faithfully distinguish their declared boundary. No
 control accumulates a label, subtitle, tooltip, and adjacent paragraph that all
 explain the same action.
@@ -477,9 +476,9 @@ the required meaning.
 | `Triptych Workspace Navigator` | Presents Analyses, Topics, and Works as full-width destinations with one persistent Navigation selection and quiet, exact Note totals. | A Scope filter, pipeline, project selector, segmented band, or Attention counter. | §§3.2, 18.2–18.3 |
 | `Segmented Control` | Equal text segments use a quiet Paper track, one adaptive raised selection, continuous corners, and no Accent fill. Inspector, Connect, Search, Properties, and Records share input and accessibility. | Workspace navigation, tab strips, or mixed actions. | §§18.4–18.5 |
 | `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
-| `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §§12, 18.5 |
-| `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §§8–11, 18.5 |
-| `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §14, §18.3 |
+| `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §12, §18.5 |
+| `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §8.1, §18.5 |
+| `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §13, §§18.2–18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Document Find Bar` | Find and, in writable modes, replace literal text in the current unsaved buffer while retaining editor selection, Undo, and focus. | Research Search, a modal panel, a second text owner, or saved query history. | §13, §18.4 |
 | `Property Group` | Uses 24pt between groups and 16pt between fields in Properties/About; names stay accessible. Help owns definitions. The fixed action slot reveals on hover/focus without reflow. Save stays emphasized. | Heading, explanation, card, rule, permission, or schema. | §§5.2, 18.4–18.5 |
@@ -500,17 +499,17 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | Pattern | Scholium task | Presentation boundary | Semantic owner |
 | --- | --- | --- | --- |
 | `Workspace Shell` | Move among three retained Triptych workspaces without losing their Library, tabs, Document, or Apparatus context. | One native window and fixed split geometry; only role-partitioned content changes inside the three planes. | §§3.2, 18.1–18.3 |
-| `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §§5–7, 18.3–18.4 |
-| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One live mode per retained Triptych workspace session; the toolbar prioritizes Review/Edit while Source remains menu-accessible, without a history keyed by Note or tab. | §§5–7, 18.4 |
+| `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §5.3, §§18.3–18.4 |
+| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One live mode per retained Triptych workspace session; the toolbar prioritizes Review/Edit while Source remains menu-accessible, without a history keyed by Note or tab. | §5.1, §18.4 |
 | `Document Find / Replace` | Locate literal text in the current unsaved buffer and replace it only in writable modes. | One inline Document bar; standard menu and keyboard routes; no Search provider, index, or persistent history. | §13, §18.4 |
-| `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §§12–14, 18.3 |
-| `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §§12, 18.5 |
-| `Attention` | Enter the complete Triptych queue from one stable Sidebar control or add an exact current-Note subset from Inspector without interruption. | One native transient presentation; zero removes emphasis and count but not the Triptych route. | §14, §§18.2–18.3 |
-| `Research Action` | Prepare, run, inspect, settle, and optionally write a bounded Agent result. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
-| `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §§12–14, 18.4–18.6 |
-| `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §14, §18.5 |
-| `Note Review` | Inspects pending Agent activity for a saved Note and marks exact observed state reviewed. | Task bar auto-presents; close suppresses the set for the session, Overview reopens, and a new set presents. Raised surface and rule, never a floating card or focus transfer. | §§14, 18.5 |
-| `Bootstrap Agent Preparation` | Installs the CLI, copies one prompt, and accepts confirmation without granting research access. | An Agent launcher, provider picker, readiness manager, Session, or Run handoff. | §16 |
+| `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §13, §18.3 |
+| `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §12, §18.5 |
+| `Attention` | Enter the complete Triptych queue from one stable Sidebar control or add an exact current-Note subset from Inspector without interruption. | One native transient presentation; zero removes emphasis and count but not the Triptych route. | §13, §§18.2–18.3 |
+| `Research Action` | Prepare, run, inspect, end, and recover one bounded Research Action. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
+| `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §14, §§18.4–18.6 |
+| `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §8.4, §18.5 |
+| `Note Review` | Inspects pending Agent activity for a saved Note and marks exact observed state reviewed. | Task bar auto-presents; close suppresses the set for the session, Overview reopens, and a new set presents. Raised surface and rule, never a floating card or focus transfer. | §§8.4, 18.5 |
+| `Bootstrap Agent Preparation` | Copies one independent-CLI setup prompt and accepts confirmation without granting research access. | App-owned CLI status or install, Agent launcher, provider picker, readiness manager, Session, or Run handoff. | §16 |
 
 Patterns may reference multiple components, but they must not introduce a
 second state owner or copy a workflow's authorization and recovery rules.
@@ -537,8 +536,6 @@ to this language plus its domain-specific label.
 | `Recovery` | The interface offers a reversible or explicitly consequential path after failure or interruption. | State the candidate source, consequence, reversibility, and final verification condition before action. | A generic toast, ordinary Undo, or automatic overwrite. |
 | `Disabled` | An otherwise known action cannot be invoked under the current prerequisite or policy. | Keep the control discoverable when it is part of the core task and expose the missing condition without relying on low contrast. | Unavailable content or an omitted non-core control. |
 | `Running` | A researcher-started Research Action is executing within its declared scope. | Keep the Action identity, current state, cancellation/end route, and focus path visible; motion is supplementary. | Loading a passive projection or background refresh. |
-| `Settle` | A Research Action result is ready for the researcher to inspect and decide. | Keep result, provenance, uncertainty, and write boundary distinct; do not imply adoption. | Settled or an authorized write. |
-| `Settled` | The researcher has explicitly recorded the Action result's disposition. | Show the disposition and durable record route without implying that source Markdown was rewritten. | Successful execution or automatic acceptance. |
 
 Every state presentation follows five invariants:
 
@@ -551,6 +548,10 @@ Every state presentation follows five invariants:
    state channel.
 5. A state transition must preserve cancellation, focus return, source safety,
    and recovery semantics owned by the underlying workflow.
+
+Note Settle/Settled semantics remain owned by §7.1. Result arrival,
+Researcher Response, and Note Review remain owned by §8.4; none is a generic
+cross-functional state or a synonym for another.
 
 Page- and pane-level state copy uses the `Content State` component. Its symbol
 or progress indicator remains restrained at the approved interface scale; the

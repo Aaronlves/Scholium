@@ -74,11 +74,9 @@ DEVELOPER_DIR="${XCODE}" swift build \
   --scratch-path "${DERIVED}" \
   --configuration debug \
   --product scholium
-
-mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Helpers" "${APP}/Contents/Resources"
+mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${DERIVED}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"
-cp "${DERIVED}/debug/scholium" "${APP}/Contents/Helpers/scholium"
-chmod +x "${APP}/Contents/Helpers/scholium"
+chmod +x "${APP}/Contents/MacOS/Scholium"
 cp -R "${DERIVED}/debug/Scholium_ScholiumApp.bundle" "${APP}/Contents/Resources/"
 cp -R "${DERIVED}/debug/Scholium_ScholiumCore.bundle" "${APP}/Contents/Resources/"
 # SwiftUI's literal-based controls resolve against the outer application

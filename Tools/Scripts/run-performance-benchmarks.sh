@@ -176,6 +176,28 @@ if [[ "${BUNDLE_ID}" == com.scholium.app ]]; then
   ARTIFACT_KIND=packaged_release
 fi
 
+state_signature() {
+  local state="$1"
+  if [[ ! -e "${state}" ]]; then
+    print "missing"
+    return
+  fi
+  if [[ ! -d "${state}" ]]; then
+    shasum -a 256 "${state}" | awk '{print "file:" $1}'
+    return
+  fi
+  COPYFILE_DISABLE=1 /usr/bin/tar -cf - -C "${state:h}" "${state:t}" \
+    | shasum -a 256 \
+    | awk '{print "directory:" $1}'
+}
+
+PRODUCTION_STATE=""
+PRODUCTION_STATE_SIGNATURE=""
+if [[ "${ARTIFACT_KIND}" == packaged_release ]]; then
+  PRODUCTION_STATE="${HOME}/Library/Application Support/Scholium/State-v1"
+  PRODUCTION_STATE_SIGNATURE="$(state_signature "${PRODUCTION_STATE}")"
+fi
+
 if [[ "${MODE}" == product_gate ]]; then
   [[ "${SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS:-0}" == 1 ]] || {
     print -u2 "Release-owner threshold approval is missing."
@@ -235,10 +257,13 @@ fi
 
 RUN_ID="rdf1_$(date -u +%Y%m%dT%H%M%SZ)_$$"
 SCRATCH="${ROOT}/.build/performance-${RUN_ID}"
-APP_CONTAINER_TMP="${HOME}/Library/Containers/${BUNDLE_ID}/Data/tmp"
-APP_SCRATCH="${APP_CONTAINER_TMP}/scholium-performance-${RUN_ID}"
+if [[ "${ARTIFACT_KIND}" == packaged_release ]]; then
+  APP_SCRATCH="${HOME}/Library/Application Support/Scholium/Performance Runs/${RUN_ID}"
+else
+  APP_SCRATCH="${SCRATCH}/app-state"
+fi
 FIXTURE_COPY="${APP_SCRATCH}/rdf1"
-RAW="${APP_SCRATCH}/raw"
+RAW="${SCRATCH}/raw"
 DERIVED="${SCRATCH}/derived-data"
 
 cleanup() {
@@ -254,11 +279,12 @@ cleanup() {
   for pid in $(pgrep -f "^${APP}/Contents/MacOS/Scholium( |$)" 2>/dev/null || true); do
     kill "${pid}" 2>/dev/null || true
   done
-  if [[ -d "${APP_SCRATCH}" ]]; then
-    if (( exit_code != 0 )); then
-      ditto --norsrc --noextattr --noqtn --noacl \
-        "${APP_SCRATCH}" "${SCRATCH}/app-container-scratch" 2>/dev/null || true
-    fi
+  if [[ -n "${PRODUCTION_STATE}" ]] \
+      && [[ "$(state_signature "${PRODUCTION_STATE}")" != "${PRODUCTION_STATE_SIGNATURE}" ]]; then
+    print -u2 "The performance driver mutated production machine state."
+    exit_code=1
+  fi
+  if [[ "${APP_SCRATCH}" != "${SCRATCH}/app-state" ]]; then
     rm -rf "${APP_SCRATCH}"
   fi
   if (( exit_code == 0 )); then
@@ -266,6 +292,8 @@ cleanup() {
   else
     print -u2 "Incomplete performance artifacts retained at ${SCRATCH}"
   fi
+  trap - EXIT
+  exit "${exit_code}"
 }
 trap cleanup EXIT
 

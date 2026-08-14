@@ -27,8 +27,13 @@
 
 ## Agent collaboration and research quality
 
-- Exercise a version-matched installed App and CLI through the production App
-  Group: pairing, restart invalidation, re-pairing, Research Context, bounded
+- Publish the exact reviewed `Scholium-CLI-macos.zip` and checksum as the
+  same-named GitHub Release assets. The canonical `latest/download` URL
+  returned HTTP 404 during the 2026-08-15 deployment check.
+- Exercise the separately downloaded CLI archive and sandboxed installed App
+  in a clean external account, including the copied Agent instruction,
+  user-local installation, and production bridge: pairing, restart
+  invalidation, re-pairing, Research Context, bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
   and credential cleanup.
 - Conduct sustained real research use and an independent source-fidelity and
@@ -50,26 +55,14 @@
 - Exercise pointer and keyboard behavior for construct-scoped syntax, completed-
   selection toolbar timing, context menus, Callouts, footnotes, lists, tables,
   suggestions, previews, and source-return navigation.
-- Complete direct sandbox, keyboard, VoiceOver, relaunch, missing-path, and
+- Complete direct keyboard, VoiceOver, relaunch, missing-path, and
   cleanup acceptance for image Import, pasted-image Import, absolute-path
   Index, and indexed-attachment reminders. Focused tests prove the typed
   transactions and path/bookmark boundaries but are not human acceptance.
-- Run the connected Edit/Source request-to-accessible-layout collector against
-  the exact packaged artifact. A corrected focused Debug 3-warm-up/10-sample
-  scenario recorded 80.350 ms p50, 102.832 ms nearest-rank p95/maximum, and
-  82.172 ms mean: it met the Beta `< 200 ms` maximum but exceeded the `< 100 ms`
-  p95 limit by 2.832 ms; the largest bridge roundtrip was 91.231 ms. The
-  connected key-to-paint collector now covers inserted text and deletion; a
-  focused Debug two-sample scenario measured 8 and 18 ms, but is not packaged
-  acceptance. Cached preview, warm/cold Edit activation, and visible-range
-  projection now have connected collectors and verified one-sample Debug
-  scenario reachability. Those focused runs measured 21 ms, 86.082 ms,
-  3,953.526 ms, and 1 ms respectively. The cold Edit run correctly retained
-  the application-cold boundary and therefore missed its packaged threshold in
-  an instrumented Debug/XCTest journey; do not narrow that boundary to make a
-  scenario pass. Still measure sustained input across repeated Note/mode
-  switching and run the complete Editor series on the exact packaged artifact.
-  Extend shared source-range fixtures before changing parser or syntax rules.
+- Run the complete Editor latency, correctness, and retained-memory series on
+  the exact clean tagged packaged artifact. Focused scenario measurements remain
+  in Verification and do not satisfy G7. Extend shared source-range fixtures
+  before changing parser or syntax rules.
 - The disposable Debug QA journey now proves direct Edit presentation, exact
   body focus, first-keystroke persistence, and source fidelity with and without
   a role YAML seed. Still measure command dispatch to acknowledged selection
@@ -84,17 +77,9 @@
   remain keyboard and VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
-- The Editor, Library, Search, warm Review, first-use Review, and first-use Edit
-  limits are approved. The cooled first-use working-tree baseline supports its `< 1,000ms`
-  Review p95 limit but is scenario evidence only. The former application-cold
-  Edit collector is replaced by the product-aligned first-use Edit journey.
-  The release owner accepts that metric as complete after its full 5+30 QA
-  series passed at 363.570ms p95 and 371.997ms maximum. This removes first-use
-  Edit implementation acceptance from open work; G7 still requires the exact
-  packaged artifact and every applicable series. Freeze the exact source/artifact and fixture, then rerun the complete protocol from a reviewed, committed, exactly
-  tagged, packaged source on the cooled reference machine. The first complete
-  packaged attempt failed warm Review, cold Edit, and the superseded
-  cold-Review and RSS-jitter rules; working-tree diagnostics are not release
+- Freeze the exact source, artifact, and fixture, then rerun every approved G7
+  series from one reviewed, committed, exactly tagged package on the cooled
+  reference machine. Working-tree and scenario evidence is not release
   acceptance.
 
 ## Source coordination, recovery, and external locators
@@ -108,8 +93,8 @@
   interrupted candidates, and recovery with assistive technology. Finder
   metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
   completion are not save-success acceptance criteria.
-- Verify packaged-sandbox reopen after an external Method, Practice, Skill
-  folder, or Analyze source moves, loses scope, is evicted, or is restored.
+- Verify packaged reopen after an external Method, Practice, Skill folder, or
+  Analyze source moves, disappears, is evicted, or is restored.
 - Complete direct acceptance of Zotero attachment selection and the built-in
   reader versus MCP boundary.
 
@@ -119,7 +104,8 @@
   material; run the repository and release gates from that checkout.
 - Exercise the exact expanded artifact in a clean external account through
   setup, read/edit/autosave/restart, Search, conflict/recovery, Inspector,
-  Agent Action, CLI, unavailable integrations, and restoration.
+  Agent Action, independent CLI download/install, unavailable integrations,
+  and restoration.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Publish source, artifact, checksum, license, architecture, and signing
