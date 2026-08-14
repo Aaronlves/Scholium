@@ -27,9 +27,6 @@
 
 ## Agent collaboration and research quality
 
-- Publish the exact reviewed `Scholium-CLI-macos.zip` and checksum as the
-  same-named GitHub Release assets. The canonical `latest/download` URL
-  returned HTTP 404 during the 2026-08-15 deployment check.
 - Exercise the separately downloaded CLI archive and sandboxed installed App
   in a clean external account, including the copied Agent instruction,
   user-local installation, and production bridge: pairing, restart

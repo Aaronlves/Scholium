@@ -6,29 +6,26 @@
 
 **Environment:** 2026-08-15, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The independent-CLI cutover's current-tree integration attempt validated the
-closed documentation manifests and shipped Skill resources; TypeScript checking
-and 199 Web editor tests; reproducible editor, mathematics, and Mermaid bundles;
-475 Core tests plus 3 Search performance tests; 138 Contracts tests; 231
-Application tests, 11 bridge tests, and 1 serialized architecture measurement;
-and 626 of 627 App tests. Its only failure was a source-boundary test that still
-tried to read the deliberately deleted `CommandLineToolContracts.swift`; that
-obsolete read was removed and the owning test then passed 1/1. The complete gate
-was not rerun after that repair, so this is not represented as one uninterrupted
-complete-gate pass.
+The exact `v0.1.0-beta.6` commit passed one uninterrupted complete repository
+gate: closed documentation manifests and shipped Skill resources; TypeScript
+checking and 199 Web editor tests; reproducible editor, mathematics, and Mermaid
+bundles; 475 Core tests plus 3 Search performance tests; 138 Contracts tests;
+231 Application tests, 11 bridge tests, and 1 serialized architecture
+measurement; 627 App tests; 7 executable Research Action CLI lifecycles; the
+sandboxed App-to-standalone-CLI loopback probe; symbol and residue guards; and
+an optimized Release build in 198.60 seconds.
 
-A subsequent fresh diagnostic Release build completed in 177.08 seconds and
-produced separate sandboxed App and standalone CLI archives. The package smoke
-extracted and installed the CLI into an isolated user prefix, launched it by
-basename from an unrelated working directory, and validated its provenance. A
-packaged UI journey proved that a clean isolated launch enters Bootstrap while
-the production machine state remains unchanged. Focused Settings UI and signed
-loopback-bridge probes also passed against disposable fixtures.
+The same clean tagged commit produced separate ad-hoc-signed App and standalone
+CLI archives with exact provenance. The package smoke extracted and installed
+the CLI into an isolated user prefix, launched it by basename from an unrelated
+working directory, and validated its provenance. A packaged UI journey proved
+that a clean isolated launch enters Bootstrap while production machine state
+remains unchanged. GitHub published both ZIPs and checksums; a fresh download
+through the canonical `latest/download` CLI URL matched the release checksum.
 
-This evidence is not a clean tagged, Developer ID signed, notarized release; an
-external Agent download from the published GitHub asset; a complete UI-suite or
-human accessibility exercise; a source-fidelity review of private research; or
-researcher acceptance.
+This evidence is not Developer ID signing, notarization, a clean external-account
+Agent journey, a complete UI-suite or human accessibility exercise, a
+source-fidelity review of private research, or researcher acceptance.
 
 ## Focused interface evidence
 
@@ -42,8 +39,8 @@ researcher acceptance.
   clauses. A signed probe proved a sandboxed App and nonsandboxed standalone CLI
   communicate only over `127.0.0.1`; closed-App requests are unavailable and an
   invalid pairing code reaches the App without entering logs. This remains
-  disposable focused evidence, not an external Agent download or clean-account
-  installation.
+  disposable focused evidence. The later published-asset download proves exact
+  delivery bytes, not a clean-account Agent installation.
 - On 2026-08-14, the existing-Note save cutover passed 228 focused tests: 86
   Core, 8 Contracts, 31 Application, and 103 App tests. The fixtures cover
   coordinated system replacement, exact BOM/CRLF readback, metadata changes
@@ -321,8 +318,8 @@ measurements, not the packaged G7 gate or approved release limits.
 
 ## Upgrade and distribution evidence
 
-The current integration snapshot above includes the deployment-remediation
-working tree but is not one uninterrupted complete-gate pass. The canonical
+The current complete-gate snapshot above includes the deployment-remediation
+working tree. The canonical
 Debug UI smoke passed, followed by focused Restore Access application
 termination and portable Analysis/Zotero routing journeys. Headless coverage also
 proved that fresh machine registration preserves portable Triptych, Vault, and
@@ -330,21 +327,21 @@ Note identities without rewriting the manifest, and that renewed folder access
 rebinds one machine-local Vault path. These are disposable-fixture and ad-hoc
 development proofs, not clean-account installed-artifact or human acceptance.
 
-The same working tree produced ad-hoc-signed sandboxed App and independent CLI
-diagnostic ZIPs with matching provenance and checksums. Strict signature checks
+The exact tagged tree produced ad-hoc-signed sandboxed App and independent CLI
+release ZIPs with matching provenance and checksums. Strict signature checks
 found App Sandbox on the App, no App Group, no CLI executable or `.local`
 entitlement in the App, and no App Sandbox or App Group on the CLI. The exact
 CLI ZIP was expanded, installed under an isolated user-local prefix, and invoked
 by basename from an unrelated working directory. The exact App artifact entered
 Bootstrap from empty isolated machine state without changing production state.
-Developer ID/notarization and a clean external account remain acceptance gaps.
-The canonical GitHub `latest/download` CLI URL returned HTTP 404 on 2026-08-15,
-so publication of the same-named asset is a current deployment blocker.
+GitHub published the four release assets, and the canonical `latest/download`
+CLI URL returned the same checksum when downloaded independently. Developer ID,
+notarization, and a clean external account remain acceptance gaps.
 
 Distinct-build upgrade fixtures preserve exact vault bytes and reject unsupported
 newer schemas without authorizing a compatibility path. Local source-first
 assembly has passed metadata, license, resource, path-disclosure, signature-
 structure, version-matched CLI, ZIP, checksum, and optimized Release-build
 checks with disposable inputs. The tested bundle was ad hoc signed; clean-account
-artifact smoke testing, packaged performance, publication, notarization if
-adopted, and release acceptance remain open.
+artifact smoke testing, packaged performance, notarization if adopted, and
+release acceptance remain open.
