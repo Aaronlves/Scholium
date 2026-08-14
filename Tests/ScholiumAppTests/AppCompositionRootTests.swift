@@ -849,7 +849,7 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.documentController.retainedSession(for: sessionKey) === firstSession)
         #expect(firstSession.presentationMode == .read)
         #expect(firstSession.pendingEditorMode == .livePreview)
-        #expect(firstWindow!.currentPresentationMode == .read)
+        #expect(firstWindow!.currentPresentationMode == .livePreview)
         #expect(firstSession.scrollFraction == 0.42)
 
         firstWindow!.openNote("Shared.md")

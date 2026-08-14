@@ -8,7 +8,7 @@ state presentation belongs to [Scholium Design](../../Design.md#199-cross-functi
 Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Their
 chooser retains exactly one current selection for each live Triptych workspace
 session, owned by the Document presentation rather than by a Note or Document
-tab. Each workspace normally starts in Review and carries its one live mode across Note
+tab. Each workspace starts in Edit and carries that mode across Note
 and tab changes. Switching workspace retains the origin selection and restores
 the destination workspace's live selection with its tab group; it does not
 create a per-Note mode history or reconstruct an editor. Window-session
@@ -149,8 +149,9 @@ Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
 those managed copies.
 
 Toolbar: Sidebar and Back/Forward; Library separator; Heading Outline
-and identity; flexible space; Search, Document Mode, and **This Note Records**
-at §19.3's inline-control spacing; Apparatus separator; trailing Inspector. Mode icon/help
+and identity; flexible space; Search, Document Mode, and **Records** at
+§19.3's inline-control spacing; Apparatus separator; trailing Inspector.
+Records opens **This Note** with a selection, otherwise **Triptych**. Mode icon/help
 report Review, Edit, or Source. Activation switches Review/Edit and returns
 Source to Review.
 Source remains selectable only under **View > Document Mode**; `Command-R`
@@ -379,6 +380,9 @@ without creating another Inspector or changing native split geometry. Hiding
 the Inspector transfers only its Show route under §18.2; no Inspector content
 moves into Document. The Research menu opens an Action without revealing or
 changing the Inspector.
+
+An Inspector without a Document shows **No Document Selected**, never stale
+content or automatic collapse. Selecting a Note restores its retained mode.
 
 Overview presents only compact current-note projections, in this order:
 

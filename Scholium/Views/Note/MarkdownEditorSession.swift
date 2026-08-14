@@ -55,6 +55,11 @@ struct MarkdownEditorPresentationState: Equatable, Sendable {
         errorMessage = message
     }
 
+    mutating func clearReport(matching message: String) {
+        guard errorMessage == message else { return }
+        errorMessage = nil
+    }
+
     mutating func webContentTerminated() {
         webContentReady = false
         documentPhase = .loading
@@ -157,6 +162,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var modeTransitionEpoch: UInt64 = 0
     private var modeTransitionTask: Task<Void, Never>?
     private var modeTransitionID: UUID?
+    private var rejectedChangeRecoveryTask: Task<Void, Never>?
+    private var rejectedChangeRecoveryID: UUID?
+    private var pendingRejectedChangeGeneration: Int?
+    private var rejectedChangeRecoveryError: String?
     private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private var committedTextSynchronizer: ((String, String) -> Void)?
@@ -1007,17 +1016,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
               resultingGeneration == baseGeneration + 1 else { return false }
         let usesCRLF = sourceOffsetMap.usesCRLF
         var changes: [MarkdownEditorDelta] = []
-        var insertedUTF16Count = 0
         var resultingEditorUTF16Length = checkedEditorUTF16Length
         for raw in rawChanges {
             guard raw.from >= 0,
                   raw.to >= raw.from,
                   raw.to <= checkedEditorUTF16Length else { return false }
-            insertedUTF16Count += raw.insert.utf16.count
             resultingEditorUTF16Length += Self.normalizedEditorUTF16Length(of: raw.insert)
                 - (raw.to - raw.from)
-            guard insertedUTF16Count <= 2_000_000,
-                  resultingEditorUTF16Length >= 0,
+            guard resultingEditorUTF16Length >= 0,
                   let from = sourceOffsetMap.sourceUTF16Offset(
                     forEditorUTF16Offset: raw.from
                   ),
@@ -1047,6 +1053,79 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         updatePublished(\.isDirty, to: true)
         sourceChangeHandler?()
         return true
+    }
+
+    /// A current-identity Web editor has already committed this generation, so
+    /// rejecting its delta cannot leave the native mirror looking clean. Pin the
+    /// exact buffer immediately and coalesce a full-buffer read through the same
+    /// typed bridge. The ordinary autosave path then performs revision-checked
+    /// persistence; a failed reconciliation remains dirty and reaches its
+    /// existing visible save-recovery state instead of losing Web-only source.
+    func reconcileAfterRejectedEditorChanges(
+        resultingGeneration: Int,
+        in webView: WKWebView
+    ) {
+        guard resultingGeneration > generation,
+              self.webView === webView,
+              isReady,
+              isLoaded else { return }
+        pendingRejectedChangeGeneration = max(
+            pendingRejectedChangeGeneration ?? resultingGeneration,
+            resultingGeneration
+        )
+        updatePublished(\.isDirty, to: true)
+        sourceChangeHandler?()
+        guard rejectedChangeRecoveryTask == nil else { return }
+
+        let recoveryID = UUID()
+        rejectedChangeRecoveryID = recoveryID
+        rejectedChangeRecoveryTask = Task { @MainActor [weak self, weak webView] in
+            guard let self, let webView else { return }
+            defer {
+                if self.rejectedChangeRecoveryID == recoveryID {
+                    self.rejectedChangeRecoveryTask = nil
+                    self.rejectedChangeRecoveryID = nil
+                }
+            }
+            while let expectedGeneration = self.pendingRejectedChangeGeneration,
+                  expectedGeneration > self.generation {
+                self.pendingRejectedChangeGeneration = nil
+                do {
+                    let snapshot = try await self.currentTextSnapshot(
+                        for: self.documentID
+                    )
+                    guard snapshot.generation >= expectedGeneration else {
+                        throw SessionError.invalidResult
+                    }
+                    if let recoveryError = self.rejectedChangeRecoveryError {
+                        self.updatePresentation {
+                            $0.clearReport(matching: recoveryError)
+                        }
+                        self.rejectedChangeRecoveryError = nil
+                    }
+                    self.updatePublished(\.isDirty, to: true)
+                    self.sourceChangeHandler?()
+                } catch is CancellationError {
+                    return
+                } catch SessionError.staleRequest {
+                    return
+                } catch {
+                    let message = String(
+                        localized: "The editor buffer could not be synchronized. Autosave will retry without discarding your text.",
+                        table: "Localizable",
+                        bundle: .module
+                    )
+                    self.rejectedChangeRecoveryError = message
+                    self.updatePresentation { $0.report(message) }
+                    _ = try? await self.send(
+                        .announceStatus(message),
+                        in: webView
+                    )
+                    return
+                }
+            }
+            self.pendingRejectedChangeGeneration = nil
+        }
     }
 
     func webContentProcessTerminated() {
@@ -1517,6 +1596,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     private func invalidateRequestQueue() {
         requestEpoch &+= 1
+        rejectedChangeRecoveryTask?.cancel()
+        rejectedChangeRecoveryTask = nil
+        rejectedChangeRecoveryID = nil
+        pendingRejectedChangeGeneration = nil
+        if let recoveryError = rejectedChangeRecoveryError {
+            updatePresentation { $0.clearReport(matching: recoveryError) }
+        }
+        rejectedChangeRecoveryError = nil
         sourceMutationBarrier?.cancel()
         sourceMutationBarrier = nil
         for task in inFlightRequestTasks.values {

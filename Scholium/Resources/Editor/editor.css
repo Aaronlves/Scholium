@@ -323,6 +323,23 @@ body,
   line-height: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
   padding-block: 0;
 }
+/* A collapsed caret preflights the blank source line with the same line box
+   that its first inserted character will use. Inactive separator lines retain
+   the authored paragraph-gap geometry, so typing cannot move the caret or the
+   surrounding document when the line becomes nonempty. */
+.cm-line.cm-live-blank-line.cm-live-blank-line-active {
+  line-height: var(--scholium-rhythm-prose-line-height);
+  block-size: max(
+    var(--scholium-live-blank-gap-after),
+    var(--scholium-live-blank-gap-before),
+    1lh
+  );
+  min-block-size: max(
+    var(--scholium-live-blank-gap-after),
+    var(--scholium-live-blank-gap-before),
+    1lh
+  );
+}
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-half { --scholium-live-blank-gap-after: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-before-half { --scholium-live-blank-gap-before: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-paragraph { --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap); }

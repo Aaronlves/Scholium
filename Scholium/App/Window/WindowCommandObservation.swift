@@ -54,6 +54,7 @@ final class WindowCommandObservation: ObservableObject {
             changes(documentController.$snapshots),
             changes(documentController.$editingDocumentPath),
             changes(documentController.$currentPresentationMode),
+            changes(documentController.$chromeProjection),
             changes(documentController.$noteIdentityByPath),
             changes(workspaceProjectionController.$state),
             changes(researchActionController.$availability),

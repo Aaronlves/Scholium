@@ -22,9 +22,10 @@ unavailable session keys remain vault-qualified, so equal relative paths in two
 Triptych vaults cannot share a buffer, Read cache identity, or scroll
 state.
 
-`DocumentController` owns one live `currentPresentationMode`, defaults Review,
-applies it to each selected Note or tab, and never stores it in a path map or
-`WindowSessionSnapshot`. Sessions retain only editor safety state.
+`DocumentController` defaults `currentPresentationMode`
+to Edit. Writable selections inherit it; read-only Notes and Critiques present
+Review. Chrome reports the session's actual mode. Sessions retain only
+editor safety state, not path-mapped presentation.
 
 Each retained `DocumentSessionModel` owns:
 
@@ -248,11 +249,12 @@ matching recovery snapshot is selected by the session's exact document,
 starting-fingerprint, and source identity, including after Web-content process
 termination or SwiftUI view reconstruction.
 
-Every bridge request is bounded and carries protocol, request, session,
-document, fingerprint, and generation identity. Mutating requests are
-serialized. Unknown operations, stale identities, generation gaps or repeats,
-invalid or overlapping ranges, and oversized messages or results are rejected
-without mutation. Source crosses `WKWebView.callAsyncJavaScript` through
+Every bridge request carries bounded protocol, request, session, document,
+fingerprint, and generation identity. Mutations are serialized; invalid
+requests cannot mutate source. A rejected current-identity forward delta pins
+the session dirty and coalesces a full CodeMirror read before revision-checked
+autosave. Both runtimes cap source at 8 MB UTF-8. Source crosses
+`WKWebView.callAsyncJavaScript` through
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 

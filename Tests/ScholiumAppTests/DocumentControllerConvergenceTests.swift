@@ -48,6 +48,35 @@ struct DocumentControllerConvergenceTests {
         )
     }
 
+    @Test("Read-only lifecycle Notes retain workspace Edit intent but present Review")
+    func readOnlyNotePresentsReview() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let controller = DocumentController()
+        let archived = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Set Aside/Archived.md",
+            source: "# Archived\n",
+            lifecycle: .setAside
+        )
+
+        controller.installOpenedDocument(
+            archived,
+            vaultName: "Analyses",
+            vaultRole: .sourceCorpus
+        )
+
+        let session = try #require(controller.retainedSession(for: .init(
+            vaultID: vaultID,
+            noteID: noteID
+        )))
+        #expect(controller.currentPresentationMode == .livePreview)
+        #expect(controller.chromeProjection.mode == .read)
+        #expect(session.presentationMode == .read)
+        #expect(session.pendingEditorMode == nil)
+    }
+
     @Test("External source replaces a clean managed buffer before editor readiness")
     func managedCreationConvergesBeforeEditorReadiness() throws {
         let vaultID = UUID()
@@ -190,7 +219,7 @@ struct DocumentControllerConvergenceTests {
         #expect(renamed.reference.relativePath == "Chapters/Renamed Draft.md")
         #expect(controller.session(for: renamed) === session)
         #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == nil)
+        #expect(session.pendingEditorMode == .livePreview)
     }
 
     @Test("Clean deleted documents close while dirty exact buffers remain recoverable")
@@ -360,7 +389,8 @@ struct DocumentControllerConvergenceTests {
         vaultID: UUID,
         noteID: UUID,
         path: String,
-        source: String
+        source: String,
+        lifecycle: WorkspaceDocumentLifecycle = .active
     ) -> WorkspaceNoteSnapshot {
         let document = NoteDocument(relativePath: path, rawContent: source)
         return WorkspaceNoteSnapshot(
@@ -372,7 +402,7 @@ struct DocumentControllerConvergenceTests {
                 creationDate: nil,
                 modificationDate: nil
             ),
-            lifecycle: .active,
+            lifecycle: lifecycle,
             graphCounts: WorkspaceGraphCounts(
                 incoming: 0,
                 outgoing: 0,

@@ -699,8 +699,8 @@ struct WindowControllerArchitectureTests {
         controller.installOpenedDocument(descriptor)
         let session = controller.session(for: descriptor)
         #expect(session.presentationMode == .read)
-        #expect(session.pendingEditorMode == nil)
-        #expect(controller.currentPresentationMode == .read)
+        #expect(session.pendingEditorMode == .livePreview)
+        #expect(controller.currentPresentationMode == .livePreview)
         #expect(session.scrollFraction == 0.64)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
@@ -733,7 +733,7 @@ struct WindowControllerArchitectureTests {
             ))
 
         controller.resetPresentationState()
-        #expect(controller.currentPresentationMode == .read)
+        #expect(controller.currentPresentationMode == .livePreview)
         #expect(session.presentationMode == .read)
         #expect(session.scrollFraction == 0)
         #expect(session.scrollAnchor == nil)
@@ -749,7 +749,7 @@ struct WindowControllerArchitectureTests {
 
         shell.selectWorkspace(.topicKnowledge)
         document.selectWorkspace(.topicKnowledge)
-        #expect(document.currentPresentationMode == .read)
+        #expect(document.currentPresentationMode == .livePreview)
         #expect(shell.inspector.mode == .overview)
 
         document.rememberPresentationMode(.source)

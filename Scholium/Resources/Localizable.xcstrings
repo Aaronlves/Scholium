@@ -31694,6 +31694,16 @@
         }
       }
     },
+    "The editor buffer could not be synchronized. Autosave will retry without discarding your text." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法同步编辑器缓冲区。自动保存会重试，不会丢弃你的文本。"
+          }
+        }
+      }
+    },
     "The encoded YAML did not preserve the requested Property value." : {
       "localizations" : {
         "zh-Hans" : {

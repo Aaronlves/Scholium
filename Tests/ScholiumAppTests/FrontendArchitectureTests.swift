@@ -1301,6 +1301,7 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("identifier: \"scholium.documentModeButton\""))
         #expect(toolbarSource.contains("systemImage: presentation.symbol"))
         #expect(toolbarSource.contains("toolTip: presentation.toolTip"))
+        #expect(toolbarSource.contains("mode: documentController.chromeProjection.mode"))
         #expect(toolbarSource.contains("appState.requestDocumentMode(presentation.destination)"))
         #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
         #expect(!toolbarSource.contains("scholium.documentModeToggle"))
@@ -1335,6 +1336,11 @@ struct FrontendArchitectureTests {
         #expect(
             commandObservation.contains(
                 "changes(documentController.$currentPresentationMode)"
+            )
+        )
+        #expect(
+            commandObservation.contains(
+                "changes(documentController.$chromeProjection)"
             )
         )
     }

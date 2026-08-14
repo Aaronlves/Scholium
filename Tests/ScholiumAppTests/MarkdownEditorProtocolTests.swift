@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import ScholiumContracts
 import Testing
+import WebKit
 @testable import ScholiumApp
 
 @Suite("Markdown editor protocol")
@@ -369,6 +370,40 @@ struct MarkdownEditorProtocolTests {
         #expect(session.context?.selections == initialRange)
         #expect(session.line == 1)
         #expect(session.column == 3)
+    }
+
+    @MainActor
+    @Test("One valid source-sized insertion is accepted by the native mirror")
+    func sourceSizedInsertionUsesTheSharedEightMegabyteBoundary() {
+        let session = MarkdownEditorSession()
+        session.loadDocument("", documentID: "large-insertion", mode: .livePreview)
+        let insertion = String(repeating: "a", count: 2_000_001)
+
+        #expect(session.acceptEditorChanges(
+            [EditorBridgeChange(from: 0, to: 0, insert: insertion)],
+            baseGeneration: 0,
+            resultingGeneration: 1
+        ))
+        #expect(session.generation == 1)
+        #expect(session.checkedSource.utf8.count == insertion.utf8.count)
+        #expect(session.isDirty)
+    }
+
+    @MainActor
+    @Test("Editor navigation allows only the main in-memory document")
+    func editorNavigationRemainsLocal() {
+        #expect(MarkdownEditorWebView.Coordinator.navigationPolicy(
+            url: URL(string: "about:blank"),
+            isMainFrame: true
+        ) == .allow)
+        #expect(MarkdownEditorWebView.Coordinator.navigationPolicy(
+            url: URL(string: "https://example.test/redirect"),
+            isMainFrame: true
+        ) == .cancel)
+        #expect(MarkdownEditorWebView.Coordinator.navigationPolicy(
+            url: URL(string: "about:blank"),
+            isMainFrame: false
+        ) == .cancel)
     }
 
     @MainActor

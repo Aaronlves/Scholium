@@ -61,6 +61,12 @@ same trailing boundary; one further backward move enters the now-visible exact
 syntax. Control-click and Command-click instead activate the target without
 moving the caret.
 
+Typing a valid ATX opening marker—one to six `#` characters followed by its
+required space or tab—immediately applies that heading level's Edit
+presentation even before title text exists. The active line keeps the exact
+marker reachable at the caret; inserting the first title character does not
+trigger a second style or geometry transition.
+
 Review and Edit use one stable marker track and nesting step for unordered,
 ordered, and task lists. Edit keeps the semantic marker projected while the
 caret edits list-item prose; it reveals the exact list prefix only when the

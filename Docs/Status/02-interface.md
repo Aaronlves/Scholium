@@ -12,7 +12,7 @@
   entry. Configured windows use one native Library–Document–Inspector split and
   one stable toolbar.
 - Each window retains its selected workspace, Library state, role-partitioned
-  Document tabs, Document mode, Inspector mode, Search, Attention, and Action
+  Document tabs, Edit-default live Document mode, Inspector mode, Search, Attention, and Action
   presentation. Research Records remains a separate Triptych-keyed window.
 - Native Sidebar and Inspector controls mirror actual split visibility.
   The platform owns window, toolbar, divider, collapse, resize, fullscreen, and focus
@@ -50,6 +50,9 @@
   source-preserving semantic projection, formatting, suggestions, and task
   interaction. Source exposes the complete exact text. Conflict comparison and
   recovery remain Document-owned.
+- Edit applies heading presentation as soon as a valid ATX marker and separator
+  exist, and preflights a caret-owned blank line at its eventual prose line box
+  so first input does not move the caret or surrounding source lines.
 - Document Find stays inside the Document rather than opening workspace Search.
   Edit and Source expose explicit Import Image and Index Image commands in the
   formatting, Format, and Insert routes; native selection and native image
@@ -71,6 +74,8 @@
   auto-presents the retained Document session's attached Review task once;
   closing suppresses that set without changing Review truth, and a later Agent
   activity presents again.
+- An already-visible Inspector with no selected Document presents a restrained
+  No Document Selected state instead of a blank plane or stale origin content.
 - Every current Analysis Overview exposes **Link Zotero Item…** or **Manage
   Zotero Link…**; a bound Analysis also exposes **Open in Zotero**. The central
   binding sheet searches local user and group libraries, keeps exact library
@@ -113,7 +118,9 @@
 - Attention is one transient anchored popover per workspace. It keeps current
   rows available during refresh or recoverable failure and preserves explicit
   Inspect, Resynthesize, Leave Unchanged, dismiss, and Retry routes.
-- Research Records opens to Records or Reading Leads with toolbar View,
+- The Workspace Records control opens This Note scope for a resolved selected
+  Note and remains available without a Document by opening Triptych scope.
+  Research Records opens to Records or Reading Leads with toolbar View,
   window-local Scope, search, filters, sorting, exact total, and incremental
   loading. View uses the same quiet-track, raised-selection segmented control
   as the Workspace surfaces and has no shared Liquid Glass background. Selecting a row

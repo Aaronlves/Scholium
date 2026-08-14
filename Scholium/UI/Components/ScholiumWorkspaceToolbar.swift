@@ -562,7 +562,6 @@ private struct ScholiumWorkspaceDocumentCommandsToolbarView: View {
 
             ScholiumWorkspaceResearchRecordsToolbarView(
                 appState: appState,
-                documentController: documentController,
                 researchController: researchController,
                 windowActions: windowActions
             )
@@ -580,7 +579,7 @@ private struct ScholiumWorkspaceDocumentModeToolbarView: View {
 
     var body: some View {
         let presentation = ScholiumDocumentModeToolbarButtonPresentation(
-            mode: appState.currentPresentationMode
+            mode: documentController.chromeProjection.mode
         )
         return ScholiumNativeToolbarButton(
             title: ScholiumL10n.dynamicString("Document Mode"),
@@ -630,33 +629,78 @@ private struct ScholiumWorkspaceSearchToolbarView: View {
 
 private struct ScholiumWorkspaceResearchRecordsToolbarView: View {
     @ObservedObject var appState: WindowModel
-    @ObservedObject var documentController: DocumentController
     @ObservedObject var researchController: ResearchController
     let windowActions: WorkspaceWindowActions
 
     var body: some View {
+        let presentation = ScholiumWorkspaceResearchRecordsToolbarState.resolve(
+            hasTriptych: appState.workspaceAssignment != nil,
+            hasCurrentNote: appState.currentNote != nil,
+            currentNoteIsAvailable: currentNoteIsAvailable
+        )
         ScholiumNativeToolbarButton(
-            title: ScholiumL10n.dynamicString("This Note Records"),
-            systemImage: hasCurrentNoteResearchRecords ? "tray.full" : "tray",
+            title: ScholiumL10n.dynamicString(presentation.title),
+            systemImage: hasRecords(in: presentation.scope) ? "tray.full" : "tray",
             identifier: "scholium.showResearchRecords",
-            isEnabled: isAvailable
+            isEnabled: presentation.isEnabled
         ) {
-            windowActions.showNoteResearchRecords()
+            switch presentation.scope {
+            case .note:
+                windowActions.showNoteResearchRecords()
+            case .triptych:
+                windowActions.showTriptychResearchRecords()
+            }
         }
     }
 
-    private var isAvailable: Bool {
+    private var currentNoteIsAvailable: Bool {
         guard let note = appState.currentNote else { return false }
-        return appState.documentController.editingDocumentPath == nil
-            && appState.currentDocumentIdentityByPath[note.relativePath] != nil
+        return appState.currentDocumentIdentityByPath[note.relativePath] != nil
     }
 
-    private var hasCurrentNoteResearchRecords: Bool {
-        guard let noteID = appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
-        else { return false }
-        return researchController.records?.finishedResearchRecords.contains { record in
-            record.participatingNotes.contains { $0.noteID == noteID }
-        } == true
+    private func hasRecords(
+        in scope: ScholiumWorkspaceResearchRecordsToolbarState.Scope
+    ) -> Bool {
+        switch scope {
+        case .note:
+            guard let noteID = appState.currentNote?.workspaceSnapshot?
+                .stableIdentity.resolvedID else { return false }
+            return researchController.records?.finishedResearchRecords.contains { record in
+                record.participatingNotes.contains { $0.noteID == noteID }
+            } == true
+        case .triptych:
+            return researchController.records?.finishedResearchRecords.isEmpty == false
+        }
+    }
+}
+
+struct ScholiumWorkspaceResearchRecordsToolbarState: Equatable {
+    enum Scope: Equatable {
+        case note
+        case triptych
+    }
+
+    let scope: Scope
+    let title: String
+    let isEnabled: Bool
+
+    static func resolve(
+        hasTriptych: Bool,
+        hasCurrentNote: Bool,
+        currentNoteIsAvailable: Bool
+    ) -> Self {
+        if !hasCurrentNote {
+            return Self(
+                scope: .triptych,
+                title: "Triptych Records",
+                isEnabled: hasTriptych
+            )
+        }
+        return Self(
+            scope: .note,
+            title: "This Note Records",
+            isEnabled: hasTriptych && currentNoteIsAvailable
+        )
     }
 }
 

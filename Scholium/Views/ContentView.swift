@@ -1127,8 +1127,12 @@ struct ContentView: View {
                     )
                     .accessibilityIdentifier("scholium.researchActions.recoveryOnly")
                 } else {
-                    Color.clear
-                        .accessibilityHidden(true)
+                    ScholiumContentStateView(
+                        "No Document Selected",
+                        indicator: .symbol("doc.text")
+                    )
+                    .accessibilityIdentifier("scholium.noDocumentInspectorState")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .scholiumSurface(.apparatus)

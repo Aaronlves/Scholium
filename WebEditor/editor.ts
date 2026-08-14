@@ -1522,6 +1522,7 @@ interface SemanticLinePresentation {
   readonly classes: readonly string[];
   readonly codeBlock: Readonly<SemanticCodeBlockRange> | null;
   readonly heading: SemanticBlockProjection | null;
+  readonly headingLevel: number | null;
   readonly headingMarkers: readonly {from: number; to: number}[];
   readonly paragraph: SemanticBlockProjection | null;
   readonly callout: SemanticBlockProjection | null;
@@ -1544,11 +1545,22 @@ function semanticLinePresentation(
   const active = liveSelection.selection(state).ranges.some((range) =>
     range.head >= line.from && range.head <= line.to
       || !range.empty && range.from < lineQueryTo && range.to >= line.from);
+  const ownsCollapsedCaret = liveSelection.selection(state).ranges.some((range) =>
+    range.empty && range.head >= line.from && range.head <= line.to);
   const blocks = rangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
   const codeBlock = rangesIntersecting(index.literals.codeBlocks, line.from, lineQueryTo)[0] ?? null;
   const codeBlockActive = codeBlock !== null && liveSelection.selection(state).ranges.some((range) =>
     selectionIntersectsProjection(range, codeBlock));
   const heading = blocks.find((block) => block.kind === "heading") ?? null;
+  const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
+  // Lezer deliberately leaves a content-free ATX prefix incomplete. For the
+  // active source line, the Markdown delimiter is nevertheless complete as
+  // soon as its required separator is typed, so publish the intended heading
+  // typography without waiting for a body character.
+  const pendingATXHeading = ownsCollapsedCaret && outsideFrontmatter && !codeBlock
+    ? /^ {0,3}(#{1,6})[ \t]+$/.exec(line.text)
+    : null;
+  const headingLevel = heading?.headingLevel ?? pendingATXHeading?.[1].length ?? null;
   const headingMarkers = heading?.markerRanges.filter((range) =>
     range.from < lineQueryTo && range.to > line.from) ?? [];
   const headingMarkerOnly = line.length > 0 && headingMarkers.some((range) =>
@@ -1595,10 +1607,10 @@ function semanticLinePresentation(
       && range.from <= line.to
       && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
   const classes = new Set<string>();
-  const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
   if (/^\s*$/.test(state.doc.sliceString(line.from, line.to))
       && outsideFrontmatter && !codeBlock) {
     classes.add("cm-live-blank-line");
+    if (ownsCollapsedCaret) classes.add("cm-live-blank-line-active");
   }
   if (calloutPresentation && calloutActive) {
     classes.add("cm-live-callout");
@@ -1652,16 +1664,16 @@ function semanticLinePresentation(
     if (line.from <= html.from) classes.add("cm-live-raw-html-start");
     if (line.to >= html.to) classes.add("cm-live-raw-html-end");
   } else {
-    if (heading && heading.headingLevel !== null) {
-      if (headingMarkerOnly) {
-        if (!active) classes.add("cm-live-heading-marker-line");
+    if (headingLevel !== null) {
+      if (headingMarkerOnly && !active) {
+        classes.add("cm-live-heading-marker-line");
       } else {
         classes.add("cm-live-heading");
-        classes.add(`cm-live-h${heading.headingLevel}`);
-        if (heading.headingLevel === 1) classes.add("cm-live-document-title");
+        classes.add(`cm-live-h${headingLevel}`);
+        if (headingLevel === 1) classes.add("cm-live-document-title");
       }
     }
-    if (paragraph && !callout && !heading) {
+    if (paragraph && !callout && headingLevel === null) {
       classes.add("cm-live-paragraph");
       if (line.from <= paragraph.from) classes.add("cm-live-paragraph-start");
       if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
@@ -1679,6 +1691,7 @@ function semanticLinePresentation(
     classes: [...classes],
     codeBlock,
     heading,
+    headingLevel,
     headingMarkers,
     paragraph,
     callout,
@@ -1712,7 +1725,7 @@ function semanticLineDecorationRanges(
     const presentation = semanticLinePresentation(state, line, index);
     const direction = presentation.codeBlock || presentation.html
       ? "ltr"
-      : presentation.heading
+      : presentation.headingLevel !== null
           || presentation.paragraph
           || presentation.calloutPresentation
           || presentation.quote

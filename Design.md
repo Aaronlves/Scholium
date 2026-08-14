@@ -140,7 +140,10 @@ because they repeat entries.
   Markdown paragraph-separator blank line as a
   real, keyboard-addressable exact source line. Its measured line box supplies
   the corresponding Review paragraph gap; Edit does not collapse it or add the
-  same gap again to the preceding paragraph. Consecutive authored blank lines
+  same gap again to the preceding paragraph. A separator line containing the
+  collapsed caret preflights the prose line box its first character will use,
+  so empty-to-nonempty input moves neither the caret baseline nor surrounding
+  source lines. Consecutive authored blank lines
   remain distinct source lines. When Edit exposes an active fenced code block,
   its block surface ends with the exact closing fence and adds no blank-looking
   inset below that delimiter; any following authored separator remains a
@@ -500,7 +503,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | --- | --- | --- | --- |
 | `Workspace Shell` | Move among three retained Triptych workspaces without losing their Library, tabs, Document, or Apparatus context. | One native window and fixed split geometry; only role-partitioned content changes inside the three planes. | §§3.2, 18.1–18.3 |
 | `New Note` | Start writing immediately while source bytes stay authoritative and derived work remains off the hot path. | Direct-to-Edit readiness, retained focus, and non-blocking derived refresh. | §5.3, §§18.3–18.4 |
-| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One live mode per retained Triptych workspace session; the toolbar prioritizes Review/Edit while Source remains menu-accessible, without a history keyed by Note or tab. | §5.1, §18.4 |
+| `Review / Edit / Source` | Read, edit, and inspect one source through reversible projections. | One Edit-default live mode per retained Triptych workspace session; the toolbar prioritizes Review/Edit while Source remains menu-accessible, without a history keyed by Note or tab. | §5.1, §18.4 |
 | `Document Find / Replace` | Locate literal text in the current unsaved buffer and replace it only in writable modes. | One inline Document bar; standard menu and keyboard routes; no Search provider, index, or persistent history. | §13, §18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §13, §18.3 |
 | `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §12, §18.5 |

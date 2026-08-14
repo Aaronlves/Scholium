@@ -187,6 +187,10 @@
   enlarged-text, and supported English, Simplified Chinese, and mixed-script
   presentations, About fields adapt as one complete grid and error/recovery
   text remains untruncated.
+- An already-visible Inspector without a selected Document exposes **No
+  Document Selected** as one read-only content state; it never becomes an empty
+  accessibility subtree, repeats origin-Note content, moves focus, or collapses
+  itself.
 - Connect exposes one named Link Direction control with Incoming and Outgoing
   values. Changing direction keeps focus on the control, returns the scroll
   owner to the beginning, and announces an empty destination. Undirected rows
@@ -210,6 +214,10 @@
 
 ### Research Records
 
+- The Workspace Records control remains keyboard and VoiceOver reachable with
+  no Document selected, names its Triptych scope, and opens the complete
+  Triptych collection. With a resolved current Note it names and opens This
+  Note scope instead.
 - Scope and View are separately named controls. Collections expose ordered
   headers, sort direction, exact filtered total, loading and Retry at the list
   boundary, and one complete destination per row. Loaded rows remain available

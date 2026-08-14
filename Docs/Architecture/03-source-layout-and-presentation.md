@@ -233,8 +233,9 @@ as Workspace switches. No global window search, notification, model registry,
 detached Attention Scene, NSWindow attachment, or toolbar compatibility state
 participates. Inspector alone consumes the document-adjacent apparatus surface;
 Library has no literature-recommendation row, footer, count, or reserved gap.
-The Document toolbar sends a Note-scoped Records request, while the Research
-menu sends a Triptych-scoped request. Both target the same UUID-keyed auxiliary
+The Document toolbar sends a Note-scoped Records request when a resolved Note
+is selected and a Triptych-scoped request when no Document is selected; the
+Research menu sends a Triptych-scoped request. All target the same UUID-keyed auxiliary
 window and neither changes Sidebar, Location, selection, filter, sort,
 disclosure, Attention, or Inspector state.
 
@@ -277,6 +278,10 @@ restores its value without reconstructing the native Inspector. Mode changes and
 note/tab changes never reconstruct the retained Document host. `ResearchOverviewPresentation`
 contains at most one typed user/group-library plus item-key binding for the current Analysis;
 the view neither derives nor displays protected machine data.
+When the split item remains visible without a selected Document, the composition
+root installs a read-only Apparatus content-state projection instead of an empty
+host or stale Inspector leaf; the split controller remains the sole visibility
+owner.
 
 `ConnectionsInspectorView` owns one nonpersistent `ConnectionDirection`,
 defaulting each new presentation to Outgoing. The shared segmented component

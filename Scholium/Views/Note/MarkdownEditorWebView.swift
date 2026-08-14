@@ -197,7 +197,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             context.coordinator.documentID = documentID
             context.coordinator.source = source
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
-            context.coordinator.lastDocumentVersion = 0
             session.loadDocument(source, documentID: documentID, mode: mode)
             session.setLinkPreviews(linkPreviews, in: source)
             session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
@@ -311,7 +310,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var linkPreviews: [DocumentLinkPreview] = []
         var awaitingEditorLoad = false
         var startingFingerprint = ""
-        var lastDocumentVersion = 0
         var initialScrollFraction: Double = 0
         var initialScrollAnchor: EditorScrollAnchor?
         private var hasSignaledReady = false
@@ -473,7 +471,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                       query.utf16.count <= 512 else { return }
                 let requestedDocumentID = documentID
                 let requestedFingerprint = startingFingerprint
-                let requestedVersion = lastDocumentVersion
+                let requestedVersion = session.generation
                 let taskID = UUID()
                 cancelLinkCompletionQuery()
                 linkCompletionQueryTaskID = taskID
@@ -489,7 +487,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     guard !Task.isCancelled,
                           requestedDocumentID == documentID,
                           requestedFingerprint == startingFingerprint,
-                          requestedVersion == lastDocumentVersion,
+                          requestedVersion == session.generation,
                           webView.navigationDelegate === self else { return }
                     let payload = candidates.prefix(100).map { candidate in
                         var value = [
@@ -644,21 +642,19 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
-            // Only Scholium can initiate this in-memory first navigation; the
-            // view has not exposed any interactive document yet.
-            if awaitingEditorLoad {
-                decisionHandler(.allow)
-                return
-            }
-            guard let url = navigationAction.request.url else {
-                decisionHandler(.cancel)
-                return
-            }
-            if url.absoluteString == "about:blank" {
-                decisionHandler(.allow)
-            } else {
-                decisionHandler(.cancel)
-            }
+            decisionHandler(Self.navigationPolicy(
+                url: navigationAction.request.url,
+                isMainFrame: navigationAction.targetFrame?.isMainFrame == true
+            ))
+        }
+
+        static func navigationPolicy(
+            url: URL?,
+            isMainFrame: Bool
+        ) -> WKNavigationActionPolicy {
+            guard isMainFrame,
+                  url?.absoluteString == "about:blank" else { return .cancel }
+            return .allow
         }
 
         private func signalReady() {
@@ -697,13 +693,21 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             guard let rawChanges = payload.changes,
                   let baseGeneration = payload.baseGeneration,
                   let resultingGeneration = payload.resultingGeneration,
-                  payload.documentVersion == resultingGeneration,
-                  session.acceptEditorChanges(
-                    rawChanges,
-                    baseGeneration: baseGeneration,
-                    resultingGeneration: resultingGeneration
-                  ) else { return }
-            lastDocumentVersion = resultingGeneration
+                  payload.documentVersion == resultingGeneration else { return }
+            guard session.acceptEditorChanges(
+                rawChanges,
+                baseGeneration: baseGeneration,
+                resultingGeneration: resultingGeneration
+            ) else {
+                if let webView,
+                   resultingGeneration > session.generation {
+                    session.reconcileAfterRejectedEditorChanges(
+                        resultingGeneration: resultingGeneration,
+                        in: webView
+                    )
+                }
+                return
+            }
             if rawChanges.contains(where: { $0.insert.contains("$") }),
                let webView {
                 requestMathRuntime(in: webView)
@@ -726,10 +730,22 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                   let documentVersion = integer(object["documentVersion"]),
                   let baseGeneration = integer(object["baseGeneration"]),
                   let resultingGeneration = integer(object["resultingGeneration"]),
-                  documentVersion == resultingGeneration,
-                  let rawChanges = object["changes"] as? [Any],
+                  documentVersion == resultingGeneration else { return }
+
+            let recoverRejectedChanges = {
+                guard let webView,
+                      resultingGeneration > self.session.generation else { return }
+                self.session.reconcileAfterRejectedEditorChanges(
+                    resultingGeneration: resultingGeneration,
+                    in: webView
+                )
+            }
+            guard let rawChanges = object["changes"] as? [Any],
                   !rawChanges.isEmpty,
-                  rawChanges.count <= 512 else { return }
+                  rawChanges.count <= 512 else {
+                recoverRejectedChanges()
+                return
+            }
 
             var insertedUTF8Bytes = 0
             var changes: [EditorBridgeChange] = []
@@ -740,9 +756,13 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                       let to = integer(change["to"]),
                       let insertion = change["insert"] as? String,
                       from >= 0,
-                      to >= from else { return }
+                      to >= from else {
+                    recoverRejectedChanges()
+                    return
+                }
                 insertedUTF8Bytes += insertion.utf8.count
                 guard insertedUTF8Bytes <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes else {
+                    recoverRejectedChanges()
                     return
                 }
                 changes.append(EditorBridgeChange(from: from, to: to, insert: insertion))
@@ -751,8 +771,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                 changes,
                 baseGeneration: baseGeneration,
                 resultingGeneration: resultingGeneration
-            ) else { return }
-            lastDocumentVersion = resultingGeneration
+            ) else {
+                recoverRejectedChanges()
+                return
+            }
             if changes.contains(where: { $0.insert.contains("$") }),
                let webView {
                 requestMathRuntime(in: webView)

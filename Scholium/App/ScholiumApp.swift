@@ -1416,7 +1416,7 @@ private struct ScholiumCommands: Commands {
                         && appState?.currentNote == nil)
             )
             Menu("Document Mode") {
-                if appState?.currentPresentationMode == .read {
+                if appState?.presentedDocumentMode == .read {
                     Button("Review") { appState?.requestDocumentMode(.read) }
                     Button("Edit") { appState?.requestDocumentMode(.livePreview) }
                         .keyboardShortcut("r", modifiers: [.command])
@@ -3802,6 +3802,15 @@ final class WindowModel: ObservableObject {
 
     var currentPresentationMode: NotePresentationMode {
         documentController.currentPresentationMode
+    }
+
+    /// The workspace retains its desired mode across Notes, while chrome must
+    /// report the mode the selected session is actually presenting. This keeps
+    /// read-only lifecycle and managed Critique documents truthfully in Review
+    /// without changing the workspace's retained Edit selection.
+    var presentedDocumentMode: NotePresentationMode {
+        guard currentNote != nil else { return currentPresentationMode }
+        return documentController.chromeProjection.mode
     }
 
     func rememberPresentationMode(_ mode: NotePresentationMode) {

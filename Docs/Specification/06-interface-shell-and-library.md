@@ -128,9 +128,14 @@ The Inspector toolbar control and View command send one explicit intent through
 the exact window coordinator to the native split.
 The Inspector routes share selected-document availability and preserve native
 transition and geometry. Inspector Show remains visible but disabled without a
-Target; a visible Inspector can always be hidden. Research Records remains a
-separate Triptych-bound auxiliary window; opening it from the document toolbar
-explicitly reapplies **This Note** Scope without changing Inspector state.
+Target; a visible Inspector can always be hidden. If a workspace transition
+leaves an already-visible Inspector without a selected Document, Apparatus
+retains its structure and presents one restrained **No Document Selected**
+content state rather than an empty plane, stale origin projection, or automatic
+collapse. Research Records remains a separate Triptych-bound auxiliary window;
+opening it from the document toolbar reapplies **This Note** Scope when a
+resolved Note is selected and **Triptych** Scope when no Document is selected,
+without changing Inspector state.
 
 With two or more documents in the selected workspace, a Document-owned strip
 appears only in the middle item. One window-local tab owner partitions tabs by

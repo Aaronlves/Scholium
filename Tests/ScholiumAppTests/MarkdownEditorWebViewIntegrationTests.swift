@@ -9,6 +9,30 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("A bare ATX marker and space immediately use heading presentation")
+    func bareATXMarkerImmediatelyUsesHeadingPresentation() async throws {
+        let source = ""
+        let harness = EditorHarness(
+            source: source,
+            initialSourceRange: 0..<0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.perform(.pastePlain, argument: "#")
+        try await harness.waitUntilSelection(head: 1, stage: "ATX marker")
+        #expect(try await harness.session.testingAccessibilitySnapshot().liveH1Count == 0)
+
+        try await harness.session.perform(.pastePlain, argument: " ")
+        try await harness.waitUntilSelection(head: 2, stage: "ATX marker separator")
+
+        let presentation = try await harness.session.testingAccessibilitySnapshot()
+        #expect(presentation.liveH1Count == 1)
+        #expect(!presentation.h1FontSize.isEmpty)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "# ")
+        await harness.closeAndDrain()
+    }
+
     @Test("Initial body selection is acknowledged before editor readiness")
     func initialBodySelectionGatesReadiness() async throws {
         let source = "---\r\ncustom: |+\r\n  before\r\n  ---\r\n  after\r\n---\r\nBody\r\n"
@@ -2335,8 +2359,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             .lowerBound.utf16Offset(in: source) + 1
         let secondFrom = try #require(source.range(of: "Second paragraph."))
             .lowerBound.utf16Offset(in: source)
-        let firstTo = try #require(source.range(of: "First paragraph."))
-            .upperBound.utf16Offset(in: source)
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -2354,14 +2376,74 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: secondFrom)
         try await harness.session.testingPressArrow("ArrowLeft")
         try await harness.waitUntilSelection(head: blankOffset)
-        try await harness.session.testingPressArrow("ArrowLeft")
-        try await harness.waitUntilSelection(head: firstTo)
+        let expectedActiveLineHeight = DocumentAppearanceSettings.defaultSettings
+            .body.lineHeight
+            * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
+            * (96 / 72)
+        let activeBlankGeometry = try #require(
+            try await harness.callPageJavaScript(
+                """
+                const line = document.querySelector('.cm-live-blank-line-active');
+                const style = line ? getComputedStyle(line) : null;
+                return {
+                  className: line?.className || '',
+                  height: line?.getBoundingClientRect().height || 0,
+                  blockSize: style?.blockSize || '',
+                  minBlockSize: style?.minBlockSize || '',
+                  lineHeight: style?.lineHeight || ''
+                };
+                """
+            ) as? [String: Any]
+        )
+        let activeBlankHeight = try #require(
+            activeBlankGeometry["height"] as? NSNumber
+        ).doubleValue
+        #expect(
+            (activeBlankGeometry["className"] as? String)?
+                .contains("cm-live-blank-line-active") == true
+        )
+        #expect(abs(activeBlankHeight - expectedActiveLineHeight) < 0.5)
+
+        func transitionGeometry(lineIndex: Int) async throws -> [String: Double] {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const lines = Array.from(document.querySelectorAll('.cm-line'));
+                const line = lines[lineIndex] || null;
+                const following = lines[lineIndex + 1] || null;
+                return line && following ? {
+                  lineTop: line.getBoundingClientRect().top,
+                  followingTop: following.getBoundingClientRect().top,
+                  lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight)
+                } : null;
+                """,
+                arguments: ["lineIndex": lineIndex]
+            ) as? [String: Any])
+            return [
+                "lineTop": try #require(value["lineTop"] as? NSNumber).doubleValue,
+                "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
+                "lineHeight": try #require(value["lineHeight"] as? NSNumber).doubleValue,
+            ]
+        }
+
+        let beforeInput = try await transitionGeometry(lineIndex: 1)
+        try await harness.session.perform(.pastePlain, argument: "a")
+        try await harness.waitUntilSelection(
+            head: blankOffset + 1,
+            stage: "first character on separator line"
+        )
+        let afterInput = try await transitionGeometry(lineIndex: 1)
+        for key in ["lineTop", "followingTop", "lineHeight"] {
+            let before = try #require(beforeInput[key])
+            let after = try #require(afterInput[key])
+            #expect(abs(before - after) < 0.5)
+        }
 
         try await harness.session.testingPressArrow("ArrowRight")
-        try await harness.waitUntilSelection(head: blankOffset)
-        try await harness.session.testingPressArrow("ArrowRight")
-        try await harness.waitUntilSelection(head: secondFrom)
-        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        try await harness.waitUntilSelection(head: secondFrom + 1)
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "First paragraph.\na\nSecond paragraph.\n"
+        )
         await harness.closeAndDrain()
     }
 

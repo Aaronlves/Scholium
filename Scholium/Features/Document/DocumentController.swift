@@ -134,7 +134,7 @@ final class DocumentController: ObservableObject {
 
     @Published private(set) var selectedDocument: WindowSelectedDocument?
     @Published private(set) var chromeProjection = DocumentChromeProjection.empty
-    @Published private(set) var currentPresentationMode: NotePresentationMode = .read
+    @Published private(set) var currentPresentationMode: NotePresentationMode = .livePreview
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
@@ -175,7 +175,7 @@ final class DocumentController: ObservableObject {
 
     init(intentHandler: @escaping IntentHandler = { _ in }) {
         presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .read) }
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .livePreview) }
         )
         self.intentHandler = intentHandler
     }
@@ -609,7 +609,9 @@ final class DocumentController: ObservableObject {
             )
         case .unavailable:
             let selectedSession = session(for: document.editingTarget)
-            applyCurrentPresentationMode(to: selectedSession, target: document.editingTarget)
+            // Identity-unavailable Notes remain readable but cannot inherit a
+            // writable Edit/Source intent until their stable identity resolves.
+            selectedSession.preparePresentationMode(.read)
         }
         refreshChromeProjection()
     }
@@ -765,9 +767,10 @@ final class DocumentController: ObservableObject {
             )
             installOpenedDocument(descriptor)
         } else {
-            installOpenedDocument(descriptor)
             snapshots[key] = snapshot
-            reconcile(session: session(for: key), with: snapshot)
+            let selectedSession = session(for: key)
+            reconcile(session: selectedSession, with: snapshot)
+            installOpenedDocument(descriptor)
         }
     }
 
@@ -858,7 +861,7 @@ final class DocumentController: ObservableObject {
     }
 
     func presentationMode(for workspace: WorkspaceVaultSlot) -> NotePresentationMode {
-        presentationModesByWorkspace[workspace] ?? .read
+        presentationModesByWorkspace[workspace] ?? .livePreview
     }
 
     func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
@@ -875,7 +878,7 @@ final class DocumentController: ObservableObject {
     ) {
         presentationModesByWorkspace = Dictionary(
             uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
-                (workspace, modesByWorkspace[workspace] ?? .read)
+                (workspace, modesByWorkspace[workspace] ?? .livePreview)
             }
         )
         currentPresentationMode = presentationMode(for: activeWorkspace)
@@ -993,9 +996,9 @@ final class DocumentController: ObservableObject {
         restoredUnqualifiedScrollPositions = [:]
         activeWorkspace = .paperAnalysis
         presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .read) }
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .livePreview) }
         )
-        currentPresentationMode = .read
+        currentPresentationMode = .livePreview
         for session in sessions.retainedSessions.values {
             session.resetPresentation()
             session.resetScrollPosition()
@@ -1023,9 +1026,9 @@ final class DocumentController: ObservableObject {
         }
         activeWorkspace = .paperAnalysis
         presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .read) }
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .livePreview) }
         )
-        currentPresentationMode = .read
+        currentPresentationMode = .livePreview
         selectedDocument = nil
         chromeProjection = .empty
         snapshots = [:]
@@ -1147,6 +1150,12 @@ final class DocumentController: ObservableObject {
                 session.preparePresentationMode(.read)
             }
         case .livePreview, .source:
+            if case .workspace(let key) = target,
+               let capabilities = snapshots[key]?.capabilities,
+               !capabilities.canEditSource {
+                session.preparePresentationMode(.read)
+                return
+            }
             guard let editorMode = currentPresentationMode.editorMode else { return }
             if session.isEditing {
                 session.switchEditorMode(to: editorMode)
