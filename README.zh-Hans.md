@@ -4,6 +4,10 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
+**当前公开 Beta：**[v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6) ·
+[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip) ·
+[下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)
+
 Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境。它的内容核心是
 一套由研究者治理、以文档为权威，并可由一位研究者与获得授权的外部 Agent 共同
 维护的学术研究知识库。研究文档——而不是仪表盘、任务板、Agent 对话或记忆存储
@@ -79,8 +83,8 @@ Record 查询，而不让索引取得研究内容权威。
 继续通过单独验证的证据通道交付；可选的第一方 Zotero MCP 传输继续可用。
 
 这些路径证明的是当前工程可达性，不表示长期 Agent 继承或哲学研究质量已经通过
-产品验收。持续真实研究、辅助技术审查、安装态 App／CLI 验证与方案比较仍是明确的
-证据门。
+产品验收。持续真实研究、辅助技术审查、干净账户 App／CLI 与外部 Agent 验收，
+以及方案比较仍是明确的证据门。
 
 研究文档、搁置与纸篓共享同一棵原生 AppKit 文件夹／笔记大纲及浏览逻辑。研究文档
 可以创建笔记和文件夹，并保留菜单、键盘、辅助功能与拖动等组织路径；搁置与纸篓内
@@ -100,7 +104,8 @@ Record 查询，而不让索引取得研究内容权威。
 
 ## 环境要求
 
-运行打包构建需要 macOS 26 或更高版本。测试者不需要 Xcode。
+运行打包构建需要 macOS 26 或更高版本。当前公开 Beta 仅提供 Apple 芯片
+（`arm64`）版本。测试者不需要 Xcode。
 
 构建 Scholium 需要完整 Xcode，以及 `Package.swift` 要求的编译器与 SDK。仓库
 解析器会采用明确且有效的 `DEVELOPER_DIR`、完整的 `xcode-select` 选择，或常规
@@ -175,9 +180,31 @@ Documents、CloudStorage 和其他 File Provider 管理路径之外。
 
 ## 源码优先的 Beta 分发
 
-计划中的首个外部版本是 `v0.1.0-beta.1`：在同一 GitHub release 页面发布采用
-`GPL-3.0-or-later` 的准确标签源码、可选的注明架构的 ad-hoc 签名应用 ZIP 和
-SHA-256 校验值。应用包含版本匹配的 CLI helper，不单独发布 CLI 资产。
+源码优先的 Beta 在同一个 GitHub release 页面发布采用 `GPL-3.0-or-later` 的
+准确标签源码、注明架构的应用 ZIP、独立的 `Scholium-CLI-macos.zip` 以及两者的
+SHA-256 校验值。两个产物都采用 ad-hoc 签名，tag、版本和 package provenance
+必须一致。应用启用 Sandbox，不包含也不安装 CLI。
+
+当前版本是
+[v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6)：
+
+- [macOS arm64 版 Scholium 应用](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip)
+  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256)）；
+- [独立 Scholium CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)
+  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip.sha256)）；
+- [准确标签源码](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.6)。
+
+把 ZIP 与对应 checksum 文件下载到同一文件夹后，先运行：
+
+```bash
+shasum -a 256 -c Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256
+shasum -a 256 -c Scholium-CLI-macos.zip.sha256
+```
+
+准确 tag 已通过完整仓库门禁、优化 Release 构建、隔离 CLI 安装与 PATH 启动、
+package checksum，以及进入 Bootstrap 且不改动生产机器状态的打包首次启动测试。
+发布后又从稳定的 `latest/download` URL 下载 CLI 并核对了 release checksum。
+准确测试数量与尚未完成的验收边界见[验证证据](Docs/Status/04-verification.md)。
 
 便利版应用没有 Developer ID 签名，也未经过公证。从可信的项目 release 下载并
 核对校验值后：
@@ -203,9 +230,12 @@ SHA-256 校验值。应用包含版本匹配的 CLI helper，不单独发布 CLI
 
 ## Scholium CLI
 
-在打包应用中，打开**设置 → 研究指导 → 来源与集成 → Scholium CLI**并选择
-**安装**。Scholium 会把版本匹配的 helper 安装到 `~/.local/bin/scholium`，
-验证安装，并提供 PATH 指引而不编辑 shell profile。
+首次启动准备 Agent 时，或之后打开**设置 → 研究指导 → 来源与集成 → Scholium
+CLI**，选择**复制 CLI 安装说明**并交给外部 Agent。该说明只授权下载
+[官方独立 CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)，
+并且只允许在 `~/.local/bin` 下安装可执行文件与相邻资源 bundle；它禁止 `sudo`、
+PATH／profile 编辑、替代下载来源和 quarantine 修改。应用不会检查、执行、安装、
+更新、移除 CLI，也不会报告 CLI 状态。
 
 源码 checkout 的安装与检查方式：
 
@@ -221,7 +251,10 @@ CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关�
 回复、可恢复 Actions、推荐文献和带修订检查的笔记操作。修改已有笔记时必须提供
 `scholium read --format json` 返回的当前 SHA-256。
 
-安装后的 `scholium agent` 命令让外部 Agent 通过私有同用户应用桥，与一个由研究者
+`Tools/Scripts/package-app.sh` 会生成独立的 `Scholium-CLI-macos.zip`；其中的
+`install.sh` 执行与 Agent 说明一致的用户级安装，不修改 shell 或 macOS 安全配置。
+
+安装后的 `scholium agent` 命令让外部 Agent 通过仅限回环地址的本机桥，与一个由研究者
 创建的 Run 配对、获取结构化上下文、申请有界写入、提交一个结果、继续研究并结束
 Run。配对码只通过标准输入读取；Scholium 不会启动或监管 Agent。Agent Run 流程由
 认证后返回的 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)

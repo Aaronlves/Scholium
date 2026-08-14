@@ -5,6 +5,10 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
+**Current public Beta:** [v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6) ·
+[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip) ·
+[Download the independent CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)
+
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,
 document-authoritative scholarly knowledge base that one researcher and
@@ -104,8 +108,9 @@ the optional first-party Zotero MCP transport remains available.
 
 These paths establish current engineering reachability, not that long-term
 Agent inheritance or philosophical research quality has already been accepted.
-Sustained research use, assistive-technology review, installed App/CLI
-verification, and comparative evaluation remain explicit evidence gates.
+Sustained research use, assistive-technology review, clean-account App/CLI and
+external-Agent acceptance, and comparative evaluation remain explicit evidence
+gates.
 
 Library, Set Aside, and Trash share one native AppKit folder-and-note outline
 and the same browsing grammar. Library creates notes and folders and retains
@@ -131,7 +136,8 @@ and unresolved human, accessibility, performance, packaging, and release work.
 
 ## Requirements
 
-Running a packaged build requires macOS 26 or later. Testers do not need Xcode.
+Running a packaged build requires macOS 26 or later. The current public Beta is
+for Apple silicon (`arm64`). Testers do not need Xcode.
 
 Building Scholium requires a complete Xcode installation with the compiler and
 SDK required by `Package.swift`. The repository resolver honors an explicit
@@ -221,6 +227,30 @@ GitHub release page. The tag and
 both artifacts' package provenance and versions must agree. The App is
 sandboxed and does not contain or install the CLI.
 
+The current release is
+[v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6):
+
+- [Scholium App for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip)
+  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256));
+- [independent Scholium CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)
+  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip.sha256)); and
+- [exact tagged source](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.6).
+
+After downloading a ZIP and its adjacent checksum file into the same folder,
+verify it before opening or installing:
+
+```bash
+shasum -a 256 -c Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256
+shasum -a 256 -c Scholium-CLI-macos.zip.sha256
+```
+
+On the exact tagged commit, the complete repository gate, optimized Release
+build, isolated CLI installation and PATH launch, package checksums, and a
+packaged first launch into Bootstrap passed. The published CLI was then
+downloaded again through the stable `latest/download` URL and matched the
+release checksum. See [Verification Evidence](Docs/Status/04-verification.md)
+for the exact test counts and remaining acceptance boundaries.
+
 The convenience app is not Developer ID signed or notarized. After downloading
 from the trusted project release and verifying the checksum:
 
@@ -256,6 +286,8 @@ prompt authorizes only the official CLI release archive and only the executable
 and adjacent resource bundle under `~/.local/bin`; it forbids `sudo`, PATH or
 profile edits, alternative downloads, and quarantine mutation. The App does
 not inspect, execute, install, update, remove, or report status for the CLI.
+The copied instruction downloads only the
+[official independent CLI archive](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip).
 
 For a source checkout:
 
