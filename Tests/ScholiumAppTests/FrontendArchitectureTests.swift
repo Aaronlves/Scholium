@@ -2803,7 +2803,8 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("\"scholium.documentSearch\""))
         #expect(toolbar.contains("\"scholium.showResearchRecords\""))
         #expect(toolbar.contains("windowActions.showNoteResearchRecords()"))
-        #expect(toolbar.contains("hasCurrentNoteResearchRecords ? \"tray.full\" : \"tray\""))
+        #expect(toolbar.contains("windowActions.showTriptychResearchRecords()"))
+        #expect(toolbar.contains("hasRecords(in: presentation.scope) ? \"tray.full\" : \"tray\""))
         #expect(toolbar.contains("record.participatingNotes.contains { $0.noteID == noteID }"))
         #expect(!toolbar.contains("clock.arrow.circlepath"))
         #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
@@ -2813,7 +2814,7 @@ struct FrontendArchitectureTests {
         #expect(toolbar.contains("systemImage: \"arrow.left\""))
         #expect(toolbar.contains("systemImage: \"arrow.right\""))
         #expect(toolbar.contains("documentController.selectedDocument != nil"))
-        #expect(toolbar.contains("isEnabled: isAvailable"))
+        #expect(toolbar.contains("isEnabled: presentation.isEnabled"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
         #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
@@ -5677,7 +5678,7 @@ struct FrontendArchitectureTests {
 
         #expect(
             editorSource.contains(
-                #"if (heading.headingLevel === 1) classes.add("cm-live-document-title");"#
+                #"if (headingLevel === 1) classes.add("cm-live-document-title");"#
             ))
         #expect(
             !editorSource.contains(

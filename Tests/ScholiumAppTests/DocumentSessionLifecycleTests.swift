@@ -346,7 +346,7 @@ struct DocumentSessionLifecycleTests {
         #expect(controller.closedPresentationCount == 0)
     }
 
-    @Test("A renamed stable document restores only its lightweight presentation")
+    @Test("A renamed stable document restores scroll and reapplies the Workspace mode")
     func renamePresentationRestore() {
         let controller = DocumentController()
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())
@@ -384,7 +384,7 @@ struct DocumentSessionLifecycleTests {
 
         #expect(reopened !== first)
         #expect(reopened.presentationMode == .read)
-        #expect(reopened.pendingEditorMode == nil)
+        #expect(reopened.pendingEditorMode == .livePreview)
         #expect(reopened.scrollFraction == 0.6)
         #expect(reopened.editingSource.isEmpty)
     }
