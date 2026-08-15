@@ -221,14 +221,18 @@ current results and gaps are in Implementation Status.
 ## Source-first Beta distribution
 
 Source-first Beta releases publish exact tagged source under
-`GPL-3.0-or-later` plus an architecture-labelled App ZIP and independent
-`Scholium-CLI-macos.zip`, both ad-hoc signed with SHA-256 checksums on the same
-GitHub release page. The tag and
-both artifacts' package provenance and versions must agree. The App is
-sandboxed and does not contain or install the CLI.
+`GPL-3.0-or-later` plus an architecture-labelled App DMG and independent
+`Scholium-CLI-macos.zip`, with SHA-256 checksums on the same GitHub release
+page. The tag and both artifacts' package provenance and versions must agree.
+The App is sandboxed and does not contain or install the CLI. Opening the DMG
+presents Scholium beside an Applications alias so installation is one ordinary
+Finder drag.
 
 The current release is
 [v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6):
+
+This release predates the DMG cutover and retains its already verified App ZIP;
+future releases do not produce an App ZIP.
 
 - [Scholium App for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip)
   ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256));
@@ -251,13 +255,18 @@ downloaded again through the stable `latest/download` URL and matched the
 release checksum. See [Verification Evidence](Docs/Status/04-verification.md)
 for the exact test counts and remaining acceptance boundaries.
 
-The convenience app is not Developer ID signed or notarized. After downloading
-from the trusted project release and verifying the checksum:
+The convenience app is not Developer ID signed or notarized. For a DMG release,
+after downloading it from the trusted project release and verifying the
+checksum:
 
-1. expand the ZIP and move **Scholium** to Applications;
-2. try to open it once;
-3. open **System Settings → Privacy & Security** and choose **Open Anyway**;
-4. authenticate and confirm **Open**.
+1. open the DMG;
+2. drag **Scholium** onto the **Applications** alias and eject the DMG;
+3. try to open Scholium from Applications once;
+4. open **System Settings → Privacy & Security** and choose **Open Anyway**;
+5. authenticate and confirm **Open**.
+
+For the historical `v0.1.0-beta.6` App ZIP, expand it and move **Scholium** to
+Applications before following steps 3–5.
 
 Never disable Gatekeeper or recursively remove quarantine. Exact release gates,
 artifact contents, clean-account verification, and future signed-channel rules

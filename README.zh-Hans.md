@@ -181,12 +181,16 @@ Documents、CloudStorage 和其他 File Provider 管理路径之外。
 ## 源码优先的 Beta 分发
 
 源码优先的 Beta 在同一个 GitHub release 页面发布采用 `GPL-3.0-or-later` 的
-准确标签源码、注明架构的应用 ZIP、独立的 `Scholium-CLI-macos.zip` 以及两者的
-SHA-256 校验值。两个产物都采用 ad-hoc 签名，tag、版本和 package provenance
-必须一致。应用启用 Sandbox，不包含也不安装 CLI。
+准确标签源码、注明架构的应用 DMG、独立的 `Scholium-CLI-macos.zip` 以及两者的
+SHA-256 校验值。tag、版本和 package provenance 必须一致。应用启用 Sandbox，
+不包含也不安装 CLI。打开 DMG 时，Finder 会并列显示 Scholium 与“应用程序”别名，
+安装只需执行一次普通拖拽。
 
 当前版本是
 [v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6)：
+
+该版本发布于 DMG 切换之前，因此保留已经验证过的应用 ZIP；之后的版本不再生成
+应用 ZIP。
 
 - [macOS arm64 版 Scholium 应用](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip)
   （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256)）；
@@ -206,13 +210,17 @@ package checksum，以及进入 Bootstrap 且不改动生产机器状态的打�
 发布后又从稳定的 `latest/download` URL 下载 CLI 并核对了 release checksum。
 准确测试数量与尚未完成的验收边界见[验证证据](Docs/Status/04-verification.md)。
 
-便利版应用没有 Developer ID 签名，也未经过公证。从可信的项目 release 下载并
-核对校验值后：
+便利版应用没有 Developer ID 签名，也未经过公证。DMG 版本从可信的项目 release
+下载并核对校验值后：
 
-1. 解压 ZIP，并把 **Scholium** 移到“应用程序”；
-2. 尝试启动一次；
-3. 打开**系统设置 → 隐私与安全性**，选择**仍要打开**；
-4. 完成认证并确认**打开**。
+1. 打开 DMG；
+2. 把 **Scholium** 拖到**应用程序**别名上，然后推出 DMG；
+3. 从“应用程序”尝试启动 Scholium 一次；
+4. 打开**系统设置 → 隐私与安全性**，选择**仍要打开**；
+5. 完成认证并确认**打开**。
+
+对于历史版本 `v0.1.0-beta.6` 的应用 ZIP，请先解压并把 **Scholium** 移到
+“应用程序”，再执行第 3–5 步。
 
 不要关闭 Gatekeeper，也不要递归移除 quarantine。准确发布门禁、产物内容、干净
 账户验证与未来签名渠道规则维护在

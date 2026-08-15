@@ -275,20 +275,73 @@ if [[ "${ARCHITECTURES}" == "arm64 x86_64" || "${ARCHITECTURES}" == "x86_64 arm6
 else
   ARCHITECTURE_LABEL="${ARCHITECTURES// /-}"
 fi
-ZIP_NAME="Scholium-${RELEASE_LABEL}-macos-${ARCHITECTURE_LABEL}.zip"
-ZIP_PATH="${OUTPUT}/${ZIP_NAME}"
-CHECKSUM_PATH="${ZIP_PATH}.sha256"
+DMG_NAME="Scholium-${RELEASE_LABEL}-macos-${ARCHITECTURE_LABEL}.dmg"
+DMG_PATH="${OUTPUT}/${DMG_NAME}"
+DMG_CHECKSUM_PATH="${DMG_PATH}.sha256"
 CLI_ZIP_NAME="Scholium-CLI-macos.zip"
 CLI_ZIP_PATH="${OUTPUT}/${CLI_ZIP_NAME}"
 CLI_CHECKSUM_PATH="${CLI_ZIP_PATH}.sha256"
-rm -f "${ZIP_PATH}" "${CHECKSUM_PATH}" "${CLI_ZIP_PATH}" "${CLI_CHECKSUM_PATH}"
-ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent \
-  "${APP}" "${ZIP_PATH}"
+DMG_ROOT="${SCRATCH}/dmg-root"
+DMG_MOUNT="${SCRATCH}/dmg-mount"
+DMG_COPY_ROOT="${SCRATCH}/dmg-copy"
+rm -f "${DMG_PATH}" "${DMG_CHECKSUM_PATH}" \
+  "${CLI_ZIP_PATH}" "${CLI_CHECKSUM_PATH}"
+rm -rf "${DMG_ROOT}" "${DMG_MOUNT}" "${DMG_COPY_ROOT}"
+mkdir -p "${DMG_ROOT}" "${DMG_MOUNT}" "${DMG_COPY_ROOT}"
+ditto --norsrc --noextattr --noqtn --noacl \
+  "${APP}" "${DMG_ROOT}/Scholium.app"
+ln -s /Applications "${DMG_ROOT}/Applications"
+hdiutil create \
+  -quiet \
+  -ov \
+  -fs HFS+ \
+  -format UDZO \
+  -imagekey zlib-level=9 \
+  -volname "Scholium ${RELEASE_LABEL}" \
+  -srcfolder "${DMG_ROOT}" \
+  "${DMG_PATH}"
+hdiutil verify "${DMG_PATH}" >/dev/null
+
+DMG_ATTACHED=false
+detach_dmg() {
+  if [[ "${DMG_ATTACHED}" == true ]]; then
+    diskutil eject "${DMG_MOUNT}" >/dev/null 2>&1 || true
+  fi
+}
+trap detach_dmg EXIT INT TERM
+diskutil image attach \
+  --readOnly \
+  --nobrowse \
+  --mountPoint "${DMG_MOUNT}" \
+  "${DMG_PATH}" >/dev/null
+DMG_ATTACHED=true
+
+DMG_VISIBLE_ROOT_ITEMS=("${DMG_MOUNT}"/*(N))
+if [[ "${#DMG_VISIBLE_ROOT_ITEMS[@]}" -ne 2 \
+  || ! -d "${DMG_MOUNT}/Scholium.app" \
+  || ! -L "${DMG_MOUNT}/Applications" \
+  || "$(readlink "${DMG_MOUNT}/Applications")" != "/Applications" ]]; then
+  print -u2 "The DMG must expose only Scholium.app and an Applications alias."
+  exit 65
+fi
+ditto --norsrc --noextattr --noqtn --noacl \
+  "${DMG_MOUNT}/Scholium.app" "${DMG_COPY_ROOT}/Scholium.app"
+codesign --verify --deep --strict --verbose=2 "${DMG_COPY_ROOT}/Scholium.app"
+if ! cmp -s \
+  "${APP}/Contents/Resources/ScholiumBuildProvenance.plist" \
+  "${DMG_COPY_ROOT}/Scholium.app/Contents/Resources/ScholiumBuildProvenance.plist"; then
+  print -u2 "The App copied from the DMG does not retain exact package provenance."
+  exit 65
+fi
+diskutil eject "${DMG_MOUNT}" >/dev/null
+DMG_ATTACHED=false
+trap - EXIT INT TERM
+
 ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent \
   "${CLI_STAGE}" "${CLI_ZIP_PATH}"
 (
   cd "${OUTPUT}"
-  shasum -a 256 "${ZIP_NAME}" > "${ZIP_NAME}.sha256"
+  shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256"
   shasum -a 256 "${CLI_ZIP_NAME}" > "${CLI_ZIP_NAME}.sha256"
 )
 
@@ -319,8 +372,8 @@ jq -e \
   "${PACKAGED_CLI_PATH_SMOKE}" >/dev/null
 
 echo "Packaged: ${APP}"
-echo "Package ZIP: ${ZIP_PATH}"
-echo "Checksum: ${CHECKSUM_PATH}"
+echo "Package DMG: ${DMG_PATH}"
+echo "DMG checksum: ${DMG_CHECKSUM_PATH}"
 echo "CLI package: ${CLI_ZIP_PATH}"
 echo "CLI checksum: ${CLI_CHECKSUM_PATH}"
 if [[ "${IDENTITY}" == "-" ]]; then

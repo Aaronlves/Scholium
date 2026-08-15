@@ -338,10 +338,21 @@ GitHub published the four release assets, and the canonical `latest/download`
 CLI URL returned the same checksum when downloaded independently. Developer ID,
 notarization, and a clean external account remain acceptance gaps.
 
+On 2026-08-15, the replacement DMG packager completed a dirty diagnostic
+Release build with disposable state. It created the architecture-labelled
+compressed image and independent CLI ZIP, verified the image with `hdiutil`,
+mounted it read-only, found only Scholium and the Applications alias at the
+visible root, copied the App out, and strictly verified its signature and exact
+provenance. The CLI archive again installed under an isolated prefix and ran by
+basename from an unrelated directory. This closes the App-ZIP production
+cutover, not exact-tag release acceptance. The packaged first-launch UI driver
+then timed out while enabling macOS automation before Scholium launched, so it
+provides no new Bootstrap evidence.
+
 Distinct-build upgrade fixtures preserve exact vault bytes and reject unsupported
 newer schemas without authorizing a compatibility path. Local source-first
 assembly has passed metadata, license, resource, path-disclosure, signature-
-structure, version-matched CLI, ZIP, checksum, and optimized Release-build
-checks with disposable inputs. The tested bundle was ad hoc signed; clean-account
-artifact smoke testing, packaged performance, notarization if adopted, and
-release acceptance remain open.
+structure, version-matched CLI, DMG, CLI ZIP, checksum, and optimized
+Release-build checks with disposable inputs. The tested bundle was ad hoc
+signed; clean-account artifact smoke testing, packaged performance,
+notarization if adopted, and release acceptance remain open.

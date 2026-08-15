@@ -187,11 +187,17 @@ Each source-first Beta release requires:
 - app marketing version `0.1.0`, its recorded build number, and minimum macOS
   26;
 - the corresponding exact tagged source under `GPL-3.0-or-later`; and
-- an architecture-labelled, ad-hoc-signed Scholium App ZIP and an independent
+- an architecture-labelled `Scholium-<release>-macos-<architecture>.dmg`
+  containing the ad-hoc-signed App, plus an independent
   `Scholium-CLI-macos.zip`, each with a SHA-256 checksum on the same release
   page and exact architecture recorded in provenance.
 
-The App bundle contains no CLI executable and has no CLI installation access.
+Opening the DMG presents one ordinary Finder window containing **Scholium** and
+an **Applications** alias, arranged so dragging the App to Applications is the
+clear primary action. A background or arrow may reinforce that action but must
+not be its only explanation. The DMG contains no installer package, executable
+installation script, CLI, research content, or generated writable state. The
+App bundle contains no CLI executable and has no CLI installation access.
 The CLI ZIP contains the version-matched `scholium` executable, its adjacent
 release resource bundle, and one user-local installer. Both artifacts include
 applicable license texts and notices, identify verified architectures without
@@ -209,16 +215,21 @@ Before tagging or upload, freeze a reviewed clean commit; audit the tree and
 history for private material; run complete repository verification with
 disposable fixtures; package with the clean-source requirement; inspect App and
 standalone CLI metadata, resources, entitlements, architecture, signatures,
-icon, ZIPs, checksums, and licenses; pass G7; and exercise both exact expanded
-ZIPs in a clean macOS account through first launch, Triptych setup, independent
-CLI installation, read/edit/save, Search, conflict/recovery, Inspector/Action,
-restoration, and unavailable integrations.
+icon, DMG, CLI ZIP, checksums, and licenses; pass G7; verify the DMG with
+`hdiutil`, mount it read-only, confirm the App and Applications alias are its
+only researcher-visible root items, copy the App through that alias, and
+exercise the copied App plus the exact expanded CLI ZIP in a clean macOS
+account through first launch, Triptych setup, independent CLI installation,
+read/edit/save, Search, conflict/recovery, Inspector/Action, restoration, and
+unavailable integrations.
 No real research vault may be opened during release verification.
 
 Developer ID signing, notarization, and stapling are optional future channel
-improvements. If adopted, rebuild from the exact release commit and repeat the
-complete external smoke test; never re-sign an already tested artifact or
-share a certificate private key outside its responsible organization.
+improvements. If adopted, sign the App and DMG, notarize and staple the DMG as
+the distributed outer container, rebuild from the exact release commit, and
+repeat the complete external smoke test; never re-sign an already tested
+artifact or share a certificate private key outside its responsible
+organization.
 
 ### 21.6 Change control
 

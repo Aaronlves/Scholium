@@ -99,10 +99,10 @@
 
 - Freeze a reviewed exact tag and clean commit; audit source/history for private
   material; run the repository and release gates from that checkout.
-- Exercise the exact expanded artifact in a clean external account through
-  setup, read/edit/autosave/restart, Search, conflict/recovery, Inspector,
-  Agent Action, independent CLI download/install, unavailable integrations,
-  and restoration.
+- Exercise the exact mounted DMG, copied App, and expanded CLI archive in a
+  clean external account through setup, read/edit/autosave/restart, Search,
+  conflict/recovery, Inspector, Agent Action, independent CLI download/install,
+  unavailable integrations, and restoration.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Publish source, artifact, checksum, license, architecture, and signing
