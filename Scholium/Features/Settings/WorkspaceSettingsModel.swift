@@ -166,9 +166,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
         String,
         DocumentFingerprint
     ) async throws -> ResearchMethodSnapshot
-    let restorePreviousResearchMethod: (
-        UUID, ResearchSkillRegistrationKey, DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
     let restoreDefaultResearchMethod: (
         UUID, ResearchActionID, DocumentFingerprint
     ) async throws -> ResearchMethodSnapshot
@@ -181,9 +178,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     ) async throws -> ResearchPracticeSnapshot
     let savePhilosophicalPractice: (
         UUID, String, String, DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot
-    let restorePreviousPhilosophicalPractice: (
-        UUID, String, DocumentFingerprint
     ) async throws -> ResearchPracticeSnapshot
     let citationMethodStatus: (UUID) async throws -> ResearchCitationMethodStatus
     let activateCitationMethod: (
@@ -648,20 +642,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         )
     }
 
-    func restorePreviousResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.restorePreviousResearchMethod(
-            id,
-            registrationKey,
-            expectedRevision
-        )
-    }
-
     func restoreDefaultResearchMethod(
         actionID: ResearchActionID,
         expectedRevision: DocumentFingerprint
@@ -711,17 +691,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             source,
             expectedRevision
         )
-    }
-
-    func restorePreviousPhilosophicalPractice(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance
-            .restorePreviousPhilosophicalPractice(id, relativePath, expectedRevision)
     }
 
     func citationMethodStatus() async throws -> ResearchCitationMethodStatus {

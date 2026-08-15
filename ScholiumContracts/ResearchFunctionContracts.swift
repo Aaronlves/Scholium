@@ -813,7 +813,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let actionSnapshot: ResearchActionSnapshot?
     public let recordKind: ResearchFunctionRecordKind
     public let recordID: UUID?
-    public let changeEvidenceID: UUID?
     /// Functions coordinated through independent child runs. Manuscript uses
     /// this for its selected phases; write-capable functions use it for their
     /// final-fingerprint Fidelity handoff. Each child retains its own
@@ -851,7 +850,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         actionSnapshot: ResearchActionSnapshot? = nil,
         recordKind: ResearchFunctionRecordKind,
         recordID: UUID? = nil,
-        changeEvidenceID: UUID? = nil,
         requiredChildFunctions: [ResearchFunctionID] = [],
         evidenceRevisions: [DocumentFingerprint] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
@@ -870,7 +868,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.actionSnapshot = actionSnapshot
         self.recordKind = recordKind
         self.recordID = recordID
-        self.changeEvidenceID = changeEvidenceID
         self.requiredChildFunctions = Array(Set(requiredChildFunctions)).sorted {
             $0.rawValue < $1.rawValue
         }

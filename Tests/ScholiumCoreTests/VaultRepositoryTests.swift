@@ -136,32 +136,6 @@ struct VaultRepositoryTests {
         return descriptor
     }
 
-    @Test("Save records immutable prewrite recovery without exposing delivery restore")
-    func saveRecordsPrewriteRecovery() async throws {
-        let f = try fixture()
-        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
-        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
-        let repository = try VaultRepository(vaultURL: f.root, identity: identity, applicationSupportURL: f.support)
-        let original = try await repository.load(relativePath: "topics/note.md")
-        let saved = try await repository.save(
-            relativePath: "topics/note.md",
-            changeSet: .body("Changed\n"),
-            expectedRevision: original.fingerprint
-        )
-        let savedContent = try String(contentsOf: f.note, encoding: .utf8)
-        #expect(savedContent.contains("Changed"))
-        let firstRecovery = await repository.recoveryEntries(relativePath: "topics/note.md")
-        #expect(firstRecovery.count == 1)
-        #expect(try await repository.recoveryContent(entryID: firstRecovery[0].id) == original.rawContent)
-
-        _ = try await repository.save(
-            relativePath: "topics/note.md",
-            changeSet: .body("Changed again\n"),
-            expectedRevision: saved.document.fingerprint
-        )
-        #expect((await repository.recoveryEntries(relativePath: "topics/note.md")).count == 2)
-    }
-
     @Test("External changes cause a conflict")
     func conflict() async throws {
         let f = try fixture()
@@ -306,29 +280,6 @@ struct VaultRepositoryTests {
         await #expect(throws: VaultRepositoryError.self) { try await repository.load(relativePath: "topics/link.md") }
     }
 
-    @Test("History is isolated per vault and capped at ten")
-    func isolationAndRetention() async throws {
-        let f = try fixture()
-        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
-        let firstID = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
-        let first = try VaultRepository(vaultURL: f.root, identity: firstID, applicationSupportURL: f.support)
-
-        var document = try await first.load(relativePath: "topics/note.md")
-        for index in 0..<12 {
-            let result = try await first.save(
-                relativePath: "topics/note.md",
-                changeSet: .body("Change \(index)\n"),
-                expectedRevision: document.fingerprint
-            )
-            document = result.document
-        }
-        #expect((await first.recoveryEntries(relativePath: "topics/note.md")).count == 10)
-
-        let secondID = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
-        let second = try VaultRepository(vaultURL: f.root, identity: secondID, applicationSupportURL: f.support)
-        #expect((await second.recoveryEntries(relativePath: "topics/note.md")).isEmpty)
-    }
-
     @Test("Unsupported pre-use recovery data is ignored without mutation")
     func unsupportedRecoveryDataIsIgnored() async throws {
         let f = try fixture()
@@ -357,39 +308,6 @@ struct VaultRepositoryTests {
         )
 
         #expect(try Data(contentsOf: index) == corrupt)
-        #expect(try await repository.load(relativePath: original.relativePath).rawContent == saved.document.rawContent)
-    }
-
-    @Test("A tampered recovery blob is rejected before use")
-    func tamperedRecoveryBlobIsRejected() async throws {
-        let f = try fixture()
-        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
-        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
-        let repository = try VaultRepository(
-            vaultURL: f.root,
-            identity: identity,
-            applicationSupportURL: f.support
-        )
-        let original = try await repository.load(relativePath: "topics/note.md")
-        let saved = try await repository.save(
-            relativePath: original.relativePath,
-            changeSet: .body("Changed\n"),
-            expectedRevision: original.fingerprint
-        )
-        let recovery = try #require(await repository.recoveryEntries(relativePath: original.relativePath).first)
-        let versionsRoot = f.support
-            .appendingPathComponent("Vaults", isDirectory: true)
-            .appendingPathComponent(identity.id.uuidString, isDirectory: true)
-            .appendingPathComponent("recovery-v2", isDirectory: true)
-            .appendingPathComponent("objects", isDirectory: true)
-            .appendingPathComponent(recovery.id.uuidString.lowercased(), isDirectory: true)
-        let blob = versionsRoot.appendingPathComponent("source.md")
-        #expect(FileManager.default.fileExists(atPath: blob.path))
-        try Data("tampered".utf8).write(to: blob, options: .atomic)
-
-        await #expect(throws: VaultRepositoryError.self) {
-            _ = try await repository.recoveryContent(entryID: recovery.id)
-        }
         #expect(try await repository.load(relativePath: original.relativePath).rawContent == saved.document.rawContent)
     }
 
@@ -557,7 +475,6 @@ struct VaultRepositoryTests {
         )
 
         #expect(!FileManager.default.fileExists(atPath: f.root.appendingPathComponent(relativePath).path))
-        #expect((await repository.recoveryEntries(relativePath: relativePath)).isEmpty)
     }
 
     @Test("Creation rollback preserves a concurrently changed file")
@@ -615,51 +532,7 @@ struct VaultRepositoryTests {
         #expect(try await repository.load(relativePath: trashed.relativePath).rawContent == original.rawContent)
     }
 
-    @Test("Confirmed moves preserve prewrite recovery at the destination path")
-    func movedRecoveryLedger() async throws {
-        let f = try fixture()
-        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
-        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
-        let repository = try VaultRepository(
-            vaultURL: f.root,
-            identity: identity,
-            applicationSupportURL: f.support
-        )
-        let original = try await repository.load(relativePath: "topics/note.md")
-        let saved = try await repository.save(
-            relativePath: original.relativePath,
-            changeSet: .body("Changed\n"),
-            expectedRevision: original.fingerprint
-        )
-        let savedRecovery = try #require(
-            await repository.recoveryEntries(relativePath: original.relativePath).first
-        )
-        let moved = try await repository.move(
-            relativePath: saved.document.relativePath,
-            to: "Knowledge/Renamed.md",
-            expectedRevision: saved.document.fingerprint
-        )
-
-        try await repository.migrateRecoveryLedger(
-            from: "topics/note.md",
-            to: "Knowledge/Renamed.md"
-        )
-
-        #expect((await repository.recoveryEntries(relativePath: "topics/note.md")).isEmpty)
-        let recoveryEntries = await repository.recoveryEntries(relativePath: "Knowledge/Renamed.md")
-        #expect(recoveryEntries.count == 2)
-        #expect(try await repository.recoveryContent(entryID: savedRecovery.id) == original.rawContent)
-        #expect(try await repository.load(relativePath: "Knowledge/Renamed.md").rawContent == moved.document.rawContent)
-
-        // Retrying after an interrupted caller is idempotent.
-        try await repository.migrateRecoveryLedger(
-            from: "topics/note.md",
-            to: "Knowledge/Renamed.md"
-        )
-        #expect((await repository.recoveryEntries(relativePath: "Knowledge/Renamed.md")).count == 2)
-    }
-
-    @Test("Permanent deletion is revision checked and purges repository recovery bytes")
+    @Test("Permanent deletion is revision checked")
     func permanentDeletion() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
@@ -673,40 +546,6 @@ struct VaultRepositoryTests {
         )
         #expect(!FileManager.default.fileExists(atPath: f.note.path))
         #expect(deletion.fingerprint == original.fingerprint)
-        #expect(await repository.recoveryEntries(relativePath: "topics/note.md").isEmpty)
-    }
-
-    @Test("Prepared deletion never replaces a concurrently recreated path and retains recovery bytes")
-    func preparedDeletionConflictRetainsRecovery() async throws {
-        let f = try fixture()
-        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
-        let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
-        let repository = try VaultRepository(vaultURL: f.root, identity: identity, applicationSupportURL: f.support)
-        let original = try await repository.load(relativePath: "topics/note.md")
-        let prepared = try await repository.preparePermanentDeletion(
-            relativePath: original.relativePath,
-            expectedRevision: original.fingerprint
-        )
-
-        try await repository.applyPreparedPermanentDeletion(prepared)
-        try FileManager.default.createDirectory(
-            at: f.note.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try "Concurrent replacement\n".write(to: f.note, atomically: true, encoding: .utf8)
-        await #expect(throws: VaultRepositoryError.self) {
-            try await repository.rollbackPreparedPermanentDeletion(prepared)
-        }
-
-        #expect(try String(contentsOf: f.note, encoding: .utf8) == "Concurrent replacement\n")
-        #expect(await repository.recoveryEntries(relativePath: original.relativePath).contains {
-            $0.id == prepared.recoveryReference.id && $0.fingerprint == original.fingerprint
-        })
-
-        try FileManager.default.removeItem(at: f.note)
-        try await repository.rollbackPreparedPermanentDeletion(prepared)
-        #expect(try String(contentsOf: f.note, encoding: .utf8) == original.rawContent)
-        #expect(await repository.recoveryEntries(relativePath: original.relativePath).isEmpty)
     }
 
     @Test("Lifecycle paths reject traversal, non-Markdown targets, and symlink parents")
@@ -733,7 +572,7 @@ struct VaultRepositoryTests {
         #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("escape.md").path))
     }
 
-    @Test("Paper profile saves keep time in app history instead of injecting YAML")
+    @Test("Paper profile saves preserve authored time instead of injecting YAML")
     func paperTimestampIsAppOwned() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }

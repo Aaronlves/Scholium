@@ -304,7 +304,6 @@ struct ActionCLIExecutableLifecycleTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            changeEvidenceID: UUID(),
             authorizationBasis: .initialAction,
             expiresAt: Date().addingTimeInterval(600)
         )
@@ -322,7 +321,6 @@ struct ActionCLIExecutableLifecycleTests {
             title: "Analysis",
             allowedOperations: [.setZoteroBinding, .clearZoteroBinding],
             expectedRevision: DocumentFingerprint(content: "analysis"),
-            changeEvidenceID: UUID(),
             zoteroBindingsRevision: DocumentFingerprint(content: "[]"),
             authorizationBasis: .collaborationPolicy,
             authorizationPolicy: .fullAccess,

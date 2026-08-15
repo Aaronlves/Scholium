@@ -8,10 +8,10 @@
   and Works vaults. Each window belongs to one Triptych; portable control state
   stays in `.scholium`, while machine-local and derived state stays in
   Application Support.
-- Production validates Application Support plus the workspace, vault-identity,
-  and portable-access registries before constructing a runtime. Damaged owned
-  registry data can be independently preserved and relinked; valid sibling
-  registries remain unchanged, while unsupported schema, unsafe type, and I/O
+- Production validates Application Support plus one workspace registration
+  before constructing a runtime. That owner contains Triptych membership,
+  vault paths/bookmarks, and portable-container access. Damaged current data can
+  be preserved and relinked, while unsupported schema, unsafe type, and I/O
   failures remain nonauthorizing. No temporary workspace fallback is reachable.
 - An unavailable Triptych can remove only its machine-local registration
   without opening missing vaults or decoding an incompatible portable schema.
@@ -161,12 +161,16 @@
 - Workspace research snapshots derive Waiting, Running, and Needs Attention
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
-  projecting credentials, change-evidence IDs, source bytes, or tool traces.
+  projecting credentials, source bytes, or tool traces.
+- Once a portable Record exists, schema-14 Local Execution compacts to a
+  terminal receipt and deletes its prepared instructions, Bounded Write Set,
+  extensions, write ledgers, and conflict rows. Diff and direct Undo use the
+  portable Record plus `(Run ID, Note ID)` Agent evidence instead.
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
-- Research Guidance supports Method and Practice registration and exact editing,
-  one recovery point per edited file, explicit default restoration, academic
+- Research Guidance supports Method and Practice registration and exact
+  expected-revision editing, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external
   locators, and installed CLI controls.
 - Invalid machine-local Method locators expose an exact archive-and-reset

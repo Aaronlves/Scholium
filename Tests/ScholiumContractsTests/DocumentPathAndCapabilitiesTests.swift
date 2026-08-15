@@ -138,31 +138,6 @@ struct DocumentPathAndCapabilitiesTests {
         #expect(!trash.canComment)
     }
 
-    @Test("Prepared deletion decodes the legacy recoveryVersion key")
-    func preparedDeletionLegacyDecoding() throws {
-        let fingerprint = DocumentFingerprint(data: Data("before".utf8))
-        let reference = PrewriteRecoveryReference(
-            id: UUID(),
-            relativePath: "Trash/Note.md",
-            sequence: 1,
-            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
-            fingerprint: fingerprint
-        )
-        let prepared = PreparedPermanentDeletion(
-            relativePath: "Trash/Note.md",
-            fingerprint: fingerprint,
-            recoveryReference: reference
-        )
-        let encoded = try JSONEncoder().encode(prepared)
-        let legacyJSON = try #require(String(data: encoded, encoding: .utf8))
-            .replacingOccurrences(of: "recoveryReference", with: "recoveryVersion")
-        let decoded = try JSONDecoder().decode(
-            PreparedPermanentDeletion.self,
-            from: Data(legacyJSON.utf8)
-        )
-        #expect(decoded == prepared)
-    }
-
     @Test("Workspace snapshots publish the Application capability projection")
     func workspaceSnapshotCapabilities() {
         let vaultID = UUID()

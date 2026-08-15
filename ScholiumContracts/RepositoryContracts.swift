@@ -29,13 +29,13 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         case .markdownRequired(let path): return "Scholium note operations require a Markdown file: \(path)"
         case .conflict: return "This note changed on disk after editing began. Compare changes or reload before saving."
         case .readbackMismatch:
-            return "Scholium could not verify the saved bytes. The previous version remains available for recovery."
+            return "Scholium could not verify the saved bytes. The editor buffer and any unresolved save transaction remain available for recovery."
         case .invalidFrontmatter(let message): return "Invalid YAML frontmatter: \(message)"
         case .recoveryEntryNotFound(let id): return "Recovery entry not found: \(id.uuidString)"
         case .recoveryPathConflict(let path):
-            return "Prewrite recovery already belongs to another note at: \(path)"
+            return "An interrupted-save transaction already belongs to another note at: \(path)"
         case .recoveryLedgerUnavailable(let reason):
-            return "Prewrite recovery is unavailable, so Scholium did not modify the note. Existing recovery evidence remains unchanged. \(reason)"
+            return "Interrupted-save recovery is unavailable, so Scholium did not modify the note. Existing transaction evidence remains unchanged. \(reason)"
         case .pathCollision(let existing, let requested):
             return "The requested note path collides with an existing path on this volume: \(requested) (existing: \(existing))"
         case .writeFailed(let reason):
@@ -47,28 +47,6 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         case .atomicCommitUnsupported(let reason):
             return "This volume cannot provide the coordinated atomic commit required for this operation. The note remains open and unchanged. \(reason)"
         }
-    }
-}
-
-public struct PrewriteRecoveryReference: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let relativePath: String
-    public let sequence: Int
-    public let createdAt: Date
-    public let fingerprint: DocumentFingerprint
-
-    public init(
-        id: UUID,
-        relativePath: String,
-        sequence: Int,
-        createdAt: Date,
-        fingerprint: DocumentFingerprint
-    ) {
-        self.id = id
-        self.relativePath = relativePath
-        self.sequence = sequence
-        self.createdAt = createdAt
-        self.fingerprint = fingerprint
     }
 }
 

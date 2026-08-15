@@ -105,17 +105,6 @@ extension ResearchOperations {
         )
     }
 
-    public func restorePreviousResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.restorePreviousResearchMethod(
-            registrationKey: registrationKey,
-            expectedRevision: expectedRevision
-        )
-    }
-
     public func restoreDefaultResearchMethod(
         actionID: ResearchActionID,
         expectedRevision: DocumentFingerprint
@@ -159,16 +148,6 @@ extension ResearchOperations {
         )
     }
 
-    public func restorePreviousPhilosophicalPractice(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.restorePreviousPhilosophicalPractice(
-            relativePath: relativePath,
-            expectedRevision: expectedRevision
-        )
-    }
 }
 
 extension WorkspaceHandle {
@@ -300,19 +279,6 @@ extension WorkspaceHandle {
         )
     }
 
-    func restorePreviousResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.restorePrimaryMethod(
-            registrationKey: registrationKey,
-            expectedRevision: expectedRevision
-        )
-    }
-
     func restoreDefaultResearchMethod(
         actionID: ResearchActionID,
         expectedRevision: DocumentFingerprint
@@ -368,16 +334,4 @@ extension WorkspaceHandle {
         )
     }
 
-    func restorePreviousPhilosophicalPractice(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.restorePreviousPractice(
-            relativePath: relativePath,
-            expectedRevision: expectedRevision
-        )
-    }
 }

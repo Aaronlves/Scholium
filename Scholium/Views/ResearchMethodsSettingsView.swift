@@ -153,7 +153,7 @@ struct ResearchMethodsSettingsView: View {
             Button("Restore Default", role: .destructive) { restoreDefault() }
             Button("Cancel", role: .cancel) { pendingDefaultRestore = nil }
         } message: {
-            Text("This replaces the current primary Markdown with the default shipped by this Scholium build. The current bytes remain available as the one previous-edit recovery point; no version history is created.")
+            Text("This replaces the current primary Markdown with the default shipped by this Scholium build.")
         }
         .confirmationDialog(
             "Archive and Reset Method Access?",
@@ -229,10 +229,6 @@ struct ResearchMethodsSettingsView: View {
                     Button("Edit Primary Markdown") {
                         editor = ResearchMethodEditorContext(method: method)
                     }
-                    Button("Restore Previous Edit") {
-                        restorePrevious(method)
-                    }
-                    Divider()
                     Button("Restore Scholium Default…") {
                         pendingDefaultRestore = method
                     }
@@ -363,22 +359,6 @@ struct ResearchMethodsSettingsView: View {
                         "Previous Method access was preserved at \(preserved.path)."
                     )
                 }
-                await reload()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func restorePrevious(_ method: ResearchMethodSnapshot) {
-        isWorking = true
-        Task { @MainActor in
-            defer { isWorking = false }
-            do {
-                _ = try await settingsModel.restorePreviousResearchMethod(
-                    registrationKey: method.registration.key,
-                    expectedRevision: method.primaryMarkdownRevision
-                )
                 await reload()
             } catch {
                 errorMessage = error.localizedDescription

@@ -164,7 +164,6 @@ final class ResearchFunctionCoordinator: Sendable {
     }
 
     func captureAgentChangeStartingRevision(
-        id: UUID = UUID(),
         runID: UUID,
         target: ResearchFunctionTarget
     ) async throws -> AgentChangeEvidence {
@@ -182,7 +181,6 @@ final class ResearchFunctionCoordinator: Sendable {
         }
         return try await dependencies.agentChangeEvidenceStore
             .captureStartingRevision(
-                id: id,
                 runID: runID,
                 noteID: target.noteID,
                 data: document.sourceBytes,

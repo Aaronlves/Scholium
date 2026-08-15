@@ -79,8 +79,6 @@ struct NoteIdentityRecoveryTests {
             session.workspaceSession(for: .output)?.selectedDocument?.relativePath
                 == "Folder/New.md"
         )
-        #expect((await repository.recoveryEntries(relativePath: "Old.md")).isEmpty)
-        #expect((await repository.recoveryEntries(relativePath: "Folder/New.md")).count == 1)
     }
 
     @Test("Same names and bytes in two vaults migrate only the confirmed vault")
@@ -126,8 +124,8 @@ struct NoteIdentityRecoveryTests {
         )?.id == topicIdentity.id)
     }
 
-    @Test("A failed app-state migration remains persisted and blocks identity")
-    func incompleteMigrationStaysBlocked() async throws {
+    @Test("Completed saves do not leave history that blocks an external move")
+    func completedSavesDoNotBlockExternalMove() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let stores = try await fixture.makeStores()
@@ -149,9 +147,9 @@ struct NoteIdentityRecoveryTests {
             changeSet: .body("destination history"),
             expectedRevision: destination.fingerprint
         )
-        // Simulate an external deletion. Repository permanent deletion now
-        // intentionally purges repository history, while this fixture needs the
-        // destination's unrelated history to remain and block path migration.
+        // Simulate an external replacement at a path that previously completed
+        // an unrelated save. Completed transactions leave no recovery history,
+        // so identity migration has no stale per-path owner to reconcile.
         try FileManager.default.removeItem(
             at: fixture.works.appendingPathComponent("New.md")
         )
@@ -173,10 +171,11 @@ struct NoteIdentityRecoveryTests {
             migrateCritiquePaths: true
         )
 
-        #expect(state.identities["New.md"] == nil)
-        #expect(state.pendingRebindings.first?.noteID == identity.id)
-        #expect(state.failures.count == 1)
-        #expect(try await stores.control.pendingIdentityRebindings(vaultID: fixture.worksID).count == 1)
+        #expect(state.identities["New.md"]?.id == identity.id)
+        #expect(state.pendingRebindings.isEmpty)
+        #expect(state.failures.isEmpty)
+        #expect(try await stores.control.pendingIdentityRebindings(vaultID: fixture.worksID).isEmpty)
+        #expect(try await repository.interruptedSaveRecoveries().isEmpty)
     }
 
     private struct Stores {

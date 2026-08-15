@@ -82,7 +82,7 @@ struct WorkspaceRuntimeMembershipTests {
         #expect(try #require(available.first).vaultIDs == repaired.vaultIDs)
 
         let registryURL = fixture.registryStorageURL.appendingPathComponent(
-            "workspace-registry-v2.json"
+            "workspace-registration-v3.json"
         )
         let bytesBeforeRepeatedReconciliation = try Data(contentsOf: registryURL)
         let repeated = try await runtime.reconcileWorkspaceIdentity(id: fixture.assignment.id)
@@ -181,7 +181,7 @@ struct WorkspaceRuntimeMembershipTests {
         let oldSettings = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
         try oldSettings.write(to: settingsURL)
         let registryURL = fixture.registryStorageURL.appendingPathComponent(
-            "workspace-registry-v2.json"
+            "workspace-registration-v3.json"
         )
         let registryBeforeFailure = try Data(contentsOf: registryURL)
         let runtime = fixture.liveRuntime()

@@ -7,9 +7,9 @@
 - Starting, Registry Recovery, Ready, and Storage Unavailable are distinct app
   roots. Failure states retain Details, Retry, and the applicable recovery or
   Quit route while workspace commands remain disabled.
-- Registry Recovery identifies whether the Triptych registry or one local
-  access registry owns the failure, preserves only that damaged owner, and
-  retains Retry-only behavior for unsafe or unreadable state.
+- Registry Recovery identifies the single workspace-registration owner,
+  preserves that damaged file, and retains Retry-only behavior for unsafe or
+  unreadable state.
 - Bootstrap is a separate narrow window for creating or connecting one
   Triptych, optional first-launch Agent preparation, and explicit workspace
   entry. Configured windows use one native Library–Document–Inspector split and

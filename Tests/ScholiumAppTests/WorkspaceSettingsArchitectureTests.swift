@@ -897,7 +897,7 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
         #expect(source.contains("Edit Primary Markdown"))
-        #expect(source.contains("Restore Previous Edit"))
+        #expect(!source.contains("Restore Previous Edit"))
         #expect(source.contains("Restore Scholium Default"))
         #expect(source.contains("Profiles & Practices"))
         #expect(source.contains("New Practice…"))

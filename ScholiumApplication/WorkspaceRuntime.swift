@@ -19,23 +19,6 @@ public enum WorkspaceRegistryRecoveryOperations {
         )
     }
 
-    public static func machineLocalHealth(
-        applicationSupportURL: URL
-    ) -> MachineLocalRegistryHealth {
-        MachineLocalAccessRegistryRecovery.health(
-            applicationSupportURL: applicationSupportURL
-        )
-    }
-
-    @discardableResult
-    public static func preserveDamagedMachineLocalRegistriesForRelinking(
-        applicationSupportURL: URL
-    ) throws -> [URL] {
-        try MachineLocalAccessRegistryRecovery
-            .preserveDamagedRegistriesForRelinking(
-                applicationSupportURL: applicationSupportURL
-            )
-    }
 }
 
 /// Process-level composition root for headless Scholium workspaces.
@@ -89,8 +72,6 @@ public actor WorkspaceRuntime {
     private enum Membership: Sendable {
         case live(
             registry: WorkspaceRegistry,
-            identityRegistry: VaultIdentityRegistry,
-            portableControlAccessRegistry: PortableControlAccessRegistry,
             applicationSupportURL: URL
         )
         case snapshot(
@@ -133,12 +114,6 @@ public actor WorkspaceRuntime {
         researchAgentSessions = try? ResearchAgentSessionAuthority()
         switch configuration {
         case .live(let configuration):
-            let identityRegistry = VaultIdentityRegistry(
-                applicationSupportURL: configuration.applicationSupportURL
-            )
-            let portableRegistry = PortableControlAccessRegistry(
-                applicationSupportURL: configuration.applicationSupportURL
-            )
             let registry = WorkspaceRegistry(
                 storageURL: configuration.workspaceRegistryStorageURL
             )
@@ -150,14 +125,12 @@ public actor WorkspaceRuntime {
             )
             vaultPool = WorkspaceVaultPool(
                 applicationSupportURL: configuration.applicationSupportURL,
-                mode: .live(identityRegistry: identityRegistry)
+                mode: .live
             )
             zotero = injectedZotero ?? ZoteroOperations()
             styles = StyleOperations(applicationSupportURL: configuration.applicationSupportURL)
             membership = .live(
                 registry: registry,
-                identityRegistry: identityRegistry,
-                portableControlAccessRegistry: portableRegistry,
                 applicationSupportURL: configuration.applicationSupportURL
             )
         case .snapshot(let configuration):
@@ -206,7 +179,7 @@ public actor WorkspaceRuntime {
         try requireActive()
         let assignments: [TriptychAssignment]
         switch membership {
-        case .live(let registry, _, _, _):
+        case .live(let registry, _):
             assignments = try await registry.allTriptychs()
         case .snapshot(let fixed, _, _):
             assignments = Array(fixed.values)
@@ -223,7 +196,7 @@ public actor WorkspaceRuntime {
     /// registered source cannot disappear beneath an owned document session.
     public func removeLocalTriptychRegistration(id: UUID) async throws {
         try requireActive()
-        guard case .live(let registry, _, _, _) = membership else {
+        guard case .live(let registry, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         guard handles[id] == nil,
@@ -256,7 +229,7 @@ public actor WorkspaceRuntime {
         let expected = worksURL.standardizedFileURL.deletingLastPathComponent()
             .resolvingSymlinksInPath().standardizedFileURL
         guard container.path == expected.path else {
-            throw PortableControlAccessRegistryError.invalidContainer(
+            throw PortableControlAccessError.invalidContainer(
                 expected: expected.path,
                 selected: container.path
             )
@@ -279,7 +252,7 @@ public actor WorkspaceRuntime {
     public func registeredVaults() async throws -> [RegisteredVault] {
         try requireActive()
         switch membership {
-        case .live(let registry, _, _, _):
+        case .live(let registry, _):
             return try await registry.allVaults()
         case .snapshot(let assignments, _, _):
             return Array(
@@ -302,7 +275,7 @@ public actor WorkspaceRuntime {
     public func resolveVault(_ selector: String) async throws -> RegisteredVault {
         try requireActive()
         switch membership {
-        case .live(let registry, _, _, _):
+        case .live(let registry, _):
             return try await registry.resolve(selector)
         case .snapshot:
             let vaults = try await registeredVaults()
@@ -331,57 +304,13 @@ public actor WorkspaceRuntime {
     /// at its registered canonical roots. Source files are not modified.
     public func reconcileWorkspaceIdentity(id: UUID) async throws -> TriptychAssignment {
         try requireActive()
-        guard case .live(let registry, let identities, _, _) = membership else {
+        guard case .live(let registry, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         guard let assignment = try await registry.triptych(id: id) else {
             throw ScholiumApplicationError.workspaceNotFound(id)
         }
-        var resolved: [WorkspaceVaultSlot: VaultIdentity] = [:]
-        for slot in WorkspaceVaultSlot.allCases {
-            guard let vault = assignment.vault(for: slot),
-                  let identity = await identities.identity(
-                    forCanonicalPath: vault.canonicalPath
-                  ) else {
-                return assignment
-            }
-            resolved[slot] = identity
-        }
-        let needsRepair = WorkspaceVaultSlot.allCases.contains { slot in
-            assignment.vault(for: slot)?.id != resolved[slot]?.id
-        }
-        guard needsRepair,
-              let analyses = assignment.vault(for: .paperAnalysis),
-              let topics = assignment.vault(for: .topicKnowledge),
-              let works = assignment.vault(for: .output),
-              let analysesIdentity = resolved[.paperAnalysis],
-              let topicsIdentity = resolved[.topicKnowledge],
-              let worksIdentity = resolved[.output] else {
-            return assignment
-        }
-        let repaired = try await registry.configureTriptych(
-            id: assignment.id,
-            name: assignment.triptych.name,
-            paperAnalysis: (
-                URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true),
-                analysesIdentity.id
-            ),
-            topicKnowledge: (
-                URL(fileURLWithPath: topics.canonicalPath, isDirectory: true),
-                topicsIdentity.id
-            ),
-            output: (
-                URL(fileURLWithPath: works.canonicalPath, isDirectory: true),
-                worksIdentity.id
-            )
-        )
-        let prepared = await prepareChangedReplacements(registry: registry)
-        let detachedVaults = await detachVaultAuthorities(prepared.invalidatedVaultIDs)
-        _ = try await completeReplacements(
-            prepared.replacements,
-            detachedVaults: detachedVaults
-        )
-        return repaired
+        return assignment
     }
 
     public func reidentifyWorkspace(
@@ -389,7 +318,7 @@ public actor WorkspaceRuntime {
         as stableID: UUID
     ) async throws -> TriptychAssignment {
         try requireActive()
-        guard case .live(let registry, _, _, _) = membership else {
+        guard case .live(let registry, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         guard let current = handles[currentID] else {
@@ -414,7 +343,7 @@ public actor WorkspaceRuntime {
         stableID: UUID? = nil
     ) async throws -> RegisteredVault {
         try requireActive()
-        guard case .live(let registry, _, _, _) = membership else {
+        guard case .live(let registry, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
         let updated = try await registry.register(
@@ -501,12 +430,7 @@ public actor WorkspaceRuntime {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try requireActive()
-        guard case .live(
-            let registry,
-            let identityRegistry,
-            let portableRegistry,
-            _
-        ) = membership else {
+        guard case .live(let registry, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
 
@@ -527,10 +451,16 @@ public actor WorkspaceRuntime {
         } else {
             try preflightPortableControlWithoutManifest(worksURL: outputURL)
         }
-        try await portableRegistry.preflightRegistration(
-            containerURL: portableContainerURL,
-            forWorksURL: outputURL
-        )
+        let canonicalContainer = portableContainerURL.resolvingSymlinksInPath()
+            .standardizedFileURL
+        let expectedContainer = outputURL.resolvingSymlinksInPath()
+            .standardizedFileURL.deletingLastPathComponent()
+        guard canonicalContainer.path == expectedContainer.path else {
+            throw PortableControlAccessError.invalidContainer(
+                expected: expectedContainer.path,
+                selected: canonicalContainer.path
+            )
+        }
         try await registry.preflightIndependentVaultRoots(
             paperAnalysisURL: paperAnalysisURL,
             topicKnowledgeURL: topicKnowledgeURL,
@@ -543,7 +473,7 @@ public actor WorkspaceRuntime {
         ]
         var plannedIdentityIDs: [WorkspaceVaultSlot: UUID] = [:]
         for (slot, url) in selections {
-            plannedIdentityIDs[slot] = try await identityRegistry.plannedIdentityID(
+            plannedIdentityIDs[slot] = try await registry.plannedIdentityID(
                 for: url,
                 preferredID: portableManifest?.vaultIDs[slot]
             )
@@ -560,27 +490,27 @@ public actor WorkspaceRuntime {
             topicKnowledge: (topicKnowledgeURL, topicsID),
             output: (outputURL, worksID)
         )
-        _ = try await portableRegistry.register(
-            containerURL: portableContainerURL,
-            forWorksURL: outputURL
+        let portableAccess = PortableControlAccess(
+            canonicalContainerPath: canonicalContainer.path,
+            bookmarkData: try canonicalContainer.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
         )
         let portableReady = clock.now
 
-        var identities: [WorkspaceVaultSlot: VaultIdentity] = [:]
+        var vaultBookmarks: [WorkspaceVaultSlot: Data] = [:]
         for (slot, url) in selections {
             let scopeStarted = url.startAccessingSecurityScopedResource()
             defer { if scopeStarted { url.stopAccessingSecurityScopedResource() } }
-            identities[slot] = try await identityRegistry.identity(
-                for: url,
-                preferredID: plannedIdentityIDs[slot]
+            vaultBookmarks[slot] = try url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
             )
         }
         let identitiesReady = clock.now
-        guard let analysesIdentity = identities[.paperAnalysis],
-              let topicsIdentity = identities[.topicKnowledge],
-              let worksIdentity = identities[.output] else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
 
         let portableID = portableManifest?.id
         var remappedWorkspaceIDs: [UUID: UUID] = [:]
@@ -595,9 +525,11 @@ public actor WorkspaceRuntime {
         let assignment = try await registry.configureTriptych(
             id: portableID ?? triptychID,
             name: normalizedName?.isEmpty == false ? normalizedName : nil,
-            paperAnalysis: (paperAnalysisURL, analysesIdentity.id),
-            topicKnowledge: (topicKnowledgeURL, topicsIdentity.id),
-            output: (outputURL, worksIdentity.id)
+            paperAnalysis: (paperAnalysisURL, analysesID),
+            topicKnowledge: (topicKnowledgeURL, topicsID),
+            output: (outputURL, worksID),
+            vaultBookmarks: vaultBookmarks,
+            portableControlAccess: portableAccess
         )
         let registryReady = clock.now
         let prepared = await prepareChangedReplacements(
@@ -652,8 +584,8 @@ public actor WorkspaceRuntime {
 
     public func portableContainerURL(forWorksURL worksURL: URL) async -> URL? {
         guard !isShutDown,
-              case .live(_, _, let registry, _) = membership,
-              let access = await registry.access(forWorksURL: worksURL) else {
+              case .live(let registry, _) = membership,
+              let access = try? await registry.portableAccess(forWorksURL: worksURL) else {
             return nil
         }
         var stale = false
@@ -775,7 +707,7 @@ public actor WorkspaceRuntime {
     public func defaultWorkspace() async throws -> TriptychAssignment {
         try requireActive()
         switch membership {
-        case .live(let registry, _, _, _):
+        case .live(let registry, _):
             guard let assignment = try await registry.defaultTriptych() else {
                 throw ScholiumApplicationError.noWorkspaceConfigured
             }
@@ -805,12 +737,7 @@ public actor WorkspaceRuntime {
         let token = UUID()
         let task: Task<WorkspaceHandle, Error>
         switch membership {
-        case .live(
-            _,
-            _,
-            let portableRegistry,
-            let supportURL
-        ):
+        case .live(_, let supportURL):
             task = Task {
                 try await WorkspaceHandle.open(
                     assignment: assignment,
@@ -820,9 +747,7 @@ public actor WorkspaceRuntime {
                     vaultPool: vaultPool,
                     zotero: zotero,
                     researchAgentSessions: researchAgentSessions,
-                    access: .live(
-                        portableControlAccessRegistry: portableRegistry
-                    ),
+                    access: .live,
                     openingVault: openingVault
                 )
             }
@@ -1049,7 +974,7 @@ public actor WorkspaceRuntime {
 
     private func assignment(id: UUID) async throws -> TriptychAssignment {
         switch membership {
-        case .live(let registry, _, _, _):
+        case .live(let registry, _):
             guard let assignment = try await registry.triptych(id: id) else {
                 throw ScholiumApplicationError.workspaceNotFound(id)
             }

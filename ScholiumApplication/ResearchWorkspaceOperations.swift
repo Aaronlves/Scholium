@@ -16,12 +16,11 @@ private enum ResearchRecordUndoPlan {
         note: VaultQualifiedNoteID,
         startingRevision: DocumentFingerprint,
         endingRevision: DocumentFingerprint,
-        evidenceID: UUID,
         startingData: Data
     )
 
     var affectedVaultID: UUID? {
-        guard case .restore(_, let note, _, _, _, _) = self else { return nil }
+        guard case .restore(_, let note, _, _, _) = self else { return nil }
         return note.vaultID
     }
 }
@@ -671,17 +670,6 @@ extension WorkspaceHandle {
               selectedNoteIDs.allSatisfy({ changesByID[$0] != nil }) else {
             throw ResearchRecordChangeRecoveryOperationError.invalidSelection
         }
-        let execution: LocalResearchExecutionRecord
-        do {
-            execution = try await services.localResearchExecutionStore.record(id: recordID)
-        } catch {
-            throw ResearchRecordChangeRecoveryOperationError.executionUnavailable
-        }
-        guard execution.triptychID == record.triptychID,
-              execution.id == record.id else {
-            throw ResearchRecordChangeRecoveryOperationError.executionUnavailable
-        }
-
         var plans: [ResearchRecordUndoPlan] = []
         for noteID in selectedNoteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
             let change = changesByID[noteID]!
@@ -689,26 +677,9 @@ extension WorkspaceHandle {
                 throw ResearchRecordChangeRecoveryOperationError
                     .createdNoteHasNoPreimage(noteID)
             }
-            guard let entry = execution.boundedWriteSet.entries.first(where: {
-                $0.noteID == noteID
-            }), let firstCommitted = execution.documentWriteRecords
-                .filter({
-                    $0.target == entry.handle
-                        && $0.actor == .agent
-                        && $0.state == .committed
-                })
-                .min(by: { $0.startedAt < $1.startedAt }),
-                firstCommitted.expectedRevision == startingRevision,
-                firstCommitted.observedRevision == firstCommitted.intendedRevision else {
-                throw ResearchRecordChangeRecoveryOperationError.changeEvidenceMismatch(noteID)
-            }
             guard let current = try await currentResearchSource(noteID: noteID) else {
                 plans.append(.unavailable(noteID: noteID))
                 continue
-            }
-            guard Self.vaultRole(entry.role)
-                    == (try vault(id: current.note.vaultID)).role else {
-                throw ResearchRecordChangeRecoveryOperationError.changeEvidenceMismatch(noteID)
             }
             if current.document.fingerprint == startingRevision {
                 plans.append(.alreadyRestored(
@@ -724,12 +695,9 @@ extension WorkspaceHandle {
                 ))
                 continue
             }
-            guard let evidenceID = firstCommitted.changeEvidenceID else {
-                throw ResearchRecordChangeRecoveryOperationError
-                    .changeEvidenceMismatch(noteID)
-            }
             let evidence = try await services.agentChangeEvidenceStore.evidence(
-                id: evidenceID
+                runID: record.id,
+                noteID: noteID
             )
             guard evidence.triptychID == record.triptychID,
                   evidence.runID == record.id,
@@ -740,7 +708,6 @@ extension WorkspaceHandle {
                     .changeEvidenceMismatch(noteID)
             }
             let sourceBytes = try await services.agentChangeEvidenceStore.startingData(
-                id: evidenceID,
                 runID: record.id,
                 noteID: noteID,
                 expectedRevision: startingRevision
@@ -754,7 +721,6 @@ extension WorkspaceHandle {
                 note: current.note,
                 startingRevision: startingRevision,
                 endingRevision: change.endingRevision,
-                evidenceID: evidenceID,
                 startingData: sourceBytes
             ))
         }
@@ -786,7 +752,6 @@ extension WorkspaceHandle {
                 let note,
                 let startingRevision,
                 let endingRevision,
-                _,
                 let startingData
             ):
                 sourceMutationAttempted = true
@@ -898,7 +863,19 @@ extension WorkspaceHandle {
 
     func deleteResearchRecordPermanently(id: UUID) async throws {
         try requireActive()
-        _ = try await services.portableResearchRecordStore.deletePermanently(id: id)
+        do {
+            _ = try await services.portableResearchRecordStore.deletePermanently(id: id)
+        } catch ResearchRecordStoreV1Error.recordNotFound {
+            guard await services.portableResearchRecordStore
+                .isRecordPermanentlyDeleted(id: id) else {
+                throw ResearchRecordStoreV1Error.recordNotFound(id)
+            }
+            // Resume cleanup after a prior deletion committed.
+        }
+        _ = try await services.agentChangeEvidenceStore.removeEvidence(runID: id)
+        if try await services.localResearchExecutionStore.recordIfPresent(id: id) != nil {
+            try await services.localResearchExecutionStore.removeCompleted(runID: id)
+        }
         try await refreshAfterResearchCommit("The permanent Research Record deletion")
     }
 
@@ -917,33 +894,22 @@ extension WorkspaceHandle {
             throw ResearchRecordChangeRecoveryOperationError
                 .createdNoteHasNoPreimage(noteID)
         }
-        let execution = try await services.localResearchExecutionStore.record(
-            id: record.id
+        let evidence = try await services.agentChangeEvidenceStore.evidence(
+            runID: record.id,
+            noteID: noteID
         )
-        guard execution.triptychID == record.triptychID,
-              let entry = execution.boundedWriteSet.entries.first(where: {
-                $0.noteID == noteID
-              }),
-              let firstCommitted = execution.documentWriteRecords
-                .filter({
-                    $0.target == entry.handle
-                        && $0.actor == .agent
-                        && $0.state == .committed
-                })
-                .min(by: { $0.startedAt < $1.startedAt }),
-              firstCommitted.expectedRevision == startingRevision,
-              let evidenceID = firstCommitted.changeEvidenceID else {
+        guard evidence.triptychID == record.triptychID,
+              evidence.startingRevision == startingRevision,
+              evidence.endingRevision == change.endingRevision else {
             throw ResearchRecordChangeRecoveryOperationError
                 .changeEvidenceMismatch(noteID)
         }
         let startingData = try await services.agentChangeEvidenceStore.startingData(
-            id: evidenceID,
             runID: record.id,
             noteID: noteID,
             expectedRevision: startingRevision
         )
         let endingData = try await services.agentChangeEvidenceStore.endingData(
-            id: evidenceID,
             runID: record.id,
             noteID: noteID,
             expectedRevision: change.endingRevision
@@ -978,6 +944,22 @@ extension WorkspaceHandle {
             throw TriptychTransactionError.invalidPlan(
                 "The selected recovery record is unavailable for this Triptych."
             )
+        }
+        if record.permanentDeletionPlan != nil {
+            let issues = await recoverInterruptedDocumentTransactions()
+            if let remaining = try await services.transactionRecoveryStore
+                .pending().first(where: { $0.id == record.id }) {
+                throw TriptychTransactionError.recoveryRequired(remaining)
+            }
+            guard issues.isEmpty else {
+                throw TriptychTransactionError.invalidPlan(
+                    issues.joined(separator: "\n")
+                )
+            }
+            try await refreshAfterResearchCommit(
+                "The permanent-deletion cleanup"
+            )
+            return
         }
         if let managedCreation = record.managedCreation {
             guard record.researchWrite == nil else {
@@ -1158,7 +1140,6 @@ extension WorkspaceHandle {
               entry.note.vaultID == file.vaultID,
               entry.note.relativePath == file.path,
               write.expectedRevision == nil,
-              write.changeEvidenceID == nil,
               write.intendedRevision == intendedRevision else {
             throw TriptychTransactionError.invalidPlan(
                 "The Agent creation recovery no longer matches its Run target."

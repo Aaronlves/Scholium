@@ -336,6 +336,12 @@ struct TransactionRecoveryActionPresentation: Equatable {
     )
 
     init(record: TriptychMutationRecoveryRecord) {
+        if record.permanentDeletionPlan != nil {
+            alertTitle = String(localized: "Continue Permanent Deletion?")
+            buttonTitle = String(localized: "Continue Deletion")
+            message = String(localized: "Scholium will recheck each exact planned source and continue deletion and privacy cleanup. Already deleted source is never restored; a changed or unreadable source stops without being removed.")
+            return
+        }
         guard record.researchWrite != nil || record.managedCreation != nil else {
             self = .generic
             return

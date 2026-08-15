@@ -42,7 +42,7 @@ struct ScholiumPathsTests {
         #expect(current.path == legacyRoot.appendingPathComponent("State-v1").path)
         #expect(try Data(contentsOf: legacyRegistry) == legacyBytes)
         #expect(!FileManager.default.fileExists(atPath: current
-            .appendingPathComponent("Workspace/workspace-registry-v2.json").path))
+            .appendingPathComponent("Workspace/workspace-registration-v3.json").path))
     }
 
     @Test("The CLI ignores retired container state and uses ordinary Application Support")

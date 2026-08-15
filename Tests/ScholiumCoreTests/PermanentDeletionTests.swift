@@ -76,7 +76,6 @@ struct PermanentDeletionTests {
         )
 
         #expect(!FileManager.default.fileExists(atPath: sourceURL.path))
-        #expect(await repository.recoveryEntries(relativePath: path).isEmpty)
         #expect(try await control.identity(
             forVaultID: vaultID,
             relativePath: path,
@@ -101,8 +100,7 @@ struct PermanentDeletionTests {
             try makeDeletionTestLocalExecution(
                 triptychID: fixture.triptychID,
                 runID: parentRunID,
-                action: parentAction,
-                changeEvidenceID: UUID()
+                action: parentAction
             )
         )
         let commit = try await fixture.coordinator().delete(
@@ -116,8 +114,6 @@ struct PermanentDeletionTests {
         #expect(commit.removedCritiqueAssociationIDs == [fixture.association.id])
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
-        #expect(await fixture.repository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
-        #expect(await fixture.repository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id) == nil)
         #expect(try await fixture.control.identityRecord(
             vaultID: fixture.vaultID,
@@ -132,7 +128,7 @@ struct PermanentDeletionTests {
     }
 
     @Test(
-        "A cleanup failure restores both Markdown files and every purged record",
+        "A cleanup failure retains one deletion plan and recovery resumes forward",
         arguments: [
             PermanentDeletionFaultPoint.afterCritiqueDeletion,
             .afterSourceDeletion,
@@ -141,7 +137,7 @@ struct PermanentDeletionTests {
             .afterIdentityPurge,
         ]
     )
-    func cleanupFailureRollsBackExactly(_ faultPoint: PermanentDeletionFaultPoint) async throws {
+    func cleanupFailureResumesForward(_ faultPoint: PermanentDeletionFaultPoint) async throws {
         let fixture = try await WorkFixture()
         defer { fixture.remove() }
         let coordinator = fixture.coordinator(
@@ -160,20 +156,18 @@ struct PermanentDeletionTests {
             )
         }
 
-        #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
-        #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
-        #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
+        #expect(try await fixture.recoveryStore.pending().count == 1)
+        try await fixture.reopenedCoordinator().recoverInterruptedTransactions()
+        #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
+        #expect(try await fixture.reopenedCritiqueAssociation() == nil)
         #expect(try await fixture.portableRecordStore.latestSettlement(
             noteID: fixture.workIdentity.id
-        ) == fixture.workSettlement)
-        #expect(try await fixture.portableRecordStore.latestSettlement(
-            noteID: fixture.critiqueIdentity.id
-        ) == fixture.critiqueSettlement)
-        let pending = try await fixture.recoveryStore.pending()
-        #expect(pending.isEmpty)
+        ) == nil)
+        #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
-    @Test("A process interruption leaves a durable journal and the next runtime restores the transaction")
+    @Test("A process interruption leaves a durable plan and the next runtime resumes deletion")
     func interruptionRecoversOnNextRuntime() async throws {
         let fixture = try await WorkFixture()
         defer { fixture.remove() }
@@ -198,20 +192,14 @@ struct PermanentDeletionTests {
 
         try await fixture.reopenedCoordinator().recoverInterruptedTransactions()
 
-        #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
-        #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
-        #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
-        #expect(try await fixture.portableRecordStore.latestSettlement(
-            noteID: fixture.workIdentity.id
-        ) == fixture.workSettlement)
-        #expect(try await fixture.portableRecordStore.latestSettlement(
-            noteID: fixture.critiqueIdentity.id
-        ) == fixture.critiqueSettlement)
+        #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
+        #expect(try await fixture.reopenedCritiqueAssociation() == nil)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
-    @Test("Rollback preserves a newer Settle created after deletion capture")
-    func interruptedDeletionPreservesConcurrentSettlement() async throws {
+    @Test("Deletion intent blocks a newer Settle while cleanup is interrupted")
+    func interruptedDeletionBlocksConcurrentSettlement() async throws {
         let fixture = try await WorkFixture()
         defer { fixture.remove() }
         let interrupted = fixture.coordinator(
@@ -229,17 +217,19 @@ struct PermanentDeletionTests {
                 expectedRevision: fixture.workFingerprint
             )
         }
-        let concurrent = try await fixture.portableRecordStore.settle(
-            noteID: fixture.workIdentity.id,
-            fingerprint: DocumentFingerprint(content: "newer-settlement"),
-            rationale: "Recorded from another window while deletion was interrupted."
-        )
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await fixture.portableRecordStore.settle(
+                noteID: fixture.workIdentity.id,
+                fingerprint: DocumentFingerprint(content: "newer-settlement"),
+                rationale: "Attempted while deletion was interrupted."
+            )
+        }
 
         try await fixture.reopenedCoordinator().recoverInterruptedTransactions()
 
         #expect(try await fixture.portableRecordStore.latestSettlement(
             noteID: fixture.workIdentity.id
-        ) == concurrent)
+        ) == nil)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
@@ -270,15 +260,12 @@ struct PermanentDeletionTests {
 
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.critiqueURL.path))
-        let reopenedRepository = try fixture.reopenedRepository()
-        #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
-        #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
         #expect(try await fixture.portableRecordStore.settlementListing().settlements.isEmpty)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
-    @Test("Committed deletion removes a first Settle created after capture")
-    func committedDeletionPurgesLateFirstSettlement() async throws {
+    @Test("Committed deletion prevents a first Settle after intent is durable")
+    func committedDeletionBlocksLateFirstSettlement() async throws {
         let fixture = try await WorkFixture()
         defer { fixture.remove() }
         try await fixture.portableRecordStore.purgeSettlement(
@@ -302,16 +289,20 @@ struct PermanentDeletionTests {
                 expectedRevision: fixture.workFingerprint
             )
         }
-        _ = try await fixture.portableRecordStore.settle(
-            noteID: fixture.workIdentity.id,
-            fingerprint: DocumentFingerprint(content: "late-work"),
-            rationale: nil
-        )
-        _ = try await fixture.portableRecordStore.settle(
-            noteID: fixture.critiqueIdentity.id,
-            fingerprint: DocumentFingerprint(content: "late-critique"),
-            rationale: nil
-        )
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await fixture.portableRecordStore.settle(
+                noteID: fixture.workIdentity.id,
+                fingerprint: DocumentFingerprint(content: "late-work"),
+                rationale: nil
+            )
+        }
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await fixture.portableRecordStore.settle(
+                noteID: fixture.critiqueIdentity.id,
+                fingerprint: DocumentFingerprint(content: "late-critique"),
+                rationale: nil
+            )
+        }
 
         try await fixture.reopenedCoordinator().recoverInterruptedTransactions()
 
@@ -514,6 +505,13 @@ struct PermanentDeletionTests {
             )
         }
 
+        func reopenedCritiqueAssociation() async throws -> CritiqueAssociation? {
+            let reopenedControl = TriptychControlStore(worksVaultURL: works)
+            return await CritiqueRegistry(
+                controlURL: await reopenedControl.controlURL
+            ).association(workNoteID: workIdentity.id)
+        }
+
         func remove() {
             try? FileManager.default.removeItem(at: root)
         }
@@ -587,8 +585,7 @@ private func makeDeletionTestActionSnapshot(
 private func makeDeletionTestLocalExecution(
     triptychID: UUID,
     runID: UUID,
-    action: ResearchActionSnapshot,
-    changeEvidenceID: UUID
+    action: ResearchActionSnapshot
 ) throws -> LocalResearchExecutionRecord {
     let target = ResearchFunctionTarget(
         noteID: action.target.noteID,
@@ -607,7 +604,6 @@ private func makeDeletionTestLocalExecution(
         actionSnapshot: action,
         recordKind: .functionEnvelope,
         recordID: runID,
-        changeEvidenceID: changeEvidenceID,
         confirmationToken: UUID(),
         preparedAt: Date(timeIntervalSince1970: 10)
     )

@@ -518,19 +518,25 @@ extension ResearchFunctionCoordinator {
             host: host
         ) {
             let refreshed = try await record(runID: advanced.runID)
-            let refreshedWrite = [.develop, .revise].contains(
-                refreshed.snapshot.request.function
-            ) ? try await confirmBoundedWriteSet(
-                stored: refreshed,
-                snapshot: refreshed.snapshot,
-                completedAt: advanced.completedAt,
-                host: host
-            ) : nil
-            try await ensurePortableResearchRecord(
-                completion: advanced,
-                stored: refreshed,
-                confirmedWrite: refreshedWrite?.report
-            )
+            if case .local(let local) = refreshed, local.isCompacted {
+                _ = try await dependencies.portableResearchRecordStore.record(
+                    id: advanced.runID
+                )
+            } else {
+                let refreshedWrite = [.develop, .revise].contains(
+                    refreshed.snapshot.request.function
+                ) ? try await confirmBoundedWriteSet(
+                    stored: refreshed,
+                    snapshot: refreshed.snapshot,
+                    completedAt: advanced.completedAt,
+                    host: host
+                ) : nil
+                try await ensurePortableResearchRecord(
+                    completion: advanced,
+                    stored: refreshed,
+                    confirmedWrite: refreshedWrite?.report
+                )
+            }
             if [.complete, .unverified, .stale, .cancelled].contains(advanced.state) {
                 await host.finalizeResearchAgentRunAccess(runID: advanced.runID)
             }
@@ -620,6 +626,12 @@ extension ResearchFunctionCoordinator {
             if let durable = try? await record(runID: completion.runID),
                let advanced = durable.completion,
                [.complete, .unverified].contains(advanced.state) {
+                if case .local(let local) = durable, local.isCompacted {
+                    _ = try await dependencies.portableResearchRecordStore.record(
+                        id: advanced.runID
+                    )
+                    return advanced
+                }
                 let write = try await confirmBoundedWriteSet(
                     stored: durable,
                     snapshot: durable.snapshot,
@@ -689,6 +701,9 @@ extension ResearchFunctionCoordinator {
             _ = try await dependencies.portableResearchRecordStore.record(
                 id: completion.runID
             )
+            _ = try await dependencies.localExecutionStore.compactCompleted(
+                runID: completion.runID
+            )
             return
         } catch ResearchRecordStoreV1Error.recordNotFound(_) {
             // Construct the missing record from the validated completion.
@@ -701,6 +716,9 @@ extension ResearchFunctionCoordinator {
         do {
             _ = try await dependencies.portableResearchRecordStore.createFinishedRecord(
                 record
+            )
+            _ = try await dependencies.localExecutionStore.compactCompleted(
+                runID: completion.runID
             )
         } catch ResearchRecordStoreV1Error.recordPermanentlyDeleted(let id)
             where id == completion.runID {
@@ -1361,9 +1379,11 @@ extension ResearchFunctionCoordinator {
                           && $0.note.relativePath == context.material.relativePath
                           && $0.fingerprint == context.currentRevision
                   }),
-                  let changeEvidenceID = snapshot.changeEvidenceID,
                   let evidence = try? await dependencies.agentChangeEvidenceStore
-                    .evidence(id: changeEvidenceID),
+                    .evidence(
+                        runID: snapshot.runID,
+                        noteID: snapshot.request.target.noteID
+                    ),
                   evidence.triptychID == workspaceID,
                   evidence.runID == snapshot.runID,
                   evidence.noteID == snapshot.request.target.noteID,
@@ -1419,23 +1439,27 @@ extension ResearchFunctionCoordinator {
             runID: snapshot.runID,
             writes: writes
         )
-        guard writeSet.runID == snapshot.runID,
-              writeSet.triptychID == workspaceID,
-              !writeSet.entries.isEmpty,
-              writeSet.entries.allSatisfy({
-                  [.ready, .consumed, .stale, .abandoned].contains($0.state)
-              }),
-              writes.allSatisfy({
-                  ![.writing, .recoveryRequired].contains($0.state)
-              }),
-              bindingWrites.allSatisfy({
-                  ![.writing, .recoveryRequired].contains($0.state)
-              }),
-              writes.filter({ $0.state == .conflict }).allSatisfy({
-                  resolvedConflictIDs.contains($0.id)
-              }), !hasPendingWriteRecovery else {
+        var blockers: [String] = []
+        if writeSet.runID != snapshot.runID || writeSet.triptychID != workspaceID {
+            blockers.append("write-set identity")
+        }
+        if writeSet.entries.isEmpty { blockers.append("empty write set") }
+        if !writeSet.entries.allSatisfy({
+            [.ready, .consumed, .stale, .abandoned].contains($0.state)
+        }) { blockers.append("unfinished target") }
+        if !writes.allSatisfy({
+            ![.writing, .recoveryRequired].contains($0.state)
+        }) { blockers.append("unfinished document write") }
+        if !bindingWrites.allSatisfy({
+            ![.writing, .recoveryRequired].contains($0.state)
+        }) { blockers.append("unfinished binding write") }
+        if !writes.filter({ $0.state == .conflict }).allSatisfy({
+            resolvedConflictIDs.contains($0.id)
+        }) { blockers.append("unresolved conflict") }
+        if hasPendingWriteRecovery { blockers.append("pending recovery") }
+        guard blockers.isEmpty else {
             throw ResearchFunctionContractError.invalidCompletion(
-                "Every started bounded document or Zotero-binding write must have a known, recoverable outcome before Result finalization."
+                "Every started bounded document or Zotero-binding write must have a known, recoverable outcome before Result finalization. Blocked by: \(blockers.joined(separator: ", "))."
             )
         }
         var currentFingerprints: [UUID: DocumentFingerprint] = [:]

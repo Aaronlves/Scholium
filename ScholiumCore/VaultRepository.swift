@@ -415,23 +415,15 @@ public actor VaultRepository {
         }
 
         let candidateData = Data(updatedContent.utf8)
-        let snapshot = try prepareSnapshot(relativePath: relativePath, data: currentData)
-        let mutation: PrewriteRecoveryLedger.MutationTransaction
-        do {
-            mutation = try recoveryLedger.beginMutation(
-                relativePath: relativePath,
-                expected: currentData,
-                candidate: candidateData
-            )
-        } catch {
-            try? discardPreparedSnapshot(snapshot)
-            throw error
-        }
+        let mutation = try recoveryLedger.beginMutation(
+            relativePath: relativePath,
+            expected: currentData,
+            candidate: candidateData
+        )
         do {
             let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
             guard recheckedFingerprint == expectedRevision else {
-                try discardPreparedSnapshot(snapshot)
                 try recoveryLedger.completeMutation(mutation)
                 return .notWritten(.conflict(recheckedFingerprint))
             }
@@ -449,32 +441,15 @@ public actor VaultRepository {
                     current: readbackFingerprint
                 )
             }
-            try commitPreparedSnapshot(snapshot)
             // The canonical source commit is already proven. Removing the
-            // redundant machine-local transaction is invisible housekeeping;
+            // now-redundant transaction is invisible housekeeping;
             // if it fails, startup can observe the candidate revision and
             // retry without changing Document state.
             try? recoveryLedger.completeMutation(mutation)
             return .committed(SaveResult(document: updated))
         } catch {
             if let knownOutcome = knownNotWrittenOutcome(for: error) {
-                if let repositoryError = error as? VaultRepositoryError,
-                   case .conflict = repositoryError {
-                    do {
-                        try commitPreparedSnapshot(snapshot)
-                        try recoveryLedger.retainMutation(
-                            mutation,
-                            reason: error.localizedDescription
-                        )
-                    } catch {
-                        throw VaultRepositoryError.recoveryLedgerUnavailable(
-                            "The exact conflict recovery material could not be retained: \(error.localizedDescription)"
-                        )
-                    }
-                } else {
-                    try? discardPreparedSnapshot(snapshot)
-                    try? recoveryLedger.completeMutation(mutation)
-                }
+                try? recoveryLedger.completeMutation(mutation)
                 return knownOutcome
             }
 
@@ -483,7 +458,6 @@ public actor VaultRepository {
             // not that advisory error, determine the user-visible save state.
             if let canonical = try? readSource(relativePath: relativePath),
                canonical == candidateData {
-                try? commitPreparedSnapshot(snapshot)
                 try? recoveryLedger.completeMutation(mutation)
                 return .committed(SaveResult(document: updated))
             }
@@ -493,7 +467,6 @@ public actor VaultRepository {
             // the original error rather than presenting a recovery candidate.
             if let canonical = try? readSource(relativePath: relativePath),
                canonical == currentData {
-                try? discardPreparedSnapshot(snapshot)
                 try? recoveryLedger.completeMutation(mutation)
                 throw VaultRepositoryError.writeFailed(error.localizedDescription)
             }
@@ -501,7 +474,6 @@ public actor VaultRepository {
             // A replacement failure, failed readback, or otherwise unprovable
             // transaction is never softened into Saved. Keep the exact
             // preimage and candidate for reconciliation.
-            try? commitPreparedSnapshot(snapshot)
             do {
                 try recoveryLedger.retainMutation(
                     mutation,
@@ -620,16 +592,13 @@ public actor VaultRepository {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: currentFingerprint)
         }
         _ = try newFileURL(relativePath: destinationRelativePath)
-        let snapshot = try prepareSnapshot(relativePath: relativePath, data: currentData)
         do {
             let recheckedData = try readSource(relativePath: relativePath)
             let recheckedFingerprint = DocumentFingerprint(data: recheckedData)
             guard recheckedFingerprint == expectedRevision else {
-                try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.conflict(expected: expectedRevision, current: recheckedFingerprint)
             }
             guard try filePresence(relativePath: destinationRelativePath) == .absent else {
-                try discardPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.fileAlreadyExists(destinationRelativePath)
             }
             try mutationCoordinator.move(
@@ -640,13 +609,11 @@ public actor VaultRepository {
             let readback = try readSource(relativePath: destinationRelativePath)
             let readbackFingerprint = DocumentFingerprint(data: readback)
             guard readbackFingerprint == currentFingerprint else {
-                try commitPreparedSnapshot(snapshot)
                 throw VaultRepositoryError.readbackMismatch(
                     expected: currentFingerprint,
                     current: readbackFingerprint
                 )
             }
-            try commitPreparedSnapshot(snapshot)
             guard let content = NoteDocument.decodeUTF8PreservingBOM(readback) else {
                 throw CocoaError(.fileReadInapplicableStringEncoding)
             }
@@ -657,10 +624,22 @@ public actor VaultRepository {
                 relativePath: destinationRelativePath
             )
         } catch {
-            if (try? filePresence(relativePath: relativePath)) == .present {
-                try? discardPreparedSnapshot(snapshot)
-            } else {
-                try? commitPreparedSnapshot(snapshot)
+            // A coordinated rename can commit and still report an advisory
+            // error. Exact path presence and destination readback settle the
+            // result without creating a source-history copy.
+            if (try? filePresence(relativePath: relativePath)) == .absent,
+               let destinationData = try? readSource(relativePath: destinationRelativePath),
+               destinationData == currentData,
+               let content = NoteDocument.decodeUTF8PreservingBOM(destinationData) {
+                removeEmptyParentDirectories(startingAt: sourceURL.deletingLastPathComponent())
+                return NoteMoveResult(
+                    document: NoteDocument(
+                        relativePath: destinationRelativePath,
+                        rawContent: content
+                    ),
+                    previousRelativePath: relativePath,
+                    relativePath: destinationRelativePath
+                )
             }
             throw error
         }
@@ -688,9 +667,8 @@ public actor VaultRepository {
         )
     }
 
-    /// Permanently removes a note and every repository-owned recovery entry
-    /// for that path. A provisional entry protects the mutation only while it
-    /// is in flight and is never exposed as a delivery-facing history item.
+    /// Permanently removes one exact note. No source copy or restore token is
+    /// created; callers coordinate any remaining idempotent privacy cleanup.
     public func deletePermanently(
         relativePath: String,
         expectedRevision: DocumentFingerprint
@@ -701,150 +679,23 @@ public actor VaultRepository {
         guard current == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
         }
-        let snapshot = try prepareSnapshot(relativePath: relativePath, data: data)
-        var sourceWasDeleted = false
-        do {
-            let recheckedData = try readSource(relativePath: relativePath)
-            let rechecked = DocumentFingerprint(data: recheckedData)
-            guard rechecked == expectedRevision else {
-                try discardPreparedSnapshot(snapshot)
-                throw VaultRepositoryError.conflict(expected: expectedRevision, current: rechecked)
-            }
-            try mutationCoordinator.delete(
-                path: markdownRelativePath(relativePath),
-                expected: data
-            )
-            sourceWasDeleted = true
-            try purgeRecoveryEntries(relativePath: relativePath)
-            try discardPreparedSnapshot(snapshot)
-            removeEmptyParentDirectories(startingAt: fileURL.deletingLastPathComponent())
-            return NoteDeletionResult(
-                relativePath: relativePath,
-                fingerprint: current
-            )
-        } catch {
-            if !sourceWasDeleted {
-                try? discardPreparedSnapshot(snapshot)
-            } else {
-                // Permanent deletion must never publish a new recovery copy.
-                // Retry cleanup best-effort before surfacing the failure.
-                try? purgeRecoveryEntries(relativePath: relativePath)
-                try? discardPreparedSnapshot(snapshot)
-            }
-            throw error
-        }
-    }
-
-    /// Creates a committed recovery entry before a higher-level multi-file
-    /// deletion starts. The source remains untouched until `apply` repeats the
-    /// path and revision checks. A durable coordinator journal owns the token.
-    func preparePermanentDeletion(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> PreparedPermanentDeletion {
-        _ = try existingFileURL(relativePath: relativePath)
-        let data = try readSource(relativePath: relativePath)
-        let current = DocumentFingerprint(data: data)
-        guard current == expectedRevision else {
-            throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
-        }
-        let version = try prepareSnapshot(relativePath: relativePath, data: data)
-        do {
-            try commitPreparedSnapshot(version)
-            return PreparedPermanentDeletion(
-                relativePath: relativePath,
-                fingerprint: current,
-                recoveryReference: version
-            )
-        } catch {
-            try? discardPreparedSnapshot(version)
-            throw error
-        }
-    }
-
-    /// Removes the prepared source only after a fresh authorization and
-    /// fingerprint check. The recovery entry remains committed until the
-    /// enclosing transaction either rolls back or finalizes.
-    func applyPreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
-        let fileURL = try existingFileURL(relativePath: prepared.relativePath)
-        let current = DocumentFingerprint(data: try readSource(
-            relativePath: prepared.relativePath
-        ))
-        guard current == prepared.fingerprint else {
-            throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
+        let recheckedData = try readSource(relativePath: relativePath)
+        let rechecked = DocumentFingerprint(data: recheckedData)
+        guard rechecked == expectedRevision else {
+            throw VaultRepositoryError.conflict(expected: expectedRevision, current: rechecked)
         }
         try mutationCoordinator.delete(
-            path: markdownRelativePath(prepared.relativePath),
-            expected: try recoveryLedger.content(entryID: prepared.recoveryReference.id)
+            path: markdownRelativePath(relativePath),
+            expected: data
         )
         removeEmptyParentDirectories(startingAt: fileURL.deletingLastPathComponent())
-    }
-
-    /// Restores exact prepared bytes without replacing a concurrently recreated
-    /// path. This is idempotent when the original bytes already exist.
-    func rollbackPreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
-        switch try filePresence(relativePath: prepared.relativePath) {
-        case .present:
-            let existing = try load(relativePath: prepared.relativePath)
-            let current = existing.fingerprint
-            guard current == prepared.fingerprint else {
-                throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
-            }
-            try discardCommittedSnapshot(prepared.recoveryReference)
-            return
-        case .absent:
-            break
-        case .inaccessible(let code):
-            throw VaultRepositoryError.commitUncertain(
-                "Rollback destination presence could not be verified (errno \(code))."
-            )
-        }
-
-        let candidate = try prospectiveNewFileURL(relativePath: prepared.relativePath)
-        let data = try recoveryLedger.content(entryID: prepared.recoveryReference.id)
-        guard DocumentFingerprint(data: data) == prepared.fingerprint else {
-            throw VaultRepositoryError.readbackMismatch(
-                expected: prepared.fingerprint,
-                current: DocumentFingerprint(data: data)
-            )
-        }
-        try ensureSafeDirectory(candidate.deletingLastPathComponent())
-        try mutationCoordinator.create(
-            path: markdownRelativePath(prepared.relativePath),
-            data: data
-        )
-        let observed = DocumentFingerprint(data: try readSource(
-            relativePath: prepared.relativePath
-        ))
-        guard observed == prepared.fingerprint else {
-            throw VaultRepositoryError.readbackMismatch(expected: prepared.fingerprint, current: observed)
-        }
-        try discardCommittedSnapshot(prepared.recoveryReference)
-    }
-
-    /// Makes a prepared deletion permanent by removing all path-keyed recovery
-    /// evidence, including the temporary entry. Repeating it is safe.
-    func finalizePreparedPermanentDeletion(_ prepared: PreparedPermanentDeletion) throws {
-        switch try filePresence(relativePath: prepared.relativePath) {
-        case .present:
-            let current = DocumentFingerprint(data: try readSource(
-                relativePath: prepared.relativePath
-            ))
-            throw VaultRepositoryError.conflict(expected: prepared.fingerprint, current: current)
-        case .absent:
-            break
-        case .inaccessible(let code):
-            throw VaultRepositoryError.commitUncertain(
-                "Deletion finalization presence could not be verified (errno \(code))."
-            )
-        }
-        try purgeRecoveryEntries(relativePath: prepared.relativePath)
+        return NoteDeletionResult(relativePath: relativePath, fingerprint: current)
     }
 
     /// Removes a file created by the same higher-level transaction when that
     /// transaction must roll back. It is intentionally module-internal and is
     /// bound to the exact fingerprint returned by `create`; ordinary deletion
-    /// continues to use `deletePermanently` and its recovery snapshot.
+    /// continues to use `deletePermanently`.
     public func removeCreatedFileForRollback(
         relativePath: String,
         createdRevision: DocumentFingerprint
@@ -866,10 +717,6 @@ public actor VaultRepository {
             expected: recheckedData
         )
         removeEmptyParentDirectories(startingAt: recheckedURL.deletingLastPathComponent())
-    }
-
-    package func recoveryEntries(relativePath: String) -> [PrewriteRecoveryReference] {
-        (try? recoveryLedger.entries(relativePath: relativePath)) ?? []
     }
 
     /// Lists only exact, startup-retained save candidates. The source state is
@@ -993,25 +840,10 @@ public actor VaultRepository {
         try validateMarkdownRelativePath(sourceRelativePath)
         try validateMarkdownRelativePath(destinationRelativePath)
         guard sourceRelativePath != destinationRelativePath else { return }
-        let sourceEntries = try recoveryLedger.entries(relativePath: sourceRelativePath)
-        guard !sourceEntries.isEmpty else { return }
-        let destinationEntries = try recoveryLedger.entries(relativePath: destinationRelativePath)
-        guard destinationEntries.isEmpty else {
-            throw VaultRepositoryError.recoveryPathConflict(destinationRelativePath)
-        }
-        try recoveryLedger.remap(from: sourceRelativePath, to: destinationRelativePath)
-    }
-
-    func recoveryContent(entryID: UUID) throws -> String {
-        let data = try recoveryLedger.content(entryID: entryID)
-        guard let content = NoteDocument.decodeUTF8PreservingBOM(data) else {
-            throw CocoaError(.fileReadInapplicableStringEncoding)
-        }
-        return content
-    }
-
-    package func recoveryData(entryID: UUID) throws -> Data {
-        try recoveryLedger.content(entryID: entryID)
+        try recoveryLedger.remapRetainedTransactions(
+            from: sourceRelativePath,
+            to: destinationRelativePath
+        )
     }
 
     private func retainedMutation(
@@ -1397,26 +1229,6 @@ public actor VaultRepository {
         }
         try ensureSafeDirectory(standardized.deletingLastPathComponent())
         try fileManager.createDirectory(at: standardized, withIntermediateDirectories: false)
-    }
-
-    private func prepareSnapshot(relativePath: String, data: Data) throws -> PrewriteRecoveryReference {
-        try recoveryLedger.prepare(relativePath: relativePath, data: data)
-    }
-
-    private func commitPreparedSnapshot(_ version: PrewriteRecoveryReference) throws {
-        try recoveryLedger.commit(version)
-    }
-
-    private func discardPreparedSnapshot(_ version: PrewriteRecoveryReference) throws {
-        try recoveryLedger.discard(version)
-    }
-
-    private func discardCommittedSnapshot(_ version: PrewriteRecoveryReference) throws {
-        try recoveryLedger.discard(version)
-    }
-
-    private func purgeRecoveryEntries(relativePath: String) throws {
-        try recoveryLedger.tombstoneAndPurge(relativePath: relativePath)
     }
 
     private func removeEmptyParentDirectories(startingAt directory: URL) {

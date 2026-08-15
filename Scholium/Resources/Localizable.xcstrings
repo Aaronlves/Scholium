@@ -1495,12 +1495,12 @@
         }
       }
     },
-    "A Practice keeps one replaceable previous edit. It guides research but never grants authority." : {
+    "A Practice edit replaces only its exact current revision. It guides research but never grants authority." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "一个实践保留一个可替换的上一次编辑。它指导研究，但从不授予权限。"
+            "value" : "编辑实践只会替换其精确的当前修订。它可以指导研究，但从不授予权限。"
           }
         }
       }
@@ -8263,6 +8263,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "继续"
+          }
+        }
+      }
+    },
+    "Continue Deletion" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续删除"
+          }
+        }
+      }
+    },
+    "Continue Permanent Deletion?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续永久删除？"
           }
         }
       }
@@ -25679,16 +25699,6 @@
         }
       }
     },
-    "Restore Previous Edit" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复上一次编辑"
-          }
-        }
-      }
-    },
     "Restore Scholium Default…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -28131,6 +28141,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 会用唯一的恢复名称保留无法读取的已存搜索文件，然后以空的已存搜索列表重新开始。不会更改任何研究库文件。"
+          }
+        }
+      }
+    },
+    "Scholium will recheck each exact planned source and continue deletion and privacy cleanup. Already deleted source is never restored; a changed or unreadable source stops without being removed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会重新检查计划中的每一份精确源文本，并继续删除与隐私清理。已经删除的源文本绝不会恢复；已变化或不可读的源文本会使操作停止，且不会被移除。"
           }
         }
       }
@@ -32815,12 +32835,12 @@
         }
       }
     },
-    "This is exact Markdown. Saving replaces only this Practice; one previous edit remains recoverable." : {
+    "This is exact Markdown. Saving replaces only this Practice." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这是精确的 Markdown。保存只会替换此实践；上一次编辑仍可恢复。"
+            "value" : "这是精确的 Markdown。保存只会替换此实践。"
           }
         }
       }
@@ -33169,12 +33189,12 @@
         }
       }
     },
-    "This replaces the current primary Markdown with the default shipped by this Scholium build. The current bytes remain available as the one previous-edit recovery point; no version history is created." : {
+    "This replaces the current primary Markdown with the default shipped by this Scholium build." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这会用当前 Scholium 版本附带的默认值替换当前主 Markdown。当前字节仍作为唯一的上一次编辑恢复点；不会创建版本历史。"
+            "value" : "这会用当前 Scholium 版本附带的默认值替换当前主 Markdown。"
           }
         }
       }

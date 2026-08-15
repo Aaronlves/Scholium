@@ -130,9 +130,9 @@ only durable owners.
 Application Support before runtime construction; unsupported pre-release
 parent bytes remain unread and nonauthorizing.
 `WorkspaceStore.init(applicationSupportURL:)` is explicit and failable; there
-has no temporary or empty-registry fallback. A malformed Triptych registry or
-damaged access registry enters app-root Registry Recovery. Explicit relinking
-preserves and verifies only that owner; valid siblings remain. Newer, unsafe,
+has no temporary or empty-registry fallback. One malformed workspace
+registration enters app-root Registry Recovery. Explicit relinking preserves
+and verifies that owner. Newer, unsafe,
 or unreadable state exposes Details and Retry only. Recovery never scans or
 mutates vault Markdown. An
 explicitly supplied QA root uses the same validation. `WorkspaceRuntime` then
@@ -298,10 +298,12 @@ Skill/Practice/Profile, collaboration, Action/Run, Research
 Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 Configuration preflights roots and reads the portable manifest before
-registration. Valid Triptych and role Vault UUIDs remain authoritative;
-`VaultIdentityRegistry` binds them to new bookmarks. Missing manifest creates
-identity. Rejected selection or manifest leaves registries unchanged; renewed
-access rebinds identity.
+registration. `WorkspaceRegistry` is the single machine-local owner of
+Triptych membership, role Vault UUID/path/bookmark bindings, default selection,
+and portable-container access. Valid Triptych and role Vault UUIDs remain
+authoritative. Missing manifest creates identity. Rejected selection or
+manifest leaves the one registration unchanged; renewed access replaces its
+exact bookmark binding.
 `WorkspaceStore` coalesces duplicate runtime
 installation, retains one event subscription before publishing activation,
 starts it with the handle's explicitly phased latest `WorkspaceSnapshot`, and accepts only increasing

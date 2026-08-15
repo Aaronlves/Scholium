@@ -4,9 +4,7 @@ import ScholiumCore
 import OSLog
 
 enum WorkspaceAccessConfiguration: Sendable {
-    case live(
-        portableControlAccessRegistry: PortableControlAccessRegistry
-    )
+    case live
     case snapshot
 }
 
@@ -535,10 +533,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
 
-            if case .live(let portableRegistry) = access {
-                let portable = try await resolvePortableControlAccess(
+            if case .live = access {
+                let portable = try resolvePortableControlAccess(
                     worksVault: worksVault,
-                    registry: portableRegistry
+                    access: assignment.triptych.portableControlAccess
                 )
                 leases.append(portable)
             }
@@ -577,13 +575,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 controlURL: controlURL,
                 triptychID: assignment.id,
                 machineStorageURL: triptychStorage
-                    .appendingPathComponent("research-guidance", isDirectory: true),
-                recoveryStorageURL: triptychStorage
                     .appendingPathComponent("research-guidance", isDirectory: true)
-                    .appendingPathComponent(
-                        "method-edit-recovery-v2.json",
-                        isDirectory: false
-                    )
             )
             do {
                 try await researchConfigurationStore.bootstrapDefaults()
@@ -4215,14 +4207,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private static func resolvePortableControlAccess(
         worksVault: RegisteredVault,
-        registry: PortableControlAccessRegistry
-    ) async throws -> SecurityScopeLease {
+        access: PortableControlAccess?
+    ) throws -> SecurityScopeLease {
         let worksURL = URL(
             fileURLWithPath: worksVault.canonicalPath,
             isDirectory: true
         ).resolvingSymlinksInPath().standardizedFileURL
         let expectedContainer = worksURL.deletingLastPathComponent()
-        guard let access = await registry.access(forWorksURL: worksURL),
+        guard let access,
               access.canonicalContainerPath == expectedContainer.path else {
             throw WorkspaceRegistryError.portableControlAccessUnavailable(
                 expectedContainer.path

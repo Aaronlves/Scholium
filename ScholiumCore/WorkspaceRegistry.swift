@@ -2,7 +2,7 @@ import ScholiumContracts
 import Foundation
 
 public actor WorkspaceRegistry {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     private struct RegistryFile: Codable {
         var schemaVersion: Int
@@ -32,7 +32,7 @@ public actor WorkspaceRegistry {
     }
 
     public nonisolated static func registryURL(storageURL: URL) -> URL {
-        storageURL.standardizedFileURL.appendingPathComponent("workspace-registry-v2.json")
+        storageURL.standardizedFileURL.appendingPathComponent("workspace-registration-v3.json")
     }
 
     public nonisolated static func health(storageURL: URL) -> WorkspaceRegistryHealth {
@@ -105,7 +105,7 @@ public actor WorkspaceRegistry {
         )
         let timestamp = Int(Date().timeIntervalSince1970 * 1_000)
         let destination = storageURL.standardizedFileURL.appendingPathComponent(
-            "workspace-registry-v2.corrupt-\(timestamp)-\(UUID().uuidString.lowercased()).json"
+            "workspace-registration-v3.corrupt-\(timestamp)-\(UUID().uuidString.lowercased()).json"
         )
         do {
             try fileManager.moveItem(at: source, to: destination)
@@ -150,10 +150,23 @@ public actor WorkspaceRegistry {
         let canonical = try canonicalDirectory(path)
         var registry = try writableRegistry()
         let chosenName = normalizedName(name ?? canonical.lastPathComponent)
+        let bookmark = try? canonical.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
         if let existing = registry.vaults.first(where: { $0.canonicalPath == canonical.path }) {
             var updated = existing
             updated.name = chosenName
             updated.role = role
+            updated = RegisteredVault(
+                id: updated.id,
+                name: updated.name,
+                role: updated.role,
+                canonicalPath: updated.canonicalPath,
+                bookmarkData: bookmark ?? updated.bookmarkData,
+                registeredAt: updated.registeredAt
+            )
             guard !registry.vaults.contains(where: {
                 $0.id != existing.id && $0.name.caseInsensitiveCompare(chosenName) == .orderedSame
             }) else {
@@ -174,7 +187,8 @@ public actor WorkspaceRegistry {
             id: stableID ?? UUID(),
             name: chosenName,
             role: role,
-            canonicalPath: canonical.path
+            canonicalPath: canonical.path,
+            bookmarkData: bookmark
         )
         registry.vaults.append(vault)
         try persist(registry)
@@ -188,7 +202,9 @@ public actor WorkspaceRegistry {
         name requestedName: String? = nil,
         paperAnalysis: (url: URL, identityID: UUID),
         topicKnowledge: (url: URL, identityID: UUID),
-        output: (url: URL, identityID: UUID)
+        output: (url: URL, identityID: UUID),
+        vaultBookmarks: [WorkspaceVaultSlot: Data] = [:],
+        portableControlAccess: PortableControlAccess? = nil
     ) throws -> TriptychAssignment {
         let canonical = try canonicalSelections(
             paperAnalysis: paperAnalysis,
@@ -229,6 +245,7 @@ public actor WorkspaceRegistry {
                 name: selection.slot.displayName,
                 role: selection.slot.vaultRole,
                 canonicalPath: selection.url.path,
+                bookmarkData: vaultBookmarks[selection.slot] ?? samePath?.bookmarkData,
                 registeredAt: registeredAt
             )
             registry.vaults.append(vault)
@@ -249,6 +266,8 @@ public actor WorkspaceRegistry {
             paperAnalysisVaultID: analyses.id,
             topicKnowledgeVaultID: topics.id,
             outputVaultID: works.id,
+            portableControlAccess: portableControlAccess
+                ?? previous?.portableControlAccess,
             createdAt: previous?.createdAt ?? now,
             updatedAt: now
         )
@@ -397,6 +416,7 @@ public actor WorkspaceRegistry {
             paperAnalysisVaultID: current.paperAnalysisVaultID,
             topicKnowledgeVaultID: current.topicKnowledgeVaultID,
             outputVaultID: current.outputVaultID,
+            portableControlAccess: current.portableControlAccess,
             createdAt: current.createdAt,
             updatedAt: Date()
         )
@@ -418,6 +438,50 @@ public actor WorkspaceRegistry {
             if $0.canonicalPath != $1.canonicalPath { return $0.canonicalPath < $1.canonicalPath }
             return $0.id.uuidString < $1.id.uuidString
         }
+    }
+
+    public func plannedIdentityID(
+        for vaultURL: URL,
+        preferredID: UUID?
+    ) throws -> UUID {
+        let canonical = try canonicalDirectory(vaultURL).path
+        let registry = try load()
+        if let existing = registry.vaults.first(where: {
+            $0.canonicalPath == canonical
+        }) {
+            if let preferredID, preferredID != existing.id {
+                throw WorkspaceRegistryError.vaultIdentityMismatch(
+                    preferredID,
+                    existing.canonicalPath,
+                    canonical
+                )
+            }
+            return existing.id
+        }
+        return preferredID ?? UUID()
+    }
+
+    public func identity(forCanonicalPath path: String) throws -> VaultIdentity? {
+        let canonical = URL(fileURLWithPath: path, isDirectory: true)
+            .resolvingSymlinksInPath().standardizedFileURL.path
+        return try load().vaults.first(where: { $0.canonicalPath == canonical }).map {
+            VaultIdentity(
+                id: $0.id,
+                canonicalPath: $0.canonicalPath,
+                bookmarkData: $0.bookmarkData
+            )
+        }
+    }
+
+    public func portableAccess(forWorksURL worksURL: URL) throws -> PortableControlAccess? {
+        let path = try canonicalDirectory(worksURL).path
+        let registry = try load()
+        guard let works = registry.vaults.first(where: {
+            $0.canonicalPath == path && $0.role == .draftProject
+        }), let triptych = registry.triptychs.first(where: {
+            $0.outputVaultID == works.id
+        }) else { return nil }
+        return triptych.portableControlAccess
     }
 
     public func resolve(_ selector: String) throws -> RegisteredVault {
@@ -643,6 +707,16 @@ public actor WorkspaceRegistry {
                 }
                 guard vault.role == slot.vaultRole else {
                     return "Triptych \(triptych.id.uuidString) assigns vault \(vault.id.uuidString) to the wrong role."
+                }
+            }
+            if let access = triptych.portableControlAccess,
+               let works = registeredVaults[triptych.outputVaultID] {
+                let expected = URL(
+                    fileURLWithPath: works.canonicalPath,
+                    isDirectory: true
+                ).deletingLastPathComponent().standardizedFileURL.path
+                guard access.canonicalContainerPath == expected else {
+                    return "Triptych \(triptych.id.uuidString) has mismatched portable control access."
                 }
             }
         }

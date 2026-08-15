@@ -12,7 +12,6 @@ struct ApplicationStorageFailure: Equatable, Sendable {
 struct ApplicationRegistryRecovery: Equatable, Sendable {
     enum Source: Equatable, Sendable {
         case triptych(WorkspaceRegistryHealth, registryURL: URL)
-        case machineAccess(MachineLocalRegistryHealth, applicationSupportURL: URL)
     }
 
     let source: Source
@@ -21,21 +20,18 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
     var summary: String {
         switch source {
         case .triptych(let health, _): health.summary
-        case .machineAccess(let health, _): health.summary
         }
     }
 
     var title: LocalizedStringResource {
         switch source {
         case .triptych: "Triptych Registry Needs Repair"
-        case .machineAccess: "Local Access Registry Needs Repair"
         }
     }
 
     var canRelinkAfterPreserving: Bool {
         switch source {
         case .triptych(let health, _): health.canRelinkAfterPreserving
-        case .machineAccess(let health, _): health.canRelinkAfterPreserving
         }
     }
 
@@ -44,11 +40,6 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
         switch source {
         case .triptych(let health, let registryURL):
             lines = [health.details, "Registry location: \(registryURL.path)"]
-        case .machineAccess(let health, let applicationSupportURL):
-            lines = [
-                health.details,
-                "Registry folder: \(applicationSupportURL.path)",
-            ]
         }
         if let recoveryFailure {
             lines.append("Recovery could not preserve the original file: \(recoveryFailure)")
@@ -68,14 +59,6 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
                 currentHealth = .ioFailure(error.localizedDescription)
             }
             updatedSource = .triptych(currentHealth, registryURL: registryURL)
-        case .machineAccess(_, let applicationSupportURL):
-            let currentHealth = WorkspaceRegistryRecoveryOperations.machineLocalHealth(
-                applicationSupportURL: applicationSupportURL
-            )
-            updatedSource = .machineAccess(
-                currentHealth,
-                applicationSupportURL: applicationSupportURL
-            )
         }
         return Self(
             source: updatedSource,
@@ -162,7 +145,7 @@ final class ApplicationBootstrapController: ObservableObject {
                     let registryURL = resolvedStorageURL
                         .standardizedFileURL
                         .appendingPathComponent("Workspace", isDirectory: true)
-                        .appendingPathComponent("workspace-registry-v2.json")
+                        .appendingPathComponent("workspace-registration-v3.json")
                     state = .registryRecovery(ApplicationRegistryRecovery(
                         source: .triptych(health, registryURL: registryURL),
                         recoveryFailure: nil
@@ -173,27 +156,6 @@ final class ApplicationBootstrapController: ObservableObject {
                             "Scholium cannot establish its Application Support storage."
                         ),
                         details: error.localizedDescription
-                    ))
-                }
-            } catch let error as MachineLocalRegistryError {
-                guard self.attempt == currentAttempt else { return }
-                switch error {
-                case .recoveryRequired(let health):
-                    guard let resolvedStorageURL else {
-                        state = .storageUnavailable(ApplicationStorageFailure(
-                            summary: String(localized:
-                                "Scholium cannot establish its Application Support storage."
-                            ),
-                            details: error.localizedDescription
-                        ))
-                        return
-                    }
-                    state = .registryRecovery(ApplicationRegistryRecovery(
-                        source: .machineAccess(
-                            health,
-                            applicationSupportURL: resolvedStorageURL
-                        ),
-                        recoveryFailure: nil
                     ))
                 }
             } catch {
@@ -217,11 +179,6 @@ final class ApplicationBootstrapController: ObservableObject {
                 _ = try WorkspaceRegistryRecoveryOperations
                     .preserveMalformedRegistryForRelinking(
                         storageURL: registryURL.deletingLastPathComponent()
-                    )
-            case .machineAccess(_, let applicationSupportURL):
-                _ = try WorkspaceRegistryRecoveryOperations
-                    .preserveDamagedMachineLocalRegistriesForRelinking(
-                        applicationSupportURL: applicationSupportURL
                     )
             }
             retry()

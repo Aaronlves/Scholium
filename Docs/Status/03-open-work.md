@@ -38,10 +38,6 @@
   not establish academic adequacy.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
-- Decide whether finished Local Execution should compact the nonauthorizing
-  Bounded Write Set after copying every target fact needed by historical
-  recovery into self-describing transaction evidence. Completion already
-  revokes Session authority; compaction must not weaken direct Undo or recovery.
 
 ## Editor input and semantics
 

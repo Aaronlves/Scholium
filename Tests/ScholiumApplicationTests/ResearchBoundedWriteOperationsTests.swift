@@ -21,7 +21,6 @@ struct ResearchBoundedWriteOperationsTests {
                 intendedRevision: ending,
                 observedRevision: ending,
                 state: .committed,
-                changeEvidenceID: UUID(),
                 startedAt: Date(timeIntervalSince1970: 10),
                 finishedAt: Date(timeIntervalSince1970: 11)
             )
@@ -295,7 +294,6 @@ struct ResearchBoundedWriteOperationsTests {
         })
         #expect(createdEntry.state == .consumed)
         #expect(createdEntry.wasCreated)
-        #expect(createdEntry.changeEvidenceID == nil)
         let document = try await handle.documents.load(createdEntry.note)
         #expect(document.body == "# Analysis body\n")
         #expect(document.parsedFrontmatter["type"] == .string("journal_article"))
@@ -560,47 +558,6 @@ struct ResearchBoundedWriteOperationsTests {
             .string("Freedom"), .string("Practical agency"),
         ]))
 
-        let topicURL = fixture.rootURL
-            .appendingPathComponent("Topics", isDirectory: true)
-            .appendingPathComponent("Agency.md")
-        try Data((after.rawContent + "\nExternal body addition.\n").utf8)
-            .write(to: topicURL, options: .atomic)
-        let conflictIntent = try ResearchDocumentWriteIntent(
-            requestID: UUID(),
-            role: .topic,
-            relativePath: "Agency.md",
-            operation: .modifyProperties,
-            properties: [try CanonicalPropertyInput(
-                key: "summary",
-                value: .string("Refreshed bounded summary.")
-            )]
-        )
-        let conflict = try await handle.research.writeAgentDocument(
-            credential: connection.credential,
-            run: connection.handoff.run,
-            intent: conflictIntent
-        )
-        #expect(conflict.state == .conflict)
-        let refreshed = try await handle.research.resolveAgentWriteConflict(
-            credential: connection.credential,
-            run: connection.handoff.run,
-            intent: try ResearchWriteConflictResolutionIntent(
-                role: .topic,
-                relativePath: "Agency.md",
-                action: .refreshAuthority
-            )
-        )
-        #expect(refreshed.state == .readyToRetry)
-        #expect(refreshed.target.propertyKeys == ["aliases", "summary"])
-        #expect(refreshed.target.propertyWritePlans == propertyPlans)
-        #expect(try await handle.research.writeAgentDocument(
-            credential: connection.credential,
-            run: connection.handoff.run,
-            intent: conflictIntent
-        ).state == .committed)
-        #expect(try await handle.documents.load(fixture.topicID).body
-            .contains("External body addition."))
-
         await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
             try await handle.research.writeAgentDocument(
                 credential: connection.credential,
@@ -677,7 +634,6 @@ struct ResearchBoundedWriteOperationsTests {
                 expectedRevision: nil,
                 intendedRevision: revision,
                 state: .writing,
-                changeEvidenceID: nil,
                 startedAt: Date()
             )
             _ = try await handle.services.localResearchExecutionStore
@@ -1055,7 +1011,6 @@ struct ResearchBoundedWriteOperationsTests {
                 expectedRevision: nil,
                 intendedRevision: DocumentFingerprint(content: source),
                 state: .writing,
-                changeEvidenceID: nil,
                 startedAt: Date()
             )
         )
@@ -1501,7 +1456,12 @@ struct ResearchBoundedWriteOperationsTests {
             id: connection.preparation.runID
         )
         #expect(stored.documentWriteRecords.count == 2)
-        #expect(Set(stored.boundedWriteSet.entries.compactMap(\.changeEvidenceID)).count == 3)
+        for entry in stored.boundedWriteSet.entries where !entry.expectsAbsence {
+            #expect(try await handle.services.agentChangeEvidenceStore.evidence(
+                runID: connection.preparation.runID,
+                noteID: entry.noteID
+            ).noteID == entry.noteID)
+        }
         #expect(try await handle.snapshot().research.activities.contains {
             $0.runID == connection.preparation.runID && $0.state == .running
         })
@@ -1868,6 +1828,19 @@ struct ResearchBoundedWriteOperationsTests {
             Issue.record("Committed modification returned the wrong End refusal.")
         }
 
+        let beforeCompletion = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        #expect(beforeCompletion.boundedWriteSet.entries.allSatisfy {
+            [.ready, .consumed, .stale, .abandoned].contains($0.state)
+        })
+        #expect(beforeCompletion.documentWriteRecords.map(\.state) == [
+            .conflict, .committed,
+        ])
+        #expect(beforeCompletion.writeConflictResolutionRecords.map(
+            \.conflictOperationID
+        ) == [beforeCompletion.documentWriteRecords[0].id])
+        #expect(try await handle.research.recoveryRecords().isEmpty)
+
         let resultSubmission = try makeTestAgentResultSubmission(
             for: run,
             literatureRecommendations: []
@@ -2053,9 +2026,14 @@ struct ResearchBoundedWriteOperationsTests {
         )
         let beforeConflict = try await handle.services.localResearchExecutionStore
             .record(id: connection.preparation.runID)
-        let originalEvidence = try #require(
-            beforeConflict.boundedWriteSet.entry(handle: topicHandle)?.changeEvidenceID
+        let topicEntry = try #require(
+            beforeConflict.boundedWriteSet.entry(handle: topicHandle)
         )
+        let originalStartingRevision = try await handle.services
+            .agentChangeEvidenceStore.evidence(
+                runID: connection.preparation.runID,
+                noteID: topicEntry.noteID
+            ).startingRevision
 
         let topicURL = fixture.rootURL
             .appendingPathComponent("Topics", isDirectory: true)
@@ -2138,17 +2116,16 @@ struct ResearchBoundedWriteOperationsTests {
             stored.boundedWriteSet.entry(handle: topicHandle)
         )
         #expect(currentEntry.state == .abandoned)
-        #expect(currentEntry.changeEvidenceID != originalEvidence)
         #expect(stored.writeConflictResolutionRecords.count == 2)
         #expect(stored.documentWriteRecords.map(\.state) == [
             .conflict, .committed, .conflict,
         ])
-        #expect(try await handle.services.agentChangeEvidenceStore.evidence(
-            id: originalEvidence
-        ).noteID == currentEntry.noteID)
-        #expect(try await handle.services.agentChangeEvidenceStore.evidence(
-            id: try #require(currentEntry.changeEvidenceID)
-        ).noteID == currentEntry.noteID)
+        let evidence = try await handle.services.agentChangeEvidenceStore.evidence(
+            runID: connection.preparation.runID,
+            noteID: currentEntry.noteID
+        )
+        #expect(evidence.noteID == currentEntry.noteID)
+        #expect(evidence.startingRevision != originalStartingRevision)
         await runtime.shutdown()
     }
 

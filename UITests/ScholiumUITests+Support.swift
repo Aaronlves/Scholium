@@ -1079,8 +1079,8 @@ extension ScholiumUITests {
     /// Seeds current portable Action Records through the real store boundary.
     /// The pre-Agent revisions are deliberately unavailable synthetic exact
     /// fingerprints: the UI journey verifies association, pending Review, and
-    /// read-only comparison ownership without manufacturing a recovery
-    /// checkpoint or granting Undo authority.
+    /// read-only comparison ownership without manufacturing recoverable source
+    /// bytes or granting Undo authority.
     func seedNoteReviewRecords(
         _ seeds: [QANoteReviewRecordSeed]
     ) throws {

@@ -1261,178 +1261,48 @@ public actor TriptychControlStore {
         }
     }
 
-    /// Permanent deletion alone carries a durable exact identity and binding
-    /// preimage. Identity removal commits first; retry may then finish clearing
-    /// only the exact old binding if a crash separated the two control files.
+    /// Monotonically removes one exact permanent-deletion identity and every
+    /// portable substate that could reintroduce it. Repetition is idempotent;
+    /// a concurrently moved identity fails closed instead of being redirected.
     @discardableResult
-    public func purgeIdentity(
-        _ backup: PermanentDeletionIdentityBackup
-    ) throws -> NoteIdentityRecord? {
-        try withPortableControlLock {
-            try purgeIdentityLocked(backup)
-        }
-    }
-
-    private func purgeIdentityLocked(
-        _ backup: PermanentDeletionIdentityBackup
-    ) throws -> NoteIdentityRecord? {
-        let expected = backup.record
-        var removed: NoteIdentityRecord?
-        var snapshot = try identitySnapshot()
-        if let current = snapshot.payload.records.first(where: {
-            $0.id == expected.id
-        }) {
-            guard current == expected else {
-                throw TriptychControlError.invalidIdentityCandidate(expected.id)
-            }
-            let currentPending = snapshot.payload.pendingRebindings.filter {
-                $0.noteID == expected.id
-            }
-            let currentAmbiguities = snapshot.payload.unresolvedAmbiguities.compactMap {
-                ambiguity -> PermanentDeletionIdentityAmbiguity? in
-                guard ambiguity.candidateIDs.contains(expected.id) else { return nil }
-                return PermanentDeletionIdentityAmbiguity(
-                    vaultID: ambiguity.vaultID,
-                    relativePath: ambiguity.relativePath,
-                    fingerprint: ambiguity.fingerprint,
-                    candidateIDs: ambiguity.candidateIDs,
-                    detectedAt: ambiguity.detectedAt
-                )
-            }
-            guard currentPending == backup.pendingRebindings,
-                  currentAmbiguities == backup.ambiguities else {
-                // The durable deletion preimage must describe every identity
-                // substate this mutation would touch. A concurrent ambiguity
-                // or rebinding is new authority and cannot be folded into the
-                // older deletion transaction.
-                throw TriptychControlError.invalidIdentityCandidate(expected.id)
-            }
-            var payload = snapshot.payload
-            payload.records.removeAll { $0.id == expected.id }
-            payload.pendingRebindings.removeAll { $0.noteID == expected.id }
-            payload.unresolvedAmbiguities = payload.unresolvedAmbiguities.compactMap {
-                ambiguity in
-                var ambiguity = ambiguity
-                ambiguity.candidateIDs.removeAll { $0 == expected.id }
-                return ambiguity.candidateIDs.isEmpty ? nil : ambiguity
-            }
-            try commitIdentityPayload(payload, replacing: &snapshot)
-            removed = current
-        }
-
-        let bindings = try zoteroBindings()
-        if let currentBinding = bindings.binding(for: expected.id) {
-            guard currentBinding == backup.zoteroBinding else {
-                throw TriptychControlError.invalidZoteroBindings
-            }
-            let cleared = try updateZoteroBindings(
-                expectedRevision: bindings.revision
-            ) { bindings in
-                bindings.removeAll { $0.noteID == expected.id }
-            }
-            guard cleared.binding(for: expected.id) == nil else {
-                throw TriptychControlError.invalidZoteroBindings
-            }
-        } else if backup.zoteroBinding != nil {
-            // Already cleared by an earlier attempt.
-        }
-        return removed ?? expected
-    }
-
-    func prepareIdentityPurge(
+    func purgeIdentityPermanently(
         id: UUID,
         vaultID: UUID,
         relativePath: String
-    ) throws -> PermanentDeletionIdentityBackup? {
+    ) throws -> NoteIdentityRecord? {
         try withPortableControlLock {
-            let payload = try identityPayload()
-            guard let record = payload.records.first(where: { $0.id == id }) else {
-                return nil
-            }
-            guard record.vaultID == vaultID, record.relativePath == relativePath else {
-                throw TriptychControlError.invalidIdentityCandidate(id)
-            }
-            return PermanentDeletionIdentityBackup(
-                record: record,
-                zoteroBinding: try zoteroBindings().binding(for: id),
-                pendingRebindings: payload.pendingRebindings.filter { $0.noteID == id },
-                ambiguities: payload.unresolvedAmbiguities.compactMap { ambiguity in
-                    guard ambiguity.candidateIDs.contains(id) else { return nil }
-                    return PermanentDeletionIdentityAmbiguity(
-                        vaultID: ambiguity.vaultID,
-                        relativePath: ambiguity.relativePath,
-                        fingerprint: ambiguity.fingerprint,
-                        candidateIDs: ambiguity.candidateIDs,
-                        detectedAt: ambiguity.detectedAt
-                    )
-                }
-            )
-        }
-    }
-
-    func restorePurgedIdentity(_ backup: PermanentDeletionIdentityBackup?) throws {
-        guard let backup else { return }
-        try withPortableControlLock {
-            try restorePurgedIdentityLocked(backup)
-        }
-    }
-
-    private func restorePurgedIdentityLocked(
-        _ backup: PermanentDeletionIdentityBackup
-    ) throws {
-        var snapshot = try identitySnapshot()
-        var payload = snapshot.payload
-        if let existing = payload.records.first(where: { $0.id == backup.record.id }) {
-            guard try persistentlyEquivalent(existing, backup.record) else {
-                throw TriptychControlError.invalidIdentityCandidate(backup.record.id)
-            }
-        } else {
-            guard !payload.records.contains(where: {
-                $0.vaultID == backup.record.vaultID
-                    && $0.relativePath == backup.record.relativePath
-            }) else {
-                throw TriptychControlError.identityPathAlreadyAssigned(backup.record.relativePath)
-            }
-            payload.records.append(backup.record)
-        }
-        for pending in backup.pendingRebindings where !payload.pendingRebindings.contains(pending) {
-            payload.pendingRebindings.append(pending)
-        }
-        for ambiguity in backup.ambiguities {
-            let restored = StoredIdentityAmbiguity(
-                vaultID: ambiguity.vaultID,
-                relativePath: ambiguity.relativePath,
-                fingerprint: ambiguity.fingerprint,
-                candidateIDs: ambiguity.candidateIDs,
-                detectedAt: ambiguity.detectedAt
-            )
-            if let index = payload.unresolvedAmbiguities.firstIndex(where: {
-                $0.vaultID == restored.vaultID && $0.relativePath == restored.relativePath
-            }) {
-                let existing = payload.unresolvedAmbiguities[index]
-                guard existing.fingerprint == restored.fingerprint,
-                      existing.candidateIDs == restored.candidateIDs else {
-                    throw TriptychControlError.invalidIdentityCandidate(backup.record.id)
-                }
-            } else {
-                payload.unresolvedAmbiguities.append(restored)
-            }
-        }
-        try commitIdentityPayload(payload, replacing: &snapshot)
-        if let binding = backup.zoteroBinding {
-            let snapshot = try zoteroBindings()
-            if let existing = snapshot.binding(for: backup.record.id) {
-                guard existing == binding else {
-                    throw TriptychControlError.invalidZoteroBindings
-                }
-            } else {
-                _ = try updateZoteroBindings(
-                    expectedRevision: snapshot.revision
-                ) { bindings in
-                    bindings.removeAll { $0.noteID == binding.noteID }
-                    bindings.append(binding)
+            var snapshot = try identitySnapshot()
+            let removed = snapshot.payload.records.first { $0.id == id }
+            if let removed {
+                guard removed.vaultID == vaultID,
+                      removed.relativePath == relativePath else {
+                    throw TriptychControlError.invalidIdentityCandidate(id)
                 }
             }
+            let hadIdentityState = removed != nil
+                || snapshot.payload.pendingRebindings.contains { $0.noteID == id }
+                || snapshot.payload.unresolvedAmbiguities.contains {
+                    $0.candidateIDs.contains(id)
+                }
+            var payload = snapshot.payload
+            payload.records.removeAll { $0.id == id }
+            payload.pendingRebindings.removeAll { $0.noteID == id }
+            payload.unresolvedAmbiguities = payload.unresolvedAmbiguities.compactMap {
+                ambiguity in
+                var ambiguity = ambiguity
+                ambiguity.candidateIDs.removeAll { $0 == id }
+                return ambiguity.candidateIDs.isEmpty ? nil : ambiguity
+            }
+            if hadIdentityState {
+                try commitIdentityPayload(payload, replacing: &snapshot)
+            }
+            let bindings = try zoteroBindings()
+            if bindings.binding(for: id) != nil {
+                _ = try updateZoteroBindings(expectedRevision: bindings.revision) {
+                    $0.removeAll { $0.noteID == id }
+                }
+            }
+            return removed
         }
     }
 

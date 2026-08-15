@@ -113,8 +113,8 @@ supplement it without granting authority.
 Current bundled methods are usable editable defaults, not best methods,
 philosophy lessons, packages, or certification. The researcher may edit,
 replace, disable, or explicitly restore one. Scholium never silently restores
-or falls back after that choice and retains only the most recent
-Scholium-mediated pre-edit recovery point for each Skill or Practice.
+or falls back after that choice. Git or the researcher's filesystem tools own
+any Method or Practice history outside the current exact source.
 
 ### 2.3 Authorship and provenance
 

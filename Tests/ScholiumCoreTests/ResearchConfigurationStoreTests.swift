@@ -195,15 +195,14 @@ struct ResearchConfigurationStoreTests {
         }
     }
 
-    @Test("A primary method edit keeps exactly one replaceable pre-edit recovery point")
-    func oneMethodRecoveryPoint() async throws {
+    @Test("A primary Method edit replaces only the expected exact source")
+    func primaryMethodEditIsRevisionChecked() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let recoveryURL = fixture.root.appendingPathComponent("machine/recovery.json")
         let store = ResearchConfigurationStore(
             controlURL: fixture.control,
-            triptychID: fixture.triptychID,
-            recoveryStorageURL: recoveryURL
+            triptychID: fixture.triptychID
         )
         let registration = try fixture.registration()
         _ = try await store.saveRegistrations(
@@ -217,35 +216,17 @@ struct ResearchConfigurationStoreTests {
             expectedRevision: original.primaryMarkdownRevision
         )
         #expect(edited.primaryMarkdownSource == "# Analyze\n\nSecond method.\n")
-        #expect(FileManager.default.fileExists(atPath: recoveryURL.path))
-
-        let restored = try await store.restorePrimaryMethod(
-            registrationKey: registration.key,
-            expectedRevision: edited.primaryMarkdownRevision
-        )
-        #expect(restored.primaryMarkdownSource == original.primaryMarkdownSource)
-
-        let toggled = try await store.restorePrimaryMethod(
-            registrationKey: registration.key,
-            expectedRevision: restored.primaryMarkdownRevision
-        )
-        #expect(toggled.primaryMarkdownSource == edited.primaryMarkdownSource)
-        let recoveryFiles = try FileManager.default.contentsOfDirectory(
-            at: recoveryURL.deletingLastPathComponent(),
-            includingPropertiesForKeys: nil
-        ).filter { !$0.lastPathComponent.hasPrefix(".") }
-        #expect(recoveryFiles == [recoveryURL])
+        #expect(!FileManager.default.fileExists(atPath: recoveryURL.path))
     }
 
-    @Test("A stale method edit changes neither exact Markdown nor the recovery point")
+    @Test("A stale Method edit changes neither exact Markdown nor local state")
     func staleMethodEditIsClosed() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let recoveryURL = fixture.root.appendingPathComponent("machine/recovery.json")
         let store = ResearchConfigurationStore(
             controlURL: fixture.control,
-            triptychID: fixture.triptychID,
-            recoveryStorageURL: recoveryURL
+            triptychID: fixture.triptychID
         )
         let registration = try fixture.registration()
         _ = try await store.saveRegistrations(

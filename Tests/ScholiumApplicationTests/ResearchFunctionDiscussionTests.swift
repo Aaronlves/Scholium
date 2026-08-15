@@ -75,7 +75,6 @@ extension ResearchFunctionOperationsTests {
             )
         )
         let protectedRun = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        #expect(protectedRun.snapshot.changeEvidenceID == nil)
         #expect(preparation.instructions.contains("Target and Materials are read-only"))
         #expect(preparation.instructions.contains(
             "begin a separately authorized Analyze Action"

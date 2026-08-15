@@ -286,10 +286,6 @@ public protocol ResearchConfigurationUseCases: Sendable {
         source: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchMethodSnapshot
-    func restorePreviousResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
     func restoreDefaultResearchMethod(
         actionID: ResearchActionID,
         expectedRevision: DocumentFingerprint
@@ -302,10 +298,6 @@ public protocol ResearchConfigurationUseCases: Sendable {
     func savePhilosophicalPractice(
         relativePath: String,
         source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot
-    func restorePreviousPhilosophicalPractice(
-        relativePath: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchPracticeSnapshot
 }

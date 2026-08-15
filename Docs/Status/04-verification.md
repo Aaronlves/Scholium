@@ -39,18 +39,21 @@ override.
 
 ## Focused interface evidence
 
-- On 2026-08-15, the Checkpoint and settled-version removal cutover passed 24
-  focused Core and Application tests for Run-bound exact Agent change evidence,
-  direct Undo after conflict and rename, Settle's single portable marker,
-  interrupted-save recovery, permanent deletion, and Local Execution schema 13.
-  It also passed 129 App architecture, composition, Settings, preview, and
-  localization tests; documentation-authority and interface-localization
-  validators passed, and every test target compiled. The complete repository
-  gate was not used as scoped evidence because unrelated worktree changes would
-  enter it. This is automated disposable-fixture evidence, not human interface
-  or sustained-research acceptance.
-- On 2026-08-15, recovery-loop hardening passed exact-owner tests for damaged
-  vault-identity and portable-access registries; old or damaged whole-bundle
+- On 2026-08-16, the recovery simplification cutover passed focused Core and
+  Application owner tests for transaction-only save recovery, monotonic
+  permanent deletion, natural-key Agent evidence, direct Undo after conflict
+  and rename, one unified workspace registration, Method/Practice replacement,
+  and schema-14 terminal Local Execution compaction. The stabilized cross-layer
+  integration passed the complete repository gate: documentation and shipped-
+  resource validation; 199 Web editor tests and reproducible bundles; 434 Core
+  plus 3 Search-performance tests; 137 Contracts tests; 231 Application tests,
+  11 bridge tests, and 1 architecture measurement; 636 App tests; 7 executable
+  CLI lifecycles; the sandboxed App-to-CLI loopback probe; symbol and residue
+  guards; and an optimized Release build in 213.20 seconds. This is automated
+  disposable-fixture evidence, not human interface or sustained-research
+  acceptance.
+- On 2026-08-15, the then-current recovery-loop hardening passed exact-owner
+  tests for the since-removed separate access registries; old or damaged whole-bundle
   `.scholium` preflight, archive, rebuild, and same-Triptych reopen; unchanged
   Analyses, Topics, and Works bytes; active-runtime refusal; and explicit
   Saved Search and machine-local Method locator archive/reset.

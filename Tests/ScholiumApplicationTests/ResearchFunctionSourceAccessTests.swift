@@ -126,7 +126,7 @@ extension ResearchFunctionOperationsTests {
         let executionURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v9", isDirectory: true)
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let data = try Data(contentsOf: executionURL)
         let payload = try JSONSerialization.jsonObject(with: data)

@@ -522,8 +522,7 @@ extension WorkspaceHandle {
             )
         }
 
-        guard let expectedRevision = entry.expectedRevision,
-              let changeEvidenceID = entry.changeEvidenceID else {
+        guard let expectedRevision = entry.expectedRevision else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
 
@@ -619,7 +618,6 @@ extension WorkspaceHandle {
                 intendedRevision: intendedRevision,
                 observedRevision: current.fingerprint,
                 state: .conflict,
-                changeEvidenceID: changeEvidenceID,
                 startedAt: Date(),
                 finishedAt: Date(),
                 warning: "The document changed outside this Run before the write began."
@@ -641,7 +639,6 @@ extension WorkspaceHandle {
                 intendedRevision: intendedRevision,
                 observedRevision: current.fingerprint,
                 state: .unchanged,
-                changeEvidenceID: changeEvidenceID,
                 startedAt: Date(),
                 finishedAt: Date()
             )
@@ -685,7 +682,6 @@ extension WorkspaceHandle {
             expectedRevision: expectedRevision,
             intendedRevision: intendedRevision,
             state: .writing,
-            changeEvidenceID: changeEvidenceID,
             startedAt: startedAt
         )
         _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
@@ -1081,7 +1077,6 @@ extension WorkspaceHandle {
             expectedRevision: nil,
             intendedRevision: intendedRevision,
             state: .writing,
-            changeEvidenceID: nil,
             startedAt: Date()
         )
         _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
@@ -1360,7 +1355,7 @@ extension WorkspaceHandle {
             }) else {
                 throw ResearchBoundedWriteSetError.staleAuthorization
             }
-            return try conflictResolutionResult(existing)
+            return try conflictResolutionResult(existing, execution: execution)
         }
         guard entry.expiresAt > Date(), let latestConflict else {
             throw ResearchBoundedWriteSetError.staleAuthorization
@@ -1368,7 +1363,7 @@ extension WorkspaceHandle {
         if let existing = matchingResolutions.first(where: {
             $0.conflictOperationID == latestConflict.id
         }) {
-            return try conflictResolutionResult(existing)
+            return try conflictResolutionResult(existing, execution: execution)
         }
         let operationID = Self.stableOperationID(
             material: [
@@ -1396,8 +1391,8 @@ extension WorkspaceHandle {
                 }
             )
             let current = try await exactCurrentDocument(for: entry)
-            let evidence = try await services.agentChangeEvidenceStore
-                .captureStartingRevision(
+            _ = try await services.agentChangeEvidenceStore
+                .replaceStartingRevision(
                     runID: authenticated.runID,
                     noteID: entry.noteID,
                     data: current.sourceBytes,
@@ -1412,7 +1407,6 @@ extension WorkspaceHandle {
                     title: entry.title,
                     allowedOperations: entry.allowedOperations,
                     expectedRevision: current.fingerprint,
-                    changeEvidenceID: evidence.id,
                     allowedPropertyKeys: entry.allowedPropertyKeys,
                     propertyWritePlans: entry.propertyWritePlans,
                     authorizationBasis: entry.authorizationBasis,
@@ -1431,19 +1425,14 @@ extension WorkspaceHandle {
                     requestFingerprint: requestFingerprint,
                     priorExpectedRevision: priorExpectedRevision,
                     observedRevision: current.fingerprint,
-                    changeEvidenceID: evidence.id,
                     state: .readyToRetry,
-                    targetView: ResearchBoundedWriteSetViewEntry(refreshed),
                     resolvedAt: now
                 )
                 execution = try await services.localResearchExecutionStore
                     .resolveWriteConflict(resolution, refreshedEntry: refreshed)
                 entry = try requiredEntry(entry.handle, in: execution)
-                return try conflictResolutionResult(resolution)
+                return try conflictResolutionResult(resolution, execution: execution)
             } catch {
-                try? await services.agentChangeEvidenceStore.discard(
-                    id: evidence.id
-                )
                 throw error
             }
         case .abandonWrite:
@@ -1460,12 +1449,14 @@ extension WorkspaceHandle {
                 priorExpectedRevision: priorExpectedRevision,
                 observedRevision: observed,
                 state: .abandoned,
-                targetView: ResearchBoundedWriteSetViewEntry(entry),
                 resolvedAt: now
             )
             _ = try await services.localResearchExecutionStore
                 .resolveWriteConflict(resolution, refreshedEntry: nil)
-            return try conflictResolutionResult(resolution)
+            execution = try await services.localResearchExecutionStore.record(
+                id: authenticated.runID
+            )
+            return try conflictResolutionResult(resolution, execution: execution)
         }
     }
 
@@ -1717,7 +1708,7 @@ extension WorkspaceHandle {
               allowed.isSubset(of: Set(request.candidates.map(\.handle))) else {
             throw ResearchBoundedWriteSetError.invalidExtensionRecord
         }
-        var evidenceIDs: [UUID] = []
+        var capturedNoteIDs: [UUID] = []
         do {
             var entries: [ResearchBoundedWriteSetEntry] = []
             for candidate in request.candidates where allowed.contains(candidate.handle) {
@@ -1759,14 +1750,14 @@ extension WorkspaceHandle {
                             throw ResearchBoundedWriteSetError.staleAuthorization
                         }
                     }
-                    let evidence = try await services.agentChangeEvidenceStore
+                    _ = try await services.agentChangeEvidenceStore
                         .captureStartingRevision(
                             runID: request.runID,
                             noteID: candidate.noteID,
                             data: current.sourceBytes,
                             expectedRevision: expectedRevision
                         )
-                    evidenceIDs.append(evidence.id)
+                    capturedNoteIDs.append(candidate.noteID)
                     entries.append(try ResearchBoundedWriteSetEntry(
                         handle: candidate.handle,
                         noteID: candidate.noteID,
@@ -1775,7 +1766,6 @@ extension WorkspaceHandle {
                         title: candidate.title,
                         allowedOperations: candidate.operations,
                         expectedRevision: expectedRevision,
-                        changeEvidenceID: evidence.id,
                         allowedPropertyKeys: candidate.propertyKeys,
                         propertyWritePlans: candidate.propertyWritePlans,
                         zoteroBindingsRevision: candidate.zoteroBindingsRevision,
@@ -1799,9 +1789,10 @@ extension WorkspaceHandle {
                     decidedAt: decidedAt
                 )
         } catch {
-            for changeEvidenceID in evidenceIDs {
+            for noteID in capturedNoteIDs {
                 try? await services.agentChangeEvidenceStore.discard(
-                    id: changeEvidenceID
+                    runID: request.runID,
+                    noteID: noteID
                 )
             }
             throw error
@@ -1979,19 +1970,7 @@ extension WorkspaceHandle {
         data: Data,
         endingRevision: DocumentFingerprint
     ) async throws {
-        let firstCommittedEvidenceID = execution.documentWriteRecords
-            .filter {
-                $0.target == entry.handle
-                    && $0.actor == .agent
-                    && $0.state == .committed
-            }
-            .min(by: { $0.startedAt < $1.startedAt })?
-            .changeEvidenceID
-        guard let evidenceID = firstCommittedEvidenceID ?? entry.changeEvidenceID else {
-            throw ResearchBoundedWriteSetError.invalidEntry
-        }
         _ = try await services.agentChangeEvidenceStore.recordEndingRevision(
-            id: evidenceID,
             runID: execution.id,
             noteID: entry.noteID,
             data: data,
@@ -2047,7 +2026,8 @@ extension WorkspaceHandle {
     }
 
     private func conflictResolutionResult(
-        _ record: ResearchWriteConflictResolutionRecord
+        _ record: ResearchWriteConflictResolutionRecord,
+        execution: LocalResearchExecutionRecord
     ) throws -> ResearchWriteConflictResolutionResult {
         let message = switch record.state {
         case .readyToRetry:
@@ -2058,7 +2038,9 @@ extension WorkspaceHandle {
         return try ResearchWriteConflictResolutionResult(
             operationID: record.id,
             state: record.state,
-            target: record.targetView,
+            target: ResearchBoundedWriteSetViewEntry(
+                try requiredEntry(record.target, in: execution)
+            ),
             message: message
         )
     }

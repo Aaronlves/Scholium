@@ -1194,7 +1194,7 @@ struct DocumentLifecycleOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
-        let discussionPreparation = try await handle.research.prepareProtectedFunction(
+        _ = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .discuss,
                 target: ResearchFunctionTarget(
@@ -1226,7 +1226,6 @@ struct DocumentLifecycleOperationsTests {
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
         #expect(commit.removedDialogueIDs.isEmpty)
-        #expect(discussionPreparation.snapshot.changeEvidenceID == nil)
         #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
         #expect(try await handle.snapshot().document(id: trash.destination) == nil)
         #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
@@ -1285,7 +1284,7 @@ struct DocumentLifecycleOperationsTests {
             .appendingPathComponent("Vaults", isDirectory: true)
             .appendingPathComponent(fixture.targetID.vaultID.uuidString, isDirectory: true)
             .appendingPathComponent(
-                "recovery-v2/transactions/mutations",
+                "save-transactions-v1",
                 isDirectory: true
             )
             .appendingPathComponent(

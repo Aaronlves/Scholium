@@ -126,7 +126,9 @@ struct WorkspaceRuntimeTests {
 
         #expect(try Data(contentsOf: manifestURL) == invalidManifest)
         #expect(!FileManager.default.fileExists(
-            atPath: freshSupport.appendingPathComponent("vault-registry.json").path
+            atPath: freshRegistry.appendingPathComponent(
+                "workspace-registration-v3.json"
+            ).path
         ))
         await runtime.shutdown()
     }
@@ -135,15 +137,9 @@ struct WorkspaceRuntimeTests {
     func overlapFailsBeforeAnyRegistrationMutation() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        let registryURLs = [
-            fixture.applicationSupportURL.appendingPathComponent("vault-registry.json"),
-            fixture.applicationSupportURL.appendingPathComponent(
-                "portable-control-access.json"
-            ),
-            fixture.registryStorageURL.appendingPathComponent(
-                "workspace-registry-v2.json"
-            ),
-        ]
+        let registryURLs = [fixture.registryStorageURL.appendingPathComponent(
+            "workspace-registration-v3.json"
+        )]
         let originalBytes = try registryURLs.map { try Data(contentsOf: $0) }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
@@ -190,15 +186,9 @@ struct WorkspaceRuntimeTests {
         let secondManifestURL = secondControl.appendingPathComponent("manifest.json")
         try encoder.encode(secondManifest).write(to: secondManifestURL, options: .atomic)
 
-        let registryURLs = [
-            fixture.applicationSupportURL.appendingPathComponent("vault-registry.json"),
-            fixture.applicationSupportURL.appendingPathComponent(
-                "portable-control-access.json"
-            ),
-            fixture.registryStorageURL.appendingPathComponent(
-                "workspace-registry-v2.json"
-            ),
-        ]
+        let registryURLs = [fixture.registryStorageURL.appendingPathComponent(
+            "workspace-registration-v3.json"
+        )]
         let originalRegistryBytes = try registryURLs.map { try Data(contentsOf: $0) }
         let originalManifestBytes = try Data(contentsOf: secondManifestURL)
         let runtime = WorkspaceRuntime(configuration: .live(.init(
@@ -206,7 +196,7 @@ struct WorkspaceRuntimeTests {
             workspaceRegistryStorageURL: fixture.registryStorageURL
         )))
 
-        await #expect(throws: VaultIdentityRegistryError.self) {
+        await #expect(throws: WorkspaceRegistryError.self) {
             _ = try await runtime.configureTriptych(
                 paperAnalysisURL: fixture.analysesURL,
                 topicKnowledgeURL: secondTopics,
@@ -253,15 +243,9 @@ struct WorkspaceRuntimeTests {
         let secondManifestURL = secondControl.appendingPathComponent("manifest.json")
         try encoder.encode(secondManifest).write(to: secondManifestURL, options: .atomic)
 
-        let registryURLs = [
-            fixture.applicationSupportURL.appendingPathComponent("vault-registry.json"),
-            fixture.applicationSupportURL.appendingPathComponent(
-                "portable-control-access.json"
-            ),
-            fixture.registryStorageURL.appendingPathComponent(
-                "workspace-registry-v2.json"
-            ),
-        ]
+        let registryURLs = [fixture.registryStorageURL.appendingPathComponent(
+            "workspace-registration-v3.json"
+        )]
         let originalRegistryBytes = try registryURLs.map { try Data(contentsOf: $0) }
         let originalManifestBytes = try Data(contentsOf: secondManifestURL)
         let runtime = WorkspaceRuntime(configuration: .live(.init(

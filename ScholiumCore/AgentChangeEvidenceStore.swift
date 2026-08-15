@@ -2,7 +2,6 @@ import Foundation
 import ScholiumContracts
 
 public struct AgentChangeEvidence: Hashable, Sendable {
-    public let id: UUID
     public let triptychID: UUID
     public let runID: UUID
     public let noteID: UUID
@@ -11,43 +10,34 @@ public struct AgentChangeEvidence: Hashable, Sendable {
 }
 
 public enum AgentChangeEvidenceError: LocalizedError, Hashable, Sendable {
-    case missing(UUID)
-    case invalid(UUID)
-    case mismatchedBinding(UUID)
+    case missing(runID: UUID, noteID: UUID)
+    case invalid(runID: UUID, noteID: UUID)
+    case mismatchedBinding(runID: UUID, noteID: UUID)
     case sourceTooLarge
-    case endingUnavailable(UUID)
+    case endingUnavailable(runID: UUID, noteID: UUID)
+    case alreadyCommitted(runID: UUID, noteID: UUID)
     case unsafeStore(String)
 
     public var errorDescription: String? {
         switch self {
-        case .missing:
-            "The exact Agent change evidence is unavailable."
-        case .invalid:
-            "The exact Agent change evidence is damaged or has an unsupported schema."
-        case .mismatchedBinding:
-            "The exact Agent change evidence belongs to another Run or Note."
-        case .sourceTooLarge:
-            "The Agent change exceeds the supported exact-source evidence size."
-        case .endingUnavailable:
-            "The Agent ending revision has not been recorded yet."
-        case .unsafeStore(let reason):
-            "Agent change evidence is unavailable: \(reason)"
+        case .missing: "The exact Agent change evidence is unavailable."
+        case .invalid: "The exact Agent change evidence is damaged or has an unsupported schema."
+        case .mismatchedBinding: "The exact Agent change evidence belongs to another Run or Note."
+        case .sourceTooLarge: "The Agent change exceeds the supported exact-source evidence size."
+        case .endingUnavailable: "The Agent ending revision has not been recorded yet."
+        case .alreadyCommitted: "Committed Agent change evidence cannot be replaced."
+        case .unsafeStore(let reason): "Agent change evidence is unavailable: \(reason)"
         }
     }
 }
 
-/// Machine-local exact bytes for one Agent-modified Note.
-///
-/// This is neither a general version history nor writable source authority.
-/// One immutable starting revision is captured before Agent access; the ending
-/// revision advances only after a Scholium-confirmed Agent write. Research
-/// Record comparison and direct Undo are its only consumers.
+/// Machine-local exact bytes for one Agent-modified `(Run, Note)` pair.
+/// The natural key prevents provisional duplicates during conflict refresh.
 public actor AgentChangeEvidenceStore {
     private struct Payload: Codable, Hashable {
-        static let currentSchemaVersion = 1
+        static let currentSchemaVersion = 2
 
         let schemaVersion: Int
-        let id: UUID
         let triptychID: UUID
         let runID: UUID
         let noteID: UUID
@@ -57,7 +47,6 @@ public actor AgentChangeEvidenceStore {
         let endingData: Data?
 
         init(
-            id: UUID,
             triptychID: UUID,
             runID: UUID,
             noteID: UUID,
@@ -67,7 +56,6 @@ public actor AgentChangeEvidenceStore {
             endingData: Data? = nil
         ) {
             schemaVersion = Self.currentSchemaVersion
-            self.id = id
             self.triptychID = triptychID
             self.runID = runID
             self.noteID = noteID
@@ -79,7 +67,6 @@ public actor AgentChangeEvidenceStore {
 
         var evidence: AgentChangeEvidence {
             AgentChangeEvidence(
-                id: id,
                 triptychID: triptychID,
                 runID: runID,
                 noteID: noteID,
@@ -105,7 +92,7 @@ public actor AgentChangeEvidenceStore {
             components: [
                 "Triptychs",
                 triptychID.uuidString,
-                "agent-change-evidence-v1",
+                "agent-change-evidence-v2",
             ],
             directoryMode: 0o700,
             fileMode: 0o600,
@@ -114,7 +101,7 @@ public actor AgentChangeEvidenceStore {
         do {
             lock = try AdvisoryFileLock(
                 directory: storage,
-                fileName: "agent-change-evidence-v1.lock"
+                fileName: "agent-change-evidence-v2.lock"
             )
             try lock.withExclusiveLock {
                 try storage.removeAbandonedStagingFiles(in: [nil])
@@ -126,7 +113,6 @@ public actor AgentChangeEvidenceStore {
 
     @discardableResult
     public func captureStartingRevision(
-        id: UUID = UUID(),
         runID: UUID,
         noteID: UUID,
         data: Data,
@@ -136,10 +122,9 @@ public actor AgentChangeEvidenceStore {
             throw AgentChangeEvidenceError.sourceTooLarge
         }
         guard DocumentFingerprint(data: data) == expectedRevision else {
-            throw AgentChangeEvidenceError.invalid(id)
+            throw AgentChangeEvidenceError.invalid(runID: runID, noteID: noteID)
         }
         let payload = Payload(
-            id: id,
             triptychID: triptychID,
             runID: runID,
             noteID: noteID,
@@ -148,56 +133,94 @@ public actor AgentChangeEvidenceStore {
         )
         return try locked {
             let encoded = try encode(payload)
+            let name = fileName(runID: runID, noteID: noteID)
             do {
                 let readback = try storage.createExclusive(
                     encoded,
                     directory: nil,
-                    fileName: fileName(id)
+                    fileName: name
                 )
-                return try decodeAndValidate(readback, expectedID: id).evidence
+                return try decodeAndValidate(
+                    readback,
+                    runID: runID,
+                    noteID: noteID
+                ).evidence
             } catch let error as SecureRecordDirectoryError {
-                if case .alreadyExists = error {
-                    let existing = try readPayload(id)
-                    guard existing == payload else {
-                        throw AgentChangeEvidenceError.mismatchedBinding(id)
-                    }
-                    return existing.evidence
+                guard case .alreadyExists = error else { throw error }
+                let existing = try readPayload(runID: runID, noteID: noteID)
+                guard existing == payload else {
+                    throw AgentChangeEvidenceError.mismatchedBinding(
+                        runID: runID,
+                        noteID: noteID
+                    )
                 }
-                throw error
+                return existing.evidence
             }
         }
     }
 
+    /// Replaces a provisional starting revision during conflict refresh. Once
+    /// an Agent ending revision exists, the baseline is immutable.
     @discardableResult
-    public func recordEndingRevision(
-        id: UUID,
+    public func replaceStartingRevision(
         runID: UUID,
         noteID: UUID,
         data: Data,
         expectedRevision: DocumentFingerprint
     ) throws -> AgentChangeEvidence {
-        guard data.count <= Self.maximumSourceByteCount else {
-            throw AgentChangeEvidenceError.sourceTooLarge
-        }
-        guard DocumentFingerprint(data: data) == expectedRevision else {
-            throw AgentChangeEvidenceError.invalid(id)
+        guard data.count <= Self.maximumSourceByteCount,
+              DocumentFingerprint(data: data) == expectedRevision else {
+            throw AgentChangeEvidenceError.invalid(runID: runID, noteID: noteID)
         }
         return try locked {
-            let current = try readPayload(id)
-            guard current.triptychID == triptychID,
-                  current.runID == runID,
-                  current.noteID == noteID else {
-                throw AgentChangeEvidenceError.mismatchedBinding(id)
+            let current = try readPayload(runID: runID, noteID: noteID)
+            guard current.endingRevision == nil else {
+                throw AgentChangeEvidenceError.alreadyCommitted(
+                    runID: runID,
+                    noteID: noteID
+                )
             }
+            let replacement = Payload(
+                triptychID: triptychID,
+                runID: runID,
+                noteID: noteID,
+                startingRevision: expectedRevision,
+                startingData: data
+            )
+            let readback = try storage.replace(
+                encode(replacement),
+                directory: nil,
+                fileName: fileName(runID: runID, noteID: noteID)
+            )
+            return try decodeAndValidate(
+                readback,
+                runID: runID,
+                noteID: noteID
+            ).evidence
+        }
+    }
+
+    @discardableResult
+    public func recordEndingRevision(
+        runID: UUID,
+        noteID: UUID,
+        data: Data,
+        expectedRevision: DocumentFingerprint
+    ) throws -> AgentChangeEvidence {
+        guard data.count <= Self.maximumSourceByteCount,
+              DocumentFingerprint(data: data) == expectedRevision else {
+            throw AgentChangeEvidenceError.invalid(runID: runID, noteID: noteID)
+        }
+        return try locked {
+            let current = try readPayload(runID: runID, noteID: noteID)
             if current.endingRevision == expectedRevision,
                current.endingData == data {
                 return current.evidence
             }
             let updated = Payload(
-                id: current.id,
-                triptychID: current.triptychID,
-                runID: current.runID,
-                noteID: current.noteID,
+                triptychID: triptychID,
+                runID: runID,
+                noteID: noteID,
                 startingRevision: current.startingRevision,
                 startingData: current.startingData,
                 endingRevision: expectedRevision,
@@ -206,67 +229,68 @@ public actor AgentChangeEvidenceStore {
             let readback = try storage.replace(
                 encode(updated),
                 directory: nil,
-                fileName: fileName(id)
+                fileName: fileName(runID: runID, noteID: noteID)
             )
-            return try decodeAndValidate(readback, expectedID: id).evidence
+            return try decodeAndValidate(
+                readback,
+                runID: runID,
+                noteID: noteID
+            ).evidence
         }
     }
 
-    public func evidence(id: UUID) throws -> AgentChangeEvidence {
-        try locked { try readPayload(id).evidence }
+    public func evidence(runID: UUID, noteID: UUID) throws -> AgentChangeEvidence {
+        try locked { try readPayload(runID: runID, noteID: noteID).evidence }
     }
 
     public func startingData(
-        id: UUID,
         runID: UUID,
         noteID: UUID,
         expectedRevision: DocumentFingerprint
     ) throws -> Data {
         try locked {
-            let payload = try readPayload(id)
-            try validateBinding(
-                payload,
-                id: id,
-                runID: runID,
-                noteID: noteID
-            )
+            let payload = try readPayload(runID: runID, noteID: noteID)
             guard payload.startingRevision == expectedRevision else {
-                throw AgentChangeEvidenceError.mismatchedBinding(id)
+                throw AgentChangeEvidenceError.mismatchedBinding(
+                    runID: runID,
+                    noteID: noteID
+                )
             }
             return payload.startingData
         }
     }
 
     public func endingData(
-        id: UUID,
         runID: UUID,
         noteID: UUID,
         expectedRevision: DocumentFingerprint
     ) throws -> Data {
         try locked {
-            let payload = try readPayload(id)
-            try validateBinding(
-                payload,
-                id: id,
-                runID: runID,
-                noteID: noteID
-            )
+            let payload = try readPayload(runID: runID, noteID: noteID)
             guard payload.endingRevision == expectedRevision,
                   let endingData = payload.endingData else {
-                throw AgentChangeEvidenceError.endingUnavailable(id)
+                throw AgentChangeEvidenceError.endingUnavailable(
+                    runID: runID,
+                    noteID: noteID
+                )
             }
             return endingData
         }
     }
 
-    public func discard(id: UUID) throws {
+    public func discard(runID: UUID, noteID: UUID) throws {
         try locked {
-            let name = fileName(id)
+            let name = fileName(runID: runID, noteID: noteID)
             guard let data = try storage.readIfPresent(directory: nil, fileName: name)
             else { return }
-            _ = try decodeAndValidate(data, expectedID: id)
+            _ = try decodeAndValidate(data, runID: runID, noteID: noteID)
             try storage.remove(directory: nil, fileName: name, expected: data)
         }
+    }
+
+    @discardableResult
+    public func removeEvidence(runID: UUID) throws -> Int {
+        try removeEvidence { $0.runID == runID }
     }
 
     @discardableResult
@@ -274,51 +298,38 @@ public actor AgentChangeEvidenceStore {
         try removeEvidence { $0.noteID == noteID }
     }
 
-    private func removeEvidence(
-        where shouldRemove: (Payload) -> Bool
-    ) throws -> Int {
+    private func removeEvidence(where shouldRemove: (Payload) -> Bool) throws -> Int {
         try locked {
             var removed = 0
             for name in try storage.fileNames(in: nil) where name.hasSuffix(".json") {
                 let data = try storage.read(directory: nil, fileName: name)
-                let payload = try decodeAndValidate(data, expectedID: nil)
+                let payload = try decodeAndValidate(data, runID: nil, noteID: nil)
                 guard shouldRemove(payload) else { continue }
-                try storage.remove(
-                    directory: nil,
-                    fileName: name,
-                    expected: data
-                )
+                try storage.remove(directory: nil, fileName: name, expected: data)
                 removed += 1
             }
             return removed
         }
     }
 
-    private func readPayload(_ id: UUID) throws -> Payload {
+    private func readPayload(runID: UUID, noteID: UUID) throws -> Payload {
         do {
             return try decodeAndValidate(
-                storage.read(directory: nil, fileName: fileName(id)),
-                expectedID: id
+                storage.read(
+                    directory: nil,
+                    fileName: fileName(runID: runID, noteID: noteID)
+                ),
+                runID: runID,
+                noteID: noteID
             )
         } catch let error as SecureRecordDirectoryError {
             if case .notFound = error {
-                throw AgentChangeEvidenceError.missing(id)
+                throw AgentChangeEvidenceError.missing(
+                    runID: runID,
+                    noteID: noteID
+                )
             }
             throw error
-        }
-    }
-
-    private func validateBinding(
-        _ payload: Payload,
-        id: UUID,
-        runID: UUID,
-        noteID: UUID
-    ) throws {
-        guard payload.triptychID == triptychID,
-              payload.id == id,
-              payload.runID == runID,
-              payload.noteID == noteID else {
-            throw AgentChangeEvidenceError.mismatchedBinding(id)
         }
     }
 
@@ -330,32 +341,38 @@ public actor AgentChangeEvidenceStore {
 
     private func decodeAndValidate(
         _ data: Data,
-        expectedID: UUID?
+        runID expectedRunID: UUID?,
+        noteID expectedNoteID: UUID?
     ) throws -> Payload {
         let payload: Payload
         do {
             payload = try JSONDecoder().decode(Payload.self, from: data)
         } catch {
-            throw AgentChangeEvidenceError.invalid(expectedID ?? UUID())
+            throw AgentChangeEvidenceError.invalid(
+                runID: expectedRunID ?? UUID(),
+                noteID: expectedNoteID ?? UUID()
+            )
         }
         guard payload.schemaVersion == Payload.currentSchemaVersion,
               payload.triptychID == triptychID,
-              expectedID.map({ $0 == payload.id }) ?? true,
+              expectedRunID.map({ $0 == payload.runID }) ?? true,
+              expectedNoteID.map({ $0 == payload.noteID }) ?? true,
               payload.startingData.count <= Self.maximumSourceByteCount,
-              DocumentFingerprint(data: payload.startingData)
-                == payload.startingRevision,
+              DocumentFingerprint(data: payload.startingData) == payload.startingRevision,
               (payload.endingData == nil) == (payload.endingRevision == nil),
-              payload.endingData.map({ $0.count <= Self.maximumSourceByteCount })
-                ?? true,
+              payload.endingData.map({ $0.count <= Self.maximumSourceByteCount }) ?? true,
               payload.endingData.map(DocumentFingerprint.init(data:))
                 == payload.endingRevision else {
-            throw AgentChangeEvidenceError.invalid(expectedID ?? payload.id)
+            throw AgentChangeEvidenceError.invalid(
+                runID: expectedRunID ?? payload.runID,
+                noteID: expectedNoteID ?? payload.noteID
+            )
         }
         return payload
     }
 
-    private func fileName(_ id: UUID) -> String {
-        id.uuidString.lowercased() + ".json"
+    private func fileName(runID: UUID, noteID: UUID) -> String {
+        "\(runID.uuidString.lowercased())-\(noteID.uuidString.lowercased()).json"
     }
 
     private func locked<T>(_ operation: () throws -> T) throws -> T {

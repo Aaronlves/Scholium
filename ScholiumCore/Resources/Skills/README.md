@@ -20,8 +20,8 @@ plugin, version, dependency, or execution semantics.
   Platform Action definitions own roles, capabilities, machine facts, and
   supported operations. One Triptych collaboration policy owns interruption
   behavior.
-- Scholium-mediated Method and Practice edits keep one replaceable
-  previous-edit recovery point, not a version history.
+- Scholium-mediated Method and Practice edits replace only the exact expected
+  current source; this tree does not provide edit history.
 
 The files below serve these defaults:
 
@@ -37,8 +37,8 @@ The files below serve these defaults:
 
 `BundledResearchMethodDefaults` installs the current default primary Markdown
 through the registration owner for a new Triptych. Later restoration explicitly
-replaces the current primary bytes and preserves the displaced bytes as the one
-previous-edit recovery point; no runtime fallback consults this tree.
+replaces the expected current primary bytes; no recovery copy or runtime
+fallback consults this tree.
 
 ## Protected reference resources
 

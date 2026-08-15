@@ -96,11 +96,6 @@ struct ResearchMethodImprovementOperationsTests {
             )
         }
 
-        let restored = try await handle.research.restorePreviousResearchMethod(
-            registrationKey: original.registration.key,
-            expectedRevision: receipt.endingRevision
-        )
-        #expect(restored.primaryMarkdownSource == original.primaryMarkdownSource)
         _ = try await runtime.endResearchAgentRun(
             credential: credential,
             run: handoff.run
@@ -267,7 +262,7 @@ struct ResearchMethodImprovementOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("The same explicit boundary can replace one linked Practice and preserve its previous-edit recovery point")
+    @Test("The same explicit boundary can replace one linked Practice exactly")
     func linkedPracticeImprovement() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -302,7 +297,7 @@ struct ResearchMethodImprovementOperationsTests {
         let target = try #require(context.targets.first(where: {
             $0.kind == .practice && $0.relativePath == practice.relativePath
         }))
-        let replacement = practice.source + "\nPractice recovery remains explicit.\n"
+        let replacement = practice.source + "\nPractice replacement is exact.\n"
         let submission = try ResearchMethodImprovementSubmission(
             requestID: UUID(),
             feedbackRevision: try #require(
@@ -327,12 +322,6 @@ struct ResearchMethodImprovementOperationsTests {
             })
         )
         #expect(updated.source == replacement)
-        let restored = try await handle.research
-            .restorePreviousPhilosophicalPractice(
-                relativePath: practice.relativePath,
-                expectedRevision: updated.revision
-            )
-        #expect(restored.source == practice.source)
         await runtime.shutdown()
     }
 

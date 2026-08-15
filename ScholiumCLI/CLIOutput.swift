@@ -270,7 +270,7 @@ private extension ScholiumCLI {
                 usage: "scholium agent write --run <locator> --from <json|->",
                 inputContract: "AgentDocumentWriteDraft",
                 input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body). create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Complete Markdown is never accepted here.",
-                output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, revision, checkpoint, and retry authority.",
+                output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, expected revision, atomic write, and retry authority.",
                 nextSteps: [
                     "scholium agent resolve-write-conflict --run <locator> --from <json|-> when the returned state is conflict",
                     "Continue with another ready member or scholium agent submit-result after a confirmed write",

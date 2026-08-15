@@ -275,7 +275,7 @@ struct WorkspaceTests {
         let urls = try makeTriptychFolders(in: base.appendingPathComponent("Domain", isDirectory: true))
         let storage = base.appendingPathComponent("registry", isDirectory: true)
         try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
-        let registryURL = storage.appendingPathComponent("workspace-registry-v2.json")
+        let registryURL = WorkspaceRegistry.registryURL(storageURL: storage)
         let damaged = Data("researcher recovery data, not valid JSON".utf8)
         try damaged.write(to: registryURL)
         let registry = WorkspaceRegistry(storageURL: storage)
@@ -392,11 +392,11 @@ struct WorkspaceTests {
         let storage = base.appendingPathComponent("registry", isDirectory: true)
         try FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
         let registryURL = WorkspaceRegistry.registryURL(storageURL: storage)
-        let newer = Data(#"{"schemaVersion":3}"#.utf8)
+        let newer = Data(#"{"schemaVersion":4}"#.utf8)
         try newer.write(to: registryURL)
         let registry = WorkspaceRegistry(storageURL: storage)
 
-        #expect(await registry.health() == .unsupportedNewerSchema(3))
+        #expect(await registry.health() == .unsupportedNewerSchema(4))
         await #expect(throws: WorkspaceRegistryError.self) {
             _ = try await registry.allTriptychs()
         }
@@ -475,205 +475,45 @@ struct WorkspaceTests {
         return (analyses, topics, works)
     }
 
-    @Test("Vault identity can be restored by its stable ID")
-    func vaultIdentityLookup() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let vault = base.appendingPathComponent("vault", isDirectory: true)
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        let registry = VaultIdentityRegistry(applicationSupportURL: base)
-
-        let registered = try await registry.identity(for: vault)
-        let restored = await registry.identity(id: registered.id)
-
-        #expect(restored?.id == registered.id)
-        #expect(restored?.canonicalPath == registered.canonicalPath)
-        #expect(await registry.identity(forCanonicalPath: vault.path)?.id == registered.id)
-    }
-
-    @Test("Reselecting a vault refreshes its bookmark without changing identity")
-    func vaultIdentityBookmarkRefresh() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let vault = base.appendingPathComponent("vault", isDirectory: true)
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        let registry = VaultIdentityRegistry(applicationSupportURL: base)
-
-        let first = try await registry.identity(for: vault, bookmarkData: Data("first".utf8))
-        let refreshed = try await registry.identity(for: vault, bookmarkData: Data("second".utf8))
-
-        #expect(refreshed.id == first.id)
-        #expect(refreshed.bookmarkData == Data("second".utf8))
-        #expect(await registry.identity(id: first.id)?.bookmarkData == Data("second".utf8))
-    }
-
-    @Test("Portable vault identity follows the newly authorized local path")
-    func portableVaultIdentityCutover() async throws {
+    @Test("One workspace registration owns identity, bookmarks, and portable access")
+    func unifiedRegistrationOwnsMachineAccess() async throws {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: base) }
-        let vault = base.appendingPathComponent("vault", isDirectory: true)
-        let other = base.appendingPathComponent("other", isDirectory: true)
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
-        let registry = VaultIdentityRegistry(applicationSupportURL: base)
-        let portableID = UUID()
-        let registered = try await registry.identity(
-            for: vault,
-            bookmarkData: Data("first".utf8),
-            preferredID: portableID
+        let folders = try makeTriptychFolders(in: base)
+        let registry = WorkspaceRegistry(storageURL: base)
+        let analysesID = UUID()
+        let topicsID = UUID()
+        let worksID = UUID()
+        let vaultBookmarks: [WorkspaceVaultSlot: Data] = [
+            .paperAnalysis: Data("analyses".utf8),
+            .topicKnowledge: Data("topics".utf8),
+            .output: Data("works".utf8),
+        ]
+        let portable = PortableControlAccess(
+            canonicalContainerPath: base.path,
+            bookmarkData: Data("container".utf8)
         )
-        #expect(registered.id == portableID)
-        let moved = try await registry.identity(
-            for: other,
-            bookmarkData: Data("other".utf8),
-            preferredID: portableID
+
+        _ = try await registry.configureTriptych(
+            paperAnalysis: (folders.analyses, analysesID),
+            topicKnowledge: (folders.topics, topicsID),
+            output: (folders.works, worksID),
+            vaultBookmarks: vaultBookmarks,
+            portableControlAccess: portable
         )
-        #expect(moved.id == portableID)
-        #expect(await registry.identity(forCanonicalPath: vault.path) == nil)
-        #expect(await registry.identity(id: portableID)?.canonicalPath == other.path)
-    }
 
-    @Test("A portable identity cannot overwrite another identity at the same path")
-    func portableIdentityCannotReplaceSamePathIdentity() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let vault = base.appendingPathComponent("vault", isDirectory: true)
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        let registry = VaultIdentityRegistry(applicationSupportURL: base)
-        let registered = try await registry.identity(
-            for: vault,
-            bookmarkData: Data("first".utf8)
-        )
-        let registryURL = base.appendingPathComponent("vault-registry.json")
-        let originalBytes = try Data(contentsOf: registryURL)
-
-        await #expect(throws: VaultIdentityRegistryError.self) {
-            _ = try await registry.identity(
-                for: vault,
-                bookmarkData: Data("second".utf8),
-                preferredID: UUID()
-            )
-        }
-
-        #expect(try Data(contentsOf: registryURL) == originalBytes)
-        #expect(await registry.identity(forCanonicalPath: vault.path)?.id == registered.id)
-    }
-
-    @Test("A corrupt vault identity registry is never replaced by a new registration")
-    func corruptVaultIdentityRegistryFailsClosed() async throws {
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let vault = base.appendingPathComponent("vault", isDirectory: true)
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        let registryURL = base.appendingPathComponent("vault-registry.json")
-        let corrupt = Data("{broken identity registry".utf8)
-        try corrupt.write(to: registryURL)
-        let registry = VaultIdentityRegistry(applicationSupportURL: base)
-
-        #expect(await registry.healthError() != nil)
-        await #expect(throws: VaultIdentityRegistryError.self) {
-            _ = try await registry.identity(for: vault)
-        }
-        #expect(try Data(contentsOf: registryURL) == corrupt)
-    }
-
-    @Test("Damaged machine-local access registries are independently preserved")
-    func machineLocalAccessRegistryRecovery() throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        let vaultURL = base.appendingPathComponent("vault-registry.json")
-        let portableURL = base.appendingPathComponent("portable-control-access.json")
-        let damaged = Data("{broken vault registry".utf8)
-        let validPortable = Data("{\"containers\":{}}".utf8)
-        try damaged.write(to: vaultURL)
-        try validPortable.write(to: portableURL)
-
-        let health = MachineLocalAccessRegistryRecovery.health(
-            applicationSupportURL: base
-        )
-        guard case .damaged(let failures) = health else {
-            Issue.record("Expected one damaged machine-local registry.")
-            return
-        }
-        #expect(failures.map(\.kind) == [.vaultIdentity])
-
-        let preserved = try MachineLocalAccessRegistryRecovery
-            .preserveDamagedRegistriesForRelinking(applicationSupportURL: base)
-
-        #expect(preserved.count == 1)
-        #expect(try Data(contentsOf: preserved[0]) == damaged)
-        #expect(!FileManager.default.fileExists(atPath: vaultURL.path))
-        #expect(try Data(contentsOf: portableURL) == validPortable)
-        #expect(MachineLocalAccessRegistryRecovery.health(
-            applicationSupportURL: base
-        ).isHealthy)
-    }
-
-    @Test("Portable control authorization is keyed by the folder containing Works")
-    func portableControlAuthorizationPersists() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let container = base.appendingPathComponent("Triptych", isDirectory: true)
-        let works = container.appendingPathComponent("Works", isDirectory: true)
-        try FileManager.default.createDirectory(at: works, withIntermediateDirectories: true)
-        let registry = PortableControlAccessRegistry(applicationSupportURL: base)
-        let bookmark = Data("synthetic security-scoped bookmark".utf8)
-
-        let registered = try await registry.register(
-            containerURL: container,
-            bookmarkData: bookmark
-        )
-        let restored = await PortableControlAccessRegistry(
-            applicationSupportURL: base
-        ).access(forWorksURL: works)
-
-        #expect(registered.canonicalContainerPath == container.path)
-        #expect(restored?.canonicalContainerPath == container.path)
-        #expect(restored?.bookmarkData == bookmark)
-    }
-
-    @Test("Portable control authorization rejects a folder other than the Works parent")
-    func portableControlAuthorizationValidatesParent() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let expected = base.appendingPathComponent("Expected", isDirectory: true)
-        let works = expected.appendingPathComponent("Works", isDirectory: true)
-        let selected = base.appendingPathComponent("Selected", isDirectory: true)
-        for url in [works, selected] {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        }
-        let registry = PortableControlAccessRegistry(applicationSupportURL: base)
-
-        await #expect(throws: PortableControlAccessRegistryError.self) {
-            _ = try await registry.register(containerURL: selected, forWorksURL: works)
-        }
-    }
-
-    @Test("A corrupt portable control access registry is preserved")
-    func corruptPortableControlAccessRegistryFailsClosed() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        let registryURL = base.appendingPathComponent("portable-control-access.json")
-        let corrupt = Data("{broken portable access registry".utf8)
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        try corrupt.write(to: registryURL)
-        let registry = PortableControlAccessRegistry(applicationSupportURL: base)
-
-        #expect(await registry.healthError() != nil)
-        await #expect(throws: PortableControlAccessRegistryError.self) {
-            _ = try await registry.register(
-                containerURL: base,
-                bookmarkData: Data("replacement".utf8)
-            )
-        }
-        #expect(try Data(contentsOf: registryURL) == corrupt)
+        #expect(try await registry.identity(
+            forCanonicalPath: folders.topics.path
+        )?.bookmarkData == vaultBookmarks[.topicKnowledge])
+        #expect(try await registry.portableAccess(
+            forWorksURL: folders.works
+        ) == portable)
+        #expect(FileManager.default.fileExists(
+            atPath: base.appendingPathComponent(
+                "workspace-registration-v3.json"
+            ).path
+        ))
     }
 
 }

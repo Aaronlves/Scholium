@@ -188,8 +188,9 @@ complete outer envelope before it writes a frame.
 Continue Result schema 3 and authenticated Run Context schema 6 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 13 persists the same child handoff, independent
-Zotero-binding write ledger, and change-evidence references. Authenticated Run
+Execution schema 14 persists active child handoff and independent
+Zotero-binding write state. Agent change evidence is keyed directly by
+`(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
 Context schema 6 also carries one optional typed Zotero Integration Adapter containing
 the exact release-managed System Skill and capability contract. Application
 includes it only for an Analysis target with frozen Zotero context and a
@@ -339,10 +340,10 @@ pending `(Record ID, Note ID)` activity under the Record listing lock and
 expected source-manifest hash. The cumulative covered set, observed revision,
 and review time are the only durable Review facts.
 
-Direct undo preflights every selected confirmed
-change against its Local Execution entry, first committed write, exact
-`AgentChangeEvidenceStore` binding and starting bytes, current controlled stable
-identity/path/role, and Agent ending revision. Application restores the complete
+Direct undo preflights every selected confirmed change against the portable
+Record, exact `(Run ID, Note ID)` `AgentChangeEvidenceStore` binding and
+starting bytes, current controlled stable identity/path, and Agent ending
+revision. Application restores the complete
 starting source only while current source still equals the ending revision,
 using the ordinary revision-checked repository save. A stable rename is
 resolved before that save. Application returns observed
@@ -351,11 +352,11 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-13 Local Execution, exact
+`noteReviewStates`, and `resultArrivals` from schema-14 Local Execution, exact
 schema-9 Record reads, and schema-1 Note Reviews. The projections
-contains only Run, Action, target stable Note ID, one interface state, optional
+contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
-omits pairing codes, Session secrets, change-evidence IDs, source bytes, prompts,
+omits pairing codes, Session secrets, source bytes, prompts,
 and tool traces. Needs Attention follows the current bounded-entry/recovery
 state, not an immutable historical conflict record. A formed Record ends its
 Action activity immediately; only confirmed Agent changes create per-Note
@@ -450,7 +451,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-13
+the one current `methodImprovementRun` in its parent Local Execution schema-14
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every
@@ -464,13 +465,16 @@ replacement, `diagnosed_no_change`, or `unavailable` diagnosis; CLI fills the
 comment, Result, and target revisions from the current authenticated context.
 A replacement obtains one non-Codable, nonreusable, short-lived capability
 bound to Run, Session, request, target, and expected revision immediately
-before the ordinary method-file transaction. That transaction retains one
-previous-edit recovery point and reads back the exact source. The writing
+before the ordinary method-file transaction. That transaction replaces only
+the expected current revision and reads back the exact source. The writing
 state preserves enough evidence to reconcile interruption after the file
 commit without writing twice.
 
-Completion retains one machine-local terminal receipt rather than a feedback
-queue or method history. It clears only a comment whose revision/text and
+Completion compacts the active Local Execution to one machine-local terminal
+receipt, deleting prepared instructions, the Bounded Write Set, write ledgers,
+extensions, and conflict rows after the portable Record exists. The receipt
+retains only state still needed for idempotency, continuation, or one Method
+improvement rather than a feedback queue or method history. It clears only a comment whose revision/text and
 Result fingerprint remain exact; a concurrently modified comment remains.
 Identical submission retry is idempotent, different terminal input fails
 closed, and Session finalization removes remaining capability authority.

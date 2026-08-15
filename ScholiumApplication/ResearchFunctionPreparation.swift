@@ -552,15 +552,16 @@ extension ResearchFunctionCoordinator {
         // Every existing Note that a Run may change receives one exact,
         // Run-bound starting revision before Agent access. This is direct
         // change evidence, not a general version history.
-        let changeEvidence: AgentChangeEvidence?
+        let capturedChangeEvidence: Bool
         if requiresAgentChangeEvidence,
            request.function.requiresAgentChangeEvidence {
-            changeEvidence = try await captureAgentChangeStartingRevision(
+            _ = try await captureAgentChangeStartingRevision(
                 runID: runID,
                 target: request.target
             )
+            capturedChangeEvidence = true
         } else {
-            changeEvidence = nil
+            capturedChangeEvidence = false
         }
 
         do {
@@ -585,9 +586,10 @@ extension ResearchFunctionCoordinator {
                 )
             }
         } catch {
-            if let changeEvidence {
+            if capturedChangeEvidence {
                 try? await dependencies.agentChangeEvidenceStore.discard(
-                    id: changeEvidence.id
+                    runID: runID,
+                    noteID: request.target.noteID
                 )
             }
             throw error
@@ -610,7 +612,6 @@ extension ResearchFunctionCoordinator {
             actionSnapshot: actionSnapshot,
             recordKind: request.function == .discuss ? .discuss : .functionEnvelope,
             recordID: runID,
-            changeEvidenceID: changeEvidence?.id,
             // Manuscript does not impose one universal philosophical pipeline.
             // Develop and Revise expose only a pending Fidelity child here: its
             // exact workflow is prepared later against the final fingerprint.
@@ -728,9 +729,10 @@ extension ResearchFunctionCoordinator {
                     }
             }
         } catch {
-            if let changeEvidence {
+            if capturedChangeEvidence {
                 try? await dependencies.agentChangeEvidenceStore.discard(
-                    id: changeEvidence.id
+                    runID: runID,
+                    noteID: request.target.noteID
                 )
             }
             try? await dependencies.localExecutionStore.discardUncompleted(

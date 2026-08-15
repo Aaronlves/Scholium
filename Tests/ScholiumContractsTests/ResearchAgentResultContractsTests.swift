@@ -221,7 +221,6 @@ struct ResearchAgentResultContractsTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            changeEvidenceID: UUID(),
             authorizationBasis: .initialAction,
             expiresAt: Date(timeIntervalSince1970: 600)
         )

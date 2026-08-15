@@ -57,6 +57,8 @@ public struct RegisteredVault: Codable, Hashable, Identifiable, Sendable {
     public var name: String
     public var role: VaultRole
     public let canonicalPath: String
+    /// Machine-local security-scoped access for this exact vault root.
+    public let bookmarkData: Data?
     public let registeredAt: Date
 
     public init(
@@ -64,12 +66,14 @@ public struct RegisteredVault: Codable, Hashable, Identifiable, Sendable {
         name: String,
         role: VaultRole,
         canonicalPath: String,
+        bookmarkData: Data? = nil,
         registeredAt: Date = Date()
     ) {
         self.id = id
         self.name = name
         self.role = role
         self.canonicalPath = canonicalPath
+        self.bookmarkData = bookmarkData
         self.registeredAt = registeredAt
     }
 }
@@ -101,14 +105,15 @@ public enum WorkspaceVaultSlot: String, Codable, CaseIterable, Identifiable, Sen
 
 /// Stable machine-local registration for one complete Scholium Triptych.
 ///
-/// The three vault UUIDs refer to `VaultIdentityRegistry`; paths and bookmarks
-/// are deliberately not duplicated here.
+/// The single machine-local workspace registration owns vault identity, access,
+/// membership, and the portable control-container access grant together.
 public struct ScholiumTriptych: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
     public var paperAnalysisVaultID: UUID
     public var topicKnowledgeVaultID: UUID
     public var outputVaultID: UUID
+    public var portableControlAccess: PortableControlAccess?
     public let createdAt: Date
     public var updatedAt: Date
 
@@ -118,6 +123,7 @@ public struct ScholiumTriptych: Codable, Hashable, Identifiable, Sendable {
         paperAnalysisVaultID: UUID,
         topicKnowledgeVaultID: UUID,
         outputVaultID: UUID,
+        portableControlAccess: PortableControlAccess? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -126,6 +132,7 @@ public struct ScholiumTriptych: Codable, Hashable, Identifiable, Sendable {
         self.paperAnalysisVaultID = paperAnalysisVaultID
         self.topicKnowledgeVaultID = topicKnowledgeVaultID
         self.outputVaultID = outputVaultID
+        self.portableControlAccess = portableControlAccess
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -209,80 +216,6 @@ public enum WorkspaceRegistryHealth: Equatable, Sendable {
             "The registry uses schema \(version), but this Scholium version supports an earlier schema."
         case .ioFailure(let reason):
             "The registry could not be read. \(reason)"
-        }
-    }
-}
-
-public enum MachineLocalRegistryKind: String, Equatable, Sendable {
-    case vaultIdentity
-    case portableControlAccess
-
-    public var displayName: String {
-        switch self {
-        case .vaultIdentity: "vault access registry"
-        case .portableControlAccess: "portable control access registry"
-        }
-    }
-}
-
-public struct MachineLocalRegistryFailure: Equatable, Sendable {
-    public let kind: MachineLocalRegistryKind
-    public let path: String
-    public let reason: String
-
-    public init(kind: MachineLocalRegistryKind, path: String, reason: String) {
-        self.kind = kind
-        self.path = path
-        self.reason = reason
-    }
-}
-
-/// Health of the two machine-local authorization registries that registration
-/// and reopening depend on. These files contain only local paths/bookmarks;
-/// preserving them never authorizes or changes a research vault.
-public enum MachineLocalRegistryHealth: Equatable, Sendable {
-    case healthy
-    case damaged([MachineLocalRegistryFailure])
-    case ioFailure([MachineLocalRegistryFailure])
-
-    public var isHealthy: Bool { self == .healthy }
-
-    public var canRelinkAfterPreserving: Bool {
-        if case .damaged(let failures) = self { return !failures.isEmpty }
-        return false
-    }
-
-    public var summary: String {
-        switch self {
-        case .healthy:
-            "Scholium's local access registries are available."
-        case .damaged:
-            "Scholium's local access registry is damaged and must be preserved before relinking."
-        case .ioFailure:
-            "Scholium could not safely read its local access registry."
-        }
-    }
-
-    public var details: String {
-        let failures: [MachineLocalRegistryFailure]
-        switch self {
-        case .healthy:
-            return "Both local access registries are readable and use the supported schema."
-        case .damaged(let value), .ioFailure(let value):
-            failures = value
-        }
-        return failures.map {
-            "\($0.kind.displayName) at \($0.path): \($0.reason)"
-        }.joined(separator: "\n")
-    }
-}
-
-public enum MachineLocalRegistryError: LocalizedError, Sendable {
-    case recoveryRequired(MachineLocalRegistryHealth)
-
-    public var errorDescription: String? {
-        switch self {
-        case .recoveryRequired(let health): health.summary
         }
     }
 }

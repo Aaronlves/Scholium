@@ -115,12 +115,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         guard registryHealth.isHealthy else {
             throw WorkspaceRegistryError.registryRecoveryRequired(registryHealth)
         }
-        let machineRegistryHealth = WorkspaceRegistryRecoveryOperations.machineLocalHealth(
-            applicationSupportURL: applicationSupportURL
-        )
-        guard machineRegistryHealth.isHealthy else {
-            throw MachineLocalRegistryError.recoveryRequired(machineRegistryHealth)
-        }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: applicationSupportURL,
             workspaceRegistryStorageURL: workspaceURL
@@ -851,12 +845,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     expectedRegistrationRevision: revision
                 )
             },
-            restorePreviousResearchMethod: { [self] id, key, revision in
-                try await workspaceHandle(id: id).research.restorePreviousResearchMethod(
-                    registrationKey: key,
-                    expectedRevision: revision
-                )
-            },
             restoreDefaultResearchMethod: { [self] id, actionID, revision in
                 try await workspaceHandle(id: id).research.restoreDefaultResearchMethod(
                     actionID: actionID,
@@ -882,13 +870,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     source: source,
                     expectedRevision: revision
                 )
-            },
-            restorePreviousPhilosophicalPractice: { [self] id, path, revision in
-                try await workspaceHandle(id: id).research
-                    .restorePreviousPhilosophicalPractice(
-                        relativePath: path,
-                        expectedRevision: revision
-                    )
             },
             citationMethodStatus: { [self] workspaceID in
                 try await workspaceHandle(id: workspaceID).research.citationMethodStatus()

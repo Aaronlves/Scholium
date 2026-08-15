@@ -45,14 +45,12 @@ struct ResearchGuidanceMarkdownEditSheet: View {
     let detail: Text
     let sourceAccessibilityLabel: Text
     let save: @MainActor (String) async throws -> Void
-    let restorePrevious: (@MainActor () async throws -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: ResearchGuidanceMarkdownEditDraft
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var confirmsDiscard = false
-    @State private var confirmsRestore = false
     @FocusState private var isSourceFocused: Bool
 
     init(
@@ -60,14 +58,12 @@ struct ResearchGuidanceMarkdownEditSheet: View {
         detail: Text,
         sourceAccessibilityLabel: Text,
         initialSource: String,
-        save: @escaping @MainActor (String) async throws -> Void,
-        restorePrevious: (@MainActor () async throws -> Void)? = nil
+        save: @escaping @MainActor (String) async throws -> Void
     ) {
         self.title = title
         self.detail = detail
         self.sourceAccessibilityLabel = sourceAccessibilityLabel
         self.save = save
-        self.restorePrevious = restorePrevious
         _draft = State(initialValue: ResearchGuidanceMarkdownEditDraft(source: initialSource))
     }
 
@@ -89,16 +85,7 @@ struct ResearchGuidanceMarkdownEditSheet: View {
                     .accessibilityLabel(sourceAccessibilityLabel)
             },
             secondaryActions: {
-                if restorePrevious != nil {
-                    Button("Restore Previous Edit") {
-                        if isDirty {
-                            confirmsRestore = true
-                        } else {
-                            restorePreviousSource()
-                        }
-                    }
-                    .disabled(isWorking)
-                }
+                EmptyView()
             }
         )
         .interactiveDismissDisabled(isDirty || isWorking)
@@ -107,12 +94,6 @@ struct ResearchGuidanceMarkdownEditSheet: View {
         .alert("Discard Unsaved Changes", isPresented: $confirmsDiscard) {
             Button("Keep Editing", role: .cancel) {}
             Button("Discard Draft and Close", role: .destructive) { dismiss() }
-        }
-        .alert("Discard Unsaved Changes", isPresented: $confirmsRestore) {
-            Button("Keep Editing", role: .cancel) {}
-            Button("Restore Previous Edit", role: .destructive) {
-                restorePreviousSource()
-            }
         }
     }
 
@@ -130,11 +111,6 @@ struct ResearchGuidanceMarkdownEditSheet: View {
 
     private func saveDraft() {
         perform { try await save(draft.source) }
-    }
-
-    private func restorePreviousSource() {
-        guard let restorePrevious else { return }
-        perform(restorePrevious)
     }
 
     private func perform(

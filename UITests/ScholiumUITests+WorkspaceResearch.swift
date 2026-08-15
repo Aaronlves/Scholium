@@ -1164,7 +1164,7 @@ extension ScholiumUITests {
             ).firstMatch.exists
         })
         let registryURL = cleanHome
-            .appendingPathComponent("ApplicationSupport/Workspace/workspace-registry-v2.json")
+            .appendingPathComponent("ApplicationSupport/Workspace/workspace-registration-v3.json")
         XCTAssertTrue(waitUntil(timeout: 10) {
             (try? String(contentsOf: registryURL, encoding: .utf8))?
                 .contains("QA Renamed Triptych") == true

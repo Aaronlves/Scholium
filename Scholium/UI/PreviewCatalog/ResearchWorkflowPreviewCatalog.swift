@@ -598,7 +598,7 @@ private struct ResearchGuidanceSettingsDetail: View {
                 "Counterexample Testing.md",
                 "Interpretive Triangulation.md",
             ], actionTitle: "Edit")
-            Text("A Practice keeps one replaceable previous edit. It guides research but never grants authority.")
+            Text("A Practice edit replaces only its exact current revision. It guides research but never grants authority.")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -649,7 +649,6 @@ private struct ResearchWorkingMethodProofRow: View {
                 Button("Register Markdown…") {}
                 Button("Register Skill Folder…") {}
                 Divider()
-                Button("Restore Previous Edit") {}
                 Button("Restore Scholium Default…") {}
             }
             .menuStyle(.borderlessButton)

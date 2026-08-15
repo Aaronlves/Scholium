@@ -368,7 +368,7 @@ extension ResearchFunctionOperationsTests {
         let localURL = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v9", isDirectory: true)
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
             .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
         let recordsURL = fixture.rootURL.appendingPathComponent(
             ".scholium/research-records/v1/records",
@@ -600,7 +600,6 @@ extension ResearchFunctionOperationsTests {
         let develop = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
-        #expect(develop.snapshot.changeEvidenceID != nil)
         #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
         #expect(develop.snapshot.fidelityHandoff?.checks == [.content])
         #expect(develop.snapshot.fidelityHandoff?.preparedTargetFingerprint == target.fingerprint)

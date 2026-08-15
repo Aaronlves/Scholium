@@ -55,13 +55,11 @@ public actor ResearchConfigurationStore {
     private let collaboration: StrictResearchJSONStore<ResearchCollaborationPolicyDocument>
     private let citationMethod: StrictResearchJSONStore<ResearchCitationMethodDocument>
     private let methodLocators: ResearchMethodLocatorStore?
-    private let recovery: ResearchMethodRecoveryLedgerStore
 
     public init(
         controlURL: URL,
         triptychID: UUID,
         machineStorageURL: URL? = nil,
-        recoveryStorageURL: URL? = nil,
         fileManager: FileManager = .default
     ) {
         let root = controlURL.standardizedFileURL
@@ -99,12 +97,6 @@ public actor ResearchConfigurationStore {
                 fileManager: fileManager
             )
         }
-        let recoveryURL = recoveryStorageURL?.standardizedFileURL
-            ?? root.appendingPathComponent("method-edit-recovery-v2.json")
-        recovery = ResearchMethodRecoveryLedgerStore(
-            storageURL: recoveryURL,
-            fileManager: fileManager
-        )
     }
 
     public func registrationSnapshot() throws -> ResearchSkillRegistrationSnapshot? {
@@ -576,72 +568,22 @@ public actor ResearchConfigurationStore {
         let location = try ResearchMethodFileLocation.triptychControl(
             "\(Self.practicesDirectoryName)/\(relativePath)"
         )
-        let resolved = ResearchMethodResolvedLocation(
-            url: try triptychURL(for: location)
-        )
-        let current = try SecureResearchMethodIO.data(at: resolved.url)
+        let resolved = try triptychURL(for: location)
+        let current = try SecureResearchMethodIO.data(at: resolved)
         guard DocumentFingerprint(data: current) == expectedRevision else {
             throw ResearchConfigurationStoreError.staleDocument
         }
-        let key = recoveryKey(for: resolved)
-        try recovery.reconcile(
-            key: key,
-            location: resolved,
-            currentRevision: expectedRevision
-        )
-        try recovery.reserve(key: key, location: resolved, source: current)
-        do {
-            let committed = try SecureResearchMethodIO.replace(
-                at: resolved.url,
-                data: Data(source.utf8),
-                expectedRevision: expectedRevision
-            )
-            try recovery.confirm(key: key, committedRevision: committed)
-            guard let practice = try practiceCatalog().first(where: {
-                $0.relativePath == relativePath
-            }) else {
-                throw ResearchConfigurationStoreError.invalidMethod(relativePath)
-            }
-            return practice
-        } catch {
-            let observed = try? SecureResearchMethodIO.data(at: resolved.url)
-            if let observed,
-               DocumentFingerprint(data: observed) == expectedRevision {
-                try? recovery.cancelReservation(
-                    key: key,
-                    unchangedRevision: expectedRevision
-                )
-            }
-            throw error
-        }
-    }
-
-    public func restorePreviousPractice(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> ResearchPracticeSnapshot {
-        let location = try ResearchMethodFileLocation.triptychControl(
-            "\(Self.practicesDirectoryName)/\(relativePath)"
-        )
-        let resolved = ResearchMethodResolvedLocation(
-            url: try triptychURL(for: location)
-        )
-        let key = recoveryKey(for: resolved)
-        try recovery.reconcile(
-            key: key,
-            location: resolved,
-            currentRevision: expectedRevision
-        )
-        guard let point = try recovery.currentPoint(key: key) else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "No previous Practice edit is available for recovery."
-            )
-        }
-        return try savePractice(
-            relativePath: relativePath,
-            source: String(decoding: point.source, as: UTF8.self),
+        _ = try SecureResearchMethodIO.replace(
+            at: resolved,
+            data: Data(source.utf8),
             expectedRevision: expectedRevision
         )
+        guard let practice = try practiceCatalog().first(where: {
+            $0.relativePath == relativePath
+        }) else {
+            throw ResearchConfigurationStoreError.invalidMethod(relativePath)
+        }
+        return practice
     }
 
     public func savePrimaryMethod(
@@ -659,79 +601,17 @@ public actor ResearchConfigurationStore {
             )
         }
         try withPrimaryURL(for: registration) { url in
-            let resolved = ResearchMethodResolvedLocation(url: url)
             let current = try SecureResearchMethodIO.data(at: url)
             guard DocumentFingerprint(data: current) == expectedRevision else {
                 throw ResearchConfigurationStoreError.staleDocument
             }
-            let locationKey = recoveryKey(for: resolved)
-            try recovery.reconcile(
-                key: locationKey,
-                location: resolved,
-                currentRevision: expectedRevision
+            _ = try SecureResearchMethodIO.replace(
+                at: url,
+                data: Data(source.utf8),
+                expectedRevision: expectedRevision
             )
-            try recovery.reserve(
-                key: locationKey,
-                location: resolved,
-                source: current
-            )
-            do {
-                let committed = try SecureResearchMethodIO.replace(
-                    at: url,
-                    data: Data(source.utf8),
-                    expectedRevision: expectedRevision
-                )
-                try recovery.confirm(
-                    key: locationKey,
-                    committedRevision: committed
-                )
-            } catch {
-                let observed = try? SecureResearchMethodIO.data(at: url)
-                if let observed,
-                   DocumentFingerprint(data: observed) == expectedRevision {
-                    try? recovery.cancelReservation(
-                        key: locationKey,
-                        unchangedRevision: expectedRevision
-                    )
-                }
-                throw error
-            }
         }
         return try methodSnapshot(for: registration.actionID)
-    }
-
-    public func restorePrimaryMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        expectedRevision: DocumentFingerprint
-    ) throws -> ResearchMethodSnapshot {
-        guard let registrations = try registrationSnapshot(),
-              let registration = registrations.document.registrations.first(where: {
-                  $0.key == registrationKey
-              }) else {
-            throw ResearchConfigurationStoreError.invalidMethod(
-                registrationKey.description
-            )
-        }
-        let key = try withPrimaryURL(for: registration) { url in
-            let resolved = ResearchMethodResolvedLocation(url: url)
-            let key = recoveryKey(for: resolved)
-            try recovery.reconcile(
-                key: key,
-                location: resolved,
-                currentRevision: expectedRevision
-            )
-            return key
-        }
-        guard let point = try recovery.currentPoint(key: key) else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "No previous method edit is available for recovery."
-            )
-        }
-        return try savePrimaryMethod(
-            registrationKey: registrationKey,
-            source: String(decoding: point.source, as: UTF8.self),
-            expectedRevision: expectedRevision
-        )
     }
 
     public func restoreDefaultPrimaryMethod(
@@ -748,11 +628,6 @@ public actor ResearchConfigurationStore {
             source: BundledResearchMethodDefaults.primarySource(for: actionID),
             expectedRevision: expectedRevision
         )
-    }
-
-    private func recoveryKey(for location: ResearchMethodResolvedLocation) -> String {
-        DocumentFingerprint(content: location.canonicalPath)
-            .sha256
     }
 
     private func withPrimaryURL<Result>(
@@ -994,205 +869,6 @@ struct StrictResearchJSONStore<Document: Codable & Sendable> {
         guard values.isDirectory == true, values.isSymbolicLink != true else {
             throw ResearchConfigurationStoreError.unsafeStorage
         }
-    }
-}
-
-private struct ResearchMethodResolvedLocation: Codable, Hashable, Sendable {
-    let canonicalPath: String
-
-    var url: URL { URL(fileURLWithPath: canonicalPath) }
-
-    init(url: URL) {
-        canonicalPath = url.standardizedFileURL.path
-    }
-}
-
-private struct ResearchMethodRecoveryPoint: Codable, Hashable, Sendable {
-    let location: ResearchMethodResolvedLocation
-    let source: Data
-    let revision: DocumentFingerprint
-
-    init(location: ResearchMethodResolvedLocation, source: Data) throws {
-        guard source.count <= SecureResearchMethodIO.maximumMethodByteCount,
-              String(data: source, encoding: .utf8) != nil else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "A method recovery point exceeds its exact UTF-8 boundary."
-            )
-        }
-        self.location = location
-        self.source = source
-        revision = DocumentFingerprint(data: source)
-    }
-}
-
-private struct ResearchMethodRecoveryEntry: Codable, Hashable, Sendable {
-    let key: String
-    let current: ResearchMethodRecoveryPoint?
-    let pending: ResearchMethodRecoveryPoint?
-}
-
-private struct ResearchMethodRecoveryLedger: Codable, Hashable, Sendable {
-    static let currentSchemaVersion = 2
-
-    let schemaVersion: Int
-    let entries: [ResearchMethodRecoveryEntry]
-
-    init(entries: [ResearchMethodRecoveryEntry] = []) throws {
-        guard entries.count <= 256,
-              Set(entries.map(\.key)).count == entries.count,
-              entries.allSatisfy({
-                  $0.key.range(
-                    of: #"^[0-9a-f]{64}$"#,
-                    options: .regularExpression
-                  ) != nil
-              }) else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "The method recovery ledger is invalid."
-            )
-        }
-        schemaVersion = Self.currentSchemaVersion
-        self.entries = entries.sorted { $0.key < $1.key }
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case schemaVersion
-        case entries
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let version = try container.decode(Int.self, forKey: .schemaVersion)
-        guard version == Self.currentSchemaVersion else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "Unsupported method recovery ledger schema \(version)."
-            )
-        }
-        try self.init(entries: container.decode(
-            [ResearchMethodRecoveryEntry].self,
-            forKey: .entries
-        ))
-    }
-}
-
-private struct ResearchMethodRecoveryLedgerStore {
-    let store: StrictResearchJSONStore<ResearchMethodRecoveryLedger>
-
-    init(storageURL: URL, fileManager: FileManager) {
-        store = StrictResearchJSONStore(
-            controlURL: storageURL.deletingLastPathComponent(),
-            fileName: storageURL.lastPathComponent,
-            maximumByteCount: 4_194_304,
-            fileManager: fileManager
-        )
-    }
-
-    func currentPoint(key: String) throws -> ResearchMethodRecoveryPoint? {
-        try store.snapshot()?.document.entries.first { $0.key == key }?.current
-    }
-
-    func reconcile(
-        key: String,
-        location: ResearchMethodResolvedLocation,
-        currentRevision: DocumentFingerprint
-    ) throws {
-        guard let snapshot = try store.snapshot(),
-              let entry = snapshot.document.entries.first(where: { $0.key == key }),
-              let pending = entry.pending else { return }
-        guard pending.location == location else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "A method recovery reservation changed location."
-            )
-        }
-        let replacement: ResearchMethodRecoveryEntry
-        if pending.revision == currentRevision {
-            replacement = ResearchMethodRecoveryEntry(
-                key: key,
-                current: entry.current,
-                pending: nil
-            )
-        } else {
-            // The exact pre-edit bytes are no longer current. Preserve them as
-            // the sole recovery point; no claim is made about who changed the
-            // file after the reserved transaction.
-            replacement = ResearchMethodRecoveryEntry(
-                key: key,
-                current: pending,
-                pending: nil
-            )
-        }
-        try saveReplacing(
-            replacement,
-            snapshot: snapshot
-        )
-    }
-
-    func reserve(
-        key: String,
-        location: ResearchMethodResolvedLocation,
-        source: Data
-    ) throws {
-        let snapshot = try store.snapshot()
-        let document = try snapshot?.document ?? ResearchMethodRecoveryLedger()
-        let existing = document.entries.first { $0.key == key }
-        guard existing?.pending == nil else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "A method recovery reservation is already unresolved."
-            )
-        }
-        let replacement = ResearchMethodRecoveryEntry(
-            key: key,
-            current: existing?.current,
-            pending: try ResearchMethodRecoveryPoint(location: location, source: source)
-        )
-        try saveReplacing(replacement, snapshot: snapshot)
-    }
-
-    func confirm(key: String, committedRevision: DocumentFingerprint) throws {
-        guard let snapshot = try store.snapshot(),
-              let entry = snapshot.document.entries.first(where: { $0.key == key }),
-              let pending = entry.pending else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "The method edit has no matching recovery reservation."
-            )
-        }
-        _ = committedRevision
-        try saveReplacing(
-            ResearchMethodRecoveryEntry(
-                key: key,
-                current: pending,
-                pending: nil
-            ),
-            snapshot: snapshot
-        )
-    }
-
-    func cancelReservation(
-        key: String,
-        unchangedRevision: DocumentFingerprint
-    ) throws {
-        guard let snapshot = try store.snapshot(),
-              let entry = snapshot.document.entries.first(where: { $0.key == key }),
-              let pending = entry.pending,
-              pending.revision == unchangedRevision else { return }
-        try saveReplacing(
-            ResearchMethodRecoveryEntry(
-                key: key,
-                current: entry.current,
-                pending: nil
-            ),
-            snapshot: snapshot
-        )
-    }
-
-    private func saveReplacing(
-        _ replacement: ResearchMethodRecoveryEntry,
-        snapshot: StoredResearchDocument<ResearchMethodRecoveryLedger>?
-    ) throws {
-        let current = try snapshot?.document ?? ResearchMethodRecoveryLedger()
-        let document = try ResearchMethodRecoveryLedger(
-            entries: current.entries.filter { $0.key != replacement.key } + [replacement]
-        )
-        _ = try store.save(document, expectedRevision: snapshot?.revision)
     }
 }
 

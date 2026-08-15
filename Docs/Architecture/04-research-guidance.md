@@ -24,7 +24,6 @@ ResearchConfigurationStore
         +-> SecureResearchMethodIO + ResearchPracticeResolver
               exact primary Markdown / Practice reads and targeted writes
               exact Wikilinks, first-use order, deterministic ambiguity
-              one replaceable pre-edit recovery point per file
         |
         +-> ResearchAcademicProfileDocument
               flat academic input/result fields only
@@ -49,8 +48,8 @@ Application Support. The researcher filesystem owns every unregistered sibling
 file in an ordinary Skill folder.
 
 `ResearchConfigurationStore` and `SecureResearchMethodIO` support exact read,
-revision-checked complete Markdown replacement, explicit app-default
-restoration, and one replaceable recovery point. They do not snapshot a
+revision-checked complete Markdown replacement, and explicit app-default
+restoration. They do not retain displaced source, snapshot a
 directory, diff versions, list history, validate dependencies, enumerate
 supplements, or execute scripts. External changes use the ordinary current-
 revision and conflict boundary.

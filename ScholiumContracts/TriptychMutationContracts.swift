@@ -112,7 +112,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
     public let createdAt: Date
     public let failure: String
     public let files: [TriptychMutationRecoveryFile]
-    public let permanentDeletionBackup: PermanentDeletionRecoveryBackup?
+    public let permanentDeletionPlan: PermanentDeletionPlan?
     public let researchWrite: ResearchWriteRecoveryReference?
     public let managedCreation: ManagedCreationRecoveryReference?
 
@@ -133,7 +133,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.createdAt = createdAt
         self.failure = failure
         self.files = files
-        self.permanentDeletionBackup = nil
+        self.permanentDeletionPlan = nil
         self.researchWrite = researchWrite
         self.managedCreation = managedCreation
     }
@@ -144,7 +144,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date,
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        permanentDeletionBackup: PermanentDeletionRecoveryBackup,
+        permanentDeletionPlan: PermanentDeletionPlan,
         researchWrite: ResearchWriteRecoveryReference? = nil
     ) {
         self.id = id
@@ -153,7 +153,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.createdAt = createdAt
         self.failure = failure
         self.files = files
-        self.permanentDeletionBackup = permanentDeletionBackup
+        self.permanentDeletionPlan = permanentDeletionPlan
         self.researchWrite = researchWrite
         self.managedCreation = nil
     }

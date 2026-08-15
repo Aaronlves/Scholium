@@ -502,7 +502,7 @@ struct TriptychControlTests {
         }
     }
 
-    @Test("Duplicate copies and permanent purge restore the portable Zotero binding")
+    @Test("Permanent identity purge is monotonic and clears the Zotero binding")
     func bindingFollowsIdentityLifecycle() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
@@ -530,15 +530,21 @@ struct TriptychControlTests {
         )
         #expect(try await store.zoteroBindings().binding(for: duplicate.id)?.library == .group(42))
 
-        let backup = try await store.prepareIdentityPurge(
+        try await store.purgeIdentityPermanently(
             id: original.id,
             vaultID: analysesID,
             relativePath: "A.md"
         )
-        _ = try await store.purgeIdentity(try #require(backup))
         #expect(try await store.zoteroBindings().binding(for: original.id) == nil)
-        try await store.restorePurgedIdentity(backup)
-        #expect(try await store.zoteroBindings().binding(for: original.id)?.itemKey == "ABCD")
+        #expect(try await store.identityRecord(
+            vaultID: analysesID,
+            relativePath: "A.md"
+        ) == nil)
+        try await store.purgeIdentityPermanently(
+            id: original.id,
+            vaultID: analysesID,
+            relativePath: "A.md"
+        )
     }
 
     @Test("Creation recovery cannot purge an identity with a Zotero binding")
@@ -579,57 +585,6 @@ struct TriptychControlTests {
             relativePath: "Bound.md"
         ) == identity)
         #expect(try await store.zoteroBindings().binding(for: identity.id) == binding)
-    }
-
-    @Test("Permanent purge refuses identity ambiguity added after its durable preimage")
-    func permanentPurgeFreezesIdentitySubstate() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
-        let store = TriptychControlStore(worksVaultURL: fixture.works)
-        let vaultID = UUID()
-        _ = try await store.bootstrap(vaultIDs: [
-            .paperAnalysis: UUID(),
-            .topicKnowledge: UUID(),
-            .output: vaultID,
-        ])
-        let fingerprint = DocumentFingerprint(content: "ambiguous bytes")
-        let first = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "First.md",
-            fingerprint: fingerprint
-        ))
-        _ = try #require(try await store.identity(
-            forVaultID: vaultID,
-            relativePath: "Second.md",
-            fingerprint: fingerprint
-        ))
-        let backup = try #require(try await store.prepareIdentityPurge(
-            id: first.id,
-            vaultID: vaultID,
-            relativePath: "First.md"
-        ))
-        #expect(backup.ambiguities.isEmpty)
-
-        let concurrent = try await store.reconcileIdentityInventory(
-            vaultID: vaultID,
-            documents: [("Moved.md", fingerprint)]
-        )
-        #expect(concurrent.ambiguities.first?.candidates.count == 2)
-        await #expect(throws: TriptychControlError.self) {
-            try await store.purgeIdentity(backup)
-        }
-
-        #expect(try await store.identityRecord(
-            vaultID: vaultID,
-            relativePath: "First.md"
-        )?.id == first.id)
-        let retained = try await store.reconcileIdentityInventory(
-            vaultID: vaultID,
-            documents: [("Moved.md", fingerprint)]
-        )
-        #expect(retained.ambiguities.first?.candidates.count == 2)
-        #expect(retained.ambiguities.first?.candidates.contains(where: {
-            $0.id == first.id
-        }) == true)
     }
 
     @Test("Managed creation orphan removal fences a concurrent Zotero bind")

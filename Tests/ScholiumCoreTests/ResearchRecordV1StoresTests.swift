@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 9 and Local Execution schema 13")
+@Suite("Portable Research Record storage v1/schema 9 and Local Execution schema 14")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -647,10 +647,13 @@ struct ResearchRecordV1StoresTests {
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             _ = try await creatingStore.createActiveDiscussion(discussion)
         }
-        try await deletingStore.clearNoteDeletionMarkers(
-            noteIDs: [discussion.primaryNoteID]
-        )
-        _ = try await creatingStore.createActiveDiscussion(discussion)
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await creatingStore.settle(
+                noteID: discussion.primaryNoteID,
+                fingerprint: DocumentFingerprint(content: "late"),
+                rationale: nil
+            )
+        }
     }
 
     @Test("Settle updates one portable current judgment per Note")
@@ -693,68 +696,6 @@ struct ResearchRecordV1StoresTests {
             .appendingPathComponent("research-records/v1/settlements", isDirectory: true)
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path)
             .filter { $0.hasSuffix(".json") }.count == 1)
-    }
-
-    @Test("Deletion rollback never overwrites a newly created Settle state")
-    func settlementRollbackPreservesConcurrentState() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = try fixture.portableStore()
-        let noteID = UUID()
-        let original = try await store.settle(
-            noteID: noteID,
-            fingerprint: DocumentFingerprint(content: "original"),
-            rationale: nil,
-            settledAt: Date(timeIntervalSince1970: 10)
-        )
-        try await store.purgeSettlement(noteID: noteID)
-        let concurrent = try await store.settle(
-            noteID: noteID,
-            fingerprint: DocumentFingerprint(content: "concurrent"),
-            rationale: "A newer researcher action.",
-            settledAt: Date(timeIntervalSince1970: 20)
-        )
-
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
-            try await store.restoreSettlement(original)
-        }
-        #expect(try await store.latestSettlement(noteID: noteID) == concurrent)
-    }
-
-    @Test("Deletion compare-and-purge preserves a concurrently replaced Settle")
-    func settlementCompareAndPurgeRejectsConcurrentReplacement() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = try fixture.portableStore()
-        let noteID = UUID()
-        let captured = try await store.settle(
-            noteID: noteID,
-            fingerprint: DocumentFingerprint(content: "captured"),
-            rationale: nil,
-            settledAt: Date(timeIntervalSince1970: 10)
-        )
-        let concurrent = try await store.settle(
-            noteID: noteID,
-            fingerprint: DocumentFingerprint(content: "concurrent"),
-            rationale: "A later researcher action.",
-            settledAt: Date(timeIntervalSince1970: 20)
-        )
-
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
-            try await store.purgeSettlement(noteID: noteID, matching: captured)
-        }
-        #expect(try await store.latestSettlement(noteID: noteID) == concurrent)
-
-        let initiallyAbsent = UUID()
-        let newlyCreated = try await store.settle(
-            noteID: initiallyAbsent,
-            fingerprint: DocumentFingerprint(content: "new"),
-            rationale: nil
-        )
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
-            try await store.purgeSettlement(noteID: initiallyAbsent, matching: nil)
-        }
-        #expect(try await store.latestSettlement(noteID: initiallyAbsent) == newlyCreated)
     }
 
     @Test("Portable Settle state rejects absolute paths before writing")
@@ -871,6 +812,53 @@ struct ResearchRecordV1StoresTests {
         #expect(repeated == completed)
     }
 
+    @Test("A completed Local Execution compacts to one terminal receipt")
+    func completedExecutionCompacts() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let runID = UUID()
+        let store = try fixture.localStore()
+        let seed = try makeLocalExecutionRecord(runID: runID)
+        let target = seed.snapshot.request.target
+        _ = try await store.create(seed)
+        let report = try ResearchRunWriteReport(
+            runID: runID,
+            confirmedModifiedNotes: [],
+            unmodifiedNotes: [writeReference(target)],
+            observedFingerprints: [target.noteID: target.fingerprint],
+            completedAt: Date(timeIntervalSince1970: 20)
+        )
+        let completion = ResearchFunctionCompletion(
+            runID: runID,
+            function: .develop,
+            state: .complete,
+            recordTitle: try ResearchRecordTitle("Terminal receipt"),
+            targetFingerprint: target.fingerprint,
+            materialFingerprints: [:],
+            summary: "Finished.",
+            didModifyTarget: false,
+            fidelityOutcomes: [],
+            completedAt: report.completedAt
+        )
+        _ = try await store.setCompletion(
+            completion,
+            writeReport: report,
+            submissionDigest: "digest",
+            runID: runID
+        )
+
+        let compacted = try await store.compactCompleted(runID: runID)
+
+        #expect(compacted.isCompacted)
+        #expect(compacted.preparedInstructions.isEmpty)
+        #expect(compacted.boundedWriteSet.entries.isEmpty)
+        #expect(compacted.writeSetExtensionRecords.isEmpty)
+        #expect(compacted.documentWriteRecords.isEmpty)
+        #expect(compacted.writeConflictResolutionRecords.isEmpty)
+        #expect(compacted.writeReport == report)
+        #expect(compacted.completion == completion)
+    }
+
     @Test("New stores preserve every legacy file byte, digest, mode, and mtime")
     func legacyFilesRemainByteUnchanged() async throws {
         let fixture = try Fixture()
@@ -938,14 +926,14 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution schema 13 round-trips and rejects retired schema 12")
+    @Test("Local Execution schema 14 round-trips and rejects retired schema 13")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 13)
+        #expect(stored.schemaVersion == 14)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
@@ -957,8 +945,8 @@ struct ResearchRecordV1StoresTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 13)
-        object["schema_version"] = 12
+        #expect(object["schema_version"] as? Int == 14)
+        object["schema_version"] = 13
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()
@@ -1517,9 +1505,6 @@ struct ResearchRecordV1StoresTests {
             actionSnapshot: action,
             recordKind: .functionEnvelope,
             recordID: runID,
-            changeEvidenceID: UUID(
-                uuidString: "ABABABAB-ABAB-ABAB-ABAB-ABABABABABAB"
-            ),
             confirmationToken: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,
             preparedAt: Date(timeIntervalSince1970: 10)
         )

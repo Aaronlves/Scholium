@@ -54,10 +54,7 @@ public enum ResearchWriteSetEntryState: String, Codable, Hashable, Sendable {
 }
 
 public enum ResearchWriteSetTargetExpectation: Codable, Hashable, Sendable {
-    case existing(
-        expectedRevision: DocumentFingerprint,
-        changeEvidenceID: UUID
-    )
+    case existing(expectedRevision: DocumentFingerprint)
     case absent(settingsRevision: SettingsRevision)
     case created(
         settingsRevision: SettingsRevision,
@@ -66,15 +63,10 @@ public enum ResearchWriteSetTargetExpectation: Codable, Hashable, Sendable {
 
     public var expectedRevision: DocumentFingerprint? {
         switch self {
-        case .existing(let revision, _): revision
+        case .existing(let revision): revision
         case .created(_, let revision): revision
         case .absent: nil
         }
-    }
-
-    public var changeEvidenceID: UUID? {
-        guard case .existing(_, let changeEvidenceID) = self else { return nil }
-        return changeEvidenceID
     }
 
     public var settingsRevision: SettingsRevision? {
@@ -258,7 +250,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         title: String,
         allowedOperations: [ResearchDocumentWriteOperation],
         expectedRevision: DocumentFingerprint,
-        changeEvidenceID: UUID,
         allowedPropertyKeys: [String] = [],
         propertyWritePlans: [ResearchPropertyWriteFieldPlan] = [],
         zoteroBindingsRevision: DocumentFingerprint? = nil,
@@ -304,10 +295,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.allowedPropertyKeys = propertyKeys
         self.propertyWritePlans = propertyPlans
         analysisCreationPlans = []
-        expectation = .existing(
-            expectedRevision: expectedRevision,
-            changeEvidenceID: changeEvidenceID
-        )
+        expectation = .existing(expectedRevision: expectedRevision)
         self.authorizationBasis = authorizationBasis
         self.authorizationPolicy = authorizationPolicy
         self.policyRevision = policyRevision
@@ -367,16 +355,11 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
     public var expectedRevision: DocumentFingerprint? {
         get { expectation.expectedRevision }
         set {
-            guard let newValue,
-                  case .existing(_, let changeEvidenceID) = expectation else { return }
-            expectation = .existing(
-                expectedRevision: newValue,
-                changeEvidenceID: changeEvidenceID
-            )
+            guard let newValue, case .existing = expectation else { return }
+            expectation = .existing(expectedRevision: newValue)
         }
     }
 
-    public var changeEvidenceID: UUID? { expectation.changeEvidenceID }
     public var settingsRevision: SettingsRevision? { expectation.settingsRevision }
     public var expectsAbsence: Bool {
         if case .absent = expectation { return true }
@@ -459,7 +442,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             forKey: .zoteroBindingsRevision
         )
         switch expectation {
-        case .existing(let revision, let changeEvidenceID):
+        case .existing(let revision):
             guard analysisCreationPlans.isEmpty else {
                 throw ResearchBoundedWriteSetError.invalidEntry
             }
@@ -471,7 +454,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 title: title,
                 allowedOperations: operations,
                 expectedRevision: revision,
-                changeEvidenceID: changeEvidenceID,
                 allowedPropertyKeys: propertyKeys,
                 propertyWritePlans: propertyWritePlans,
                 zoteroBindingsRevision: zoteroBindingsRevision,
@@ -1623,7 +1605,6 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
     public let intendedRevision: DocumentFingerprint
     public var observedRevision: DocumentFingerprint?
     public var state: ResearchDocumentWriteState
-    public let changeEvidenceID: UUID?
     public let startedAt: Date
     public var finishedAt: Date?
     public var warning: String?
@@ -1640,7 +1621,6 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         intendedRevision: DocumentFingerprint,
         observedRevision: DocumentFingerprint? = nil,
         state: ResearchDocumentWriteState,
-        changeEvidenceID: UUID?,
         startedAt: Date,
         finishedAt: Date? = nil,
         warning: String? = nil,
@@ -1649,9 +1629,9 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         let expectationShapeIsValid: Bool
         switch operation {
         case .createNote:
-            expectationShapeIsValid = expectedRevision == nil && changeEvidenceID == nil
+            expectationShapeIsValid = expectedRevision == nil
         case .modifyMarkdown, .modifyProperties:
-            expectationShapeIsValid = expectedRevision != nil && changeEvidenceID != nil
+            expectationShapeIsValid = expectedRevision != nil
         case .setZoteroBinding, .clearZoteroBinding:
             expectationShapeIsValid = false
         }
@@ -1683,7 +1663,6 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         self.intendedRevision = intendedRevision
         self.observedRevision = observedRevision
         self.state = state
-        self.changeEvidenceID = changeEvidenceID
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.warning = warning
@@ -1699,7 +1678,6 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         case intendedRevision = "intended_revision"
         case observedRevision = "observed_revision"
         case state
-        case changeEvidenceID = "change_evidence_id"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case warning
@@ -1748,7 +1726,6 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
                 ResearchDocumentWriteState.self,
                 forKey: .state
             ),
-            changeEvidenceID: container.decodeIfPresent(UUID.self, forKey: .changeEvidenceID),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decodeIfPresent(Date.self, forKey: .finishedAt),
             warning: container.decodeIfPresent(String.self, forKey: .warning),
@@ -1913,9 +1890,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
     public let requestFingerprint: DocumentFingerprint
     public let priorExpectedRevision: DocumentFingerprint
     public let observedRevision: DocumentFingerprint
-    public let changeEvidenceID: UUID?
     public let state: ResearchWriteConflictResolutionState
-    public let targetView: ResearchBoundedWriteSetViewEntry
     public let resolvedAt: Date
 
     public init(
@@ -1928,16 +1903,13 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         requestFingerprint: DocumentFingerprint,
         priorExpectedRevision: DocumentFingerprint,
         observedRevision: DocumentFingerprint,
-        changeEvidenceID: UUID? = nil,
         state: ResearchWriteConflictResolutionState,
-        targetView: ResearchBoundedWriteSetViewEntry,
         resolvedAt: Date
     ) throws {
         let shapeIsValid = switch (action, state) {
-        case (.refreshAuthority, .readyToRetry):
-            changeEvidenceID != nil && targetView.state == .ready
-        case (.abandonWrite, .abandoned):
-            changeEvidenceID == nil && targetView.state == .abandoned
+        case (.refreshAuthority, .readyToRetry),
+             (.abandonWrite, .abandoned):
+            true
         default:
             false
         }
@@ -1957,9 +1929,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         self.requestFingerprint = requestFingerprint
         self.priorExpectedRevision = priorExpectedRevision
         self.observedRevision = observedRevision
-        self.changeEvidenceID = changeEvidenceID
         self.state = state
-        self.targetView = targetView
         self.resolvedAt = resolvedAt
     }
 
@@ -1973,9 +1943,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         case requestFingerprint = "request_fingerprint"
         case priorExpectedRevision = "prior_expected_revision"
         case observedRevision = "observed_revision"
-        case changeEvidenceID = "change_evidence_id"
         case state
-        case targetView = "target_view"
         case resolvedAt = "resolved_at"
     }
 
@@ -2014,14 +1982,9 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
                 DocumentFingerprint.self,
                 forKey: .observedRevision
             ),
-            changeEvidenceID: container.decodeIfPresent(UUID.self, forKey: .changeEvidenceID),
             state: container.decode(
                 ResearchWriteConflictResolutionState.self,
                 forKey: .state
-            ),
-            targetView: container.decode(
-                ResearchBoundedWriteSetViewEntry.self,
-                forKey: .targetView
             ),
             resolvedAt: container.decode(Date.self, forKey: .resolvedAt)
         )

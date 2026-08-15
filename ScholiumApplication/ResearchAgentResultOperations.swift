@@ -64,9 +64,20 @@ extension WorkspaceHandle {
         }
 
         let submissionFingerprint = try submission.contentFingerprint()
-        let stored = try await services.localResearchExecutionStore.record(
-            id: authenticated.runID
-        )
+        let stored: LocalResearchExecutionRecord
+        do {
+            stored = try await services.localResearchExecutionStore.record(
+                id: authenticated.runID
+            )
+        } catch ResearchRecordStoreV1Error.executionNotFound(let id) {
+            guard await services.portableResearchRecordStore
+                .isRecordPermanentlyDeleted(id: id) else {
+                throw ResearchRecordStoreV1Error.executionNotFound(id)
+            }
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The Research Record for this Action was permanently deleted and cannot be recreated."
+            )
+        }
         guard stored.triptychID == services.manifest.id,
               let action = stored.snapshot.actionSnapshot,
               action.actionID != .discuss else {

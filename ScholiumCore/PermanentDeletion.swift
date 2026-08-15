@@ -1,5 +1,5 @@
-import ScholiumContracts
 import Foundation
+import ScholiumContracts
 
 enum PermanentDeletionFaultPoint: Hashable, Sendable {
     case afterCritiqueDeletion
@@ -35,10 +35,9 @@ private struct PermanentDeletionInjectedFailure: LocalizedError, Sendable {
     }
 }
 
-/// Coordinates permanent deletion across authoritative Markdown, app-owned
-/// records and portable identity. Every source
-/// file has a committed recovery version and every non-file record is copied
-/// into a durable transaction journal before the first removal.
+/// Coordinates permanent deletion as one durable, monotonic cleanup plan.
+/// Once a source has been deleted it is never recreated. Interrupted work is
+/// resumed idempotently from the plan until source and private state are gone.
 public actor NotePermanentDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
@@ -71,7 +70,7 @@ public actor NotePermanentDeletionCoordinator {
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
         self.agentChangeEvidenceStore = agentChangeEvidenceStore
-        self.faultPlan = .none
+        faultPlan = .none
     }
 
     init(
@@ -105,9 +104,6 @@ public actor NotePermanentDeletionCoordinator {
         expectedRevision: DocumentFingerprint
     ) async throws -> PermanentDeletionCommit {
         try await requireHealthyStores()
-        // Fail before the first authoritative mutation if machine-local
-        // source bindings cannot be decoded safely. Otherwise a deletion
-        // could reach its commit decision and then strand privacy cleanup.
         try await sourceAccessStore?.validateStoreHealth()
         try await localExecutionStore?.validateStoreHealth()
         guard repository.identity.id == vaultID else {
@@ -119,6 +115,14 @@ public actor NotePermanentDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision
         )
+        guard try await controlStore.identityRecord(
+            vaultID: vaultID,
+            relativePath: relativePath
+        )?.id == noteID else {
+            throw TriptychTransactionError.invalidPlan(
+                "The permanent-deletion source no longer matches its stable Note identity."
+            )
+        }
 
         let associations = await critiqueRegistry.associationsRelated(
             noteID: noteID,
@@ -127,337 +131,251 @@ public actor NotePermanentDeletionCoordinator {
         let workAssociation = associations.first {
             $0.workNoteID == noteID && $0.workRelativePath == relativePath
         }
-        let critiqueBefore: NoteDocument?
+        let critique: PermanentDeletionTarget?
         if let workAssociation {
             guard workAssociation.critiqueRelativePath != relativePath else {
                 throw TriptychTransactionError.invalidPlan(
                     "A Work and its associated Critique cannot use the same path."
                 )
             }
-            critiqueBefore = try await repository.load(
+            let document = try await repository.load(
                 relativePath: workAssociation.critiqueRelativePath
             )
-        } else {
-            critiqueBefore = nil
-        }
-
-        let critiqueIdentityRecord: NoteIdentityRecord?
-        if let workAssociation {
-            critiqueIdentityRecord = try await controlStore.identityRecord(
+            guard let identity = try await controlStore.identityRecord(
                 vaultID: vaultID,
                 relativePath: workAssociation.critiqueRelativePath
-            )
-        } else {
-            critiqueIdentityRecord = nil
-        }
-        let critiqueNoteID = critiqueIdentityRecord?.id
-        let critiqueIdentityBackup: PermanentDeletionIdentityBackup?
-        if let critiqueIdentityRecord {
-            critiqueIdentityBackup = try await controlStore.prepareIdentityPurge(
-                id: critiqueIdentityRecord.id,
-                vaultID: critiqueIdentityRecord.vaultID,
-                relativePath: critiqueIdentityRecord.relativePath
-            )
-        } else {
-            critiqueIdentityBackup = nil
-        }
-
-        let settlementIDs = [noteID, critiqueNoteID].compactMap { $0 }
-        var settlements: [SettlementRecord] = []
-        for settlementID in settlementIDs {
-            if let settlement = try await portableRecordStore?.latestSettlement(
-                noteID: settlementID
-            ) {
-                settlements.append(settlement)
+            ) else {
+                throw TriptychTransactionError.invalidPlan(
+                    "The associated Critique has no stable identity."
+                )
             }
+            critique = PermanentDeletionTarget(
+                noteID: identity.id,
+                relativePath: document.relativePath,
+                expectedRevision: document.fingerprint
+            )
+        } else {
+            critique = nil
         }
-        var backup = PermanentDeletionRecoveryBackup(
-            phase: .rollbackRequired,
+        let plan = PermanentDeletionPlan(
             noteID: noteID,
             vaultID: vaultID,
             relativePath: relativePath,
             expectedRevision: expectedRevision,
-            critiqueNoteID: critiqueNoteID,
-            critiqueAssociations: associations,
-            identity: try await controlStore.prepareIdentityPurge(
-                id: noteID,
-                vaultID: vaultID,
-                relativePath: relativePath
-            ),
-            critiqueIdentity: critiqueIdentityBackup,
-            sourceDeletion: nil,
-            critiqueDeletion: nil,
-            settlements: settlements
+            critique: critique,
+            critiqueAssociations: associations
         )
-        var record = makeRecord(
+        let record = makeRecord(
             id: UUID(),
             createdAt: Date(),
-            failure: "Permanent deletion was prepared but has not completed.",
-            backup: backup,
-            files: initialFileEvidence(
-                relativePath: relativePath,
-                expectedRevision: expectedRevision,
-                critiqueBefore: critiqueBefore
-            )
+            failure: "Permanent deletion is pending.",
+            plan: plan,
+            files: await observedFiles(plan)
         )
-        try await recoveryStore.record(record)
+        do {
+            try await recoveryStore.record(record)
+        } catch {
+            throw TriptychTransactionError.recoveryPersistenceFailed(
+                record,
+                error.localizedDescription
+            )
+        }
+        return try await perform(record)
+    }
 
+    public func recoverInterruptedTransactions() async throws {
+        for record in try await recoveryStore.pending()
+        where record.operation == .permanentDeletion {
+            guard record.permanentDeletionPlan?.vaultID == repository.identity.id else {
+                continue
+            }
+            _ = try await perform(record)
+        }
+    }
+
+    private func perform(
+        _ record: TriptychMutationRecoveryRecord
+    ) async throws -> PermanentDeletionCommit {
+        guard let plan = record.permanentDeletionPlan,
+              plan.vaultID == repository.identity.id else {
+            throw TriptychTransactionError.invalidPlan(
+                "Permanent-deletion recovery data is missing or belongs to another vault."
+            )
+        }
         do {
             try await portableRecordStore?.markNoteDeletionStarted(
-                noteIDs: Set(settlementIDs)
+                noteIDs: plan.deletedNoteIDs
             )
-            let sourceDeletion = try await repository.preparePermanentDeletion(
-                relativePath: relativePath,
-                expectedRevision: expectedRevision
-            )
-            backup = backup.updating(sourceDeletion: .some(sourceDeletion))
-            record = try await persist(record: record, backup: backup)
-
-            if let workAssociation, let critiqueBefore {
-                let critiqueDeletion = try await repository.preparePermanentDeletion(
-                    relativePath: workAssociation.critiqueRelativePath,
-                    expectedRevision: critiqueBefore.fingerprint
-                )
-                backup = backup.updating(critiqueDeletion: .some(critiqueDeletion))
-                record = try await persist(record: record, backup: backup)
-            }
-
-            if let critiqueDeletion = backup.critiqueDeletion {
-                try await repository.applyPreparedPermanentDeletion(critiqueDeletion)
+            if let critique = plan.critique {
+                try await deleteIfPresent(critique)
                 try faultPlan.trigger(.afterCritiqueDeletion)
             }
-            try await repository.applyPreparedPermanentDeletion(sourceDeletion)
+            try await deleteIfPresent(PermanentDeletionTarget(
+                noteID: plan.noteID,
+                relativePath: plan.relativePath,
+                expectedRevision: plan.expectedRevision
+            ))
             try faultPlan.trigger(.afterSourceDeletion)
 
-            let settlementsByNoteID = Dictionary(
-                uniqueKeysWithValues: backup.settlements.map { ($0.noteID, $0) }
-            )
-            for settlementID in settlementIDs {
-                try await portableRecordStore?.purgeSettlement(
-                    noteID: settlementID,
-                    matching: settlementsByNoteID[settlementID]
-                )
+            for noteID in plan.deletedNoteIDs {
+                try await portableRecordStore?.purgeSettlement(noteID: noteID)
             }
             try faultPlan.trigger(.afterSettlementPurge)
             _ = try await critiqueRegistry.purgeAssociations(
-                noteID: noteID,
-                relativePath: relativePath
+                noteID: plan.noteID,
+                relativePath: plan.relativePath
             )
             try faultPlan.trigger(.afterCritiqueAssociationPurge)
 
-            if let identity = backup.identity {
-                _ = try await controlStore.purgeIdentity(identity)
-            }
-            if let critiqueIdentity = backup.critiqueIdentity {
-                _ = try await controlStore.purgeIdentity(critiqueIdentity)
+            _ = try await controlStore.purgeIdentityPermanently(
+                id: plan.noteID,
+                vaultID: plan.vaultID,
+                relativePath: plan.relativePath
+            )
+            if let critique = plan.critique {
+                _ = try await controlStore.purgeIdentityPermanently(
+                    id: critique.noteID,
+                    vaultID: plan.vaultID,
+                    relativePath: critique.relativePath
+                )
             }
             try faultPlan.trigger(.afterIdentityPurge)
-
-            backup = backup.updating(phase: .committing)
-            record = try await persist(
-                record: record,
-                backup: backup,
-                failure: "Permanent deletion committed; final privacy cleanup is pending."
-            )
             try faultPlan.trigger(.afterCommitDecision)
-            try await finalize(record)
 
+            for noteID in plan.deletedNoteIDs {
+                try await sourceAccessStore?.remove(analysisNoteID: noteID)
+            }
+            try await localExecutionStore?.purgeExecutions(
+                containing: plan.deletedNoteIDs
+            )
+            for noteID in plan.deletedNoteIDs {
+                try await agentChangeEvidenceStore?.removeEvidence(noteID: noteID)
+            }
+            try await portableRecordStore?.handlePermanentDeletion(
+                noteIDs: plan.deletedNoteIDs
+            )
+            try await recoveryStore.resolve(record)
             return PermanentDeletionCommit(
-                noteID: noteID,
-                vaultID: vaultID,
-                relativePath: relativePath,
-                fingerprint: expectedRevision,
-                removedCritiqueDocumentPath: backup.critiqueDeletion?.relativePath,
+                noteID: plan.noteID,
+                vaultID: plan.vaultID,
+                relativePath: plan.relativePath,
+                fingerprint: plan.expectedRevision,
+                removedCritiqueDocumentPath: plan.critique?.relativePath,
                 removedDialogueIDs: [],
-                removedCritiqueAssociationIDs: backup.critiqueAssociations.map(\.id).sorted {
-                    $0.uuidString < $1.uuidString
-                }
+                removedCritiqueAssociationIDs: plan.critiqueAssociations
+                    .map(\.id)
+                    .sorted { $0.uuidString < $1.uuidString }
             )
-        } catch let interruption as PermanentDeletionInjectedFailure where interruption.isInterruption {
-            let files = await observedFileEvidence(backup)
-            record = try await persist(
-                record: record,
-                backup: backup,
-                failure: interruption.localizedDescription,
-                files: files
-            )
-            throw TriptychTransactionError.recoveryRequired(record)
         } catch {
-            let latestRecord = makeRecord(
+            let updated = makeRecord(
                 id: record.id,
                 createdAt: record.createdAt,
-                failure: record.failure,
-                backup: backup,
-                files: record.files
+                failure: error.localizedDescription,
+                plan: plan,
+                files: await observedFiles(plan)
             )
-            try await rollback(latestRecord, cause: error)
+            do {
+                try await recoveryStore.record(updated)
+            } catch {
+                throw TriptychTransactionError.recoveryPersistenceFailed(
+                    updated,
+                    error.localizedDescription
+                )
+            }
+            throw TriptychTransactionError.recoveryRequired(updated)
         }
     }
 
-    /// Reconciles durable deletion journals after process interruption. A
-    /// rollback-phase journal restores all recoverable state; a commit-phase
-    /// journal completes privacy cleanup and removes its recovery copies.
-    public func recoverInterruptedTransactions() async throws {
-        for record in try await recoveryStore.pending() where record.operation == .permanentDeletion {
-            guard let backup = record.permanentDeletionBackup,
-                  backup.vaultID == repository.identity.id else { continue }
-            switch backup.phase {
-            case .rollbackRequired:
-                do {
-                    try await rollback(record, cause: CocoaError(.userCancelled))
-                } catch let error as TriptychTransactionError {
-                    if case .transactionRolledBack = error { continue }
-                    throw error
-                }
-            case .committing:
-                try await finalize(record)
-            }
+    private func deleteIfPresent(_ target: PermanentDeletionTarget) async throws {
+        let document: NoteDocument
+        do {
+            document = try await repository.load(relativePath: target.relativePath)
+        } catch VaultRepositoryError.fileDoesNotExist {
+            return
         }
-    }
-
-    private func finalize(_ record: TriptychMutationRecoveryRecord) async throws {
-        guard let backup = record.permanentDeletionBackup else {
-            throw TriptychTransactionError.invalidPlan("Permanent-deletion recovery data is missing.")
-        }
-        if let source = backup.sourceDeletion {
-            try await repository.finalizePreparedPermanentDeletion(source)
-        }
-        if let critique = backup.critiqueDeletion {
-            try await repository.finalizePreparedPermanentDeletion(critique)
-        }
-        // Source locators are machine-local privacy state. Remove them only
-        // after the deletion commit decision; if cleanup fails, the durable
-        // committing journal remains so recovery retries instead of silently
-        // claiming the permanent deletion is fully finalized.
-        if let sourceAccessStore {
-            try await sourceAccessStore.remove(analysisNoteID: backup.noteID)
-            if let critiqueNoteID = backup.critiqueNoteID {
-                try await sourceAccessStore.remove(analysisNoteID: critiqueNoteID)
-            }
-        }
-        var deletedNoteIDs: Set<UUID> = [backup.noteID]
-        if let critiqueNoteID = backup.critiqueNoteID {
-            deletedNoteIDs.insert(critiqueNoteID)
-        }
-        for noteID in deletedNoteIDs {
-            try await portableRecordStore?.purgeSettlement(
-                noteID: noteID
+        guard document.fingerprint == target.expectedRevision else {
+            throw VaultRepositoryError.conflict(
+                expected: target.expectedRevision,
+                current: document.fingerprint
             )
         }
-        try await localExecutionStore?.purgeExecutions(
-            containing: deletedNoteIDs
-        )
-        for noteID in deletedNoteIDs {
-            try await agentChangeEvidenceStore?.removeEvidence(noteID: noteID)
+        do {
+            _ = try await repository.deletePermanently(
+                relativePath: target.relativePath,
+                expectedRevision: target.expectedRevision
+            )
+        } catch {
+            do {
+                _ = try await repository.load(relativePath: target.relativePath)
+                throw error
+            } catch VaultRepositoryError.fileDoesNotExist {
+                return
+            }
         }
-        try await portableRecordStore?.handlePermanentDeletion(
-            noteIDs: deletedNoteIDs
-        )
-        try await recoveryStore.resolve(record)
     }
 
-    private func rollback(
-        _ record: TriptychMutationRecoveryRecord,
-        cause: Error
-    ) async throws -> Never {
-        guard let backup = record.permanentDeletionBackup else {
-            throw TriptychTransactionError.invalidPlan("Permanent-deletion recovery data is missing.")
+    private func observedFiles(
+        _ plan: PermanentDeletionPlan
+    ) async -> [TriptychMutationRecoveryFile] {
+        var files = [await observedFile(
+            path: plan.relativePath,
+            revision: plan.expectedRevision,
+            role: .deletedNote
+        )]
+        if let critique = plan.critique {
+            files.append(await observedFile(
+                path: critique.relativePath,
+                revision: critique.expectedRevision,
+                role: .associatedCritique
+            ))
         }
-        var rollbackErrors: [String] = []
-
-        if let source = backup.sourceDeletion {
-            do { try await repository.rollbackPreparedPermanentDeletion(source) }
-            catch { rollbackErrors.append("\(source.relativePath): \(error.localizedDescription)") }
-        }
-        if let critique = backup.critiqueDeletion {
-            do { try await repository.rollbackPreparedPermanentDeletion(critique) }
-            catch { rollbackErrors.append("\(critique.relativePath): \(error.localizedDescription)") }
-        }
-        for settlement in backup.settlements {
-            do { try await portableRecordStore?.restoreSettlement(settlement) }
-            catch ResearchRecordStoreV1Error.settlementChanged(_) {
-                // A newer researcher-authored Settle state wins. Rollback
-                // restores only missing preimages and never overwrites it.
-            }
-            catch { rollbackErrors.append("Settlement: \(error.localizedDescription)") }
-        }
-        do { try await critiqueRegistry.restorePurgedAssociations(backup.critiqueAssociations) }
-        catch { rollbackErrors.append("Critique: \(error.localizedDescription)") }
-        do { try await controlStore.restorePurgedIdentity(backup.identity) }
-        catch { rollbackErrors.append("Identity: \(error.localizedDescription)") }
-        do { try await controlStore.restorePurgedIdentity(backup.critiqueIdentity) }
-        catch { rollbackErrors.append("Critique identity: \(error.localizedDescription)") }
-
-        let files = await observedFileEvidence(backup)
-        let filesRestored = files.allSatisfy { $0.state == .restored }
-        if filesRestored, rollbackErrors.isEmpty {
-            var restoredNoteIDs: Set<UUID> = [backup.noteID]
-            if let critiqueNoteID = backup.critiqueNoteID {
-                restoredNoteIDs.insert(critiqueNoteID)
-            }
-            do {
-                try await portableRecordStore?.clearNoteDeletionMarkers(
-                    noteIDs: restoredNoteIDs
-                )
-            } catch {
-                rollbackErrors.append(
-                    "Discussion deletion gate: \(error.localizedDescription)"
-                )
-            }
-        }
-        let restored = filesRestored && rollbackErrors.isEmpty
-        if restored, rollbackErrors.isEmpty {
-            do {
-                try await recoveryStore.resolve(record)
-                throw TriptychTransactionError.transactionRolledBack(cause.localizedDescription)
-            } catch let transaction as TriptychTransactionError {
-                throw transaction
-            } catch {
-                let updated = makeRecord(
-                    id: record.id,
-                    createdAt: record.createdAt,
-                    failure: "Rollback restored the files, but its recovery journal could not be removed. \(error.localizedDescription)",
-                    backup: backup,
-                    files: files
-                )
-                throw TriptychTransactionError.recoveryPersistenceFailed(updated, error.localizedDescription)
-            }
-        }
-
-        let detail = ([cause.localizedDescription] + rollbackErrors).joined(separator: "\n")
-        let updated = makeRecord(
-            id: record.id,
-            createdAt: record.createdAt,
-            failure: detail,
-            backup: backup,
-            files: files
-        )
-        do {
-            try await recoveryStore.record(updated)
-        } catch {
-            throw TriptychTransactionError.recoveryPersistenceFailed(updated, error.localizedDescription)
-        }
-        throw TriptychTransactionError.recoveryRequired(updated)
+        return files
     }
 
-    private func persist(
-        record: TriptychMutationRecoveryRecord,
-        backup: PermanentDeletionRecoveryBackup,
-        failure: String? = nil,
-        files: [TriptychMutationRecoveryFile]? = nil
-    ) async throws -> TriptychMutationRecoveryRecord {
-        let updated = makeRecord(
-            id: record.id,
-            createdAt: record.createdAt,
-            failure: failure ?? record.failure,
-            backup: backup,
-            files: files ?? record.files
-        )
+    private func observedFile(
+        path: String,
+        revision: DocumentFingerprint,
+        role: TriptychMutationFileRole
+    ) async -> TriptychMutationRecoveryFile {
         do {
-            try await recoveryStore.record(updated)
-            return updated
+            let document = try await repository.load(relativePath: path)
+            let state: TriptychMutationRecoveryState = document.fingerprint == revision
+                ? .restored
+                : .externallyChanged
+            return TriptychMutationRecoveryFile(
+                vaultID: repository.identity.id,
+                path: path,
+                role: role,
+                beforeRevision: revision,
+                intendedRevision: nil,
+                observedRevision: document.fingerprint,
+                state: state,
+                detail: state == .restored
+                    ? "The exact planned source is still present and will be deleted on retry."
+                    : "The source changed after deletion was planned; cleanup will not delete it."
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            return TriptychMutationRecoveryFile(
+                vaultID: repository.identity.id,
+                path: path,
+                role: role,
+                beforeRevision: revision,
+                intendedRevision: nil,
+                observedRevision: nil,
+                state: .missing,
+                detail: "The source is deleted; remaining privacy cleanup will continue without restoring it."
+            )
         } catch {
-            throw TriptychTransactionError.recoveryPersistenceFailed(updated, error.localizedDescription)
+            return TriptychMutationRecoveryFile(
+                vaultID: repository.identity.id,
+                path: path,
+                role: role,
+                beforeRevision: revision,
+                intendedRevision: nil,
+                observedRevision: nil,
+                state: .unreadable,
+                detail: "The source could not be verified: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -465,7 +383,7 @@ public actor NotePermanentDeletionCoordinator {
         id: UUID,
         createdAt: Date,
         failure: String,
-        backup: PermanentDeletionRecoveryBackup,
+        plan: PermanentDeletionPlan,
         files: [TriptychMutationRecoveryFile]
     ) -> TriptychMutationRecoveryRecord {
         TriptychMutationRecoveryRecord(
@@ -474,101 +392,24 @@ public actor NotePermanentDeletionCoordinator {
             createdAt: createdAt,
             failure: failure,
             files: files,
-            permanentDeletionBackup: backup
-        )
-    }
-
-    private func initialFileEvidence(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint,
-        critiqueBefore: NoteDocument?
-    ) -> [TriptychMutationRecoveryFile] {
-        var files = [TriptychMutationRecoveryFile(
-            vaultID: repository.identity.id,
-            path: relativePath,
-            role: .deletedNote,
-            beforeRevision: expectedRevision,
-            intendedRevision: nil,
-            observedRevision: expectedRevision,
-            state: .unreadable,
-            detail: "A durable recovery version is prepared before this source is removed. Inspect the path after interruption."
-        )]
-        if let critiqueBefore {
-            files.append(TriptychMutationRecoveryFile(
-                vaultID: repository.identity.id,
-                path: critiqueBefore.relativePath,
-                role: .associatedCritique,
-                beforeRevision: critiqueBefore.fingerprint,
-                intendedRevision: nil,
-                observedRevision: critiqueBefore.fingerprint,
-                state: .unreadable,
-                detail: "Associated Critique Markdown is part of the same deletion transaction."
-            ))
-        }
-        return files
-    }
-
-    private func observedFileEvidence(
-        _ backup: PermanentDeletionRecoveryBackup
-    ) async -> [TriptychMutationRecoveryFile] {
-        var result: [TriptychMutationRecoveryFile] = []
-        if let source = backup.sourceDeletion {
-            result.append(await observe(source, role: .deletedNote))
-        } else {
-            result.append(TriptychMutationRecoveryFile(
-                vaultID: backup.vaultID,
-                path: backup.relativePath,
-                role: .deletedNote,
-                beforeRevision: backup.expectedRevision,
-                intendedRevision: nil,
-                observedRevision: (try? await repository.load(relativePath: backup.relativePath))?.fingerprint,
-                state: .restored,
-                detail: "The source was not prepared for removal."
-            ))
-        }
-        if let critique = backup.critiqueDeletion {
-            result.append(await observe(critique, role: .associatedCritique))
-        }
-        return result
-    }
-
-    private func observe(
-        _ prepared: PreparedPermanentDeletion,
-        role: TriptychMutationFileRole
-    ) async -> TriptychMutationRecoveryFile {
-        let observed = try? await repository.load(relativePath: prepared.relativePath)
-        let state: TriptychMutationRecoveryState
-        if observed?.fingerprint == prepared.fingerprint {
-            state = .restored
-        } else if observed == nil {
-            state = .missing
-        } else {
-            state = .externallyChanged
-        }
-        return TriptychMutationRecoveryFile(
-            vaultID: repository.identity.id,
-            path: prepared.relativePath,
-            role: role,
-            beforeRevision: prepared.fingerprint,
-            intendedRevision: nil,
-            observedRevision: observed?.fingerprint,
-            state: state,
-            detail: state == .restored
-                ? "Exact pre-deletion bytes are present."
-                : "The committed recovery version remains in Note History until recovery is resolved."
+            permanentDeletionPlan: plan
         )
     }
 
     private func requireHealthyStores() async throws {
         if let error = await critiqueRegistry.healthError() {
-            throw ResearchRecordStoreError.unreadableStore(kind: "Critique", reason: error)
+            throw ResearchRecordStoreError.unreadableStore(
+                kind: "Critique",
+                reason: error
+            )
         }
         guard let portableRecordStore else { return }
         var issues = try await portableRecordStore.activeDiscussions().issues
         issues += try await portableRecordStore.listing().issues
         issues += try await portableRecordStore.settlementListing().issues
         guard issues.isEmpty else {
-            let reason = issues.map { "\($0.id): \($0.reason)" }.joined(separator: "; ")
+            let reason = issues.map { "\($0.id): \($0.reason)" }
+                .joined(separator: "; ")
             throw ResearchRecordStoreError.unreadableStore(
                 kind: "Portable Research Record",
                 reason: reason

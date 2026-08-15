@@ -88,10 +88,10 @@ Triptych begins with editable current default methods. Updates never overwrite
 researcher edits. **Restore Default…** means the current app-bundled default
 and states the replacement consequence before writing.
 
-Each Scholium-mediated Skill or Practice edit retains exactly one replaceable
-machine-local recovery point containing the displaced exact bytes. A later
-safe method edit may replace it. There is no revision list, version browser,
-comparison history, package lineage, or past-method reproduction promise.
+Scholium-mediated Skill or Practice edits replace only the exact expected
+current source and read it back. There is no recovery copy, revision list,
+version browser, comparison history, package lineage, or past-method
+reproduction promise.
 Research Records retain only the hidden registration relation, then-visible
 method name, and referenced Practice names, never complete method text or
 folder contents.
@@ -585,8 +585,8 @@ or return one `diagnosed_no_change`/`unavailable` diagnosis after judging
 whether the issue concerns method, execution, material, provider, request, or
 preference. CLI obtains machine revisions from authenticated context rather
 than researcher copying. Every replacement uses one nonreusable short-lived
-capability, expected-revision transaction, previous-edit recovery point, and
-exact read-back. A committed file edit can reconcile after interruption
+capability, expected-revision transaction, and exact read-back. A committed
+file edit can reconcile after interruption
 without a second write. A successful read-back edit or safely saved diagnosis
 deletes only the still-exact comment; modified comments remain. Identical
 terminal retry is idempotent and different input fails closed. A deleted Record

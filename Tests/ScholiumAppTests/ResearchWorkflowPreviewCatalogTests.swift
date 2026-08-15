@@ -56,7 +56,7 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Full Triptych Access",
             "APA 7",
             "Pairing and Session are short-lived and restart-invalidated",
-            "A Practice keeps one replaceable previous edit",
+            "A Practice edit replaces only its exact current revision",
         ] {
             #expect(
                 guidanceSource.contains(customization),

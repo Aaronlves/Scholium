@@ -3,7 +3,7 @@ import Foundation
 import ScholiumCore
 
 enum WorkspaceVaultPoolMode: Sendable {
-    case live(identityRegistry: VaultIdentityRegistry)
+    case live
     case snapshot
 }
 
@@ -277,14 +277,15 @@ actor WorkspaceVaultPool {
                 bookmarkData: nil
             )
             securityScopeURL = nil
-        case .live(let registry):
-            guard let registeredIdentity = await registry.identity(id: registeredVault.id) else {
-                throw WorkspaceRegistryError.incompleteWorkspace
-            }
-            identity = registeredIdentity
+        case .live:
+            identity = VaultIdentity(
+                id: registeredVault.id,
+                canonicalPath: registeredVault.canonicalPath,
+                bookmarkData: registeredVault.bookmarkData
+            )
             let resolution = try resolveLiveAccess(
                 vault: registeredVault,
-                identity: registeredIdentity
+                identity: identity
             )
             rootURL = resolution.url
             securityScopeURL = resolution.securityScopeURL

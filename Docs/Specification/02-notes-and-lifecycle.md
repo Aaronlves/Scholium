@@ -496,7 +496,10 @@ active, Set Aside, or Trash state.
 Note-specific records follow stable identity into Set Aside and Trash while
 recovery remains possible. Permanent note deletion advertises no source
 recovery; a surviving record tombstone is provenance, not a way to restore the
-deleted note.
+deleted note. Before the first destructive step Scholium records one durable
+deletion plan. Failure or process interruption resumes that plan forward until
+source and note-specific state are absent; it never recreates deleted source or
+rolls the deletion back.
 
 Library, Set Aside, and Trash are category projections of one native file-tree
 model, not distinct browsers. They share hierarchy, indentation, disclosure,

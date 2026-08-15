@@ -62,7 +62,7 @@ struct ApplicationBootstrapControllerTests {
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
         let registryURL = supportURL
             .appendingPathComponent("Workspace", isDirectory: true)
-            .appendingPathComponent("workspace-registry-v2.json")
+            .appendingPathComponent("workspace-registration-v3.json")
         try FileManager.default.createDirectory(
             at: registryURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -98,7 +98,7 @@ struct ApplicationBootstrapControllerTests {
             includingPropertiesForKeys: nil
         )
         let backup = try #require(contents.first(where: {
-            $0.lastPathComponent.hasPrefix("workspace-registry-v2.corrupt-")
+            $0.lastPathComponent.hasPrefix("workspace-registration-v3.corrupt-")
         }))
         #expect(try Data(contentsOf: backup) == damaged)
         #expect(!FileManager.default.fileExists(atPath: registryURL.path))
@@ -111,7 +111,7 @@ struct ApplicationBootstrapControllerTests {
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
         let registryURL = supportURL
             .appendingPathComponent("Workspace", isDirectory: true)
-            .appendingPathComponent("workspace-registry-v2.json")
+            .appendingPathComponent("workspace-registration-v3.json")
         try FileManager.default.createDirectory(
             at: registryURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -139,46 +139,6 @@ struct ApplicationBootstrapControllerTests {
             return
         }
         #expect(!health.canRelinkAfterPreserving)
-    }
-
-    @Test("Damaged machine access registry stays at app root until explicit relinking")
-    func damagedMachineAccessRegistryRecovery() async throws {
-        let supportURL = testRoot().appendingPathComponent(
-            "ApplicationSupport",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
-        let registryURL = supportURL.appendingPathComponent("vault-registry.json")
-        let damaged = Data("damaged local access".utf8)
-        try damaged.write(to: registryURL)
-        defer { try? FileManager.default.removeItem(at: supportURL.deletingLastPathComponent()) }
-
-        let controller = ApplicationBootstrapController { supportURL }
-        controller.startIfNeeded()
-        await waitUntilSettled(controller)
-        guard case .registryRecovery(let recovery) = controller.state,
-              case .machineAccess(let health, let observedRoot) = recovery.source else {
-            Issue.record("Damaged machine access did not remain at the application recovery root.")
-            return
-        }
-        #expect(health.canRelinkAfterPreserving)
-        #expect(observedRoot == supportURL)
-        #expect(try Data(contentsOf: registryURL) == damaged)
-
-        controller.repairRegistryAndRetry()
-        await waitUntilSettled(controller)
-        guard case .ready(let store) = controller.state else {
-            Issue.record("Machine access recovery did not return to normal Bootstrap.")
-            return
-        }
-        let preserved = try #require(
-            FileManager.default.contentsOfDirectory(
-                at: supportURL,
-                includingPropertiesForKeys: nil
-            ).first(where: { $0.lastPathComponent.hasPrefix("vault-registry.corrupt-") })
-        )
-        #expect(try Data(contentsOf: preserved) == damaged)
-        await store.shutdownApplicationRuntime()
     }
 
     private func waitUntilSettled(

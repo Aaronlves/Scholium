@@ -55,12 +55,12 @@ evidence and remaining acceptance belong to
 [Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 `PrewriteRecoveryLedger` is Core-only machine state under
-`Vaults/<vault-id>/recovery-v2/`. Immutable fingerprinted objects are indexed by
-SQLite WAL with full synchronization, bounded to ten entries per path, and
-protected by remap journals and permanent-delete tombstones. A damaged database
-is quarantined and rebuilt from verified objects. Unsupported version bytes
-remain unchanged and nonauthorizing. It exposes no general delivery-facing
-versions or history API. Its one bounded `InterruptedSaveRecovery` projection includes only exact
+`Vaults/<vault-id>/save-transactions-v1/`. Each unresolved replacement owns one
+small manifest plus exact expected and candidate bytes. A proven committed or
+not-written operation deletes the directory immediately; only commit-uncertain
+or startup-interrupted transactions survive. Unsupported pre-use bytes remain
+unchanged and nonauthorizing. It exposes no versions or history API. Its one
+bounded `InterruptedSaveRecovery` projection includes only exact
 startup-retained candidates and remains distinct from Run-bound Agent change
 evidence. `DocumentOperations` vault-qualifies listing, read-only content,
 Finder location, and restore; `ResearchController` owns that listing beside the
@@ -76,8 +76,8 @@ byte-unchanged and nonauthorizing; no legacy save schema is migrated or
 interpreted.
 
 `AgentChangeEvidenceStore` is a separate Core actor under Triptych-keyed
-Application Support. Each JSON record binds one ID to the Triptych, Run, stable
-Note ID, exact starting bytes/fingerprint, and optional final Agent
+Application Support. Each JSON record is keyed by `(Run ID, Note ID)` and binds
+that pair to the Triptych, exact starting bytes/fingerprint, and optional final Agent
 bytes/fingerprint. It enforces the Bounded Write Set source-size limit,
 descriptor-safe storage, atomic replacement, and cross-process locking. It is
 not queried as history, cannot reconstruct source authority, and is consumed
@@ -87,7 +87,8 @@ only by exact Record comparison, direct Undo, and note-deletion privacy cleanup.
 bounded machine-local JSON state. It owns no-follow containment, byte limits,
 atomic replacement, readback, staging/deletion recovery, and the companion
 `AdvisoryFileLock` for cooperating-process serialization. Portable Records,
-local executions, Agent change evidence, and the prewrite ledger each retain their
+compacted local execution receipts, Agent change evidence, and the prewrite
+ledger each retain their
 own schema, path, transaction, recovery, and error semantics, and translate
 primitive failures at that owner boundary. The primitive neither interprets a
 Record nor becomes a writable research-source authority.

@@ -381,6 +381,13 @@ public actor PortableResearchRecordStore {
         }
     }
 
+    public func isRecordPermanentlyDeleted(id: UUID) -> Bool {
+        (try? recordDeletionMarkers.read(
+            directory: nil,
+            fileName: Self.fileName(id)
+        )) == Self.recordDeletionMarkerData(id)
+    }
+
     /// Removes only the selected portable record. Source Markdown, portable
     /// settlements and machine-local Agent change evidence are
     /// owned by separate stores and are intentionally outside this operation.
@@ -765,20 +772,6 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    /// Removes only rollback-phase gates after the exact deleted Note state has
-    /// been restored. Committed deletions retain their identity marker.
-    public func clearNoteDeletionMarkers(noteIDs: Set<UUID>) throws {
-        guard !noteIDs.isEmpty else { return }
-        try lock.withExclusiveLock {
-            for noteID in noteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
-                try deletionMarkers.removeIfPresent(
-                    directory: nil,
-                    fileName: Self.fileName(noteID)
-                )
-            }
-        }
-    }
-
     @discardableResult
     public func createActiveDiscussion(
         _ discussion: PortableResearchDiscussion
@@ -1142,6 +1135,7 @@ public actor PortableResearchRecordStore {
     ) throws -> SettlementRecord {
         try lock.withExclusiveLock {
             try Self.coordinateWrite(at: storageURL) {
+                try requireNoDeletionMarkers(noteIDs: [noteID])
                 let fileName = Self.fileName(noteID)
                 let current: PortableSettlementState?
                 do {
@@ -1282,97 +1276,6 @@ public actor PortableResearchRecordStore {
                     directory: "settlements",
                     fileName: Self.fileName(noteID)
                 )
-            }
-        }
-    }
-
-    /// Removes only the exact Settle state captured by a rollback journal.
-    /// Passing nil proves that no Settle existed at capture time; a newly
-    /// appearing state then aborts the transaction instead of being deleted.
-    public func purgeSettlement(
-        noteID: UUID,
-        matching expected: SettlementRecord?
-    ) throws {
-        try lock.withExclusiveLock {
-            try Self.coordinateWrite(at: storageURL) {
-                let current: PortableSettlementState
-                do {
-                    current = try Self.decode(
-                        PortableSettlementState.self,
-                        from: storage.read(
-                            directory: "settlements",
-                            fileName: Self.fileName(noteID)
-                        )
-                    )
-                } catch let error as SecureRecordDirectoryError {
-                    if case .notFound = error { return }
-                    throw Self.map(error)
-                }
-                guard current.triptychID == triptychID,
-                      current.settlement.noteID == noteID else {
-                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(noteID)
-                }
-                guard let expected, current.settlement == expected else {
-                    throw ResearchRecordStoreV1Error.settlementChanged(noteID)
-                }
-                try storage.removeIfPresent(
-                    directory: "settlements",
-                    fileName: Self.fileName(noteID)
-                )
-            }
-        }
-    }
-
-    public func restoreSettlement(_ settlement: SettlementRecord) throws {
-        try lock.withExclusiveLock {
-            try Self.coordinateWrite(at: storageURL) {
-                do {
-                    let data = try storage.read(
-                        directory: "settlements",
-                        fileName: Self.fileName(settlement.noteID)
-                    )
-                    let current = try Self.decode(
-                        PortableSettlementState.self,
-                        from: data
-                    )
-                    guard current.triptychID == triptychID,
-                          current.settlement.noteID == settlement.noteID else {
-                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(
-                            settlement.noteID
-                        )
-                    }
-                    guard current.settlement == settlement else {
-                        throw ResearchRecordStoreV1Error.settlementChanged(
-                            settlement.noteID
-                        )
-                    }
-                    return
-                } catch let error as SecureRecordDirectoryError {
-                    if case .notFound = error {
-                        // Restore the journaled preimage below.
-                    } else {
-                        throw Self.map(error)
-                    }
-                }
-                let state = try PortableSettlementState(
-                    triptychID: triptychID,
-                    settlement: settlement
-                )
-                let (canonicalState, data) = try Self.canonicalized(state)
-                let readback = try storage.replace(
-                    data,
-                    directory: "settlements",
-                    fileName: Self.fileName(settlement.noteID)
-                )
-                let stored = try Self.decode(
-                    PortableSettlementState.self,
-                    from: readback
-                )
-                guard stored == canonicalState else {
-                    throw ResearchRecordStoreV1Error.recordIdentityMismatch(
-                        settlement.noteID
-                    )
-                }
             }
         }
     }
@@ -2046,12 +1949,13 @@ private struct StrictResearchRecordFingerprint: Decodable {
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 13
+    public static let currentSchemaVersion = 14
 
     public let schemaVersion: Int
     public let triptychID: UUID
     public let snapshot: ResearchFunctionSnapshot
-    public let preparedInstructions: String
+    public var preparedInstructions: String
+    public var isCompacted: Bool
     public var discussion: ResearchDiscussionExecutionContract?
     public var boundedWriteSet: ResearchBoundedWriteSet
     public var writeSetExtensionRecords: [ResearchWriteSetExtensionRecord]
@@ -2071,6 +1975,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         triptychID: UUID,
         snapshot: ResearchFunctionSnapshot,
         preparedInstructions: String,
+        isCompacted: Bool = false,
         discussion: ResearchDiscussionExecutionContract? = nil,
         boundedWriteSet: ResearchBoundedWriteSet? = nil,
         writeSetExtensionRecords: [ResearchWriteSetExtensionRecord] = [],
@@ -2124,18 +2029,17 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                     == snapshot.resynthesisContext?.recordID
                 && snapshot.resynthesisContext?.topicNoteID
                     == snapshot.request.target.noteID
-                && snapshot.changeEvidenceID != nil
                 && snapshot.continuationHandoff == nil
-                && Set(resolvedWriteSet.entries.map(\.noteID))
-                    .isSuperset(of: Set(
-                        snapshot.actionSnapshot?.authority.writableNotes
-                            .map(\.noteID) ?? []
-                    ))
+                && (isCompacted
+                    || Set(resolvedWriteSet.entries.map(\.noteID))
+                        .isSuperset(of: Set(
+                            snapshot.actionSnapshot?.authority.writableNotes
+                                .map(\.noteID) ?? []
+                        )))
         case .fidelity:
             if case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
                 continuationMatches = snapshot.request.function == .fidelity
                     && snapshot.continuationLineage?.parentRunID == parentRunID
-                    && snapshot.changeEvidenceID == nil
                     && snapshot.continuationHandoff == nil
             } else {
                 continuationMatches = false
@@ -2153,6 +2057,15 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && improvement.actionID
                     == snapshot.actionSnapshot?.actionID
         } ?? true
+        let operationalShapeMatches = isCompacted
+            ? preparedInstructions.isEmpty
+                && resolvedWriteSet.entries.isEmpty
+                && writeSetExtensionRecords.isEmpty
+                && documentWriteRecords.isEmpty
+                && zoteroBindingWriteRecords.isEmpty
+                && writeConflictResolutionRecords.isEmpty
+                && completion.map({ [.complete, .unverified].contains($0.state) }) == true
+            : initialWritableIDs.isSubset(of: writeSetIDs)
         guard snapshot.actionSnapshot != nil,
               snapshot.runID == snapshot.recordID,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024,
@@ -2160,7 +2073,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               continuationMatches,
               resolvedWriteSet.runID == snapshot.runID,
               resolvedWriteSet.triptychID == triptychID,
-              initialWritableIDs.isSubset(of: writeSetIDs),
+              operationalShapeMatches,
               writeSetExtensionRecords.count <= 256,
               Set(writeSetExtensionRecords.map(\.id)).count
                 == writeSetExtensionRecords.count,
@@ -2188,15 +2101,8 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               Set(writeConflictResolutionRecords.map(\.id)).count
                 == writeConflictResolutionRecords.count,
               writeConflictResolutionRecords.allSatisfy({ resolution in
-                  guard resolution.runID == snapshot.runID,
-                        let entry = resolvedWriteSet.entry(
-                            handle: resolution.target
-                        ) else { return false }
-                  return resolution.targetView.role == entry.role
-                      && resolution.targetView.relativePath
-                        == entry.note.relativePath
-                      && resolution.targetView.operations
-                        == entry.allowedOperations
+                  resolution.runID == snapshot.runID
+                      && resolvedWriteSet.entry(handle: resolution.target) != nil
               }),
               continuationRequests.count <= 64,
               Set(continuationRequests.map(\.id)).count
@@ -2207,7 +2113,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               methodImprovementMatches,
               resultPayload?.runID == snapshot.runID || resultPayload == nil,
               writeReport?.runID == snapshot.runID || writeReport == nil,
-              writeReport.map({ report in
+              isCompacted || writeReport.map({ report in
                   let reportIDs = Set(report.confirmedModifiedNotes.map(\.noteID))
                     .union(report.unmodifiedNotes.map(\.noteID))
                   return reportIDs == Set(resolvedWriteSet.entries
@@ -2225,6 +2131,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         self.triptychID = triptychID
         self.snapshot = snapshot
         self.preparedInstructions = preparedInstructions
+        self.isCompacted = isCompacted
         self.discussion = discussion
         self.boundedWriteSet = resolvedWriteSet
         self.writeSetExtensionRecords = writeSetExtensionRecords
@@ -2244,6 +2151,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         case triptychID = "triptych_id"
         case snapshot
         case preparedInstructions = "prepared_instructions"
+        case isCompacted = "is_compacted"
         case discussion
         case boundedWriteSet = "bounded_write_set"
         case writeSetExtensionRecords = "write_set_extension_records"
@@ -2275,6 +2183,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 String.self,
                 forKey: .preparedInstructions
             ),
+            isCompacted: container.decode(Bool.self, forKey: .isCompacted),
             discussion: container.decodeIfPresent(
                 ResearchDiscussionExecutionContract.self,
                 forKey: .discussion
@@ -2335,11 +2244,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 "A local execution has no frozen Action for its bounded write set."
             )
         }
-        guard action.authority.writableNotes.isEmpty || snapshot.changeEvidenceID != nil else {
-            throw ResearchRecordStoreV1Error.unsafeStore(
-                "A writable Action has no exact Agent change evidence."
-            )
-        }
         let entries = try action.authority.writableNotes.map { note in
             try ResearchBoundedWriteSetEntry(
                 handle: ResearchWriteTargetHandle(
@@ -2352,7 +2256,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 title: note.title,
                 allowedOperations: action.authority.writeOperations,
                 expectedRevision: note.fingerprint,
-                changeEvidenceID: snapshot.changeEvidenceID!,
                 authorizationBasis: .initialAction,
                 expiresAt: snapshot.preparedAt.addingTimeInterval(24 * 60 * 60)
             )
@@ -2386,13 +2289,13 @@ public actor LocalResearchExecutionStore {
         storageURL = applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v9", isDirectory: true)
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: applicationSupportURL,
             components: [
                 "Triptychs",
                 triptychID.uuidString,
-                "research-execution-v9",
+                "research-execution-v10",
             ],
             directoryMode: 0o700,
             fileMode: 0o600,
@@ -2402,7 +2305,7 @@ public actor LocalResearchExecutionStore {
         do {
             lock = try AdvisoryFileLock(
                 directory: storage,
-                fileName: "execution-v9.lock"
+                fileName: "execution-v10.lock"
             )
         } catch {
             throw ResearchRecordStoreV1Error.unsafeStore(error.localizedDescription)
@@ -2454,6 +2357,39 @@ public actor LocalResearchExecutionStore {
         try lock.withSharedLock {
             do { return try readRecord(id: id) }
             catch ResearchRecordStoreV1Error.executionNotFound { return nil }
+        }
+    }
+
+    /// Replaces a finalized Run's operational journal with the small receipt
+    /// still needed for continuation, Method improvement, and idempotency.
+    @discardableResult
+    public func compactCompleted(runID: UUID) throws -> LocalResearchExecutionRecord {
+        try update(runID) { current in
+            if current.isCompacted { return }
+            guard current.completion.map({
+                [.complete, .unverified].contains($0.state)
+            }) == true,
+            !current.writeSetExtensionRecords.contains(where: \.isUnresolved),
+            !current.documentWriteRecords.contains(where: {
+                [.writing, .recoveryRequired].contains($0.state)
+            }),
+            !current.zoteroBindingWriteRecords.contains(where: {
+                [.writing, .recoveryRequired].contains($0.state)
+            }) else {
+                throw ResearchRecordStoreV1Error.unsafeStore(
+                    "An unfinished Run cannot be compacted."
+                )
+            }
+            current.preparedInstructions = ""
+            current.boundedWriteSet = try ResearchBoundedWriteSet(
+                runID: current.id,
+                triptychID: current.triptychID
+            )
+            current.writeSetExtensionRecords = []
+            current.documentWriteRecords = []
+            current.zoteroBindingWriteRecords = []
+            current.writeConflictResolutionRecords = []
+            current.isCompacted = true
         }
     }
 
@@ -2663,11 +2599,8 @@ public actor LocalResearchExecutionStore {
             case .refreshAuthority:
                 guard let refreshedEntry,
                       resolution.state == .readyToRetry,
-                      resolution.changeEvidenceID == refreshedEntry.changeEvidenceID,
                       resolution.observedRevision
                         == refreshedEntry.expectedRevision,
-                      resolution.targetView
-                        == ResearchBoundedWriteSetViewEntry(refreshedEntry),
                       refreshedEntry.handle == entry.handle,
                       refreshedEntry.noteID == entry.noteID,
                       refreshedEntry.note == entry.note,
@@ -2688,16 +2621,10 @@ public actor LocalResearchExecutionStore {
                 current.boundedWriteSet.entries[entryIndex] = refreshedEntry
             case .abandonWrite:
                 guard refreshedEntry == nil,
-                      resolution.state == .abandoned,
-                      resolution.changeEvidenceID == nil else {
+                      resolution.state == .abandoned else {
                     throw ResearchBoundedWriteSetError.invalidConflictResolution
                 }
                 current.boundedWriteSet.entries[entryIndex].state = .abandoned
-                guard resolution.targetView == ResearchBoundedWriteSetViewEntry(
-                    current.boundedWriteSet.entries[entryIndex]
-                ) else {
-                    throw ResearchBoundedWriteSetError.invalidConflictResolution
-                }
             }
             current.writeConflictResolutionRecords.append(resolution)
             current.writeConflictResolutionRecords.sort {
@@ -2728,9 +2655,7 @@ public actor LocalResearchExecutionStore {
                   }),
                   current.boundedWriteSet.entries[entryIndex].state == .ready,
                   current.boundedWriteSet.entries[entryIndex].expectedRevision
-                    == write.expectedRevision,
-                  current.boundedWriteSet.entries[entryIndex].changeEvidenceID
-                    == write.changeEvidenceID else {
+                    == write.expectedRevision else {
                 throw ResearchBoundedWriteSetError.staleAuthorization
             }
             current.boundedWriteSet.entries[entryIndex].state = .writing
@@ -3354,6 +3279,18 @@ public actor LocalResearchExecutionStore {
         }
     }
 
+    public func removeCompleted(runID: UUID) throws {
+        try lock.withExclusiveLock {
+            let current = try readRecord(id: runID)
+            guard current.completion.map({
+                [.complete, .unverified].contains($0.state)
+            }) == true else {
+                throw ResearchRecordStoreV1Error.executionAlreadyCompleted(runID)
+            }
+            try storage.removeIfPresent(directory: nil, fileName: Self.fileName(runID))
+        }
+    }
+
     private func readRecord(id: UUID) throws -> LocalResearchExecutionRecord {
         do {
             let data = try storage.read(directory: nil, fileName: Self.fileName(id))
@@ -3391,7 +3328,7 @@ public actor LocalResearchExecutionStore {
                 records.append(record)
             } catch {
                 issues.append(PortableResearchRecordStoreIssue(
-                    location: "research-execution-v9",
+                    location: "research-execution-v10",
                     fileName: fileName,
                     reason: error.localizedDescription
                 ))

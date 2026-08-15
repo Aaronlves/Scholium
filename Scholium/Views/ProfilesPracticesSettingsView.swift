@@ -157,20 +157,13 @@ struct ProfilesPracticesSettingsView: View {
         .sheet(item: $practiceEditor) { context in
             ResearchGuidanceMarkdownEditSheet(
                 title: Text("Edit \(context.practice.title)"),
-                detail: Text("This is exact Markdown. Saving replaces only this Practice; one previous edit remains recoverable."),
+                detail: Text("This is exact Markdown. Saving replaces only this Practice."),
                 sourceAccessibilityLabel: Text("Philosophical Practice Markdown"),
                 initialSource: context.practice.source,
                 save: { source in
                     _ = try await settingsModel.savePhilosophicalPractice(
                         relativePath: context.practice.relativePath,
                         source: source,
-                        expectedRevision: context.practice.revision
-                    )
-                    await reload()
-                },
-                restorePrevious: {
-                    _ = try await settingsModel.restorePreviousPhilosophicalPractice(
-                        relativePath: context.practice.relativePath,
                         expectedRevision: context.practice.revision
                     )
                     await reload()

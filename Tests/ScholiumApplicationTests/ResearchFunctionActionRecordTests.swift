@@ -481,7 +481,7 @@ extension ResearchFunctionOperationsTests {
         }
 
         let localURL = triptychSupport
-            .appendingPathComponent("research-execution-v9", isDirectory: true)
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
         let portableURL = fixture.rootURL
             .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)
@@ -574,7 +574,6 @@ extension ResearchFunctionOperationsTests {
         #expect(child.snapshot.continuationLineage?.parentRunID == portable.id)
         #expect(child.snapshot.continuationLineage?.requestID == resynthesis.runID)
         #expect(child.snapshot.resynthesisContext == attentionContext)
-        #expect(child.snapshot.changeEvidenceID != nil)
         #expect(child.snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
             == [topic.noteID])
 
@@ -1116,11 +1115,6 @@ extension ResearchFunctionOperationsTests {
                 .literatureRecommendations.isEmpty == true
         )
 
-        let retainedLocalCompletion = try #require(
-            try await handle.services.localResearchExecutionStore.record(
-                id: action.runID
-            ).completion
-        )
         #expect(try await handle.research.sourceAccess(for: analysis).state == .available)
         try await handle.research.deleteResearchRecordPermanently(id: action.runID)
         #expect(!FileManager.default.fileExists(atPath: portableURL.path))
@@ -1135,9 +1129,9 @@ extension ResearchFunctionOperationsTests {
             #expect(reason.contains("permanently deleted"))
         }
         #expect(!FileManager.default.fileExists(atPath: portableURL.path))
-        #expect(try await handle.services.localResearchExecutionStore.record(
+        #expect(try await handle.services.localResearchExecutionStore.recordIfPresent(
             id: action.runID
-        ).completion == retainedLocalCompletion)
+        ) == nil)
         #expect(try await handle.research.sourceAccess(for: analysis).state == .available)
         let afterRetry = try await handle.research.finishedResearchRecords(noteID: nil)
         #expect(afterRetry.allSatisfy { $0.id != action.runID })

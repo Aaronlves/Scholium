@@ -18,8 +18,8 @@ struct FileProviderProcessInterruptionFixtureTests {
         }
     }
 
-    @Test("A coordinated provider change becomes a conflict with exact recovery")
-    func coordinatedProviderChangeIsRecoverable() async throws {
+    @Test("A coordinated provider conflict leaves no successful-save history")
+    func coordinatedProviderConflictLeavesNoHistory() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         var repository: VaultRepository? = try fixture.repository()
@@ -51,50 +51,16 @@ struct FileProviderProcessInterruptionFixtureTests {
             #expect(presenter.writerRequestCount == 1)
             #expect(presenter.mutationErrorDescription == nil)
             #expect(try Data(contentsOf: fixture.note) == fixture.externalData)
-            let recovery = try #require(
-                await activeRepository.recoveryEntries(
-                    relativePath: fixture.relativePath
-                ).first
-            )
-            #expect(
-                try await activeRepository.recoveryContent(entryID: recovery.id)
-                    == fixture.originalContent
-            )
             let pending = try fixture.pendingMutationDirectories()
-            #expect(pending.count == 1)
-            #expect(
-                try Data(contentsOf: pending[0].appendingPathComponent("expected.md"))
-                    == fixture.original
-            )
-            #expect(
-                try Data(contentsOf: pending[0].appendingPathComponent("candidate.md"))
-                    == fixture.candidateData
-            )
+            #expect(pending.isEmpty)
         }
 
         repository = nil
         let reopened = try fixture.repository()
         #expect(try fixture.stagedFiles().isEmpty)
-        #expect(try fixture.pendingMutationDirectories().count == 1)
+        #expect(try fixture.pendingMutationDirectories().isEmpty)
         #expect(try await reopened.load(relativePath: fixture.relativePath).rawContent == fixture.external)
-        let retained = try #require(
-            try await reopened.interruptedSaveRecoveries().first
-        )
-        #expect(retained.id.vaultID == fixture.identity.id)
-        #expect(retained.relativePath == fixture.relativePath)
-        #expect(retained.sourceState == .changed(DocumentFingerprint(data: fixture.externalData)))
-        #expect(
-            try await reopened.interruptedSaveRecoveryContent(retained).exactSource
-                == fixture.candidate
-        )
-        await #expect {
-            _ = try await reopened.restoreInterruptedSaveRecovery(retained)
-        } throws: { error in
-            guard case VaultRepositoryError.conflict = error else { return false }
-            return true
-        }
-        #expect(try Data(contentsOf: fixture.note) == fixture.externalData)
-        #expect(try await reopened.interruptedSaveRecoveries().map(\.id) == [retained.id])
+        #expect(try await reopened.interruptedSaveRecoveries().isEmpty)
     }
 
     @Test(
@@ -165,13 +131,6 @@ struct FileProviderProcessInterruptionFixtureTests {
             ? fixture.originalContent
             : fixture.candidate
         #expect(reopenedDocument.rawContent == expectedCanonicalContent)
-        let recovery = try #require(
-            await reopened.recoveryEntries(relativePath: fixture.relativePath).first
-        )
-        #expect(
-            try await reopened.recoveryContent(entryID: recovery.id)
-                == fixture.originalContent
-        )
         let pending = try fixture.pendingMutationDirectories()
         if point == .staged {
             #expect(pending.count == 1)
@@ -356,12 +315,18 @@ struct FileProviderProcessInterruptionFixtureTests {
             let directory = support
                 .appendingPathComponent("Vaults", isDirectory: true)
                 .appendingPathComponent(identity.id.uuidString, isDirectory: true)
-                .appendingPathComponent("recovery-v2/transactions/mutations", isDirectory: true)
+                .appendingPathComponent("save-transactions-v1", isDirectory: true)
             guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
             return try FileManager.default.contentsOfDirectory(
                 at: directory,
                 includingPropertiesForKeys: [.isDirectoryKey]
-            ).sorted { $0.lastPathComponent < $1.lastPathComponent }
+            ).filter { url in
+                guard url.lastPathComponent != ".transactions.lock",
+                      let values = try? url.resourceValues(forKeys: [.isDirectoryKey]) else {
+                    return false
+                }
+                return values.isDirectory == true
+            }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         }
 
         func stagedFiles() throws -> [URL] {
