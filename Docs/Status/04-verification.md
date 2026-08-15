@@ -4,17 +4,17 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-08-15, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
+**Environment:** 2026-08-16, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The exact `v0.1.0-beta.7` commit `caee95fce7aae4869c87e4b339a01f4b782e9c76`
+The exact `v0.1.0-beta.8` commit `51a5f64ed7b1a825b718637e340b97030db10106`
 passed one uninterrupted complete repository
 gate: closed documentation manifests and shipped Skill resources; TypeScript
 checking and 199 Web editor tests; reproducible editor, mathematics, and Mermaid
-bundles; 475 Core tests plus 3 Search performance tests; 138 Contracts tests;
+bundles; 434 Core tests plus 3 Search performance tests; 137 Contracts tests;
 231 Application tests, 11 bridge tests, and 1 serialized architecture
-measurement; 634 App tests; 7 executable Research Action CLI lifecycles; the
+measurement; 636 App tests; 7 executable Research Action CLI lifecycles; the
 sandboxed App-to-standalone-CLI loopback probe; symbol and residue guards; and
-an optimized Release build in 180.72 seconds.
+an optimized Release build in 187.92 seconds.
 
 The same clean tagged commit produced an architecture-labelled DMG and separate
 standalone CLI ZIP with exact provenance and SHA-256 files. `hdiutil` verified
@@ -24,17 +24,14 @@ sandbox-entitlement, and provenance checks. The CLI installed into an isolated
 user prefix and launched by basename from an unrelated working directory.
 GitHub published the tag and all four assets. Fresh exact-release downloads
 matched both published checksums; the stable CLI `latest/download` route was
-moved to this release and independently resolved to `v0.1.0-beta.7`.
+moved to this release and independently resolved to `v0.1.0-beta.8`.
 
 This evidence is not Developer ID signing, notarization, a clean external-account
 Agent journey, the current complete packaged G7 series, packaged-icon and human
-visual acceptance, or a completed packaged first-launch UI journey. The release
-owner explicitly waived those four gaps for this public Beta; they remain open
-acceptance rather than passed evidence. A direct LaunchServices smoke kept the
-exact copied App alive without changing production state, but the packaged UI
-driver timed out enabling macOS automation before Scholium launched and supplied
-no Bootstrap evidence. The ad-hoc App is intentionally neither Developer ID
-signed nor notarized and Gatekeeper rejects it until the documented user
+visual acceptance, or a packaged first-launch UI journey. The release owner
+directed publication with those gaps still open; they remain acceptance work
+rather than passed evidence. The ad-hoc App is intentionally neither Developer
+ID signed nor notarized and Gatekeeper rejects it until the documented user
 override.
 
 ## Focused interface evidence
@@ -383,8 +380,8 @@ Note identities without rewriting the manifest, and that renewed folder access
 rebinds one machine-local Vault path. These are disposable-fixture and ad-hoc
 development proofs, not clean-account installed-artifact or human acceptance.
 
-The exact `v0.1.0-beta.7` tagged tree produced the ad-hoc-signed sandboxed App
-inside `Scholium-v0.1.0-beta.7-macos-arm64.dmg` and the independent
+The exact `v0.1.0-beta.8` tagged tree produced the ad-hoc-signed sandboxed App
+inside `Scholium-v0.1.0-beta.8-macos-arm64.dmg` and the independent
 `Scholium-CLI-macos.zip`, each with matching provenance and checksum. Strict
 signature checks found App Sandbox on the App, no App Group, no CLI executable
 or `.local` entitlement in the App, and no App Sandbox or App Group on the CLI.
