@@ -6,26 +6,36 @@
 
 **Environment:** 2026-08-15, Xcode 27 beta, Swift 6.4, macOS 27.0 SDK.
 
-The exact `v0.1.0-beta.6` commit passed one uninterrupted complete repository
+The exact `v0.1.0-beta.7` commit `caee95fce7aae4869c87e4b339a01f4b782e9c76`
+passed one uninterrupted complete repository
 gate: closed documentation manifests and shipped Skill resources; TypeScript
 checking and 199 Web editor tests; reproducible editor, mathematics, and Mermaid
 bundles; 475 Core tests plus 3 Search performance tests; 138 Contracts tests;
 231 Application tests, 11 bridge tests, and 1 serialized architecture
-measurement; 627 App tests; 7 executable Research Action CLI lifecycles; the
+measurement; 634 App tests; 7 executable Research Action CLI lifecycles; the
 sandboxed App-to-standalone-CLI loopback probe; symbol and residue guards; and
-an optimized Release build in 198.60 seconds.
+an optimized Release build in 180.72 seconds.
 
-The same clean tagged commit produced separate ad-hoc-signed App and standalone
-CLI archives with exact provenance. The package smoke extracted and installed
-the CLI into an isolated user prefix, launched it by basename from an unrelated
-working directory, and validated its provenance. A packaged UI journey proved
-that a clean isolated launch enters Bootstrap while production machine state
-remains unchanged. GitHub published both ZIPs and checksums; a fresh download
-through the canonical `latest/download` CLI URL matched the release checksum.
+The same clean tagged commit produced an architecture-labelled DMG and separate
+standalone CLI ZIP with exact provenance and SHA-256 files. `hdiutil` verified
+and read-only mounted the DMG; its visible root contained only Scholium and the
+Applications alias, and the copied App passed strict signature, architecture,
+sandbox-entitlement, and provenance checks. The CLI installed into an isolated
+user prefix and launched by basename from an unrelated working directory.
+GitHub published the tag and all four assets. Fresh exact-release downloads
+matched both published checksums; the stable CLI `latest/download` route was
+moved to this release and independently resolved to `v0.1.0-beta.7`.
 
 This evidence is not Developer ID signing, notarization, a clean external-account
-Agent journey, a complete UI-suite or human accessibility exercise, a
-source-fidelity review of private research, or researcher acceptance.
+Agent journey, the current complete packaged G7 series, packaged-icon and human
+visual acceptance, or a completed packaged first-launch UI journey. The release
+owner explicitly waived those four gaps for this public Beta; they remain open
+acceptance rather than passed evidence. A direct LaunchServices smoke kept the
+exact copied App alive without changing production state, but the packaged UI
+driver timed out enabling macOS automation before Scholium launched and supplied
+no Bootstrap evidence. The ad-hoc App is intentionally neither Developer ID
+signed nor notarized and Gatekeeper rejects it until the documented user
+override.
 
 ## Focused interface evidence
 
@@ -327,32 +337,23 @@ Note identities without rewriting the manifest, and that renewed folder access
 rebinds one machine-local Vault path. These are disposable-fixture and ad-hoc
 development proofs, not clean-account installed-artifact or human acceptance.
 
-The exact tagged tree produced ad-hoc-signed sandboxed App and independent CLI
-release ZIPs with matching provenance and checksums. Strict signature checks
-found App Sandbox on the App, no App Group, no CLI executable or `.local`
-entitlement in the App, and no App Sandbox or App Group on the CLI. The exact
-CLI ZIP was expanded, installed under an isolated user-local prefix, and invoked
-by basename from an unrelated working directory. The exact App artifact entered
-Bootstrap from empty isolated machine state without changing production state.
-GitHub published the four release assets, and the canonical `latest/download`
-CLI URL returned the same checksum when downloaded independently. Developer ID,
-notarization, and a clean external account remain acceptance gaps.
-
-On 2026-08-15, the replacement DMG packager completed a dirty diagnostic
-Release build with disposable state. It created the architecture-labelled
-compressed image and independent CLI ZIP, verified the image with `hdiutil`,
-mounted it read-only, found only Scholium and the Applications alias at the
-visible root, copied the App out, and strictly verified its signature and exact
-provenance. The CLI archive again installed under an isolated prefix and ran by
-basename from an unrelated directory. This closes the App-ZIP production
-cutover, not exact-tag release acceptance. The packaged first-launch UI driver
-then timed out while enabling macOS automation before Scholium launched, so it
-provides no new Bootstrap evidence.
+The exact `v0.1.0-beta.7` tagged tree produced the ad-hoc-signed sandboxed App
+inside `Scholium-v0.1.0-beta.7-macos-arm64.dmg` and the independent
+`Scholium-CLI-macos.zip`, each with matching provenance and checksum. Strict
+signature checks found App Sandbox on the App, no App Group, no CLI executable
+or `.local` entitlement in the App, and no App Sandbox or App Group on the CLI.
+The verified, read-only-mounted DMG exposed exactly the App and Applications
+alias. The exact CLI ZIP was expanded, installed under an isolated user-local
+prefix, and invoked by basename from an unrelated working directory. GitHub
+published the exact tagged source and four release assets, and independent
+post-publication downloads matched both SHA-256 files. This is exact-tag DMG
+release evidence and supersedes the earlier dirty diagnostic packaging proof.
 
 Distinct-build upgrade fixtures preserve exact vault bytes and reject unsupported
 newer schemas without authorizing a compatibility path. Local source-first
 assembly has passed metadata, license, resource, path-disclosure, signature-
 structure, version-matched CLI, DMG, CLI ZIP, checksum, and optimized
-Release-build checks with disposable inputs. The tested bundle was ad hoc
-signed; clean-account artifact smoke testing, packaged performance,
-notarization if adopted, and release acceptance remain open.
+Release-build checks with disposable inputs. The released bundle is ad hoc
+signed. Clean-account artifact testing, packaged performance, packaged visual
+acceptance, the timed-out first-launch UI journey, Agent field trials, and final
+researcher acceptance remain open after their bounded Beta-release waiver.

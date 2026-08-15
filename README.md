@@ -5,9 +5,9 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
-**Current public Beta:** [v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6) ·
-[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip) ·
-[Download the independent CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)
+**Current public Beta:** [v0.1.0-beta.7](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.7) ·
+[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.7/Scholium-v0.1.0-beta.7-macos-arm64.dmg) ·
+[Download the independent CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.7/Scholium-CLI-macos.zip)
 
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,
@@ -229,31 +229,30 @@ presents Scholium beside an Applications alias so installation is one ordinary
 Finder drag.
 
 The current release is
-[v0.1.0-beta.6](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.6):
+[v0.1.0-beta.7](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.7):
 
-This release predates the DMG cutover and retains its already verified App ZIP;
-future releases do not produce an App ZIP.
+- [Scholium App DMG for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.7/Scholium-v0.1.0-beta.7-macos-arm64.dmg)
+  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.7/Scholium-v0.1.0-beta.7-macos-arm64.dmg.sha256));
+- [independent Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.7/Scholium-CLI-macos.zip)
+  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.7/Scholium-CLI-macos.zip.sha256)); and
+- [exact tagged source](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.7).
 
-- [Scholium App for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip)
-  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.6/Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256));
-- [independent Scholium CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)
-  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip.sha256)); and
-- [exact tagged source](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.6).
-
-After downloading a ZIP and its adjacent checksum file into the same folder,
-verify it before opening or installing:
+After downloading an artifact and its adjacent checksum file into the same
+folder, verify it before opening or installing:
 
 ```bash
-shasum -a 256 -c Scholium-v0.1.0-beta.6-macos-arm64.zip.sha256
+shasum -a 256 -c Scholium-v0.1.0-beta.7-macos-arm64.dmg.sha256
 shasum -a 256 -c Scholium-CLI-macos.zip.sha256
 ```
 
 On the exact tagged commit, the complete repository gate, optimized Release
-build, isolated CLI installation and PATH launch, package checksums, and a
-packaged first launch into Bootstrap passed. The published CLI was then
-downloaded again through the stable `latest/download` URL and matched the
-release checksum. See [Verification Evidence](Docs/Status/04-verification.md)
-for the exact test counts and remaining acceptance boundaries.
+build, DMG structure and signature checks, isolated CLI installation and PATH
+launch, and package checksums passed. All four published assets were downloaded
+again from GitHub and matched the release checksums. The release owner accepted
+the remaining packaged performance, clean-account, visual, and first-launch UI
+acceptance gaps for this Beta; they remain open rather than becoming passed
+evidence. See [Verification Evidence](Docs/Status/04-verification.md) for exact
+test counts and boundaries.
 
 The convenience app is not Developer ID signed or notarized. For a DMG release,
 after downloading it from the trusted project release and verifying the
