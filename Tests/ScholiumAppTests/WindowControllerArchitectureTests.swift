@@ -528,7 +528,7 @@ struct WindowControllerArchitectureTests {
             rootInvalidations += 1
         }
 
-        first.presentationRouter.present(.createCheckpoint)
+        first.presentationRouter.present(.transactionRecovery)
         #expect(rootInvalidations == 0)
         #expect(first.commandObservation.revision == firstCommandRevision)
 
@@ -1885,7 +1885,6 @@ struct WindowControllerArchitectureTests {
         #expect(windowSession.contains("struct WindowResearchCapabilities: Sendable"))
         for capability in [
             "let records: any ResearchRecordUseCases",
-            "let checkpoints: any ResearchCheckpointUseCases",
             "let actions: any ResearchActionUseCases",
             "let sourceAccess: any ResearchSourceAccessUseCases",
         ] {
@@ -2200,6 +2199,7 @@ struct WindowControllerArchitectureTests {
         let compositionAndSubscription = [
             "savedSearches": 1,
             "saveSavedSearches": 1,
+            "preserveUnreadableSavedSearchesAndReset": 1,
             "researchAgentPermissionClaims": 1,
             "refreshResearchWriteSetExtension": 1,
             "resolveResearchWriteSetExtension": 1,
@@ -2212,14 +2212,16 @@ struct WindowControllerArchitectureTests {
         ]
         let windowIntentAndDelivery = [
             "resolveVault": 2,
-            "revealInFinder": 5,
+            "revealInFinder": 4,
             "openExternal": 1,
         ]
         let workspaceActivationAndRecovery = [
             "configureTriptychCapabilities": 1,
-            "registeredVaults": 2,
-            "registeredTriptychs": 2,
-            "portableContainerURL": 2,
+            "removeLocalTriptychRegistration": 1,
+            "registeredVaults": 3,
+            "registeredTriptychs": 3,
+            "portableContainerURL": 3,
+            "preserveUnsupportedPortableControl": 1,
             "workspaceCapabilities": 2,
             "refreshPendingResearchAgentPermissions": 1,
             "vaultConfig": 2,
@@ -2236,9 +2238,9 @@ struct WindowControllerArchitectureTests {
             }
         }
 
-        #expect(compositionAndSubscription.values.reduce(0, +) == 11)
-        #expect(windowIntentAndDelivery.values.reduce(0, +) == 8)
-        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 14)
+        #expect(compositionAndSubscription.values.reduce(0, +) == 12)
+        #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
+        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 19)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))

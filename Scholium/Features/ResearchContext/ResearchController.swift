@@ -38,7 +38,6 @@ struct ResearchInspectorState: Equatable, Sendable {
 struct ResearchControllerCapabilities: Sendable {
     let documents: any DocumentUseCases
     let records: any ResearchRecordUseCases
-    let checkpoints: any ResearchCheckpointUseCases
     let actions: any ResearchActionUseCases
     let recoveryRecordsURL: URL
 }
@@ -48,7 +47,7 @@ struct ResearchControllerCapabilities: Sendable {
 /// through this controller.
 /// Inspector visibility and mode belong to the surrounding workspace window,
 /// so changing the selected document tab doesn't change the shell.
-/// Research records and checkpoints remain borrowed from Application.
+/// Research records remain borrowed from Application.
 @MainActor
 final class ResearchController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
@@ -56,7 +55,6 @@ final class ResearchController: ObservableObject {
     @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var records: WorkspaceResearchSnapshot?
     @Published private(set) var errorMessage: String?
-    @Published var checkpointListingError: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
     @Published var interruptedSaveRecoveries: [InterruptedSaveRecovery] = []
@@ -122,7 +120,6 @@ final class ResearchController: ObservableObject {
             finishedResearchRecordProjectionIsComplete:
                 current.finishedResearchRecordProjectionIsComplete,
             critiques: current.critiques,
-            checkpointListing: current.checkpointListing,
             recoveryRecords: current.recoveryRecords,
             activities: current.activities,
             noteReviews: current.noteReviews,
@@ -315,58 +312,6 @@ final class ResearchController: ObservableObject {
         )
     }
 
-    @discardableResult
-    func createCheckpoint(
-        name: String,
-        kind: TriptychCheckpointKind = .manual
-    ) async throws -> TriptychCheckpoint {
-        try await requireCheckpoints().createCheckpoint(name: name, kind: kind)
-    }
-
-    func checkpoints() async throws -> TriptychCheckpointListing {
-        try await requireCheckpoints().checkpoints()
-    }
-
-    func noteCheckpoints(
-        for note: VaultQualifiedNoteID
-    ) async throws -> [TriptychCheckpoint] {
-        try await requireCheckpoints().noteCheckpoints(for: note)
-    }
-
-    func checkpointNoteContent(
-        _ checkpointID: UUID,
-        note: VaultQualifiedNoteID
-    ) async throws -> String {
-        try await requireCheckpoints().checkpointNoteContent(checkpointID, note: note)
-    }
-
-    func checkpointComparison(
-        _ checkpointID: UUID
-    ) async throws -> [TriptychCheckpointChange] {
-        try await requireCheckpoints().checkpointComparison(checkpointID)
-    }
-
-    @discardableResult
-    func restoreNote(
-        _ note: VaultQualifiedNoteID,
-        from checkpointID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychCheckpointRestoreResult {
-        try await requireCheckpoints().restoreNote(
-            note,
-            from: checkpointID,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    @discardableResult
-    func restoreCheckpoint(
-        _ checkpointID: UUID,
-        selection: TriptychCheckpointRestoreSelection
-    ) async throws -> TriptychCheckpointRestoreResult {
-        try await requireCheckpoints().restoreCheckpoint(checkpointID, selection: selection)
-    }
-
     func settings() async throws -> TriptychSettingsSnapshot {
         try await requireRecords().settings()
     }
@@ -417,10 +362,6 @@ final class ResearchController: ObservableObject {
 
     var recoveryRecordsURL: URL? {
         capabilities?.recoveryRecordsURL
-    }
-
-    func prepareCheckpointsLocation() async throws -> URL {
-        try await requireCheckpoints().prepareCheckpointsLocation()
     }
 
     func setActiveDocument(_ reference: VaultNoteReference?) {
@@ -506,15 +447,6 @@ final class ResearchController: ObservableObject {
             )
         }
         return documents
-    }
-
-    private func requireCheckpoints() throws -> any ResearchCheckpointUseCases {
-        guard let checkpoints = capabilities?.checkpoints else {
-            throw ScholiumApplicationError.researchStoreUnavailable(
-                "No workspace is active."
-            )
-        }
-        return checkpoints
     }
 
     private func requireActions() throws -> any ResearchActionUseCases {

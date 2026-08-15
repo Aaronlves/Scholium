@@ -188,7 +188,7 @@ second confirmation before Core permanently removes only the selected portable
 record under the same descriptor-relative coordination boundary. Ordinary
 Markdown annotations remain in the document and never become separate
 chronology. The window never enters the trailing split item and never owns
-checkpoints, a document buffer, autosave, undo, conflict, retained trash, or a
+version history, a document buffer, autosave, undo, conflict, retained trash, or a
 second recommendation store. Reading Lead grouping is a disposable projection
 over parent Records. Closing Research Records
 therefore cannot reveal or resize Research Inspector or mutate its presentation.

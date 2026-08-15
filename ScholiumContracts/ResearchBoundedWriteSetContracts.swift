@@ -56,7 +56,7 @@ public enum ResearchWriteSetEntryState: String, Codable, Hashable, Sendable {
 public enum ResearchWriteSetTargetExpectation: Codable, Hashable, Sendable {
     case existing(
         expectedRevision: DocumentFingerprint,
-        checkpointID: UUID
+        changeEvidenceID: UUID
     )
     case absent(settingsRevision: SettingsRevision)
     case created(
@@ -72,9 +72,9 @@ public enum ResearchWriteSetTargetExpectation: Codable, Hashable, Sendable {
         }
     }
 
-    public var checkpointID: UUID? {
-        guard case .existing(_, let checkpointID) = self else { return nil }
-        return checkpointID
+    public var changeEvidenceID: UUID? {
+        guard case .existing(_, let changeEvidenceID) = self else { return nil }
+        return changeEvidenceID
     }
 
     public var settingsRevision: SettingsRevision? {
@@ -258,7 +258,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         title: String,
         allowedOperations: [ResearchDocumentWriteOperation],
         expectedRevision: DocumentFingerprint,
-        checkpointID: UUID,
+        changeEvidenceID: UUID,
         allowedPropertyKeys: [String] = [],
         propertyWritePlans: [ResearchPropertyWriteFieldPlan] = [],
         zoteroBindingsRevision: DocumentFingerprint? = nil,
@@ -306,7 +306,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         analysisCreationPlans = []
         expectation = .existing(
             expectedRevision: expectedRevision,
-            checkpointID: checkpointID
+            changeEvidenceID: changeEvidenceID
         )
         self.authorizationBasis = authorizationBasis
         self.authorizationPolicy = authorizationPolicy
@@ -368,15 +368,15 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         get { expectation.expectedRevision }
         set {
             guard let newValue,
-                  case .existing(_, let checkpointID) = expectation else { return }
+                  case .existing(_, let changeEvidenceID) = expectation else { return }
             expectation = .existing(
                 expectedRevision: newValue,
-                checkpointID: checkpointID
+                changeEvidenceID: changeEvidenceID
             )
         }
     }
 
-    public var checkpointID: UUID? { expectation.checkpointID }
+    public var changeEvidenceID: UUID? { expectation.changeEvidenceID }
     public var settingsRevision: SettingsRevision? { expectation.settingsRevision }
     public var expectsAbsence: Bool {
         if case .absent = expectation { return true }
@@ -459,7 +459,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             forKey: .zoteroBindingsRevision
         )
         switch expectation {
-        case .existing(let revision, let checkpointID):
+        case .existing(let revision, let changeEvidenceID):
             guard analysisCreationPlans.isEmpty else {
                 throw ResearchBoundedWriteSetError.invalidEntry
             }
@@ -471,7 +471,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 title: title,
                 allowedOperations: operations,
                 expectedRevision: revision,
-                checkpointID: checkpointID,
+                changeEvidenceID: changeEvidenceID,
                 allowedPropertyKeys: propertyKeys,
                 propertyWritePlans: propertyWritePlans,
                 zoteroBindingsRevision: zoteroBindingsRevision,
@@ -1623,7 +1623,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
     public let intendedRevision: DocumentFingerprint
     public var observedRevision: DocumentFingerprint?
     public var state: ResearchDocumentWriteState
-    public let checkpointID: UUID?
+    public let changeEvidenceID: UUID?
     public let startedAt: Date
     public var finishedAt: Date?
     public var warning: String?
@@ -1640,7 +1640,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         intendedRevision: DocumentFingerprint,
         observedRevision: DocumentFingerprint? = nil,
         state: ResearchDocumentWriteState,
-        checkpointID: UUID?,
+        changeEvidenceID: UUID?,
         startedAt: Date,
         finishedAt: Date? = nil,
         warning: String? = nil,
@@ -1649,9 +1649,9 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         let expectationShapeIsValid: Bool
         switch operation {
         case .createNote:
-            expectationShapeIsValid = expectedRevision == nil && checkpointID == nil
+            expectationShapeIsValid = expectedRevision == nil && changeEvidenceID == nil
         case .modifyMarkdown, .modifyProperties:
-            expectationShapeIsValid = expectedRevision != nil && checkpointID != nil
+            expectationShapeIsValid = expectedRevision != nil && changeEvidenceID != nil
         case .setZoteroBinding, .clearZoteroBinding:
             expectationShapeIsValid = false
         }
@@ -1683,7 +1683,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         self.intendedRevision = intendedRevision
         self.observedRevision = observedRevision
         self.state = state
-        self.checkpointID = checkpointID
+        self.changeEvidenceID = changeEvidenceID
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.warning = warning
@@ -1699,7 +1699,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         case intendedRevision = "intended_revision"
         case observedRevision = "observed_revision"
         case state
-        case checkpointID = "checkpoint_id"
+        case changeEvidenceID = "change_evidence_id"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
         case warning
@@ -1748,7 +1748,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
                 ResearchDocumentWriteState.self,
                 forKey: .state
             ),
-            checkpointID: container.decodeIfPresent(UUID.self, forKey: .checkpointID),
+            changeEvidenceID: container.decodeIfPresent(UUID.self, forKey: .changeEvidenceID),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decodeIfPresent(Date.self, forKey: .finishedAt),
             warning: container.decodeIfPresent(String.self, forKey: .warning),
@@ -1842,7 +1842,7 @@ public enum ResearchWriteConflictResolutionState: String, Codable, Hashable,
 
 /// One explicit decision for a single conflicted write-set member. The client
 /// request identity is hidden by the CLI; it is persisted only so transport
-/// retries cannot create duplicate checkpoints or decisions.
+/// retries cannot create duplicate change-evidence records or decisions.
 public struct ResearchWriteConflictResolutionIntent: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 1
 
@@ -1913,7 +1913,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
     public let requestFingerprint: DocumentFingerprint
     public let priorExpectedRevision: DocumentFingerprint
     public let observedRevision: DocumentFingerprint
-    public let checkpointID: UUID?
+    public let changeEvidenceID: UUID?
     public let state: ResearchWriteConflictResolutionState
     public let targetView: ResearchBoundedWriteSetViewEntry
     public let resolvedAt: Date
@@ -1928,16 +1928,16 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         requestFingerprint: DocumentFingerprint,
         priorExpectedRevision: DocumentFingerprint,
         observedRevision: DocumentFingerprint,
-        checkpointID: UUID? = nil,
+        changeEvidenceID: UUID? = nil,
         state: ResearchWriteConflictResolutionState,
         targetView: ResearchBoundedWriteSetViewEntry,
         resolvedAt: Date
     ) throws {
         let shapeIsValid = switch (action, state) {
         case (.refreshAuthority, .readyToRetry):
-            checkpointID != nil && targetView.state == .ready
+            changeEvidenceID != nil && targetView.state == .ready
         case (.abandonWrite, .abandoned):
-            checkpointID == nil && targetView.state == .abandoned
+            changeEvidenceID == nil && targetView.state == .abandoned
         default:
             false
         }
@@ -1957,7 +1957,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         self.requestFingerprint = requestFingerprint
         self.priorExpectedRevision = priorExpectedRevision
         self.observedRevision = observedRevision
-        self.checkpointID = checkpointID
+        self.changeEvidenceID = changeEvidenceID
         self.state = state
         self.targetView = targetView
         self.resolvedAt = resolvedAt
@@ -1973,7 +1973,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         case requestFingerprint = "request_fingerprint"
         case priorExpectedRevision = "prior_expected_revision"
         case observedRevision = "observed_revision"
-        case checkpointID = "checkpoint_id"
+        case changeEvidenceID = "change_evidence_id"
         case state
         case targetView = "target_view"
         case resolvedAt = "resolved_at"
@@ -2014,7 +2014,7 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
                 DocumentFingerprint.self,
                 forKey: .observedRevision
             ),
-            checkpointID: container.decodeIfPresent(UUID.self, forKey: .checkpointID),
+            changeEvidenceID: container.decodeIfPresent(UUID.self, forKey: .changeEvidenceID),
             state: container.decode(
                 ResearchWriteConflictResolutionState.self,
                 forKey: .state

@@ -23,6 +23,7 @@ struct WorkspaceSetupContext {
     let refreshAssignment: () async -> Void
     let portableContainerURL: (URL) async -> URL?
     let prepareTriptychStructure: (URL, String) async throws -> WorkspaceSetupSelection
+    let preserveUnsupportedPortableControl: (URL, URL, UUID?) async throws -> URL
     let configure: (WorkspaceSetupSelection) async throws -> Void
     let completeBootstrap: () -> Void
     let dismiss: () -> Void
@@ -84,6 +85,7 @@ private struct BootstrapFlowView: View {
     @State private var isSaving = false
     @State private var isRegisteringTriptych = false
     @State private var pendingAgentOutcome: BootstrapAgentOutcome?
+    @State private var pendingPortableControlRecovery: WorkspaceSetupSelection?
     @State private var loadedCurrentValues = false
 
     private let artRailWidth: CGFloat = 276
@@ -156,6 +158,23 @@ private struct BootstrapFlowView: View {
             Task { await loadPortableContainerIfAvailable() }
         }
         .onExitCommand(perform: moveBack)
+        .confirmationDialog(
+            "Archive and Rebuild Portable Control?",
+            isPresented: Binding(
+                get: { pendingPortableControlRecovery != nil },
+                set: { if !$0 { pendingPortableControlRecovery = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Archive and Rebuild", role: .destructive) {
+                recoverPortableControl()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingPortableControlRecovery = nil
+            }
+        } message: {
+            Text("Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state.")
+        }
         .accessibilityIdentifier("scholium.bootstrap")
     }
 
@@ -480,6 +499,7 @@ private struct BootstrapFlowView: View {
         isSaving = true
         errorMessage = nil
         Task {
+            var attemptedSelection: WorkspaceSetupSelection?
             do {
                 let selection: WorkspaceSetupSelection
                 switch setupPath {
@@ -513,6 +533,7 @@ private struct BootstrapFlowView: View {
                         triptychName: triptychName
                     )
                 }
+                attemptedSelection = selection
 
                 let preparesAgent = context.offersAgentPreparation
                 if preparesAgent {
@@ -539,10 +560,47 @@ private struct BootstrapFlowView: View {
                 isRegisteringTriptych = false
                 pendingAgentOutcome = nil
                 agentOutcome = .notOffered
-                errorMessage = error.localizedDescription
+                if setupPath == .existingFolders,
+                   let attemptedSelection,
+                   let applicationError = error as? ScholiumApplicationError,
+                   case .portableControlRecoveryRequired = applicationError {
+                    pendingPortableControlRecovery = attemptedSelection
+                    errorMessage = nil
+                } else {
+                    errorMessage = error.localizedDescription
+                }
                 if step == .agent {
                     move(to: .reviewTriptych, movingForward: false)
                 }
+            }
+        }
+    }
+
+    private func recoverPortableControl() {
+        guard let selection = pendingPortableControlRecovery else { return }
+        pendingPortableControlRecovery = nil
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                _ = try await context.preserveUnsupportedPortableControl(
+                    selection.portableContainerURL,
+                    selection.outputURL,
+                    selection.triptychID
+                )
+                try await context.configure(selection)
+                isSaving = false
+                isRegisteringTriptych = false
+                if context.offersAgentPreparation {
+                    move(to: .agent)
+                } else {
+                    agentOutcome = .notOffered
+                    move(to: .ready)
+                }
+            } catch {
+                isSaving = false
+                isRegisteringTriptych = false
+                errorMessage = error.localizedDescription
             }
         }
     }

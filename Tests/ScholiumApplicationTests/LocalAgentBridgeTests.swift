@@ -354,7 +354,7 @@ struct LocalAgentBridgeTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            checkpointID: UUID(),
+            changeEvidenceID: UUID(),
             authorizationBasis: .initialAction,
             expiresAt: Date().addingTimeInterval(60)
         )

@@ -64,13 +64,12 @@ enum StoredFunctionRecord: Sendable {
 struct ResearchFunctionCoordinatorDependencies: Sendable {
     let repositories: [UUID: VaultRepository]
     let vaults: [UUID: RegisteredVault]
-    let roots: TriptychRoots
     let controlStore: TriptychControlStore
     let researchConfigurationStore: ResearchConfigurationStore
     let sourceAccessStore: ResearchSourceAccessStore
     let portableResearchRecordStore: PortableResearchRecordStore
     let localExecutionStore: LocalResearchExecutionStore
-    let checkpointStore: TriptychCheckpointStore
+    let agentChangeEvidenceStore: AgentChangeEvidenceStore
     let zotero: ZoteroOperations
 }
 
@@ -164,18 +163,31 @@ final class ResearchFunctionCoordinator: Sendable {
         _ = try await localExecutionStore.stageResultPayload(payload)
     }
 
-    func researchContinuationCheckpointKey(
-        for target: ResearchFunctionTarget
-    ) -> TriptychCheckpointFileKey {
-        let area: TriptychCheckpointArea = switch target.role {
-        case .analysis: .analyses
-        case .topic: .topics
-        case .work: .works
+    func captureAgentChangeStartingRevision(
+        id: UUID = UUID(),
+        runID: UUID,
+        target: ResearchFunctionTarget
+    ) async throws -> AgentChangeEvidence {
+        guard let repository = dependencies.repositories[target.note.vaultID] else {
+            throw ResearchFunctionContractError.targetUnavailable
         }
-        return TriptychCheckpointFileKey(
-            area: area,
+        let document = try await repository.load(
             relativePath: target.note.relativePath
         )
+        guard document.fingerprint == target.fingerprint else {
+            throw VaultRepositoryError.conflict(
+                expected: target.fingerprint,
+                current: document.fingerprint
+            )
+        }
+        return try await dependencies.agentChangeEvidenceStore
+            .captureStartingRevision(
+                id: id,
+                runID: runID,
+                noteID: target.noteID,
+                data: document.sourceBytes,
+                expectedRevision: target.fingerprint
+            )
     }
 
     func cancelProtectedFunction<Host: ResearchFunctionCoordinatorHost>(

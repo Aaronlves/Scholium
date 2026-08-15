@@ -39,7 +39,7 @@ extension WorkspaceHandle {
         let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
             resolved.request,
             actionContext: resolved.context,
-            requiresAutomaticCheckpoint:
+            requiresAgentChangeEvidence:
                 !resolved.context.authority.writableNotes.isEmpty,
             host: self
         )
@@ -177,7 +177,7 @@ extension WorkspaceHandle {
             runIDOverride: runID,
             continuationLineage: lineage,
             resynthesisContext: context,
-            requiresAutomaticCheckpoint: true,
+            requiresAgentChangeEvidence: true,
             host: self
         )
         let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(

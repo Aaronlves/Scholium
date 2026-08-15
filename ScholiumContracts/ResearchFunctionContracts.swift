@@ -14,10 +14,10 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
         .externalAgent
     }
 
-    public var requiresCheckpoint: Bool {
+    public var requiresAgentChangeEvidence: Bool {
         switch self {
-        case .develop, .critique, .revise: true
-        case .discuss, .fidelity, .manuscript: false
+        case .develop, .revise: true
+        case .discuss, .fidelity, .critique, .manuscript: false
         }
     }
 
@@ -724,7 +724,7 @@ public struct ResearchFunctionFidelityHandoff: Codable, Hashable, Sendable {
 /// Correlation identity for one current Action-to-Action continuation.
 ///
 /// Lineage is durable provenance only. It cannot replace the request decision,
-/// current Action/Profile resolution, checkpoint, grant, or completion checks.
+/// current Action/Profile resolution, change evidence, grant, or completion checks.
 public struct ResearchContinuationLineage: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 1
 
@@ -813,11 +813,11 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let actionSnapshot: ResearchActionSnapshot?
     public let recordKind: ResearchFunctionRecordKind
     public let recordID: UUID?
-    public let checkpointID: UUID?
+    public let changeEvidenceID: UUID?
     /// Functions coordinated through independent child runs. Manuscript uses
     /// this for its selected phases; write-capable functions use it for their
     /// final-fingerprint Fidelity handoff. Each child retains its own
-    /// permission, checkpoint, record, and completion evidence.
+    /// permission, change-evidence, record, and completion state.
     public let requiredChildFunctions: [ResearchFunctionID]
     /// Request-time revisions of selected Comments or other structured
     /// evidence whose identifiers alone do not change when their content is
@@ -851,7 +851,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         actionSnapshot: ResearchActionSnapshot? = nil,
         recordKind: ResearchFunctionRecordKind,
         recordID: UUID? = nil,
-        checkpointID: UUID? = nil,
+        changeEvidenceID: UUID? = nil,
         requiredChildFunctions: [ResearchFunctionID] = [],
         evidenceRevisions: [DocumentFingerprint] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
@@ -870,7 +870,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.actionSnapshot = actionSnapshot
         self.recordKind = recordKind
         self.recordID = recordID
-        self.checkpointID = checkpointID
+        self.changeEvidenceID = changeEvidenceID
         self.requiredChildFunctions = Array(Set(requiredChildFunctions)).sorted {
             $0.rawValue < $1.rawValue
         }

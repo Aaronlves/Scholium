@@ -400,10 +400,6 @@ private extension ResearchRecordSearchIndexTests {
                 finishedResearchRecordSourceManifestHash: manifestHash,
                 finishedResearchRecordProjectionIsComplete: isComplete,
                 critiques: [],
-                checkpointListing: TriptychCheckpointListing(
-                    checkpoints: [],
-                    unreadableEntries: []
-                ),
                 healthIssues: []
             )
         }

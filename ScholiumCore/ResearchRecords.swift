@@ -126,7 +126,6 @@ public actor CritiqueRegistry {
         workRelativePath: String,
         targetFingerprint: DocumentFingerprint,
         critiqueRelativePath: String,
-        checkpointID: UUID?,
         scope: CritiqueRequestScope,
         roundID: UUID = UUID(),
         requestedAt: Date = Date()
@@ -146,7 +145,6 @@ public actor CritiqueRegistry {
             id: roundID,
             requestedAt: requestedAt,
             targetFingerprint: targetFingerprint,
-            checkpointID: checkpointID,
             scope: scope
         ))
         return try save(association)
@@ -168,7 +166,6 @@ public actor CritiqueRegistry {
             id: round.id,
             requestedAt: round.requestedAt,
             targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
             scope: round.scope,
             actionableFindings: findings,
             findingDispositions: round.findingDispositions,
@@ -237,7 +234,6 @@ public actor CritiqueRegistry {
             id: round.id,
             requestedAt: round.requestedAt,
             targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
             scope: round.scope,
             actionableFindings: round.actionableFindings,
             findingDispositions: dispositions,
@@ -265,7 +261,6 @@ public actor CritiqueRegistry {
             id: round.id,
             requestedAt: round.requestedAt,
             targetFingerprint: round.targetFingerprint,
-            checkpointID: round.checkpointID,
             scope: round.scope,
             actionableFindings: round.actionableFindings,
             findingDispositions: round.findingDispositions,

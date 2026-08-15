@@ -7,6 +7,8 @@ import SwiftUI
 /// presentation routing stay explicit at the `ContentView` composition root.
 struct SpotlightSearchContext {
     let savedSearches: [SavedSearch]
+    let savedSearchLoadFailure: String?
+    let recoverSavedSearches: () async -> Void
     let refresh: () async -> Void
     let dismiss: () -> Void
     let save: (String) -> Void
@@ -225,6 +227,7 @@ struct SpotlightSearchPanelView: View {
     @State private var renamedSearchName = ""
     @State private var completionSelection: Int?
     @State private var suppressedCompletionQuery: String?
+    @State private var confirmsSavedSearchRecovery = false
 
     init(
         controller: DiscoveryController,
@@ -359,6 +362,18 @@ struct SpotlightSearchPanelView: View {
                 renamingSearch = nil
             }
             .disabled(renamedSearchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .confirmationDialog(
+            "Archive Unreadable Saved Searches?",
+            isPresented: $confirmsSavedSearchRecovery,
+            titleVisibility: .visible
+        ) {
+            Button("Archive and Reset", role: .destructive) {
+                Task { await context.recoverSavedSearches() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Scholium will preserve the unreadable Saved Search file under a unique recovery name, then start with an empty Saved Searches list. No vault files will be changed.")
         }
     }
 
@@ -721,6 +736,12 @@ struct SpotlightSearchPanelView: View {
                             Text(search.name)
                         }
                     }
+                }
+            }
+            if context.savedSearchLoadFailure != nil {
+                Divider()
+                Button("Archive Unreadable Saved Searches…", role: .destructive) {
+                    confirmsSavedSearchRecovery = true
                 }
             }
         } label: {

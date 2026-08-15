@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 9 and Local Execution schema 12")
+@Suite("Portable Research Record storage v1/schema 9 and Local Execution schema 13")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -938,14 +938,14 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution schema 12 round-trips and rejects retired schema 11")
+    @Test("Local Execution schema 13 round-trips and rejects retired schema 12")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 12)
+        #expect(stored.schemaVersion == 13)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
@@ -957,8 +957,8 @@ struct ResearchRecordV1StoresTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 12)
-        object["schema_version"] = 11
+        #expect(object["schema_version"] as? Int == 13)
+        object["schema_version"] = 12
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()
@@ -1517,7 +1517,7 @@ struct ResearchRecordV1StoresTests {
             actionSnapshot: action,
             recordKind: .functionEnvelope,
             recordID: runID,
-            checkpointID: UUID(
+            changeEvidenceID: UUID(
                 uuidString: "ABABABAB-ABAB-ABAB-ABAB-ABABABABABAB"
             ),
             confirmationToken: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,

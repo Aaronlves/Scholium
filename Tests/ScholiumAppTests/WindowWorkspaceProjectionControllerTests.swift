@@ -789,10 +789,6 @@ struct WindowWorkspaceProjectionControllerTests {
                 ),
                 research: WorkspaceResearchSnapshot(
                     critiques: [],
-                    checkpointListing: TriptychCheckpointListing(
-                        checkpoints: [],
-                        unreadableEntries: []
-                    ),
                     healthIssues: []
                 )
             )

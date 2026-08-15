@@ -1540,18 +1540,6 @@ enum ScholiumMetrics {
         }
     }
 
-    enum Checkpoint {
-        static let createContentInset = ScholiumGrid.foundationUnit * 5.5
-        static let headerDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let headerContentInset = ScholiumGrid.foundationUnit * 4.5
-        static let listingErrorInset = ScholiumGrid.foundationUnit * 2.5
-        static let selectedHeaderInset = ScholiumGrid.foundationUnit * 3.5
-        static let rowSpacing = ScholiumGrid.foundationUnit * 2.5
-        static let rowDetailSpacing = ScholiumGrid.foundationUnit * 0.5
-        static let checkpointDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let footerSpacing = ScholiumGrid.foundationUnit * 2.5
-    }
-
     enum Properties {
         static let headerDetailSpacing = ScholiumGrid.foundationUnit * 0.75
         static let semanticGroupSeparation = ScholiumGrid.foundationUnit * 6

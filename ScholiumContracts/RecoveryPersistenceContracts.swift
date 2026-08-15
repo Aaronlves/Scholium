@@ -88,16 +88,6 @@ public struct PermanentDeletionIdentityBackup: Codable, Hashable, Sendable {
     }
 }
 
-public struct PreparedCheckpointPurge: Codable, Hashable, Sendable {
-    public let stagingID: UUID
-    public let checkpointIDs: [UUID]
-
-    public init(stagingID: UUID, checkpointIDs: [UUID]) {
-        self.stagingID = stagingID
-        self.checkpointIDs = checkpointIDs
-    }
-}
-
 public enum PermanentDeletionRecoveryPhase: String, Codable, Hashable, Sendable {
     case rollbackRequired
     case committing
@@ -109,14 +99,12 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public let vaultID: UUID
     public let relativePath: String
     public let expectedRevision: DocumentFingerprint
-    public let checkpointArea: TriptychCheckpointArea
     public let critiqueNoteID: UUID?
     public let critiqueAssociations: [CritiqueAssociation]
     public let identity: PermanentDeletionIdentityBackup?
     public let critiqueIdentity: PermanentDeletionIdentityBackup?
     public let sourceDeletion: PreparedPermanentDeletion?
     public let critiqueDeletion: PreparedPermanentDeletion?
-    public let checkpointPurge: PreparedCheckpointPurge?
     public let settlements: [SettlementRecord]
 
     public init(
@@ -125,14 +113,12 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         vaultID: UUID,
         relativePath: String,
         expectedRevision: DocumentFingerprint,
-        checkpointArea: TriptychCheckpointArea,
         critiqueNoteID: UUID?,
         critiqueAssociations: [CritiqueAssociation],
         identity: PermanentDeletionIdentityBackup?,
         critiqueIdentity: PermanentDeletionIdentityBackup?,
         sourceDeletion: PreparedPermanentDeletion?,
         critiqueDeletion: PreparedPermanentDeletion?,
-        checkpointPurge: PreparedCheckpointPurge?,
         settlements: [SettlementRecord] = []
     ) {
         self.phase = phase
@@ -140,14 +126,12 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
         self.vaultID = vaultID
         self.relativePath = relativePath
         self.expectedRevision = expectedRevision
-        self.checkpointArea = checkpointArea
         self.critiqueNoteID = critiqueNoteID
         self.critiqueAssociations = critiqueAssociations
         self.identity = identity
         self.critiqueIdentity = critiqueIdentity
         self.sourceDeletion = sourceDeletion
         self.critiqueDeletion = critiqueDeletion
-        self.checkpointPurge = checkpointPurge
         self.settlements = Dictionary(
             settlements.map { ($0.noteID, $0) },
             uniquingKeysWith: { _, newest in newest }
@@ -157,8 +141,7 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
     public func updating(
         phase: PermanentDeletionRecoveryPhase? = nil,
         sourceDeletion: PreparedPermanentDeletion?? = nil,
-        critiqueDeletion: PreparedPermanentDeletion?? = nil,
-        checkpointPurge: PreparedCheckpointPurge?? = nil
+        critiqueDeletion: PreparedPermanentDeletion?? = nil
     ) -> Self {
         Self(
             phase: phase ?? self.phase,
@@ -166,23 +149,21 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             vaultID: vaultID,
             relativePath: relativePath,
             expectedRevision: expectedRevision,
-            checkpointArea: checkpointArea,
             critiqueNoteID: critiqueNoteID,
             critiqueAssociations: critiqueAssociations,
             identity: identity,
             critiqueIdentity: critiqueIdentity,
             sourceDeletion: sourceDeletion ?? self.sourceDeletion,
             critiqueDeletion: critiqueDeletion ?? self.critiqueDeletion,
-            checkpointPurge: checkpointPurge ?? self.checkpointPurge,
             settlements: settlements
         )
     }
 
     private enum CodingKeys: String, CodingKey {
         case phase, noteID, vaultID, relativePath, expectedRevision
-        case checkpointArea, critiqueNoteID
+        case critiqueNoteID
         case critiqueAssociations, identity, critiqueIdentity, sourceDeletion
-        case critiqueDeletion, checkpointPurge, settlements
+        case critiqueDeletion, settlements
     }
 
     public init(from decoder: Decoder) throws {
@@ -195,10 +176,6 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             expectedRevision: try container.decode(
                 DocumentFingerprint.self,
                 forKey: .expectedRevision
-            ),
-            checkpointArea: try container.decode(
-                TriptychCheckpointArea.self,
-                forKey: .checkpointArea
             ),
             critiqueNoteID: try container.decodeIfPresent(UUID.self, forKey: .critiqueNoteID),
             critiqueAssociations: try container.decode(
@@ -220,10 +197,6 @@ public struct PermanentDeletionRecoveryBackup: Codable, Hashable, Sendable {
             critiqueDeletion: try container.decodeIfPresent(
                 PreparedPermanentDeletion.self,
                 forKey: .critiqueDeletion
-            ),
-            checkpointPurge: try container.decodeIfPresent(
-                PreparedCheckpointPurge.self,
-                forKey: .checkpointPurge
             ),
             settlements: try container.decodeIfPresent(
                 [SettlementRecord].self,

@@ -75,7 +75,7 @@ extension ResearchFunctionOperationsTests {
             )
         )
         let protectedRun = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        #expect(protectedRun.snapshot.checkpointID == nil)
+        #expect(protectedRun.snapshot.changeEvidenceID == nil)
         #expect(preparation.instructions.contains("Target and Materials are read-only"))
         #expect(preparation.instructions.contains(
             "begin a separately authorized Analyze Action"
@@ -85,7 +85,6 @@ extension ResearchFunctionOperationsTests {
         }?.preparedInstructions)
         #expect(preparation.instructions.hasPrefix(storedInstructions))
         #expect(try await handle.documents.load(fixture.analysisID).fingerprint == target.fingerprint)
-        #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         let discussion = try await handle.research.activeDiscussion(id: preparation.runID)
         #expect(discussion.action?.actionID == .discuss)
         #expect(discussion.statements.map(\.text) == [
@@ -253,10 +252,6 @@ extension ResearchFunctionOperationsTests {
             title: topic.title
         )
         let original = try await handle.documents.load(fixture.analysisID)
-        let checkpoint = try await handle.research.createCheckpoint(
-            name: "Before Research Record comparison",
-            kind: .manual
-        )
         let discussion = try await handle.research.createDiscussion(
             target: target,
             focalNotes: [focal],
@@ -294,9 +289,6 @@ extension ResearchFunctionOperationsTests {
         #expect(!FileManager.default.fileExists(atPath: portableURL.path))
         #expect(try await handle.documents.load(fixture.analysisID).sourceBytes
             == saved.document.sourceBytes)
-        #expect(try await handle.research.checkpoints().checkpoints.contains {
-            $0.id == checkpoint.id
-        })
         await runtime.shutdown()
     }
 

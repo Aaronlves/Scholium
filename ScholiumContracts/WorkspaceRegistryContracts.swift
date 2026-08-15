@@ -213,6 +213,80 @@ public enum WorkspaceRegistryHealth: Equatable, Sendable {
     }
 }
 
+public enum MachineLocalRegistryKind: String, Equatable, Sendable {
+    case vaultIdentity
+    case portableControlAccess
+
+    public var displayName: String {
+        switch self {
+        case .vaultIdentity: "vault access registry"
+        case .portableControlAccess: "portable control access registry"
+        }
+    }
+}
+
+public struct MachineLocalRegistryFailure: Equatable, Sendable {
+    public let kind: MachineLocalRegistryKind
+    public let path: String
+    public let reason: String
+
+    public init(kind: MachineLocalRegistryKind, path: String, reason: String) {
+        self.kind = kind
+        self.path = path
+        self.reason = reason
+    }
+}
+
+/// Health of the two machine-local authorization registries that registration
+/// and reopening depend on. These files contain only local paths/bookmarks;
+/// preserving them never authorizes or changes a research vault.
+public enum MachineLocalRegistryHealth: Equatable, Sendable {
+    case healthy
+    case damaged([MachineLocalRegistryFailure])
+    case ioFailure([MachineLocalRegistryFailure])
+
+    public var isHealthy: Bool { self == .healthy }
+
+    public var canRelinkAfterPreserving: Bool {
+        if case .damaged(let failures) = self { return !failures.isEmpty }
+        return false
+    }
+
+    public var summary: String {
+        switch self {
+        case .healthy:
+            "Scholium's local access registries are available."
+        case .damaged:
+            "Scholium's local access registry is damaged and must be preserved before relinking."
+        case .ioFailure:
+            "Scholium could not safely read its local access registry."
+        }
+    }
+
+    public var details: String {
+        let failures: [MachineLocalRegistryFailure]
+        switch self {
+        case .healthy:
+            return "Both local access registries are readable and use the supported schema."
+        case .damaged(let value), .ioFailure(let value):
+            failures = value
+        }
+        return failures.map {
+            "\($0.kind.displayName) at \($0.path): \($0.reason)"
+        }.joined(separator: "\n")
+    }
+}
+
+public enum MachineLocalRegistryError: LocalizedError, Sendable {
+    case recoveryRequired(MachineLocalRegistryHealth)
+
+    public var errorDescription: String? {
+        switch self {
+        case .recoveryRequired(let health): health.summary
+        }
+    }
+}
+
 public enum WorkspaceRegistryError: LocalizedError, Sendable {
     case notDirectory(String)
     case duplicateName(String)

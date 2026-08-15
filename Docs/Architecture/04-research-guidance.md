@@ -149,8 +149,11 @@ The Profile editor can change only visible name, order, enabled state,
 role-valid placement, and bounded ordered academic fields. The Methods and
 Practices editors operate on exact Markdown and expose their one recovery
 point. Sources & Integrations owns citation selection plus Zotero and installed
-CLI controls. Recovery & Technical owns settled-Note retention; Method and
-Practice recovery stays beside the affected editor.
+CLI controls. Method and Practice recovery stays beside the affected editor.
+Invalid machine-local Method locators have one owner-specific,
+confirmation-gated recovery operation. It uses the shared same-directory
+exact-state preserver, archives only a typed invalid file, and resets only its
+machine-local owner; unsafe storage remains fail-closed.
 
 Removing a registration rechecks Action availability and active Runs. It does
 not recursively delete the selected folder. Removing a Scholium-managed simple

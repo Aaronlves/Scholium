@@ -124,7 +124,7 @@ struct WorkspaceSettingsZoteroCapabilities {
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
 }
 
-/// Research Guidance package, binding, and recovery operations used by Settings.
+/// Research Guidance package and binding operations used by Settings.
 @MainActor
 struct WorkspaceSettingsResearchGuidanceCapabilities {
     let researchSkillRegistrations: (
@@ -172,6 +172,7 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     let restoreDefaultResearchMethod: (
         UUID, ResearchActionID, DocumentFingerprint
     ) async throws -> ResearchMethodSnapshot
+    let recoverMachineLocalMethodLocators: (UUID) async throws -> URL?
     let philosophicalPractices: (
         UUID
     ) async throws -> [ResearchPracticeSnapshot]
@@ -191,15 +192,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     let clearCitationMethod: (
         UUID, DocumentFingerprint?
     ) async throws -> ResearchCitationMethodStatus
-    let recoveryPolicy: (
-        UUID
-    ) async throws -> ResearchRecoveryPolicySnapshot
-    let prepareRecoveryPolicyChange: (
-        UUID, SettledSnapshotRetention, DocumentFingerprint?
-    ) async throws -> ResearchRecoveryPolicyChangePreview
-    let applyRecoveryPolicyChange: (
-        UUID, ResearchRecoveryPolicyChangePreview
-    ) async throws -> ResearchRecoveryPolicyApplyOutcome
 }
 
 /// Delivery-neutral operations assembled by the macOS composition root.
@@ -767,37 +759,13 @@ final class WorkspaceSettingsModel: ObservableObject {
         )
     }
 
-    func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot {
+    @discardableResult
+    func recoverMachineLocalMethodLocators() async throws -> URL? {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchGuidance.recoveryPolicy(workspaceID)
-    }
-
-    func prepareRecoveryPolicyChange(
-        _ retention: SettledSnapshotRetention,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchRecoveryPolicyChangePreview {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.prepareRecoveryPolicyChange(
-            workspaceID,
-            retention,
-            expectedRevision
-        )
-    }
-
-    func applyRecoveryPolicyChange(
-        _ preview: ResearchRecoveryPolicyChangePreview
-    ) async throws -> ResearchRecoveryPolicyApplyOutcome {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.applyRecoveryPolicyChange(
-            workspaceID,
-            preview
-        )
+        return try await capabilities.researchGuidance
+            .recoverMachineLocalMethodLocators(workspaceID)
     }
 
     func openExternal(_ url: URL) {

@@ -292,7 +292,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     public let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter?
     public let resultContract: ResearchResultContract
     /// Current, capability-free view of the Run-local bounded write set. The
-    /// Application retains Note identity, expected revisions, checkpoints,
+    /// Application retains Note identity, expected revisions, change evidence,
     /// and one-use capabilities; the Agent receives only the exact selectors
     /// and states needed to address the protected write route.
     public let boundedWriteSet: [ResearchBoundedWriteSetViewEntry]

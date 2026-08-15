@@ -170,8 +170,8 @@ YAML. About reuses order.
 
 ## 18.5 Contextual research and Actions
 
-Apparatus contains Research Inspector only; active Discussion, Research Records,
-and checkpoint recovery keep distinct ownership. Active Discussion opens as an
+Apparatus contains Research Inspector only; active Discussion and Research
+Records keep distinct ownership. Active Discussion opens as an
 Action sheet. Research Records is an independent, nonrestored native auxiliary
 window keyed to one Triptych. It reads that Triptych rather than following
 unrelated window focus, uses §19.4's initial size, and is resizable down to
@@ -353,10 +353,11 @@ Record** / **Undo Selected Documents...**; Conflict mode offers **Return to
 Editing** / **Reload from Disk**. Full success returns; partial results remain
 visible per document.
 
-A `.reviewResult` request grants that exact Record direct Undo only in the
-current Records window. Closing erases this nonpersistent eligibility; later
-recovery uses global checkpoints. The grant authorizes only exact recovery and
-never Note Review.
+Direct Undo is available from that exact Record only while each selected Note
+still equals its final Agent revision and its Run-bound starting evidence is
+intact. Closing and reopening the Records window does not change this factual
+eligibility. Undo never grants authority for another revision and never means
+Note Review.
 There is exactly one native trailing Inspector per window, with **Overview,
 Connect, Actions** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
@@ -556,7 +557,7 @@ window. Authorized background delivery says only **An Agent result is ready to
 review.** Record ID plus finalized-result fingerprint deduplicates it. Clicking
 opens the exact Triptych/Record. Delivery is one-shot and independent of Note
 Review. No
-notification contains research content, credentials, checkpoints, or traces;
+notification contains research content, credentials, change evidence, or traces;
 denial is not repeatedly requested and never weakens the Action row.
 
 Functional text is never a generic blue link or a separate **Open** button.
@@ -627,12 +628,12 @@ same single-column exact comparison used by Research Records; it offers
 **Return to Editing** or **Reload from Disk** and no source-change selection.
 Each exact comparison row retains one logical source line while soft-wrapping
 its visible text within the comparison width; wrapping never mutates either
-revision or creates a source line. Checkpoint restore, editor Undo, and Research
-Record are never interchangeable; editor `Command-Z` never means checkpoint
-restoration.
+revision or creates a source line. Editor Undo and Research Record direct Undo
+are never interchangeable; editor `Command-Z` affects only the active editor
+session.
 
-Autosave, conflict, and checkpoint-result presentation belongs to Document,
-never Actions or Research Inspector. After Saving, autosave has exactly three
+Autosave and conflict presentation belong to Document, never Actions or
+Research Inspector. After Saving, autosave has exactly three
 terminal Document outcomes: silent **Saved**, persistent **Autosave Failed**,
 or persistent **Conflict**. Ordinary autosave creates no Save button, success
 toast, or saved-with-warning state. Autosave Failed states that the editor
@@ -649,15 +650,9 @@ Saved without a technical warning or another write request. If that readback
 cannot prove the candidate, Scholium reports Autosave Failed rather than
 softening uncertainty into success.
 
-Checkpoint availability is not a document state, toast, or Action row; its
-entry remains under File. A successful restore alone produces one transient
-Document confirmation, **Checkpoint Restored**, and states that Scholium
-created the Before Restore checkpoint. This completion feedback never implies
-that editor Undo became checkpoint restoration.
-
 Retained interrupted-save candidates share the existing native Recovery sheet
 with durable file-operation recovery; they do not create a version browser,
-Document mode, Research Action, or checkpoint manager. Each candidate row
+Document mode, or Research Action. Each candidate row
 states its current source relationship in text and symbol, exposes a selectable
 read-only exact-source disclosure plus **Copy Candidate** and **Reveal Candidate
 in Finder**, and enables **Restore Candidate…** only for an observed expected or
@@ -696,7 +691,6 @@ punctuation.
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
-| Checkpoint / Snapshot | 恢复点 / 快照 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Comment / Discussion / Response | 评论 / 讨论 / 回应 |
 | Research Record | 研究记录 |

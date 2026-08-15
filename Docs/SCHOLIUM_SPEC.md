@@ -35,7 +35,7 @@ copying the same rule into a new summary.
 | [Foundation and Triptych](Specification/01-foundation-and-triptych.md) | Sections 1–4: terminology, product authority, Triptych structure, and Works organization. |
 | [Notes and Lifecycle](Specification/02-notes-and-lifecycle.md) | Sections 5–7: common Note behavior, lifecycle Locations, settlement, annotation, and Discussion. |
 | [Research Actions and Workflows](Specification/03-research-actions-and-workflows.md) | Sections 8–11: Actions and the Analysis, Topic, and Work workflows. |
-| [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | Sections 12–14: Connections, Search, Attention, checkpoints, versions, and recovery. |
+| [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | Sections 12–14: Connections, Search, Attention, Agent changes, saves, and recovery. |
 | [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | Sections 15–17: Zotero, onboarding, permanent boundaries, and deferred capabilities. |
 | [Interface Shell and Library](Specification/06-interface-shell-and-library.md) | Sections 18.1–18.3: global interface principles, workspace shell, Library, and Search presentation. |
 | [Document and Research Interface](Specification/07-document-and-research-interface.md) | Sections 18.4–18.7: Document modes, Research Inspector, Document-owned state meanings, and terminology. |

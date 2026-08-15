@@ -18,7 +18,7 @@ Analysis, Topic, and ordinary Work notes support:
   researcher-configured academic Profiles;
 - Search in **This Note**, **This Vault**, or **Triptych**, plus Attention;
 - lightweight Document Find in every mode, with Replace in Edit and Source; and
-- Research Record and independent checkpoint recovery.
+- Research Record, exact Agent diff and direct Undo, and interrupted-save recovery.
 
 Critique bodies are read-only in Scholium but remain ordinary externally
 editable Markdown; Scholium does not set filesystem read-only permissions.
@@ -398,7 +398,7 @@ or failed drop changes no source or disclosure. **Move Folder…** and the named
 accessibility action remain the non-drag route.
 
 A folder is only a vault-relative filesystem location used for classification.
-It has no UUID, Properties, Research Record, checkpoint identity, or independent
+It has no UUID, Properties, Research Record, recovery identity, or independent
 lifecycle record. Empty folders remain visible in Library. **New Folder**
 immediately and atomically claims `Untitled Folder`, `Untitled Folder 2`, and so
 on inside the clicked folder; it opens no sheet. Once that directory claim is
@@ -490,12 +490,11 @@ active, Set Aside, or Trash state.
 - **Cancel** changes nothing.
 - **Delete Permanently** purges the note, its active Discussion drafts,
   Settlements, associated Critique, and note-specific machine state from live
-  storage and every checkpoint. A checkpoint that cannot be scrubbed is
-  invalidated and removed. A finished shared Research Record survives with a
-  participant tombstone until the researcher separately deletes that record.
+  storage. A finished shared Research Record survives with a participant
+  tombstone until the researcher separately deletes that record.
 
 Note-specific records follow stable identity into Set Aside and Trash while
-recovery remains possible. Permanent note deletion advertises no checkpoint
+recovery remains possible. Permanent note deletion advertises no source
 recovery; a surviving record tombstone is provenance, not a way to restore the
 deleted note.
 
@@ -522,22 +521,15 @@ Settle is available for every active Analysis, Topic, and Work as a quiet
 current-note action. It binds to the exact saved fingerprint, accepts an
 optional rationale, records date and researcher identity, and never blocks on
 an agent response or Fidelity warning. Repeating Settle for the current
-fingerprint may update the rationale, date, or researcher judgment and may
-backfill a missing machine-local pin; it does not create a second pin for
-identical bytes.
+fingerprint may update the rationale, date, or researcher judgment.
 Save failure, dirty conflict, unknown stable identity, or a revision mismatch
 blocks Settle. A later saved fingerprint keeps the prior statement, offers
 **Settle Again**, and may produce **Changed Since Settled** in Attention. Settle
-is neither a Research Record list row nor an activity-history node. Repeating
-Settle for the same fingerprint updates the portable judgment without creating
-another recovery version. Settled versions are separate from temporary Action
-recovery and are retained per stable Note identity according to the
-machine-local Triptych policy: latest 10, 30, 50, or no automatic deletion; the
-default is 30. Lowering a limit requires a preview and explicit confirmation of
-the exact older versions to remove. Commit uncertainty keeps recovery bytes
-rather than deleting them. Restore does not Settle the restored revision;
-storage and pruning mechanics belong to
-[Source Storage and Read Models](../Architecture/05-source-storage-and-read-models.md).
+is neither a Research Record list row nor an activity-history node. Each Note
+has one portable Settlement marker; Settle replaces that marker and stores no
+Markdown bytes, historical versions, restore source, retention policy, or
+pruning state. It remains useful as current research-state metadata and as the
+basis for **Changed Since Settled**.
 
 ### 7.2 Discussion, Comment, and written annotation
 

@@ -407,7 +407,7 @@ public struct WorkspaceResearchResultArrival: Hashable, Identifiable, Sendable {
 }
 
 /// A privacy-bounded projection over machine-local execution and portable
-/// Record truth. It contains no handoff secret, checkpoint identity, source
+/// Record truth. It contains no handoff secret, change-evidence identity, source
 /// bytes, or tool trace and is never a durable workflow owner.
 public struct WorkspaceResearchActivity: Hashable, Identifiable, Sendable {
     public let runID: UUID
@@ -455,7 +455,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
     /// Search must not present the remaining subset as a complete corpus.
     public let finishedResearchRecordProjectionIsComplete: Bool
     public let critiques: [CritiqueAssociation]
-    public let checkpointListing: TriptychCheckpointListing
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
     public let activities: [WorkspaceResearchActivity]
     public let noteReviews: [PortableResearchNoteReview]
@@ -471,7 +470,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
         finishedResearchRecordSourceManifestHash: String = "",
         finishedResearchRecordProjectionIsComplete: Bool = true,
         critiques: [CritiqueAssociation],
-        checkpointListing: TriptychCheckpointListing,
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         activities: [WorkspaceResearchActivity] = [],
         noteReviews: [PortableResearchNoteReview] = [],
@@ -487,7 +485,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.finishedResearchRecordProjectionIsComplete =
             finishedResearchRecordProjectionIsComplete
         self.critiques = critiques
-        self.checkpointListing = checkpointListing
         self.recoveryRecords = recoveryRecords
         self.activities = activities
         self.noteReviews = noteReviews
@@ -498,21 +495,18 @@ public struct WorkspaceResearchSnapshot: Sendable {
 }
 
 
-/// A persisted Critique association together with the version-bound external
-/// instructions and the automatic checkpoint created before source mutation.
+/// A persisted Critique association together with its version-bound external
+/// instructions.
 public struct CritiquePreparation: Sendable {
     public let association: CritiqueAssociation
     public let instructions: String
-    public let checkpoint: TriptychCheckpoint?
 
     public init(
         association: CritiqueAssociation,
-        instructions: String,
-        checkpoint: TriptychCheckpoint?
+        instructions: String
     ) {
         self.association = association
         self.instructions = instructions
-        self.checkpoint = checkpoint
     }
 }
 
@@ -581,7 +575,6 @@ public struct WorkspaceSnapshotEvent: Sendable {
 public enum WorkspaceSourceCommitKind: Equatable, Sendable {
     case creation
     case save
-    case checkpointRestore(checkpointID: UUID)
 }
 
 public struct WorkspaceSourceCommittedEvent: Sendable {
@@ -858,6 +851,8 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case incompleteTriptych(UUID)
     case vaultNotInWorkspace(UUID)
     case workspaceStillLoading(UUID)
+    case workspaceRegistrationInUse(UUID)
+    case portableControlRecoveryRequired(controlPath: String, reason: String)
     case manifestIdentityMismatch(expected: UUID, actual: UUID)
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case operationCommitUncertain(operation: String, reason: String)
@@ -921,6 +916,10 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
         case .workspaceStillLoading(let id):
             "Scholium is still loading the complete Triptych \(id.uuidString). Search, relationships, and Research Actions will become available when loading finishes."
+        case .workspaceRegistrationInUse(let id):
+            "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
+        case .portableControlRecoveryRequired(let controlPath, let reason):
+            "The portable control folder at \(controlPath) is incompatible or damaged. Preserve the entire folder before Scholium creates current control state. \(reason)"
         case .manifestIdentityMismatch(let expected, let actual):
             "The portable Triptych identity is \(actual.uuidString), not \(expected.uuidString)."
         case .operationCommittedButRefreshFailed(let operation, let reason):
@@ -938,7 +937,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
 }
 
 /// Application-layer validation failures for research workflows. Core store,
-/// repository, checkpoint, and workflow errors pass through unchanged when
+/// repository, change-evidence, and workflow errors pass through unchanged when
 /// they already describe the violated invariant precisely.
 public enum ResearchOperationError: LocalizedError, Sendable {
     case noteUnavailable(VaultQualifiedNoteID)
@@ -952,7 +951,6 @@ public enum ResearchOperationError: LocalizedError, Sendable {
     case critiqueRegistryUnavailable(String)
     case critiqueTargetChanged
     case critiqueRollbackFailed(requestError: String, rollbackError: String)
-    case settleRollbackFailed(settleError: String, recoveryError: String)
 
     public var errorDescription: String? {
         switch self {
@@ -978,8 +976,6 @@ public enum ResearchOperationError: LocalizedError, Sendable {
             "The Work changed while Scholium was preparing the Critique. Review the current Work and request its Critique again."
         case .critiqueRollbackFailed(let requestError, let rollbackError):
             "Scholium could not complete the Critique request and could not restore the prepared Critique source automatically. \(requestError) Recovery also failed: \(rollbackError) Inspect the current Critique and machine-local recovery before continuing."
-        case .settleRollbackFailed(let settleError, let recoveryError):
-            "Scholium could not record Settle and could not remove its newly pinned recovery version. \(settleError) Recovery cleanup also failed: \(recoveryError) Inspect Recovery & Technical before settling again."
         }
     }
 }

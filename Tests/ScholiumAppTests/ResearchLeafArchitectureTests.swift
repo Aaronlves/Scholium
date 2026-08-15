@@ -13,7 +13,6 @@ struct ResearchLeafArchitectureTests {
             .deletingLastPathComponent()
         let relativePaths = [
             "Scholium/Views/Backlinks/ConnectionsInspectorView.swift",
-            "Scholium/Views/CheckpointView.swift",
             "Scholium/Views/Note/CritiqueProvenanceView.swift",
             "Scholium/Views/Sidebar/ResearchInspectorContentView.swift",
             "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift",
@@ -51,13 +50,7 @@ struct ResearchLeafArchitectureTests {
         #expect(relationships.contains("let catalog: WorkspaceCatalogSnapshot?"))
         #expect(relationships.contains("let openReference: (VaultNoteReference, Int?) -> Void"))
 
-        let checkpoints = try #require(sources[relativePaths[1]])
-        #expect(checkpoints.contains("@ObservedObject private var controller: ResearchController"))
-        #expect(checkpoints.contains("let createCheckpoint: (String) async throws -> Void"))
-        #expect(checkpoints.contains("let restoreCheckpoint:"))
-        #expect(checkpoints.contains("let revealCheckpoints: () -> Void"))
-
-        let critique = try #require(sources[relativePaths[2]])
+        let critique = try #require(sources[relativePaths[1]])
         #expect(critique.contains("struct CritiqueProvenanceContext"))
         #expect(critique.contains("let availableNotes: [WindowDocumentLocation]"))
         #expect(critique.contains("let documentRevisions: [String: DocumentFingerprint]"))
@@ -68,7 +61,7 @@ struct ResearchLeafArchitectureTests {
         #expect(!critique.contains("@ObservedObject"))
         #expect(!critique.contains("let controller:"))
 
-        let overview = try #require(sources[relativePaths[3]])
+        let overview = try #require(sources[relativePaths[2]])
         #expect(overview.contains("struct ResearchInspectorContentContext"))
         #expect(!overview.contains("ResearchController"))
         #expect(overview.contains("let presentation: ResearchOverviewPresentation"))
@@ -88,7 +81,7 @@ struct ResearchLeafArchitectureTests {
         #expect(!overview.contains("openItem:"))
         #expect(!overview.contains("confirmItem:"))
 
-        let bindingPanel = try #require(sources[relativePaths[5]])
+        let bindingPanel = try #require(sources[relativePaths[4]])
         #expect(bindingPanel.contains("struct ZoteroBindingPanelView: View"))
         #expect(bindingPanel.contains("let search: (String) async throws"))
         #expect(bindingPanel.contains("let setBinding: (ZoteroSearchHit)"))
@@ -124,7 +117,7 @@ struct ResearchLeafArchitectureTests {
         ])
     }
 
-    @Test("Research roots route navigation and checkpoint side effects explicitly")
+    @Test("Research roots route navigation explicitly")
     func researchRootWiringIsExplicit() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -155,7 +148,7 @@ struct ResearchLeafArchitectureTests {
         #expect(noteContent.contains("ResearchOverviewView("))
         #expect(noteContent.contains("ResearchActionsInspectorView("))
         #expect(noteContent.contains("context: researchInspectorContentContext"))
-        #expect(content.contains("controller: appState.researchController"))
+        #expect(content.contains("appState.researchController.requestOpen("))
         #expect(content.contains("graph: appState.relationshipGraph"))
         #expect(!content.contains("workspaceCatalog?.graph ?? appState.relationshipGraph"))
         #expect(content.contains("private var researchInspectorContentContext: ResearchInspectorContentContext"))
@@ -169,8 +162,6 @@ struct ResearchLeafArchitectureTests {
         #expect(!content.contains("ZoteroBridge.normalizedItemKey("))
         #expect(content.contains("openZoteroItem: { binding in"))
         #expect(content.contains("openInZotero(binding: binding)"))
-        #expect(content.contains("restoreCheckpoint: { checkpointID, selection in"))
-        #expect(content.contains("revealCheckpoints: {"))
         #expect(controller.contains("func requestOpen("))
         #expect(controller.contains("intentHandler(.openDocument(WindowDocumentRoute("))
     }

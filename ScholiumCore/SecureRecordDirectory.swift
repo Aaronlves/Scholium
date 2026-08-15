@@ -94,6 +94,12 @@ struct SecureRecordDirectory: Sendable {
     /// always leaves it nil.
     let postCommitFault: (@Sendable (String) throws -> Void)?
 
+    var directoryURL: URL {
+        components.reduce(trustedRootURL) {
+            $0.appendingPathComponent($1, isDirectory: true)
+        }
+    }
+
     init(
         trustedRootURL: URL,
         components: [String],

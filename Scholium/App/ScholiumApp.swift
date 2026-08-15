@@ -572,6 +572,13 @@ private struct ScholiumBootstrapRoot: View {
                     name: name
                 )
             },
+            preserveUnsupportedPortableControl: { containerURL, worksURL, id in
+                try await model.preserveUnsupportedPortableControl(
+                    containerURL: containerURL,
+                    worksURL: worksURL,
+                    triptychID: id
+                )
+            },
             configure: { selection in
                 try await model.configure(selection)
             },
@@ -729,6 +736,18 @@ private final class ScholiumBootstrapModel: ObservableObject {
         isReadyToOpenWorkspace = false
     }
 
+    func preserveUnsupportedPortableControl(
+        containerURL: URL,
+        worksURL: URL,
+        triptychID: UUID?
+    ) async throws -> URL {
+        try await workspaceStore.preserveUnsupportedPortableControl(
+            portableContainerURL: containerURL,
+            worksURL: worksURL,
+            triptychID: triptychID
+        )
+    }
+
     func completeBootstrap() {
         guard workspaceAssignment != nil else { return }
         isReadyToOpenWorkspace = true
@@ -858,6 +877,14 @@ private struct ScholiumWindowObservedRoot: View {
                 RestoreWorkspaceAccessView(
                     recovery: recovery,
                     restore: { try await appState.restoreWorkspaceAccess(using: $0) },
+                    rebuildPortableControl: {
+                        try await appState.rebuildUnsupportedPortableControl()
+                    },
+                    canRemoveRegistration: appState.canRemoveUnavailableTriptychRegistration,
+                    removeRegistration: {
+                        try await appState.removeUnavailableTriptychRegistration()
+                        openOrdinaryBootstrapAfterRegistrationRemoval()
+                    },
                     quitApplication: {
                         windowWorkspaceController.setAccessRecovery(nil)
                         windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
@@ -1036,6 +1063,18 @@ private struct ScholiumWindowObservedRoot: View {
         destinationBootstrapWindowID = destination.windowID
     }
 
+    private func openOrdinaryBootstrapAfterRegistrationRemoval() {
+        guard destinationBootstrapWindowID == nil else { return }
+        let destination = BootstrapWindowRoute(purpose: .firstConfiguration)
+        windowCoordinator.failReadiness(
+            ScholiumWindowLifecycleError.failed(
+                "The unavailable Triptych registration was removed from this Mac."
+            )
+        )
+        openWindow(id: "scholium-bootstrap", value: destination)
+        destinationBootstrapWindowID = destination.windowID
+    }
+
 }
 
 private struct ScholiumSettingsRoot: View {
@@ -1203,12 +1242,6 @@ private struct ScholiumCommands: Commands {
             }
             .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
             Divider()
-            Button("Create Checkpoint…") { appState?.showCreateCheckpoint = true }
-                .disabled(appState?.workspaceAssignment == nil)
-            Button("Restore from Checkpoint…") { appState?.showCheckpointBrowser = true }
-                .disabled(appState?.workspaceAssignment == nil)
-            Button("Reveal Checkpoints in Finder") { appState?.revealCheckpointsInFinder() }
-                .disabled(appState?.workspaceAssignment == nil)
             Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
                 .disabled(appState?.vaultConfig == nil)
         }
@@ -1698,6 +1731,9 @@ final class WindowModel: ObservableObject {
             saveSavedSearches: { [workspaceStore] searches in
                 try await workspaceStore.saveSavedSearches(searches)
             },
+            recoverSavedSearches: { [workspaceStore] in
+                try await workspaceStore.preserveUnreadableSavedSearchesAndReset()
+            },
             executionContext: { [weak self] state in
                 guard let self else {
                     throw DiscoverySearchExecutionError.workspaceUnavailable
@@ -2095,34 +2131,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    var showCheckpointBrowser: Bool {
-        get {
-            guard case .restoreCheckpoint = presentationRouter.sheet else { return false }
-            return true
-        }
-        set {
-            if newValue {
-                presentationRouter.present(.restoreCheckpoint)
-            } else {
-                presentationRouter.dismissSheet(if: "restore-checkpoint")
-            }
-        }
-    }
-
-    var showCreateCheckpoint: Bool {
-        get {
-            guard case .createCheckpoint = presentationRouter.sheet else { return false }
-            return true
-        }
-        set {
-            if newValue {
-                presentationRouter.present(.createCheckpoint)
-            } else {
-                presentationRouter.dismissSheet(if: "create-checkpoint")
-            }
-        }
-    }
-
     var showTransactionRecovery: Bool {
         get {
             guard case .transactionRecovery = presentationRouter.sheet else { return false }
@@ -2323,11 +2331,6 @@ final class WindowModel: ObservableObject {
     var identityResolutionError: String? {
         get { documentController.identityResolutionError }
         set { documentController.identityResolutionError = newValue }
-    }
-
-    var checkpointListingError: String? {
-        get { researchController.checkpointListingError }
-        set { researchController.checkpointListingError = newValue }
     }
 
     var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] {
@@ -4321,7 +4324,6 @@ final class WindowModel: ObservableObject {
             to: ResearchControllerCapabilities(
                 documents: capabilities.documents,
                 records: capabilities.research.records,
-                checkpoints: capabilities.research.checkpoints,
                 actions: capabilities.research.actions,
                 recoveryRecordsURL: capabilities.research.recoveryRecordsURL
             ),
@@ -4478,51 +4480,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func createCheckpoint(name: String, kind: TriptychCheckpointKind = .manual) async throws -> TriptychCheckpoint {
-        guard let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        return try await researchController.createCheckpoint(name: name, kind: kind)
-    }
-
-    func checkpoints() async -> [TriptychCheckpoint] {
-        let listing: TriptychCheckpointListing
-        do {
-            listing = try await researchController.checkpoints()
-        } catch {
-            checkpointListingError = error.localizedDescription
-            return []
-        }
-        checkpointListingError = listing.unreadableEntries.isEmpty
-            ? nil
-            : "Some checkpoint folders could not be read and remain unchanged.\n\n"
-                + listing.unreadableEntries.joined(separator: "\n")
-        return listing.checkpoints
-    }
-
-    func noteCheckpoints(for path: String) async throws -> [TriptychCheckpoint] {
-        guard let context = activeDocumentContext(for: path) else { return [] }
-        return try await researchController.noteCheckpoints(for: VaultQualifiedNoteID(
-            vaultID: context.vaultID,
-            relativePath: path
-        ))
-    }
-
-    func restoreNote(_ path: String, from checkpointID: UUID) async throws {
-        guard let context = activeDocumentContext(for: path),
-              let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        _ = try await researchController.restoreNote(
-            VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: path),
-            from: checkpointID,
-            expectedRevision: context.fingerprint
-        )
-        await refreshWindowProjection()
-    }
-
     func critiqueAssociation(for path: String) async -> CritiqueAssociation? {
         guard let context = activeDocumentContext(for: path),
               context.vaultRole.allowsCritique else { return nil }
@@ -4560,52 +4517,6 @@ final class WindowModel: ObservableObject {
         let document = NoteDocument(relativePath: path, rawContent: target.rawContent)
         let line = finding.resolvedTargetLine(in: document)
         Task { await openWorkspaceReference(reference, line: line, mode: line == nil ? .read : .source) }
-    }
-
-    func checkpointComparison(_ checkpointID: UUID) async throws -> [TriptychCheckpointChange] {
-        try await researchController.checkpointComparison(checkpointID)
-    }
-
-    func restoreCheckpoint(
-        _ checkpointID: UUID,
-        selection: TriptychCheckpointRestoreSelection
-    ) async throws -> TriptychCheckpointRestoreResult {
-        guard let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let result = try await researchController.restoreCheckpoint(
-            checkpointID,
-            selection: selection
-        )
-        do {
-            let settingsIssue = try await loadTriptychSettingsProjection()
-            try await rescanVault()
-            if let settingsIssue {
-                workspaceProjectionController.reportCatalogError(settingsIssue)
-            }
-        } catch {
-            refreshStatusText = "Triptych refresh failed after restore"
-            workspaceProjectionController.reportCatalogError(
-                "The checkpoint restore committed successfully, but Scholium could not reload every restored setting or derived view. \(error.localizedDescription)"
-            )
-        }
-        return result
-    }
-
-    func revealCheckpointsInFinder() {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let url = try await researchController.prepareCheckpointsLocation()
-                workspaceStore.revealInFinder(url)
-            } catch {
-                showToast(
-                    "Could not reveal checkpoints: \(error.localizedDescription)",
-                    kind: .error
-                )
-            }
-        }
     }
 
     func requestMarkdownImport(_ urls: [URL]) {
@@ -5125,15 +5036,25 @@ final class WindowModel: ObservableObject {
     }
 
     private func workspaceAccessRecoveryRoute(for error: Error) -> WorkspaceAccessRecovery? {
-        guard let workspaceError = error as? WorkspaceRegistryError else { return nil }
-        switch workspaceError {
-        case .vaultAccessUnavailable(let path):
-            return WorkspaceAccessRecovery(kind: .vault, expectedPath: path)
-        case .portableControlAccessUnavailable(let path):
-            return WorkspaceAccessRecovery(kind: .portableControl, expectedPath: path)
-        default:
-            return nil
+        if let workspaceError = error as? WorkspaceRegistryError {
+            switch workspaceError {
+            case .vaultAccessUnavailable(let path):
+                return WorkspaceAccessRecovery(kind: .vault, expectedPath: path)
+            case .portableControlAccessUnavailable(let path):
+                return WorkspaceAccessRecovery(kind: .portableControl, expectedPath: path)
+            default:
+                break
+            }
         }
+        if let applicationError = error as? ScholiumApplicationError,
+           case .portableControlRecoveryRequired(let controlPath, let reason) = applicationError {
+            return WorkspaceAccessRecovery(
+                kind: .unsupportedPortableControl,
+                expectedPath: controlPath,
+                reason: reason
+            )
+        }
+        return nil
     }
 
     private func workspaceAccessRecoveryMessage(
@@ -5144,6 +5065,8 @@ final class WindowModel: ObservableObject {
             "Scholium needs renewed access to '\(recovery.expectedPath)'. Choose that folder again."
         case .portableControl:
             "Scholium needs renewed access to '\(recovery.expectedPath)' so it can use the portable .scholium folder beside Works."
+        case .unsupportedPortableControl:
+            "Scholium must archive the unsupported portable control folder at '\(recovery.expectedPath)' before rebuilding current control state."
         }
     }
 
@@ -5188,6 +5111,79 @@ final class WindowModel: ObservableObject {
         )
         workspaceAccessRecovery = nil
         workspaceRecoveryMessage = nil
+    }
+
+    @discardableResult
+    func rebuildUnsupportedPortableControl() async throws -> URL {
+        guard let recovery = workspaceAccessRecovery,
+              recovery.kind == .unsupportedPortableControl,
+              activeTriptychServicesID == nil,
+              let assignment = workspaceAssignment,
+              let analyses = assignment.vault(for: .paperAnalysis),
+              let topics = assignment.vault(for: .topicKnowledge),
+              let works = assignment.vault(for: .output) else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
+        let topicsURL = URL(fileURLWithPath: topics.canonicalPath, isDirectory: true)
+        let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
+        guard let portableURL = await workspaceStore.portableContainerURL(
+            forWorksURL: worksURL
+        ) else {
+            throw WorkspaceRegistryError.portableControlAccessUnavailable(
+                worksURL.deletingLastPathComponent().path
+            )
+        }
+        let preserved = try await workspaceStore.preserveUnsupportedPortableControl(
+            portableContainerURL: portableURL,
+            worksURL: worksURL,
+            triptychID: assignment.id
+        )
+        try await configureTriptych(
+            paperAnalysisURL: analysesURL,
+            topicKnowledgeURL: topicsURL,
+            outputURL: worksURL,
+            portableContainerURL: portableURL,
+            triptychID: assignment.id,
+            triptychName: assignment.triptych.name
+        )
+        workspaceAccessRecovery = nil
+        workspaceRecoveryMessage = nil
+        showToast("Previous portable control was preserved at \(preserved.path).")
+        return preserved
+    }
+
+    func removeUnavailableTriptychRegistration() async throws {
+        guard workspaceAccessRecovery != nil,
+              activeTriptychServicesID == nil,
+              let assignment = workspaceAssignment else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        try await workspaceStore.removeLocalTriptychRegistration(id: assignment.id)
+        activeWorkspaceCapabilities = nil
+        workspaceAssignment = nil
+        workspaceAccessRecovery = nil
+        workspaceRecoveryMessage = nil
+        registeredTriptychs.removeAll { $0.id == assignment.id }
+        let remainingVaultIDs = Set(
+            registeredTriptychs.flatMap { $0.vaults.values.map(\.id) }
+        )
+        let removedVaultIDs = Set(assignment.vaults.values.map(\.id))
+        registeredVaults.removeAll {
+            removedVaultIDs.contains($0.id) && !remainingVaultIDs.contains($0.id)
+        }
+        if let refreshedVaults = try? await workspaceStore.registeredVaults() {
+            registeredVaults = refreshedVaults
+        }
+        if let refreshedTriptychs = try? await workspaceStore.registeredTriptychs() {
+            registeredTriptychs = refreshedTriptychs
+        }
+    }
+
+    var canRemoveUnavailableTriptychRegistration: Bool {
+        workspaceAccessRecovery != nil
+            && activeTriptychServicesID == nil
+            && workspaceAssignment != nil
     }
 
     private func openRequestedTestNoteIfNeeded() {

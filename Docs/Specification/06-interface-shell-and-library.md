@@ -179,18 +179,17 @@ group. No Collapse Note, custom `<<`, Recents, or Quick Open exists.
 Menus follow researcher tasks:
 
 - **File:** Triptych/window create/open; direct **New Note** at the focused
-  vault root; Import; Duplicate; Rename; Move; Reveal; Checkpoint create/restore.
+  vault root; Import; Duplicate; Rename; Move; Reveal.
 - **Edit:** editing and **Edit Properties…**.
 - **View:** Back/Forward, Search, document mode/text size, Sidebar, Research
   Inspector.
 - **Window:** standard window navigation plus **Attention**. The command is
   enabled only when the focused window has a visible Triptych or Inspector
   Attention anchor, and opens that anchor's transient popover.
-- **Research:** role-valid Actions and **Triptych Records**, never Attention
-  or Checkpoints.
+- **Research:** role-valid Actions and **Triptych Records**, never Attention.
 - **Settings:** Triptychs, Property profiles, Appearance, Attention, and one
   Research Guidance surface for Methods, Profiles & Practices, Collaboration,
-  Sources & Integrations, and Recovery & Technical.
+  and Sources & Integrations.
 
 ### 18.3 Library and Search
 

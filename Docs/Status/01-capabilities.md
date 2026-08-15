@@ -8,10 +8,20 @@
   and Works vaults. Each window belongs to one Triptych; portable control state
   stays in `.scholium`, while machine-local and derived state stays in
   Application Support.
-- Production validates Application Support and the workspace registry before
-  constructing a runtime. Malformed current-schema registry data can be
-  preserved and relinked; unsupported schema and I/O failures remain
-  nonauthorizing. No temporary workspace fallback is reachable.
+- Production validates Application Support plus the workspace, vault-identity,
+  and portable-access registries before constructing a runtime. Damaged owned
+  registry data can be independently preserved and relinked; valid sibling
+  registries remain unchanged, while unsupported schema, unsafe type, and I/O
+  failures remain nonauthorizing. No temporary workspace fallback is reachable.
+- An unavailable Triptych can remove only its machine-local registration
+  without opening missing vaults or decoding an incompatible portable schema.
+  Research folders, portable bytes, and unrelated registrations remain
+  unchanged; an active runtime blocks removal.
+- Existing portable control receives a read-only whole-bundle preflight before
+  registration writes. A confirmed recovery archives the complete unsupported
+  `.scholium` directory as one verified filesystem object, leaves all three
+  vaults byte-unchanged, rebuilds current control state, and reopens the same
+  Triptych; an active runtime blocks the archive.
 - Live app activation can publish the selected Vault's authoritative source,
   metadata, and stable identities first, then replace that explicit opening
   phase with one complete three-Vault generation through the existing refresh
@@ -60,10 +70,10 @@
   destination. Image Index retains the selected absolute path without copying;
   its read-only bookmark is machine-local, and a moved, missing, stale,
   or inaccessible path produces a reminder without repair or mutation.
-- Editor Undo, Triptych checkpoints, Before Agent Work recovery, settled
-  revision pins, and interrupted-write candidates remain distinct. Restore
-  rechecks the current revision and preserves evidence when replacement cannot
-  be proven safe.
+- Editor Undo, Run-bound Agent change evidence, direct Record Undo, and
+  interrupted-write candidates remain distinct. Direct Undo and candidate
+  restore each recheck the current revision and preserve evidence when
+  replacement cannot be proven safe.
 - Settle stores one replaceable researcher judgment for an exact saved revision.
   A Work can retain one attributed current Critique without changing the Work.
 
@@ -73,6 +83,8 @@
   Research Context. It supports This Note, This Vault, and Triptych scope;
   Note and Record providers; lexical, Property, and direct-relation clauses;
   typed match reasons; Saved Searches; completion; and Explain Query.
+- An undecodable Saved Search file can be explicitly archived byte-exactly and
+  reset without changing a valid concurrent replacement or any vault.
 - This Note searches the live editor snapshot. Other results remain bound to
   provider, generation, fingerprint, and source freshness. Stale or incompatible
   results do not navigate.
@@ -112,7 +124,7 @@
   `modify_markdown` changes body only; `modify_properties` changes only exact
   approved top-level keys. GUI, researcher CLI, and Agent creation use the same
   managed creator. Agent creation is idempotent for one request and forms a
-  checkpoint-free `created` Record mutation only after source and identity
+  preimage-free `created` Record mutation only after source and identity
   jointly read back; partial or unreadable outcomes retain a durable creation
   recovery duty instead of guessing absence. Recovery may add or remove only
   the exact reserved identity; any other identity at the path, a binding on an
@@ -144,19 +156,21 @@
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected
   documents from the first committed Agent baseline, including after a stable-
-  identity rename. Undo is independent of Note Review; each restore remains an
-  independent checkpointed source transaction.
+  identity rename. Undo is independent of Note Review; each document uses an
+  independent ordinary revision-checked repository transaction.
 - Workspace research snapshots derive Waiting, Running, and Needs Attention
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
-  projecting credentials, checkpoint IDs, source bytes, or tool traces.
+  projecting credentials, change-evidence IDs, source bytes, or tool traces.
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
 - Research Guidance supports Method and Practice registration and exact editing,
   one recovery point per edited file, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external
-  locators, and settled-version retention.
+  locators, and installed CLI controls.
+- Invalid machine-local Method locators expose an exact archive-and-reset
+  operation; portable research configuration and vault files remain unchanged.
 - Built-in Zotero access reads local bibliographic metadata, searches exact
   user/group library items for researcher selection, revision-checks portable
   Analysis set/rebind/clear, and opens a keyed Analysis in Zotero. An eligible authenticated Analysis Run with frozen Zotero

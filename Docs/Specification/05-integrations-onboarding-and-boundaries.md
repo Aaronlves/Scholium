@@ -30,8 +30,8 @@ Only dedicated set/clear Zotero-binding operations may change it;
 `modify_markdown` and `modify_properties` cannot. Rename, Move, Set Aside, and
 Trash retain it by stable identity. Duplicate Analysis explicitly copies the
 relationship; permanent deletion removes it. The Zotero integration surface
-provides visible open, clear, and rebind paths. Single-Note Markdown restore
-leaves it unchanged; complete Triptych restore follows §14.
+provides visible open, clear, and rebind paths. Agent direct Undo and
+interrupted-save recovery change Markdown only and leave it unchanged.
 
 Overview gives every current Analysis one quiet **Link Zotero Item…** or
 **Manage Zotero Link…** action. Its central sheet searches the local user and
@@ -128,15 +128,18 @@ report the boundary without global configuration scans or database bypass.
 Before onboarding or workspace restoration, one app-owned bootstrap state is
 either **Starting**, **Registry Recovery**, **Ready**, or **Storage
 Unavailable**. Only Ready contains the validated Application Support location
-and a healthy machine-local Triptych registry, and may construct workspace
+and healthy machine-local Triptych, vault-identity, and portable-access
+registries, and may construct workspace
 state or services. Storage Unavailable replaces the app root with a nonmodal
 recoverable failure page; **Retry** is the default action, **Details** reveals
 selectable diagnostic text, and **Quit** remains available. Registry Recovery
-also replaces the app root. For a malformed current registry, **Relink
-Triptych** is the default action: it preserves the existing registry as a
-timestamped machine-local recovery file, then opens ordinary Bootstrap so the
-researcher explicitly selects Analyses, Topics, and Works again. A newer
-registry schema or registry I/O failure remains in place with Details, Retry,
+also replaces the app root. For a malformed current Triptych registry or a
+damaged vault-identity or portable-access registry, **Relink Triptych** is the
+default action: it preserves only the damaged owner as a timestamped
+machine-local recovery file, keeps a valid sibling registry unchanged, then
+opens ordinary Bootstrap so the researcher explicitly selects Analyses,
+Topics, and Works again. A newer registry schema or any registry I/O,
+unsafe-type, or unreadable-file failure remains in place with Details, Retry,
 and Quit; Scholium never replaces it. New Window, New Triptych, and all
 workspace commands stay disabled outside Ready. Retry performs a fresh
 validation and enters the ordinary workspace or onboarding route only after it
@@ -205,9 +208,26 @@ toolbar; they never compete. Recoverable Workspace routes restore
 directly. The presented Bootstrap default is used only when no
 recoverable Workspace exists. Bootstrap starts at **760 × 740**; this is an
 initial size, not a minimum. Expired folder access instead uses the workspace's
-bounded **Restore Access** sheet and preserves its active document. Settings
-**Manage Triptychs…** lists registrations, edits their three locations, creates
-another, and opens one in a separate window.
+bounded **Restore Access** sheet and preserves its active document. If the
+registered Triptych no longer exists or the researcher no longer intends to
+reconnect it, **Remove Registration…** requires explicit confirmation, removes
+only that Triptych's machine-local registration, leaves every research folder,
+portable `.scholium` byte, and unrelated registration unchanged, then returns
+through ordinary Bootstrap. Removal never decodes, migrates, or repairs an
+unsupported portable schema and is unavailable while that Triptych has an
+active workspace runtime. If an existing `.scholium` owner is old-schema or
+damaged, registration performs a read-only whole-bundle preflight before any
+machine-local registration write. Bootstrap or Restore Access then offers
+confirmed **Archive and Rebuild…**: Scholium atomically renames the entire
+`.scholium` directory to one unique sibling recovery name, verifies that the
+same filesystem object was preserved, never interprets or migrates its files,
+and creates current control state only after preservation succeeds. Analyses,
+Topics, and Works remain byte-unchanged. Removing only the machine registration
+does not resolve this unsupported portable owner. Neither archive nor removal
+is available while that Triptych has an active workspace runtime. Settings
+**Manage Triptychs…** lists registrations,
+edits their three locations, creates another, and opens one in a separate
+window.
 
 ## 17. Permanent boundaries and deferred capabilities
 
@@ -256,7 +276,7 @@ File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
 remains authoritative for Markdown, ordinary Skill-folder contents,
-attachment bytes, and checkpoint folders. The portable attachment catalog under
+and attachment bytes. The portable attachment catalog under
 `.scholium/attachments/v1/` records stable identities plus either an imported
 vault-relative path or an indexed absolute path. Machine-local read-only
 bookmark data for an indexed path stays outside the Triptych and cannot repair

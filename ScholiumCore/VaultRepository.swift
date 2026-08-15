@@ -1118,63 +1118,6 @@ public actor VaultRepository {
         try? recoveryLedger.completeMutation(transaction)
     }
 
-    package func pinSettledSnapshot(
-        noteID: UUID,
-        note: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) throws -> SettledRevisionSnapshotPinOutcome {
-        guard note.vaultID == identity.id else {
-            throw VaultRepositoryError.invalidRelativePath(note.relativePath)
-        }
-        _ = try existingFileURL(relativePath: note.relativePath)
-        let data = try readSource(relativePath: note.relativePath)
-        let observed = DocumentFingerprint(data: data)
-        guard observed == expectedRevision else {
-            throw VaultRepositoryError.conflict(
-                expected: expectedRevision,
-                current: observed
-            )
-        }
-        let pinned = try recoveryLedger.pinSettled(
-            relativePath: note.relativePath,
-            noteID: noteID,
-            data: data
-        )
-        return SettledRevisionSnapshotPinOutcome(
-            snapshot: settledSnapshot(pinned.pin),
-            wasCreated: pinned.wasCreated
-        )
-    }
-
-    public func settledSnapshots(noteID: UUID? = nil) throws -> [SettledRevisionSnapshot] {
-        try recoveryLedger.settledPins(noteID: noteID).map(settledSnapshot)
-    }
-
-    package func settledSnapshotIDsToRemove(maximumCount: Int?) throws -> Set<UUID> {
-        try recoveryLedger.settledSnapshotIDsToRemove(maximumCount: maximumCount)
-    }
-
-    @discardableResult
-    package func removeSettledSnapshots(_ ids: Set<UUID>) throws -> Int {
-        try recoveryLedger.removeSettledPins(ids)
-    }
-
-    private func settledSnapshot(
-        _ pin: PrewriteRecoveryLedger.SettledPin
-    ) -> SettledRevisionSnapshot {
-        SettledRevisionSnapshot(
-            id: pin.id,
-            noteID: pin.noteID,
-            note: VaultQualifiedNoteID(
-                vaultID: identity.id,
-                relativePath: pin.entry.relativePath
-            ),
-            sequence: pin.entry.sequence,
-            createdAt: pin.createdAt,
-            fingerprint: pin.entry.fingerprint
-        )
-    }
-
     private func readSource(relativePath: String) throws -> Data {
         try descriptorAccess.read(markdownRelativePath(relativePath))
     }

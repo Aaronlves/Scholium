@@ -137,8 +137,8 @@
   never adds a second writable source, focus owner, or recursive embed tree.
 - Autosave Failed and Conflict state the retained-buffer consequence and expose
   the applicable recovery. A proven save and machine-local housekeeping add no
-  status announcement or Document accessibility item. Checkpoint Restored is
-  transient and never moves Document focus.
+  status announcement or Document accessibility item. Agent direct Undo reports
+  its per-document result without moving Document focus.
 
 ### Properties and portable settings
 

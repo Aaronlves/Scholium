@@ -305,6 +305,53 @@ struct WorkspaceTests {
         #expect(try await registry.allTriptychs().isEmpty)
     }
 
+    @Test("Removing a local Triptych registration preserves source folders and unrelated registrations")
+    func removingTriptychRegistrationPreservesSourceAndUnrelatedRegistration() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: base) }
+        let firstURLs = try makeTriptychFolders(
+            in: base.appendingPathComponent("First", isDirectory: true)
+        )
+        let secondURLs = try makeTriptychFolders(
+            in: base.appendingPathComponent("Second", isDirectory: true)
+        )
+        let marker = firstURLs.analyses.appendingPathComponent("Keep.md")
+        let markerBytes = Data("research bytes stay authoritative".utf8)
+        try markerBytes.write(to: marker)
+        let registry = WorkspaceRegistry(
+            storageURL: base.appendingPathComponent("registry", isDirectory: true)
+        )
+        let first = try await registry.configureTriptych(
+            name: "First",
+            paperAnalysis: (firstURLs.analyses, UUID()),
+            topicKnowledge: (firstURLs.topics, UUID()),
+            output: (firstURLs.works, UUID())
+        )
+        let second = try await registry.configureTriptych(
+            name: "Second",
+            paperAnalysis: (secondURLs.analyses, UUID()),
+            topicKnowledge: (secondURLs.topics, UUID()),
+            output: (secondURLs.works, UUID())
+        )
+
+        try await registry.removeTriptychRegistration(id: first.id)
+
+        #expect(try Data(contentsOf: marker) == markerBytes)
+        #expect(try await registry.triptych(id: first.id) == nil)
+        #expect(try await registry.defaultTriptych()?.id == second.id)
+        #expect(try await registry.allTriptychs().map(\.id) == [second.id])
+        #expect(try await registry.allVaults().count == 3)
+
+        try await registry.removeTriptychRegistration(id: second.id)
+        #expect(try await registry.defaultTriptych() == nil)
+        #expect(try await registry.allTriptychs().isEmpty)
+        #expect(try await registry.allVaults().isEmpty)
+        #expect(FileManager.default.fileExists(atPath: secondURLs.works.path))
+    }
+
     @Test("A readable registry with broken references is not a healthy empty workspace")
     func brokenRegistryReferencesFailClosed() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -530,6 +577,40 @@ struct WorkspaceTests {
             _ = try await registry.identity(for: vault)
         }
         #expect(try Data(contentsOf: registryURL) == corrupt)
+    }
+
+    @Test("Damaged machine-local access registries are independently preserved")
+    func machineLocalAccessRegistryRecovery() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let vaultURL = base.appendingPathComponent("vault-registry.json")
+        let portableURL = base.appendingPathComponent("portable-control-access.json")
+        let damaged = Data("{broken vault registry".utf8)
+        let validPortable = Data("{\"containers\":{}}".utf8)
+        try damaged.write(to: vaultURL)
+        try validPortable.write(to: portableURL)
+
+        let health = MachineLocalAccessRegistryRecovery.health(
+            applicationSupportURL: base
+        )
+        guard case .damaged(let failures) = health else {
+            Issue.record("Expected one damaged machine-local registry.")
+            return
+        }
+        #expect(failures.map(\.kind) == [.vaultIdentity])
+
+        let preserved = try MachineLocalAccessRegistryRecovery
+            .preserveDamagedRegistriesForRelinking(applicationSupportURL: base)
+
+        #expect(preserved.count == 1)
+        #expect(try Data(contentsOf: preserved[0]) == damaged)
+        #expect(!FileManager.default.fileExists(atPath: vaultURL.path))
+        #expect(try Data(contentsOf: portableURL) == validPortable)
+        #expect(MachineLocalAccessRegistryRecovery.health(
+            applicationSupportURL: base
+        ).isHealthy)
     }
 
     @Test("Portable control authorization is keyed by the folder containing Works")

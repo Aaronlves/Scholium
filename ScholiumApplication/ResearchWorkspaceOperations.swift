@@ -1,22 +1,6 @@
 import ScholiumContracts
 import Foundation
 import ScholiumCore
-import OSLog
-
-private let researchRecoveryLogger = Logger(
-    subsystem: "com.scholium.app",
-    category: "ResearchRecovery"
-)
-
-enum ResearchSettlementRecovery {
-    static func shouldRollbackNewPin(after error: Error) -> Bool {
-        guard let storeError = error as? ResearchRecordStoreV1Error else {
-            return false
-        }
-        if case .replacementNotCommitted = storeError { return true }
-        return false
-    }
-}
 
 private struct CurrentResearchSource {
     let note: VaultQualifiedNoteID
@@ -32,13 +16,12 @@ private enum ResearchRecordUndoPlan {
         note: VaultQualifiedNoteID,
         startingRevision: DocumentFingerprint,
         endingRevision: DocumentFingerprint,
-        checkpointID: UUID,
-        sourceKey: TriptychCheckpointFileKey,
-        destinationKey: TriptychCheckpointFileKey
+        evidenceID: UUID,
+        startingData: Data
     )
 
     var affectedVaultID: UUID? {
-        guard case .restore(_, let note, _, _, _, _, _) = self else { return nil }
+        guard case .restore(_, let note, _, _, _, _) = self else { return nil }
         return note.vaultID
     }
 }
@@ -187,7 +170,7 @@ extension WorkspaceHandle {
     }
 
     @discardableResult
-    func writePortableSettlementWithoutPinForTesting(
+    func writePortableSettlementForTesting(
         noteID: UUID,
         fingerprint: DocumentFingerprint,
         rationale: String?
@@ -216,185 +199,19 @@ extension WorkspaceHandle {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord {
-        try beginResearchRecoveryMutation()
-        defer { endResearchRecoveryMutation() }
         let context = try await researchContext(
             for: noteID,
             expectedRevision: expectedRevision,
             permits: { $0 != .other },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        let repository = try repository(vaultID: noteID.vaultID)
-        let pin = try await repository.pinSettledSnapshot(
+        let settlement = try await services.portableResearchRecordStore.settle(
             noteID: context.identity.id,
-            note: noteID,
-            expectedRevision: expectedRevision
+            fingerprint: expectedRevision,
+            rationale: rationale
         )
-        let settlement: SettlementRecord
-        do {
-            settlement = try await services.portableResearchRecordStore.settle(
-                noteID: context.identity.id,
-                fingerprint: expectedRevision,
-                rationale: rationale
-            )
-        } catch {
-            // Only a typed failure before rename proves that portable state
-            // did not commit. Commit uncertainty, including a later concurrent
-            // replacement, always retains the exact-byte pin.
-            let replacementDidNotCommit = ResearchSettlementRecovery
-                .shouldRollbackNewPin(after: error)
-            if pin.wasCreated, replacementDidNotCommit {
-                do {
-                    _ = try await repository.removeSettledSnapshots([pin.snapshot.id])
-                } catch let recoveryError {
-                    throw ResearchOperationError.settleRollbackFailed(
-                        settleError: error.localizedDescription,
-                        recoveryError: recoveryError.localizedDescription
-                    )
-                }
-            }
-            throw error
-        }
-        do {
-            let policy = try await completePendingRecoveryPolicyChange()
-            let removals = try await repository.settledSnapshotIDsToRemove(
-                maximumCount: policy.retention.maximumCount
-            )
-            _ = try await repository.removeSettledSnapshots(removals)
-        } catch {
-            researchRecoveryLogger.error(
-                "Settle committed, but settled-version retention could not be enforced: \(error.localizedDescription, privacy: .public)"
-            )
-        }
         try await refreshAfterResearchCommit("The settlement")
         return settlement
-    }
-
-    func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot {
-        try requireActive()
-        let stored = try await completePendingRecoveryPolicyChange()
-        let snapshots = try await settledSnapshots(noteID: nil)
-        let maximum = Dictionary(grouping: snapshots, by: \.noteID)
-            .values.map(\.count).max() ?? 0
-        return ResearchRecoveryPolicySnapshot(
-            retention: stored.retention,
-            revision: stored.revision,
-            settledSnapshotCount: snapshots.count,
-            maximumSnapshotsForOneNote: maximum
-        )
-    }
-
-    func prepareRecoveryPolicyChange(
-        _ retention: SettledSnapshotRetention,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchRecoveryPolicyChangePreview {
-        let current = try await recoveryPolicy()
-        guard current.revision == expectedRevision else {
-            throw ResearchRecoveryPolicyError.staleRevision
-        }
-        var removalIDs: Set<UUID> = []
-        var affectedNoteIDs: Set<UUID> = []
-        for repository in services.repositories.values {
-            let repositoryRemovalIDs = try await repository
-                .settledSnapshotIDsToRemove(maximumCount: retention.maximumCount)
-            removalIDs.formUnion(repositoryRemovalIDs)
-            let snapshots = try await repository.settledSnapshots(noteID: nil)
-            affectedNoteIDs.formUnion(
-                snapshots.lazy.filter { repositoryRemovalIDs.contains($0.id) }.map(\.noteID)
-            )
-        }
-        return ResearchRecoveryPolicyChangePreview(
-            triptychID: services.manifest.id,
-            retention: retention,
-            expectedPolicyRevision: expectedRevision,
-            snapshotIDsToRemove: removalIDs,
-            affectedNoteCount: affectedNoteIDs.count
-        )
-    }
-
-    func applyRecoveryPolicyChange(
-        _ preview: ResearchRecoveryPolicyChangePreview
-    ) async throws -> ResearchRecoveryPolicyApplyOutcome {
-        try beginResearchRecoveryMutation()
-        defer { endResearchRecoveryMutation() }
-        guard preview.triptychID == services.manifest.id else {
-            throw ResearchRecoveryPolicyError.stalePreview
-        }
-        let current = try await recoveryPolicy()
-        guard current.revision == preview.expectedPolicyRevision else {
-            throw ResearchRecoveryPolicyError.staleRevision
-        }
-        let freshPreview = try await prepareRecoveryPolicyChange(
-            preview.retention,
-            expectedRevision: preview.expectedPolicyRevision
-        )
-        guard freshPreview.snapshotIDsToRemove == preview.snapshotIDsToRemove,
-              freshPreview.affectedNoteCount == preview.affectedNoteCount else {
-            throw ResearchRecoveryPolicyError.stalePreview
-        }
-        if preview.snapshotIDsToRemove.isEmpty {
-            _ = try await services.researchRecoveryPolicyStore.save(
-                preview.retention,
-                expectedRevision: preview.expectedPolicyRevision
-            )
-        } else {
-            let pending = try await services.researchRecoveryPolicyStore.beginChange(
-                preview.retention,
-                approvedSnapshotIDsToRemove: preview.snapshotIDsToRemove,
-                expectedRevision: preview.expectedPolicyRevision
-            )
-            do {
-                for repository in services.repositories.values {
-                    _ = try await repository.removeSettledSnapshots(
-                        preview.snapshotIDsToRemove
-                    )
-                }
-                _ = try await services.researchRecoveryPolicyStore.finishPendingChange(
-                    retention: preview.retention,
-                    approvedSnapshotIDsToRemove: preview.snapshotIDsToRemove,
-                    expectedRevision: pending.snapshot.revision
-                )
-            } catch {
-                // The machine-local policy retains the exact researcher-
-                // approved removal IDs. A later policy read retries only that
-                // bounded set before clearing the durable pending state.
-                throw error
-            }
-        }
-        return ResearchRecoveryPolicyApplyOutcome(
-            snapshot: try await recoveryPolicy(),
-            removedSnapshotCount: preview.snapshotIDsToRemove.count
-        )
-    }
-
-    private func completePendingRecoveryPolicyChange() async throws
-        -> ResearchRecoveryPolicySnapshot {
-        let stored = try await services.researchRecoveryPolicyStore.state()
-        guard !stored.pendingSnapshotIDsToRemove.isEmpty else {
-            return stored.snapshot
-        }
-        for repository in services.repositories.values {
-            _ = try await repository.removeSettledSnapshots(
-                stored.pendingSnapshotIDsToRemove
-            )
-        }
-        return try await services.researchRecoveryPolicyStore.finishPendingChange(
-            retention: stored.snapshot.retention,
-            approvedSnapshotIDsToRemove: stored.pendingSnapshotIDsToRemove,
-            expectedRevision: stored.snapshot.revision
-        )
-    }
-
-    func settledSnapshots(noteID: UUID?) async throws -> [SettledRevisionSnapshot] {
-        try requireActive()
-        var snapshots: [SettledRevisionSnapshot] = []
-        for repository in services.repositories.values {
-            snapshots.append(contentsOf: try await repository.settledSnapshots(noteID: noteID))
-        }
-        return snapshots.sorted {
-            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
-            return $0.id.uuidString < $1.id.uuidString
-        }
     }
 
     func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
@@ -883,7 +700,7 @@ extension WorkspaceHandle {
                 .min(by: { $0.startedAt < $1.startedAt }),
                 firstCommitted.expectedRevision == startingRevision,
                 firstCommitted.observedRevision == firstCommitted.intendedRevision else {
-                throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
+                throw ResearchRecordChangeRecoveryOperationError.changeEvidenceMismatch(noteID)
             }
             guard let current = try await currentResearchSource(noteID: noteID) else {
                 plans.append(.unavailable(noteID: noteID))
@@ -891,7 +708,7 @@ extension WorkspaceHandle {
             }
             guard Self.vaultRole(entry.role)
                     == (try vault(id: current.note.vaultID)).role else {
-                throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
+                throw ResearchRecordChangeRecoveryOperationError.changeEvidenceMismatch(noteID)
             }
             if current.document.fingerprint == startingRevision {
                 plans.append(.alreadyRestored(
@@ -907,43 +724,38 @@ extension WorkspaceHandle {
                 ))
                 continue
             }
-            guard let checkpointID = firstCommitted.checkpointID else {
-                throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
+            guard let evidenceID = firstCommitted.changeEvidenceID else {
+                throw ResearchRecordChangeRecoveryOperationError
+                    .changeEvidenceMismatch(noteID)
             }
-            let area = try checkpointArea(vaultID: current.note.vaultID)
-            let checkpoint = try await services.checkpointStore.checkpoint(
-                id: checkpointID
+            let evidence = try await services.agentChangeEvidenceStore.evidence(
+                id: evidenceID
             )
-            let sourceKey = TriptychCheckpointFileKey(
-                area: area,
-                relativePath: entry.note.relativePath
-            )
-            guard checkpoint.triptychID == record.triptychID,
-                  checkpoint.kind == .researchContinuation,
-                  let sourceRecord = checkpoint.files.first(where: {
-                    $0.key == sourceKey
-                  }),
-                  sourceRecord.fingerprint == startingRevision else {
-                throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
+            guard evidence.triptychID == record.triptychID,
+                  evidence.runID == record.id,
+                  evidence.noteID == noteID,
+                  evidence.startingRevision == startingRevision,
+                  evidence.endingRevision == change.endingRevision else {
+                throw ResearchRecordChangeRecoveryOperationError
+                    .changeEvidenceMismatch(noteID)
             }
-            let sourceBytes = try await services.checkpointStore.fileData(
-                checkpointID: checkpoint.id,
-                key: sourceKey
+            let sourceBytes = try await services.agentChangeEvidenceStore.startingData(
+                id: evidenceID,
+                runID: record.id,
+                noteID: noteID,
+                expectedRevision: startingRevision
             )
             guard DocumentFingerprint(data: sourceBytes) == startingRevision else {
-                throw ResearchRecordChangeRecoveryOperationError.checkpointMismatch(noteID)
+                throw ResearchRecordChangeRecoveryOperationError
+                    .changeEvidenceMismatch(noteID)
             }
             plans.append(.restore(
                 noteID: noteID,
                 note: current.note,
                 startingRevision: startingRevision,
                 endingRevision: change.endingRevision,
-                checkpointID: checkpoint.id,
-                sourceKey: sourceKey,
-                destinationKey: TriptychCheckpointFileKey(
-                    area: area,
-                    relativePath: current.note.relativePath
-                )
+                evidenceID: evidenceID,
+                startingData: sourceBytes
             ))
         }
 
@@ -974,19 +786,19 @@ extension WorkspaceHandle {
                 let note,
                 let startingRevision,
                 let endingRevision,
-                let checkpointID,
-                let sourceKey,
-                let destinationKey
+                _,
+                let startingData
             ):
                 sourceMutationAttempted = true
                 do {
-                    _ = try await services.checkpointStore.restoreResearchActionNoteFile(
-                        checkpointID: checkpointID,
-                        sourceKey: sourceKey,
-                        destinationKey: destinationKey,
-                        expectedDestinationRevision: endingRevision,
-                        roots: services.roots,
-                        repositories: repositoriesBySlot()
+                    guard let startingContent = NoteDocument
+                        .decodeUTF8PreservingBOM(startingData) else {
+                        throw CocoaError(.fileReadInapplicableStringEncoding)
+                    }
+                    _ = try await repository(vaultID: note.vaultID).save(
+                        relativePath: note.relativePath,
+                        changeSet: .exactContent(startingContent),
+                        expectedRevision: endingRevision
                     )
                     let readback = try await repository(vaultID: note.vaultID).load(
                         relativePath: note.relativePath
@@ -1098,8 +910,6 @@ extension WorkspaceHandle {
         let record = try await services.portableResearchRecordStore.record(id: recordID)
         guard let change = record.confirmedChanges.first(where: {
             $0.noteID == noteID
-        }), let participant = record.participatingNotes.first(where: {
-            $0.noteID == change.noteID
         }) else {
             throw ResearchRecordChangeRecoveryOperationError.confirmedChangeNotFound(noteID)
         }
@@ -1107,13 +917,36 @@ extension WorkspaceHandle {
             throw ResearchRecordChangeRecoveryOperationError
                 .createdNoteHasNoPreimage(noteID)
         }
-        let startingData = try await exactResearchRecordRevision(
-            startingRevision,
-            participant: participant
+        let execution = try await services.localResearchExecutionStore.record(
+            id: record.id
         )
-        let endingData = try await exactResearchRecordRevision(
-            change.endingRevision,
-            participant: participant
+        guard execution.triptychID == record.triptychID,
+              let entry = execution.boundedWriteSet.entries.first(where: {
+                $0.noteID == noteID
+              }),
+              let firstCommitted = execution.documentWriteRecords
+                .filter({
+                    $0.target == entry.handle
+                        && $0.actor == .agent
+                        && $0.state == .committed
+                })
+                .min(by: { $0.startedAt < $1.startedAt }),
+              firstCommitted.expectedRevision == startingRevision,
+              let evidenceID = firstCommitted.changeEvidenceID else {
+            throw ResearchRecordChangeRecoveryOperationError
+                .changeEvidenceMismatch(noteID)
+        }
+        let startingData = try await services.agentChangeEvidenceStore.startingData(
+            id: evidenceID,
+            runID: record.id,
+            noteID: noteID,
+            expectedRevision: startingRevision
+        )
+        let endingData = try await services.agentChangeEvidenceStore.endingData(
+            id: evidenceID,
+            runID: record.id,
+            noteID: noteID,
+            expectedRevision: change.endingRevision
         )
         let comparisonTask = Task.detached(priority: .userInitiated) {
             try ExactSourceComparisonBuilder.build(
@@ -1130,148 +963,7 @@ extension WorkspaceHandle {
         }
     }
 
-    // MARK: Checkpoints and Recovery
-
-    func createCheckpoint(
-        name: String,
-        kind: TriptychCheckpointKind
-    ) async throws -> TriptychCheckpoint {
-        try requireActive()
-        let checkpoint = try await services.checkpointStore.create(
-            name: name,
-            kind: kind,
-            roots: services.roots
-        )
-        try await refreshAfterResearchCommit("The checkpoint")
-        return checkpoint
-    }
-
-    func prepareCheckpointsLocation() async throws -> URL {
-        try requireActive()
-        return try await services.checkpointStore.prepareStorageLocation()
-    }
-
-    func checkpoints() async throws -> TriptychCheckpointListing {
-        try requireActive()
-        return await services.checkpointStore.listing()
-    }
-
-    func noteCheckpoints(
-        for noteID: VaultQualifiedNoteID
-    ) async throws -> [TriptychCheckpoint] {
-        try requireActive()
-        let (stableID, area) = try checkpointNoteContext(noteID)
-        var matches: [TriptychCheckpoint] = []
-        for checkpoint in await services.checkpointStore.listing().checkpoints {
-            if try await checkpointNoteKey(
-                checkpoint: checkpoint,
-                currentNote: noteID,
-                stableID: stableID,
-                area: area
-            ) != nil {
-                matches.append(checkpoint)
-            }
-        }
-        return matches
-    }
-
-    func checkpointNoteContent(
-        _ checkpointID: UUID,
-        note noteID: VaultQualifiedNoteID
-    ) async throws -> String {
-        try requireActive()
-        let (stableID, area) = try checkpointNoteContext(noteID)
-        let checkpoint = try await services.checkpointStore.checkpoint(id: checkpointID)
-        guard let key = try await checkpointNoteKey(
-            checkpoint: checkpoint,
-            currentNote: noteID,
-            stableID: stableID,
-            area: area
-        ) else {
-            throw TriptychCheckpointError.invalidRelativePath(noteID.relativePath)
-        }
-        let data = try await services.checkpointStore.fileData(
-            checkpointID: checkpointID,
-            key: key
-        )
-        guard let source = NoteDocument.decodeUTF8PreservingBOM(data) else {
-            throw CocoaError(.fileReadInapplicableStringEncoding)
-        }
-        return source
-    }
-
-    func checkpointComparison(
-        _ checkpointID: UUID
-    ) async throws -> [TriptychCheckpointChange] {
-        try requireActive()
-        return try await services.checkpointStore.comparison(
-            checkpointID: checkpointID,
-            roots: services.roots
-        )
-    }
-
-    func restoreNote(
-        _ noteID: VaultQualifiedNoteID,
-        from checkpointID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychCheckpointRestoreResult {
-        let context = try await researchContext(
-            for: noteID,
-            expectedRevision: expectedRevision,
-            permits: { $0 != .other },
-            unavailable: { ResearchOperationError.commentUnavailable($0) }
-        )
-        let area = try checkpointArea(vaultID: noteID.vaultID)
-        let checkpoint = try await services.checkpointStore.checkpoint(id: checkpointID)
-        guard let sourceKey = try await checkpointNoteKey(
-            checkpoint: checkpoint,
-            currentNote: noteID,
-            stableID: context.identity.id,
-            area: area
-        ) else {
-            throw TriptychCheckpointError.invalidRelativePath(noteID.relativePath)
-        }
-        let destinationKey = TriptychCheckpointFileKey(
-            area: area,
-            relativePath: noteID.relativePath
-        )
-        let result = try await services.checkpointStore.restoreNoteFile(
-            checkpointID: checkpointID,
-            sourceKey: sourceKey,
-            destinationKey: destinationKey,
-            expectedDestinationRevision: expectedRevision,
-            roots: services.roots,
-            repositories: repositoriesBySlot()
-        )
-        try await refreshAfterCommittedOperation(
-            "The checkpoint restore",
-            publication: .sourceCommitted(
-                noteID,
-                .checkpointRestore(checkpointID: checkpointID)
-            ),
-            affectedVaultIDs: [noteID.vaultID]
-        )
-        return result
-    }
-
-    func restoreCheckpoint(
-        _ checkpointID: UUID,
-        selection: TriptychCheckpointRestoreSelection
-    ) async throws -> TriptychCheckpointRestoreResult {
-        try requireActive()
-        let result = try await services.checkpointStore.restore(
-            checkpointID: checkpointID,
-            selection: selection,
-            roots: services.roots,
-            repositories: repositoriesBySlot()
-        )
-        try await refreshAfterCommittedOperation(
-            "The checkpoint restore",
-            publication: .explicit,
-            affectedVaultIDs: Set(assignment.vaults.values.map(\.id))
-        )
-        return result
-    }
+    // MARK: Interrupted Mutation Recovery
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
         try requireActive()
@@ -1466,7 +1158,7 @@ extension WorkspaceHandle {
               entry.note.vaultID == file.vaultID,
               entry.note.relativePath == file.path,
               write.expectedRevision == nil,
-              write.checkpointID == nil,
+              write.changeEvidenceID == nil,
               write.intendedRevision == intendedRevision else {
             throw TriptychTransactionError.invalidPlan(
                 "The Agent creation recovery no longer matches its Run target."
@@ -1953,121 +1645,6 @@ extension WorkspaceHandle {
         default:
             return error
         }
-    }
-
-    private func repositoriesBySlot() -> [WorkspaceVaultSlot: VaultRepository] {
-        Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.compactMap { slot in
-            guard let vault = assignment.vault(for: slot),
-                  let repository = services.repositories[vault.id] else { return nil }
-            return (slot, repository)
-        })
-    }
-
-    private func checkpointNoteContext(
-        _ noteID: VaultQualifiedNoteID
-    ) throws -> (stableID: UUID, area: TriptychCheckpointArea) {
-        guard let note = currentSnapshot.document(id: noteID),
-              note.lifecycle == .active,
-              case .resolved(let stableID) = note.stableIdentity else {
-            throw ResearchOperationError.noteUnavailable(noteID)
-        }
-        return (stableID, try checkpointArea(vaultID: noteID.vaultID))
-    }
-
-    private func exactResearchRecordRevision(
-        _ revision: DocumentFingerprint,
-        participant: PortableResearchNoteRevision
-    ) async throws -> Data {
-        let current = currentSnapshot.vaults.lazy.flatMap(\.documents).first {
-            $0.stableIdentity.resolvedID == participant.noteID
-                && $0.fingerprint == revision
-        }
-        if let current { return current.document.sourceBytes }
-
-        var repositories: [(VaultRepository, [String])] = []
-        if let repository = services.repositories[participant.note.vaultID] {
-            repositories.append((repository, [participant.note.relativePath]))
-        }
-        if let current = currentSnapshot.vaults.lazy.flatMap(\.documents).first(where: {
-            $0.stableIdentity.resolvedID == participant.noteID
-        }), let repository = services.repositories[current.id.vaultID] {
-            if let index = repositories.firstIndex(where: { $0.0 === repository }) {
-                repositories[index].1.append(current.id.relativePath)
-            } else {
-                repositories.append((repository, [current.id.relativePath]))
-            }
-        }
-        for (repository, paths) in repositories {
-            try Task.checkCancellation()
-            for path in Set(paths) {
-                for entry in await repository.recoveryEntries(relativePath: path)
-                    where entry.fingerprint == revision {
-                    try Task.checkCancellation()
-                    let data = try await repository.recoveryData(entryID: entry.id)
-                    if DocumentFingerprint(data: data) == revision { return data }
-                }
-            }
-        }
-
-        let area = try checkpointArea(vaultID: participant.note.vaultID)
-        for checkpoint in await services.checkpointStore.listing().checkpoints {
-            try Task.checkCancellation()
-            var keys: [TriptychCheckpointFileKey] = []
-            if let identityKey = try await services.checkpointStore.noteFileKey(
-                checkpointID: checkpoint.id,
-                noteID: participant.noteID,
-                area: area
-            ) {
-                keys.append(identityKey)
-            }
-            keys.append(TriptychCheckpointFileKey(
-                area: area,
-                relativePath: participant.note.relativePath
-            ))
-            if let current = currentSnapshot.vaults.lazy.flatMap(\.documents).first(where: {
-                $0.stableIdentity.resolvedID == participant.noteID
-            }) {
-                keys.append(TriptychCheckpointFileKey(
-                    area: area,
-                    relativePath: current.id.relativePath
-                ))
-            }
-            for key in Set(keys) where checkpoint.files.contains(where: {
-                $0.key == key && $0.fingerprint == revision
-            }) {
-                let data = try await services.checkpointStore.fileData(
-                    checkpointID: checkpoint.id,
-                    key: key
-                )
-                if DocumentFingerprint(data: data) == revision { return data }
-            }
-        }
-        throw ExactSourceComparisonError.exactRevisionUnavailable(revision)
-    }
-
-    private func checkpointNoteKey(
-        checkpoint: TriptychCheckpoint,
-        currentNote: VaultQualifiedNoteID,
-        stableID: UUID,
-        area: TriptychCheckpointArea
-    ) async throws -> TriptychCheckpointFileKey? {
-        let direct = TriptychCheckpointFileKey(
-            area: area,
-            relativePath: currentNote.relativePath
-        )
-        let identities = TriptychCheckpointFileKey(
-            area: .control,
-            relativePath: "identities.json"
-        )
-        let hasIdentitySnapshot = checkpoint.files.contains { $0.key == identities }
-        if !hasIdentitySnapshot {
-            return checkpoint.files.contains { $0.key == direct } ? direct : nil
-        }
-        return try await services.checkpointStore.noteFileKey(
-            checkpointID: checkpoint.id,
-            noteID: stableID,
-            area: area
-        )
     }
 
     private func availableCritiquePath(

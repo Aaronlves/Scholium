@@ -16,6 +16,7 @@ final class WindowSearchController: ObservableObject {
     struct Dependencies {
         let loadSavedSearches: @MainActor () async throws -> [SavedSearch]
         let saveSavedSearches: @MainActor ([SavedSearch]) async throws -> Void
+        let recoverSavedSearches: @MainActor () async throws -> URL?
         let executionContext: @MainActor (
             SearchWorkspaceState
         ) async throws -> DiscoverySearchExecutionContext
@@ -38,6 +39,7 @@ final class WindowSearchController: ObservableObject {
     }
 
     @Published private(set) var savedSearches: [SavedSearch] = []
+    @Published private(set) var savedSearchLoadFailure: String?
 
     private let discoveryController: DiscoveryController
     private let dependencies: Dependencies
@@ -75,11 +77,27 @@ final class WindowSearchController: ObservableObject {
             guard let self else { return }
             do {
                 let searches = try await dependencies.loadSavedSearches()
+                if savedSearchLoadFailure != nil {
+                    savedSearchLoadFailure = nil
+                }
                 guard !Task.isCancelled, savedSearches != searches else { return }
                 savedSearches = searches
             } catch {
+                savedSearchLoadFailure = error.localizedDescription
                 dependencies.reportLoadFailure(error.localizedDescription)
             }
+        }
+    }
+
+    func recoverSavedSearches() async {
+        do {
+            _ = try await dependencies.recoverSavedSearches()
+            let searches = try await dependencies.loadSavedSearches()
+            savedSearches = searches
+            savedSearchLoadFailure = nil
+        } catch {
+            savedSearchLoadFailure = error.localizedDescription
+            dependencies.reportLoadFailure(error.localizedDescription)
         }
     }
 

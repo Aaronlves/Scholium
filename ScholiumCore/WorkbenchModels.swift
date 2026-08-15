@@ -10,11 +10,18 @@ public actor SavedSearchStore {
     }
 
     public func load() throws -> [SavedSearch] {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        guard ExactStatePreserver.entryExists(at: fileURL) else {
             loadFailure = nil
             return []
         }
         do {
+            let values = try fileURL.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                throw CocoaError(.fileReadUnsupportedScheme)
+            }
             let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
             // Array order is researcher-defined presentation state. Preserve
             // the persisted order instead of silently sorting by creation date.
@@ -34,6 +41,32 @@ public actor SavedSearchStore {
             withIntermediateDirectories: true
         )
         try JSONEncoder.scholium.encode(searches).write(to: fileURL, options: .atomic)
+    }
+
+    /// Explicitly preserves an unreadable Saved Search document, then returns
+    /// to the missing-file empty state. A valid replacement is never moved.
+    @discardableResult
+    public func preserveUnreadableAndReset() throws -> URL? {
+        guard ExactStatePreserver.entryExists(at: fileURL) else {
+            loadFailure = nil
+            return nil
+        }
+        let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
+        if (try? JSONDecoder.scholium.decode([SavedSearch].self, from: data)) != nil {
+            loadFailure = nil
+            return nil
+        }
+        let preserved = try ExactStatePreserver.preserve(
+            fileURL,
+            kind: .regularFile,
+            recoveryStem: "saved-searches.corrupt",
+            recoveryExtension: "json",
+            fileEligibility: {
+                (try? JSONDecoder.scholium.decode([SavedSearch].self, from: $0)) == nil
+            }
+        )
+        loadFailure = nil
+        return preserved
     }
 }
 

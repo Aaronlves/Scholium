@@ -60,9 +60,11 @@ rechecks the presented Action, object identity/revision, focal Materials,
 source access, registration, primary method, Practices, Profile, current
 Triptych collaboration policy, and repository/recovery readiness. It creates
 one Run and inserts the displayed initial object into its Bounded Write Set.
-No whole-Triptych checkpoint is automatic. Every later mediated existing-Note
-write creates per-Note Before Agent Work exact-byte recovery through the sole
-repository transaction.
+For every existing writable Note, `AgentChangeEvidenceStore` captures one exact
+Run- and Note-bound starting revision before Agent access. Confirmed writes
+advance its ending revision. This machine-local evidence serves only Record
+diff and direct Undo; ordinary repository transactions continue to own
+interrupted-save recovery.
 
 `ResearchActionController` distinguishes one active sheet's preparation from
 a global cancellation barrier. Presentation invalidation cancels its task; a
@@ -145,7 +147,8 @@ directly, or copies source bytes, bookmarks, or paths into Research Context.
 Researcher State is separately rebuilt on demand for the Action target Note
 from current Settlement, Researcher Evaluation, Critique disposition, and
 attributed active-Discussion owners. It is neither stored by the provider nor
-expanded from the machine-local recovery pin underlying Settle.
+expanded into source history: Settle has no machine-local source version or
+recovery pin.
 
 Search remains the only parser/ranker and keeps Note and Record identities
 discriminated. Direct Relations remain same-manifest explicit Markdown
@@ -185,9 +188,9 @@ complete outer envelope before it writes a frame.
 Continue Result schema 3 and authenticated Run Context schema 6 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 12 persists the same child handoff and the independent
-Zotero-binding write ledger. Authenticated Run Context
-schema 6 also carries one optional typed Zotero Integration Adapter containing
+Execution schema 13 persists the same child handoff, independent
+Zotero-binding write ledger, and change-evidence references. Authenticated Run
+Context schema 6 also carries one optional typed Zotero Integration Adapter containing
 the exact release-managed System Skill and capability contract. Application
 includes it only for an Analysis target with frozen Zotero context and a
 Zotero-capable Platform Action; the adapter contains no authority or transport.
@@ -320,7 +323,7 @@ tombstone; no other operation can recreate or reparent them.
 Action completion derives each modified change's starting revision from the
 expected revision of its first `committed` Agent write record, not the Run-start
 participant revision or an earlier conflict/abandonment. A created change has
-no starting revision and cannot enter checkpoint comparison or direct Undo. Its
+no starting revision and cannot enter exact comparison or direct Undo. Its
 participant baseline is the first jointly committed source-and-identity
 revision; its ending revision is the last confirmed readback after any later
 authorized writes. Manuscript
@@ -338,22 +341,21 @@ and review time are the only durable Review facts.
 
 Direct undo preflights every selected confirmed
 change against its Local Execution entry, first committed write, exact
-research-continuation checkpoint metadata and bytes, current controlled stable
-identity/path/role, and Agent ending revision. Core's dedicated
-`restoreResearchActionNoteFile` alone permits a verified research-continuation
-source to restore a renamed destination, while the ordinary checkpoint API
-retains its stricter same-path rule. Core still creates Before Restore, replaces
-one document atomically, and reads back. Application returns observed
+`AgentChangeEvidenceStore` binding and starting bytes, current controlled stable
+identity/path/role, and Agent ending revision. Application restores the complete
+starting source only while current source still equals the ending revision,
+using the ordinary revision-checked repository save. A stable rename is
+resolved before that save. Application returns observed
 per-document recovery facts; multi-document requests are not a durable
 transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-12 Local Execution, exact
+`noteReviewStates`, and `resultArrivals` from schema-13 Local Execution, exact
 schema-9 Record reads, and schema-1 Note Reviews. The projections
 contains only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
-omits pairing codes, Session secrets, checkpoint IDs, source bytes, prompts,
+omits pairing codes, Session secrets, change-evidence IDs, source bytes, prompts,
 and tool traces. Needs Attention follows the current bounded-entry/recovery
 state, not an immutable historical conflict record. A formed Record ends its
 Action activity immediately; only confirmed Agent changes create per-Note
@@ -448,7 +450,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-12
+the one current `methodImprovementRun` in its parent Local Execution schema-13
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every

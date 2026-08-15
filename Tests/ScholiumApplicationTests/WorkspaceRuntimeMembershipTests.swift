@@ -92,6 +92,149 @@ struct WorkspaceRuntimeMembershipTests {
         await runtime.shutdown()
     }
 
+    @Test("Removing an unavailable registration does not open deleted vaults or decode portable schema")
+    func removeUnavailableRegistrationWithoutOpeningSource() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ScholiumUnavailableRegistration-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("Application Support", isDirectory: true)
+        let registryStorage = root.appendingPathComponent("Registry", isDirectory: true)
+        let analyses = root.appendingPathComponent("Analyses", isDirectory: true)
+        let topics = root.appendingPathComponent("Topics", isDirectory: true)
+        let works = root.appendingPathComponent("Works", isDirectory: true)
+        let portable = root.appendingPathComponent(".scholium", isDirectory: true)
+        for directory in [support, registryStorage, analyses, topics, works, portable] {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+        }
+        let seedingRuntime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: support,
+            workspaceRegistryStorageURL: registryStorage
+        )))
+        let assignment = try await seedingRuntime.configureTriptych(
+            paperAnalysisURL: analyses,
+            topicKnowledgeURL: topics,
+            outputURL: works,
+            portableContainerURL: root,
+            triptychName: "Unavailable"
+        ).assignment
+        await seedingRuntime.shutdown()
+        let incompatibleManifest = Data(#"{"schemaVersion":0,"doNotInterpret":true}"#.utf8)
+        let manifestURL = portable.appendingPathComponent("manifest.json")
+        try incompatibleManifest.write(to: manifestURL)
+        try FileManager.default.removeItem(at: analyses)
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: support,
+            workspaceRegistryStorageURL: registryStorage
+        )))
+
+        try await runtime.removeLocalTriptychRegistration(id: assignment.id)
+
+        #expect(try await runtime.availableWorkspaces().isEmpty)
+        #expect(try Data(contentsOf: manifestURL) == incompatibleManifest)
+        #expect(!FileManager.default.fileExists(atPath: analyses.path))
+        #expect(FileManager.default.fileExists(atPath: topics.path))
+        #expect(FileManager.default.fileExists(atPath: works.path))
+        await runtime.shutdown()
+    }
+
+    @Test("An active workspace blocks machine-local registration removal")
+    func activeWorkspaceBlocksRegistrationRemoval() async throws {
+        let fixture = try await RuntimeMembershipFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.liveRuntime()
+        _ = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        do {
+            try await runtime.removeLocalTriptychRegistration(id: fixture.assignment.id)
+            Issue.record("An active workspace allowed its registration to disappear.")
+        } catch let error as ScholiumApplicationError {
+            guard case .workspaceRegistrationInUse(let id) = error else {
+                Issue.record("Unexpected registration-removal error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            #expect(id == fixture.assignment.id)
+        }
+
+        #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
+        await runtime.shutdown()
+    }
+
+    @Test("Unsupported portable control can be archived and the same Triptych reopened")
+    func unsupportedPortableControlRecovery() async throws {
+        let fixture = try await RuntimeMembershipFixture.make()
+        defer { fixture.remove() }
+        let researchFiles = [
+            fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            fixture.topicsURL.appendingPathComponent("Topic.md"),
+            fixture.worksURL.appendingPathComponent("Draft.md"),
+        ]
+        let researchBytes = [Data("analysis".utf8), Data([0, 1, 2]), Data("draft".utf8)]
+        for (url, data) in zip(researchFiles, researchBytes) { try data.write(to: url) }
+        let control = fixture.rootURL.appendingPathComponent(".scholium", isDirectory: true)
+        let settingsURL = control.appendingPathComponent("settings.json")
+        let oldSettings = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
+        try oldSettings.write(to: settingsURL)
+        let registryURL = fixture.registryStorageURL.appendingPathComponent(
+            "workspace-registry-v2.json"
+        )
+        let registryBeforeFailure = try Data(contentsOf: registryURL)
+        let runtime = fixture.liveRuntime()
+
+        await #expect(throws: ScholiumApplicationError.self) {
+            _ = try await runtime.configureTriptych(
+                paperAnalysisURL: fixture.analysesURL,
+                topicKnowledgeURL: fixture.topicsURL,
+                outputURL: fixture.worksURL,
+                portableContainerURL: fixture.rootURL,
+                triptychID: fixture.assignment.id,
+                triptychName: fixture.assignment.triptych.name
+            )
+        }
+        #expect(try Data(contentsOf: settingsURL) == oldSettings)
+        #expect(try Data(contentsOf: registryURL) == registryBeforeFailure)
+
+        let preserved = try await runtime.preserveUnsupportedPortableControl(
+            portableContainerURL: fixture.rootURL,
+            worksURL: fixture.worksURL,
+            triptychID: fixture.assignment.id
+        )
+        #expect(try Data(contentsOf: preserved.appendingPathComponent("settings.json"))
+            == oldSettings)
+        let opened = try await runtime.configureTriptych(
+            paperAnalysisURL: fixture.analysesURL,
+            topicKnowledgeURL: fixture.topicsURL,
+            outputURL: fixture.worksURL,
+            portableContainerURL: fixture.rootURL,
+            triptychID: fixture.assignment.id,
+            triptychName: fixture.assignment.triptych.name
+        )
+        #expect(opened.assignment.id == fixture.assignment.id)
+        for (url, data) in zip(researchFiles, researchBytes) {
+            #expect(try Data(contentsOf: url) == data)
+        }
+        do {
+            _ = try await runtime.preserveUnsupportedPortableControl(
+                portableContainerURL: fixture.rootURL,
+                worksURL: fixture.worksURL,
+                triptychID: fixture.assignment.id
+            )
+            Issue.record("An active Triptych allowed its portable control owner to move.")
+        } catch let error as ScholiumApplicationError {
+            guard case .workspaceRegistrationInUse = error else {
+                Issue.record("Unexpected active portable-control recovery error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Snapshot runtime freezes membership and rejects registry or presentation mutations")
     func snapshotIsReadOnly() async throws {
         let fixture = try await RuntimeMembershipFixture.make()

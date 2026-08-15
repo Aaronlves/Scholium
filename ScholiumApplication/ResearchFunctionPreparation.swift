@@ -456,7 +456,7 @@ extension ResearchFunctionCoordinator {
         continuationLineage: ResearchContinuationLineage? = nil,
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
-        requiresAutomaticCheckpoint: Bool = true,
+        requiresAgentChangeEvidence: Bool = true,
         suppressRefresh: Bool = false,
         host: isolated Host
     ) async throws -> ResearchFunctionPreparation {
@@ -549,28 +549,18 @@ extension ResearchFunctionCoordinator {
         }
 
         let runID = runIDOverride ?? commentOnlyDiscussion?.id ?? UUID()
-        // Every writable Action reserves exact source recovery before Agent
-        // access. Continuations use the same one-Note checkpoint primitive;
-        // extension targets add their own checkpoints only after authorization.
-        let checkpoint: TriptychCheckpoint?
-        if requiresAutomaticCheckpoint,
-           request.function.requiresCheckpoint,
-           request.function != .critique {
-            let checkpointName: String
-            if resynthesisContext != nil {
-                checkpointName = "Before Resynthesis"
-            } else {
-                checkpointName = "Before Agent Work"
-            }
-            checkpoint = try await dependencies.checkpointStore
-                .createResearchContinuation(
-                name: checkpointName,
-                key: researchContinuationCheckpointKey(for: request.target),
-                expectedFingerprint: request.target.fingerprint,
-                roots: dependencies.roots
+        // Every existing Note that a Run may change receives one exact,
+        // Run-bound starting revision before Agent access. This is direct
+        // change evidence, not a general version history.
+        let changeEvidence: AgentChangeEvidence?
+        if requiresAgentChangeEvidence,
+           request.function.requiresAgentChangeEvidence {
+            changeEvidence = try await captureAgentChangeStartingRevision(
+                runID: runID,
+                target: request.target
             )
         } else {
-            checkpoint = nil
+            changeEvidence = nil
         }
 
         do {
@@ -595,9 +585,9 @@ extension ResearchFunctionCoordinator {
                 )
             }
         } catch {
-            if let checkpoint {
-                _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
-                    id: checkpoint.id
+            if let changeEvidence {
+                try? await dependencies.agentChangeEvidenceStore.discard(
+                    id: changeEvidence.id
                 )
             }
             throw error
@@ -620,7 +610,7 @@ extension ResearchFunctionCoordinator {
             actionSnapshot: actionSnapshot,
             recordKind: request.function == .discuss ? .discuss : .functionEnvelope,
             recordID: runID,
-            checkpointID: checkpoint?.id,
+            changeEvidenceID: changeEvidence?.id,
             // Manuscript does not impose one universal philosophical pipeline.
             // Develop and Revise expose only a pending Fidelity child here: its
             // exact workflow is prepared later against the final fingerprint.
@@ -678,7 +668,7 @@ extension ResearchFunctionCoordinator {
         )
         let deliveryInstructions = liveInstructions
         do {
-            // Close the race opened by method loading and checkpoint creation.
+            // Close the race opened by method loading and evidence capture.
             _ = try await validateResearchFunctionTarget(
                 request.target,
                 expected: request.target.fingerprint,
@@ -738,9 +728,9 @@ extension ResearchFunctionCoordinator {
                     }
             }
         } catch {
-            if let checkpoint {
-                _ = try? await dependencies.checkpointStore.discardAutomaticCheckpoint(
-                    id: checkpoint.id
+            if let changeEvidence {
+                try? await dependencies.agentChangeEvidenceStore.discard(
+                    id: changeEvidence.id
                 )
             }
             try? await dependencies.localExecutionStore.discardUncompleted(

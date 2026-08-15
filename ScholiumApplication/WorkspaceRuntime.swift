@@ -18,6 +18,24 @@ public enum WorkspaceRegistryRecoveryOperations {
             storageURL: storageURL
         )
     }
+
+    public static func machineLocalHealth(
+        applicationSupportURL: URL
+    ) -> MachineLocalRegistryHealth {
+        MachineLocalAccessRegistryRecovery.health(
+            applicationSupportURL: applicationSupportURL
+        )
+    }
+
+    @discardableResult
+    public static func preserveDamagedMachineLocalRegistriesForRelinking(
+        applicationSupportURL: URL
+    ) throws -> [URL] {
+        try MachineLocalAccessRegistryRecovery
+            .preserveDamagedRegistriesForRelinking(
+                applicationSupportURL: applicationSupportURL
+            )
+    }
 }
 
 /// Process-level composition root for headless Scholium workspaces.
@@ -198,6 +216,56 @@ public actor WorkspaceRuntime {
             if order != .orderedSame { return order == .orderedAscending }
             return $0.id.uuidString < $1.id.uuidString
         }
+    }
+
+    /// Removes one unavailable machine-local registration without opening or
+    /// inspecting its vaults. Active runtimes must be closed first so a
+    /// registered source cannot disappear beneath an owned document session.
+    public func removeLocalTriptychRegistration(id: UUID) async throws {
+        try requireActive()
+        guard case .live(let registry, _, _, _) = membership else {
+            throw ScholiumApplicationError.runtimeConfigurationUnavailable
+        }
+        guard handles[id] == nil,
+              openings[id] == nil,
+              !retainedHandles.values.contains(where: { $0.assignment.id == id }) else {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(id)
+        }
+        try await registry.removeTriptychRegistration(id: id)
+    }
+
+    /// Explicitly archives one unsupported `.scholium` owner so the selected
+    /// folders can be configured against current control state. This requires
+    /// a fresh folder authorization and refuses any active/opening Triptych.
+    @discardableResult
+    public func preserveUnsupportedPortableControl(
+        portableContainerURL: URL,
+        worksURL: URL,
+        triptychID: UUID? = nil
+    ) async throws -> URL {
+        try requireActive()
+        guard case .live = membership else {
+            throw ScholiumApplicationError.runtimeConfigurationUnavailable
+        }
+        if let triptychID,
+           handles[triptychID] != nil || openings[triptychID] != nil
+                || retainedHandles.values.contains(where: { $0.assignment.id == triptychID }) {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
+        }
+        let container = portableContainerURL.resolvingSymlinksInPath().standardizedFileURL
+        let expected = worksURL.standardizedFileURL.deletingLastPathComponent()
+            .resolvingSymlinksInPath().standardizedFileURL
+        guard container.path == expected.path else {
+            throw PortableControlAccessRegistryError.invalidContainer(
+                expected: expected.path,
+                selected: container.path
+            )
+        }
+        let scopeStarted = portableContainerURL.startAccessingSecurityScopedResource()
+        defer { if scopeStarted { portableContainerURL.stopAccessingSecurityScopedResource() } }
+        return try await TriptychControlStore.preserveUnsupportedControlBundle(
+            worksVaultURL: worksURL
+        )
     }
 
     /// Builds a deterministic, source-only workspace bootstrap candidate.
@@ -385,6 +453,15 @@ public actor WorkspaceRuntime {
         try await savedSearchStore.save(searches)
     }
 
+    @discardableResult
+    public func preserveUnreadableSavedSearchesAndReset() async throws -> URL? {
+        try requireActive()
+        guard case .live = membership else {
+            throw ScholiumApplicationError.runtimeConfigurationUnavailable
+        }
+        return try await savedSearchStore.preserveUnreadableAndReset()
+    }
+
     public func windowSession(id: UUID) async throws -> WindowSessionSnapshot? {
         try requireActive()
         return try await windowSessionStore.load(id: id)
@@ -442,6 +519,14 @@ public actor WorkspaceRuntime {
         let portableManifest = try await existingPortableManifest(
             forWorksURL: outputURL
         )
+        if let portableManifest {
+            try await preflightExistingPortableControl(
+                worksURL: outputURL,
+                manifest: portableManifest
+            )
+        } else {
+            try preflightPortableControlWithoutManifest(worksURL: outputURL)
+        }
         try await portableRegistry.preflightRegistration(
             containerURL: portableContainerURL,
             forWorksURL: outputURL
@@ -599,15 +684,91 @@ public actor WorkspaceRuntime {
         guard FileManager.default.fileExists(atPath: manifestURL.path) else {
             return nil
         }
-        let manifest = try await TriptychControlStore(
-            worksVaultURL: worksURL
-        ).manifest()
+        let manifest: TriptychManifest
+        do {
+            manifest = try await TriptychControlStore(
+                worksVaultURL: worksURL
+            ).manifest()
+        } catch let error as TriptychControlError {
+            throw ScholiumApplicationError.portableControlRecoveryRequired(
+                controlPath: manifestURL.deletingLastPathComponent().path,
+                reason: error.localizedDescription
+            )
+        } catch {
+            throw error
+        }
         guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
               Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
               Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count else {
-            throw TriptychControlError.invalidManifest
+            throw ScholiumApplicationError.portableControlRecoveryRequired(
+                controlPath: manifestURL.deletingLastPathComponent().path,
+                reason: TriptychControlError.invalidManifest.localizedDescription
+            )
         }
         return manifest
+    }
+
+    private func preflightExistingPortableControl(
+        worksURL: URL,
+        manifest: TriptychManifest
+    ) async throws {
+        let controlStore = TriptychControlStore(worksVaultURL: worksURL)
+        let controlURL = await controlStore.controlURL
+        do {
+            try await controlStore.validateExistingSupportedControlState()
+            let researchConfiguration = ResearchConfigurationStore(
+                controlURL: controlURL,
+                triptychID: manifest.id
+            )
+            _ = try await researchConfiguration.registrationSnapshot()
+            _ = try await researchConfiguration.profileSnapshot()
+            _ = try await researchConfiguration.collaborationSnapshot()
+            _ = try await researchConfiguration.citationMethodSnapshot()
+        } catch let error as TriptychControlError {
+            throw ScholiumApplicationError.portableControlRecoveryRequired(
+                controlPath: controlURL.path,
+                reason: error.localizedDescription
+            )
+        } catch let error as ResearchConfigurationStoreError {
+            switch error {
+            case .invalidDocument:
+                throw ScholiumApplicationError.portableControlRecoveryRequired(
+                    controlPath: controlURL.path,
+                    reason: error.localizedDescription
+                )
+            default:
+                throw error
+            }
+        }
+    }
+
+    private func preflightPortableControlWithoutManifest(
+        worksURL: URL
+    ) throws {
+        let controlURL = worksURL.standardizedFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".scholium", isDirectory: true)
+        let values: URLResourceValues
+        do {
+            values = try controlURL.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isSymbolicLinkKey,
+            ])
+        } catch let error as CocoaError where [
+            .fileReadNoSuchFile,
+            .fileNoSuchFile,
+        ].contains(error.code) {
+            return
+        }
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw ResearchConfigurationStoreError.unsafeStorage
+        }
+        guard try !FileManager.default.contentsOfDirectory(atPath: controlURL.path).isEmpty
+        else { return }
+        throw ScholiumApplicationError.portableControlRecoveryRequired(
+            controlPath: controlURL.path,
+            reason: TriptychControlError.invalidManifest.localizedDescription
+        )
     }
 
     /// Returns the persisted default Triptych.

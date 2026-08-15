@@ -231,13 +231,46 @@ struct ResearchMethodLocatorStore {
     }
 
     func snapshot() throws -> StoredResearchDocument<Document>? {
-        let snapshot = try store.snapshot()
+        let snapshot: StoredResearchDocument<Document>?
+        do {
+            snapshot = try store.snapshot()
+        } catch {
+            throw ResearchMethodLocatorError.invalid(
+                error.localizedDescription
+            )
+        }
         guard snapshot?.document.triptychID == triptychID || snapshot == nil else {
-            throw ResearchConfigurationStoreError.invalidDocument(
+            throw ResearchMethodLocatorError.invalid(
                 "The machine-local Method locator belongs to another Triptych."
             )
         }
         return snapshot
+    }
+
+    @discardableResult
+    func preserveInvalidAndReset() throws -> URL? {
+        do {
+            _ = try snapshot()
+            return nil
+        } catch ResearchMethodLocatorError.invalid {
+            // Continue only for the typed invalid-document state established
+            // by `snapshot`; unsafe directory or write errors never reach here.
+        }
+        let source = storageURL.appendingPathComponent(Self.fileName)
+        let preserved = try ExactStatePreserver.preserve(
+            source,
+            kind: .regularFile,
+            recoveryStem: "method-locators-v1.corrupt",
+            recoveryExtension: "json",
+            fileEligibility: { data in
+                guard let document = try? JSONDecoder().decode(Document.self, from: data)
+                else { return true }
+                return document.triptychID != triptychID
+            },
+            fileManager: fileManager
+        )
+        _ = try save(Document(triptychID: triptychID), expectedRevision: nil)
+        return preserved
     }
 
     func makeBinding(

@@ -145,6 +145,16 @@ public actor ResearchConfigurationStore {
         }
     }
 
+    @discardableResult
+    public func preserveInvalidMachineLocalMethodLocatorsAndReset() throws -> URL? {
+        guard let methodLocators else {
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "Machine-local Method locator storage is unavailable."
+            )
+        }
+        return try methodLocators.preserveInvalidAndReset()
+    }
+
     public func saveRegistrations(
         _ document: ResearchSkillRegistrationDocument,
         expectedRevision: DocumentFingerprint?

@@ -217,7 +217,6 @@ extension ResearchFunctionOperationsTests {
                 )
             )
         }
-        #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         await runtime.shutdown()
     }
 
@@ -575,7 +574,7 @@ extension ResearchFunctionOperationsTests {
         #expect(child.snapshot.continuationLineage?.parentRunID == portable.id)
         #expect(child.snapshot.continuationLineage?.requestID == resynthesis.runID)
         #expect(child.snapshot.resynthesisContext == attentionContext)
-        #expect(child.snapshot.checkpointID != nil)
+        #expect(child.snapshot.changeEvidenceID != nil)
         #expect(child.snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID)
             == [topic.noteID])
 

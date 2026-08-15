@@ -78,8 +78,12 @@ struct ApplicationBootstrapControllerTests {
             Issue.record("A damaged registry entered Bootstrap or constructed a runtime.")
             return
         }
-        #expect(recovery.health.canRelinkAfterPreserving)
-        #expect(recovery.registryURL == registryURL)
+        guard case .triptych(let health, let observedRegistryURL) = recovery.source else {
+            Issue.record("The damaged Triptych registry used the wrong recovery owner.")
+            return
+        }
+        #expect(health.canRelinkAfterPreserving)
+        #expect(observedRegistryURL == registryURL)
         #expect(!controller.isReady)
         #expect(try Data(contentsOf: registryURL) == damaged)
 
@@ -129,11 +133,52 @@ struct ApplicationBootstrapControllerTests {
             Issue.record("A failed relink did not remain in the recovery state.")
             return
         }
-        guard case .ioFailure = recovery.health else {
+        guard case .triptych(let health, _) = recovery.source,
+              case .ioFailure = health else {
             Issue.record("A failed relink retained the stale malformed health and Relink action.")
             return
         }
-        #expect(!recovery.health.canRelinkAfterPreserving)
+        #expect(!health.canRelinkAfterPreserving)
+    }
+
+    @Test("Damaged machine access registry stays at app root until explicit relinking")
+    func damagedMachineAccessRegistryRecovery() async throws {
+        let supportURL = testRoot().appendingPathComponent(
+            "ApplicationSupport",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
+        let registryURL = supportURL.appendingPathComponent("vault-registry.json")
+        let damaged = Data("damaged local access".utf8)
+        try damaged.write(to: registryURL)
+        defer { try? FileManager.default.removeItem(at: supportURL.deletingLastPathComponent()) }
+
+        let controller = ApplicationBootstrapController { supportURL }
+        controller.startIfNeeded()
+        await waitUntilSettled(controller)
+        guard case .registryRecovery(let recovery) = controller.state,
+              case .machineAccess(let health, let observedRoot) = recovery.source else {
+            Issue.record("Damaged machine access did not remain at the application recovery root.")
+            return
+        }
+        #expect(health.canRelinkAfterPreserving)
+        #expect(observedRoot == supportURL)
+        #expect(try Data(contentsOf: registryURL) == damaged)
+
+        controller.repairRegistryAndRetry()
+        await waitUntilSettled(controller)
+        guard case .ready(let store) = controller.state else {
+            Issue.record("Machine access recovery did not return to normal Bootstrap.")
+            return
+        }
+        let preserved = try #require(
+            FileManager.default.contentsOfDirectory(
+                at: supportURL,
+                includingPropertiesForKeys: nil
+            ).first(where: { $0.lastPathComponent.hasPrefix("vault-registry.corrupt-") })
+        )
+        #expect(try Data(contentsOf: preserved) == damaged)
+        await store.shutdownApplicationRuntime()
     }
 
     private func waitUntilSettled(

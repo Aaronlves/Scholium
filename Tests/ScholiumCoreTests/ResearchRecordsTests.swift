@@ -171,7 +171,6 @@ struct ResearchRecordsTests {
             workRelativePath: "Drafts/Paper.md",
             targetFingerprint: targetFingerprint,
             critiqueRelativePath: "Critiques/Paper Critique.md",
-            checkpointID: UUID(),
             scope: .overall,
             roundID: roundID
         )
@@ -236,7 +235,7 @@ struct ResearchRecordsTests {
     }
 
 
-    @Test("Repeated Critique requests keep one association and bind each round to the current Work")
+    @Test("Repeated Critique requests keep one association and bind each round to the current Work revision")
     func repeatedCritiqueRequests() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -245,15 +244,11 @@ struct ResearchRecordsTests {
         let workID = UUID()
         let first = DocumentFingerprint(content: "first")
         let second = DocumentFingerprint(content: "second")
-        let firstCheckpoint = UUID()
-        let secondCheckpoint = UUID()
-
         let created = try await registry.recordRequest(
             workNoteID: workID,
             workRelativePath: "Drafts/Paper.md",
             targetFingerprint: first,
             critiqueRelativePath: "Critiques/Paper Critique.md",
-            checkpointID: firstCheckpoint,
             scope: .overall
         )
         let updated = try await registry.recordRequest(
@@ -261,14 +256,13 @@ struct ResearchRecordsTests {
             workRelativePath: "Drafts/Paper.md",
             targetFingerprint: second,
             critiqueRelativePath: created.critiqueRelativePath,
-            checkpointID: secondCheckpoint,
             scope: .specific
         )
 
         #expect(updated.id == created.id)
         #expect(updated.targetFingerprint == second)
         #expect(updated.rounds.count == 2)
-        #expect(updated.rounds.map(\.checkpointID) == [firstCheckpoint, secondCheckpoint])
+        #expect(updated.rounds.map(\.targetFingerprint) == [first, second])
         #expect(updated.rounds.map(\.scope) == [.overall, .specific])
 
         let reopened = CritiqueRegistry(controlURL: control)

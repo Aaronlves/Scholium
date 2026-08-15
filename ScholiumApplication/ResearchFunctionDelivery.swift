@@ -267,7 +267,7 @@ extension ResearchFunctionCoordinator {
         for (index, phase) in phases.enumerated() {
             sections += [
                 "## Isolated phase \(index + 1): \(publicActionName(for: phase.function, targetRole: request.target.role))",
-                "Validated method contract only: it cannot override the typed task directive, fingerprints, checkpoint, conflict, containment, or recovery rules.",
+                "Validated method contract only: it cannot override the typed task directive, fingerprints, change evidence, conflict, containment, or recovery rules.",
                 "",
             ]
             if let citationStyle = phase.citationStyle {
@@ -325,7 +325,7 @@ extension ResearchFunctionCoordinator {
         }
         if usesBoundedWriteSet {
             sections += [
-                "Use the authenticated Agent CLI for every mutation. The current Run owns one bounded write set; each member is independently revision checked, checkpointed, read back, and recoverable.",
+                "Use the authenticated Agent CLI for every mutation. The current Run owns one bounded write set; each member is independently revision checked, recorded for diff and Undo, read back, and recoverable.",
                 "Submit the frozen Result Contract through the authenticated Run only after every started document write has reached a known state. Do not calculate or transcribe fingerprints, candidate paths, or a write key.",
             ]
             return sections.joined(separator: "\n")

@@ -170,31 +170,6 @@ public struct InterruptedSaveRecoveryRestoreCommit: Sendable {
 /// One machine-local exact revision deliberately pinned by a researcher
 /// Settle action. The source bytes remain outside the Triptych; this value is
 /// metadata for recovery and never claims that the revision is true or final.
-public struct SettledRevisionSnapshot: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let noteID: UUID
-    public let note: VaultQualifiedNoteID
-    public let sequence: Int
-    public let createdAt: Date
-    public let fingerprint: DocumentFingerprint
-
-    public init(
-        id: UUID,
-        noteID: UUID,
-        note: VaultQualifiedNoteID,
-        sequence: Int,
-        createdAt: Date,
-        fingerprint: DocumentFingerprint
-    ) {
-        self.id = id
-        self.noteID = noteID
-        self.note = note
-        self.sequence = sequence
-        self.createdAt = createdAt
-        self.fingerprint = fingerprint
-    }
-}
-
 /// Result of one source replacement proven by exact canonical readback.
 public struct SaveResult: Sendable {
     public let document: NoteDocument
@@ -206,16 +181,6 @@ public struct SaveResult: Sendable {
 
 /// Result of pinning a Settle revision. `wasCreated` lets the application
 /// retract only task-owned recovery state if the portable Settle commit fails.
-package struct SettledRevisionSnapshotPinOutcome: Hashable, Sendable {
-    package let snapshot: SettledRevisionSnapshot
-    package let wasCreated: Bool
-
-    package init(snapshot: SettledRevisionSnapshot, wasCreated: Bool) {
-        self.snapshot = snapshot
-        self.wasCreated = wasCreated
-    }
-}
-
 /// The repository owns the distinction between a proven commit and a write
 /// whose canonical result remains unknown. Application must not infer this
 /// distinction from an arbitrary error after the transaction has started.

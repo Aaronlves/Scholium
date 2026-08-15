@@ -28,7 +28,6 @@ struct NoteIdentityRecoveryTests {
             workRelativePath: "Old.md",
             targetFingerprint: saved.document.fingerprint,
             critiqueRelativePath: "Critiques/Work.md",
-            checkpointID: nil,
             scope: .overall
         )
         try await stores.sessions.save(WindowSessionSnapshot(

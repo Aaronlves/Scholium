@@ -350,7 +350,7 @@ Scholium-specific components or distinct research surfaces are appropriate.
 `ScholiumContentStateView` is the single presentation leaf for page- and
 pane-level state copy. It accepts only visible content, indicator treatment,
 region placement, density, and an action view; Document, Library, Search,
-Research Records, Attention, Checkpoint, Recovery, and Settings owners continue
+Research Records, Attention, Recovery, and Settings owners continue
 to derive their own states and transitions. `ScholiumApparatusStateView`,
 inline field feedback, and `ScholiumRecoveryNotice` remain separate owners for
 their distinct compact, validation, and persistent-recovery responsibilities.

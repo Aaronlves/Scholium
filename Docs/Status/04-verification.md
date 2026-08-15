@@ -39,6 +39,49 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-15, the Checkpoint and settled-version removal cutover passed 24
+  focused Core and Application tests for Run-bound exact Agent change evidence,
+  direct Undo after conflict and rename, Settle's single portable marker,
+  interrupted-save recovery, permanent deletion, and Local Execution schema 13.
+  It also passed 129 App architecture, composition, Settings, preview, and
+  localization tests; documentation-authority and interface-localization
+  validators passed, and every test target compiled. The complete repository
+  gate was not used as scoped evidence because unrelated worktree changes would
+  enter it. This is automated disposable-fixture evidence, not human interface
+  or sustained-research acceptance.
+- On 2026-08-15, recovery-loop hardening passed exact-owner tests for damaged
+  vault-identity and portable-access registries; old or damaged whole-bundle
+  `.scholium` preflight, archive, rebuild, and same-Triptych reopen; unchanged
+  Analyses, Topics, and Works bytes; active-runtime refusal; and explicit
+  Saved Search and machine-local Method locator archive/reset.
+  Valid concurrent replacements remain in place rather than being archived,
+  and the portable recovery token covers the complete control directory tree.
+  App tests also proved the Saved Search presentation owner and Simplified
+  Chinese recovery controls. The stabilized cross-layer integration passed the
+  complete repository gate: documentation and shipped-resource validation;
+  199 Web editor tests and reproducible bundles; 481 Core plus 3 Search
+  performance tests; 138 Contracts tests; 234 Application tests, 11 bridge
+  tests, and 1 architecture measurement; 637 App tests; 7 executable CLI
+  lifecycles; the sandboxed App-to-CLI loopback probe; Debug/symbol guards; and
+  an optimized Release build in 181.51 seconds. This is automated
+  disposable-fixture evidence, not human visual or clean-account acceptance.
+- On 2026-08-15, five focused Core, Application, and App tests proved the
+  unavailable-registration escape: removing one registration preserves exact
+  research and incompatible portable-manifest bytes, preserves unrelated
+  Triptychs and selects their next default, never opens a deleted vault or
+  decodes its portable schema, returns the window model to unconfigured state,
+  and fails closed while the Triptych has an active runtime. The Simplified
+  Chinese control and confirmation labels also resolved from the shipped
+  catalog. The existing isolated Restore Access XCUITest could not start
+  because its approved static `Desktop/TestVaults` fixture was absent; this is
+  no synthetic interaction or human visual acceptance evidence. The cross-layer
+  integration then passed the complete gate: 199 Web editor tests; 476 Core
+  plus 3 Search-performance tests; 138 Contracts tests; 233 Application, 11
+  bridge, and 1 architecture-measurement tests; 635 App tests; 7 executable CLI
+  lifecycles; the sandboxed App-to-CLI loopback probe; and an optimized Release
+  build in 186.03 seconds. After a final durable-removal projection correction,
+  the complete 635-test App suite passed again; the unchanged lower-layer, CLI,
+  and Release results are from the immediately preceding complete gate.
 - On 2026-08-15, the independent-CLI cutover passed 7 Bootstrap, 27 Settings
   architecture, 7 delivery-path, 11 loopback-bridge, and 7 executable Agent CLI
   lifecycle tests. The App no longer owns a CLI status or installer and copies
@@ -56,7 +99,7 @@ override.
   coordinated system replacement, exact BOM/CRLF readback, metadata changes
   remaining outside save authority, external-writer conflict, symlink and
   parent exchange, readback mismatch, pre- and post-replacement interruption,
-  `SIGKILL` restart reconciliation, checkpoint and move propagation, removal of
+  `SIGKILL` restart reconciliation, move propagation, removal of
   cleanup-warning presentation, and rejection of unsupported pre-use recovery
   data without mutation. Documentation authority also passed. The frontend I/O
   guard was then aligned with its existing App architecture allowlist, and its
@@ -165,8 +208,8 @@ Context Use regressions and reject retired outer schemas.
 This establishes requery rather than state handoff for the current target-Note
 view. It does not prove that the view is complete, that a researcher judgment
 is correct, or that a future provider retrieves every relevant current owner.
-The Settle recovery pin remains outside this academic view and was not promoted
-into importance, stance, or adoption.
+  Settle contributes only its portable judgment and exact fingerprint; it has
+  no machine-local source version or recovery pin.
 
 The provider-replacement and summary-attribution alignment passed 44 focused
 tests across seven Search, Contracts, Application, bridge, and architecture

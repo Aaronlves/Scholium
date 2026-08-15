@@ -10,17 +10,46 @@ struct ApplicationStorageFailure: Equatable, Sendable {
 }
 
 struct ApplicationRegistryRecovery: Equatable, Sendable {
-    let health: WorkspaceRegistryHealth
-    let registryURL: URL
+    enum Source: Equatable, Sendable {
+        case triptych(WorkspaceRegistryHealth, registryURL: URL)
+        case machineAccess(MachineLocalRegistryHealth, applicationSupportURL: URL)
+    }
+
+    let source: Source
     let recoveryFailure: String?
 
-    var summary: String { health.summary }
+    var summary: String {
+        switch source {
+        case .triptych(let health, _): health.summary
+        case .machineAccess(let health, _): health.summary
+        }
+    }
+
+    var title: LocalizedStringResource {
+        switch source {
+        case .triptych: "Triptych Registry Needs Repair"
+        case .machineAccess: "Local Access Registry Needs Repair"
+        }
+    }
+
+    var canRelinkAfterPreserving: Bool {
+        switch source {
+        case .triptych(let health, _): health.canRelinkAfterPreserving
+        case .machineAccess(let health, _): health.canRelinkAfterPreserving
+        }
+    }
 
     var details: String {
-        var lines = [
-            health.details,
-            "Registry location: \(registryURL.path)",
-        ]
+        var lines: [String]
+        switch source {
+        case .triptych(let health, let registryURL):
+            lines = [health.details, "Registry location: \(registryURL.path)"]
+        case .machineAccess(let health, let applicationSupportURL):
+            lines = [
+                health.details,
+                "Registry folder: \(applicationSupportURL.path)",
+            ]
+        }
         if let recoveryFailure {
             lines.append("Recovery could not preserve the original file: \(recoveryFailure)")
         }
@@ -28,16 +57,28 @@ struct ApplicationRegistryRecovery: Equatable, Sendable {
     }
 
     func recordingFailure(_ error: Error) -> Self {
-        let currentHealth: WorkspaceRegistryHealth
-        if let registryError = error as? WorkspaceRegistryError,
-           case .registryRecoveryRequired(let observedHealth) = registryError {
-            currentHealth = observedHealth
-        } else {
-            currentHealth = .ioFailure(error.localizedDescription)
+        let updatedSource: Source
+        switch source {
+        case .triptych(_, let registryURL):
+            let currentHealth: WorkspaceRegistryHealth
+            if let registryError = error as? WorkspaceRegistryError,
+               case .registryRecoveryRequired(let observedHealth) = registryError {
+                currentHealth = observedHealth
+            } else {
+                currentHealth = .ioFailure(error.localizedDescription)
+            }
+            updatedSource = .triptych(currentHealth, registryURL: registryURL)
+        case .machineAccess(_, let applicationSupportURL):
+            let currentHealth = WorkspaceRegistryRecoveryOperations.machineLocalHealth(
+                applicationSupportURL: applicationSupportURL
+            )
+            updatedSource = .machineAccess(
+                currentHealth,
+                applicationSupportURL: applicationSupportURL
+            )
         }
         return Self(
-            health: currentHealth,
-            registryURL: registryURL,
+            source: updatedSource,
             recoveryFailure: error.localizedDescription
         )
     }
@@ -123,8 +164,7 @@ final class ApplicationBootstrapController: ObservableObject {
                         .appendingPathComponent("Workspace", isDirectory: true)
                         .appendingPathComponent("workspace-registry-v2.json")
                     state = .registryRecovery(ApplicationRegistryRecovery(
-                        health: health,
-                        registryURL: registryURL,
+                        source: .triptych(health, registryURL: registryURL),
                         recoveryFailure: nil
                     ))
                 default:
@@ -133,6 +173,27 @@ final class ApplicationBootstrapController: ObservableObject {
                             "Scholium cannot establish its Application Support storage."
                         ),
                         details: error.localizedDescription
+                    ))
+                }
+            } catch let error as MachineLocalRegistryError {
+                guard self.attempt == currentAttempt else { return }
+                switch error {
+                case .recoveryRequired(let health):
+                    guard let resolvedStorageURL else {
+                        state = .storageUnavailable(ApplicationStorageFailure(
+                            summary: String(localized:
+                                "Scholium cannot establish its Application Support storage."
+                            ),
+                            details: error.localizedDescription
+                        ))
+                        return
+                    }
+                    state = .registryRecovery(ApplicationRegistryRecovery(
+                        source: .machineAccess(
+                            health,
+                            applicationSupportURL: resolvedStorageURL
+                        ),
+                        recoveryFailure: nil
                     ))
                 }
             } catch {
@@ -149,11 +210,20 @@ final class ApplicationBootstrapController: ObservableObject {
 
     func repairRegistryAndRetry() {
         guard case .registryRecovery(let recovery) = state,
-              recovery.health.canRelinkAfterPreserving else { return }
+              recovery.canRelinkAfterPreserving else { return }
         do {
-            _ = try WorkspaceRegistryRecoveryOperations.preserveMalformedRegistryForRelinking(
-                storageURL: recovery.registryURL.deletingLastPathComponent()
-            )
+            switch recovery.source {
+            case .triptych(_, let registryURL):
+                _ = try WorkspaceRegistryRecoveryOperations
+                    .preserveMalformedRegistryForRelinking(
+                        storageURL: registryURL.deletingLastPathComponent()
+                    )
+            case .machineAccess(_, let applicationSupportURL):
+                _ = try WorkspaceRegistryRecoveryOperations
+                    .preserveDamagedMachineLocalRegistriesForRelinking(
+                        applicationSupportURL: applicationSupportURL
+                    )
+            }
             retry()
         } catch {
             state = .registryRecovery(recovery.recordingFailure(error))
@@ -219,7 +289,7 @@ private struct ApplicationRegistryRecoveryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.rootSectionSpacing) {
-            Text("Triptych Registry Needs Repair")
+            Text(recovery.title)
                 .font(ScholiumTypography.interface(.primaryTitle))
                 .accessibilityAddTraits(.isHeader)
             Text(recovery.summary)
@@ -256,7 +326,7 @@ private struct ApplicationRegistryRecoveryView: View {
             HStack {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                 Spacer()
-                if recovery.health.canRelinkAfterPreserving {
+                if recovery.canRelinkAfterPreserving {
                     Button("Relink Triptych", action: relink)
                         .keyboardShortcut(.defaultAction)
                         .accessibilityHint(

@@ -357,7 +357,7 @@ struct TransactionRecoveryActionPresentation: Equatable {
     static let generic = TransactionRecoveryActionPresentation(
         alertTitle: String(localized: "Mark Recovery Complete?"),
         buttonTitle: String(localized: "Mark Recovery Complete"),
-        message: String(localized: "Use this only after you have inspected every listed path and completed any checkpoint or Finder recovery. This removes the recovery record; it does not change research files.")
+        message: String(localized: "Use this only after you have inspected every listed path and completed any Finder recovery. This removes the recovery record; it does not change research files.")
     )
 
     private init(alertTitle: String, buttonTitle: String, message: String) {

@@ -397,7 +397,6 @@ struct ResearchAgentSessionAuthorityTests {
             critiqueRelativePath: "Critiques/Agency Critique.md",
             rounds: [CritiqueRound(
                 targetFingerprint: target.fingerprint,
-                checkpointID: nil,
                 scope: .overall,
                 actionableFindings: [finding],
                 findingDispositions: [disposition]
@@ -423,7 +422,6 @@ struct ResearchAgentSessionAuthorityTests {
                 finishedResearchRecordSourceManifestHash: "fixture-manifest",
                 finishedResearchRecordProjectionIsComplete: true,
                 critiques: [critique],
-                checkpointListing: baseSnapshot.research.checkpointListing,
                 recoveryRecords: baseSnapshot.research.recoveryRecords,
                 healthIssues: []
             )

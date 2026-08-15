@@ -218,7 +218,11 @@ contract explicitly declares that the existing definition is unaffected. No
 definition is silently rewritten or executed under changed semantics. An
 invalid, ambiguous, or undecodable definition remains byte-unchanged and
 nonexecuting. Revoked scope or a deleted source never permits a retained old
-result.
+result. If the machine-local Saved Search document itself is undecodable,
+Search exposes a confirmed archive-and-reset action. It atomically preserves
+the exact file under a unique sibling recovery name before returning to an
+empty Saved Searches list; it never replaces a valid concurrent file or
+changes vault content.
 
 App and CLI consume the same ordered Search response. CLI text and JSONL retain
 the response contract version, provider, authorized scope, availability,
@@ -275,33 +279,17 @@ alone; or issues an automatic philosophical verdict. Warnings are dismissible;
 Settings controls duration, default seven days. The researcher retains
 judgment.
 
-## 14. Checkpoints, versions, and recovery
+## 14. Save, Agent changes, and recovery
 
-Autosaves create no visible versions. Current Actions create no automatic
-whole-Triptych checkpoint. The researcher may choose **Create Checkpoint…** at
-any time when a self-contained Triptych milestone is genuinely useful.
+Autosaves create no visible version history. Scholium has no Triptych
+Checkpoint product, whole-Triptych rollback, or settled-version store.
+Document, HTML, PDF, and DOCX export is deferred, not permanently prohibited.
 
-Every checkpoint is self-contained; includes all vaults and portable control
-state needed to interpret them; lives outside the vaults; and never depends on
-another checkpoint, even if filesystem cloning is used internally. Manual
-checkpoints remain until the researcher deletes them.
-
-File offers **Create Checkpoint…**, **Restore from Checkpoint…**, and **Reveal
-Checkpoints in Finder**. Restore compares created, changed, moved, and deleted
-files and supports selected-note or whole-Triptych restore. A full rollback
-moves post-checkpoint files to Trash instead of permanently deleting them.
-Restore writes new current source through the conflict-aware repository path;
-Undo remains editor-session only.
-
-A selected single-Note Markdown restore never changes its portable Zotero
-binding. A complete Triptych restore restores the checkpoint's portable
-`.scholium/` bytes, including bindings. A restored binding is revalidated when
-used; a missing or ambiguous stable identity is nonauthorizing and is never
-reassigned by path, filename, title, or metadata similarity.
-
-There is no checkpoint-management screen or proprietary backup format. Finder
-manages folders. Document, HTML, PDF, and DOCX export is deferred, not
-permanently prohibited.
+For a writable Run, machine-local Agent change evidence retains only each
+modified Note's exact starting and final Agent revisions. It exists solely for
+the Record's exact diff and direct Undo, is bound to that Run and stable Note
+identity, and grants no write authority. Direct Undo follows §10.5 and uses the
+ordinary repository save path rather than a second history system.
 
 Ordinary pre-write recovery state remains invisible and supports exact
 save/conflict recovery for the Notes actually written; it is not an
@@ -339,8 +327,6 @@ machine-local housekeeping remains invisible and automatic; it may remove only
 an exact app-owned artifact and never canonical source or an unknown file by
 guesswork.
 
-Settle may pin one exact researcher-selected revision without turning it into a
-truth claim. Temporary write recovery and settled retention remain separate.
-Invalid or ambiguous recovery metadata protects the associated exact bytes and
-stops automatic cleanup rather than deleting or reattributing them. Storage and
+Settle stores one portable fingerprint-bound marker per Note and no source
+bytes. It is not a recovery source, version, or retention policy. Storage and
 projection mechanics belong to [Source Storage and Read Models](../Architecture/05-source-storage-and-read-models.md).

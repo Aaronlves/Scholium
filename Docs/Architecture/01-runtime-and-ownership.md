@@ -51,7 +51,7 @@ ScholiumApp → ScholiumResearchRecordsFeature → ScholiumContracts
 ScholiumCLI → ScholiumApplication → ScholiumCore → ScholiumContracts
 
 ApplicationBootstrapController (one app-owned storage gate)
-├── Registry Recovery (preserve malformed registry, then relink)
+├── Registry Recovery (preserve the damaged owning registry, then relink)
 └── Ready (explicit validated Application Support URL)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
@@ -130,12 +130,11 @@ only durable owners.
 Application Support before runtime construction; unsupported pre-release
 parent bytes remain unread and nonauthorizing.
 `WorkspaceStore.init(applicationSupportURL:)` is explicit and failable; there
-is no temporary-directory fallback or empty-registry fallback. A malformed
-current registry enters the app-root Registry Recovery state. An explicit
-researcher action preserves the original file under a timestamped recovery
-name, then returns to ordinary Bootstrap so the three vault locations can be
-relinked. A newer schema or registry I/O failure remains in place and exposes
-details plus Retry only. No recovery path scans or mutates vault Markdown. An
+has no temporary or empty-registry fallback. A malformed Triptych registry or
+damaged access registry enters app-root Registry Recovery. Explicit relinking
+preserves and verifies only that owner; valid siblings remain. Newer, unsafe,
+or unreadable state exposes Details and Retry only. Recovery never scans or
+mutates vault Markdown. An
 explicitly supplied QA root uses the same validation. `WorkspaceRuntime` then
 has two configurations:
 live reuses stable Triptych/vault runtimes, watchers, and derived refresh while
@@ -282,7 +281,8 @@ Agent route owns another parser, resolver, Record corpus, or ranking rule.
 
 Saved Searches persist only raw query, visible presentation scope, and Search
 contract version. `WindowSearchController` owns execution cancellation,
-provider-aware freshness validation, and serialized Saved Search persistence;
+freshness, serialized persistence, and load failure. Explicit recovery uses the
+same-directory exact-state preserver before clearing that failure;
 `DiscoveryController` owns the visible completion/result selection. Search
 views and their composition consumer observe `DiscoveryController` directly;
 `WindowSearchController` never republishes Discovery changes as its own. None
@@ -294,7 +294,7 @@ enters the persisted definition.
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 `DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
 `WindowResearchCapabilities` value composed from the narrow record,
-checkpoint, Skill/Practice/Profile, collaboration, Action/Run, Research
+Skill/Practice/Profile, collaboration, Action/Run, Research
 Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 Configuration preflights roots and reads the portable manifest before
@@ -395,8 +395,8 @@ document/projection, and Research Action facts that affect focused command
 labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
 selection and document workflow state; `ResearchController` owns the current
-research-record projection, checkpoint-list failures, and durable-recovery
-listing. Shell and Research Action state remain independently observable
+research-record projection and durable-recovery listing. Shell and Research
+Action state remain independently observable
 owners; `ResearchController` neither republishes nor duplicates them.
 `DocumentTransitionCoordinator` serializes workspace and document replacement,
 flushes the exact active editor before mutation, coalesces rapid workspace input
@@ -768,6 +768,6 @@ use nonoptional Codable route bindings with a `defaultValue`; the route's
 `windowID` is their only session identity. Workspace restoration is automatic,
 while Bootstrap restoration is disabled. Success opens one workspace and waits
 for that route's native coordinator readiness before dismissing Bootstrap;
-failure or early unregister preserves setup. An existing
-Triptych with lost folder authorization stays in the workspace and replaces
-only that authorization through Restore Access.
+failure preserves setup. Restore Access rebinds expired authorization or asks
+`WorkspaceRegistry` to remove one inactive machine-local registration without
+reading vaults before ordinary Bootstrap.

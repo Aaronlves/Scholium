@@ -523,7 +523,7 @@ extension WorkspaceHandle {
         }
 
         guard let expectedRevision = entry.expectedRevision,
-              let checkpointID = entry.checkpointID else {
+              let changeEvidenceID = entry.changeEvidenceID else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
 
@@ -619,7 +619,7 @@ extension WorkspaceHandle {
                 intendedRevision: intendedRevision,
                 observedRevision: current.fingerprint,
                 state: .conflict,
-                checkpointID: checkpointID,
+                changeEvidenceID: changeEvidenceID,
                 startedAt: Date(),
                 finishedAt: Date(),
                 warning: "The document changed outside this Run before the write began."
@@ -641,7 +641,7 @@ extension WorkspaceHandle {
                 intendedRevision: intendedRevision,
                 observedRevision: current.fingerprint,
                 state: .unchanged,
-                checkpointID: checkpointID,
+                changeEvidenceID: changeEvidenceID,
                 startedAt: Date(),
                 finishedAt: Date()
             )
@@ -685,7 +685,7 @@ extension WorkspaceHandle {
             expectedRevision: expectedRevision,
             intendedRevision: intendedRevision,
             state: .writing,
-            checkpointID: checkpointID,
+            changeEvidenceID: changeEvidenceID,
             startedAt: startedAt
         )
         _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
@@ -704,6 +704,12 @@ extension WorkspaceHandle {
         )
         switch save {
         case .committed(let outcome):
+            try await recordAgentChangeEnding(
+                execution: execution,
+                entry: entry,
+                data: outcome.committedValue.document.sourceBytes,
+                endingRevision: outcome.committedValue.document.fingerprint
+            )
             execution = try await services.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: authenticated.runID,
@@ -1075,7 +1081,7 @@ extension WorkspaceHandle {
             expectedRevision: nil,
             intendedRevision: intendedRevision,
             state: .writing,
-            checkpointID: nil,
+            changeEvidenceID: nil,
             startedAt: Date()
         )
         _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
@@ -1375,6 +1381,13 @@ extension WorkspaceHandle {
         let now = Date()
         switch intent.action {
         case .refreshAuthority:
+            guard !execution.documentWriteRecords.contains(where: {
+                $0.target == entry.handle
+                    && $0.actor == .agent
+                    && $0.state == .committed
+            }) else {
+                throw ResearchBoundedWriteSetError.staleAuthorization
+            }
             try await validateCurrentPolicy(
                 for: entry,
                 runID: authenticated.runID,
@@ -1383,12 +1396,12 @@ extension WorkspaceHandle {
                 }
             )
             let current = try await exactCurrentDocument(for: entry)
-            let checkpoint = try await services.checkpointStore
-                .createResearchContinuation(
-                    name: "Before Agent Work",
-                    key: Self.checkpointKey(entry),
-                    expectedFingerprint: current.fingerprint,
-                    roots: services.roots
+            let evidence = try await services.agentChangeEvidenceStore
+                .captureStartingRevision(
+                    runID: authenticated.runID,
+                    noteID: entry.noteID,
+                    data: current.sourceBytes,
+                    expectedRevision: current.fingerprint
                 )
             do {
                 let refreshed = try ResearchBoundedWriteSetEntry(
@@ -1399,7 +1412,7 @@ extension WorkspaceHandle {
                     title: entry.title,
                     allowedOperations: entry.allowedOperations,
                     expectedRevision: current.fingerprint,
-                    checkpointID: checkpoint.id,
+                    changeEvidenceID: evidence.id,
                     allowedPropertyKeys: entry.allowedPropertyKeys,
                     propertyWritePlans: entry.propertyWritePlans,
                     authorizationBasis: entry.authorizationBasis,
@@ -1418,7 +1431,7 @@ extension WorkspaceHandle {
                     requestFingerprint: requestFingerprint,
                     priorExpectedRevision: priorExpectedRevision,
                     observedRevision: current.fingerprint,
-                    checkpointID: checkpoint.id,
+                    changeEvidenceID: evidence.id,
                     state: .readyToRetry,
                     targetView: ResearchBoundedWriteSetViewEntry(refreshed),
                     resolvedAt: now
@@ -1428,8 +1441,8 @@ extension WorkspaceHandle {
                 entry = try requiredEntry(entry.handle, in: execution)
                 return try conflictResolutionResult(resolution)
             } catch {
-                _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
-                    id: checkpoint.id
+                try? await services.agentChangeEvidenceStore.discard(
+                    id: evidence.id
                 )
                 throw error
             }
@@ -1704,7 +1717,7 @@ extension WorkspaceHandle {
               allowed.isSubset(of: Set(request.candidates.map(\.handle))) else {
             throw ResearchBoundedWriteSetError.invalidExtensionRecord
         }
-        var checkpoints: [UUID] = []
+        var evidenceIDs: [UUID] = []
         do {
             var entries: [ResearchBoundedWriteSetEntry] = []
             for candidate in request.candidates where allowed.contains(candidate.handle) {
@@ -1746,14 +1759,14 @@ extension WorkspaceHandle {
                             throw ResearchBoundedWriteSetError.staleAuthorization
                         }
                     }
-                    let checkpoint = try await services.checkpointStore
-                        .createResearchContinuation(
-                            name: "Before Agent Work",
-                            key: Self.checkpointKey(candidate),
-                            expectedFingerprint: expectedRevision,
-                            roots: services.roots
+                    let evidence = try await services.agentChangeEvidenceStore
+                        .captureStartingRevision(
+                            runID: request.runID,
+                            noteID: candidate.noteID,
+                            data: current.sourceBytes,
+                            expectedRevision: expectedRevision
                         )
-                    checkpoints.append(checkpoint.id)
+                    evidenceIDs.append(evidence.id)
                     entries.append(try ResearchBoundedWriteSetEntry(
                         handle: candidate.handle,
                         noteID: candidate.noteID,
@@ -1762,7 +1775,7 @@ extension WorkspaceHandle {
                         title: candidate.title,
                         allowedOperations: candidate.operations,
                         expectedRevision: expectedRevision,
-                        checkpointID: checkpoint.id,
+                        changeEvidenceID: evidence.id,
                         allowedPropertyKeys: candidate.propertyKeys,
                         propertyWritePlans: candidate.propertyWritePlans,
                         zoteroBindingsRevision: candidate.zoteroBindingsRevision,
@@ -1786,9 +1799,9 @@ extension WorkspaceHandle {
                     decidedAt: decidedAt
                 )
         } catch {
-            for checkpointID in checkpoints {
-                _ = try? await services.checkpointStore.discardAutomaticCheckpoint(
-                    id: checkpointID
+            for changeEvidenceID in evidenceIDs {
+                try? await services.agentChangeEvidenceStore.discard(
+                    id: changeEvidenceID
                 )
             }
             throw error
@@ -1902,6 +1915,12 @@ extension WorkspaceHandle {
                 let current = try await exactCurrentDocument(for: entry)
                 observedRevision = current.fingerprint
                 if current.fingerprint == write.intendedRevision {
+                    try await recordAgentChangeEnding(
+                        execution: execution,
+                        entry: entry,
+                        data: current.sourceBytes,
+                        endingRevision: current.fingerprint
+                    )
                     state = .committed
                 } else if current.fingerprint == write.expectedRevision {
                     state = .abandoned
@@ -1952,6 +1971,32 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.targetNotAuthorized
         }
         return entry
+    }
+
+    private func recordAgentChangeEnding(
+        execution: LocalResearchExecutionRecord,
+        entry: ResearchBoundedWriteSetEntry,
+        data: Data,
+        endingRevision: DocumentFingerprint
+    ) async throws {
+        let firstCommittedEvidenceID = execution.documentWriteRecords
+            .filter {
+                $0.target == entry.handle
+                    && $0.actor == .agent
+                    && $0.state == .committed
+            }
+            .min(by: { $0.startedAt < $1.startedAt })?
+            .changeEvidenceID
+        guard let evidenceID = firstCommittedEvidenceID ?? entry.changeEvidenceID else {
+            throw ResearchBoundedWriteSetError.invalidEntry
+        }
+        _ = try await services.agentChangeEvidenceStore.recordEndingRevision(
+            id: evidenceID,
+            runID: execution.id,
+            noteID: entry.noteID,
+            data: data,
+            expectedRevision: endingRevision
+        )
     }
 
     private func extensionDelivery(
@@ -2127,34 +2172,6 @@ extension WorkspaceHandle {
         case .topic: .topicMarkdown
         case .work: .draftProject
         }
-    }
-
-    private static func checkpointKey(
-        _ candidate: ResearchWriteSetCandidate
-    ) -> TriptychCheckpointFileKey {
-        let area: TriptychCheckpointArea = switch candidate.role {
-        case .analysis: .analyses
-        case .topic: .topics
-        case .work: .works
-        }
-        return TriptychCheckpointFileKey(
-            area: area,
-            relativePath: candidate.note.relativePath
-        )
-    }
-
-    private static func checkpointKey(
-        _ entry: ResearchBoundedWriteSetEntry
-    ) -> TriptychCheckpointFileKey {
-        let area: TriptychCheckpointArea = switch entry.role {
-        case .analysis: .analyses
-        case .topic: .topics
-        case .work: .works
-        }
-        return TriptychCheckpointFileKey(
-            area: area,
-            relativePath: entry.note.relativePath
-        )
     }
 
     private static func fingerprint<T: Encodable>(

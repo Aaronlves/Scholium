@@ -923,6 +923,57 @@ struct TriptychControlTests {
         #expect(try Data(contentsOf: unrecognizedURL) == unrecognizedData)
     }
 
+    @Test("Unsupported portable control is archived as one opaque owner")
+    func preserveUnsupportedPortableControlBundle() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let analyses = fixture.root.appendingPathComponent("Analyses", isDirectory: true)
+        let topics = fixture.root.appendingPathComponent("Topics", isDirectory: true)
+        for url in [analyses, topics] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let researchFiles = [
+            analyses.appendingPathComponent("Paper.md"),
+            topics.appendingPathComponent("Problem.md"),
+            fixture.works.appendingPathComponent("Draft.md"),
+        ]
+        let researchBytes = [Data("analysis".utf8), Data([0, 1, 2]), Data("draft".utf8)]
+        for (url, data) in zip(researchFiles, researchBytes) { try data.write(to: url) }
+        let control = fixture.root.appendingPathComponent(".scholium", isDirectory: true)
+        let nested = control.appendingPathComponent("legacy/nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        let legacyFiles = [
+            control.appendingPathComponent("manifest.json"),
+            nested.appendingPathComponent("opaque.bin"),
+        ]
+        let legacyBytes = [Data("{\"schemaVersion\":0}".utf8), Data([0xff, 0x00, 0x7f])]
+        for (url, data) in zip(legacyFiles, legacyBytes) { try data.write(to: url) }
+
+        let preserved = try await TriptychControlStore.preserveUnsupportedControlBundle(
+            worksVaultURL: fixture.works
+        )
+
+        #expect(!FileManager.default.fileExists(atPath: control.path))
+        #expect(try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
+            == legacyBytes[0])
+        #expect(try Data(contentsOf: preserved.appendingPathComponent("legacy/nested/opaque.bin"))
+            == legacyBytes[1])
+        for (url, data) in zip(researchFiles, researchBytes) {
+            #expect(try Data(contentsOf: url) == data)
+        }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        #expect(try await store.bootstrap(vaultIDs: ids).vaultIDs == ids)
+        #expect(try Data(contentsOf: preserved.appendingPathComponent("manifest.json"))
+            == legacyBytes[0])
+        await #expect(throws: ExactStatePreservationError.self) {
+            _ = try await TriptychControlStore.preserveUnsupportedControlBundle(
+                worksVaultURL: fixture.works
+            )
+        }
+        #expect(try await store.manifest().vaultIDs == ids)
+    }
+
     @Test("Stable identities survive moves and duplicates receive new IDs")
     func stableIdentityRules() async throws {
         let fixture = try Fixture()

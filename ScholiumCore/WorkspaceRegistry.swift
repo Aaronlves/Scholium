@@ -350,6 +350,31 @@ public actor WorkspaceRegistry {
         try persist(registry)
     }
 
+    /// Removes only one machine-local Triptych registration. Research folders
+    /// and portable `.scholium` data remain untouched, and vault registrations
+    /// still referenced by another Triptych remain available.
+    public func removeTriptychRegistration(id: UUID) throws {
+        var registry = try writableRegistry()
+        guard let removed = registry.triptychs.first(where: { $0.id == id }) else {
+            throw WorkspaceRegistryError.triptychNotFound(id)
+        }
+
+        let removedVaultIDs = Set(
+            WorkspaceVaultSlot.allCases.map { removed.vaultID(for: $0) }
+        )
+        registry.triptychs.removeAll { $0.id == id }
+        let remainingVaultIDs = Set(registry.triptychs.flatMap { triptych in
+            WorkspaceVaultSlot.allCases.map { triptych.vaultID(for: $0) }
+        })
+        registry.vaults.removeAll {
+            removedVaultIDs.contains($0.id) && !remainingVaultIDs.contains($0.id)
+        }
+        if registry.defaultTriptychID == id {
+            registry.defaultTriptychID = sortedTriptychs(registry.triptychs).first?.id
+        }
+        try persist(registry)
+    }
+
     /// Reconciles a machine-local registration with the stable portable
     /// `.scholium/manifest.json` identity without changing any vault UUID.
     public func reidentifyTriptych(id currentID: UUID, as stableID: UUID) throws -> TriptychAssignment {

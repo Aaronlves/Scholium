@@ -71,6 +71,35 @@ struct WorkbenchModelsTests {
         #expect(try Data(contentsOf: file) == corrupt)
     }
 
+    @Test("Unreadable Saved Searches are archived exactly before reset")
+    func corruptSavedSearchesCanBePreserved() async throws {
+        let base = testDirectory("saved-search-recovery")
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let file = base.appendingPathComponent("saved-searches.json")
+        let corrupt = Data([0x00, 0xff, 0x7b, 0x0a])
+        try corrupt.write(to: file)
+        let store = SavedSearchStore(workspaceStorageURL: base)
+        await #expect(throws: SavedSearchStoreError.self) { _ = try await store.load() }
+
+        let preserved = try #require(try await store.preserveUnreadableAndReset())
+
+        #expect(try Data(contentsOf: preserved) == corrupt)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(try await store.load().isEmpty)
+        let replacement = SavedSearch(
+            name: "Current",
+            definition: SearchDefinition(query: "current", presentationScope: .triptych)
+        )
+        try await store.save([replacement])
+        let reloaded = try await store.load()
+        #expect(reloaded.map(\.id) == [replacement.id])
+        #expect(reloaded.map(\.name) == [replacement.name])
+        #expect(reloaded.map(\.definition) == [replacement.definition])
+        #expect(try await store.preserveUnreadableAndReset() == nil)
+    }
+
     private func testDirectory(_ name: String) -> URL {
         URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
             .appendingPathComponent(".build", isDirectory: true)

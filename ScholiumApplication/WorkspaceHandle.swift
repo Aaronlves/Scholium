@@ -18,17 +18,15 @@ struct WorkspaceServices: Sendable {
     let controlStore: TriptychControlStore
     let researchConfigurationStore: ResearchConfigurationStore
     let researchAgentSessions: ResearchAgentSessionAuthority?
-    let researchRecoveryPolicyStore: ResearchRecoveryPolicyStore
     let researchSourceAccessStore: ResearchSourceAccessStore
     let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
     let portableResearchRecordStore: PortableResearchRecordStore
     let localResearchExecutionStore: LocalResearchExecutionStore
+    let agentChangeEvidenceStore: AgentChangeEvidenceStore
     let critiqueRegistry: CritiqueRegistry
-    let checkpointStore: TriptychCheckpointStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
-    let roots: TriptychRoots
 }
 
 struct WorkspaceWatcherReadinessEvidence: Equatable, Sendable {
@@ -402,7 +400,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     /// bridge for a second revision-checked operation, not a derived cache.
     private var sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
-    private var researchRecoveryMutationIsActive = false
     var sourceOperationGate = WorkspaceSourceOperationGate()
     private var managedCreationPreLeaseBarrierForTesting:
         (@Sendable () async -> Void)?
@@ -417,17 +414,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var progressiveActivationReconciliationBarrierForTesting:
         (@Sendable () async -> Void)?
     private var didCompleteActivationReconciliation = false
-
-    func beginResearchRecoveryMutation() throws {
-        guard !researchRecoveryMutationIsActive else {
-            throw ResearchRecoveryPolicyError.operationInProgress
-        }
-        researchRecoveryMutationIsActive = true
-    }
-
-    func endResearchRecoveryMutation() {
-        researchRecoveryMutationIsActive = false
-    }
 
     func setManagedCreationPreLeaseBarrierForTesting(
         _ barrier: (@Sendable () async -> Void)?
@@ -545,9 +531,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let vaultsReady = clock.now
 
             guard let worksVault = assignment.vault(for: .output),
-                  let worksURL = resolvedURLs[.output],
-                  let analysesURL = resolvedURLs[.paperAnalysis],
-                  let topicsURL = resolvedURLs[.topicKnowledge] else {
+                  let worksURL = resolvedURLs[.output] else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
 
@@ -570,7 +554,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let manifestURL = controlURL.appendingPathComponent("manifest.json")
             let manifestExists = FileManager.default.fileExists(atPath: manifestURL.path)
             if manifestExists {
-                let existing = try await controlStore.manifest()
+                let existing: TriptychManifest
+                do {
+                    existing = try await controlStore.manifest()
+                } catch let error as TriptychControlError {
+                    throw ScholiumApplicationError.portableControlRecoveryRequired(
+                        controlPath: controlURL.path,
+                        reason: error.localizedDescription
+                    )
+                } catch {
+                    throw error
+                }
                 guard existing.id == assignment.id else {
                     throw ScholiumApplicationError.manifestIdentityMismatch(
                         expected: assignment.id,
@@ -591,15 +585,42 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         isDirectory: false
                     )
             )
-            try await researchConfigurationStore.bootstrapDefaults()
+            do {
+                try await researchConfigurationStore.bootstrapDefaults()
+            } catch let error as ResearchConfigurationStoreError {
+                switch error {
+                case .invalidDocument:
+                    throw ScholiumApplicationError.portableControlRecoveryRequired(
+                        controlPath: controlURL.path,
+                        reason: error.localizedDescription
+                    )
+                default:
+                    throw error
+                }
+            }
 
             let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
                 ($0, assignment.triptych.vaultID(for: $0))
             })
-            let manifest = try await controlStore.bootstrap(
-                vaultIDs: vaultIDs,
-                preferredTriptychID: assignment.id
-            )
+            let manifest: TriptychManifest
+            do {
+                manifest = try await controlStore.bootstrap(
+                    vaultIDs: vaultIDs,
+                    preferredTriptychID: assignment.id
+                )
+            } catch let error as TriptychControlError {
+                switch error {
+                case .invalidManifest, .settingsMissing, .settingsOldSchema,
+                     .settingsFutureSchema, .settingsCorrupted,
+                     .invalidZoteroBindings, .invalidIdentities:
+                    throw ScholiumApplicationError.portableControlRecoveryRequired(
+                        controlPath: controlURL.path,
+                        reason: error.localizedDescription
+                    )
+                default:
+                    throw error
+                }
+            }
             guard manifest.id == assignment.id else {
                 throw ScholiumApplicationError.manifestIdentityMismatch(
                     expected: assignment.id,
@@ -633,6 +654,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
+            let agentChangeEvidenceStore = try AgentChangeEvidenceStore(
+                applicationSupportURL: applicationSupportURL,
+                triptychID: manifest.id
+            )
             let critiqueRegistry = CritiqueRegistry(controlURL: controlURL)
             let transactionRecoveryStore = try TriptychMutationRecoveryStore(
                 storageURL: triptychStorage.appendingPathComponent(
@@ -650,10 +675,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 controlStore: controlStore,
                 researchConfigurationStore: researchConfigurationStore,
                 researchAgentSessions: researchAgentSessions,
-                researchRecoveryPolicyStore: try ResearchRecoveryPolicyStore(
-                    applicationSupportURL: applicationSupportURL,
-                    triptychID: manifest.id
-                ),
                 researchSourceAccessStore: ResearchSourceAccessStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
@@ -665,22 +686,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 zotero: zotero,
                 portableResearchRecordStore: portableResearchRecordStore,
                 localResearchExecutionStore: localResearchExecutionStore,
+                agentChangeEvidenceStore: agentChangeEvidenceStore,
                 critiqueRegistry: critiqueRegistry,
-                checkpointStore: TriptychCheckpointStore(
-                    triptychID: manifest.id,
-                    applicationSupportURL: applicationSupportURL
-                ),
                 transactionRecoveryStore: transactionRecoveryStore,
                 identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator(
                     control: controlStore,
                     critiques: critiqueRegistry,
                     windowSessions: windowSessionStore
-                ),
-                roots: TriptychRoots(
-                    analyses: analysesURL,
-                    topics: topicsURL,
-                    works: worksURL,
-                    control: controlURL
                 )
             )
             let servicesReady = clock.now
@@ -735,13 +747,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     vaults: Dictionary(uniqueKeysWithValues: assignment.vaults.values.map {
                         ($0.id, $0)
                     }),
-                    roots: services.roots,
                     controlStore: services.controlStore,
                     researchConfigurationStore: services.researchConfigurationStore,
                     sourceAccessStore: services.researchSourceAccessStore,
                     portableResearchRecordStore: services.portableResearchRecordStore,
                     localExecutionStore: services.localResearchExecutionStore,
-                    checkpointStore: services.checkpointStore,
+                    agentChangeEvidenceStore: services.agentChangeEvidenceStore,
                     zotero: services.zotero
                 )
             )
@@ -2359,19 +2370,18 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             triptychID: services.manifest.id,
             repository: repository,
             critiqueRegistry: services.critiqueRegistry,
-            checkpointStore: services.checkpointStore,
             controlStore: services.controlStore,
             recoveryStore: services.transactionRecoveryStore,
             sourceAccessStore: services.researchSourceAccessStore,
             portableRecordStore: services.portableResearchRecordStore,
             localExecutionStore: services.localResearchExecutionStore,
+            agentChangeEvidenceStore: services.agentChangeEvidenceStore
         )
         let commit = try await coordinator.delete(
             noteID: identity.id,
             vaultID: id.vaultID,
             relativePath: id.relativePath,
-            expectedRevision: expectedRevision,
-            checkpointArea: try checkpointArea(vaultID: id.vaultID)
+            expectedRevision: expectedRevision
         )
         endSourceMutation(mutationLease)
         ownsMutation = false
@@ -2516,12 +2526,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 triptychID: services.manifest.id,
                 repository: repository,
                 critiqueRegistry: services.critiqueRegistry,
-                checkpointStore: services.checkpointStore,
                 controlStore: services.controlStore,
                 recoveryStore: services.transactionRecoveryStore,
                 sourceAccessStore: services.researchSourceAccessStore,
                 portableRecordStore: services.portableResearchRecordStore,
                 localExecutionStore: services.localResearchExecutionStore,
+                agentChangeEvidenceStore: services.agentChangeEvidenceStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -4168,19 +4178,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             committedValue: record,
             derivedRefreshWarning: derivedRefreshWarning
         )
-    }
-
-    func checkpointArea(vaultID: UUID) throws -> TriptychCheckpointArea {
-        guard let slot = WorkspaceVaultSlot.allCases.first(where: {
-            assignment.vault(for: $0)?.id == vaultID
-        }) else {
-            throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
-        }
-        switch slot {
-        case .paperAnalysis: return .analyses
-        case .topicKnowledge: return .topics
-        case .output: return .works
-        }
     }
 
     private static func isLifecyclePath(_ path: String) -> Bool {

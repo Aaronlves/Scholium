@@ -515,7 +515,6 @@ private enum ResearchGuidanceProofCategory: String, CaseIterable, Identifiable {
     case profilesPractices = "Profiles & Practices"
     case collaboration = "Collaboration"
     case sources = "Sources & Integrations"
-    case recovery = "Recovery & Technical"
 
     var id: String { rawValue }
 }
@@ -626,12 +625,6 @@ private struct ResearchGuidanceSettingsDetail: View {
             ResearchSkillGroup(title: "AGENT & CLI", detail: "Local authenticated handoff", rows: [
                 "Pairing and Session are short-lived and restart-invalidated",
                 "CLI uses the same Application owner as the app",
-            ], actionTitle: nil)
-        case .recovery:
-            ResearchSkillGroup(title: "RECOVERY", detail: "Machine-local operational state", rows: [
-                "Settled Note version retention",
-                "One previous primary Method edit",
-                "One previous Practice edit",
             ], actionTitle: nil)
         }
     }

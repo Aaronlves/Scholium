@@ -1361,19 +1361,15 @@ extension ResearchFunctionCoordinator {
                           && $0.note.relativePath == context.material.relativePath
                           && $0.fingerprint == context.currentRevision
                   }),
-                  let checkpointID = snapshot.checkpointID,
-                  let checkpoint = try? await dependencies.checkpointStore
-                    .checkpoint(id: checkpointID),
-                  checkpoint.triptychID == workspaceID,
-                  checkpoint.kind == .researchContinuation,
-                  checkpoint.files == [TriptychCheckpointFile(
-                    key: researchContinuationCheckpointKey(
-                        for: snapshot.request.target
-                    ),
-                    fingerprint: snapshot.request.target.fingerprint
-                  )] else {
+                  let changeEvidenceID = snapshot.changeEvidenceID,
+                  let evidence = try? await dependencies.agentChangeEvidenceStore
+                    .evidence(id: changeEvidenceID),
+                  evidence.triptychID == workspaceID,
+                  evidence.runID == snapshot.runID,
+                  evidence.noteID == snapshot.request.target.noteID,
+                  evidence.startingRevision == snapshot.request.target.fingerprint else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "The Resynthesize child no longer matches its exact revision pair, Target, Material, or recovery checkpoint."
+                    "The Resynthesize child no longer matches its exact revision pair, Target, Material, or Agent change evidence."
                 )
             }
         case .fidelity:

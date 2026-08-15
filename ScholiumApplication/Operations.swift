@@ -398,7 +398,6 @@ public actor DiscoveryOperations: DiscoveryUseCases {
 
 public actor ResearchOperations:
     ResearchRecordUseCases,
-    ResearchCheckpointUseCases,
     ResearchConfigurationUseCases,
     ResearchActionUseCases,
     ResearchSourceAccessUseCases
@@ -538,36 +537,6 @@ public actor ResearchOperations:
             expectedRevision: expectedRevision,
             rationale: rationale
         )
-    }
-
-    public func recoveryPolicy() async throws -> ResearchRecoveryPolicySnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.recoveryPolicy()
-    }
-
-    public func prepareRecoveryPolicyChange(
-        _ retention: SettledSnapshotRetention,
-        expectedRevision: DocumentFingerprint?
-    ) async throws -> ResearchRecoveryPolicyChangePreview {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareRecoveryPolicyChange(
-            retention,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func applyRecoveryPolicyChange(
-        _ preview: ResearchRecoveryPolicyChangePreview
-    ) async throws -> ResearchRecoveryPolicyApplyOutcome {
-        let handle = try await reference.requireHandle()
-        return try await handle.applyRecoveryPolicyChange(preview)
-    }
-
-    public func settledSnapshots(
-        noteID: UUID?
-    ) async throws -> [SettledRevisionSnapshot] {
-        let handle = try await reference.requireHandle()
-        return try await handle.settledSnapshots(noteID: noteID)
     }
 
     public func activeDiscussions(
@@ -788,70 +757,6 @@ public actor ResearchOperations:
             roundID: roundID,
             expectedRevision: expectedRevision
         )
-    }
-
-    @discardableResult
-    public func createCheckpoint(
-        name: String,
-        kind: TriptychCheckpointKind = .manual
-    ) async throws -> TriptychCheckpoint {
-        let handle = try await reference.requireHandle()
-        return try await handle.createCheckpoint(name: name, kind: kind)
-    }
-
-    public func prepareCheckpointsLocation() async throws -> URL {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareCheckpointsLocation()
-    }
-
-    public func checkpoints() async throws -> TriptychCheckpointListing {
-        let handle = try await reference.requireHandle()
-        return try await handle.checkpoints()
-    }
-
-    public func noteCheckpoints(
-        for note: VaultQualifiedNoteID
-    ) async throws -> [TriptychCheckpoint] {
-        let handle = try await reference.requireHandle()
-        return try await handle.noteCheckpoints(for: note)
-    }
-
-    public func checkpointNoteContent(
-        _ checkpointID: UUID,
-        note: VaultQualifiedNoteID
-    ) async throws -> String {
-        let handle = try await reference.requireHandle()
-        return try await handle.checkpointNoteContent(checkpointID, note: note)
-    }
-
-    public func checkpointComparison(
-        _ checkpointID: UUID
-    ) async throws -> [TriptychCheckpointChange] {
-        let handle = try await reference.requireHandle()
-        return try await handle.checkpointComparison(checkpointID)
-    }
-
-    @discardableResult
-    public func restoreNote(
-        _ note: VaultQualifiedNoteID,
-        from checkpointID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> TriptychCheckpointRestoreResult {
-        let handle = try await reference.requireHandle()
-        return try await handle.restoreNote(
-            note,
-            from: checkpointID,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    @discardableResult
-    public func restoreCheckpoint(
-        _ checkpointID: UUID,
-        selection: TriptychCheckpointRestoreSelection
-    ) async throws -> TriptychCheckpointRestoreResult {
-        let handle = try await reference.requireHandle()
-        return try await handle.restoreCheckpoint(checkpointID, selection: selection)
     }
 
     public func settings() async throws -> TriptychSettingsSnapshot {

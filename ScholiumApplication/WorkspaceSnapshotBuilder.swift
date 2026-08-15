@@ -239,10 +239,6 @@ enum WorkspaceSnapshotBuilder {
             research: WorkspaceResearchSnapshot(
                 finishedResearchRecordProjectionIsComplete: false,
                 critiques: [],
-                checkpointListing: TriptychCheckpointListing(
-                    checkpoints: [],
-                    unreadableEntries: []
-                ),
                 healthIssues: identityHealthIssues
             )
         )
@@ -839,7 +835,6 @@ enum WorkspaceSnapshotBuilder {
             finishedResearchRecordProjectionIsComplete:
                 finishedResearchRecordListing.issues.isEmpty,
             critiques: critiqueAssociations,
-            checkpointListing: await services.checkpointStore.listing(),
             recoveryRecords: recoveryRecords,
             activities: activities,
             noteReviews: noteReviewListing.reviews,

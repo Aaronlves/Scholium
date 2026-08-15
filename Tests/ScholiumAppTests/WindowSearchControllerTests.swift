@@ -114,6 +114,39 @@ struct WindowSearchControllerTests {
         #expect(controller.savedSearches.map(\.name) == ["Second", "First", "Existing"])
     }
 
+    @Test("Saved Search recovery clears the persistent load failure and reloads")
+    func savedSearchRecovery() async {
+        let recovered = SavedSearch(
+            name: "Recovered",
+            definition: SearchDefinition(query: "recovered", presentationScope: .triptych)
+        )
+        var needsRecovery = true
+        let controller = WindowSearchController(
+            discoveryController: DiscoveryController(),
+            dependencies: dependencies(
+                loadSavedSearches: {
+                    if needsRecovery {
+                        throw SavedSearchStoreError.unreadable("damaged")
+                    }
+                    return [recovered]
+                },
+                recoverSavedSearches: {
+                    needsRecovery = false
+                    return URL(fileURLWithPath: "/preserved/saved-searches.json")
+                }
+            )
+        )
+
+        controller.loadSavedSearches()
+        await controller.waitForPendingWorkForTesting()
+        #expect(controller.savedSearchLoadFailure != nil)
+
+        await controller.recoverSavedSearches()
+
+        #expect(controller.savedSearchLoadFailure == nil)
+        #expect(controller.savedSearches.map(\.id) == [recovered.id])
+    }
+
     @Test("A stale Note result is never routed and refreshes the active query")
     func staleNoteResult() async {
         let discovery = DiscoveryController()
@@ -162,6 +195,7 @@ struct WindowSearchControllerTests {
             dependencies: WindowSearchController.Dependencies(
                 loadSavedSearches: { [] },
                 saveSavedSearches: { _ in },
+                recoverSavedSearches: { nil },
                 executionContext: { _ in
                     DiscoverySearchExecutionContext(
                         workspaceIsAvailable: false,
@@ -373,6 +407,7 @@ struct WindowSearchControllerTests {
     private func dependencies(
         loadSavedSearches: @escaping @MainActor () async throws -> [SavedSearch] = { [] },
         saveSavedSearches: @escaping @MainActor ([SavedSearch]) async throws -> Void = { _ in },
+        recoverSavedSearches: @escaping @MainActor () async throws -> URL? = { nil },
         executionContext: @escaping @MainActor (
             SearchWorkspaceState
         ) async throws -> DiscoverySearchExecutionContext = { _ in
@@ -400,6 +435,7 @@ struct WindowSearchControllerTests {
         WindowSearchController.Dependencies(
             loadSavedSearches: loadSavedSearches,
             saveSavedSearches: saveSavedSearches,
+            recoverSavedSearches: recoverSavedSearches,
             executionContext: executionContext,
             resultEvidence: resultEvidence,
             open: open,

@@ -202,7 +202,7 @@ enum BootstrapAgentPreparationPrompt {
            - Treat exact Markdown bytes as authoritative.
            - Never edit .scholium directly.
            - Preserve BOM, newline style, comments, unknown YAML, ordering, quoting, multiline values, and final newlines outside an explicitly changed range.
-           - For an existing Note mutation that needs Scholium's bounded-write, checkpoint, conflict, and recovery guarantees, use the current Run's authenticated, fingerprint-checked Scholium mutation path. A raw filesystem write is an external edit, not a Scholium-authorized write.
+           - For an existing Note mutation that needs Scholium's bounded-write, diff, Undo, conflict, and recovery guarantees, use the current Run's authenticated, fingerprint-checked Scholium mutation path. A raw filesystem write is an external edit, not a Scholium-authorized write.
         6. Do not read Triptych research files or request a pairing code now. Wait for a specific Research Run handoff from Scholium.
 
         Finish by reporting either Ready, including the project root, workspace root, CLI result, and instruction-file paths, or one precise blocker.

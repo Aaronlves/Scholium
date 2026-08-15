@@ -34,9 +34,8 @@
   it never declares platform capability or permission.
 - **Settle** is the researcher's fingerprint-bound, replaceable current
   judgment that one saved revision is sufficiently stable for current
-  research. It is neither a verdict nor a qualification. Each distinct
-  settled revision pins one deduplicated machine-local exact-byte recovery
-  version of that Note.
+  research. It is neither a verdict nor a qualification and retains no source
+  version.
 - **Critique** is an attributed agent assessment of one Work. It does not
   replace or silently edit the Work.
 - **Fidelity** audits the exact revision's philosophical content and, when its
@@ -57,8 +56,6 @@
   Discussion or validated Action run. A separate nonmodal two-panel utility
   window browses these records; active Discussion remains in Actions, and
   ordinary Markdown annotations remain in the document.
-- A **Checkpoint** is a self-contained, fingerprint-bound snapshot of the
-  complete Triptych, distinct from editor Undo.
 
 ## 2. Product role and authority
 
@@ -98,12 +95,12 @@ Scholium supplies safety, not transferred responsibility:
 
 - exact paths, stable identities, and Application-owned fingerprint checks;
 - autosave, atomic writes, external-change detection, and conflicts;
-- automatic per-write recovery plus manual Triptych checkpoints, comparison,
-  and restoration.
+- exact Run-bound Agent change evidence for diff and direct Undo, plus invisible
+  interrupted-save recovery for repository writes.
 
-Extensive external work without a suitable checkpoint is not guaranteed
-recoverable. Fingerprints detect revisions; they are not permission tokens and
-do not need to be copied into the agent prompt.
+Raw external edits do not acquire Scholium's Agent diff or direct-Undo evidence.
+Fingerprints detect revisions; they are not permission tokens and do not need
+to be copied into the agent prompt.
 
 The Application API validates each Research Action's initial object, focal
 context, source access, revision, registered Skill, Practices, Result Contract,
@@ -229,8 +226,8 @@ Application Support owns:
 - derived indexes, temporary files, and caches;
 - Pairing Code digests, process-bound Connection Sessions, Bounded Write Sets,
   pending permission decisions, source bookmarks, transport state, derived
-  record indexes, and other machine-local execution data; and
-- self-contained Triptych checkpoints.
+  record indexes, exact Agent change evidence, interrupted-save recovery, and
+  other machine-local execution data.
 
 Authored Markdown/YAML contains only research content that remains meaningful
 outside Scholium. Portable `.scholium/` contains only synchronized control

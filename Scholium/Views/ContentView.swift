@@ -334,6 +334,10 @@ struct ContentView: View {
     private var spotlightSearchContext: SpotlightSearchContext {
         SpotlightSearchContext(
             savedSearches: appState.searchController.savedSearches,
+            savedSearchLoadFailure: appState.searchController.savedSearchLoadFailure,
+            recoverSavedSearches: {
+                await appState.searchController.recoverSavedSearches()
+            },
             refresh: { await appState.searchController.refresh() },
             dismiss: { appState.searchController.dismiss() },
             save: { appState.searchController.saveCurrent(named: $0) },
@@ -891,26 +895,6 @@ struct ContentView: View {
                     }
                 )
             }
-        case .createCheckpoint:
-            CreateCheckpointView { name in
-                _ = try await appState.createCheckpoint(name: name, kind: .manual)
-                appState.showToast(String(localized: "Checkpoint created.", table: "Localizable", bundle: .module))
-            }
-        case .restoreCheckpoint:
-            RestoreCheckpointView(
-                controller: appState.researchController,
-                restoreCheckpoint: { checkpointID, selection in
-                    let result = try await appState.restoreCheckpoint(
-                        checkpointID,
-                        selection: selection
-                    )
-                    _ = result
-                    appState.showToast(String(localized: "Checkpoint restored. Before Restore checkpoint created.", table: "Localizable", bundle: .module))
-                },
-                revealCheckpoints: {
-                    appState.revealCheckpointsInFinder()
-                }
-            )
         case .lifecycle(let request):
             NoteLifecycleView(
                 request: request,

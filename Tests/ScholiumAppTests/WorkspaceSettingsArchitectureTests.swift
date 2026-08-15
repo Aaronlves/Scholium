@@ -705,7 +705,6 @@ struct WorkspaceSettingsArchitectureTests {
             "ProfilesPracticesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
-            "ResearchRecoverySettingsView.swift",
         ]
         let source = try guidanceFiles.map { fileName in
             try String(
@@ -729,7 +728,6 @@ struct WorkspaceSettingsArchitectureTests {
             "Profiles & Practices",
             "Collaboration",
             "Sources & Integrations",
-            "Recovery & Technical",
         ] {
             #expect(source.contains(category))
         }
@@ -884,7 +882,6 @@ struct WorkspaceSettingsArchitectureTests {
             "ProfilesPracticesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
-            "ResearchRecoverySettingsView.swift",
         ].map { fileName in
             try String(
                 contentsOf: repositoryRoot.appendingPathComponent(

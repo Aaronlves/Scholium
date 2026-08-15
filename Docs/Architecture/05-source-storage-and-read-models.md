@@ -61,8 +61,8 @@ protected by remap journals and permanent-delete tombstones. A damaged database
 is quarantined and rebuilt from verified objects. Unsupported version bytes
 remain unchanged and nonauthorizing. It exposes no general delivery-facing
 versions or history API. Its one bounded `InterruptedSaveRecovery` projection includes only exact
-startup-retained candidates and remains distinct from Checkpoints and settled
-versions. `DocumentOperations` vault-qualifies listing, read-only content,
+startup-retained candidates and remains distinct from Run-bound Agent change
+evidence. `DocumentOperations` vault-qualifies listing, read-only content,
 Finder location, and restore; `ResearchController` owns that listing beside the
 existing durable-recovery list, while `WindowModel` owns the cross-window editor
 flush and presentation effects. Startup reads pending canonical source through
@@ -75,11 +75,19 @@ their exact schema version. Unsupported pre-use machine data remains
 byte-unchanged and nonauthorizing; no legacy save schema is migrated or
 interpreted.
 
+`AgentChangeEvidenceStore` is a separate Core actor under Triptych-keyed
+Application Support. Each JSON record binds one ID to the Triptych, Run, stable
+Note ID, exact starting bytes/fingerprint, and optional final Agent
+bytes/fingerprint. It enforces the Bounded Write Set source-size limit,
+descriptor-safe storage, atomic replacement, and cross-process locking. It is
+not queried as history, cannot reconstruct source authority, and is consumed
+only by exact Record comparison, direct Undo, and note-deletion privacy cleanup.
+
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
 bounded machine-local JSON state. It owns no-follow containment, byte limits,
 atomic replacement, readback, staging/deletion recovery, and the companion
 `AdvisoryFileLock` for cooperating-process serialization. Portable Records,
-local executions, recovery policy, and the prewrite ledger each retain their
+local executions, Agent change evidence, and the prewrite ledger each retain their
 own schema, path, transaction, recovery, and error semantics, and translate
 primitive failures at that owner boundary. The primitive neither interprets a
 Record nor becomes a writable research-source authority.

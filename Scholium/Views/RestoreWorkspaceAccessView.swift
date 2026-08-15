@@ -7,9 +7,16 @@ struct RestoreWorkspaceAccessView: View {
 
     let recovery: WorkspaceAccessRecovery
     let restore: (URL) async throws -> Void
+    let rebuildPortableControl: () async throws -> URL
+    let canRemoveRegistration: Bool
+    let removeRegistration: () async throws -> Void
     let quitApplication: () -> Void
 
     @State private var isRestoring = false
+    @State private var isRemovingRegistration = false
+    @State private var isRebuildingPortableControl = false
+    @State private var confirmsRegistrationRemoval = false
+    @State private var confirmsPortableControlRebuild = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -27,25 +34,69 @@ struct RestoreWorkspaceAccessView: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let reason = recovery.reason {
+                Text(reason)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if canRemoveRegistration {
+                Button("Remove Registration…", role: .destructive) {
+                    confirmsRegistrationRemoval = true
+                }
+                .disabled(isBusy)
+            }
+
             HStack {
                 Button("Quit Scholium") { quitApplication() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Choose Folder…") { chooseFolder() }
+                Button(primaryTitle) {
+                    if recovery.kind == .unsupportedPortableControl {
+                        confirmsPortableControlRebuild = true
+                    } else {
+                        chooseFolder()
+                    }
+                }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isRestoring)
+                    .disabled(isBusy)
             }
         }
         .padding(ScholiumGrid.Spacing.regionContentInset)
         .frame(width: 500)
         .interactiveDismissDisabled()
+        .confirmationDialog(
+            "Remove This Triptych Registration?",
+            isPresented: $confirmsRegistrationRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Registration", role: .destructive) {
+                removeTriptychRegistration()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Scholium will remove only this Triptych’s registration from this Mac, then open setup again. It will not delete or change Analyses, Topics, Works, or the portable .scholium folder.")
+        }
+        .confirmationDialog(
+            "Archive and Rebuild Portable Control?",
+            isPresented: $confirmsPortableControlRebuild,
+            titleVisibility: .visible
+        ) {
+            Button("Archive and Rebuild", role: .destructive) {
+                rebuildControl()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state.")
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.restoreAccess")
     }
@@ -64,7 +115,23 @@ struct RestoreWorkspaceAccessView: View {
                 table: "Localizable",
                 bundle: .module
             )
+        case .unsupportedPortableControl:
+            String(
+                localized: "This Triptych’s portable .scholium control folder is incompatible or damaged. Archive the entire folder unchanged, then let Scholium rebuild current control state. Analyses, Topics, and Works remain untouched.",
+                table: "Localizable",
+                bundle: .module
+            )
         }
+    }
+
+    private var primaryTitle: LocalizedStringResource {
+        recovery.kind == .unsupportedPortableControl
+            ? "Archive and Rebuild…"
+            : "Choose Folder…"
+    }
+
+    private var isBusy: Bool {
+        isRestoring || isRemovingRegistration || isRebuildingPortableControl
     }
 
     private func chooseFolder() {
@@ -103,6 +170,38 @@ struct RestoreWorkspaceAccessView: View {
             } catch {
                 errorMessage = error.localizedDescription
                 isRestoring = false
+            }
+        }
+    }
+
+    private func removeTriptychRegistration() {
+        Task { @MainActor in
+            do {
+                isRemovingRegistration = true
+                errorMessage = nil
+                try await removeRegistration()
+                isRemovingRegistration = false
+            } catch is CancellationError {
+                isRemovingRegistration = false
+            } catch {
+                errorMessage = error.localizedDescription
+                isRemovingRegistration = false
+            }
+        }
+    }
+
+    private func rebuildControl() {
+        Task { @MainActor in
+            do {
+                isRebuildingPortableControl = true
+                errorMessage = nil
+                _ = try await rebuildPortableControl()
+                isRebuildingPortableControl = false
+            } catch is CancellationError {
+                isRebuildingPortableControl = false
+            } catch {
+                errorMessage = error.localizedDescription
+                isRebuildingPortableControl = false
             }
         }
     }

@@ -8,7 +8,6 @@ public struct PermanentDeletionCommit: Hashable, Sendable {
     public let removedCritiqueDocumentPath: String?
     public let removedDialogueIDs: [UUID]
     public let removedCritiqueAssociationIDs: [UUID]
-    public let invalidatedCheckpointIDs: [UUID]
 
     public init(
         noteID: UUID,
@@ -17,8 +16,7 @@ public struct PermanentDeletionCommit: Hashable, Sendable {
         fingerprint: DocumentFingerprint,
         removedCritiqueDocumentPath: String? = nil,
         removedDialogueIDs: [UUID],
-        removedCritiqueAssociationIDs: [UUID],
-        invalidatedCheckpointIDs: [UUID]
+        removedCritiqueAssociationIDs: [UUID]
     ) {
         self.noteID = noteID
         self.vaultID = vaultID
@@ -27,6 +25,5 @@ public struct PermanentDeletionCommit: Hashable, Sendable {
         self.removedCritiqueDocumentPath = removedCritiqueDocumentPath
         self.removedDialogueIDs = removedDialogueIDs
         self.removedCritiqueAssociationIDs = removedCritiqueAssociationIDs
-        self.invalidatedCheckpointIDs = invalidatedCheckpointIDs
     }
 }

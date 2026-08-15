@@ -2086,7 +2086,7 @@ private struct ResearchRecordWorkspaceView: View {
             }
         } message: {
             Text(
-                "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone."
+                "This removes the portable record from every derived Note view. It does not delete source Markdown, Agent change evidence, interrupted-save recovery, or unrelated records. This action cannot be undone."
             )
         }
     }

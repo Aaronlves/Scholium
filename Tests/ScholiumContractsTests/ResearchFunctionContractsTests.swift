@@ -96,7 +96,7 @@ struct ResearchFunctionContractsTests {
         #expect(decodedLegacy.actuallyUsedMaterialNoteIDs == nil)
     }
 
-    @Test("Function roles, write authority, checkpoints, and Fidelity requirements are explicit")
+    @Test("Function roles, write authority, change evidence, and Fidelity requirements are explicit")
     func functionRoleMatrix() {
         #expect(ResearchFunctionID.develop.allowedTargetRoles == [.analysis, .topic])
         #expect(ResearchFunctionID.critique.allowedTargetRoles == [.work])
@@ -112,12 +112,12 @@ struct ResearchFunctionContractsTests {
         #expect(!ResearchFunctionID.fidelity.writesTarget)
         #expect(!ResearchFunctionID.critique.writesTarget)
 
-        #expect(ResearchFunctionID.develop.requiresCheckpoint)
-        #expect(ResearchFunctionID.critique.requiresCheckpoint)
-        #expect(ResearchFunctionID.revise.requiresCheckpoint)
-        #expect(!ResearchFunctionID.manuscript.requiresCheckpoint)
-        #expect(!ResearchFunctionID.discuss.requiresCheckpoint)
-        #expect(!ResearchFunctionID.fidelity.requiresCheckpoint)
+        #expect(ResearchFunctionID.develop.requiresAgentChangeEvidence)
+        #expect(ResearchFunctionID.revise.requiresAgentChangeEvidence)
+        #expect(!ResearchFunctionID.critique.requiresAgentChangeEvidence)
+        #expect(!ResearchFunctionID.manuscript.requiresAgentChangeEvidence)
+        #expect(!ResearchFunctionID.discuss.requiresAgentChangeEvidence)
+        #expect(!ResearchFunctionID.fidelity.requiresAgentChangeEvidence)
     }
 
     @Test("Requests reject duplicate Targets, invalid scopes, checks, roles, and conditional resources")

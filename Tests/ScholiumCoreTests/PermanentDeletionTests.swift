@@ -5,7 +5,7 @@ import ScholiumContracts
 
 @Suite("Coordinated permanent deletion")
 struct PermanentDeletionTests {
-    @Test("Confirmed deletion purges source, current records, identity, history, and checkpoints")
+    @Test("Confirmed deletion purges source, current records, identity, and history")
     func purgesEveryCurrentRecoverySurface() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("Scholium-PermanentDeletion-\(UUID().uuidString)", isDirectory: true)
@@ -45,21 +45,6 @@ struct PermanentDeletionTests {
             fingerprint: fingerprint
         ))
         let critiqueRegistry = CritiqueRegistry(controlURL: await control.controlURL)
-        let checkpointStore = TriptychCheckpointStore(
-            triptychID: triptychID,
-            applicationSupportURL: support
-        )
-        let roots = TriptychRoots(
-            analyses: analyses,
-            topics: topics,
-            works: works,
-            control: await control.controlURL
-        )
-        let checkpoint = try await checkpointStore.create(
-            name: "Contains Deleted Note",
-            kind: .manual,
-            roots: roots
-        )
         let repository = try VaultRepository(
             vaultURL: analyses,
             identity: VaultIdentity(id: vaultID, canonicalPath: analyses.path, bookmarkData: nil),
@@ -80,22 +65,18 @@ struct PermanentDeletionTests {
             triptychID: triptychID,
             repository: repository,
             critiqueRegistry: critiqueRegistry,
-            checkpointStore: checkpointStore,
             controlStore: control,
             recoveryStore: recoveryStore
         )
-        let commit = try await coordinator.delete(
+        _ = try await coordinator.delete(
             noteID: identity.id,
             vaultID: vaultID,
             relativePath: path,
-            expectedRevision: current.fingerprint,
-            checkpointArea: .analyses
+            expectedRevision: current.fingerprint
         )
 
-        #expect(commit.invalidatedCheckpointIDs == [checkpoint.id])
         #expect(!FileManager.default.fileExists(atPath: sourceURL.path))
         #expect(await repository.recoveryEntries(relativePath: path).isEmpty)
-        #expect(await checkpointStore.checkpoints().isEmpty)
         #expect(try await control.identity(
             forVaultID: vaultID,
             relativePath: path,
@@ -121,15 +102,14 @@ struct PermanentDeletionTests {
                 triptychID: fixture.triptychID,
                 runID: parentRunID,
                 action: parentAction,
-                checkpointID: fixture.checkpoint.id
+                changeEvidenceID: UUID()
             )
         )
         let commit = try await fixture.coordinator().delete(
             noteID: fixture.workIdentity.id,
             vaultID: fixture.vaultID,
             relativePath: fixture.workPath,
-            expectedRevision: fixture.workFingerprint,
-            checkpointArea: .works
+            expectedRevision: fixture.workFingerprint
         )
 
         #expect(commit.removedCritiqueDocumentPath == fixture.critiquePath)
@@ -143,7 +123,6 @@ struct PermanentDeletionTests {
             vaultID: fixture.vaultID,
             relativePath: fixture.critiquePath
         ) == nil)
-        #expect(await fixture.checkpointStore.checkpoints().isEmpty)
         #expect(try await fixture.portableRecordStore.settlementListing().settlements.isEmpty)
         #expect(try await fixture.localExecutionStore.recordIfPresent(
             id: parentRunID
@@ -159,7 +138,6 @@ struct PermanentDeletionTests {
             .afterSourceDeletion,
             .afterSettlementPurge,
             .afterCritiqueAssociationPurge,
-            .afterCheckpointPurge,
             .afterIdentityPurge,
         ]
     )
@@ -178,15 +156,13 @@ struct PermanentDeletionTests {
                 noteID: fixture.workIdentity.id,
                 vaultID: fixture.vaultID,
                 relativePath: fixture.workPath,
-                expectedRevision: fixture.workFingerprint,
-                checkpointArea: .works
+                expectedRevision: fixture.workFingerprint
             )
         }
 
         #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
         #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
-        #expect(await fixture.checkpointStore.checkpoints().map(\.id) == [fixture.checkpoint.id])
         #expect(try await fixture.portableRecordStore.latestSettlement(
             noteID: fixture.workIdentity.id
         ) == fixture.workSettlement)
@@ -213,8 +189,7 @@ struct PermanentDeletionTests {
                 noteID: fixture.workIdentity.id,
                 vaultID: fixture.vaultID,
                 relativePath: fixture.workPath,
-                expectedRevision: fixture.workFingerprint,
-                checkpointArea: .works
+                expectedRevision: fixture.workFingerprint
             )
         }
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
@@ -226,7 +201,6 @@ struct PermanentDeletionTests {
         #expect(try String(contentsOf: fixture.workURL, encoding: .utf8) == fixture.workSource)
         #expect(try String(contentsOf: fixture.critiqueURL, encoding: .utf8) == fixture.critiqueSource)
         #expect(await fixture.critiqueRegistry.association(workNoteID: fixture.workIdentity.id)?.id == fixture.association.id)
-        #expect(await fixture.checkpointStore.checkpoints().map(\.id) == [fixture.checkpoint.id])
         #expect(try await fixture.portableRecordStore.latestSettlement(
             noteID: fixture.workIdentity.id
         ) == fixture.workSettlement)
@@ -252,8 +226,7 @@ struct PermanentDeletionTests {
                 noteID: fixture.workIdentity.id,
                 vaultID: fixture.vaultID,
                 relativePath: fixture.workPath,
-                expectedRevision: fixture.workFingerprint,
-                checkpointArea: .works
+                expectedRevision: fixture.workFingerprint
             )
         }
         let concurrent = try await fixture.portableRecordStore.settle(
@@ -286,8 +259,7 @@ struct PermanentDeletionTests {
                 noteID: fixture.workIdentity.id,
                 vaultID: fixture.vaultID,
                 relativePath: fixture.workPath,
-                expectedRevision: fixture.workFingerprint,
-                checkpointArea: .works
+                expectedRevision: fixture.workFingerprint
             )
         }
         #expect(!FileManager.default.fileExists(atPath: fixture.workURL.path))
@@ -301,7 +273,6 @@ struct PermanentDeletionTests {
         let reopenedRepository = try fixture.reopenedRepository()
         #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.workPath).isEmpty)
         #expect(await reopenedRepository.recoveryEntries(relativePath: fixture.critiquePath).isEmpty)
-        #expect(await fixture.checkpointStore.checkpoints().isEmpty)
         #expect(try await fixture.portableRecordStore.settlementListing().settlements.isEmpty)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
@@ -328,8 +299,7 @@ struct PermanentDeletionTests {
                 noteID: fixture.workIdentity.id,
                 vaultID: fixture.vaultID,
                 relativePath: fixture.workPath,
-                expectedRevision: fixture.workFingerprint,
-                checkpointArea: .works
+                expectedRevision: fixture.workFingerprint
             )
         }
         _ = try await fixture.portableRecordStore.settle(
@@ -372,8 +342,7 @@ struct PermanentDeletionTests {
                 noteID: fixture.workIdentity.id,
                 vaultID: fixture.vaultID,
                 relativePath: fixture.workPath,
-                expectedRevision: fixture.workFingerprint,
-                checkpointArea: .works
+                expectedRevision: fixture.workFingerprint
             )
         }
 
@@ -401,8 +370,6 @@ struct PermanentDeletionTests {
         let critiqueIdentity: NoteIdentityRecord
         let critiqueRegistry: CritiqueRegistry
         let association: CritiqueAssociation
-        let checkpointStore: TriptychCheckpointStore
-        let checkpoint: TriptychCheckpoint
         let control: TriptychControlStore
         let repository: VaultRepository
         let recoveryStore: TriptychMutationRecoveryStore
@@ -490,20 +457,6 @@ struct PermanentDeletionTests {
                 targetFingerprint: workFingerprint,
                 critiqueRelativePath: critiquePath
             ))
-            checkpointStore = TriptychCheckpointStore(
-                triptychID: triptychID,
-                applicationSupportURL: support
-            )
-            checkpoint = try await checkpointStore.create(
-                name: "Work and Critique",
-                kind: .manual,
-                roots: TriptychRoots(
-                    analyses: analyses,
-                    topics: topics,
-                    works: works,
-                    control: await control.controlURL
-                )
-            )
             repository = try VaultRepository(
                 vaultURL: works,
                 identity: VaultIdentity(id: vaultID, canonicalPath: works.path, bookmarkData: nil),
@@ -522,7 +475,6 @@ struct PermanentDeletionTests {
                 triptychID: triptychID,
                 repository: repository,
                 critiqueRegistry: critiqueRegistry,
-                checkpointStore: checkpointStore,
                 controlStore: control,
                 recoveryStore: recoveryStore,
                 portableRecordStore: portableRecordStore,
@@ -537,10 +489,6 @@ struct PermanentDeletionTests {
                 triptychID: triptychID,
                 repository: try reopenedRepository(),
                 critiqueRegistry: CritiqueRegistry(controlURL: await reopenedControl.controlURL),
-                checkpointStore: TriptychCheckpointStore(
-                    triptychID: triptychID,
-                    applicationSupportURL: support
-                ),
                 controlStore: reopenedControl,
                 recoveryStore: try TriptychMutationRecoveryStore(
                     storageURL: support.appendingPathComponent("Transaction Recovery", isDirectory: true)
@@ -640,7 +588,7 @@ private func makeDeletionTestLocalExecution(
     triptychID: UUID,
     runID: UUID,
     action: ResearchActionSnapshot,
-    checkpointID: UUID
+    changeEvidenceID: UUID
 ) throws -> LocalResearchExecutionRecord {
     let target = ResearchFunctionTarget(
         noteID: action.target.noteID,
@@ -659,7 +607,7 @@ private func makeDeletionTestLocalExecution(
         actionSnapshot: action,
         recordKind: .functionEnvelope,
         recordID: runID,
-        checkpointID: checkpointID,
+        changeEvidenceID: changeEvidenceID,
         confirmationToken: UUID(),
         preparedAt: Date(timeIntervalSince1970: 10)
     )

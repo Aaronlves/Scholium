@@ -73,6 +73,13 @@ Connections, grant capability, create evidence, or override the researcher
 request or platform safety. A Practice may combine a lens, procedure, and
 criterion; Scholium creates no Practice type or dependency graph.
 
+If the machine-local Method locator document is invalid, Methods exposes a
+confirmed archive-and-reset action. Scholium preserves the exact invalid file
+under a unique sibling recovery name, installs an empty current locator
+document, and requires affected external Methods to be selected again on that
+Mac. Portable registrations, Method and Practice Markdown, Research Records,
+and vault files remain unchanged; I/O or unsafe storage is not silently reset.
+
 Run creation freezes the registration relation, exact primary entry text,
 resolved Practice identities and text, optional Skill-folder path string, and
 Result Contract. Later registration, Skill, Practice, or Profile edits affect
@@ -156,7 +163,7 @@ per-user, loopback-only local bridge with bounded messages, timeouts, and
 contract-version checks. The bridge relies on the unguessable one-time Pairing
 Code and process-bound Session credential rather than filesystem metadata or
 peer-user inference. It owns no Triptych, Run, Session semantics, research
-content, Record, checkpoint, or recovery bytes and exposes no relay, LAN, or
+content, Record, change evidence, or recovery bytes and exposes no relay, LAN, or
 public network endpoint. Direct pairing is promised only where the Agent can
 reach that local CLI/bridge; manual cloud-Agent copy is not a Session. Transport
 mechanics belong to [Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).
@@ -252,11 +259,9 @@ submitted evaluation of that exact Record. Opened, selected, searched, dwell,
 pin, autosave, authorization, Agent output, and silence never imply reading,
 importance, support, commitment, acceptance, or belief. Missing proof returns
 absent or unknown rather than an inferred psychological state.
-The machine-local exact-revision pin created as part of Settle is recovery
-protection, not a second researcher-state fact. Research Context reads the
-portable Settlement judgment and its exact fingerprint; it never promotes that
-recovery pin into importance, stance, adoption, or a separately retrievable
-state item.
+Research Context reads only the portable Settlement judgment and its exact
+fingerprint. Settle creates no machine-local source version, recovery pin,
+importance, stance, adoption, or separately retrievable state item.
 
 ### 8.3 Collaboration policy, Bounded Write Set, and exact writes
 
@@ -309,13 +314,15 @@ Session, Run, complete allowed document set, and each member's expected
 revision. Each call names one member and has one hidden idempotent operation
 identity. Before writing, Scholium revalidates Session, Run, membership,
 identity, role, operation, containment, current revision, and policy facts that
-can revoke unused Full Access authority. Existing-note source writes then
-establish **Before Agent Work** exact-byte recovery, build and validate the
-bounded body or property candidate, atomically replace, and read back. Creation
+can revoke unused Full Access authority. Before Agent access, each existing
+writable Note receives one exact Run-bound starting revision used only for
+Agent diff and direct Undo. Existing-note source writes build and validate the
+bounded body or property candidate, atomically replace, read back, and advance
+that evidence's exact ending revision. Creation
 instead re-proves absence and the frozen Settings revision, claims the exact
 path without fallback naming, and must jointly read back both source and its
 reserved stable identity. It has no fabricated empty-source revision or
-checkpoint. A confirmed Scholium write advances only that member's expected
+change preimage. A confirmed Scholium write advances only that member's expected
 revision; a confirmed creation consumes that one-use new-identity authority.
 
 The set is not a batch transaction. One member's conflict, external change,
@@ -456,22 +463,28 @@ its participant baseline is its first committed created revision. Comparison
 accepts only confirmed modified revision pairs and never labels Discussion,
 researcher, or external changes as Agent work. A Manuscript coordination Record
 does not copy a selected child Run's change; the child Action Record remains
-that write and checkpoint's owner.
+that write and change evidence's owner.
 
-Direct undo is a recovery action, not Review or delayed authorization. Application alone
-resolves the first committed write's **Before Agent Work** checkpoint, current
-stable Note identity and path, exact ending revision, and exact checkpoint
-bytes. It restores only a complete selected document, creates **Before
-Restore**, replaces atomically, and reads back; a multi-document request is a
+Refresh Authority may replace the provisional starting evidence only before
+the first committed Agent write to that Note. After a committed write, refresh
+is stale: incorporating a later external revision would misattribute external
+or researcher work to the Agent diff and make direct undo unsafe.
+
+Direct Undo is a recovery action, not Review or delayed authorization.
+Application alone resolves the first committed write's Run-bound starting
+bytes, current stable Note identity and path, and exact final Agent revision. It
+is available only while current source still equals that final revision. Undo
+restores one complete selected document through the ordinary revision-checked,
+atomic, readback-verified repository save; a multi-document request is a
 sequence of independent transactions, not an atomic batch. A rename follows
 stable identity. A later edit, missing Note, failed readback, or uncertain
 commit remains explicit and never triggers an approximate or hunk-level
-restore. Restore facts stay with the recovery boundary and never become Review
+restore. Undo facts stay with the recovery boundary and never become Review
 judgments.
 
 An Agent-created Note still creates Note Review work and visible Record
-provenance, but the first version offers no direct Undo or exact Before Agent
-Work comparison because no source preimage existed. Scholium never fabricates
+provenance, but the first version offers no direct Undo or exact starting
+comparison because no source preimage existed. Scholium never fabricates
 an empty revision or silently deletes or trashes the created Note as recovery.
 
 Portable Records remain one strict closed schema under

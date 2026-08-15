@@ -462,10 +462,6 @@ struct DocumentControllerConvergenceTests {
             ),
             research: WorkspaceResearchSnapshot(
                 critiques: [],
-                checkpointListing: TriptychCheckpointListing(
-                    checkpoints: [],
-                    unreadableEntries: []
-                ),
                 healthIssues: []
             )
         )

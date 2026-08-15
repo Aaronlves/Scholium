@@ -21,7 +21,7 @@ struct ResearchBoundedWriteOperationsTests {
                 intendedRevision: ending,
                 observedRevision: ending,
                 state: .committed,
-                checkpointID: UUID(),
+                changeEvidenceID: UUID(),
                 startedAt: Date(timeIntervalSince1970: 10),
                 finishedAt: Date(timeIntervalSince1970: 11)
             )
@@ -295,7 +295,7 @@ struct ResearchBoundedWriteOperationsTests {
         })
         #expect(createdEntry.state == .consumed)
         #expect(createdEntry.wasCreated)
-        #expect(createdEntry.checkpointID == nil)
+        #expect(createdEntry.changeEvidenceID == nil)
         let document = try await handle.documents.load(createdEntry.note)
         #expect(document.body == "# Analysis body\n")
         #expect(document.parsedFrontmatter["type"] == .string("journal_article"))
@@ -677,7 +677,7 @@ struct ResearchBoundedWriteOperationsTests {
                 expectedRevision: nil,
                 intendedRevision: revision,
                 state: .writing,
-                checkpointID: nil,
+                changeEvidenceID: nil,
                 startedAt: Date()
             )
             _ = try await handle.services.localResearchExecutionStore
@@ -1055,7 +1055,7 @@ struct ResearchBoundedWriteOperationsTests {
                 expectedRevision: nil,
                 intendedRevision: DocumentFingerprint(content: source),
                 state: .writing,
-                checkpointID: nil,
+                changeEvidenceID: nil,
                 startedAt: Date()
             )
         )
@@ -1351,9 +1351,6 @@ struct ResearchBoundedWriteOperationsTests {
             content: "---\nsummary: incomplete\n"
         )
         _ = try await handle.refresh()
-        let checkpointCount = try await handle.research.checkpoints()
-            .checkpoints.count
-
         for path in [plainID.relativePath, malformedID.relativePath] {
             await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
                 _ = try await handle.research.extendAgentWriteSet(
@@ -1371,8 +1368,6 @@ struct ResearchBoundedWriteOperationsTests {
                 )
             }
         }
-        #expect(try await handle.research.checkpoints().checkpoints.count
-            == checkpointCount)
         #expect(try await handle.documents.load(plainID).sourceBytes
             == plain.sourceBytes)
         #expect(try await handle.documents.load(malformedID).rawContent
@@ -1434,7 +1429,7 @@ struct ResearchBoundedWriteOperationsTests {
             as: UTF8.self
         )
         for forbidden in [
-            "expected_revision", "checkpoint_id", "note_id", "capability",
+            "expected_revision", "change_evidence_id", "note_id", "capability",
             "authorization_revision",
         ] {
             #expect(!contextJSON.contains(forbidden))
@@ -1506,7 +1501,7 @@ struct ResearchBoundedWriteOperationsTests {
             id: connection.preparation.runID
         )
         #expect(stored.documentWriteRecords.count == 2)
-        #expect(Set(stored.boundedWriteSet.entries.map(\.checkpointID)).count == 3)
+        #expect(Set(stored.boundedWriteSet.entries.compactMap(\.changeEvidenceID)).count == 3)
         #expect(try await handle.snapshot().research.activities.contains {
             $0.runID == connection.preparation.runID && $0.state == .running
         })
@@ -1599,8 +1594,6 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(try await handle.documents.load(plainID).sourceBytes
             == plainBefore.sourceBytes)
 
-        let checkpointCount = try await handle.research.checkpoints()
-            .checkpoints.count
         await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
             _ = try await handle.research.extendAgentWriteSet(
                 credential: connection.credential,
@@ -1615,8 +1608,6 @@ struct ResearchBoundedWriteOperationsTests {
                 )
             )
         }
-        #expect(try await handle.research.checkpoints().checkpoints.count
-            == checkpointCount)
         #expect(try await handle.documents.load(malformedID).rawContent
             == "---\nkey: value\n")
         await runtime.shutdown()
@@ -2062,8 +2053,8 @@ struct ResearchBoundedWriteOperationsTests {
         )
         let beforeConflict = try await handle.services.localResearchExecutionStore
             .record(id: connection.preparation.runID)
-        let originalCheckpoint = try #require(
-            beforeConflict.boundedWriteSet.entry(handle: topicHandle)?.checkpointID
+        let originalEvidence = try #require(
+            beforeConflict.boundedWriteSet.entry(handle: topicHandle)?.changeEvidenceID
         )
 
         let topicURL = fixture.rootURL
@@ -2147,14 +2138,17 @@ struct ResearchBoundedWriteOperationsTests {
             stored.boundedWriteSet.entry(handle: topicHandle)
         )
         #expect(currentEntry.state == .abandoned)
-        #expect(currentEntry.checkpointID != originalCheckpoint)
+        #expect(currentEntry.changeEvidenceID != originalEvidence)
         #expect(stored.writeConflictResolutionRecords.count == 2)
         #expect(stored.documentWriteRecords.map(\.state) == [
             .conflict, .committed, .conflict,
         ])
-        let checkpointIDs = await handle.services.checkpointStore.checkpoints().map(\.id)
-        #expect(checkpointIDs.contains(originalCheckpoint))
-        #expect(checkpointIDs.contains(try #require(currentEntry.checkpointID)))
+        #expect(try await handle.services.agentChangeEvidenceStore.evidence(
+            id: originalEvidence
+        ).noteID == currentEntry.noteID)
+        #expect(try await handle.services.agentChangeEvidenceStore.evidence(
+            id: try #require(currentEntry.changeEvidenceID)
+        ).noteID == currentEntry.noteID)
         await runtime.shutdown()
     }
 

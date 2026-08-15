@@ -1,5 +1,16 @@
 import Foundation
 
+public enum ResearchMethodLocatorError: LocalizedError, Hashable, Sendable {
+    case invalid(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalid(let reason):
+            "The machine-local Method access registry is invalid. \(reason)"
+        }
+    }
+}
+
 public struct ResearchSkillRegistrationKey: RawRepresentable, Codable, Hashable,
     Sendable, CustomStringConvertible
 {

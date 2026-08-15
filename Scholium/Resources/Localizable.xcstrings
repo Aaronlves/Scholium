@@ -1123,22 +1123,6 @@
         }
       }
     },
-    "%lld settled versions are stored on this Mac. The largest Note history contains %lld." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld settled versions are stored on this Mac. The largest Note history contains %2$lld."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 Mac 上存储了 %1$lld 个暂定版本。单篇笔记最多包含 %2$lld 个版本。"
-          }
-        }
-      }
-    },
     "%lld unchanged %@" : {
       "localizations" : {
         "en" : {
@@ -1619,22 +1603,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一个面向哲学与人文学科、以本地为先且以文档为权威的研究环境。"
-          }
-        }
-      }
-    },
-    "A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "A manual checkpoint is a self-contained copy of the complete Triptych. It remains until you delete its folder in Finder."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "手动恢复点是完整脉络的独立副本。它会一直保留，直到您在 Finder 中删除其文件夹。"
           }
         }
       }
@@ -3973,6 +3941,106 @@
         }
       }
     },
+    "Archive Unreadable Saved Searches?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档无法读取的已存搜索？"
+          }
+        }
+      }
+    },
+    "Archive Unreadable Saved Searches…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档无法读取的已存搜索…"
+          }
+        }
+      }
+    },
+    "Archive and Rebuild" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重建"
+          }
+        }
+      }
+    },
+    "Archive and Rebuild Portable Control?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重建便携控制数据？"
+          }
+        }
+      }
+    },
+    "Archive and Rebuild…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重建…"
+          }
+        }
+      }
+    },
+    "Archive and Reset" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置"
+          }
+        }
+      }
+    },
+    "Archive and Reset Method Access?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置方法访问？"
+          }
+        }
+      }
+    },
+    "Archive and Reset Method Access…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置方法访问…"
+          }
+        }
+      }
+    },
+    "Archive and Reset Recovery Policy?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置恢复策略？"
+          }
+        }
+      }
+    },
+    "Archive and Reset Recovery Policy…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置恢复策略…"
+          }
+        }
+      }
+    },
     "Argument or Objection/Reply" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5829,220 +5897,6 @@
         }
       }
     },
-    "Checkpoint" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点"
-          }
-        }
-      }
-    },
-    "Checkpoint Actions" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint Actions"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点操作"
-          }
-        }
-      }
-    },
-    "Checkpoint Restore Failed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint Restore Failed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点恢复失败"
-          }
-        }
-      }
-    },
-    "Checkpoint View" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint View"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点视图"
-          }
-        }
-      }
-    },
-    "Checkpoint and current source comparison" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint and current source comparison"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点与当前源文本对比"
-          }
-        }
-      }
-    },
-    "Checkpoint created." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint created."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点已创建。"
-          }
-        }
-      }
-    },
-    "Checkpoint name" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint name"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点名称"
-          }
-        }
-      }
-    },
-    "Checkpoint restored. Before Restore checkpoint created." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint restored. Before Restore checkpoint created."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点已恢复，并已创建“恢复前”恢复点。"
-          }
-        }
-      }
-    },
-    "Checkpoint: %@ — Current: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint: %@ — Current: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点：%@—当前：%@"
-          }
-        }
-      }
-    },
-    "Checkpoint: %arg — Current: %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint: %1$arg — Current: %2$arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点：%1$arg—当前：%2$arg"
-          }
-        }
-      }
-    },
-    "Checkpoint: Before Agent Work — %@" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint: Before Agent Work — %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点：智能体工作前—%@"
-          }
-        }
-      }
-    },
-    "Checkpoint: Before Agent Work — %arg" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoint: Before Agent Work — %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点：智能体工作前—%arg"
-          }
-        }
-      }
-    },
-    "Checkpoints Unavailable" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Checkpoints Unavailable"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复点不可用"
-          }
-        }
-      }
-    },
     "Checks" : {
       "localizations" : {
         "en" : {
@@ -7738,22 +7592,6 @@
         }
       }
     },
-    "Compare the current Triptych, then restore selected notes or the complete checkpoint." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Compare the current Triptych, then restore selected notes or the complete checkpoint."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "先比较当前脉络，再恢复所选笔记或整个恢复点。"
-          }
-        }
-      }
-    },
     "Compare the current editor with the exact version now on disk." : {
       "localizations" : {
         "en" : {
@@ -9342,38 +9180,6 @@
         }
       }
     },
-    "Create Checkpoint" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Create Checkpoint"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建恢复点"
-          }
-        }
-      }
-    },
-    "Create Checkpoint…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Create Checkpoint…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建恢复点…"
-          }
-        }
-      }
-    },
     "Create New" : {
       "localizations" : {
         "en" : {
@@ -9491,22 +9297,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通过选择分析、议题和写作文件夹创建脉络。"
-          }
-        }
-      }
-    },
-    "Create a checkpoint before substantial external work." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Create a checkpoint before substantial external work."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在进行大量外部工作之前创建恢复点。"
           }
         }
       }
@@ -14526,22 +14316,6 @@
         }
       }
     },
-    "Includes this note in the selective checkpoint restore" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Includes this note in the selective checkpoint restore"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在选择性恢复中包含这篇笔记"
-          }
-        }
-      }
-    },
     "Incoming Links" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -16201,16 +15975,6 @@
         }
       }
     },
-    "Loading Checkpoints…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在加载检查点…"
-          }
-        }
-      }
-    },
     "Loading Collaboration Policy…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -16409,6 +16173,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本地 API"
+          }
+        }
+      }
+    },
+    "Local Access Registry Needs Repair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本地访问注册表需要修复"
           }
         }
       }
@@ -16635,16 +16409,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理已注册的脉络及其三个相互独立、由研究者掌控的文件夹。"
-          }
-        }
-      }
-    },
-    "Manage settled Note versions. A Method or Practice keeps only its one replaceable previous-edit recovery point beside its current editor." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "管理已暂定的笔记版本。方法或实践仅在当前编辑器之外保留一个可替换的上一次编辑恢复点。"
           }
         }
       }
@@ -17091,6 +16855,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法"
+          }
+        }
+      }
+    },
+    "Method Access Needs Repair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法访问需要修复"
           }
         }
       }
@@ -18320,22 +18094,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有变化"
-          }
-        }
-      }
-    },
-    "No Checkpoints" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Checkpoints"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有恢复点"
           }
         }
       }
@@ -23660,22 +23418,6 @@
         }
       }
     },
-    "Recovery & Technical" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Recovery & Technical"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复与技术"
-          }
-        }
-      }
-    },
     "Recovery Issues" : {
       "localizations" : {
         "en" : {
@@ -23737,6 +23479,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "恢复操作失败"
+          }
+        }
+      }
+    },
+    "Recovery Policy Needs Repair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复策略需要修复"
           }
         }
       }
@@ -24396,22 +24148,6 @@
         }
       }
     },
-    "Remove Older Settled Versions?" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Remove Older Settled Versions?"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除较早的暂定版本？"
-          }
-        }
-      }
-    },
     "Remove Option" : {
       "localizations" : {
         "zh-Hans" : {
@@ -24448,6 +24184,38 @@
         }
       }
     },
+    "Remove Registration" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove Registration"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除注册"
+          }
+        }
+      }
+    },
+    "Remove Registration…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove Registration…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除此 Mac 上的注册…"
+          }
+        }
+      }
+    },
     "Remove Snippet" : {
       "localizations" : {
         "en" : {
@@ -24460,6 +24228,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "删除片段"
+          }
+        }
+      }
+    },
+    "Remove This Triptych Registration?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove This Triptych Registration?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除此脉络注册？"
           }
         }
       }
@@ -25948,38 +25732,6 @@
         }
       }
     },
-    "Restore from Checkpoint" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Restore from Checkpoint"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从恢复点恢复"
-          }
-        }
-      }
-    },
-    "Restore from Checkpoint…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Restore from Checkpoint…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从恢复点恢复…"
-          }
-        }
-      }
-    },
     "Restore only if the current Note still matches the expected revision" : {
       "localizations" : {
         "zh-Hans" : {
@@ -26454,22 +26206,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Finder 中显示候选内容"
-          }
-        }
-      }
-    },
-    "Reveal Checkpoints in Finder" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reveal Checkpoints in Finder"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示 Finder 中的恢复点"
           }
         }
       }
@@ -27161,22 +26897,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搁置"
-          }
-        }
-      }
-    },
-    "SETTLED VERSIONS" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "SETTLED VERSIONS"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定版本"
           }
         }
       }
@@ -27964,22 +27684,6 @@
         }
       }
     },
-    "Scholium could not record the Critique request and could not restore the Critique file automatically. %@ Recovery also failed: %@ Restore the Before Agent Work checkpoint before continuing." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium could not record the Critique request and could not restore the Critique file automatically. %@ Recovery also failed: %@ Restore the Before Agent Work checkpoint before continuing."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法记录评析请求，也无法自动恢复评析文件。%@ 恢复也失败：%@ 请先恢复“智能体工作前”恢复点，再继续。"
-          }
-        }
-      }
-    },
     "Scholium could not save the current editor before opening this Action. %@" : {
       "localizations" : {
         "en" : {
@@ -28058,22 +27762,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 不检查或修改命令行工具的安装状态。智能体需要安装或更新 CLI 时，请复制官方指令。"
-          }
-        }
-      }
-    },
-    "Scholium first creates Before Restore. Files created after this checkpoint move to Trash; files changed, moved, or deleted are restored from the selected checkpoint." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium first creates Before Restore. Files created after this checkpoint move to Trash; files changed, moved, or deleted are restored from the selected checkpoint."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会先创建“恢复前”恢复点。在此恢复点之后创建的文件将移入纸篓；更改、移动或删除的文件将从所选恢复点恢复。"
           }
         }
       }
@@ -28339,22 +28027,6 @@
         }
       }
     },
-    "Scholium revalidates the note identity and revision before preparation. Write-capable Actions receive a checkpoint and remain subject to conflict and recovery checks." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Scholium revalidates the note identity and revision before preparation. Write-capable Actions receive a checkpoint and remain subject to conflict and recovery checks."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会在准备前重新验证笔记身份和修订。可写操作会获得检查点，并继续接受冲突与恢复检查。"
-          }
-        }
-      }
-    },
     "Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault." : {
       "localizations" : {
         "en" : {
@@ -28423,12 +28095,42 @@
         }
       }
     },
+    "Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会将现有的整个 .scholium 文件夹移至一个名称唯一的同级恢复文件夹，原样保留其中的文件，且不会解释旧 schema。Analyses、Topics 和 Works 不会被更改。随后 Scholium 会创建当前版本的便携控制数据。"
+          }
+        }
+      }
+    },
     "Scholium will not recreate a missing Note from temporary recovery. Inspect or copy the retained candidate instead." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 不会依据临时恢复数据重新创建缺失的笔记。请改为检查或复制保留的候选内容。"
+          }
+        }
+      }
+    },
+    "Scholium will preserve the invalid machine-local Method access file under a unique recovery name and reset only local paths and bookmarks. Portable Method registrations, Method Markdown, and vault files will not be changed; external Methods must be registered again on this Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会用唯一的恢复名称保留无效的机器本地方法访问文件，并且只重置本地路径和书签。便携方法注册、方法 Markdown 和研究库文件都不会被更改；外部方法需要在这台 Mac 上重新注册。"
+          }
+        }
+      }
+    },
+    "Scholium will preserve the unreadable Saved Search file under a unique recovery name, then start with an empty Saved Searches list. No vault files will be changed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会用唯一的恢复名称保留无法读取的已存搜索文件，然后以空的已存搜索列表重新开始。不会更改任何研究库文件。"
           }
         }
       }
@@ -28459,6 +28161,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 会重新检查当前精确源文本，依据中断的保存证据核对该 Run，并清理已完成的本机恢复记录；它不会替换 Markdown 源文本。"
+          }
+        }
+      }
+    },
+    "Scholium will remove only this Triptych’s registration from this Mac, then open setup again. It will not delete or change Analyses, Topics, Works, or the portable .scholium folder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium will remove only this Triptych’s registration from this Mac, then open setup again. It will not delete or change Analyses, Topics, Works, or the portable .scholium folder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 将只移除此 Mac 上的这个脉络注册，然后重新打开设置。它不会删除或更改“分析”“议题”“写作”或便携式 .scholium 文件夹。"
           }
         }
       }
@@ -28950,23 +28668,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择研究记录"
-          }
-        }
-      }
-    },
-    "Select a checkpoint" : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Select a checkpoint"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择恢复点"
           }
         }
       }
@@ -31577,22 +31278,6 @@
         }
       }
     },
-    "The current Triptych matches this checkpoint." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The current Triptych matches this checkpoint."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前的脉络与此恢复点匹配。"
-          }
-        }
-      }
-    },
     "The current note is unavailable." : {
       "localizations" : {
         "en" : {
@@ -31605,23 +31290,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前笔记不可用。"
-          }
-        }
-      }
-    },
-    "The current note matches the selected checkpoint." : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The current note matches the selected checkpoint."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前的笔记与所选的恢复点匹配。"
           }
         }
       }
@@ -32020,6 +31688,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "本机方法改进运行已就绪。请将完整交接信息复制给智能体。"
+          }
+        }
+      }
+    },
+    "The machine-local Method access registry is unreadable. Its original bytes can be archived before resetting local Method access; portable registrations and research vault files remain unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器本地的方法访问注册表无法读取。重置本地方法访问之前，可以先归档其原始字节；便携注册和研究库文件保持不变。"
           }
         }
       }
@@ -32947,6 +32625,16 @@
         }
       }
     },
+    "This Triptych’s portable .scholium control folder is incompatible or damaged. Archive the entire folder unchanged, then let Scholium rebuild current control state. Analyses, Topics, and Works remain untouched." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此脉络的便携 .scholium 控制文件夹不兼容或已损坏。请原样归档整个文件夹，再让 Scholium 重建当前控制状态。Analyses、Topics 和 Works 保持不变。"
+          }
+        }
+      }
+    },
     "This Vault" : {
       "localizations" : {
         "en" : {
@@ -32969,38 +32657,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此候选内容是空文档。"
-          }
-        }
-      }
-    },
-    "This cannot be undone. Scholium removes the note, every active Discussion containing it, its Critique association, stable identity, and every Triptych checkpoint containing it. Finished Research Records retain a tombstone for the deleted note." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This cannot be undone. Scholium removes the note, every active Discussion containing it, its Critique association, stable identity, and every Triptych checkpoint containing it. Finished Research Records retain a tombstone for the deleted note."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此操作无法撤销。Scholium 会移除该笔记、所有包含它的活跃讨论、与之关联的评析、稳定身份，以及所有包含它的脉络检查点。已完成的研究记录会为被删除的笔记保留墓碑记录。"
-          }
-        }
-      }
-    },
-    "This cannot be undone. Scholium removes the note, its Comments, Discussions, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This cannot be undone. Scholium removes the note, its Comments, Discussions, Critique association, stable identity, Research Record, and every Triptych checkpoint containing it."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此操作无法撤销。Scholium 会移除该笔记、评论、讨论、评析关联、稳定身份、研究记录，以及包含它的每个脉络恢复点。"
           }
         }
       }
@@ -33487,18 +33143,12 @@
         }
       }
     },
-    "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone." : {
+    "This removes the portable record from every derived Note view. It does not delete source Markdown, Agent change evidence, interrupted-save recovery, or unrelated records. This action cannot be undone." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This removes the portable record from every derived Note view. It does not delete source Markdown, checkpoints, exact-note recovery, or unrelated records. This action cannot be undone."
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这会从每个派生的笔记视图中移除此可移植记录。它不会删除源 Markdown、检查点、精确笔记恢复证据或无关记录。此操作无法撤销。"
+            "value" : "此操作会从所有派生的笔记视图中移除这份便携记录。它不会删除源 Markdown、Agent 更改证据、中断保存恢复数据或无关记录。此操作无法撤销。"
           }
         }
       }
@@ -33677,22 +33327,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此值的源形状或角色允许列表不支持定点编辑。其精确 YAML 仍可在源文本中查看。"
-          }
-        }
-      }
-    },
-    "This will remove %lld older settled versions across %lld Notes. Current Markdown and temporary Action recovery are not removed." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This will remove %1$lld older settled versions across %2$lld Notes. Current Markdown and temporary Action recovery are not removed."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这将从 %2$lld 篇笔记中移除 %1$lld 个较早的暂定版本。当前 Markdown 与操作的临时恢复数据不会被移除。"
           }
         }
       }
@@ -35038,18 +34672,12 @@
         }
       }
     },
-    "Use this only after you have inspected every listed path and completed any checkpoint or Finder recovery. This removes the recovery record; it does not change research files." : {
+    "Use this only after you have inspected every listed path and completed any Finder recovery. This removes the recovery record; it does not change research files." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Use this only after you have inspected every listed path and completed any checkpoint or Finder recovery. This removes the recovery record; it does not change research files."
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅在检查了每个列出的路径并完成任何恢复点或 Finder 恢复后才使用此命令。这会删除恢复记录；它不会更改研究文件。"
+            "value" : "仅在你已检查所有列出的路径并完成任何 Finder 恢复后使用此操作。它只会移除恢复记录，不会更改研究文件。"
           }
         }
       }

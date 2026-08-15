@@ -443,9 +443,42 @@ struct ResearchConfigurationStoreTests {
             triptychID: UUID(),
             machineStorageURL: fixture.machineStorage
         )
-        await #expect(throws: ResearchConfigurationStoreError.self) {
+        await #expect(throws: ResearchMethodLocatorError.self) {
             _ = try await replayed.methodSnapshot(for: .analyze)
         }
+    }
+
+    @Test("Invalid machine-local Method locators are archived before local reset")
+    func machineLocatorRecovery() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.store()
+        try await store.bootstrapDefaults()
+        try FileManager.default.createDirectory(
+            at: fixture.machineStorage,
+            withIntermediateDirectories: true
+        )
+        let locatorURL = fixture.machineStorage.appendingPathComponent(
+            ResearchMethodLocatorStore.fileName
+        )
+        let invalid = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
+        try invalid.write(to: locatorURL)
+        let locator = ResearchMethodLocatorStore(
+            storageURL: fixture.machineStorage,
+            triptychID: fixture.triptychID
+        )
+        #expect(throws: ResearchMethodLocatorError.self) {
+            _ = try locator.snapshot()
+        }
+
+        let preserved = try #require(
+            try await store.preserveInvalidMachineLocalMethodLocatorsAndReset()
+        )
+
+        #expect(try Data(contentsOf: preserved) == invalid)
+        let resetData = try Data(contentsOf: locatorURL)
+        #expect(resetData != invalid)
+        #expect(try await store.preserveInvalidMachineLocalMethodLocatorsAndReset() == nil)
     }
 
     @Test("Citation style is Triptych-bound, optional, and revision checked")

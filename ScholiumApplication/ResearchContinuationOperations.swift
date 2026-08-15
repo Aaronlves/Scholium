@@ -398,7 +398,7 @@ extension WorkspaceHandle {
                 runIDOverride: childRunID,
                 continuationLineage: lineage,
                 continuationHandoff: handoffContext,
-                requiresAutomaticCheckpoint:
+                requiresAgentChangeEvidence:
                     !actionContext.authority.writableNotes.isEmpty,
                 host: self
             )

@@ -63,7 +63,6 @@ struct WindowWorkspaceCapabilities: Sendable {
 /// Feature controllers receive only the component protocols they consume.
 struct WindowResearchCapabilities: Sendable {
     let records: any ResearchRecordUseCases
-    let checkpoints: any ResearchCheckpointUseCases
     let actions: any ResearchActionUseCases
     let sourceAccess: any ResearchSourceAccessUseCases
     let recoveryRecordsURL: URL
@@ -115,6 +114,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
         guard registryHealth.isHealthy else {
             throw WorkspaceRegistryError.registryRecoveryRequired(registryHealth)
+        }
+        let machineRegistryHealth = WorkspaceRegistryRecoveryOperations.machineLocalHealth(
+            applicationSupportURL: applicationSupportURL
+        )
+        guard machineRegistryHealth.isHealthy else {
+            throw MachineLocalRegistryError.recoveryRequired(machineRegistryHealth)
         }
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: applicationSupportURL,
@@ -427,6 +432,35 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         try await applicationRuntime.defaultWorkspace()
     }
 
+    func removeLocalTriptychRegistration(id: UUID) async throws {
+        guard handles[id] == nil, installationTasks[id] == nil else {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(id)
+        }
+        try await applicationRuntime.removeLocalTriptychRegistration(id: id)
+        workspaceSnapshots[id] = nil
+        workspaceEvents[id] = nil
+        workspaceActivations[id] = nil
+        if latestWorkspaceActivation?.workspaceID == id {
+            latestWorkspaceActivation = nil
+        }
+    }
+
+    @discardableResult
+    func preserveUnsupportedPortableControl(
+        portableContainerURL: URL,
+        worksURL: URL,
+        triptychID: UUID? = nil
+    ) async throws -> URL {
+        if let triptychID, handles[triptychID] != nil || installationTasks[triptychID] != nil {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
+        }
+        return try await applicationRuntime.preserveUnsupportedPortableControl(
+            portableContainerURL: portableContainerURL,
+            worksURL: worksURL,
+            triptychID: triptychID
+        )
+    }
+
     func resolveVault(_ selector: String) async throws -> RegisteredVault {
         try await applicationRuntime.resolveVault(selector)
     }
@@ -489,6 +523,11 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
     func saveSavedSearches(_ searches: [SavedSearch]) async throws {
         try await applicationRuntime.saveSavedSearches(searches)
+    }
+
+    @discardableResult
+    func preserveUnreadableSavedSearchesAndReset() async throws -> URL? {
+        try await applicationRuntime.preserveUnreadableSavedSearchesAndReset()
     }
 
     func windowSession(id: UUID) async throws -> WindowSessionSnapshot? {
@@ -824,6 +863,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     expectedRevision: revision
                 )
             },
+            recoverMachineLocalMethodLocators: { [self] id in
+                try await workspaceHandle(id: id).research
+                    .preserveInvalidMachineLocalMethodLocatorsAndReset()
+            },
             philosophicalPractices: { [self] id in
                 try await workspaceHandle(id: id).research.philosophicalPractices()
             },
@@ -860,20 +903,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 try await workspaceHandle(id: workspaceID).research.clearCitationMethod(
                     expectedConfigurationRevision: revision
                 )
-            },
-            recoveryPolicy: { [self] id in
-                try await workspaceHandle(id: id).research.recoveryPolicy()
-            },
-            prepareRecoveryPolicyChange: { [self] id, retention, revision in
-                try await workspaceHandle(id: id).research
-                    .prepareRecoveryPolicyChange(
-                        retention,
-                        expectedRevision: revision
-                    )
-            },
-            applyRecoveryPolicyChange: { [self] id, preview in
-                try await workspaceHandle(id: id).research
-                    .applyRecoveryPolicyChange(preview)
             }
             )
         )
@@ -1145,7 +1174,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             discovery: handle.discovery,
             research: WindowResearchCapabilities(
                 records: research,
-                checkpoints: research,
                 actions: research,
                 sourceAccess: research,
                 recoveryRecordsURL: research.recoveryRecordsURL

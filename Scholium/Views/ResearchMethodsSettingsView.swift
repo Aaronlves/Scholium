@@ -27,6 +27,8 @@ struct ResearchMethodsSettingsView: View {
     @State private var pendingDefaultRestore: ResearchMethodSnapshot?
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var canRecoverMethodLocators = false
+    @State private var confirmsMethodLocatorRecovery = false
 
     var body: some View {
         ScrollView {
@@ -51,6 +53,20 @@ struct ResearchMethodsSettingsView: View {
                                 methodRow(registration)
                                 if registration.id != registrations.document.registrations.last?.id {
                                     Divider()
+                                }
+                            }
+                        }
+                        if canRecoverMethodLocators {
+                            Divider()
+                            ScholiumContentStateView(
+                                "Method Access Needs Repair",
+                                detail: Text("The machine-local Method access registry is unreadable. Its original bytes can be archived before resetting local Method access; portable registrations and research vault files remain unchanged."),
+                                indicator: .symbol("externaldrive.badge.exclamationmark", role: .attention),
+                                placement: .leading,
+                                density: .compact
+                            ) {
+                                Button("Archive and Reset Method Access…") {
+                                    confirmsMethodLocatorRecovery = true
                                 }
                             }
                         }
@@ -138,6 +154,18 @@ struct ResearchMethodsSettingsView: View {
             Button("Cancel", role: .cancel) { pendingDefaultRestore = nil }
         } message: {
             Text("This replaces the current primary Markdown with the default shipped by this Scholium build. The current bytes remain available as the one previous-edit recovery point; no version history is created.")
+        }
+        .confirmationDialog(
+            "Archive and Reset Method Access?",
+            isPresented: $confirmsMethodLocatorRecovery,
+            titleVisibility: .visible
+        ) {
+            Button("Archive and Reset", role: .destructive) {
+                recoverMethodLocators()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Scholium will preserve the invalid machine-local Method access file under a unique recovery name and reset only local paths and bookmarks. Portable Method registrations, Method Markdown, and vault files will not be changed; external Methods must be registered again on this Mac.")
         }
         .alert("Could Not Update Methods", isPresented: Binding(
             get: { errorMessage != nil },
@@ -261,23 +289,31 @@ struct ResearchMethodsSettingsView: View {
         do {
             let snapshot = try await settingsModel.researchSkillRegistrations()
             var loaded: [ResearchActionID: ResearchMethodSnapshot] = [:]
+            var locatorFailure: String?
             for registration in snapshot.document.registrations where registration.isEnabled {
-                if let method = try? await settingsModel.researchMethod(
-                    for: registration.actionID
-                ) {
+                do {
+                    let method = try await settingsModel.researchMethod(
+                        for: registration.actionID
+                    )
                     loaded[registration.actionID] = method
+                } catch let error as ResearchMethodLocatorError {
+                    locatorFailure = error.localizedDescription
                 }
             }
             guard triptychID == settingsModel.activeTriptychServicesID else { return }
             registrations = snapshot
             methods = loaded
             loadedTriptychID = triptychID
-            errorMessage = nil
+            canRecoverMethodLocators = locatorFailure != nil
+            errorMessage = locatorFailure
         } catch {
             guard triptychID == settingsModel.activeTriptychServicesID else { return }
             registrations = nil
             methods = [:]
             loadedTriptychID = triptychID
+            if error is ResearchMethodLocatorError {
+                canRecoverMethodLocators = true
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -303,6 +339,30 @@ struct ResearchMethodsSettingsView: View {
                     snapshot.document.replacing(replacement),
                     expectedRevision: snapshot.revision
                 )
+                await reload()
+            } catch {
+                if error is ResearchMethodLocatorError {
+                    canRecoverMethodLocators = true
+                }
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func recoverMethodLocators() {
+        isWorking = true
+        Task { @MainActor in
+            defer { isWorking = false }
+            do {
+                let preserved = try await settingsModel
+                    .recoverMachineLocalMethodLocators()
+                canRecoverMethodLocators = false
+                errorMessage = nil
+                if let preserved {
+                    settingsModel.showToast(
+                        "Previous Method access was preserved at \(preserved.path)."
+                    )
+                }
                 await reload()
             } catch {
                 errorMessage = error.localizedDescription

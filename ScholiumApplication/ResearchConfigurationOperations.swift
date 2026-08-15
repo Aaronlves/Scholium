@@ -127,6 +127,12 @@ extension ResearchOperations {
         )
     }
 
+    @discardableResult
+    public func preserveInvalidMachineLocalMethodLocatorsAndReset() async throws -> URL? {
+        let handle = try await reference.requireHandle()
+        return try await handle.preserveInvalidMachineLocalMethodLocatorsAndReset()
+    }
+
     public func philosophicalPractices() async throws -> [ResearchPracticeSnapshot] {
         let handle = try await reference.requireHandle()
         return try await handle.currentPhilosophicalPractices()
@@ -318,6 +324,15 @@ extension WorkspaceHandle {
             actionID: actionID,
             expectedRevision: expectedRevision
         )
+    }
+
+    @discardableResult
+    func preserveInvalidMachineLocalMethodLocatorsAndReset() async throws -> URL? {
+        try requireActive()
+        let lease = try await beginResearchConfigurationMutation()
+        defer { endResearchConfigurationMutation(lease) }
+        return try await services.researchConfigurationStore
+            .preserveInvalidMachineLocalMethodLocatorsAndReset()
     }
 
     func currentPhilosophicalPractices() async throws -> [ResearchPracticeSnapshot] {

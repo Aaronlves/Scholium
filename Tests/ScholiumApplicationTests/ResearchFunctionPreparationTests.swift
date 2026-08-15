@@ -36,7 +36,7 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Preparation rejects stale Target and Material fingerprints without checkpoint or record residue")
+    @Test("Preparation rejects stale Target and Material fingerprints without execution residue")
     func fingerprintValidationAndRollback() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -56,7 +56,6 @@ extension ResearchFunctionOperationsTests {
             $0.material.note == fixture.topicID
         }?.material)
         let originalRuns = try await handle.services.localResearchExecutionStore.listing().records.count
-        let originalCheckpoints = try await handle.research.checkpoints().checkpoints.count
 
         let topicDocument = try await handle.documents.load(fixture.topicID)
         _ = try await handle.documents.save(
@@ -73,7 +72,6 @@ extension ResearchFunctionOperationsTests {
                 )
             )
         }
-        #expect(try await handle.research.checkpoints().checkpoints.count == originalCheckpoints)
         #expect(try await handle.services.localResearchExecutionStore.listing().records.count == originalRuns)
 
         let targetDocument = try await handle.documents.load(fixture.analysisID)
@@ -87,7 +85,6 @@ extension ResearchFunctionOperationsTests {
                 ResearchFunctionRequest(function: .develop, target: target)
             )
         }
-        #expect(try await handle.research.checkpoints().checkpoints.count == originalCheckpoints)
         #expect(try await handle.services.localResearchExecutionStore.listing().records.count == originalRuns)
         await runtime.shutdown()
     }
@@ -603,7 +600,7 @@ extension ResearchFunctionOperationsTests {
         let develop = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
         )
-        #expect(develop.snapshot.checkpointID != nil)
+        #expect(develop.snapshot.changeEvidenceID != nil)
         #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
         #expect(develop.snapshot.fidelityHandoff?.checks == [.content])
         #expect(develop.snapshot.fidelityHandoff?.preparedTargetFingerprint == target.fingerprint)

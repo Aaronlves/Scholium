@@ -88,7 +88,6 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Works", locale: simplifiedChinese) == "写作")
         #expect(ScholiumL10n.string("Attention", locale: simplifiedChinese) == "关注")
         #expect(ScholiumL10n.string("Connect", locale: simplifiedChinese) == "连接")
-        #expect(ScholiumL10n.string("Checkpoint", locale: simplifiedChinese) == "恢复点")
         #expect(ScholiumL10n.string("Snapshot", locale: simplifiedChinese) == "快照")
         #expect(ScholiumL10n.string("Comment", locale: simplifiedChinese) == "评论")
         #expect(ScholiumL10n.string("Response", locale: simplifiedChinese) == "回应")
@@ -104,6 +103,40 @@ struct ScholiumLocalizationTests {
         #expect(ScholiumL10n.string("Source basis", locale: simplifiedChinese) == "来源依据")
         #expect(ScholiumL10n.string("Research Record", locale: simplifiedChinese) == "研究记录")
         #expect(ScholiumL10n.string("Restore Access", locale: simplifiedChinese) == "恢复访问权限")
+        #expect(
+            ScholiumL10n.string("Remove Registration…", locale: simplifiedChinese)
+                == "移除此 Mac 上的注册…"
+        )
+        #expect(
+            ScholiumL10n.string("Remove This Triptych Registration?", locale: simplifiedChinese)
+                == "移除此脉络注册？"
+        )
+        #expect(
+            ScholiumL10n.string("Remove Registration", locale: simplifiedChinese)
+                == "移除注册"
+        )
+        #expect(
+            ScholiumL10n.string("Archive and Rebuild…", locale: simplifiedChinese)
+                == "归档并重建…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Archive and Reset Method Access…",
+                locale: simplifiedChinese
+            ) == "归档并重置方法访问…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Archive and Reset Recovery Policy…",
+                locale: simplifiedChinese
+            ) == "归档并重置恢复策略…"
+        )
+        #expect(
+            ScholiumL10n.string(
+                "Archive Unreadable Saved Searches…",
+                locale: simplifiedChinese
+            ) == "归档无法读取的已存搜索…"
+        )
         #expect(
             ScholiumL10n.string("Quit Scholium", locale: simplifiedChinese)
                 == "退出 Scholium"

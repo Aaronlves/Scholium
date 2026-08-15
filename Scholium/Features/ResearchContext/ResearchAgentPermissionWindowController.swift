@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 
 /// Exact-window owner for one Agent permission sheet. It never resolves paths,
-/// identities, revisions, policy, Methods, Profiles, or checkpoints itself.
+/// identities, revisions, policy, Methods, Profiles, or change evidence itself.
 @MainActor
 final class ResearchAgentPermissionWindowController: ObservableObject {
     struct Dependencies {

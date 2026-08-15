@@ -382,7 +382,7 @@ public actor PortableResearchRecordStore {
     }
 
     /// Removes only the selected portable record. Source Markdown, portable
-    /// settlements, checkpoints, and machine-local recovery evidence are
+    /// settlements and machine-local Agent change evidence are
     /// owned by separate stores and are intentionally outside this operation.
     @discardableResult
     public func deletePermanently(id: UUID) throws -> PortableResearchRecord {
@@ -2046,7 +2046,7 @@ private struct StrictResearchRecordFingerprint: Decodable {
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 12
+    public static let currentSchemaVersion = 13
 
     public let schemaVersion: Int
     public let triptychID: UUID
@@ -2124,7 +2124,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                     == snapshot.resynthesisContext?.recordID
                 && snapshot.resynthesisContext?.topicNoteID
                     == snapshot.request.target.noteID
-                && snapshot.checkpointID != nil
+                && snapshot.changeEvidenceID != nil
                 && snapshot.continuationHandoff == nil
                 && Set(resolvedWriteSet.entries.map(\.noteID))
                     .isSuperset(of: Set(
@@ -2135,7 +2135,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
             if case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
                 continuationMatches = snapshot.request.function == .fidelity
                     && snapshot.continuationLineage?.parentRunID == parentRunID
-                    && snapshot.checkpointID == nil
+                    && snapshot.changeEvidenceID == nil
                     && snapshot.continuationHandoff == nil
             } else {
                 continuationMatches = false
@@ -2335,9 +2335,9 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 "A local execution has no frozen Action for its bounded write set."
             )
         }
-        guard action.authority.writableNotes.isEmpty || snapshot.checkpointID != nil else {
+        guard action.authority.writableNotes.isEmpty || snapshot.changeEvidenceID != nil else {
             throw ResearchRecordStoreV1Error.unsafeStore(
-                "A writable Action has no Before Agent Work checkpoint."
+                "A writable Action has no exact Agent change evidence."
             )
         }
         let entries = try action.authority.writableNotes.map { note in
@@ -2352,7 +2352,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 title: note.title,
                 allowedOperations: action.authority.writeOperations,
                 expectedRevision: note.fingerprint,
-                checkpointID: snapshot.checkpointID!,
+                changeEvidenceID: snapshot.changeEvidenceID!,
                 authorizationBasis: .initialAction,
                 expiresAt: snapshot.preparedAt.addingTimeInterval(24 * 60 * 60)
             )
@@ -2629,7 +2629,7 @@ public actor LocalResearchExecutionStore {
     }
 
     /// Atomically records one explicit conflict decision and narrows or
-    /// refreshes only its exact write-set member. Existing checkpoints and
+    /// refreshes only its exact write-set member. Existing change evidence and
     /// conflict records remain immutable recovery evidence.
     @discardableResult
     public func resolveWriteConflict(
@@ -2663,7 +2663,7 @@ public actor LocalResearchExecutionStore {
             case .refreshAuthority:
                 guard let refreshedEntry,
                       resolution.state == .readyToRetry,
-                      resolution.checkpointID == refreshedEntry.checkpointID,
+                      resolution.changeEvidenceID == refreshedEntry.changeEvidenceID,
                       resolution.observedRevision
                         == refreshedEntry.expectedRevision,
                       resolution.targetView
@@ -2689,7 +2689,7 @@ public actor LocalResearchExecutionStore {
             case .abandonWrite:
                 guard refreshedEntry == nil,
                       resolution.state == .abandoned,
-                      resolution.checkpointID == nil else {
+                      resolution.changeEvidenceID == nil else {
                     throw ResearchBoundedWriteSetError.invalidConflictResolution
                 }
                 current.boundedWriteSet.entries[entryIndex].state = .abandoned
@@ -2729,8 +2729,8 @@ public actor LocalResearchExecutionStore {
                   current.boundedWriteSet.entries[entryIndex].state == .ready,
                   current.boundedWriteSet.entries[entryIndex].expectedRevision
                     == write.expectedRevision,
-                  current.boundedWriteSet.entries[entryIndex].checkpointID
-                    == write.checkpointID else {
+                  current.boundedWriteSet.entries[entryIndex].changeEvidenceID
+                    == write.changeEvidenceID else {
                 throw ResearchBoundedWriteSetError.staleAuthorization
             }
             current.boundedWriteSet.entries[entryIndex].state = .writing

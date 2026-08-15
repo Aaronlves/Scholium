@@ -542,7 +542,6 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let requestedAt: Date
     public let targetFingerprint: DocumentFingerprint
-    public let checkpointID: UUID?
     public let scope: CritiqueRequestScope
     public let actionableFindings: [CritiqueFinding]
     public let findingDispositions: [CritiqueFindingDisposition]
@@ -552,7 +551,6 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         id: UUID = UUID(),
         requestedAt: Date = Date(),
         targetFingerprint: DocumentFingerprint,
-        checkpointID: UUID?,
         scope: CritiqueRequestScope,
         actionableFindings: [CritiqueFinding] = [],
         findingDispositions: [CritiqueFindingDisposition] = [],
@@ -561,7 +559,6 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         self.id = id
         self.requestedAt = requestedAt
         self.targetFingerprint = targetFingerprint
-        self.checkpointID = checkpointID
         self.scope = scope
         self.actionableFindings = Self.uniqueFindings(actionableFindings)
         let actionableIDs = Set(self.actionableFindings.map(\.id))
@@ -575,7 +572,7 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, requestedAt, targetFingerprint, checkpointID, scope
+        case id, requestedAt, targetFingerprint, scope
         case actionableFindings
         case findingDispositions, completedAt
     }
@@ -589,7 +586,6 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
                 DocumentFingerprint.self,
                 forKey: .targetFingerprint
             ),
-            checkpointID: try container.decodeIfPresent(UUID.self, forKey: .checkpointID),
             scope: try container.decode(CritiqueRequestScope.self, forKey: .scope),
             actionableFindings: try container.decodeIfPresent(
                 [CritiqueFinding].self,
@@ -608,7 +604,6 @@ public struct CritiqueRound: Codable, Hashable, Identifiable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(requestedAt, forKey: .requestedAt)
         try container.encode(targetFingerprint, forKey: .targetFingerprint)
-        try container.encodeIfPresent(checkpointID, forKey: .checkpointID)
         try container.encode(scope, forKey: .scope)
         if !actionableFindings.isEmpty {
             try container.encode(actionableFindings, forKey: .actionableFindings)

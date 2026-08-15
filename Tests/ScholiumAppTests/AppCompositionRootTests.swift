@@ -70,8 +70,8 @@ struct AppCompositionRootTests {
             first.workspaceProjectionController !== second.workspaceProjectionController
         )
 
-        first.presentationRouter.present(.createCheckpoint)
-        #expect(first.presentationRouter.sheet?.id == "create-checkpoint")
+        first.presentationRouter.present(.transactionRecovery)
+        #expect(first.presentationRouter.sheet?.id == "transaction-recovery")
         #expect(second.presentationRouter.sheet == nil)
         first.presentationRouter.dismissAll()
 
@@ -488,8 +488,8 @@ struct AppCompositionRootTests {
         // window. Removing one borrower therefore leaves it usable by the
         // surviving window and any later window.
         #expect(try await workspaceStore.applicationRuntime.availableWorkspaces().isEmpty)
-        secondWindow.presentationRouter.present(.createCheckpoint)
-        #expect(secondWindow.presentationRouter.sheet?.id == "create-checkpoint")
+        secondWindow.presentationRouter.present(.transactionRecovery)
+        #expect(secondWindow.presentationRouter.sheet?.id == "transaction-recovery")
 
         await workspaceStore.shutdownApplicationRuntime()
         do {
@@ -588,7 +588,7 @@ struct AppCompositionRootTests {
         #expect(secondInitial.runtimeIdentity == initiallyConfigured.runtimeIdentity)
         #expect(await initialHandle.events.subscriberCount == 1)
 
-        first.presentationRouter.present(.createCheckpoint)
+        first.presentationRouter.present(.transactionRecovery)
         first.discoveryController.beginSearch(SearchWorkspaceState(
             query: "first-window",
             scope: .triptych
@@ -632,7 +632,7 @@ struct AppCompositionRootTests {
         #expect(secondReplacement.runtimeIdentity == replacement.runtimeIdentity)
         #expect(firstReplacement.runtimeIdentity == secondReplacement.runtimeIdentity)
 
-        #expect(first.presentationRouter.sheet?.id == "create-checkpoint")
+        #expect(first.presentationRouter.sheet?.id == "transaction-recovery")
         #expect(second.presentationRouter.sheet == nil)
         #expect(first.discoveryController.search.criteria.query == "first-window")
         #expect(second.discoveryController.search.criteria.query == "second-window")
@@ -765,12 +765,12 @@ struct AppCompositionRootTests {
         // These are the exact command-facing WindowModel properties used by
         // `ScholiumCommands` after SwiftUI resolves its focused scene value.
         // `FocusedValues` itself has no public initializer on the test SDK.
-        firstWindow!.showCreateCheckpoint = true
-        #expect(firstWindow!.presentationRouter.sheet?.id == "create-checkpoint")
+        firstWindow!.showTransactionRecovery = true
+        #expect(firstWindow!.presentationRouter.sheet?.id == "transaction-recovery")
         #expect(secondWindow.presentationRouter.sheet == nil)
-        secondWindow.showCreateCheckpoint = true
-        #expect(secondWindow.presentationRouter.sheet?.id == "create-checkpoint")
-        #expect(firstWindow!.presentationRouter.sheet?.id == "create-checkpoint")
+        secondWindow.showTransactionRecovery = true
+        #expect(secondWindow.presentationRouter.sheet?.id == "transaction-recovery")
+        #expect(firstWindow!.presentationRouter.sheet?.id == "transaction-recovery")
         firstWindow!.presentationRouter.dismissAll()
         secondWindow.presentationRouter.dismissAll()
 
@@ -1015,6 +1015,68 @@ struct AppCompositionRootTests {
                 return
             }
         }
+    }
+
+    @Test("Restore Access can remove an unavailable registration and return to unconfigured state")
+    func restoreAccessRemovesUnavailableRegistration() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureRoot = repositoryRoot
+            .appendingPathComponent(".build/app-unit-state", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let support = fixtureRoot.appendingPathComponent("ApplicationSupport", isDirectory: true)
+        let registry = support.appendingPathComponent("Workspace", isDirectory: true)
+        let triptychRoot = fixtureRoot.appendingPathComponent("Triptych", isDirectory: true)
+        let analyses = triptychRoot.appendingPathComponent("Analyses", isDirectory: true)
+        let topics = triptychRoot.appendingPathComponent("Topics", isDirectory: true)
+        let works = triptychRoot.appendingPathComponent("Works", isDirectory: true)
+        for directory in [support, registry, analyses, topics, works] {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+        }
+        let retainedSource = topics.appendingPathComponent("Retained.md")
+        let retainedBytes = Data("research source remains unchanged".utf8)
+        try retainedBytes.write(to: retainedSource)
+        let seedingRuntime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: support,
+            workspaceRegistryStorageURL: registry
+        )))
+        let assignment = try await seedingRuntime.configureTriptych(
+            paperAnalysisURL: analyses,
+            topicKnowledgeURL: topics,
+            outputURL: works,
+            portableContainerURL: triptychRoot,
+            triptychName: "Unavailable"
+        ).assignment
+        await seedingRuntime.shutdown()
+        let manifestURL = triptychRoot.appendingPathComponent(".scholium/manifest.json")
+        let unsupportedManifest = Data(#"{"schemaVersion":0,"preserve":true}"#.utf8)
+        try unsupportedManifest.write(to: manifestURL)
+        try FileManager.default.removeItem(at: analyses)
+
+        let store = try WorkspaceStore(applicationSupportURL: support)
+        let window = WindowModel(workspaceStore: store)
+        await window.refreshWorkspaceAssignment()
+
+        #expect(window.workspaceAssignment?.id == assignment.id)
+        #expect(window.workspaceAccessRecovery?.kind == .vault)
+        #expect(window.activeTriptychServicesID == nil)
+        #expect(window.canRemoveUnavailableTriptychRegistration)
+
+        try await window.removeUnavailableTriptychRegistration()
+
+        #expect(window.workspaceAssignment == nil)
+        #expect(window.workspaceAccessRecovery == nil)
+        #expect(window.registeredTriptychs.isEmpty)
+        #expect(try await store.registeredTriptychs().isEmpty)
+        #expect(try Data(contentsOf: retainedSource) == retainedBytes)
+        #expect(try Data(contentsOf: manifestURL) == unsupportedManifest)
+        await store.shutdownApplicationRuntime()
     }
 
     private func waitUntil(

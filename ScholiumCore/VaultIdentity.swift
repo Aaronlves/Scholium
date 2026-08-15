@@ -1,9 +1,128 @@
 import ScholiumContracts
 import Foundation
 
+public enum MachineLocalAccessRegistryRecovery {
+    private struct RegistryTarget {
+        let kind: MachineLocalRegistryKind
+        let url: URL
+        let decode: (Data) throws -> Void
+    }
+
+    public static func health(
+        applicationSupportURL: URL,
+        fileManager: FileManager = .default
+    ) -> MachineLocalRegistryHealth {
+        var damaged: [MachineLocalRegistryFailure] = []
+        var unreadable: [MachineLocalRegistryFailure] = []
+        for target in targets(applicationSupportURL: applicationSupportURL) {
+            guard ExactStatePreserver.entryExists(at: target.url) else { continue }
+            do {
+                let values = try target.url.resourceValues(forKeys: [
+                    .isRegularFileKey,
+                    .isSymbolicLinkKey,
+                ])
+                guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                    throw CocoaError(.fileReadUnsupportedScheme)
+                }
+                let data = try Data(contentsOf: target.url, options: [.mappedIfSafe])
+                do {
+                    try target.decode(data)
+                } catch {
+                    damaged.append(MachineLocalRegistryFailure(
+                        kind: target.kind,
+                        path: target.url.path,
+                        reason: error.localizedDescription
+                    ))
+                }
+            } catch {
+                unreadable.append(MachineLocalRegistryFailure(
+                    kind: target.kind,
+                    path: target.url.path,
+                    reason: error.localizedDescription
+                ))
+            }
+        }
+        if !unreadable.isEmpty { return .ioFailure(unreadable + damaged) }
+        if !damaged.isEmpty { return .damaged(damaged) }
+        return .healthy
+    }
+
+    @discardableResult
+    public static func preserveDamagedRegistriesForRelinking(
+        applicationSupportURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> [URL] {
+        let current = health(
+            applicationSupportURL: applicationSupportURL,
+            fileManager: fileManager
+        )
+        guard case .damaged(let failures) = current, !failures.isEmpty else {
+            throw MachineLocalRegistryError.recoveryRequired(current)
+        }
+        var preserved: [URL] = []
+        do {
+            for failure in failures {
+                let source = URL(fileURLWithPath: failure.path)
+                let stem = source.deletingPathExtension().lastPathComponent + ".corrupt"
+                preserved.append(try ExactStatePreserver.preserve(
+                    source,
+                    kind: .regularFile,
+                    recoveryStem: stem,
+                    recoveryExtension: source.pathExtension.isEmpty ? nil : source.pathExtension,
+                    fileEligibility: { data in
+                        (try? failureTarget(failure, in: targets(
+                            applicationSupportURL: applicationSupportURL
+                        )).decode(data)) == nil
+                    },
+                    fileManager: fileManager
+                ))
+            }
+        } catch {
+            throw MachineLocalRegistryError.recoveryRequired(.ioFailure([
+                MachineLocalRegistryFailure(
+                    kind: failures[preserved.count].kind,
+                    path: failures[preserved.count].path,
+                    reason: error.localizedDescription
+                )
+            ]))
+        }
+        return preserved
+    }
+
+    private static func targets(applicationSupportURL: URL) -> [RegistryTarget] {
+        let root = applicationSupportURL.standardizedFileURL
+        return [
+            RegistryTarget(
+                kind: .vaultIdentity,
+                url: root.appendingPathComponent("vault-registry.json"),
+                decode: VaultIdentityRegistry.validateRegistryData
+            ),
+            RegistryTarget(
+                kind: .portableControlAccess,
+                url: root.appendingPathComponent("portable-control-access.json"),
+                decode: PortableControlAccessRegistry.validateRegistryData
+            ),
+        ]
+    }
+
+    private static func failureTarget(
+        _ failure: MachineLocalRegistryFailure,
+        in targets: [RegistryTarget]
+    ) throws -> RegistryTarget {
+        guard let target = targets.first(where: { $0.kind == failure.kind }) else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return target
+    }
+}
+
 public actor VaultIdentityRegistry {
     private struct Registry: Codable {
         var vaults: [String: VaultIdentity]
+    }
+
+    fileprivate nonisolated static func validateRegistryData(_ data: Data) throws {
+        _ = try JSONDecoder().decode(Registry.self, from: data)
     }
 
     private let registryURL: URL
@@ -142,6 +261,10 @@ public actor VaultIdentityRegistry {
 public actor PortableControlAccessRegistry {
     private struct Registry: Codable {
         var containers: [String: PortableControlAccess]
+    }
+
+    fileprivate nonisolated static func validateRegistryData(_ data: Data) throws {
+        _ = try JSONDecoder().decode(Registry.self, from: data)
     }
 
     private let registryURL: URL

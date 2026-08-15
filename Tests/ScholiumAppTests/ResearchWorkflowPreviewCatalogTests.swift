@@ -42,7 +42,6 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Profiles & Practices",
             "Collaboration",
             "Sources & Integrations",
-            "Recovery & Technical",
         ] {
             #expect(guidanceSource.contains(category))
         }
@@ -57,7 +56,7 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Full Triptych Access",
             "APA 7",
             "Pairing and Session are short-lived and restart-invalidated",
-            "One previous primary Method edit",
+            "A Practice keeps one replaceable previous edit",
         ] {
             #expect(
                 guidanceSource.contains(customization),

@@ -796,10 +796,6 @@ struct FrontendArchitectureTests {
                 )
             }
         }
-
-        let checkpoint = try #require(viewSources["Scholium/Views/CheckpointView.swift"])
-        #expect(checkpoint.contains("case .created, .changed, .moved, .deleted: .attention"))
-
         let critique = try #require(
             viewSources["Scholium/Views/Note/CritiqueProvenanceView.swift"]
         )
@@ -826,16 +822,16 @@ struct FrontendArchitectureTests {
     func presentationRouteExclusivity() {
         let router = WindowPresentationRouter()
 
-        router.present(.createCheckpoint)
-        #expect(router.sheet?.id == "create-checkpoint")
+        router.present(.transactionRecovery)
+        #expect(router.sheet?.id == "transaction-recovery")
 
         router.presentFrontmatter(path: "Topics/Agency.md")
         guard case .frontmatter(let frontmatterRoute) = router.sheet else {
-            Issue.record("Expected Properties to replace the checkpoint route")
+            Issue.record("Expected Properties to replace the transaction recovery route")
             return
         }
         #expect(frontmatterRoute.path == "Topics/Agency.md")
-        router.dismissSheet(if: "create-checkpoint")
+        router.dismissSheet(if: "transaction-recovery")
         #expect(router.sheet?.id == frontmatterRoute.id)
 
         router.dismissSheet(if: frontmatterRoute.id)
@@ -2929,7 +2925,7 @@ struct FrontendArchitectureTests {
     func windowIsolation() {
         let firstRouter = WindowPresentationRouter()
         let secondRouter = WindowPresentationRouter()
-        firstRouter.present(.createCheckpoint)
+        firstRouter.present(.transactionRecovery)
         #expect(secondRouter.sheet == nil)
 
         let key = DocumentSessionKey(vaultID: UUID(), noteID: UUID())

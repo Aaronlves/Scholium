@@ -105,6 +105,171 @@ public actor TriptychControlStore {
 
     public let controlURL: URL
 
+    /// Preserves the entire unsupported portable-control owner as one opaque
+    /// directory. No file inside it is decoded or migrated, and the three
+    /// research vault roots are outside the moved range.
+    @discardableResult
+    public nonisolated static func preserveUnsupportedControlBundle(
+        worksVaultURL: URL,
+        fileManager: FileManager = .default
+    ) async throws -> URL {
+        let controlURL = worksVaultURL.standardizedFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".scholium", isDirectory: true)
+        guard try await unsupportedControlStateExists(
+            worksVaultURL: worksVaultURL
+        ) else {
+            throw ExactStatePreservationError.preservationFailed(
+                "The portable control folder changed and no longer requires recovery. Reload its current state."
+            )
+        }
+        let expectedToken = try recoveryToken(
+            controlURL: controlURL,
+            fileManager: fileManager
+        )
+        guard try await unsupportedControlStateExists(
+            worksVaultURL: worksVaultURL
+        ) else {
+            throw ExactStatePreservationError.preservationFailed(
+                "The portable control folder changed and no longer requires recovery. Reload its current state."
+            )
+        }
+        return try ExactStatePreserver.preserve(
+            controlURL,
+            kind: .directory,
+            recoveryStem: ".scholium.unsupported",
+            directoryEligibility: {
+                try recoveryToken(controlURL: $0, fileManager: fileManager)
+                    == expectedToken
+            },
+            fileManager: fileManager
+        )
+    }
+
+    private nonisolated static func unsupportedControlStateExists(
+        worksVaultURL: URL
+    ) async throws -> Bool {
+        let store = TriptychControlStore(worksVaultURL: worksVaultURL)
+        let controlURL = store.controlURL
+        guard ExactStatePreserver.entryExists(at: controlURL) else { return false }
+        let values = try controlURL.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+        ])
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw ExactStatePreservationError.unsafe(
+                "The portable control owner is linked or is not a directory."
+            )
+        }
+        let manifest: TriptychManifest
+        do {
+            manifest = try await store.manifest()
+        } catch let error as TriptychControlError {
+            if case .invalidManifest = error { return true }
+            throw error
+        }
+        guard manifest.schemaVersion == TriptychManifest.currentSchemaVersion,
+              Set(manifest.vaultIDs.keys) == Set(WorkspaceVaultSlot.allCases),
+              Set(manifest.vaultIDs.values).count == WorkspaceVaultSlot.allCases.count else {
+            return true
+        }
+        do {
+            try await store.validateExistingSupportedControlState()
+            let researchConfiguration = ResearchConfigurationStore(
+                controlURL: controlURL,
+                triptychID: manifest.id
+            )
+            _ = try await researchConfiguration.registrationSnapshot()
+            _ = try await researchConfiguration.profileSnapshot()
+            _ = try await researchConfiguration.collaborationSnapshot()
+            _ = try await researchConfiguration.citationMethodSnapshot()
+            return false
+        } catch is ResearchCitationMethodContractError {
+            return true
+        } catch let error as ResearchConfigurationStoreError {
+            if case .invalidDocument = error { return true }
+            throw error
+        } catch let error as TriptychControlError {
+            switch error {
+            case .invalidManifest, .settingsMissing, .settingsOldSchema,
+                 .settingsFutureSchema, .settingsCorrupted,
+                 .invalidZoteroBindings, .invalidIdentities:
+                return true
+            default:
+                throw error
+            }
+        }
+    }
+
+    private nonisolated static func recoveryToken(
+        controlURL: URL,
+        fileManager: FileManager
+    ) throws -> DocumentFingerprint {
+        let root = controlURL.standardizedFileURL
+        var enumerationFailure: Error?
+        guard let enumerator = fileManager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [
+                .isRegularFileKey,
+                .isDirectoryKey,
+                .isSymbolicLinkKey,
+            ],
+            options: [],
+            errorHandler: { _, error in
+                enumerationFailure = error
+                return false
+            }
+        ) else {
+            throw ExactStatePreservationError.unsafe(
+                "The portable control directory could not be enumerated for recovery."
+            )
+        }
+        let entries = enumerator.compactMap { $0 as? URL }.sorted {
+            $0.path < $1.path
+        }
+        if let enumerationFailure {
+            throw ExactStatePreservationError.unsafe(
+                "The portable control directory could not be read completely: \(enumerationFailure.localizedDescription)"
+            )
+        }
+        var token = Data()
+        for url in entries {
+            let rootParts = root.pathComponents
+            let parts = url.standardizedFileURL.pathComponents
+            guard parts.count > rootParts.count,
+                  Array(parts.prefix(rootParts.count)) == rootParts else {
+                throw ExactStatePreservationError.unsafe(
+                    "Portable control recovery escaped its authorized directory."
+                )
+            }
+            let relativePath = parts.dropFirst(rootParts.count).joined(separator: "/")
+            token.append(Data(relativePath.utf8))
+            token.append(0)
+            let values = try url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .isDirectoryKey,
+                .isSymbolicLinkKey,
+            ])
+            if values.isSymbolicLink == true {
+                token.append(2)
+                token.append(Data(try fileManager.destinationOfSymbolicLink(
+                    atPath: url.path
+                ).utf8))
+            } else if values.isDirectory == true {
+                token.append(3)
+            } else if values.isRegularFile == true {
+                token.append(1)
+                token.append(try Data(contentsOf: url, options: [.mappedIfSafe]))
+            } else {
+                throw ExactStatePreservationError.unsafe(
+                    "Portable control state at \(url.path) has an unsupported type."
+                )
+            }
+            token.append(0xff)
+        }
+        return DocumentFingerprint(data: token)
+    }
+
     private let manifestURL: URL
     private let settingsURL: URL
     private let identitiesURL: URL
@@ -295,17 +460,59 @@ public actor TriptychControlStore {
             }
             manifest = decoded
         }
-        _ = try settings()
+        switch try settingsLoadState() {
+        case .current, .needsReview:
+            break
+        case .missing:
+            throw TriptychControlError.settingsMissing
+        case .oldSchema(let version):
+            throw TriptychControlError.settingsOldSchema(version)
+        case .futureSchema(let version):
+            throw TriptychControlError.settingsFutureSchema(version)
+        case .corrupted:
+            throw TriptychControlError.settingsCorrupted
+        }
         _ = try identitySnapshot()
         _ = try zoteroBindings()
         return manifest
     }
 
     public func manifest() throws -> TriptychManifest {
-        guard let manifest: TriptychManifest = try decodeIfPresent(TriptychManifest.self, from: manifestURL) else {
+        do {
+            guard let manifest: TriptychManifest = try decodeIfPresent(
+                TriptychManifest.self,
+                from: manifestURL
+            ) else {
+                throw TriptychControlError.invalidManifest
+            }
+            return manifest
+        } catch is DecodingError {
             throw TriptychControlError.invalidManifest
         }
-        return manifest
+    }
+
+    /// Validates only portable control files that already exist. Missing
+    /// current files remain bootstrap-able; unsupported or damaged existing
+    /// files fail before any machine-local registration is changed.
+    public func validateExistingSupportedControlState() throws {
+        if fileManager.fileExists(atPath: settingsURL.path) {
+            switch try settingsLoadState() {
+            case .current, .needsReview, .missing:
+                break
+            case .oldSchema(let version):
+                throw TriptychControlError.settingsOldSchema(version)
+            case .futureSchema(let version):
+                throw TriptychControlError.settingsFutureSchema(version)
+            case .corrupted:
+                throw TriptychControlError.settingsCorrupted
+            }
+        }
+        if fileManager.fileExists(atPath: identitiesURL.path) {
+            _ = try identitySnapshot()
+        }
+        if fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) {
+            _ = try zoteroBindings()
+        }
     }
 
     public func settings() throws -> TriptychSettingsSnapshot {
@@ -643,7 +850,7 @@ public actor TriptychControlStore {
     /// Commits a lifecycle move against the portable identity inventory.
     ///
     /// The filesystem move and this identity write are separate actors, so a
-    /// watcher or checkpoint refresh may leave the in-memory ID one step ahead
+    /// watcher or explicit refresh may leave the in-memory ID one step ahead
     /// of the portable file. Resolve by stable ID first, then by the expected
     /// source path, and finally recreate the same stable ID if the record was
     /// lost. The operation is idempotent when the destination is already

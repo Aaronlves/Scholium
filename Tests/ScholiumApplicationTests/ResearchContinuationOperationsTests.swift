@@ -497,7 +497,7 @@ struct ResearchContinuationOperationsTests {
         let child = try await handle.services.localResearchExecutionStore.record(
             id: childID
         )
-        #expect(child.schemaVersion == 12)
+        #expect(child.schemaVersion == 13)
         #expect(child.snapshot.continuationHandoff?.referenceChecks.first?.status
             == .unavailable)
 

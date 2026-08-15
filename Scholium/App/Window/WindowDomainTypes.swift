@@ -34,6 +34,7 @@ extension WorkspaceDocumentLifecycle {
 enum WorkspaceAccessKind: String, Hashable, Sendable {
     case vault
     case portableControl
+    case unsupportedPortableControl
 }
 
 /// One narrowly scoped authorization repair for an already configured
@@ -41,8 +42,15 @@ enum WorkspaceAccessKind: String, Hashable, Sendable {
 struct WorkspaceAccessRecovery: Identifiable, Hashable, Sendable {
     let kind: WorkspaceAccessKind
     let expectedPath: String
+    let reason: String?
 
-    var id: String { "\(kind.rawValue):\(expectedPath)" }
+    init(kind: WorkspaceAccessKind, expectedPath: String, reason: String? = nil) {
+        self.kind = kind
+        self.expectedPath = expectedPath
+        self.reason = reason
+    }
+
+    var id: String { "\(kind.rawValue):\(expectedPath):\(reason ?? "")" }
 }
 
 extension NoteLifecycleTarget {

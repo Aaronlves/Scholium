@@ -5,8 +5,8 @@ import Testing
 
 @Suite("Application document lifecycle operations")
 struct DocumentLifecycleOperationsTests {
-    @Test("Pre-rename Settle failure removes only its newly created machine-local pin")
-    func preRenameSettleFailureRollsBackPin() async throws {
+    @Test("Pre-rename Settle failure leaves the portable marker unchanged")
+    func preRenameSettleFailureLeavesMarkerUnchanged() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -15,7 +15,7 @@ struct DocumentLifecycleOperationsTests {
         let projected = try #require(
             try await handle.snapshot().document(id: fixture.targetID)
         )
-        let stableID = try #require(projected.stableIdentity.resolvedID)
+        _ = try #require(projected.stableIdentity.resolvedID)
         await handle.setResearchSettlementReplacementFaultForTesting(.beforeRename)
 
         do {
@@ -25,10 +25,7 @@ struct DocumentLifecycleOperationsTests {
                 rationale: "Must not cross rename."
             )
             Issue.record("Expected typed Settle pre-commit failure.")
-        } catch {
-            #expect(ResearchSettlementRecovery.shouldRollbackNewPin(after: error))
-        }
-        #expect(try await handle.research.settledSnapshots(noteID: stableID).isEmpty)
+        } catch {}
         let portableProjection = try await handle.portableSettlementProjectionForTesting()
         #expect(portableProjection.issueCount == 0)
         #expect(portableProjection.settlements.isEmpty)
@@ -36,8 +33,8 @@ struct DocumentLifecycleOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Post-rename Settle uncertainty retains the exact machine-local pin")
-    func postRenameSettleUncertaintyRetainsPin() async throws {
+    @Test("Post-rename Settle uncertainty retains the portable marker")
+    func postRenameSettleUncertaintyRetainsMarker() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -46,7 +43,7 @@ struct DocumentLifecycleOperationsTests {
         let projected = try #require(
             try await handle.snapshot().document(id: fixture.targetID)
         )
-        let stableID = try #require(projected.stableIdentity.resolvedID)
+        _ = try #require(projected.stableIdentity.resolvedID)
         await handle.setResearchSettlementReplacementFaultForTesting(.afterRename)
 
         do {
@@ -56,10 +53,7 @@ struct DocumentLifecycleOperationsTests {
                 rationale: "Crossed rename before the injected failure."
             )
             Issue.record("Expected typed Settle commit uncertainty.")
-        } catch {
-            #expect(!ResearchSettlementRecovery.shouldRollbackNewPin(after: error))
-        }
-        #expect(try await handle.research.settledSnapshots(noteID: stableID).count == 1)
+        } catch {}
         let portableProjection = try await handle.portableSettlementProjectionForTesting()
         #expect(portableProjection.issueCount == 0)
         #expect(portableProjection.settlements.map(\.fingerprint)
@@ -1213,11 +1207,6 @@ struct DocumentLifecycleOperationsTests {
                 instruction: "Inspect this private note."
             )
         )
-        let checkpoint = try await handle.research.createCheckpoint(
-            name: "Contains Deleted Target",
-            kind: .manual
-        )
-
         let setAside = try await handle.documents.setAside(
             fixture.targetID,
             expectedRevision: source.fingerprint
@@ -1237,18 +1226,16 @@ struct DocumentLifecycleOperationsTests {
         #expect(commit.noteID == stableID)
         #expect(commit.relativePath == "Trash/Target.md")
         #expect(commit.removedDialogueIDs.isEmpty)
-        #expect(commit.invalidatedCheckpointIDs.contains(checkpoint.id))
-        #expect(discussionPreparation.snapshot.checkpointID == nil)
+        #expect(discussionPreparation.snapshot.changeEvidenceID == nil)
         #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
-        #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
         #expect(try await handle.snapshot().document(id: trash.destination) == nil)
         #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
             .appendingPathComponent("Trash/Target.md").path))
         await runtime.shutdown()
     }
 
-    @Test("Settle pins distinct exact Note revisions and applies per-Note retention")
-    func settlePinsExactRevisions() async throws {
+    @Test("Settle stores one portable marker for the latest settled revision")
+    func settleStoresLatestPortableMarker() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1257,148 +1244,29 @@ struct DocumentLifecycleOperationsTests {
         let projected = try #require(try await handle.snapshot().document(id: fixture.targetID))
         let stableID = try #require(projected.stableIdentity.resolvedID)
 
-        // Simulate a D-107-preexisting portable Settle that has no
-        // machine-local pin, then backfill it by settling the same revision.
-        _ = try await handle.writePortableSettlementWithoutPinForTesting(
-            noteID: stableID,
-            fingerprint: document.fingerprint,
-            rationale: nil
-        )
-        #expect(try await handle.research.settledSnapshots(noteID: stableID).isEmpty)
-        let updatedSettlement = try await handle.research.settle(
+        _ = try await handle.research.settle(
             fixture.targetID,
             expectedRevision: document.fingerprint,
-            rationale: "The same revision remains useful."
+            rationale: "First marker"
         )
-        #expect(updatedSettlement.rationale == "The same revision remains useful.")
-        #expect(try await handle.research.settledSnapshots(noteID: stableID).count == 1)
-
-        for index in 1...11 {
-            document = try await handle.documents.save(
-                fixture.targetID,
-                changeSet: .exactContent("# Target\n\nRevision \(index).\n"),
-                expectedRevision: document.fingerprint
-            ).committedValue.document
-            _ = try await handle.research.settle(
-                fixture.targetID,
-                expectedRevision: document.fingerprint,
-                rationale: nil
-            )
-        }
-        #expect(try await handle.research.settledSnapshots(noteID: stableID).count == 12)
-
-        let currentPolicy = try await handle.research.recoveryPolicy()
-        #expect(currentPolicy.retention == .keep30)
-        let preview = try await handle.research.prepareRecoveryPolicyChange(
-            .keep10,
-            expectedRevision: currentPolicy.revision
+        document = try await handle.documents.save(
+            fixture.targetID,
+            changeSet: .exactContent("# Target\n\nUpdated.\n"),
+            expectedRevision: document.fingerprint
+        ).committedValue.document
+        let latest = try await handle.research.settle(
+            fixture.targetID,
+            expectedRevision: document.fingerprint,
+            rationale: "Current marker"
         )
-        #expect(preview.snapshotIDsToRemove.count == 2)
-        #expect(preview.affectedNoteCount == 1)
-        let outcome = try await handle.research.applyRecoveryPolicyChange(preview)
-        #expect(outcome.removedSnapshotCount == 2)
-        #expect(outcome.snapshot.retention == .keep10)
-        #expect(try await handle.research.settledSnapshots(noteID: stableID).count == 10)
-        #expect(try await handle.research.checkpoints().checkpoints.isEmpty)
+
+        let projection = try await handle.portableSettlementProjectionForTesting()
+        #expect(projection.issueCount == 0)
+        #expect(projection.settlements.count == 1)
+        #expect(projection.settlements.first?.noteID == stableID)
+        #expect(projection.settlements.first?.fingerprint == latest.fingerprint)
+        #expect(projection.settlements.first?.rationale == "Current marker")
         await runtime.shutdown()
-
-        let reopenedRuntime = fixture.runtime()
-        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
-        #expect(try await reopened.research.recoveryPolicy().retention == .keep10)
-        #expect(try await reopened.research.settledSnapshots(noteID: stableID).count == 10)
-        await reopenedRuntime.shutdown()
-    }
-
-    @Test("A Recovery policy preview cannot cross Triptychs")
-    func recoveryPolicyPreviewIsTriptychBound() async throws {
-        let firstFixture = try await LifecycleFixture.make()
-        let secondFixture = try await LifecycleFixture.make()
-        defer {
-            firstFixture.remove()
-            secondFixture.remove()
-        }
-        let firstRuntime = firstFixture.runtime()
-        let secondRuntime = secondFixture.runtime()
-        let first = try await firstRuntime.openWorkspace(id: firstFixture.assignment.id)
-        let second = try await secondRuntime.openWorkspace(id: secondFixture.assignment.id)
-        let firstPolicy = try await first.research.recoveryPolicy()
-        let preview = try await first.research.prepareRecoveryPolicyChange(
-            .keep50,
-            expectedRevision: firstPolicy.revision
-        )
-
-        await #expect(throws: ResearchRecoveryPolicyError.stalePreview) {
-            _ = try await second.research.applyRecoveryPolicyChange(preview)
-        }
-        #expect(try await second.research.recoveryPolicy().retention == .keep30)
-        await firstRuntime.shutdown()
-        await secondRuntime.shutdown()
-    }
-
-    @Test("An interrupted retention change resumes only its approved snapshot removals")
-    func interruptedRecoveryPolicyChangeResumes() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        var document = try await handle.documents.load(fixture.targetID)
-        for index in 0..<12 {
-            if index > 0 {
-                document = try await handle.documents.save(
-                    fixture.targetID,
-                    changeSet: .exactContent("# Target\n\nInterrupted revision \(index).\n"),
-                    expectedRevision: document.fingerprint
-                ).committedValue.document
-            }
-            _ = try await handle.research.settle(
-                fixture.targetID,
-                expectedRevision: document.fingerprint,
-                rationale: nil
-            )
-        }
-        let before = try await handle.research.settledSnapshots(noteID: nil)
-        let policy = try await handle.research.recoveryPolicy()
-        let preview = try await handle.research.prepareRecoveryPolicyChange(
-            .keep10,
-            expectedRevision: policy.revision
-        )
-        #expect(preview.snapshotIDsToRemove.count == 2)
-        await runtime.shutdown()
-
-        let policyDirectory = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-recovery-policy-v1", isDirectory: true)
-        let policyURL = policyDirectory.appendingPathComponent("policy.json")
-        let payload: [String: Any] = [
-            "schema_version": 1,
-            "triptych_id": fixture.assignment.id.uuidString,
-            "retention": SettledSnapshotRetention.keep10.rawValue,
-            "pending_snapshot_ids_to_remove": preview.snapshotIDsToRemove
-                .map(\.uuidString).sorted(),
-        ]
-        try JSONSerialization.data(
-            withJSONObject: payload,
-            options: [.prettyPrinted, .sortedKeys]
-        ).write(to: policyURL, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: policyURL.path
-        )
-
-        let reopenedRuntime = fixture.runtime()
-        let reopened = try await reopenedRuntime.openWorkspace(id: fixture.assignment.id)
-        let recoveredPolicy = try await reopened.research.recoveryPolicy()
-        #expect(recoveredPolicy.retention == .keep10)
-        let after = try await reopened.research.settledSnapshots(noteID: nil)
-        #expect(Set(after.map(\.id)) == Set(before.map(\.id))
-            .subtracting(preview.snapshotIDsToRemove))
-        let readback = try #require(
-            try JSONSerialization.jsonObject(with: Data(contentsOf: policyURL))
-                as? [String: Any]
-        )
-        #expect((readback["pending_snapshot_ids_to_remove"] as? [String])?.isEmpty == true)
-        await reopenedRuntime.shutdown()
     }
 
     @Test("Interrupted save recovery stays vault-qualified and publishes its committed source")

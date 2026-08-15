@@ -7,10 +7,22 @@
 - Starting, Registry Recovery, Ready, and Storage Unavailable are distinct app
   roots. Failure states retain Details, Retry, and the applicable recovery or
   Quit route while workspace commands remain disabled.
+- Registry Recovery identifies whether the Triptych registry or one local
+  access registry owns the failure, preserves only that damaged owner, and
+  retains Retry-only behavior for unsafe or unreadable state.
 - Bootstrap is a separate narrow window for creating or connecting one
   Triptych, optional first-launch Agent preparation, and explicit workspace
   entry. Configured windows use one native Library–Document–Inspector split and
   one stable toolbar.
+- Restore Access keeps exact-folder renewal primary and adds a confirmed
+  **Remove Registration…** escape when that Triptych is gone or must be set up
+  again. The confirmation distinguishes machine registration from unchanged
+  Analyses, Topics, Works, and portable `.scholium` content before returning to
+  ordinary Bootstrap.
+- An incompatible or damaged portable owner uses the same bounded sheet (or
+  retained Bootstrap review) to confirm **Archive and Rebuild…**. The copy
+  states that the whole `.scholium` folder is preserved without migration and
+  that Analyses, Topics, and Works are untouched.
 - Each window retains its selected workspace, Library state, role-partitioned
   Document tabs, Edit-default live Document mode, Inspector mode, Search, Attention, and Action
   presentation. Research Records remains a separate Triptych-keyed window.
@@ -115,6 +127,9 @@
   provider-aware completion and results, freshness, Saved Searches, and Explain
   Query. Opening a result routes to the exact current Note, source range,
   Record, or attributed statement.
+- The Saved Searches menu exposes archive-and-reset only while its local file
+  is unreadable. Methods likewise exposes bounded, confirmed repair actions
+  only for its typed invalid local owner.
 - Attention is one transient anchored popover per workspace. It keeps current
   rows available during refresh or recoverable failure and preserves explicit
   Inspect, Resynthesize, Leave Unchanged, dismiss, and Retry routes.

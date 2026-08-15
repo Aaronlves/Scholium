@@ -264,17 +264,6 @@ public extension ResearchRecordUseCases {
     }
 }
 
-public protocol ResearchCheckpointUseCases: Sendable {
-    func createCheckpoint(name: String, kind: TriptychCheckpointKind) async throws -> TriptychCheckpoint
-    func prepareCheckpointsLocation() async throws -> URL
-    func checkpoints() async throws -> TriptychCheckpointListing
-    func noteCheckpoints(for note: VaultQualifiedNoteID) async throws -> [TriptychCheckpoint]
-    func checkpointNoteContent(_ checkpointID: UUID, note: VaultQualifiedNoteID) async throws -> String
-    func checkpointComparison(_ checkpointID: UUID) async throws -> [TriptychCheckpointChange]
-    func restoreNote(_ note: VaultQualifiedNoteID, from checkpointID: UUID, expectedRevision: DocumentFingerprint) async throws -> TriptychCheckpointRestoreResult
-    func restoreCheckpoint(_ checkpointID: UUID, selection: TriptychCheckpointRestoreSelection) async throws -> TriptychCheckpointRestoreResult
-}
-
 public protocol ResearchConfigurationUseCases: Sendable {
     func researchSkillRegistrations() async throws -> ResearchSkillRegistrationSnapshot
     func saveResearchSkillRegistrations(

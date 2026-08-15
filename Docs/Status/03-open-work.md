@@ -86,8 +86,8 @@
   packaged-process interruption. Prove silent Saved only after exact canonical
   readback, Conflict on revision change, Autosave Failed on unproven commit,
   and retained editor bytes in both exceptional outcomes.
-- Recheck conflict focus, selective/full checkpoint restore, retained
-  interrupted candidates, and recovery with assistive technology. Finder
+- Recheck conflict focus, direct Record Undo, retained interrupted candidates,
+  and recovery with assistive technology. Finder
   metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
   completion are not save-success acceptance criteria.
 - Verify packaged reopen after an external Method, Practice, Skill folder, or

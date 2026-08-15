@@ -6,7 +6,6 @@ enum PermanentDeletionFaultPoint: Hashable, Sendable {
     case afterSourceDeletion
     case afterSettlementPurge
     case afterCritiqueAssociationPurge
-    case afterCheckpointPurge
     case afterIdentityPurge
     case afterCommitDecision
 }
@@ -37,41 +36,41 @@ private struct PermanentDeletionInjectedFailure: LocalizedError, Sendable {
 }
 
 /// Coordinates permanent deletion across authoritative Markdown, app-owned
-/// records, portable identity, and self-contained checkpoints. Every source
+/// records and portable identity. Every source
 /// file has a committed recovery version and every non-file record is copied
 /// into a durable transaction journal before the first removal.
 public actor NotePermanentDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
     private let critiqueRegistry: CritiqueRegistry
-    private let checkpointStore: TriptychCheckpointStore
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
     private let sourceAccessStore: ResearchSourceAccessStore?
     private let portableRecordStore: PortableResearchRecordStore?
     private let localExecutionStore: LocalResearchExecutionStore?
+    private let agentChangeEvidenceStore: AgentChangeEvidenceStore?
     private let faultPlan: PermanentDeletionFaultPlan
 
     public init(
         triptychID: UUID,
         repository: VaultRepository,
         critiqueRegistry: CritiqueRegistry,
-        checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
         sourceAccessStore: ResearchSourceAccessStore? = nil,
         portableRecordStore: PortableResearchRecordStore? = nil,
-        localExecutionStore: LocalResearchExecutionStore? = nil
+        localExecutionStore: LocalResearchExecutionStore? = nil,
+        agentChangeEvidenceStore: AgentChangeEvidenceStore? = nil
     ) {
         self.triptychID = triptychID
         self.repository = repository
         self.critiqueRegistry = critiqueRegistry
-        self.checkpointStore = checkpointStore
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         self.sourceAccessStore = sourceAccessStore
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
+        self.agentChangeEvidenceStore = agentChangeEvidenceStore
         self.faultPlan = .none
     }
 
@@ -79,23 +78,23 @@ public actor NotePermanentDeletionCoordinator {
         triptychID: UUID,
         repository: VaultRepository,
         critiqueRegistry: CritiqueRegistry,
-        checkpointStore: TriptychCheckpointStore,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
         sourceAccessStore: ResearchSourceAccessStore? = nil,
         portableRecordStore: PortableResearchRecordStore? = nil,
         localExecutionStore: LocalResearchExecutionStore? = nil,
+        agentChangeEvidenceStore: AgentChangeEvidenceStore? = nil,
         faultPlan: PermanentDeletionFaultPlan
     ) {
         self.triptychID = triptychID
         self.repository = repository
         self.critiqueRegistry = critiqueRegistry
-        self.checkpointStore = checkpointStore
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         self.sourceAccessStore = sourceAccessStore
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
+        self.agentChangeEvidenceStore = agentChangeEvidenceStore
         self.faultPlan = faultPlan
     }
 
@@ -103,8 +102,7 @@ public actor NotePermanentDeletionCoordinator {
         noteID: UUID,
         vaultID: UUID,
         relativePath: String,
-        expectedRevision: DocumentFingerprint,
-        checkpointArea: TriptychCheckpointArea
+        expectedRevision: DocumentFingerprint
     ) async throws -> PermanentDeletionCommit {
         try await requireHealthyStores()
         // Fail before the first authoritative mutation if machine-local
@@ -179,7 +177,6 @@ public actor NotePermanentDeletionCoordinator {
             vaultID: vaultID,
             relativePath: relativePath,
             expectedRevision: expectedRevision,
-            checkpointArea: checkpointArea,
             critiqueNoteID: critiqueNoteID,
             critiqueAssociations: associations,
             identity: try await controlStore.prepareIdentityPurge(
@@ -190,7 +187,6 @@ public actor NotePermanentDeletionCoordinator {
             critiqueIdentity: critiqueIdentityBackup,
             sourceDeletion: nil,
             critiqueDeletion: nil,
-            checkpointPurge: nil,
             settlements: settlements
         )
         var record = makeRecord(
@@ -226,18 +222,6 @@ public actor NotePermanentDeletionCoordinator {
                 record = try await persist(record: record, backup: backup)
             }
 
-            let additionalKeys = backup.critiqueDeletion.map {
-                [TriptychCheckpointFileKey(area: checkpointArea, relativePath: $0.relativePath)]
-            } ?? []
-            let checkpointPurge = try await checkpointStore.preparePurgeNoteCopies(
-                noteID: noteID,
-                area: checkpointArea,
-                currentRelativePath: relativePath,
-                additionalKeys: additionalKeys
-            )
-            backup = backup.updating(checkpointPurge: .some(checkpointPurge))
-            record = try await persist(record: record, backup: backup)
-
             if let critiqueDeletion = backup.critiqueDeletion {
                 try await repository.applyPreparedPermanentDeletion(critiqueDeletion)
                 try faultPlan.trigger(.afterCritiqueDeletion)
@@ -261,8 +245,6 @@ public actor NotePermanentDeletionCoordinator {
             )
             try faultPlan.trigger(.afterCritiqueAssociationPurge)
 
-            try await checkpointStore.applyPreparedCheckpointPurge(checkpointPurge)
-            try faultPlan.trigger(.afterCheckpointPurge)
             if let identity = backup.identity {
                 _ = try await controlStore.purgeIdentity(identity)
             }
@@ -289,8 +271,7 @@ public actor NotePermanentDeletionCoordinator {
                 removedDialogueIDs: [],
                 removedCritiqueAssociationIDs: backup.critiqueAssociations.map(\.id).sorted {
                     $0.uuidString < $1.uuidString
-                },
-                invalidatedCheckpointIDs: checkpointPurge.checkpointIDs
+                }
             )
         } catch let interruption as PermanentDeletionInjectedFailure where interruption.isInterruption {
             let files = await observedFileEvidence(backup)
@@ -344,9 +325,6 @@ public actor NotePermanentDeletionCoordinator {
         if let critique = backup.critiqueDeletion {
             try await repository.finalizePreparedPermanentDeletion(critique)
         }
-        if let checkpoints = backup.checkpointPurge {
-            try await checkpointStore.finalizePreparedCheckpointPurge(checkpoints)
-        }
         // Source locators are machine-local privacy state. Remove them only
         // after the deletion commit decision; if cleanup fails, the durable
         // committing journal remains so recovery retries instead of silently
@@ -369,6 +347,9 @@ public actor NotePermanentDeletionCoordinator {
         try await localExecutionStore?.purgeExecutions(
             containing: deletedNoteIDs
         )
+        for noteID in deletedNoteIDs {
+            try await agentChangeEvidenceStore?.removeEvidence(noteID: noteID)
+        }
         try await portableRecordStore?.handlePermanentDeletion(
             noteIDs: deletedNoteIDs
         )
@@ -391,10 +372,6 @@ public actor NotePermanentDeletionCoordinator {
         if let critique = backup.critiqueDeletion {
             do { try await repository.rollbackPreparedPermanentDeletion(critique) }
             catch { rollbackErrors.append("\(critique.relativePath): \(error.localizedDescription)") }
-        }
-        if let checkpoints = backup.checkpointPurge {
-            do { try await checkpointStore.rollbackPreparedCheckpointPurge(checkpoints) }
-            catch { rollbackErrors.append("Checkpoints: \(error.localizedDescription)") }
         }
         for settlement in backup.settlements {
             do { try await portableRecordStore?.restoreSettlement(settlement) }

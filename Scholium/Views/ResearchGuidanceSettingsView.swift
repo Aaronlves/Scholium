@@ -6,7 +6,6 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
     case profilesPractices = "Profiles & Practices"
     case collaboration = "Collaboration"
     case sources = "Sources & Integrations"
-    case recovery = "Recovery & Technical"
 
     var id: String { rawValue }
 
@@ -20,8 +19,6 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
             LocalizedStringResource("Collaboration", table: "Localizable", bundle: .module)
         case .sources:
             LocalizedStringResource("Sources & Integrations", table: "Localizable", bundle: .module)
-        case .recovery:
-            LocalizedStringResource("Recovery & Technical", table: "Localizable", bundle: .module)
         }
     }
 
@@ -31,7 +28,6 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
         case .profilesPractices: "wrench.and.screwdriver"
         case .collaboration: "lock.shield"
         case .sources: "link"
-        case .recovery: "arrow.counterclockwise"
         }
     }
 }
@@ -72,8 +68,6 @@ struct ResearchGuidanceSettingsView: View {
                     ResearchPermissionSettingsView()
                 case .sources:
                     ResearchSourcesSettingsView()
-                case .recovery:
-                    ResearchRecoverySettingsView()
                 }
             }
             .frame(

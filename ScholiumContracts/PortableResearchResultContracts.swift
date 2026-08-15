@@ -465,7 +465,7 @@ public enum ResearchRecordChangeRecoveryOperationError: LocalizedError, Hashable
     case createdNoteHasNoPreimage(UUID)
     case invalidSelection
     case executionUnavailable
-    case checkpointMismatch(UUID)
+    case changeEvidenceMismatch(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -477,8 +477,8 @@ public enum ResearchRecordChangeRecoveryOperationError: LocalizedError, Hashable
             "Select at least one unresolved Agent-confirmed document."
         case .executionUnavailable:
             "The protected execution evidence required for direct undo is unavailable."
-        case .checkpointMismatch:
-            "The Before Agent Work checkpoint does not match the confirmed change baseline."
+        case .changeEvidenceMismatch:
+            "The exact Agent change evidence does not match the confirmed change baseline."
         }
     }
 }

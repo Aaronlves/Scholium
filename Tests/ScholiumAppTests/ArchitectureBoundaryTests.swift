@@ -51,7 +51,6 @@ struct ArchitectureBoundaryTests {
 
         for consumer in [
             "ResearchRecordV1Stores.swift",
-            "ResearchRecoveryPolicyStore.swift",
             "PrewriteRecoveryLedger.swift",
         ] {
             let source = try String(
@@ -678,7 +677,6 @@ struct ArchitectureBoundaryTests {
             "ProfilesPracticesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
-            "ResearchRecoverySettingsView.swift",
         ] {
             #expect(FileManager.default.fileExists(
                 atPath: repositoryRoot.appendingPathComponent(
