@@ -318,6 +318,73 @@ struct MarkdownEditorProtocolTests {
     }
 
     @MainActor
+    @Test("Editor teardown defers presentation publication until after detach")
+    func editorTeardownDefersPresentationPublication() async {
+        let session = MarkdownEditorSession()
+        let webView = WKWebView()
+        session.attach(webView)
+        session.reportError("Editor teardown test")
+
+        var invalidationCount = 0
+        let observation = session.objectWillChange.sink {
+            invalidationCount += 1
+        }
+        invalidationCount = 0
+
+        session.detach(webView)
+
+        #expect(!session.hasAttachedWebView)
+        #expect(session.errorMessage == "Editor teardown test")
+        #expect(invalidationCount == 0)
+
+        for _ in 0..<100 {
+            if session.errorMessage == nil { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(session.errorMessage == nil)
+        #expect(invalidationCount == 1)
+        _ = observation
+    }
+
+    @MainActor
+    @Test("A fast editor reattach prevents the old deferred reset")
+    func editorTeardownResetDoesNotCrossReattach() async {
+        let session = MarkdownEditorSession()
+        let firstWebView = WKWebView()
+        session.attach(firstWebView)
+        session.reportError("Editor reattach test")
+
+        var invalidationCount = 0
+        let observation = session.objectWillChange.sink {
+            invalidationCount += 1
+        }
+        invalidationCount = 0
+
+        session.detach(firstWebView)
+        let replacementWebView = WKWebView()
+        session.attach(replacementWebView)
+
+        #expect(session.webView === replacementWebView)
+        #expect(session.errorMessage == nil)
+        #expect(invalidationCount == 1)
+
+        // This test does not exercise startup timeout handling. Mark the
+        // replacement as ready so a contended full-suite main actor cannot
+        // add an unrelated six-second startup failure to the assertion.
+        session.editorBecameReady()
+        invalidationCount = 0
+        for _ in 0..<4 { await Task.yield() }
+
+        #expect(session.webView === replacementWebView)
+        #expect(session.errorMessage == nil)
+        #expect(invalidationCount == 0)
+
+        session.detach(replacementWebView)
+        _ = observation
+    }
+
+    @MainActor
     @Test("Interaction updates reject stale generations, empty ranges, and out-of-bounds offsets")
     func interactionSelectionValidation() {
         let session = MarkdownEditorSession()
@@ -412,7 +479,13 @@ struct MarkdownEditorProtocolTests {
         let session = MarkdownEditorSession()
         let source = "Hello world 价值"
         session.loadDocument(source, documentID: "statistics-test", mode: .livePreview)
-        try await Task.sleep(for: .milliseconds(90))
+        let bodyStatistics = DocumentStatistics(
+            englishWords: 2,
+            chineseCharacters: 2,
+            characters: 14,
+            scope: .body
+        )
+        await waitForDocumentStatistics(session, matching: bodyStatistics)
         #expect(session.documentStatistics.englishWords == 2)
         #expect(session.documentStatistics.chineseCharacters == 2)
         #expect(session.documentStatistics.scope == .body)
@@ -425,13 +498,55 @@ struct MarkdownEditorProtocolTests {
             documentVersion: 0,
             context: nil
         )
-        try await Task.sleep(for: .milliseconds(90))
-        #expect(session.documentStatistics == DocumentStatistics(
+        let selectionStatistics = DocumentStatistics(
             englishWords: 0,
             chineseCharacters: 2,
             characters: 2,
             scope: .selection
-        ))
+        )
+        await waitForDocumentStatistics(session, matching: selectionStatistics)
+        #expect(session.documentStatistics == selectionStatistics)
+    }
+
+    @MainActor
+    private func waitForDocumentStatistics(
+        _ session: MarkdownEditorSession,
+        matching expected: DocumentStatistics
+    ) async {
+        guard session.documentStatistics != expected else { return }
+        for await statistics in session.$documentStatistics.values {
+            if statistics == expected { return }
+        }
+    }
+
+    @MainActor
+    @Test("Detaching cancels pending editor statistics without publication")
+    func editorStatisticsAreCancelledByDetach() async {
+        let session = MarkdownEditorSession()
+        let webView = WKWebView()
+        session.attach(webView)
+        session.loadDocument(
+            "Hello world 价值",
+            documentID: "statistics-detach-test",
+            mode: .livePreview
+        )
+
+        var invalidationCount = 0
+        let observation = session.objectWillChange.sink {
+            invalidationCount += 1
+        }
+        invalidationCount = 0
+
+        session.detach(webView)
+
+        #expect(session.documentStatistics == .emptyBody)
+        #expect(invalidationCount == 0)
+
+        try? await Task.sleep(for: .milliseconds(180))
+
+        #expect(session.documentStatistics == .emptyBody)
+        #expect(invalidationCount == 0)
+        _ = observation
     }
 
     @Test("Semantic scroll anchors are revision-bound and bounded")

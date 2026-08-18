@@ -78,6 +78,8 @@ extension SidebarOutlineSourceList {
                 outlineView.activationHandler = nil
                 outlineView.focusPresentationHandler = nil
             }
+            self.outlineView = nil
+            self.scrollView = nil
         }
 
         func apply(configuration: SidebarOutlineSourceList) {
@@ -354,7 +356,9 @@ extension SidebarOutlineSourceList {
             lastRevealGeneration = request.generation
 
             DispatchQueue.main.async { [weak self, weak outlineView] in
-                guard let self, let outlineView else { return }
+                guard let self,
+                      let outlineView,
+                      self.outlineView === outlineView else { return }
                 let row = outlineView.row(forItem: item)
                 guard row >= 0 else {
                     self.lastRevealGeneration = nil
@@ -390,7 +394,9 @@ extension SidebarOutlineSourceList {
             outlineView.scrollRowToVisible(row)
             outlineView.window?.makeFirstResponder(outlineView)
             DispatchQueue.main.async { [weak self, weak outlineView] in
-                guard let self, let outlineView else { return }
+                guard let self,
+                      let outlineView,
+                      self.outlineView === outlineView else { return }
                 self.refreshAvailableRows(in: outlineView)
                 self.configuration.onFocusRequestHandled()
             }

@@ -78,6 +78,12 @@ enum MarkdownEditorCommitAcknowledgement: Equatable, Sendable {
 
 @MainActor
 final class MarkdownEditorSession: NSObject, ObservableObject {
+    private static let rejectedChangeRecoveryMessage = String(
+        localized: "The editor buffer could not be synchronized. Autosave will retry without discarding your text.",
+        table: "Localizable",
+        bundle: .module
+    )
+
     private struct DocumentStatisticsRequestIdentity: Equatable {
         let documentID: String
         let fingerprint: String
@@ -165,7 +171,6 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var rejectedChangeRecoveryTask: Task<Void, Never>?
     private var rejectedChangeRecoveryID: UUID?
     private var pendingRejectedChangeGeneration: Int?
-    private var rejectedChangeRecoveryError: String?
     private let bridgeDispatcher: any MarkdownEditorBridgeDispatching
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private var committedTextSynchronizer: ((String, String) -> Void)?
@@ -238,7 +243,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
 
     func attach(_ webView: WKWebView) {
-        invalidateRequestQueue()
+        invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         self.webView = webView
         sessionID = UUID()
@@ -256,15 +261,30 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func detach(_ webView: WKWebView) {
         guard self.webView === webView else { return }
-        invalidateRequestQueue()
+        invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         startupTask?.cancel()
         documentLoadTask?.cancel()
         focusHandoffTask?.cancel()
         cancelScheduledRecoveryCapture()
+        documentStatisticsTask?.cancel()
+        documentStatisticsTask = nil
+        documentStatisticsRequestID &+= 1
+        documentStatisticsIdentity = nil
         self.webView = nil
-        updatePresentation { $0.reset() }
         removeQATerminationObserver()
+
+        // SwiftUI calls dismantleNSView while its AttributeGraph is destroying
+        // the representable. Publishing from that callback re-enters the same
+        // graph transaction and can trip Swift's dynamic exclusivity check.
+        // Keep the non-publishing detach synchronous, then reset presentation
+        // after teardown has returned. A fast reattach owns the session again
+        // and already resets presentation in attach(_:), so it must win.
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, self.webView == nil else { return }
+            self.updatePresentation { $0.reset() }
+        }
     }
 
     /// Clears the retained editor mirror and callbacks only after AppKit has
@@ -272,7 +292,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// recovery pin. Closed documents intentionally do not retain undo state.
     func shutdownDetachedSession() {
         precondition(webView == nil)
-        invalidateRequestQueue()
+        invalidateRequestQueue(clearingRecoveryReport: false)
         startupTask?.cancel()
         startupTask = nil
         documentLoadTask?.cancel()
@@ -1097,11 +1117,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     guard snapshot.generation >= expectedGeneration else {
                         throw SessionError.invalidResult
                     }
-                    if let recoveryError = self.rejectedChangeRecoveryError {
-                        self.updatePresentation {
-                            $0.clearReport(matching: recoveryError)
-                        }
-                        self.rejectedChangeRecoveryError = nil
+                    self.updatePresentation {
+                        $0.clearReport(matching: Self.rejectedChangeRecoveryMessage)
                     }
                     self.updatePublished(\.isDirty, to: true)
                     self.sourceChangeHandler?()
@@ -1110,12 +1127,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 } catch SessionError.staleRequest {
                     return
                 } catch {
-                    let message = String(
-                        localized: "The editor buffer could not be synchronized. Autosave will retry without discarding your text.",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                    self.rejectedChangeRecoveryError = message
+                    let message = Self.rejectedChangeRecoveryMessage
                     self.updatePresentation { $0.report(message) }
                     _ = try? await self.send(
                         .announceStatus(message),
@@ -1594,16 +1606,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private func removeQATerminationObserver() {}
     #endif
 
-    private func invalidateRequestQueue() {
+    private func invalidateRequestQueue(clearingRecoveryReport: Bool = true) {
         requestEpoch &+= 1
         rejectedChangeRecoveryTask?.cancel()
         rejectedChangeRecoveryTask = nil
         rejectedChangeRecoveryID = nil
         pendingRejectedChangeGeneration = nil
-        if let recoveryError = rejectedChangeRecoveryError {
-            updatePresentation { $0.clearReport(matching: recoveryError) }
+        if clearingRecoveryReport {
+            updatePresentation {
+                $0.clearReport(matching: Self.rejectedChangeRecoveryMessage)
+            }
         }
-        rejectedChangeRecoveryError = nil
         sourceMutationBarrier?.cancel()
         sourceMutationBarrier = nil
         for task in inFlightRequestTasks.values {

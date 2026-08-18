@@ -151,6 +151,54 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.isLoaded)
     }
 
+    @Test("Rejected editor recovery report resets only after teardown returns")
+    func rejectedEditorRecoveryReportDefersTeardownReset() async throws {
+        let dispatcher = FailingQueryTextBridgeDispatcher()
+        let harness = EditorHarness(
+            source: "Body\n",
+            bridgeDispatcher: dispatcher
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let webView = try #require(harness.session.webView)
+        dispatcher.shouldFailQueryText = true
+        harness.session.reconcileAfterRejectedEditorChanges(
+            resultingGeneration: harness.session.generation + 1,
+            in: webView
+        )
+
+        let clock = ContinuousClock()
+        let reportDeadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.errorMessage == nil,
+              clock.now < reportDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(dispatcher.didFailQueryText)
+        #expect(harness.session.errorMessage != nil)
+
+        var invalidationCount = 0
+        let observation = harness.session.objectWillChange.sink {
+            invalidationCount += 1
+        }
+        invalidationCount = 0
+
+        harness.session.detach(webView)
+
+        #expect(!harness.session.hasAttachedWebView)
+        #expect(harness.session.errorMessage != nil)
+        #expect(invalidationCount == 0)
+
+        let resetDeadline = clock.now.advanced(by: .seconds(3))
+        while harness.session.errorMessage != nil,
+              clock.now < resetDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(harness.session.errorMessage == nil)
+        #expect(invalidationCount == 1)
+        _ = observation
+    }
+
     @Test("A false initial selection acknowledgement fails editor readiness")
     func falseInitialSelectionAcknowledgementFailsClosed() async throws {
         let source = "---\ntags: [draft]\n---\nBody\n"
@@ -4218,6 +4266,35 @@ struct MarkdownEditorWebViewIntegrationTests {
             if case .blur = request.operation {
                 didAttemptBlur = true
                 throw ProbeError.blurFailure
+            }
+            return try await production.dispatch(
+                requestJSON: requestJSON,
+                in: webView
+            )
+        }
+    }
+
+    @MainActor
+    private final class FailingQueryTextBridgeDispatcher:
+        MarkdownEditorBridgeDispatching
+    {
+        private enum ProbeError: Error { case queryTextFailure }
+        private let production = WKWebViewMarkdownEditorBridgeDispatcher()
+        var shouldFailQueryText = false
+        private(set) var didFailQueryText = false
+
+        func dispatch(
+            requestJSON: String,
+            in webView: WKWebView
+        ) async throws -> Any? {
+            let request = try JSONDecoder().decode(
+                MarkdownEditorRequest.self,
+                from: Data(requestJSON.utf8)
+            )
+            if shouldFailQueryText,
+               case .queryText = request.operation {
+                didFailQueryText = true
+                throw ProbeError.queryTextFailure
             }
             return try await production.dispatch(
                 requestJSON: requestJSON,

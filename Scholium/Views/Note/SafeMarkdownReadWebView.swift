@@ -960,7 +960,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             inFlightScrollRestoreClaim = nil
             loadFinalizationTask = nil
             pageIsReady = false
-            loadedSignature = nil
+            // Keep the failed signature installed. Restoration reports can
+            // update the outer SwiftUI state while finalization is failing;
+            // clearing this identity would let that update re-enter the same
+            // failed load before the owner has chosen an explicit retry.
             finalizedSignature = nil
             renderingReadinessIsAcknowledged = false
             loadGeneration &+= 1

@@ -293,8 +293,12 @@ struct LocalAgentBridgeTests {
             }
             #expect(payload.code == .outcomeUnknown)
         }
-        #expect(entered.value)
-        #expect(cancellationObserved.value)
+        #expect(await server.stopAndWait())
+        // Under contention cancellation can win before the unstructured
+        // handler task starts. If it did start, the server's cancellation
+        // grace period must let it observe cancellation before ownership is
+        // released.
+        #expect(!entered.value || cancellationObserved.value)
         #expect(!committed.value)
     }
 

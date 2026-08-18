@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import ScholiumContracts
+import SwiftUI
 import Testing
 @testable import ScholiumApp
 
@@ -1060,6 +1062,105 @@ struct SidebarTreeTests {
         ) == nil)
     }
 
+    @MainActor
+    @Test("Sidebar drops queued reveal and focus callbacks across detach and reattach")
+    func coordinatorDropsStaleTeardownCallbacks() async throws {
+        _ = NSApplication.shared
+        let vaultID = UUID()
+        let firstNote = workspaceNote(
+            vaultID: vaultID,
+            stableID: UUID(),
+            path: "Folder/First.md",
+            source: "# First\n"
+        )
+        let secondNote = workspaceNote(
+            vaultID: vaultID,
+            stableID: UUID(),
+            path: "Folder/Second.md",
+            source: "# Second\n"
+        )
+        let projection = LibraryTreeProjection(
+            preorderedNotes: [firstNote, secondNote]
+        )
+        let scope = LibraryDisclosureScope(
+            vaultID: vaultID,
+            locationScope: .workspace
+        )
+        let expandedFolderIDs: Set<String> = ["Folder"]
+        var revealCount = 0
+        var focusCount = 0
+
+        let initialConfiguration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots,
+            notes: [firstNote, secondNote],
+            scope: scope,
+            expandedFolderIDs: expandedFolderIDs,
+            revealRequest: DiscoveryLibraryRevealRequest(
+                generation: 1,
+                scope: scope,
+                relativePath: firstNote.relativePath,
+                alignment: .nearest
+            ),
+            requestedFocusPath: firstNote.relativePath,
+            onConsumeRevealRequest: { _ in revealCount += 1 },
+            onFocusRequestHandled: { focusCount += 1 }
+        )
+        let coordinator = SidebarOutlineSourceList.Coordinator(
+            configuration: initialConfiguration
+        )
+        let firstFixture = makeSidebarCoordinatorOutline(coordinator)
+        coordinator.apply(configuration: initialConfiguration)
+        try await Task.sleep(for: .milliseconds(25))
+
+        #expect(revealCount == 1)
+        #expect(focusCount == 1)
+
+        let staleConfiguration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots,
+            notes: [firstNote, secondNote],
+            scope: scope,
+            expandedFolderIDs: expandedFolderIDs,
+            revealRequest: DiscoveryLibraryRevealRequest(
+                generation: 2,
+                scope: scope,
+                relativePath: secondNote.relativePath,
+                alignment: .center
+            ),
+            requestedFocusPath: secondNote.relativePath,
+            onConsumeRevealRequest: { _ in revealCount += 1 },
+            onFocusRequestHandled: { focusCount += 1 }
+        )
+        coordinator.apply(configuration: staleConfiguration)
+        coordinator.detach(from: firstFixture.scrollView)
+        try await Task.sleep(for: .milliseconds(25))
+
+        #expect(revealCount == 1)
+        #expect(focusCount == 1)
+
+        let replacementConfiguration = makeSidebarCoordinatorConfiguration(
+            roots: projection.roots,
+            notes: [firstNote, secondNote],
+            scope: scope,
+            expandedFolderIDs: expandedFolderIDs,
+            revealRequest: DiscoveryLibraryRevealRequest(
+                generation: 3,
+                scope: scope,
+                relativePath: firstNote.relativePath,
+                alignment: .nearest
+            ),
+            requestedFocusPath: firstNote.relativePath,
+            onConsumeRevealRequest: { _ in revealCount += 1 },
+            onFocusRequestHandled: { focusCount += 1 }
+        )
+        let replacementFixture = makeSidebarCoordinatorOutline(coordinator)
+        coordinator.apply(configuration: replacementConfiguration)
+        try await Task.sleep(for: .milliseconds(25))
+
+        #expect(revealCount == 2)
+        #expect(focusCount == 2)
+        coordinator.detach(from: replacementFixture.scrollView)
+    }
+
     private func workspaceNote(
         vaultID: UUID,
         stableID: UUID,
@@ -1087,4 +1188,97 @@ struct SidebarTreeTests {
             )
         ))
     }
+}
+
+@MainActor
+private func makeSidebarCoordinatorConfiguration(
+    roots: [TreeNode],
+    notes: [WindowDocumentLocation],
+    scope: LibraryDisclosureScope,
+    expandedFolderIDs: Set<String>,
+    revealRequest: DiscoveryLibraryRevealRequest?,
+    requestedFocusPath: String?,
+    onConsumeRevealRequest: @escaping (DiscoveryLibraryRevealRequest) -> Void,
+    onFocusRequestHandled: @escaping () -> Void
+) -> SidebarOutlineSourceList {
+    let context = SidebarTreeContext(
+        currentVaultID: scope.vaultID,
+        currentVaultRole: .other,
+        locationScope: .workspace,
+        openNote: { _, _ in },
+        requestLifecycle: { _ in },
+        canMutateLibrary: false,
+        createUntitledNote: { _ in },
+        createUntitledFolder: { _ in },
+        requestFolderLifecycle: { _ in },
+        moveFolderToTrash: { _ in },
+        copyRelativePath: { _ in },
+        revealNote: { _ in },
+        setAside: { _ in },
+        moveToTrash: { _ in },
+        deletePermanently: { _ in },
+        showError: { _ in }
+    )
+    let dropInventory = SidebarTreeDropInventory(
+        currentVaultID: scope.vaultID,
+        locationScope: .workspace,
+        currentVaultRole: .other,
+        canMutate: false,
+        notes: notes,
+        folderRelativePaths: [],
+        pathComparisonPolicy: nil,
+        pendingNoteMoves: [],
+        pendingFolderMoves: []
+    )
+    return SidebarOutlineSourceList(
+        roots: roots,
+        projectionRevision: 1,
+        locale: Locale(identifier: "en_US"),
+        expandedFolders: .constant(expandedFolderIDs),
+        expandedFolderIDs: expandedFolderIDs,
+        rowHeight: 24,
+        selectedDocumentPath: nil,
+        context: context,
+        dropInventory: dropInventory,
+        revealRequest: revealRequest,
+        disclosureScope: scope,
+        focusRequestGeneration: 0,
+        requestedFocusPath: requestedFocusPath,
+        onConsumeRevealRequest: onConsumeRevealRequest,
+        onFocusRequestHandled: onFocusRequestHandled,
+        onSelect: { _ in },
+        putBackDocumentsInProgress: [],
+        onMoveNoteDrop: { _, _ in },
+        onMoveFolderDrop: { _, _ in },
+        onPutBack: { _ in },
+        onWillRemove: { _ in },
+        onMutationFailed: { _ in }
+    )
+}
+
+@MainActor
+private func makeSidebarCoordinatorOutline(
+    _ coordinator: SidebarOutlineSourceList.Coordinator
+) -> (scrollView: NSScrollView, outlineView: SidebarOutlineView) {
+    let scrollView = NSScrollView(
+        frame: NSRect(x: 0, y: 0, width: 320, height: 320)
+    )
+    let outlineView = SidebarOutlineView(
+        frame: NSRect(x: 0, y: 0, width: 320, height: 320)
+    )
+    outlineView.dataSource = coordinator
+    outlineView.delegate = coordinator
+    outlineView.style = .sourceList
+    outlineView.floatsGroupRows = false
+    outlineView.usesAutomaticRowHeights = false
+    outlineView.rowHeight = 24
+    outlineView.intercellSpacing = .zero
+    let column = NSTableColumn(
+        identifier: SidebarOutlineSourceList.Coordinator.columnIdentifier
+    )
+    outlineView.addTableColumn(column)
+    outlineView.outlineTableColumn = column
+    scrollView.documentView = outlineView
+    coordinator.attach(outlineView: outlineView, scrollView: scrollView)
+    return (scrollView, outlineView)
 }
