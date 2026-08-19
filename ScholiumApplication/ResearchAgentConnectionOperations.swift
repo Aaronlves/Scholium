@@ -4,6 +4,40 @@ import ScholiumContracts
 import ScholiumCore
 
 extension WorkspaceRuntime {
+    public func startResearchAgentRun(
+        triptychID: UUID,
+        request: ResearchAgentStartRequest,
+        sessionValidity: TimeInterval = 8 * 60 * 60
+    ) async throws -> ResearchAgentStartedSession {
+        guard let sessions = researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let handle = try await openWorkspace(id: triptychID)
+        let started = try await handle.startResearchAgentRun(request)
+        do {
+            let session = try await sessions.issueAgentSession(
+                runID: started.preparation.runID,
+                triptychID: triptychID,
+                canWrite: !started.preparation.snapshot.authority.writableNotes.isEmpty,
+                sessionValidity: sessionValidity
+            )
+            let receipt = try ResearchAgentStartReceipt(
+                run: session.run,
+                actionID: started.preparation.snapshot.actionID,
+                target: started.preparation.snapshot.target,
+                state: started.preparation.state,
+                message: "The Agent-originated Run is active. Fetch its authenticated context before continuing."
+            )
+            return ResearchAgentStartedSession(
+                receipt: receipt,
+                credential: session.credential
+            )
+        } catch {
+            await sessions.revokeRun(started.preparation.runID)
+            throw error
+        }
+    }
+
     public func researchAgentWorkspaceID(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
@@ -173,6 +207,62 @@ extension ResearchOperations {
 }
 
 extension WorkspaceHandle {
+    func startResearchAgentRun(
+        _ request: ResearchAgentStartRequest
+    ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
+        try requireCompleteWorkspace()
+        guard let note = currentSnapshot.document(id: request.target),
+              note.id.vaultID == request.target.vaultID,
+              note.id.relativePath == request.target.relativePath,
+              note.lifecycle == .active,
+              let stableID = note.stableIdentity.resolvedID,
+              let functionRole = ResearchFunctionTargetRole(vaultRole: note.vaultRole) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let role: ResearchActionTargetRole = switch functionRole {
+        case .analysis: .analysis
+        case .topic: .topic
+        case .work: .work
+        }
+        let target = ResearchActionNoteSnapshot(
+            noteID: stableID,
+            note: note.id,
+            role: role,
+            lifecycle: note.lifecycle,
+            fingerprint: note.fingerprint,
+            title: researchFunctionCoordinator.researchFunctionTitle(for: note)
+        )
+        let available = try await researchActionAvailability(for: target)
+        guard let action = available.first(where: {
+            $0.id == request.actionID && $0.isEnabled
+        }) else {
+            throw ResearchActionExecutionContractError.actionUnavailable(
+                request.actionID
+            )
+        }
+        let academicInputs = try ResearchAcademicFieldValues(
+            rawValues: request.academicPurpose.map {
+                ["research-request": .freeText($0)]
+            } ?? [:],
+            definitions: action.profile.profile.academicInputFields
+        )
+        let execution = ResearchActionExecutionRequest(
+            actionID: request.actionID,
+            expectedExecutionKind: action.definition.executionKind,
+            expectedProfileRevision: action.profile.profileRevision,
+            expectedProfileDocumentRevision: action.profile.profileDocumentRevision,
+            target: target,
+            platformInputs: try ResearchActionPlatformInputs(),
+            academicInputs: academicInputs
+        )
+        let preparation = try await prepareResearchAction(execution)
+        guard [ResearchActionRunState.prepared, .awaitingFidelity]
+            .contains(preparation.state) else {
+            throw ResearchAgentConnectionError.runUnavailable
+        }
+        return (preparation, target)
+    }
+
     func validateActiveResearchAgentRun(_ runID: UUID) async throws {
         try requireActive()
         if let record = try await services.localResearchExecutionStore

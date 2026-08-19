@@ -495,7 +495,9 @@ struct ResearchBoundedWriteOperationsTests {
         let initialTarget = try #require(extensionResult.entries.first {
             $0.relativePath == "Analysis.md"
         })
-        #expect(initialTarget.operations == [.modifyMarkdown, .modifyProperties])
+        #expect(initialTarget.operations == [
+            .modifyMarkdown, .modifyProperties, .modifySource,
+        ])
         #expect(initialTarget.propertyKeys == ["tags"])
         #expect(extensionResult.entries.first {
             $0.relativePath == "Agency.md"
@@ -1384,11 +1386,12 @@ struct ResearchBoundedWriteOperationsTests {
             as: UTF8.self
         )
         for forbidden in [
-            "expected_revision", "change_evidence_id", "note_id", "capability",
+            "expected_revision", "change_evidence_id", "note_id",
             "authorization_revision",
         ] {
             #expect(!contextJSON.contains(forbidden))
         }
+        #expect(initialContext.brief.capabilities.extendWriteSet)
 
         let policy = try await handle.research.collaborationPolicy()
         _ = try await handle.research.saveCollaborationPolicy(
@@ -1570,6 +1573,85 @@ struct ResearchBoundedWriteOperationsTests {
         }
         #expect(try await handle.documents.load(malformedID).rawContent
             == "---\nkey: value\n")
+        await runtime.shutdown()
+    }
+
+    @Test("Complete-source authority preserves exact bytes and remains revision checked")
+    func completeSourceAuthorityPreservesExactBytes() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let original = try await handle.documents.load(fixture.analysisID)
+        #expect(original.newlineStyle == .crlf)
+        #expect(original.sourceBytes.starts(with: [0xEF, 0xBB, 0xBF]))
+
+        let completeSource = "\u{FEFF}---\r\n# Preserve this comment\r\ntitle: Rewritten Analysis\r\nunknown_key: 'kept exactly'\r\n---\r\n# Rewritten Analysis\r\n\r\nMixed 中文 and \u{1F4DA}.\r\n"
+        let committed = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000901")!,
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .modifySource,
+                source: completeSource
+            )
+        )
+        #expect(committed.state == .committed)
+        let rewritten = try await handle.documents.load(fixture.analysisID)
+        #expect(rewritten.sourceBytes == Data(completeSource.utf8))
+        #expect(rewritten.frontmatterState == .valid)
+        #expect(rewritten.newlineStyle == .crlf)
+        #expect(rewritten.parsedFrontmatter["unknown_key"]
+            == .string("kept exactly"))
+        #expect(rewritten.body.contains("Mixed 中文 and 📚."))
+
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: try ResearchDocumentWriteIntent(
+                    requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000902")!,
+                    role: .analysis,
+                    relativePath: "Analysis.md",
+                    operation: .modifySource,
+                    source: "\u{FEFF}---\r\ntitle: Broken\r\n"
+                )
+            )
+        }
+        #expect(try await handle.documents.load(fixture.analysisID).sourceBytes
+            == Data(completeSource.utf8))
+
+        let external = "\u{FEFF}---\r\ntitle: External\r\n---\r\n# External\r\n"
+        try Data(external.utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            options: .atomic
+        )
+        let conflict = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000903")!,
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .modifySource,
+                source: completeSource + "\u{FEFF}"
+            )
+        )
+        #expect(conflict.state == .conflict)
+        #expect(try Data(contentsOf: fixture.analysesURL
+            .appendingPathComponent("Analysis.md")) == Data(external.utf8))
+
+        let execution = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        let sourceWrites = execution.documentWriteRecords.filter {
+            $0.operation == .modifySource
+        }
+        #expect(sourceWrites.count == 2)
+        #expect(sourceWrites.contains { $0.state == .committed })
+        #expect(sourceWrites.contains { $0.state == .conflict })
         await runtime.shutdown()
     }
 

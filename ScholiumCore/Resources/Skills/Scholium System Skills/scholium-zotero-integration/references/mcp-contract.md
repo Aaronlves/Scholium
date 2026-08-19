@@ -35,13 +35,17 @@ Zotero metadata can establish which record was found. It cannot establish what a
 
 An attachment pointer identifies possible source material; it is not proof that the attachment is the correct version or that its text is extractable.
 
-When source access is required:
+When the Agent's selected task requires paper data:
 
 - verify the parent item and attachment relation;
 - identify the version when possible;
 - record whether full text, an abstract, an excerpt, or metadata only was available;
 - check selectable-text and pagination reliability before using page-specific locators;
-- pass the source packet to an explicitly selected external source-analysis method rather than analyzing it inside this adapter; Scholium does not expose Source Analysis as a Strip function.
+- pass the retrieved source packet to the explicitly selected Analyze method;
+  this adapter remains a Zotero identity/retrieval boundary and does not make
+  philosophical interpretations. A matching Analysis Run does not require a
+  Scholium `ResearchSourceReference` when the Agent obtains the paper through
+  this external route.
 
 ## Guarded import protocol
 

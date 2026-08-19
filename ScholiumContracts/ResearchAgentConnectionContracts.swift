@@ -15,6 +15,152 @@ public struct ResearchRunLocator: RawRepresentable, Codable, Hashable, Sendable 
     }
 }
 
+/// Delivery-neutral request for an Agent-originated Run. Scholium resolves the
+/// current Note identity, Action Profile, Method, and revision after receiving
+/// this request; the request never carries a write grant or source bytes.
+public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let actionID: ResearchActionID
+    public let target: VaultQualifiedNoteID
+    public let academicPurpose: String?
+
+    public init(
+        actionID: ResearchActionID,
+        target: VaultQualifiedNoteID,
+        academicPurpose: String? = nil
+    ) throws {
+        let normalizedPurpose = academicPurpose?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard normalizedPurpose == nil || normalizedPurpose?.isEmpty == false,
+              normalizedPurpose?.utf8.count ?? 0 <= 16 * 1_024,
+              !target.relativePath.isEmpty,
+              !target.relativePath.hasPrefix("/"),
+              !target.relativePath.contains("\\") else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.actionID = actionID
+        self.target = target
+        self.academicPurpose = normalizedPurpose
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case actionID = "action_id"
+        case target
+        case academicPurpose = "academic_purpose"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: CodingKeys.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentStartContractError.unsupportedSchemaVersion
+        }
+        try self.init(
+            actionID: container.decode(ResearchActionID.self, forKey: .actionID),
+            target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
+            academicPurpose: container.decodeIfPresent(
+                String.self,
+                forKey: .academicPurpose
+            )
+        )
+    }
+
+}
+
+public struct ResearchAgentStartReceipt: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let run: ResearchRunLocator
+    public let actionID: ResearchActionID
+    public let target: ResearchActionNoteSnapshot
+    public let state: ResearchActionRunState
+    public let message: String
+
+    public init(
+        run: ResearchRunLocator,
+        actionID: ResearchActionID,
+        target: ResearchActionNoteSnapshot,
+        state: ResearchActionRunState,
+        message: String
+    ) throws {
+        let normalizedMessage = message.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalizedMessage.isEmpty, normalizedMessage.utf8.count <= 1_024 else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.run = run
+        self.actionID = actionID
+        self.target = target
+        self.state = state
+        self.message = normalizedMessage
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case run, actionID = "action_id", target, state, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: CodingKeys.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentStartContractError.unsupportedSchemaVersion
+        }
+        try self.init(
+            run: container.decode(ResearchRunLocator.self, forKey: .run),
+            actionID: container.decode(ResearchActionID.self, forKey: .actionID),
+            target: container.decode(ResearchActionNoteSnapshot.self, forKey: .target),
+            state: container.decode(ResearchActionRunState.self, forKey: .state),
+            message: container.decode(String.self, forKey: .message)
+        )
+    }
+}
+
+public struct ResearchAgentStartedSession: Hashable, Sendable {
+    public let receipt: ResearchAgentStartReceipt
+    public let credential: ResearchConnectionCredential
+
+    public init(
+        receipt: ResearchAgentStartReceipt,
+        credential: ResearchConnectionCredential
+    ) {
+        self.receipt = receipt
+        self.credential = credential
+    }
+}
+
+public enum ResearchAgentStartContractError: LocalizedError, Hashable, Sendable {
+    case invalidRequest
+    case unsupportedSchemaVersion
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidRequest:
+            "The Agent-originated Run request is invalid."
+        case .unsupportedSchemaVersion:
+            "The Agent-originated Run request schema is not current."
+        }
+    }
+}
+
 /// One-use local secret. Wire and protected-storage adapters must explicitly
 /// unwrap it at their narrow boundary; the secret is intentionally not
 /// generally Codable or printable.

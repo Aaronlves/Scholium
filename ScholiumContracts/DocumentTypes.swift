@@ -217,8 +217,11 @@ public struct NoteDocument: Sendable {
             return content
         case .source(let content):
             let proposed = NoteDocument(relativePath: relativePath, rawContent: content)
-            guard proposed.validationWarnings.isEmpty || proposed.rawFrontmatter == nil else {
-                throw VaultRepositoryError.invalidFrontmatter(proposed.validationWarnings.joined(separator: "\n"))
+            guard proposed.frontmatterState != .malformed else {
+                throw VaultRepositoryError.invalidFrontmatter(
+                    proposed.validationWarnings.first
+                        ?? "The proposed source has malformed YAML frontmatter."
+                )
             }
             guard proposed.rawFrontmatter != nil, timestampKey != nil else { return content }
             return try proposed.rebuild(

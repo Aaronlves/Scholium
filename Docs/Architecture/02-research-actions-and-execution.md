@@ -62,9 +62,11 @@ Triptych collaboration policy, and repository/recovery readiness. It creates
 one Run and inserts the displayed initial object into its Bounded Write Set.
 For every existing writable Note, `AgentChangeEvidenceStore` captures one exact
 Run- and Note-bound starting revision before Agent access. Confirmed writes
-advance its ending revision. This machine-local evidence serves only Record
-diff and direct Undo; ordinary repository transactions continue to own
-interrupted-save recovery.
+advance its ending revision. Body-only, complete-source, and targeted-property
+intents remain distinct typed operations; Application maps them to the
+corresponding `NoteChangeSet` and the same repository transaction. This
+machine-local evidence serves only Record diff and direct Undo; ordinary
+repository transactions continue to own interrupted-save recovery.
 
 `ResearchActionController` distinguishes one active sheet's preparation from
 a global cancellation barrier. Presentation invalidation cancels its task; a
@@ -93,16 +95,18 @@ and existing recovery remain authoritative.
 
 ## Pairing and delivery
 
-The Action sheet requests a one-time Pairing Code from
+GUI Action preparation requests a one-time Pairing Code from
 `ResearchConnectionCoordinator` only for an existing unfinished Run. The
 copyable Agent handoff contains the locator, one-time code, and direct steps for
 the Agent to operate the CLI itself. The code is unwrapped only while composing
 that complete copied handoff; it is not separately rendered or exposed to the
 accessibility tree. **Copy New Handoff** invalidates the prior pairing, obtains
 a replacement, and copies it while retaining the same Run and recovery state.
-The Agent enters the code through CLI standard input. Pair exchange over the
-loopback-only framed bridge returns a hidden
-Connection Session and the first layered delivery packet. The UI's End Action
+The Agent enters the code through CLI standard input. An Agent-originated
+`agent start` request uses the same Application preparation path and returns a
+protected Session directly; it does not create or consume a Pairing Code.
+Both routes use the loopback-only framed bridge and the same authenticated
+Context, write, Result, End, conflict, and recovery owners. The UI's End Action
 route calls the same Application cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
 current portable exchange into a finished Research Record before removing the
@@ -302,7 +306,7 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict schema-9 Records, including the
+`PortableResearchRecordStore` owns strict schema-10 Records, including the
 frozen Record Title, exact source-byte fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
 the single cumulative portable Note Review boundary. Analyze recommendation
@@ -353,7 +357,7 @@ source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
 `noteReviewStates`, and `resultArrivals` from schema-14 Local Execution, exact
-schema-9 Record reads, and schema-1 Note Reviews. The projections
+schema-10 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, source bytes, prompts,
@@ -484,16 +488,22 @@ not proxy them.
 
 ## Source, Zotero, Fidelity, and lifecycle integration
 
-`ResearchSourceReference` remains the only path-free durable source-access
-value. `ResearchSourceAccessStore` retains local bookmarks/paths privately and
-reopens exact regular files through the established security-scoped,
-descriptor-relative, fingerprinted boundary. Analyze cannot complete without
-its required current source. Research Context can adapt only the authenticated
-Run's frozen reference and the source owner's current status into a Material
-envelope; the protected delivery path remains the only source-byte route.
-Zotero bibliographic metadata is read once per Run, labelled as metadata, and
-never substitutes for source content; a resumed Run uses its frozen snapshot
-and a new Run reads again.
+`ResearchSourceReference` remains the only path-free durable value for a
+Scholium-owned source-access route. `ResearchSourceAccessStore` retains local
+bookmarks/paths privately and reopens exact regular files through the
+established security-scoped, descriptor-relative, fingerprinted boundary. An
+Analyze Run may instead use a frozen Zotero relationship and external Agent
+retrieval: that route has no `ResearchSourceReference`, does not resolve
+source bookmarks or read paper bytes through the source-access store, and keeps
+paper bytes outside Scholium. When both relationships exist, a currently
+resolvable local source selection remains the Scholium-owned route; a Zotero
+attachment relationship or absent source selection uses the external route.
+Zotero
+bibliographic metadata is read once per Run, labelled as metadata, and never
+substitutes for source content; a resumed Run uses its frozen snapshot and a
+new Run reads again. Completion accepts either a current Scholium source
+reference or the frozen Zotero context, while the external Agent remains
+responsible for reporting the exact paper data it actually retrieved.
 
 Check Fidelity remains a read-only exact-revision Action. Multi-document writes
 may request separate checks for each final revision, but no check collapses

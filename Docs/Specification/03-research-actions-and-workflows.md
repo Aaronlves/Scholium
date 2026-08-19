@@ -127,7 +127,18 @@ registered primary Skill and its Practices own the academic method and
 execution guidance. Installed CLI help and tool schemas own current invocation
 syntax. These owners do not replace one another or repeat the same content.
 
-### 8.2 Local pairing, layered delivery, and Research Context
+### 8.2 Agent entry, local pairing, layered delivery, and Research Context
+
+GUI preparation and Agent-originated `agent start` are both valid Run entry
+routes. GUI preparation creates an unfinished Run and offers the one-time
+Pairing Code handoff described below. `agent start` receives a selected
+Triptych, Action, target, and academic purpose through the local bridge;
+Application resolves the current target, Method, Profile, revision, and
+initial Bounded Write Set, then returns a protected Session credential to the
+CLI. Direct start requires no Pairing Code and does not wait for GUI
+preparation. Both routes create the same Run and use the same subsequent
+Context, bounded-write, Result, continuation, End, conflict, and recovery
+contracts.
 
 Direct Agent connection is local, provider-neutral, and bound to the current
 Scholium application process. The researcher deliberately copies one complete
@@ -296,15 +307,23 @@ encoded payload have explicit testable limits; exceeding one returns a bounded
 continuation result rather than widening authority.
 
 The operation is always explicit: `create_note`, `modify_markdown`,
-`modify_properties`, `set_zotero_binding`, or `clear_zotero_binding`.
+`modify_source`, `modify_properties`, `set_zotero_binding`, or
+`clear_zotero_binding`. `modify_markdown` changes the body only. The distinct
+`modify_source` operation accepts the complete authored Markdown source,
+including any YAML frontmatter, and never reconstructs it from Properties or
+the rendered document.
 `create_note` binds a proven-absent path, one authorized new identity, the
 current Settings revision, and for Analysis an allowed source type plus typed
 initial fields. It is idempotent only for the same hidden creation operation;
 after creation the identity is no longer new. Body authority cannot rewrite
 frontmatter, property authority is limited to exact granted keys, and either
 source authority is insufficient for integration binding. Binding authority
-is insufficient for Markdown. Agent Analysis creation must satisfy the
-source-type applicability and Settings-required-field plan without receiving
+is insufficient for Markdown. A `modify_source` member is still limited to
+its one existing Note identity, expected revision, Run, and operation
+capability; its complete candidate must be valid UTF-8 and have valid or absent
+frontmatter before the repository transaction begins. Agent Analysis creation
+must satisfy the source-type applicability and Settings-required-field plan
+without receiving
 exact seed bytes or values; unsupported or unavailable required data fails
 closed instead of producing placeholders.
 
@@ -317,8 +336,8 @@ identity, role, operation, containment, current revision, and policy facts that
 can revoke unused Full Access authority. Before Agent access, each existing
 writable Note receives one exact Run-bound starting revision used only for
 Agent diff and direct Undo. Existing-note source writes build and validate the
-bounded body or property candidate, atomically replace, read back, and advance
-that evidence's exact ending revision. Creation
+bounded body, complete source, or property candidate, atomically replace, read
+back, and advance that evidence's exact ending revision. Creation
 instead re-proves absence and the frozen Settings revision, claims the exact
 path without fallback naming, and must jointly read back both source and its
 reserved stable identity. It has no fabricated empty-source revision or
@@ -610,18 +629,30 @@ retryable until authority and transaction outcomes are known.
 
 ## 9. Analyses workflow
 
-1. Create or import one source-facing Analysis and bind one exact readable
-   source: a specific Zotero attachment resolved through explicit source
-   access, or a researcher-selected local regular file. Zotero bibliographic
-   identity alone is not source access.
+1. Create or import one source-facing Analysis and establish one paper-data
+   route. A researcher-selected local regular file, or a specific Zotero
+   attachment resolved through Scholium source access, supplies a Scholium
+   `sourceReference`. Alternatively, a stable Analysis-to-Zotero binding
+   supplies an external Zotero data route: the Agent may retrieve the paper
+   through its independently configured Zotero/MCP capability, and Analyze
+   does not require Scholium source access or a `sourceReference` for that
+   route. When both relationships exist, a currently resolvable local source
+   selection remains the selected Scholium source route; a Zotero attachment
+   relationship or absent source selection uses the external route. The
+   binding remains a data-acquisition relationship, not paper content or
+   evidence by itself.
 2. Use **Analyze** to create, extend, correct, clarify, reorganize, or leave
    warranted content unchanged.
 3. Analyze reconstructs the source before critical pressure and distinguishes
    source-explicit claims, reconstruction, charitable repair, and Agent
    criticism; rival definitions, objections, replies, and residual pressure
    retain their actual status.
-4. If the source cannot be reopened, Analyze returns a bounded access failure
-   and cannot simulate source analysis from the Analysis note alone.
+4. If a Scholium-owned local source cannot be reopened, Analyze returns a
+   bounded access failure and cannot simulate source analysis from the
+   Analysis note alone. On the external Zotero route, unavailable MCP,
+   missing attachments, extraction failure, or incomplete pagination narrows
+   the result and remains an explicit limitation; metadata alone never
+   substitutes for the paper.
 5. Use Discussion for comments, Check Fidelity for an exact revision, and let
    the researcher decide whether a Topic or Work should change.
 

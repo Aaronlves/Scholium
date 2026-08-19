@@ -232,7 +232,7 @@ extension ResearchFunctionCoordinator {
             sections += [
                 "",
                 "## \(ZoteroBibliographicContext.evidentialLabel)",
-                "This immutable task snapshot is bibliographic metadata, not paper content or philosophical evidence. Abstract, tags, and collections remain metadata only. Attachments, Zotero Notes, annotations, PDFs, and full text were not retrieved. Do not re-query Zotero for this run and do not write any of this metadata into Markdown.",
+                "This immutable task snapshot is bibliographic metadata, not paper content or philosophical evidence. Abstract, tags, and collections remain metadata only. Scholium did not automatically retrieve attachments, Zotero Notes, annotations, PDFs, or full text. When this Run uses the external Zotero route, use the configured Zotero/MCP capability with this bound item identity to retrieve the exact paper data you need; do not replace the frozen metadata snapshot with newer metadata, and do not write metadata into Markdown.",
                 try renderFunctionJSON(zoteroContext),
             ]
             if zoteroContext.warning != nil {

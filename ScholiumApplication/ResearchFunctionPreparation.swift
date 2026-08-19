@@ -126,16 +126,22 @@ extension ResearchFunctionCoordinator {
                 if checkingSourceAccess,
                    function == .develop,
                    target.role == .analysis {
-                    let sourceStatus = try await researchSourceAccessStatus(
+                    let usesExternalZotero = try await hasExternalZoteroBinding(
                         for: target,
                         host: host
                     )
-                    if let failure = sourceStatus.failure {
-                        reasons.append(ResearchFunctionRepairReason(
-                            code: .sourceAccessRequired,
-                            function: function,
-                            sourceAccessFailure: failure
-                        ))
+                    if !usesExternalZotero {
+                        let sourceStatus = try await researchSourceAccessStatus(
+                            for: target,
+                            host: host
+                        )
+                        if let failure = sourceStatus.failure {
+                            reasons.append(ResearchFunctionRepairReason(
+                                code: .sourceAccessRequired,
+                                function: function,
+                                sourceAccessFailure: failure
+                            ))
+                        }
                     }
                 }
             }

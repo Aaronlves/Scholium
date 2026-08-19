@@ -133,6 +133,25 @@ struct LocalAgentBridgeTests {
                 from: JSONSerialization.data(withJSONObject: markdown)
             )
         }
+
+        let sourceText = "\u{FEFF}---\r\ntitle: Complete\r\n---\r\n# Complete\r\n"
+        let sourceRequest = try LocalAgentBridgeRequest(
+            operation: .writeDocument,
+            run: run,
+            credential: credential,
+            documentWriteIntent: try ResearchDocumentWriteIntent(
+                role: .topic,
+                relativePath: "Agency.md",
+                operation: .modifySource,
+                source: sourceText
+            )
+        )
+        let decodedSource = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: LocalAgentBridgeWireCoding.encode(sourceRequest)
+        )
+        #expect(decodedSource.documentWriteIntent?.operation == .modifySource)
+        #expect(decodedSource.documentWriteIntent?.source == sourceText)
     }
 
     @Test("Bridge Zotero-binding writes use a separate exact payload")

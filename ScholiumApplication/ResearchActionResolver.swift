@@ -405,9 +405,7 @@ extension WorkspaceHandle {
             reasons += await baseActionRepairReasons(
                 target: target,
                 function: function,
-                profile: profile,
-                platform: platform,
-                checkingSourceAccess: checkingSourceAccess
+                profile: profile
             )
             if registration == nil {
                 reasons.append(ResearchActionRepairReason(code: .methodMissing))
@@ -448,9 +446,7 @@ extension WorkspaceHandle {
     private func baseActionRepairReasons(
         target: ResearchFunctionTarget,
         function: ResearchFunctionID,
-        profile: ResearchAcademicActionProfile,
-        platform: PlatformActionDefinition,
-        checkingSourceAccess: Bool
+        profile: ResearchAcademicActionProfile
     ) async -> [ResearchActionRepairReason] {
         var reasons: [ResearchActionRepairReason] = []
         if let reason = await researchFunctionCoordinator
@@ -460,24 +456,6 @@ extension WorkspaceHandle {
         if !function.allowedTargetRoles.contains(target.role)
             || !profile.applicableRoles.contains(target.role.actionRole) {
             reasons.append(ResearchActionRepairReason(code: .invalidTargetRole))
-        }
-        if checkingSourceAccess, platform.requiredSelectors.contains(.source) {
-            do {
-                let status = try await researchSourceAccessStatus(for: target)
-                if let failure = status.failure {
-                    reasons.append(ResearchActionRepairReason(
-                        code: .sourceAccessRequired,
-                        sourceAccessFailure: failure
-                    ))
-                }
-            } catch {
-                reasons.append(ResearchActionRepairReason(
-                    code: .sourceAccessRequired,
-                    sourceAccessFailure: ResearchSourceAccessFailure(
-                        code: .sourceUnreadable
-                    )
-                ))
-            }
         }
         return Self.unique(reasons)
     }
@@ -534,7 +512,7 @@ extension WorkspaceHandle {
         return try ResearchAuthorityEnvelope(
             readableNotes: [target] + additionalReads,
             writableNotes: writes ? [target] : [],
-            writeOperations: writes ? [.modifyMarkdown] : [],
+            writeOperations: writes ? [.modifyMarkdown, .modifySource] : [],
             editablePropertyKeys: []
         )
     }

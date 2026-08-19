@@ -188,6 +188,63 @@ actor ResearchAgentSessionAuthority {
         )
     }
 
+    /// Issues a Session for a Run whose start was initiated through the
+    /// authenticated local App process. This is deliberately separate from
+    /// Pairing: a user-started Run does not require a GUI handoff code.
+    func issueAgentSession(
+        runID: UUID,
+        triptychID: UUID,
+        canWrite: Bool,
+        now: Date = Date(),
+        sessionValidity: TimeInterval = 8 * 60 * 60,
+        userID: uid_t = geteuid()
+    ) throws -> (run: ResearchRunLocator, credential: ResearchConnectionCredential) {
+        let locator = try uniqueLocator()
+        let secretData = try random.bytes(count: 32)
+        let secret = Self.base64URL(secretData)
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: secret
+        )
+        let expiry = now.addingTimeInterval(
+            min(max(sessionValidity, 60), 24 * 60 * 60)
+        )
+        let previousLocators = runs.values
+            .filter { $0.runID == runID }
+            .map(\.locator)
+        for previous in previousLocators {
+            if let sessionID = runs[previous]?.activeSessionID {
+                remove(locator: previous, fromSession: sessionID)
+            }
+            writeCapabilities = writeCapabilities.filter {
+                $0.value.run != previous
+            }
+            methodWriteCapabilities = methodWriteCapabilities.filter {
+                $0.value.run != previous
+            }
+        }
+        pairings = pairings.filter { $0.value.runID != runID }
+        runs = runs.filter { $0.value.runID != runID }
+        sessions[credential.sessionID] = Session(
+            id: credential.sessionID,
+            secretDigest: Self.digest(Data(secret.utf8)),
+            generationDigest: generationDigest,
+            userID: userID,
+            expiresAt: expiry,
+            runLocators: [locator],
+            deliveredCoreProtocol: false
+        )
+        runs[locator] = RunBinding(
+            runID: runID,
+            triptychID: triptychID,
+            locator: locator,
+            canWrite: canWrite,
+            activeSessionID: credential.sessionID,
+            isFinalized: false
+        )
+        return (locator, credential)
+    }
+
     func exchange(
         run locator: ResearchRunLocator,
         pairingCode: ResearchPairingCode,

@@ -7,9 +7,29 @@ extension ScholiumCLI {
 
     static func runAgent(
         _ arguments: [String],
+        triptychID: UUID? = nil,
         operations: any AgentBridgeUseCases,
         credentialStore: AgentSessionCredentialStore
     ) async throws {
+        if arguments.first == "start" {
+            guard let triptychID,
+                  let input = option("--from", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium agent start --triptych <selector> --from <json|->"
+                )
+            }
+            let request = try JSONDecoder().decode(
+                ResearchAgentStartRequest.self,
+                from: agentInput(input)
+            )
+            let started = try await operations.start(
+                triptychID: triptychID,
+                request: request
+            )
+            try credentialStore.save(started.credential, for: started.receipt.run)
+            try writeAgentJSON(started.receipt)
+            return
+        }
         if arguments.first == "pair" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
@@ -110,6 +130,7 @@ extension ScholiumCLI {
                 relativePath: draft.relativePath,
                 operation: draft.operation,
                 content: draft.content,
+                source: draft.source,
                 properties: draft.properties,
                 analysisMetadata: draft.analysisMetadata
             )
@@ -453,13 +474,14 @@ private struct AgentDocumentWriteDraft: Codable {
     let relativePath: String
     let operation: ResearchDocumentWriteOperation
     let content: String
+    let source: String?
     let properties: [CanonicalPropertyInput]
     let analysisMetadata: AnalysisCreationMetadata?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case role
         case relativePath = "relative_path"
-        case operation, content, properties
+        case operation, content, source, properties
         case analysisMetadata = "analysis_metadata"
     }
 
@@ -484,11 +506,24 @@ private struct AgentDocumentWriteDraft: Codable {
                 )
             }
             content = try container.decode(String.self, forKey: .content)
+            source = try container.decodeIfPresent(String.self, forKey: .source)
+        case .modifySource:
+            guard container.contains(.source) else {
+                throw CLIError.usage(
+                    "modify_source requires an explicit complete Markdown source string."
+                )
+            }
+            source = try container.decode(String.self, forKey: .source)
+            content = try container.decodeIfPresent(
+                String.self,
+                forKey: .content
+            ) ?? ""
         case .createNote, .modifyProperties:
             content = try container.decodeIfPresent(
                 String.self,
                 forKey: .content
             ) ?? ""
+            source = try container.decodeIfPresent(String.self, forKey: .source)
         case .setZoteroBinding, .clearZoteroBinding:
             throw CLIError.usage(
                 "Use agent write-zotero-binding for portable Zotero relationship mutations."
@@ -507,6 +542,7 @@ private struct AgentDocumentWriteDraft: Codable {
             relativePath: relativePath,
             operation: operation,
             content: content,
+            source: source,
             properties: properties,
             analysisMetadata: analysisMetadata
         )

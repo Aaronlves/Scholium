@@ -87,5 +87,10 @@ readiness.
 
 Retrieval uses Zotero Desktop's localhost interfaces, never its live database.
 Imports follow §15's exact-request, dry-run, confirmation, unchanged-destination,
-and readback boundary. Metadata establishes bibliographic identity only; source
-analysis and citation formatting remain separate scholarly work.
+and readback boundary. Metadata establishes bibliographic identity only. When
+an Analysis Run carries the matching Zotero binding, the external Agent may
+use this transport and its returned attachment pointer to retrieve the paper
+data it needs; Scholium does not proxy, cache, or automatically copy that
+content. Source analysis and citation formatting remain separate scholarly
+work, and the Agent must report the exact material and extraction limits it
+actually used.

@@ -534,6 +534,11 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.operationNotAuthorized
             }
             changeSet = .body(intent.content)
+        case .modifySource:
+            guard let source = intent.source else {
+                throw ResearchBoundedWriteSetError.invalidWrite
+            }
+            changeSet = .source(source)
         case .modifyProperties:
             let suppliedKeys = Set(intent.properties.map(\.key))
             guard suppliedKeys.isSubset(of: Set(entry.allowedPropertyKeys)) else {
@@ -828,7 +833,7 @@ extension WorkspaceHandle {
             )
         case .clearZoteroBinding:
             nil
-        case .createNote, .modifyMarkdown, .modifyProperties:
+        case .createNote, .modifyMarkdown, .modifySource, .modifyProperties:
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         let requestFingerprint = try Self.fingerprint(intent)

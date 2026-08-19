@@ -39,7 +39,7 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
         guard operations.contains(.modifyInitialNote),
               operations.contains(.extendWriteSet) else { return [] }
         var operations: [ResearchDocumentWriteOperation] = [
-            .createNote, .modifyMarkdown, .modifyProperties,
+            .createNote, .modifyMarkdown, .modifySource, .modifyProperties,
         ]
         if self.operations.contains(.useZotero) {
             operations.append(contentsOf: [

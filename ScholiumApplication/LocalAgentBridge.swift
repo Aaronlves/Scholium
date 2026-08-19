@@ -3,6 +3,7 @@ import Foundation
 import ScholiumContracts
 
 public enum LocalAgentBridgeOperation: String, Codable, Sendable {
+    case start
     case pair
     case context
     case query
@@ -64,12 +65,14 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 11
+    public static let currentSchemaVersion = 12
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let operation: LocalAgentBridgeOperation
+    public let triptychID: UUID?
     public let run: ResearchRunLocator?
+    public let startRequest: ResearchAgentStartRequest?
     public let pairingCode: ResearchPairingCode?
     public let credential: ResearchConnectionCredential?
     public let contextRequest: ResearchContextRequest?
@@ -84,7 +87,9 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
     public init(
         correlationID: UUID = UUID(),
         operation: LocalAgentBridgeOperation,
+        triptychID: UUID? = nil,
         run: ResearchRunLocator? = nil,
+        startRequest: ResearchAgentStartRequest? = nil,
         pairingCode: ResearchPairingCode? = nil,
         credential: ResearchConnectionCredential? = nil,
         contextRequest: ResearchContextRequest? = nil,
@@ -97,8 +102,16 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         methodImprovementSubmission: ResearchMethodImprovementSubmission? = nil
     ) throws {
         let shapeIsValid = switch operation {
+        case .start:
+            triptychID != nil && startRequest != nil && run == nil
+                && pairingCode == nil && credential == nil
+                && contextRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && zoteroBindingWriteIntent == nil
+                && conflictResolutionIntent == nil && resultSubmission == nil
+                && continuationRequest == nil && methodImprovementSubmission == nil
         case .pair:
-            run != nil && pairingCode != nil && credential == nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode != nil && credential == nil
                 && contextRequest == nil
                 && writeSetIntent == nil && documentWriteIntent == nil
                 && zoteroBindingWriteIntent == nil
@@ -106,7 +119,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .context:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil
                 && writeSetIntent == nil && documentWriteIntent == nil
                 && zoteroBindingWriteIntent == nil
@@ -114,7 +128,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .query:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest != nil
                 && writeSetIntent == nil && documentWriteIntent == nil
                 && zoteroBindingWriteIntent == nil
@@ -122,7 +137,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .extendWriteSet:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent != nil
                 && documentWriteIntent == nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -130,7 +146,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .writeDocument:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent != nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -138,7 +155,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .writeZoteroBinding:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil
                 && zoteroBindingWriteIntent != nil
@@ -146,7 +164,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .resolveWriteConflict:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -154,7 +173,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .submitResult:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission != nil
                 && zoteroBindingWriteIntent == nil
@@ -162,7 +182,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .continueResearch:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -170,7 +191,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest != nil
                 && methodImprovementSubmission == nil
         case .methodImprovementContext:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -178,7 +200,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .submitMethodImprovement:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -186,7 +209,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission != nil
         case .end:
-            run != nil && pairingCode == nil && credential != nil
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && resultSubmission == nil
                 && zoteroBindingWriteIntent == nil
@@ -200,7 +224,9 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
         self.operation = operation
+        self.triptychID = triptychID
         self.run = run
+        self.startRequest = startRequest
         self.pairingCode = pairingCode
         self.credential = credential
         self.contextRequest = contextRequest
@@ -217,7 +243,9 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
         case operation
+        case triptychID = "triptych_id"
         case run
+        case startRequest = "start_request"
         case pairingCode = "pairing_code"
         case credential
         case contextRequest = "context_request"
@@ -235,7 +263,9 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(correlationID, forKey: .correlationID)
         try container.encode(operation, forKey: .operation)
+        try container.encodeIfPresent(triptychID, forKey: .triptychID)
         try container.encodeIfPresent(run, forKey: .run)
+        try container.encodeIfPresent(startRequest, forKey: .startRequest)
         try container.encodeIfPresent(pairingCode?.rawValue, forKey: .pairingCode)
         try container.encodeIfPresent(
             credential.map(LocalAgentBridgeWireCredential.init),
@@ -293,7 +323,12 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         try self.init(
             correlationID: container.decode(UUID.self, forKey: .correlationID),
             operation: container.decode(LocalAgentBridgeOperation.self, forKey: .operation),
+            triptychID: container.decodeIfPresent(UUID.self, forKey: .triptychID),
             run: container.decodeIfPresent(ResearchRunLocator.self, forKey: .run),
+            startRequest: container.decodeIfPresent(
+                ResearchAgentStartRequest.self,
+                forKey: .startRequest
+            ),
             pairingCode: pairingCode,
             credential: credential,
             contextRequest: container.decodeIfPresent(
@@ -380,11 +415,12 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 12
+    public static let currentSchemaVersion = 13
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let credential: ResearchConnectionCredential?
+    public let startReceipt: ResearchAgentStartReceipt?
     public let context: ResearchAuthenticatedRunContext?
     public let researchContext: ResearchContextResponse?
     public let writeSetResult: ResearchWriteSetExtensionResult?
@@ -401,6 +437,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     public init(
         correlationID: UUID,
         credential: ResearchConnectionCredential? = nil,
+        startReceipt: ResearchAgentStartReceipt? = nil,
         context: ResearchAuthenticatedRunContext? = nil,
         researchContext: ResearchContextResponse? = nil,
         writeSetResult: ResearchWriteSetExtensionResult? = nil,
@@ -415,7 +452,8 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         error: LocalAgentBridgeErrorPayload? = nil
     ) throws {
         let payloadCount = [
-            credential != nil,
+            credential != nil && startReceipt == nil,
+            startReceipt != nil,
             context != nil,
             researchContext != nil,
             writeSetResult != nil,
@@ -433,9 +471,13 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         guard payloadCount == 1 else {
             throw LocalAgentBridgeError.invalidResponse
         }
+        guard startReceipt == nil || credential != nil else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
         self.credential = credential
+        self.startReceipt = startReceipt
         self.context = context
         self.researchContext = researchContext
         self.writeSetResult = writeSetResult
@@ -458,7 +500,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
-        case credential, context
+        case credential, startReceipt = "start_receipt", context
         case researchContext = "research_context"
         case writeSetResult = "write_set_result"
         case documentWriteResult = "document_write_result"
@@ -480,6 +522,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             credential.map(LocalAgentBridgeWireCredential.init),
             forKey: .credential
         )
+        try container.encodeIfPresent(startReceipt, forKey: .startReceipt)
         try container.encodeIfPresent(context, forKey: .context)
         try container.encodeIfPresent(researchContext, forKey: .researchContext)
         try container.encodeIfPresent(writeSetResult, forKey: .writeSetResult)
@@ -522,6 +565,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
                 LocalAgentBridgeWireCredential.self,
                 forKey: .credential
             )?.value,
+            startReceipt: container.decodeIfPresent(
+                ResearchAgentStartReceipt.self,
+                forKey: .startReceipt
+            ),
             context: container.decodeIfPresent(
                 ResearchAuthenticatedRunContext.self,
                 forKey: .context
@@ -696,6 +743,10 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
 }
 
 public enum LocalAgentBridgeHandlerResult: Sendable {
+    case started(
+        receipt: ResearchAgentStartReceipt,
+        credential: ResearchConnectionCredential
+    )
     case credential(ResearchConnectionCredential)
     case context(ResearchAuthenticatedRunContext)
     case researchContext(ResearchContextResponse)
@@ -907,6 +958,12 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 throw LocalAgentBridgeError.invalidResponse
             }()
             let response: LocalAgentBridgeResponse = switch outcome {
+            case .started(let receipt, let credential):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    credential: credential,
+                    startReceipt: receipt
+                )
             case .credential(let credential):
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,

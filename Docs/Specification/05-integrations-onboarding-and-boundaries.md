@@ -27,10 +27,10 @@ grants no integration behavior or authority. Scholium never infers a binding
 from YAML, path, filename, title, authors, identifier, date, or similarity.
 
 Only dedicated set/clear Zotero-binding operations may change it;
-`modify_markdown` and `modify_properties` cannot. Rename, Move, Set Aside, and
-Trash retain it by stable identity. Duplicate Analysis explicitly copies the
-relationship; permanent deletion removes it. The Zotero integration surface
-provides visible open, clear, and rebind paths. Agent direct Undo and
+`modify_markdown`, `modify_source`, and `modify_properties` cannot. Rename,
+Move, Set Aside, and Trash retain it by stable identity. Duplicate Analysis
+explicitly copies the relationship; permanent deletion removes it. The Zotero
+integration surface provides visible open, clear, and rebind paths. Agent direct Undo and
 interrupted-save recovery change Markdown only and leave it unchanged.
 
 Overview gives every current Analysis one quiet **Link Zotero Item…** or
@@ -48,10 +48,12 @@ attaches the catalogued `scholium-zotero-integration` System Skill. The
 authenticated Run Context carries that Skill and its capability contract in one
 typed optional Zotero Integration Adapter. The adapter is present only when the
 Action targets an Analysis, its immutable snapshot contains Zotero context, and
-the Platform Action permits Zotero use. It explains how to handle the already
-bounded integration but grants no transport, capability, read, write, or
-Markdown authority. The immutable Action snapshot is labelled **Zotero
-bibliographic metadata** and may carry item key, item type, title, complete
+the Platform Action permits Zotero use. It explains how the Agent can use the
+already-bound external data route but grants no transport, capability, read,
+write, or Markdown authority. The Agent may independently retrieve the exact
+paper or attachment through its configured Zotero/MCP capability; Scholium
+does not proxy that retrieval. The immutable Action snapshot is labelled
+**Zotero bibliographic metadata** and may carry item key, item type, title, complete
 creator roles, date/year,
 language, container, volume, issue, pages, edition, series, publisher, place,
 DOI, ISBN, ISSN, citation key, URL, abstract, tags, Collections, and
@@ -67,12 +69,15 @@ adapter, and authorize no independent integration discovery.
 Task metadata is never written into Markdown or displayed in Inspector.
 Abstract, tags, and Collections remain bibliographic metadata, never source
 content or philosophical evidence. Attachments, Zotero Notes, annotations,
-PDFs, and full text never enter automatic context. Built-in integration never
-changes Zotero data, files, or live SQLite. Binding never creates a
-bibliographic snapshot: connection, binding, opening, and Action preparation
-never write, refresh, reconcile, or override Analysis Properties. A future
-fill operation requires a separate explicit, field-bounded,
-current-fingerprint source transaction.
+PDFs, and full text never enter Scholium's automatic context, but an Agent may
+retrieve them directly from Zotero when the selected Analyze task requires
+paper data. Scholium never caches, proxies, or automatically transfers that
+external content into the vault or a Record. Built-in integration never changes
+Zotero data, files, or live SQLite. Binding never creates a bibliographic
+snapshot: connection, binding, opening, and Action preparation never write,
+refresh, reconcile, or override Analysis Properties. A future fill operation
+requires a separate explicit, field-bounded, current-fingerprint source
+transaction.
 
 ### 15.3 Literature Recommendations and the Zotero boundary
 
@@ -86,9 +91,10 @@ remain distinct; a recommendation by itself establishes none of them.
 
 The parent Analyze Research Record is the only portable product authority and
 provenance owner. It supplies the Action, Method/Profile, Analysis and
-participating Notes, exact revisions, source reference, date, and agent
-authorship. Machine-local protected completion evidence may retain the agent's
-submission only for idempotency and missing-Record repair; it has no
+participating Notes, exact revisions, Scholium source reference when present,
+the frozen Zotero bibliographic context when that is the selected route, date,
+and agent authorship. Machine-local protected completion evidence may retain
+the agent's submission only for idempotency and missing-Record repair; it has no
 disposition, recommendation ID, index, or product read path. The portable
 recommendation therefore does not copy a second source status, target match,
 verification score, refresh lifecycle, or category taxonomy. Researcher
@@ -112,16 +118,21 @@ capabilities and safety rules; installed CLI help and MCP tool schemas own
 current command names, fields, and return shapes.
 
 It may report readiness, search, inspect exact metadata and bounded attachment
-pointers, identify an import target, and import BibTeX/RIS. A real import needs
+pointers, retrieve paper data through the Agent's Zotero capability when the
+current task requires it, identify an import target, and import BibTeX/RIS. A
+real import needs
 an explicit current-task request for the exact record and destination,
 successful dry run, tool confirmation, and read-back. Prior reading, search,
 analysis, or import grants no standing write permission.
 
 Never read/write Zotero's live SQLite directly, select ambiguous records or
 destinations silently, or treat metadata, tags, abstracts, or attachment
-identity as evidence. Source analysis remains separately requested; citation
-formatting requires an explicit Triptych-local binding. If MCP is unavailable,
-report the boundary without global configuration scans or database bypass.
+identity as evidence. A Zotero binding plus an Agent-originated Analyze Run
+permits the Agent to retrieve and analyze the paper independently of
+Scholium's source-access store; the Agent must still report exactly what was
+retrieved and what remained unavailable. Citation formatting requires an
+explicit Triptych-local binding. If MCP is unavailable, report the boundary
+without global configuration scans or database bypass.
 
 ## 16. Onboarding
 
@@ -260,7 +271,7 @@ Additional researcher-facing interface translations beyond English and
 Simplified Chinese, right-to-left interface chrome and navigation, and complete
 RTL document-input support and human acceptance are deferred beyond 1.0.
 
-Direct local Agent pairing is a bounded Run connection, not an embedded
+Direct local Agent start and pairing are bounded Run connections, not an embedded
 runtime, background Agent manager, auto-submission system, streamed tool-state
 viewer, general host-approval surface, relay, or cloud orchestration service.
 Scholium does not launch or supervise an Agent merely because a Run exists.
@@ -268,8 +279,9 @@ Collaboration settings therefore expose only one Triptych policy. Scholium has
 no selected-Agent preference, remembered Agent application, launch control, or
 durable Agent-readiness authority. The bounded first-launch preparation prompt
 configures only an external project's ordinary environment and grants no
-research access; the current Run's copied handoff remains the only surface that
-establishes a researcher-to-Agent research Session.
+research access. A direct `agent start` request or the current Run's copied
+handoff establishes the researcher-initiated research Session; Pairing Code is
+required only for the GUI-created handoff route.
 
 File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable

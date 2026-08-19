@@ -24,11 +24,33 @@ struct ScholiumCLI {
         try validateCLIArguments(arguments)
 
         if command == "agent" {
-            try await runAgent(
-                Array(arguments.dropFirst()),
-                operations: try CLIContext.makeAgentBridge(),
-                credentialStore: CLIContext.makeAgentCredentialStore()
-            )
+            let agentArguments = Array(arguments.dropFirst())
+            let operations = try CLIContext.makeAgentBridge()
+            let credentialStore = CLIContext.makeAgentCredentialStore()
+            if agentArguments.first == "start" {
+                let context = try await CLIContext.make()
+                do {
+                    let assignment = try await context.selectedTriptych(
+                        selector: option("--triptych", in: agentArguments)
+                    )
+                    try await runAgent(
+                        agentArguments,
+                        triptychID: assignment.id,
+                        operations: operations,
+                        credentialStore: credentialStore
+                    )
+                } catch {
+                    await context.shutdown()
+                    throw error
+                }
+                await context.shutdown()
+            } else {
+                try await runAgent(
+                    agentArguments,
+                    operations: operations,
+                    credentialStore: credentialStore
+                )
+            }
             return
         }
 

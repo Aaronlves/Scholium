@@ -12,6 +12,25 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         )
     }
 
+    public func start(
+        triptychID: UUID,
+        request: ResearchAgentStartRequest
+    ) throws -> ResearchAgentStartedSession {
+        let response = try client.send(try LocalAgentBridgeRequest(
+            operation: .start,
+            triptychID: triptychID,
+            startRequest: request
+        ))
+        guard let receipt = response.startReceipt,
+              let credential = response.credential else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return ResearchAgentStartedSession(
+            receipt: receipt,
+            credential: credential
+        )
+    }
+
     public func pair(
         run: ResearchRunLocator,
         pairingCode: ResearchPairingCode

@@ -176,6 +176,13 @@ struct ResearchMethodDefaultsTests {
         #expect(!adapter.capabilityContractMarkdown.contains("zotero_status"))
     }
 
+    @Test("Analyze Method permits the external Zotero paper-data route")
+    func analyzeMethodSupportsExternalZoteroSource() throws {
+        let source = try BundledResearchMethodDefaults.primarySource(for: .analyze)
+        #expect(source.contains("independent Zotero/MCP capability"))
+        #expect(!source.contains("source supplied by Scholium"))
+    }
+
     @Test("No parallel Research Integration prompt owner remains")
     func noParallelResearchIntegrationOwner() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

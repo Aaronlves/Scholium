@@ -107,23 +107,30 @@
   Actions. Preparation freezes the target, request, source and focal material,
   Method, Practices, Profile, Result Contract, collaboration policy, read scope,
   and initial Bounded Write Set member.
-- Copy Handoff and Copy New Handoff deliver one Run locator and one-use Pairing
-  Code for the installed CLI. Pairing creates a process-bound local Connection
-  Session; protected operations require that Session.
+- GUI Copy Handoff and Copy New Handoff deliver one Run locator and one-use
+  Pairing Code for the installed CLI. The CLI also exposes `agent start`, which
+  resolves a selected Triptych and current Analysis/Action directly, stores a
+  process-bound Session credential locally, and requires no Pairing Code.
+  Both routes use the same protected Session for subsequent operations.
 - Research Context composes current Search, exact Note reads, direct Relations,
   Properties, Records, the current Run's explicitly selected path-free source
   Material and frozen Zotero bibliographic snapshot, and explicitly proven
   researcher state. It does not search Materials or copy source bytes. Each
   returned item preserves owner, revision, locator, scope, currentness,
   evidential layer, retrieval reason, and limitation.
+- An Analyze Run with a Zotero relationship can proceed without Scholium source
+  access. The Run freezes bounded Zotero bibliographic context and the optional
+  adapter; the external Agent may retrieve the paper through its own Zotero/MCP
+  capability, while Scholium does not proxy or cache paper content.
 - A Run owns one bounded, expandable write set. Every mutation still requires a
   nonreusable operation capability and the exact repository transaction. One
   member's conflict does not widen authority or roll back confirmed siblings.
 - Authenticated `create_note` freezes proven absence, Settings revision,
   reserved identity, and a seed-free Analysis field/shape/required plan.
-  `modify_markdown` changes body only; `modify_properties` changes only exact
-  approved top-level keys. GUI, researcher CLI, and Agent creation use the same
-  managed creator. Agent creation is idempotent for one request and forms a
+  `modify_markdown` changes body only; `modify_source` accepts the complete
+  authored Markdown source; `modify_properties` changes only exact approved
+  top-level keys. GUI, researcher CLI, and Agent creation use the same managed
+  creator. Agent creation is idempotent for one request and forms a
   preimage-free `created` Record mutation only after source and identity
   jointly read back; partial or unreadable outcomes retain a durable creation
   recovery duty instead of guessing absence. Recovery may add or remove only
@@ -149,9 +156,9 @@
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-9 Records. One cumulative schema-1 portable Note Review per Note owns
+  schema-10 Records. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-9 Records reject schemas 1 through 8 rather than migrating them. Credentials,
+  Schema-10 Records reject schemas 1 through 9 rather than migrating them. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected

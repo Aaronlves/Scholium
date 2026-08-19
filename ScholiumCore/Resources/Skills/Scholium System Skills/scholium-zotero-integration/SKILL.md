@@ -13,15 +13,19 @@ The skill file supplies the instruction contract; it does not itself create an M
 
 When a prepared packet contains a labelled **Zotero bibliographic metadata**
 snapshot, Application has already performed the one permitted exact item read.
-Treat that immutable snapshot as the complete Zotero context for the run. Do
-not probe, search, inspect the item again, fetch an attachment, or replace the
-snapshot with newer library state. A warning in the snapshot is nonblocking:
-continue from available sources and fill only information genuinely needed by
-the Action. Abstract, tags, and Collections remain metadata rather than
-paper content or philosophical evidence. Never copy the snapshot into Markdown.
+Treat that immutable snapshot as the complete Scholium-managed metadata context
+for the run. Do not probe, search, inspect the item again, or replace the
+snapshot with newer library state. This does not prohibit the Agent from using
+the configured Zotero/MCP capability to retrieve the exact bound attachment or
+paper data required by Analyze; that retrieval remains outside Scholium's
+source-access store and must be reported with its extraction limits. A warning
+in the snapshot is nonblocking: continue from available sources and fill only
+information genuinely needed by the Action. Abstract, tags, and Collections
+remain metadata rather than paper content or philosophical evidence. Never
+copy the snapshot into Markdown.
 
-The remaining sections govern explicit external-agent Zotero operations when
-no prepared snapshot supplies the bounded result.
+The remaining sections govern explicit external-agent Zotero operations and
+paper retrieval not supplied by Scholium's frozen metadata snapshot.
 
 ## Portable Analysis binding
 
@@ -97,4 +101,10 @@ Read [references/mcp-contract.md](references/mcp-contract.md) completely before 
 
 Return only the Zotero facts needed by the selected Method Skill: stable identity, checked metadata, access status, attachment pointer when permitted, and unresolved ambiguity. Keep Zotero operations out of the permanent scholarly record except when their success, failure, or ambiguity affects the research result.
 
-If retrieved source material needs full source analysis in an Analysis, prepare Analyze with exact source access. If verified material should enter a Topic or Work, prepare Synthesize or Write with fresh Target and Material revisions. Zotero retrieval itself grants none of those writes.
+If retrieved source material needs full source analysis in an Analysis, an
+Agent-originated Analyze Run may use the external paper-data route without a
+Scholium `sourceReference`; alternatively, a GUI-prepared Analyze Run may use
+Scholium's exact source-access route. In both cases report the exact material
+retrieved, extraction limits, and uncertainty. If verified material should
+enter a Topic or Work, prepare Synthesize or Write with fresh Target and
+Material revisions. Zotero retrieval itself grants none of those writes.

@@ -135,6 +135,19 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 try Task.checkCancellation()
                 guard let self else { throw LocalAgentBridgeError.unavailable }
                 switch request.operation {
+                case .start:
+                    guard let triptychID = request.triptychID,
+                          let startRequest = request.startRequest else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let started = try await runtime.startResearchAgentRun(
+                        triptychID: triptychID,
+                        request: startRequest
+                    )
+                    return .started(
+                        receipt: started.receipt,
+                        credential: started.credential
+                    )
                 case .pair:
                     guard let run = request.run,
                           let pairingCode = request.pairingCode else {

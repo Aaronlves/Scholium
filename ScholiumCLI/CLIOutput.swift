@@ -178,6 +178,7 @@ private struct AgentCLICommandHelp: Encodable {
 
 private extension ScholiumCLI {
     static let agentCommandOrder = [
+        "agent start",
         "agent pair",
         "agent context",
         "agent reload",
@@ -216,6 +217,16 @@ private extension ScholiumCLI {
             .joined(separator: ", ")
 
         return [
+            "agent start": AgentCLICommandHelp(
+                usage: "scholium agent start --triptych <selector> --from <json|->",
+                inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
+                input: "Strict JSON fields: schema_version, action_id, target {vault_id, relative_path}, and optional academic_purpose. The current Note, Action Profile, Method, revision, and initial Bounded Write Set are resolved by Scholium.",
+                output: "ResearchAgentStartReceipt with the new Run locator, Action, target revision, state, and a non-secret message. The Session credential is stored in protected local state and is not printed.",
+                nextSteps: [
+                    "scholium agent context --run <locator>",
+                    "Continue with the returned current Bounded Write Set and Result Contract; no Pairing Code is required",
+                ]
+            ),
             "agent pair": AgentCLICommandHelp(
                 usage: "scholium agent pair --run <locator>",
                 inputContract: "ResearchPairingCode on standard input",
@@ -269,7 +280,7 @@ private extension ScholiumCLI {
             "agent write": AgentCLICommandHelp(
                 usage: "scholium agent write --run <locator> --from <json|->",
                 inputContract: "AgentDocumentWriteDraft",
-                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body). create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Complete Markdown is never accepted here.",
+                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body) and changes the body only. modify_source requires source containing the complete Markdown document, including any YAML. create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Source input is validated and committed as exact authored bytes; it is never reconstructed from Properties.",
                 output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, expected revision, atomic write, and retry authority.",
                 nextSteps: [
                     "scholium agent resolve-write-conflict --run <locator> --from <json|-> when the returned state is conflict",

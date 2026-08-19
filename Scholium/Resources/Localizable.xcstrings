@@ -17045,6 +17045,22 @@
         }
       }
     },
+    "Modify Complete Source" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Modify Complete Source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改完整源文件"
+          }
+        }
+      }
+    },
     "Modify Properties" : {
       "localizations" : {
         "en" : {

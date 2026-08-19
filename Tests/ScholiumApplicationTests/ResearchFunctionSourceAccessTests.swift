@@ -229,7 +229,7 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("A Zotero attachment route fails closed when Zotero becomes unavailable")
+    @Test("A Zotero relationship keeps Analyze available when attachment access is unavailable")
     func zoteroAttachmentUnavailable() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "PARENT01")
         defer { fixture.remove() }
@@ -270,18 +270,12 @@ extension ResearchFunctionOperationsTests {
             )
         )
         #expect(reference.identity.route == .zoteroAttachment)
-        do {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(function: .develop, target: analysis)
-            )
-            Issue.record("Unavailable Zotero must block its attachment route.")
-        } catch let error as ResearchFunctionContractError {
-            guard case .sourceAccessUnavailable(let failure) = error else {
-                Issue.record("Unexpected Analyze failure: \(error)")
-                return
-            }
-            #expect(failure.code == .zoteroUnavailable)
-        }
+        let preparation = try await handle.research.prepareProtectedFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        #expect(preparation.snapshot.sourceReference == nil)
+        #expect(preparation.snapshot.zoteroBibliographicContext?.itemKey == "PARENT01")
+        #expect(preparation.snapshot.zoteroBibliographicContext?.warning != nil)
         #expect(await script.requestCount() == 3)
         await runtime.shutdown()
     }
@@ -398,7 +392,7 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("A changed Analysis Zotero parent cannot reuse an earlier attachment binding")
+    @Test("A changed Analysis Zotero relationship is resolved as a fresh data route")
     func zoteroParentDriftFailsClosed() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "PARENT01")
         defer { fixture.remove() }
@@ -454,12 +448,103 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
 
-        await expectSourceFailure(.zoteroIdentityMismatch) {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareProtectedFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        #expect(preparation.snapshot.sourceReference == nil)
+        #expect(preparation.snapshot.zoteroBibliographicContext?.itemKey == "PARENT99")
+        #expect(await script.requestCount() == 3)
+        await runtime.shutdown()
+    }
+
+    @Test("A Zotero relationship makes Analyze available without Scholium source access")
+    func zoteroRelationshipDoesNotRequireScholiumSourceAccess() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "META0001")
+        defer { fixture.remove() }
+        let script = ZoteroRequestScript(steps: [
+            .response(status: 200, data: Data(Self.zoteroItemJSON.utf8)),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        try await handle.research.removeSourceAccess(for: analysis)
+
+        let availability = try #require(
+            try await handle.research.availableProtectedFunctions(for: analysis).first {
+                $0.function == .develop
+            }
+        )
+        #expect(availability.isEnabled)
+        #expect(availability.repairReasons.isEmpty)
+
+        let preparation = try await handle.research.prepareProtectedFunction(
+            ResearchFunctionRequest(function: .develop, target: analysis)
+        )
+        #expect(preparation.snapshot.sourceReference == nil)
+        #expect(preparation.snapshot.zoteroBibliographicContext?.itemKey == "META0001")
+        #expect(!preparation.instructions.contains("## Explicit source access"))
+        #expect(await script.requestCount() == 1)
+        await runtime.shutdown()
+    }
+
+    @Test("A Zotero-only Analyze completes into a portable schema-10 Record")
+    func zoteroOnlyAnalyzeCompletesPortableRecord() async throws {
+        let fixture = try await ResearchFixture.make(analysisZoteroKey: "META0001")
+        defer { fixture.remove() }
+        let script = ZoteroRequestScript(steps: [
+            .response(status: 200, data: Data(Self.zoteroItemJSON.utf8)),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        try await handle.research.removeSourceAccess(for: target)
+
+        let preparation = try await handle.research.prepareProtectedFunction(
+            ResearchFunctionRequest(
+                function: .develop,
+                target: target,
+                instruction: "Analyze the paper retrieved through Zotero."
             )
-        }
-        #expect(await script.requestCount() == 4)
+        )
+        #expect(preparation.snapshot.sourceReference == nil)
+        let context = try #require(preparation.snapshot.zoteroBibliographicContext)
+        #expect(context.itemKey == "META0001")
+        #expect(context.metadata?.title == "Fittingness")
+        #expect(await script.requestCount() == 1)
+
+        let receipt = try await submitTestAgentResult(
+            for: preparation,
+            handle: handle,
+            literatureRecommendations: []
+        )
+        #expect(receipt.disposition == .completed)
+        #expect(receipt.state == .finalized)
+        #expect(receipt.recordFormed)
+
+        let record = try #require(
+            try await handle.research.finishedResearchRecords(noteID: target.noteID)
+                .first { $0.action?.actionID == .analyze }
+        )
+        #expect(record.schemaVersion == PortableResearchRecord.currentSchemaVersion)
+        #expect(record.schemaVersion == 10)
+        #expect(record.sourceReference == nil)
+        #expect(record.zoteroBibliographicContext == context)
+
+        let encoded = try JSONEncoder().encode(record)
+        let decoded = try JSONDecoder().decode(PortableResearchRecord.self, from: encoded)
+        #expect(decoded == record)
         await runtime.shutdown()
     }
 
@@ -625,7 +710,7 @@ extension ResearchFunctionOperationsTests {
             "bibliographic metadata, not paper content or philosophical evidence"
         ))
         #expect(first.instructions.contains(
-            "Attachments, Zotero Notes, annotations, PDFs, and full text were not retrieved"
+            "use the configured Zotero/MCP capability"
         ))
         #expect(await script.requestCount() == 1)
 

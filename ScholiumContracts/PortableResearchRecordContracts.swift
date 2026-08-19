@@ -601,7 +601,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 9
+    public static let currentSchemaVersion = 10
 
     public let schemaVersion: Int
     public let id: UUID
@@ -611,6 +611,9 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let action: ResearchActionRecordIdentity?
     public let method: PortableResearchMethodReference?
     public let sourceReference: ResearchSourceReference?
+    /// Frozen Zotero metadata is portable task provenance for an Analyze run;
+    /// it is not paper content, source evidence, or a Scholium source locator.
+    public let zoteroBibliographicContext: ZoteroBibliographicContext?
     public let continuationLineage: ResearchContinuationLineage?
     public let primaryNoteID: UUID?
     public let participatingNotes: [PortableResearchNoteRevision]
@@ -636,6 +639,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         action: ResearchActionRecordIdentity?,
         method: PortableResearchMethodReference?,
         sourceReference: ResearchSourceReference? = nil,
+        zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
         primaryNoteID: UUID? = nil,
         participatingNotes: [PortableResearchNoteRevision],
@@ -727,7 +731,10 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   method != nil,
                   fidelityCompletion != .notApplicable,
                   primaryNoteID.map({ participatingByID[$0] != nil }) ?? true,
-                  action?.actionID != .analyze || sourceReference != nil,
+                  action?.actionID != .analyze
+                      || sourceReference != nil
+                      || zoteroBibliographicContext != nil,
+                  zoteroBibliographicContext == nil || action?.actionID == .analyze,
                   action?.actionID == .analyze || literatureRecommendations.isEmpty else {
                 throw PortableResearchRecordError.invalidRecord
             }
@@ -754,6 +761,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.action = action
         self.method = method
         self.sourceReference = sourceReference
+        self.zoteroBibliographicContext = zoteroBibliographicContext
         self.continuationLineage = continuationLineage
         self.primaryNoteID = primaryNoteID
         self.participatingNotes = participatingNotes.sorted {
@@ -788,6 +796,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case title = "record_title"
         case kind, action, method
         case sourceReference = "source_reference"
+        case zoteroBibliographicContext = "zotero_bibliographic_context"
         case continuationLineage = "continuation_lineage"
         case primaryNoteID = "primary_note_id"
         case participatingNotes = "participating_notes"
@@ -837,6 +846,10 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                 PortableResearchStrictSourceReference.self,
                 forKey: .sourceReference
             )?.value,
+            zoteroBibliographicContext: container.decodeIfPresent(
+                ZoteroBibliographicContext.self,
+                forKey: .zoteroBibliographicContext
+            ),
             continuationLineage: continuationLineage,
             primaryNoteID: container.decodeIfPresent(UUID.self, forKey: .primaryNoteID),
             participatingNotes: container.decode(

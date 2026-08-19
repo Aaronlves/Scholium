@@ -17,7 +17,7 @@ struct ActionCLIExecutableLifecycleTests {
         ).appendingPathComponent(".build/agent-help", isDirectory: true)
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
-            "pair", "context", "reload", "query", "extend-write-set",
+            "start", "pair", "context", "reload", "query", "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
             "submit-result", "continue",
             "method-context", "improve-method", "end",
@@ -63,6 +63,206 @@ struct ActionCLIExecutableLifecycleTests {
         )
         #expect(pairHelp.contains("standard input"))
         #expect(!pairHelp.contains("pairing-code.txt"))
+    }
+
+    @Test("The real CLI can start a Run without pairing and continue through end")
+    func agentStartContextWriteAndEnd() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+
+        let run = try #require(
+            ResearchRunLocator(rawValue: "agentstartcontextwriteend")
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "a", count: 48)
+        )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .analyze
+            }
+        )
+        let registration = try ResearchSkillRegistration(
+            actionID: .analyze,
+            displayName: "Analysis Method",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Analysis Method\n\nKeep source limits visible.\n",
+            practices: []
+        )
+        let context = try ResearchAuthenticatedRunContext(
+            coreProtocol: "Scholium Core Protocol",
+            brief: ResearchRunBrief(
+                run: run,
+                actionID: .analyze,
+                initialObjectTitle: fixture.analysisTarget.title,
+                initialObjectRole: .analysis,
+                academicPurpose: "Analyze the Zotero paper.",
+                capabilities: ResearchRunCapabilityAvailability(
+                    search: true,
+                    read: true,
+                    relations: true,
+                    properties: true,
+                    records: true,
+                    researchState: true,
+                    zotero: true,
+                    writeInitialObject: true,
+                    extendWriteSet: false
+                )
+            ),
+            method: ResearchMethodContext(snapshot: method),
+            resultContract: try ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: try profile.contentRevision()
+            ),
+            boundedWriteSet: []
+        )
+        let startRequest = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            target: fixture.analysisTarget.note,
+            academicPurpose: "Analyze the Zotero paper."
+        )
+        let startReceipt = try ResearchAgentStartReceipt(
+            run: run,
+            actionID: .analyze,
+            target: fixture.analysisTarget,
+            state: .prepared,
+            message: "The Agent-originated Run is active."
+        )
+        let writeEntry = try ResearchBoundedWriteSetEntry(
+            handle: ResearchWriteTargetHandle(
+                runID: UUID(),
+                noteID: fixture.analysisTarget.noteID
+            ),
+            noteID: fixture.analysisTarget.noteID,
+            note: fixture.analysisTarget.note,
+            role: .analysis,
+            title: fixture.analysisTarget.title,
+            allowedOperations: [.modifyMarkdown],
+            expectedRevision: fixture.analysisTarget.fingerprint,
+            authorizationBasis: .initialAction,
+            expiresAt: Date().addingTimeInterval(600)
+        )
+        let writeView = ResearchBoundedWriteSetViewEntry(writeEntry)
+        let writeOperationID = UUID()
+        let endReceipt = try ResearchRunEndReceipt(
+            run: run,
+            recoveryRetained: false,
+            message: "The Run ended and refuses new Agent operations."
+        )
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .start:
+                guard request.triptychID == fixture.assignment.id,
+                      request.startRequest == startRequest,
+                      request.run == nil else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .started(receipt: startReceipt, credential: credential)
+            case .context:
+                guard request.run == run, request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .context(context)
+            case .writeDocument:
+                guard request.run == run,
+                      request.credential == credential,
+                      request.documentWriteIntent?.role == .analysis,
+                      request.documentWriteIntent?.relativePath
+                        == fixture.analysisTarget.note.relativePath,
+                      request.documentWriteIntent?.operation == .modifyMarkdown else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .documentWrite(ResearchDocumentWriteResult(
+                    operationID: writeOperationID,
+                    state: .committed,
+                    target: writeView,
+                    message: "The bounded write committed."
+                ))
+            case .end:
+                guard request.run == run, request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .endReceipt(endReceipt)
+            case .pair, .query, .extendWriteSet, .writeZoteroBinding,
+                    .resolveWriteConflict, .submitResult, .continueResearch,
+                    .methodImprovementContext, .submitMethodImprovement:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        let started = try cli.run(
+            [
+                "agent", "start", "--triptych", fixture.assignment.id.uuidString,
+                "--from", "-",
+            ],
+            stdin: try Self.encoder().encode(startRequest),
+            environment: environment
+        )
+        let startedOutput = String(decoding: started.stdout, as: UTF8.self)
+        #expect(startedOutput.contains(run.rawValue))
+        #expect(!startedOutput.contains(credential.secret))
+
+        let credentialURL = fixture.homeURL
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(run.rawValue + ".json")
+        let mode = try #require(
+            FileManager.default.attributesOfItem(atPath: credentialURL.path)[
+                .posixPermissions
+            ] as? NSNumber
+        ).intValue
+        #expect(mode == 0o600)
+
+        let loaded = try cli.run(
+            ["agent", "context", "--run", run.rawValue],
+            environment: environment
+        )
+        #expect(String(decoding: loaded.stdout, as: UTF8.self)
+            .contains("Scholium Core Protocol"))
+        let write = try cli.run(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: try JSONSerialization.data(withJSONObject: [
+                "role": "analysis",
+                "relative_path": fixture.analysisTarget.note.relativePath,
+                "content": "# Zotero analysis\n\nThe bounded result.\n",
+            ]),
+            environment: environment
+        )
+        #expect(String(decoding: write.stdout, as: UTF8.self).contains("committed"))
+
+        let ended = try cli.run(
+            ["agent", "end", "--run", run.rawValue],
+            environment: environment
+        )
+        #expect(String(decoding: ended.stdout, as: UTF8.self)
+            .contains("\"ended\" : true"))
+        #expect(!FileManager.default.fileExists(atPath: credentialURL.path))
     }
 
     @Test("The real CLI pairs through stdin, hides the Session secret, and reloads authenticated context")
@@ -163,6 +363,8 @@ struct ActionCLIExecutableLifecycleTests {
             applicationSupportURL: bridgeContainer
         ) { request in
             switch request.operation {
+            case .start:
+                throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.run == run, request.pairingCode == code else {
                     throw LocalAgentBridgeError.permissionDenied
@@ -293,6 +495,7 @@ struct ActionCLIExecutableLifecycleTests {
         let hiddenRequestID = UUID()
         let hiddenOperationID = UUID()
         let hiddenBindingOperationID = UUID()
+        let completeSource = "\u{FEFF}---\r\ntitle: Complete CLI source\r\n---\r\n# Complete CLI source\r\n"
         let entry = try ResearchBoundedWriteSetEntry(
             handle: ResearchWriteTargetHandle(runID: UUID(), noteID: UUID()),
             noteID: UUID(),
@@ -334,6 +537,8 @@ struct ActionCLIExecutableLifecycleTests {
                 throw LocalAgentBridgeError.permissionDenied
             }
             switch request.operation {
+            case .start:
+                throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.pairingCode == code else {
                     throw LocalAgentBridgeError.permissionDenied
@@ -357,6 +562,11 @@ struct ActionCLIExecutableLifecycleTests {
                       intent.role == .topic,
                       intent.relativePath == "Agency.md" else {
                     throw LocalAgentBridgeError.permissionDenied
+                }
+                if intent.operation == .modifySource {
+                    guard intent.source == completeSource else {
+                        throw LocalAgentBridgeError.permissionDenied
+                    }
                 }
                 observedIDs.append(intent.requestID)
                 return .documentWrite(ResearchDocumentWriteResult(
@@ -456,6 +666,19 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(String(decoding: propertyWrite.stdout, as: UTF8.self)
             .contains("committed"))
 
+        let sourceWrite = try cli.run(
+            ["agent", "write", "--run", run.rawValue, "--from", "-"],
+            stdin: try JSONSerialization.data(withJSONObject: [
+                "role": "topic",
+                "relative_path": "Agency.md",
+                "operation": "modify_source",
+                "source": completeSource,
+            ]),
+            environment: environment
+        )
+        #expect(String(decoding: sourceWrite.stdout, as: UTF8.self)
+            .contains("committed"))
+
         let writeJSON = try JSONSerialization.data(withJSONObject: [
             "role": "topic",
             "relative_path": "Agency.md",
@@ -476,8 +699,8 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(writeOutput.contains("committed"))
         #expect(!writeOutput.contains(hiddenOperationID.uuidString))
         #expect(!writeOutput.contains("operation_id"))
-        #expect(observedIDs.values.count == 4)
-        #expect(Set(observedIDs.values).count == 3)
+        #expect(observedIDs.values.count == 5)
+        #expect(Set(observedIDs.values).count == 4)
 
         let bindingJSON = try JSONSerialization.data(withJSONObject: [
             "role": "analysis",
@@ -796,6 +1019,8 @@ struct ActionCLIExecutableLifecycleTests {
                 throw LocalAgentBridgeError.permissionDenied
             }
             switch request.operation {
+            case .start:
+                throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.pairingCode == code else {
                     throw LocalAgentBridgeError.permissionDenied
@@ -987,6 +1212,8 @@ struct ActionCLIExecutableLifecycleTests {
                 throw LocalAgentBridgeError.permissionDenied
             }
             switch request.operation {
+            case .start:
+                throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.pairingCode == code else {
                     throw LocalAgentBridgeError.permissionDenied

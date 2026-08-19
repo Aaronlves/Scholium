@@ -7,6 +7,7 @@ public enum ResearchDocumentWriteOperation: String, Codable, CaseIterable,
 {
     case createNote = "create_note"
     case modifyMarkdown = "modify_markdown"
+    case modifySource = "modify_source"
     case modifyProperties = "modify_properties"
     case setZoteroBinding = "set_zotero_binding"
     case clearZoteroBinding = "clear_zotero_binding"
@@ -1213,6 +1214,10 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
     /// Body text for `modify_markdown` and `create_note`. It is never complete
     /// document source and cannot carry frontmatter authority.
     public let content: String
+    /// Complete authored Markdown source for `modify_source`. This remains
+    /// separate from body content so a caller cannot accidentally turn a
+    /// body-only operation into a full-source replacement.
+    public let source: String?
     public let properties: [CanonicalPropertyInput]
     public let analysisMetadata: AnalysisCreationMetadata?
 
@@ -1222,16 +1227,21 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         relativePath: String,
         operation: ResearchDocumentWriteOperation = .modifyMarkdown,
         content: String = "",
+        source: String? = nil,
         properties: [CanonicalPropertyInput] = [],
         analysisMetadata: AnalysisCreationMetadata? = nil
     ) throws {
         let shapeIsValid = switch operation {
         case .createNote:
-            properties.isEmpty
+            source == nil && properties.isEmpty
         case .modifyMarkdown:
-            properties.isEmpty && analysisMetadata == nil
+            source == nil && properties.isEmpty && analysisMetadata == nil
+        case .modifySource:
+            source != nil && content.isEmpty && properties.isEmpty
+                && analysisMetadata == nil
         case .modifyProperties:
-            content.isEmpty && !properties.isEmpty && analysisMetadata == nil
+            source == nil && content.isEmpty && !properties.isEmpty
+                && analysisMetadata == nil
         case .setZoteroBinding, .clearZoteroBinding:
             false
         }
@@ -1239,6 +1249,9 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
               shapeIsValid,
               !content.unicodeScalars.contains(where: { $0.value == 0 }),
               content.utf8.count <= ResearchBoundedWriteSet
+                .maximumDocumentUTF8ByteCount,
+              source?.unicodeScalars.contains(where: { $0.value == 0 }) != true,
+              source.map(\.utf8.count) ?? 0 <= ResearchBoundedWriteSet
                 .maximumDocumentUTF8ByteCount,
               Set(properties.map(\.key)).count == properties.count else {
             throw ResearchBoundedWriteSetError.invalidWrite
@@ -1249,6 +1262,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         self.relativePath = relativePath
         self.operation = operation
         self.content = content
+        self.source = source
         self.properties = properties.sorted { $0.key < $1.key }
         self.analysisMetadata = analysisMetadata
     }
@@ -1258,7 +1272,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         case requestID = "request_id"
         case role
         case relativePath = "relative_path"
-        case operation, content, properties
+        case operation, content, source, properties
         case analysisMetadata = "analysis_metadata"
     }
 
@@ -1278,18 +1292,30 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
             forKey: .operation
         )
         let content: String
+        let source: String?
         switch operation {
         case .modifyMarkdown:
             guard container.contains(.content) else {
                 throw ResearchBoundedWriteSetError.invalidWrite
             }
             content = try container.decode(String.self, forKey: .content)
+            source = try container.decodeIfPresent(String.self, forKey: .source)
+        case .modifySource:
+            guard container.contains(.source) else {
+                throw ResearchBoundedWriteSetError.invalidWrite
+            }
+            source = try container.decode(String.self, forKey: .source)
+            content = try container.decodeIfPresent(
+                String.self,
+                forKey: .content
+            ) ?? ""
         case .createNote, .modifyProperties,
              .setZoteroBinding, .clearZoteroBinding:
             content = try container.decodeIfPresent(
                 String.self,
                 forKey: .content
             ) ?? ""
+            source = try container.decodeIfPresent(String.self, forKey: .source)
         }
         try self.init(
             requestID: container.decode(UUID.self, forKey: .requestID),
@@ -1297,6 +1323,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
             relativePath: container.decode(String.self, forKey: .relativePath),
             operation: operation,
             content: content,
+            source: source,
             properties: container.decodeIfPresent(
                 [CanonicalPropertyInput].self,
                 forKey: .properties
@@ -1347,7 +1374,7 @@ public struct ResearchZoteroBindingWriteIntent: Codable, Hashable, Sendable {
                 throw ResearchBoundedWriteSetError.invalidWrite
             }
             normalizedKey = nil
-        case .createNote, .modifyMarkdown, .modifyProperties:
+        case .createNote, .modifyMarkdown, .modifySource, .modifyProperties:
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         guard role == .analysis,
@@ -1630,7 +1657,7 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         switch operation {
         case .createNote:
             expectationShapeIsValid = expectedRevision == nil
-        case .modifyMarkdown, .modifyProperties:
+        case .modifyMarkdown, .modifySource, .modifyProperties:
             expectationShapeIsValid = expectedRevision != nil
         case .setZoteroBinding, .clearZoteroBinding:
             expectationShapeIsValid = false

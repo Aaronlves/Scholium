@@ -252,7 +252,7 @@ chat-style Search remain deferred. **Vector-Link** means only the explicit
 researcher-visible relation markers in §12.
 
 Research Context reuses this Search owner under the scope and provenance rules
-in [§8.2](03-research-actions-and-workflows.md#82-local-pairing-layered-delivery-and-research-context).
+in [§8.2](03-research-actions-and-workflows.md#82-agent-entry-local-pairing-layered-delivery-and-research-context).
 It retains Search's typed Property ranges and direct-relation predicate,
 direction, anchor, target, and Markdown occurrences. It creates no second
 parser, ranker, Property/Relation resolver, persistent response, hidden Agent

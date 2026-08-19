@@ -46,8 +46,9 @@ and incremental/clean-build equivalence. Passing retrieval fixtures does not
 establish philosophical relevance, evidential support, or researcher
 acceptance.
 
-Direct-Agent evidence includes one researcher-copied handoff with the Run
-locator, one-use Pairing Code, and Agent-owned CLI steps; pairing-code input
+Direct-Agent evidence includes one Agent-originated `agent start` request and
+one researcher-copied handoff with the Run locator, one-use Pairing Code, and
+Agent-owned CLI steps; direct-start credential storage; pairing-code input
 through stdin; single-use secure pairing; authenticated local Session;
 app-process restart invalidation and same-Run re-pairing; no Pairing Code in an
 argument, URL, vault, file, later prompt, Result, Record, or log; no Session

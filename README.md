@@ -319,10 +319,12 @@ Its `install.sh` performs the same
 user-local installation used by the copied Agent instructions without changing
 shell or macOS security configuration.
 
-The installed `scholium agent` commands let an external Agent pair with one
-researcher-created Run, obtain its typed context, request bounded writes,
-submit one result, continue research, and end the Run through a loopback-only
-bridge. Pairing reads the one-time code through standard input;
+The installed `scholium agent` commands let an external Agent start a Run for a
+selected Triptych or pair with one researcher-created Run, obtain its typed
+context, request bounded writes, submit one result, continue research, and end
+the Run through a loopback-only bridge. `agent start` stores the protected
+Session credential locally and needs no Pairing Code. Pairing the GUI-created
+route still reads the one-time code through standard input;
 Scholium does not launch or supervise the Agent. The authenticated
 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
 owns the Agent Run workflow; installed command help owns current CLI syntax.

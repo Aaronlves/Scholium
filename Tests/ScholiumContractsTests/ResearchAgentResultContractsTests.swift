@@ -282,6 +282,7 @@ struct ResearchAgentResultContractsTests {
         func intentObject(
             operation: String,
             content: String? = nil,
+            source: String? = nil,
             properties: [[String: Any]]? = nil
         ) -> [String: Any] {
             var object: [String: Any] = [
@@ -292,6 +293,7 @@ struct ResearchAgentResultContractsTests {
                 "operation": operation,
             ]
             if let content { object["content"] = content }
+            if let source { object["source"] = source }
             if let properties { object["properties"] = properties }
             return object
         }
@@ -312,6 +314,25 @@ struct ResearchAgentResultContractsTests {
         )
         #expect(propertyIntent.content.isEmpty)
         #expect(propertyIntent.properties.map(\.key) == ["summary"])
+        let completeSource = "\u{FEFF}---\r\ntitle: Exact\r\n---\r\n# Exact\r\n"
+        let sourceIntent = try JSONDecoder().decode(
+            ResearchDocumentWriteIntent.self,
+            from: JSONSerialization.data(withJSONObject: intentObject(
+                operation: "modify_source",
+                source: completeSource
+            ))
+        )
+        #expect(sourceIntent.source == completeSource)
+        #expect(sourceIntent.content.isEmpty)
+        #expect(sourceIntent.properties.isEmpty)
+        #expect(throws: ResearchBoundedWriteSetError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchDocumentWriteIntent.self,
+                from: JSONSerialization.data(withJSONObject: intentObject(
+                    operation: "modify_source"
+                ))
+            )
+        }
         #expect(throws: ResearchBoundedWriteSetError.self) {
             _ = try JSONDecoder().decode(
                 ResearchDocumentWriteIntent.self,

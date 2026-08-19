@@ -11,9 +11,39 @@ extension ResearchFunctionCoordinator {
         guard function == .develop, target.note.schemaProfile == .analysis else {
             return nil
         }
-        return try await resolveResearchSourceAccess(
-            for: target
+        if try await usesExternalZoteroRoute(for: target) {
+            // A Zotero relationship is an external data route. The Agent may
+            // use its released Zotero/MCP adapter without Scholium resolving
+            // an attachment bookmark or local file locator for this Run.
+            return nil
+        }
+        // An explicit local source selection remains the preferred
+        // source-material route when it is currently resolvable.
+        return try await resolveResearchSourceAccess(for: target)
+    }
+
+    func hasExternalZoteroBinding<Host: ResearchFunctionCoordinatorHost>(
+        for proposedTarget: ResearchFunctionTarget,
+        host: isolated Host
+    ) async throws -> Bool {
+        return try await usesExternalZoteroRoute(for: validateResearchFunctionTarget(
+            proposedTarget,
+            expected: proposedTarget.fingerprint,
+            host: host
+        ))
+    }
+
+    private func usesExternalZoteroRoute(
+        for target: ValidatedFunctionObject
+    ) async throws -> Bool {
+        guard try await portableTargetZoteroBinding(target) != nil else {
+            return false
+        }
+        let sourceReference = try await dependencies.sourceAccessStore.reference(
+            analysisNoteID: target.noteID
         )
+        return sourceReference == nil
+            || sourceReference?.identity.route == .zoteroAttachment
     }
 
     func zoteroBibliographicContext(

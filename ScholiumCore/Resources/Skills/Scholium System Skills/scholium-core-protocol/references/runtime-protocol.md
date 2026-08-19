@@ -50,6 +50,9 @@ Use the installed `scholium agent` commands and their current strict input
 contracts; do not guess a JSON shape or edit Triptych or `.scholium` state
 directly.
 
+0. An Agent may begin an eligible Run with `agent start` when it has the
+   selected Triptych and target identity. This direct route does not use a
+   Pairing Code; GUI-created Runs use `agent pair` with the copied handoff.
 1. Use `agent query` when the Method needs additional Research Context.
 2. Use `agent extend-write-set` only when the Method requires another target.
    For one returned current member, use `agent write` for `create_note`,
