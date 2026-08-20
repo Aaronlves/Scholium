@@ -7,6 +7,21 @@ struct WorkspaceResearchStateRepair: Sendable {
     let issues: [String]
 }
 
+struct WorkspaceResearchStateReconcilerDependencies: Sendable {
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let localResearchExecutionStore: LocalResearchExecutionStore
+}
+
+extension WorkspaceServices {
+    var researchStateReconcilerDependencies:
+        WorkspaceResearchStateReconcilerDependencies {
+        WorkspaceResearchStateReconcilerDependencies(
+            portableResearchRecordStore: portableResearchRecordStore,
+            localResearchExecutionStore: localResearchExecutionStore
+        )
+    }
+}
+
 /// Repairs the durable Research Record pair only at the explicit refresh
 /// boundary. Snapshot projection may read this state, but it must not create
 /// or rewrite portable Discussion files as an incidental consequence of
@@ -15,17 +30,17 @@ enum WorkspaceResearchStateReconciler {
     static func repairBeforePublication(
         build: WorkspaceSnapshotBuildResult,
         triptychID: UUID,
-        services: WorkspaceServices
+        dependencies: WorkspaceResearchStateReconcilerDependencies
     ) async throws -> WorkspaceSnapshotBuildResult {
         guard build.snapshot.phase.isComplete else { return build }
 
         let clock = ContinuousClock()
         let start = clock.now
-        let localExecutionListing = try await services.localResearchExecutionStore
+        let localExecutionListing = try await dependencies.localResearchExecutionStore
             .listing()
-        let finishedResearchRecordListing = try await services
+        let finishedResearchRecordListing = try await dependencies
             .portableResearchRecordStore.listing()
-        var activeDiscussionListing = try await services
+        var activeDiscussionListing = try await dependencies
             .portableResearchRecordStore.activeDiscussions()
         var issues: [String] = []
         let finishedByID = Dictionary(
@@ -65,7 +80,7 @@ enum WorkspaceResearchStateReconciler {
                               !activeDiscussionListing.discussions.contains(where: {
                                   $0.primaryNoteID == expected.primaryNoteID
                               }) {
-                        _ = try await services.portableResearchRecordStore
+                        _ = try await dependencies.portableResearchRecordStore
                             .createActiveDiscussion(expected)
                     } else {
                         throw ResearchFunctionContractError.invalidCompletion(
@@ -80,7 +95,7 @@ enum WorkspaceResearchStateReconciler {
             }
         }
 
-        activeDiscussionListing = try await services.portableResearchRecordStore
+        activeDiscussionListing = try await dependencies.portableResearchRecordStore
             .activeDiscussions()
         for discussion in activeDiscussionListing.issues.isEmpty
             ? activeDiscussionListing.discussions
@@ -94,7 +109,7 @@ enum WorkspaceResearchStateReconciler {
                 continue
             }
             do {
-                _ = try await services.portableResearchRecordStore
+                _ = try await dependencies.portableResearchRecordStore
                     .reconcileDiscussionPassages(
                         id: discussion.id,
                         primaryDocument: primaryDocument.document
@@ -105,7 +120,7 @@ enum WorkspaceResearchStateReconciler {
                 )
             }
         }
-        activeDiscussionListing = try await services.portableResearchRecordStore
+        activeDiscussionListing = try await dependencies.portableResearchRecordStore
             .activeDiscussions()
 
         let duration = start.duration(to: clock.now)

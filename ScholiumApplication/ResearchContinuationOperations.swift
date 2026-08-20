@@ -2,6 +2,25 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchContinuationDependencies: Sendable {
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let researchAgentSessions: ResearchAgentSessionAuthority?
+    let researchSourceAccessStore: ResearchSourceAccessStore
+}
+
+extension WorkspaceServices {
+    var researchContinuationDependencies:
+        WorkspaceResearchContinuationDependencies {
+        WorkspaceResearchContinuationDependencies(
+            localResearchExecutionStore: localResearchExecutionStore,
+            portableResearchRecordStore: portableResearchRecordStore,
+            researchAgentSessions: researchAgentSessions,
+            researchSourceAccessStore: researchSourceAccessStore
+        )
+    }
+}
+
 extension WorkspaceRuntime {
     public func continueResearch(
         credential: ResearchConnectionCredential,
@@ -106,11 +125,11 @@ extension WorkspaceHandle {
         request: ResearchContinuationRequest
     ) async throws -> ResearchContinuationRequestRecord {
         try requireActive()
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == id else {
             throw ResearchAgentSessionError.sessionRejected
         }
         let requestFingerprint = try request.contentFingerprint()
-        let execution = try await services.localResearchExecutionStore.record(
+        let execution = try await researchContinuationDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         guard let record = execution.continuationRequests.first(where: {
@@ -126,7 +145,7 @@ extension WorkspaceHandle {
         requestID: UUID
     ) async throws -> ResearchContinuationRequestRecord {
         try requireActive()
-        return try await services.localResearchExecutionStore
+        return try await researchContinuationDependencies.localResearchExecutionStore
             .continuationRequest(
                 parentRunID: parentRunID,
                 requestID: requestID
@@ -139,7 +158,7 @@ extension WorkspaceHandle {
         request: ResearchContinuationRequest
     ) async throws -> ResearchContinuationResult {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchContinuationDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -149,10 +168,10 @@ extension WorkspaceHandle {
             claimCoreProtocol: false,
             allowFinalized: true
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        let parentExecution = try await services.localResearchExecutionStore.record(
+        let parentExecution = try await researchContinuationDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         guard let parentCompletion = parentExecution.completion,
@@ -163,9 +182,9 @@ extension WorkspaceHandle {
                 for: parentAction.actionID
               ),
               parentPlatform.operations.contains(.continueResearch),
-              let parentRecord = try? await services.portableResearchRecordStore
+              let parentRecord = try? await researchContinuationDependencies.portableResearchRecordStore
                 .record(id: authenticated.runID),
-              parentRecord.triptychID == services.manifest.id else {
+              parentRecord.triptychID == id else {
             throw ResearchContinuationContractError.parentNotFinalized
         }
 
@@ -241,7 +260,7 @@ extension WorkspaceHandle {
                 receivedAt: now,
                 expiresAt: now.addingTimeInterval(10 * 60)
             )
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchContinuationDependencies.localResearchExecutionStore
                 .installContinuationRequest(pending)
             let collaborationRequest = try ResearchCollaborationRequest(
                 kind: .continueResearch,
@@ -251,7 +270,7 @@ extension WorkspaceHandle {
                 policy: policy.document.policy,
                 request: collaborationRequest
             ) == .mayProceed {
-                _ = try await services.localResearchExecutionStore
+                _ = try await researchContinuationDependencies.localResearchExecutionStore
                     .transitionContinuationRequest(
                         parentRunID: authenticated.runID,
                         requestID: requestID,
@@ -260,7 +279,7 @@ extension WorkspaceHandle {
                         decidedAt: now
                     )
             }
-            decision = try await services.localResearchExecutionStore
+            decision = try await researchContinuationDependencies.localResearchExecutionStore
                 .continuationRequest(
                     parentRunID: authenticated.runID,
                     requestID: requestID
@@ -268,14 +287,14 @@ extension WorkspaceHandle {
         }
 
         if decision.state == .pending, decision.expiresAt <= Date() {
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchContinuationDependencies.localResearchExecutionStore
                 .transitionContinuationRequest(
                     parentRunID: authenticated.runID,
                     requestID: requestID,
                     state: .expired,
                     decidedAt: Date()
                 )
-            decision = try await services.localResearchExecutionStore
+            decision = try await researchContinuationDependencies.localResearchExecutionStore
                 .continuationRequest(
                     parentRunID: authenticated.runID,
                     requestID: requestID
@@ -309,7 +328,7 @@ extension WorkspaceHandle {
         try await revalidateContinuationAuthorization(decision)
         let childRunID = requestID
         let handoffContext: ResearchContinuationHandoffContext
-        if let existing = try await services.localResearchExecutionStore
+        if let existing = try await researchContinuationDependencies.localResearchExecutionStore
             .recordIfPresent(id: childRunID) {
             guard existing.snapshot.continuationLineage?.kind == .continueResearch,
                   existing.snapshot.continuationLineage?.parentRunID
@@ -403,7 +422,7 @@ extension WorkspaceHandle {
             )
         }
 
-        let child = try await services.localResearchExecutionStore.record(id: childRunID)
+        let child = try await researchContinuationDependencies.localResearchExecutionStore.record(id: childRunID)
         let canWrite = !child.boundedWriteSet.entries.isEmpty
         let locator: ResearchRunLocator
         if let attached = try await sessions.attachedLocator(
@@ -420,7 +439,7 @@ extension WorkspaceHandle {
             )
         }
         if decision.state == .allowed {
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchContinuationDependencies.localResearchExecutionStore
                 .transitionContinuationRequest(
                     parentRunID: authenticated.runID,
                     requestID: requestID,
@@ -443,7 +462,7 @@ extension WorkspaceHandle {
         at now: Date
     ) async throws -> [ResearchContinuationRequestRecord] {
         try requireActive()
-        let listing = try await services.localResearchExecutionStore.listing()
+        let listing = try await researchContinuationDependencies.localResearchExecutionStore.listing()
         guard listing.issues.isEmpty else {
             throw ResearchContinuationContractError.invalidRecord
         }
@@ -451,7 +470,7 @@ extension WorkspaceHandle {
         for execution in listing.records {
             for request in execution.continuationRequests where request.state == .pending {
                 if request.expiresAt <= now {
-                    _ = try await services.localResearchExecutionStore
+                    _ = try await researchContinuationDependencies.localResearchExecutionStore
                         .transitionContinuationRequest(
                             parentRunID: request.parentRunID,
                             requestID: request.id,
@@ -473,7 +492,7 @@ extension WorkspaceHandle {
         at date: Date
     ) async throws -> ResearchContinuationRequestRecord {
         try requireActive()
-        let request = try await services.localResearchExecutionStore
+        let request = try await researchContinuationDependencies.localResearchExecutionStore
             .continuationRequest(parentRunID: parentRunID, requestID: requestID)
         guard request.state == .pending, request.expiresAt > date else {
             throw ResearchContinuationContractError.invalidRecord
@@ -483,7 +502,7 @@ extension WorkspaceHandle {
             request.request.nextActionID,
             targetRole: request.request.targetRole
         )
-        _ = try await services.localResearchExecutionStore
+        _ = try await researchContinuationDependencies.localResearchExecutionStore
             .transitionContinuationRequest(
                 parentRunID: parentRunID,
                 requestID: requestID,
@@ -491,7 +510,7 @@ extension WorkspaceHandle {
                 authorizationBasis: allow ? .explicitResearcherDecision : nil,
                 decidedAt: date
             )
-        return try await services.localResearchExecutionStore
+        return try await researchContinuationDependencies.localResearchExecutionStore
             .continuationRequest(parentRunID: parentRunID, requestID: requestID)
     }
 
@@ -519,7 +538,7 @@ extension WorkspaceHandle {
             policy: current.document.policy,
             request: request
         ) == .mayProceed else {
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchContinuationDependencies.localResearchExecutionStore
                 .transitionContinuationRequest(
                     parentRunID: record.parentRunID,
                     requestID: record.id,
@@ -616,7 +635,7 @@ extension WorkspaceHandle {
         status: ResearchContinuationReferenceStatus,
         explanation: String
     ) {
-        guard reference.owner.triptychID == services.manifest.id else {
+        guard reference.owner.triptychID == id else {
             return (.missing, "The referenced owner belongs to another Triptych.")
         }
         switch reference.sourceKind {
@@ -668,7 +687,7 @@ extension WorkspaceHandle {
                   reference.retrievalReason == .recordSearch else {
                 throw ResearchContinuationContractError.invalidHandoff
             }
-            let listing = try await services.portableResearchRecordStore.listing()
+            let listing = try await researchContinuationDependencies.portableResearchRecordStore.listing()
             guard listing.issues.isEmpty,
                   let current = listing.revisions.first(where: { $0.id == recordID })
             else { return (.missing, "The Research Record owner is missing.") }
@@ -708,11 +727,11 @@ extension WorkspaceHandle {
                     zoteroBibliographicContext:
                         parentSnapshot.zoteroBibliographicContext,
                     runID: parentSnapshot.runID,
-                    triptychID: services.manifest.id
+                    triptychID: id
                   ) else {
                 throw ResearchContinuationContractError.invalidHandoff
             }
-            let status = await services.researchSourceAccessStore.status(
+            let status = await researchContinuationDependencies.researchSourceAccessStore.status(
                 analysisNoteID: parentSnapshot.request.target.noteID
             )
             switch status.state {

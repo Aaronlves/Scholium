@@ -27,6 +27,34 @@ struct WorkspaceSnapshotBuildResult: Sendable {
     let measurement: WorkspaceRefreshMeasurement
 }
 
+struct WorkspaceSnapshotBuilderDependencies: Sendable {
+    let repositories: [UUID: VaultRepository]
+    let sourceCatalogs: [UUID: VaultSourceCatalog]
+    let searchIndex: TriptychSearchIndex
+    let controlStore: TriptychControlStore
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let critiqueRegistry: CritiqueRegistry
+    let transactionRecoveryStore: TriptychMutationRecoveryStore
+    let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
+}
+
+extension WorkspaceServices {
+    var snapshotBuilderDependencies: WorkspaceSnapshotBuilderDependencies {
+        WorkspaceSnapshotBuilderDependencies(
+            repositories: repositories,
+            sourceCatalogs: sourceCatalogs,
+            searchIndex: searchIndex,
+            controlStore: controlStore,
+            portableResearchRecordStore: portableResearchRecordStore,
+            localResearchExecutionStore: localResearchExecutionStore,
+            critiqueRegistry: critiqueRegistry,
+            transactionRecoveryStore: transactionRecoveryStore,
+            identityRecoveryCoordinator: identityRecoveryCoordinator
+        )
+    }
+}
+
 enum WorkspaceSnapshotBuilder {
     private struct LoadedVault: Sendable {
         let slot: WorkspaceVaultSlot
@@ -65,7 +93,7 @@ enum WorkspaceSnapshotBuilder {
     static func buildOpening(
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
-        services: WorkspaceServices,
+        dependencies: WorkspaceSnapshotBuilderDependencies,
         availableVault slot: WorkspaceVaultSlot,
         workspaceGeneration: UInt64
     ) async throws -> WorkspaceSnapshotBuildResult {
@@ -74,8 +102,8 @@ enum WorkspaceSnapshotBuilder {
         try Task.checkCancellation()
         guard mode == .live,
               let vault = assignment.vault(for: slot),
-              let repository = services.repositories[vault.id],
-              let sourceCatalog = services.sourceCatalogs[vault.id] else {
+              let repository = dependencies.repositories[vault.id],
+              let sourceCatalog = dependencies.sourceCatalogs[vault.id] else {
             throw ScholiumApplicationError.incompleteTriptych(assignment.id)
         }
 
@@ -114,7 +142,7 @@ enum WorkspaceSnapshotBuilder {
             failures: []
         )
         do {
-            let recovery = try await services.identityRecoveryCoordinator.reconcile(
+            let recovery = try await dependencies.identityRecoveryCoordinator.reconcile(
                 vaultID: vault.id,
                 documents: allDocuments.map { ($0.relativePath, $0.fingerprint) },
                 repository: repository,
@@ -168,7 +196,7 @@ enum WorkspaceSnapshotBuilder {
         )
         let zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding]
         if slot == .paperAnalysis {
-            let bindings = try await services.controlStore.zoteroBindings()
+            let bindings = try await dependencies.controlStore.zoteroBindings()
             zoteroBindingsByNoteID = Dictionary(
                 uniqueKeysWithValues: bindings.bindings.map { ($0.noteID, $0) }
             )
@@ -273,7 +301,7 @@ enum WorkspaceSnapshotBuilder {
     static func build(
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
-        services: WorkspaceServices,
+        dependencies: WorkspaceSnapshotBuilderDependencies,
         graphGeneration: Int,
         workspaceGeneration: UInt64
     ) async throws -> WorkspaceSnapshotBuildResult {
@@ -291,8 +319,8 @@ enum WorkspaceSnapshotBuilder {
         for (order, slot) in WorkspaceVaultSlot.allCases.enumerated() {
             try Task.checkCancellation()
             guard let vault = assignment.vault(for: slot),
-                  let repository = services.repositories[vault.id],
-                  let sourceCatalog = services.sourceCatalogs[vault.id] else {
+                  let repository = dependencies.repositories[vault.id],
+                  let sourceCatalog = dependencies.sourceCatalogs[vault.id] else {
                 throw ScholiumApplicationError.incompleteTriptych(assignment.id)
             }
             let rootURL = await repository.vaultURL
@@ -392,7 +420,7 @@ enum WorkspaceSnapshotBuilder {
                 failures: []
             )
             do {
-                let recovery = try await services.identityRecoveryCoordinator.reconcile(
+                let recovery = try await dependencies.identityRecoveryCoordinator.reconcile(
                     vaultID: vault.id,
                     documents: allDocuments.map { ($0.relativePath, $0.fingerprint) },
                     repository: repository,
@@ -477,16 +505,16 @@ enum WorkspaceSnapshotBuilder {
         })
 
         let researchStateStart = clock.now
-        let portableSettlementListing = try await services
+        let portableSettlementListing = try await dependencies
             .portableResearchRecordStore.settlementListing()
         let settlements = portableSettlementListing.settlements
-        let localExecutionListing = try await services.localResearchExecutionStore
+        let localExecutionListing = try await dependencies.localResearchExecutionStore
             .listing()
-        let finishedResearchRecordListing = try await services
+        let finishedResearchRecordListing = try await dependencies
             .portableResearchRecordStore.listing()
-        let noteReviewListing = try await services.portableResearchRecordStore
+        let noteReviewListing = try await dependencies.portableResearchRecordStore
             .noteReviewListing()
-        let activeDiscussionListing = try await services
+        let activeDiscussionListing = try await dependencies
             .portableResearchRecordStore.activeDiscussions()
         let latestSettlementByNoteID = Dictionary(
             settlements.map { ($0.noteID, $0) },
@@ -535,7 +563,7 @@ enum WorkspaceSnapshotBuilder {
             to: clock.now
         )
         let searchStart = clock.now
-        let searchPublication = try await services.searchIndex.synchronize(
+        let searchPublication = try await dependencies.searchIndex.synchronize(
             searchDocuments,
             workspaceGeneration: workspaceGeneration
         )
@@ -569,7 +597,7 @@ enum WorkspaceSnapshotBuilder {
             records: finishedResearchRecordListing.records,
             loadedVaults: loadedVaults
         )
-        let zoteroBindingSnapshot = try await services.controlStore.zoteroBindings()
+        let zoteroBindingSnapshot = try await dependencies.controlStore.zoteroBindings()
         let zoteroBindingsByNoteID = Dictionary(
             uniqueKeysWithValues: zoteroBindingSnapshot.bindings.map { ($0.noteID, $0) }
         )
@@ -609,12 +637,12 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: finishedResearchRecordListing.issues.map {
             "Portable Research Record \($0.fileName): \($0.reason)"
         })
-        if let issue = await services.critiqueRegistry.healthError() {
+        if let issue = await dependencies.critiqueRegistry.healthError() {
             healthIssues.append(issue)
         }
         let recoveryRecords: [TriptychMutationRecoveryRecord]
         do {
-            recoveryRecords = try await services.transactionRecoveryStore.pending()
+            recoveryRecords = try await dependencies.transactionRecoveryStore.pending()
         } catch {
             recoveryRecords = []
             healthIssues.append(
@@ -622,7 +650,7 @@ enum WorkspaceSnapshotBuilder {
             )
         }
         for loaded in loadedVaults {
-            if let repository = services.repositories[loaded.vault.id],
+            if let repository = dependencies.repositories[loaded.vault.id],
                let issue = await repository.recoveryLedgerHealthDiagnostic() {
                 healthIssues.append("\(loaded.vault.name): \(issue)")
             }
@@ -631,14 +659,14 @@ enum WorkspaceSnapshotBuilder {
         var critiquesByID: [UUID: CritiqueAssociation] = [:]
         if let output = loadedVaults.first(where: { $0.slot == .output }) {
             for document in output.activeDocuments {
-                if let association = await services.critiqueRegistry.association(
+                if let association = await dependencies.critiqueRegistry.association(
                     critiqueRelativePath: document.relativePath
                 ) {
                     critiquesByID[association.id] = association
                 }
                 if case .resolved(let noteID) = output.identityStates[
                     document.relativePath
-                ], let association = await services.critiqueRegistry.association(
+                ], let association = await dependencies.critiqueRegistry.association(
                     workNoteID: noteID
                 ) {
                     critiquesByID[association.id] = association

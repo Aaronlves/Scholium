@@ -101,10 +101,11 @@ struct ArchitectureStabilityMeasurementTests {
             let handle = try await runtime.openWorkspace(id: assignment.id)
             let initial = await handle.latestRefreshMeasurement
             let services = await handle.services
+            let dependencies = services.snapshotBuilderDependencies
             let analysesID = try #require(
                 assignment.vault(for: .paperAnalysis)?.id
             )
-            let catalog = try #require(services.sourceCatalogs[analysesID])
+            let catalog = try #require(dependencies.sourceCatalogs[analysesID])
             let relativePath = "Architecture/Delta.md"
             let renamedPath = "Architecture/Delta Renamed.md"
             let noteURL = analysesURL.appendingPathComponent(relativePath)
@@ -127,7 +128,7 @@ struct ArchitectureStabilityMeasurementTests {
             ))
             let added = try await build(
                 assignment: assignment,
-                services: services,
+                dependencies: dependencies,
                 graphGeneration: 2
             )
 
@@ -145,7 +146,7 @@ struct ArchitectureStabilityMeasurementTests {
             ))
             let edited = try await build(
                 assignment: assignment,
-                services: services,
+                dependencies: dependencies,
                 graphGeneration: 3
             )
 
@@ -160,7 +161,7 @@ struct ArchitectureStabilityMeasurementTests {
             ))
             let renamed = try await build(
                 assignment: assignment,
-                services: services,
+                dependencies: dependencies,
                 graphGeneration: 4
             )
 
@@ -175,7 +176,7 @@ struct ArchitectureStabilityMeasurementTests {
             ))
             let deleted = try await build(
                 assignment: assignment,
-                services: services,
+                dependencies: dependencies,
                 graphGeneration: 5
             )
 
@@ -256,14 +257,14 @@ struct ArchitectureStabilityMeasurementTests {
 
     private func build(
         assignment: TriptychAssignment,
-        services: WorkspaceServices,
+        dependencies: WorkspaceSnapshotBuilderDependencies,
         graphGeneration: Int
     ) async throws -> WorkspaceRefreshMeasurement {
-        let indexed = try await services.searchIndex.workspaceGeneration()
+        let indexed = try await dependencies.searchIndex.workspaceGeneration()
         let result = try await WorkspaceSnapshotBuilder.build(
             assignment: assignment,
             mode: .snapshot,
-            services: services,
+            dependencies: dependencies,
             graphGeneration: graphGeneration,
             workspaceGeneration: indexed + 1
         )

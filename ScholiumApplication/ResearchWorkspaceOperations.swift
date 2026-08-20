@@ -2,6 +2,29 @@ import ScholiumContracts
 import Foundation
 import ScholiumCore
 
+struct WorkspaceResearchOperationsDependencies: Sendable {
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let controlStore: TriptychControlStore
+    let transactionRecoveryStore: TriptychMutationRecoveryStore
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let critiqueRegistry: CritiqueRegistry
+    let agentChangeEvidenceStore: AgentChangeEvidenceStore
+}
+
+extension WorkspaceServices {
+    var researchWorkspaceDependencies:
+        WorkspaceResearchOperationsDependencies {
+        WorkspaceResearchOperationsDependencies(
+            portableResearchRecordStore: portableResearchRecordStore,
+            controlStore: controlStore,
+            transactionRecoveryStore: transactionRecoveryStore,
+            localResearchExecutionStore: localResearchExecutionStore,
+            critiqueRegistry: critiqueRegistry,
+            agentChangeEvidenceStore: agentChangeEvidenceStore
+        )
+    }
+}
+
 private struct CurrentResearchSource {
     let note: VaultQualifiedNoteID
     let document: NoteDocument
@@ -147,23 +170,23 @@ extension WorkspaceHandle {
     ) async {
         switch phase {
         case .beforeRename:
-            await services.portableResearchRecordStore
+            await researchWorkspaceDependencies.portableResearchRecordStore
                 .setPostCommitFaultForTesting(nil)
-            await services.portableResearchRecordStore
+            await researchWorkspaceDependencies.portableResearchRecordStore
                 .setPreCommitFaultForTesting { _ in
                     throw InjectedResearchSettlementReplacementFault.beforeRename
                 }
         case .afterRename:
-            await services.portableResearchRecordStore
+            await researchWorkspaceDependencies.portableResearchRecordStore
                 .setPreCommitFaultForTesting(nil)
-            await services.portableResearchRecordStore
+            await researchWorkspaceDependencies.portableResearchRecordStore
                 .setPostCommitFaultForTesting { _ in
                     throw InjectedResearchSettlementReplacementFault.afterRename
                 }
         case nil:
-            await services.portableResearchRecordStore
+            await researchWorkspaceDependencies.portableResearchRecordStore
                 .setPreCommitFaultForTesting(nil)
-            await services.portableResearchRecordStore
+            await researchWorkspaceDependencies.portableResearchRecordStore
                 .setPostCommitFaultForTesting(nil)
         }
     }
@@ -174,7 +197,7 @@ extension WorkspaceHandle {
         fingerprint: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord {
-        try await services.portableResearchRecordStore.settle(
+        try await researchWorkspaceDependencies.portableResearchRecordStore.settle(
             noteID: noteID,
             fingerprint: fingerprint,
             rationale: rationale
@@ -183,7 +206,7 @@ extension WorkspaceHandle {
 
     func portableSettlementProjectionForTesting() async throws
         -> PortableSettlementProjectionForTesting {
-        let listing = try await services.portableResearchRecordStore
+        let listing = try await researchWorkspaceDependencies.portableResearchRecordStore
             .settlementListing()
         return PortableSettlementProjectionForTesting(
             settlements: listing.settlements,
@@ -204,7 +227,7 @@ extension WorkspaceHandle {
             permits: { $0 != .other },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
-        let settlement = try await services.portableResearchRecordStore.settle(
+        let settlement = try await researchWorkspaceDependencies.portableResearchRecordStore.settle(
             noteID: context.identity.id,
             fingerprint: expectedRevision,
             rationale: rationale
@@ -215,7 +238,7 @@ extension WorkspaceHandle {
 
     func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
         try requireActive()
-        let listing = try await services.portableResearchRecordStore.activeDiscussions(
+        let listing = try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussions(
             noteID: noteID
         )
         guard listing.issues.isEmpty else {
@@ -228,12 +251,12 @@ extension WorkspaceHandle {
 
     func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
         try requireActive()
-        return try await services.portableResearchRecordStore.activeDiscussion(id: id)
+        return try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussion(id: id)
     }
 
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
         try requireActive()
-        return try await services.portableResearchRecordStore.activeDiscussionIfPresent(id: id)
+        return try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussionIfPresent(id: id)
     }
 
     func createDiscussion(
@@ -346,7 +369,7 @@ extension WorkspaceHandle {
             return stored
         }
         let discussion = try PortableResearchDiscussion(
-            triptychID: services.manifest.id,
+            triptychID: self.id,
             primaryNoteID: target.noteID,
             participatingNotes: participants,
             statements: [statement],
@@ -355,13 +378,13 @@ extension WorkspaceHandle {
         )
         let stored: PortableResearchDiscussion
         do {
-            stored = try await services.portableResearchRecordStore
+            stored = try await researchWorkspaceDependencies.portableResearchRecordStore
                 .createActiveDiscussion(discussion)
         } catch ResearchRecordStoreV1Error.activeDiscussionAlreadyExists(
             primaryNoteID: _,
             discussionID: let discussionID
         ) {
-            let existing = try await services.portableResearchRecordStore.activeDiscussion(
+            let existing = try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussion(
                 id: discussionID
             )
             guard existing.primaryNoteID == target.noteID,
@@ -384,7 +407,7 @@ extension WorkspaceHandle {
         passage: CommentAnchor? = nil
     ) async throws -> PortableResearchDiscussion {
         try requireActive()
-        let discussion = try await services.portableResearchRecordStore.activeDiscussion(
+        let discussion = try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussion(
             id: discussionID
         )
         let kind: PortableResearchStatementKind = switch author {
@@ -438,7 +461,7 @@ extension WorkspaceHandle {
                 throw ResearchOperationError.staleCommentRevision
             }
         }
-        return try await services.portableResearchRecordStore.appendDiscussionStatement(
+        return try await researchWorkspaceDependencies.portableResearchRecordStore.appendDiscussionStatement(
             statement,
             to: discussion.id,
             at: statement.createdAt
@@ -447,7 +470,7 @@ extension WorkspaceHandle {
 
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
         try requireActive()
-        if let local = try await services.localResearchExecutionStore.recordIfPresent(
+        if let local = try await researchWorkspaceDependencies.localResearchExecutionStore.recordIfPresent(
             id: discussionID
         ) {
             guard local.snapshot.request.function == .discuss else {
@@ -457,11 +480,11 @@ extension WorkspaceHandle {
         }
         let discussion: PortableResearchDiscussion
         do {
-            discussion = try await services.portableResearchRecordStore.activeDiscussion(
+            discussion = try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussion(
                 id: discussionID
             )
         } catch ResearchRecordStoreV1Error.discussionNotFound(_) {
-            let existing = try await services.portableResearchRecordStore.record(
+            let existing = try await researchWorkspaceDependencies.portableResearchRecordStore.record(
                 id: discussionID
             )
             guard existing.kind == .discussion else {
@@ -470,7 +493,7 @@ extension WorkspaceHandle {
             return existing
         }
         let participants = try await currentDiscussionParticipants(discussion)
-        let stored = try await services.portableResearchRecordStore.finishDiscussion(
+        let stored = try await researchWorkspaceDependencies.portableResearchRecordStore.finishDiscussion(
             id: discussionID,
             participatingNotes: participants
         )
@@ -483,9 +506,9 @@ extension WorkspaceHandle {
     ) async throws -> [PortableResearchStatement] {
         let expected = try ResearchDiscussionFactory.make(
             snapshot: snapshot,
-            triptychID: services.manifest.id
+            triptychID: self.id
         )
-        if let active = try await services.portableResearchRecordStore
+        if let active = try await researchWorkspaceDependencies.portableResearchRecordStore
             .activeDiscussionIfPresent(id: snapshot.runID) {
             guard ResearchDiscussionFactory.activeMatches(active, expected: expected) else {
                 throw ResearchFunctionContractError.invalidCompletion(
@@ -495,7 +518,7 @@ extension WorkspaceHandle {
             return active.statements
         }
         do {
-            let finished = try await services.portableResearchRecordStore.record(
+            let finished = try await researchWorkspaceDependencies.portableResearchRecordStore.record(
                 id: snapshot.runID
             )
             guard ResearchDiscussionFactory.finishedMatches(finished, expected: expected) else {
@@ -513,7 +536,7 @@ extension WorkspaceHandle {
 
     func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord] {
         try requireActive()
-        let listing = try await services.portableResearchRecordStore.listing()
+        let listing = try await researchWorkspaceDependencies.portableResearchRecordStore.listing()
         guard listing.issues.isEmpty else {
             throw ScholiumApplicationError.researchStoreUnavailable(
                 listing.issues.map(\.reason).joined(separator: "\n")
@@ -534,7 +557,7 @@ extension WorkspaceHandle {
         try requireActive()
         let updated: PortableResearchRecord
         do {
-            updated = try await services.portableResearchRecordStore
+            updated = try await researchWorkspaceDependencies.portableResearchRecordStore
                 .saveResearcherResponse(
                     draft,
                     recordID: recordID,
@@ -558,7 +581,7 @@ extension WorkspaceHandle {
         try requireActive()
         let record: PortableResearchRecord
         do {
-            record = try await services.portableResearchRecordStore.record(id: recordID)
+            record = try await researchWorkspaceDependencies.portableResearchRecordStore.record(id: recordID)
         } catch ResearchRecordStoreV1Error.recordNotFound(_),
                 ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
             throw ResearchRecordChangeRecoveryError.recordUnavailable
@@ -614,7 +637,7 @@ extension WorkspaceHandle {
         }
         let review: PortableResearchNoteReview
         do {
-            review = try await services.portableResearchRecordStore
+            review = try await researchWorkspaceDependencies.portableResearchRecordStore
                 .markCurrentNoteReviewed(
                 noteID: noteID,
                 observedRevision: expectedRevision,
@@ -624,8 +647,8 @@ extension WorkspaceHandle {
             guard case .replacementCommitUncertain(let reason) = storeError else {
                 throw storeError
             }
-            let records = try await services.portableResearchRecordStore.listing()
-            let reviews = try await services.portableResearchRecordStore
+            let records = try await researchWorkspaceDependencies.portableResearchRecordStore.listing()
+            let reviews = try await researchWorkspaceDependencies.portableResearchRecordStore
                 .noteReviewListing()
             let required = Set(records.records.compactMap { record ->
                 PortableResearchNoteActivityReference? in
@@ -704,7 +727,7 @@ extension WorkspaceHandle {
                 ))
                 continue
             }
-            let evidence = try await services.agentChangeEvidenceStore.evidence(
+            let evidence = try await researchWorkspaceDependencies.agentChangeEvidenceStore.evidence(
                 runID: record.id,
                 noteID: noteID
             )
@@ -716,7 +739,7 @@ extension WorkspaceHandle {
                 throw ResearchRecordChangeRecoveryOperationError
                     .changeEvidenceMismatch(noteID)
             }
-            let sourceBytes = try await services.agentChangeEvidenceStore.startingData(
+            let sourceBytes = try await researchWorkspaceDependencies.agentChangeEvidenceStore.startingData(
                 runID: record.id,
                 noteID: noteID,
                 expectedRevision: startingRevision
@@ -844,7 +867,7 @@ extension WorkspaceHandle {
         status: ResearchLiteratureRecommendationDispositionStatus
     ) async throws -> PortableResearchRecord {
         try requireActive()
-        let updated = try await services.portableResearchRecordStore
+        let updated = try await researchWorkspaceDependencies.portableResearchRecordStore
             .setRecommendationDisposition(
                 status,
                 recommendationID: recommendationID,
@@ -860,7 +883,7 @@ extension WorkspaceHandle {
         note: String?
     ) async throws -> PortableResearchRecord {
         try requireActive()
-        let updated = try await services.portableResearchRecordStore
+        let updated = try await researchWorkspaceDependencies.portableResearchRecordStore
             .setRecommendationNote(
                 note,
                 recommendationID: recommendationID,
@@ -873,17 +896,17 @@ extension WorkspaceHandle {
     func deleteResearchRecordPermanently(id: UUID) async throws {
         try requireActive()
         do {
-            _ = try await services.portableResearchRecordStore.deletePermanently(id: id)
+            _ = try await researchWorkspaceDependencies.portableResearchRecordStore.deletePermanently(id: id)
         } catch ResearchRecordStoreV1Error.recordNotFound {
-            guard await services.portableResearchRecordStore
+            guard await researchWorkspaceDependencies.portableResearchRecordStore
                 .isRecordPermanentlyDeleted(id: id) else {
                 throw ResearchRecordStoreV1Error.recordNotFound(id)
             }
             // Resume cleanup after a prior deletion committed.
         }
-        _ = try await services.agentChangeEvidenceStore.removeEvidence(runID: id)
-        if try await services.localResearchExecutionStore.recordIfPresent(id: id) != nil {
-            try await services.localResearchExecutionStore.removeCompleted(runID: id)
+        _ = try await researchWorkspaceDependencies.agentChangeEvidenceStore.removeEvidence(runID: id)
+        if try await researchWorkspaceDependencies.localResearchExecutionStore.recordIfPresent(id: id) != nil {
+            try await researchWorkspaceDependencies.localResearchExecutionStore.removeCompleted(runID: id)
         }
         try await refreshAfterResearchCommit("The permanent Research Record deletion")
     }
@@ -893,7 +916,7 @@ extension WorkspaceHandle {
         noteID: UUID
     ) async throws -> ExactSourceComparison {
         try requireActive()
-        let record = try await services.portableResearchRecordStore.record(id: recordID)
+        let record = try await researchWorkspaceDependencies.portableResearchRecordStore.record(id: recordID)
         guard let change = record.confirmedChanges.first(where: {
             $0.noteID == noteID
         }) else {
@@ -903,7 +926,7 @@ extension WorkspaceHandle {
             throw ResearchRecordChangeRecoveryOperationError
                 .createdNoteHasNoPreimage(noteID)
         }
-        let evidence = try await services.agentChangeEvidenceStore.evidence(
+        let evidence = try await researchWorkspaceDependencies.agentChangeEvidenceStore.evidence(
             runID: record.id,
             noteID: noteID
         )
@@ -913,12 +936,12 @@ extension WorkspaceHandle {
             throw ResearchRecordChangeRecoveryOperationError
                 .changeEvidenceMismatch(noteID)
         }
-        let startingData = try await services.agentChangeEvidenceStore.startingData(
+        let startingData = try await researchWorkspaceDependencies.agentChangeEvidenceStore.startingData(
             runID: record.id,
             noteID: noteID,
             expectedRevision: startingRevision
         )
-        let endingData = try await services.agentChangeEvidenceStore.endingData(
+        let endingData = try await researchWorkspaceDependencies.agentChangeEvidenceStore.endingData(
             runID: record.id,
             noteID: noteID,
             expectedRevision: change.endingRevision
@@ -942,12 +965,12 @@ extension WorkspaceHandle {
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
         try requireActive()
-        return try await services.transactionRecoveryStore.pending()
+        return try await researchWorkspaceDependencies.transactionRecoveryStore.pending()
     }
 
     func resolveRecoveryRecord(_ id: UUID) async throws {
         try requireActive()
-        let records = try await services.transactionRecoveryStore.pending()
+        let records = try await researchWorkspaceDependencies.transactionRecoveryStore.pending()
         guard let record = records.first(where: { $0.id == id }),
               record.triptychID == self.id else {
             throw TriptychTransactionError.invalidPlan(
@@ -956,7 +979,7 @@ extension WorkspaceHandle {
         }
         if record.permanentDeletionPlan != nil {
             let issues = await recoverInterruptedDocumentTransactions()
-            if let remaining = try await services.transactionRecoveryStore
+            if let remaining = try await researchWorkspaceDependencies.transactionRecoveryStore
                 .pending().first(where: { $0.id == record.id }) {
                 throw TriptychTransactionError.recoveryRequired(remaining)
             }
@@ -994,7 +1017,7 @@ extension WorkspaceHandle {
             return
         }
         guard let link = record.researchWrite else {
-            try await services.transactionRecoveryStore.resolve(record)
+            try await researchWorkspaceDependencies.transactionRecoveryStore.resolve(record)
             try await refreshAfterResearchCommit("The recovery-record resolution")
             return
         }
@@ -1039,7 +1062,7 @@ extension WorkspaceHandle {
                 "The Agent write recovery record does not describe one exact source transaction."
             )
         }
-        let execution = try await services.localResearchExecutionStore.record(
+        let execution = try await researchWorkspaceDependencies.localResearchExecutionStore.record(
             id: link.runID
         )
         guard execution.triptychID == self.id,
@@ -1073,7 +1096,7 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.recoveryRequired
         }
         let current = try await repository.load(relativePath: entry.note.relativePath)
-        guard let identity = try await services.controlStore.identityRecord(
+        guard let identity = try await researchWorkspaceDependencies.controlStore.identityRecord(
             vaultID: entry.note.vaultID,
             relativePath: entry.note.relativePath
         ), identity.id == entry.noteID,
@@ -1094,7 +1117,7 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.recoveryRequired
             }
         } else {
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchWorkspaceDependencies.localResearchExecutionStore
                 .reconcileDocumentWriteRecovery(
                     runID: link.runID,
                     operationID: link.operationID,
@@ -1113,7 +1136,7 @@ extension WorkspaceHandle {
                 sourceRecovery!
             )
         }
-        try await services.transactionRecoveryStore.resolve(record)
+        try await researchWorkspaceDependencies.transactionRecoveryStore.resolve(record)
         return (
             note: entry.note,
             didReplaceSource: !terminal
@@ -1135,7 +1158,7 @@ extension WorkspaceHandle {
                 "The Agent creation recovery record does not describe one exact new Note."
             )
         }
-        let execution = try await services.localResearchExecutionStore.record(
+        let execution = try await researchWorkspaceDependencies.localResearchExecutionStore.record(
             id: link.runID
         )
         guard execution.triptychID == self.id,
@@ -1160,7 +1183,7 @@ extension WorkspaceHandle {
                     "The completed Agent creation does not own this recovery record."
                 )
             }
-            try await services.transactionRecoveryStore.resolve(record)
+            try await researchWorkspaceDependencies.transactionRecoveryStore.resolve(record)
             return (note: entry.note, didReplaceSource: false)
         }
         guard (write.state == .recoveryRequired
@@ -1190,7 +1213,7 @@ extension WorkspaceHandle {
         }
         let identityReconciliation: ManagedCreationIdentityReconciliation
         do {
-            identityReconciliation = try await services.controlStore
+            identityReconciliation = try await researchWorkspaceDependencies.controlStore
                 .reconcileManagedCreationIdentity(
                 vaultID: entry.note.vaultID,
                 relativePath: entry.note.relativePath,
@@ -1214,7 +1237,7 @@ extension WorkspaceHandle {
         }
         let finalIdentity: NoteIdentityRecord?
         do {
-            finalIdentity = try await services.controlStore.identityRecord(
+            finalIdentity = try await researchWorkspaceDependencies.controlStore.identityRecord(
                 vaultID: entry.note.vaultID,
                 relativePath: entry.note.relativePath
             )
@@ -1225,7 +1248,7 @@ extension WorkspaceHandle {
             guard finalSource.fingerprint == intendedRevision,
                   finalIdentity?.id == entry.noteID,
                   finalIdentity?.fingerprint == intendedRevision else {
-                try? await services.controlStore.rollbackManagedCreationIdentity(
+                try? await researchWorkspaceDependencies.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: entry.note.vaultID,
                     relativePath: entry.note.relativePath
@@ -1234,7 +1257,7 @@ extension WorkspaceHandle {
             }
         } else {
             guard finalIdentity == nil else {
-                try? await services.controlStore.rollbackManagedCreationIdentity(
+                try? await researchWorkspaceDependencies.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: entry.note.vaultID,
                     relativePath: entry.note.relativePath
@@ -1242,7 +1265,7 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.recoveryRequired
             }
         }
-        _ = try await services.localResearchExecutionStore
+        _ = try await researchWorkspaceDependencies.localResearchExecutionStore
             .reconcileDocumentWriteRecovery(
                 runID: link.runID,
                 operationID: link.operationID,
@@ -1250,7 +1273,7 @@ extension WorkspaceHandle {
                 observedRevision: finalSource?.fingerprint,
                 reconciledAt: Date()
             )
-        try await services.transactionRecoveryStore.resolve(record)
+        try await researchWorkspaceDependencies.transactionRecoveryStore.resolve(record)
         return (
             note: entry.note,
             didReplaceSource: finalSource != nil && didEstablishCreatedNote
@@ -1290,7 +1313,7 @@ extension WorkspaceHandle {
         }
         let identityReconciliation: ManagedCreationIdentityReconciliation
         do {
-            identityReconciliation = try await services.controlStore
+            identityReconciliation = try await researchWorkspaceDependencies.controlStore
                 .reconcileManagedCreationIdentity(
                 vaultID: reference.target.vaultID,
                 relativePath: reference.target.relativePath,
@@ -1315,11 +1338,11 @@ extension WorkspaceHandle {
         let finalPathIdentity: NoteIdentityRecord?
         let finalReservedIdentity: NoteIdentityRecord?
         do {
-            finalPathIdentity = try await services.controlStore.identityRecord(
+            finalPathIdentity = try await researchWorkspaceDependencies.controlStore.identityRecord(
                 vaultID: reference.target.vaultID,
                 relativePath: reference.target.relativePath
             )
-            finalReservedIdentity = try await services.controlStore.identityRecord(
+            finalReservedIdentity = try await researchWorkspaceDependencies.controlStore.identityRecord(
                 id: reference.reservedIdentityID
             )
         } catch {
@@ -1330,7 +1353,7 @@ extension WorkspaceHandle {
                   finalPathIdentity?.id == reference.reservedIdentityID,
                   finalPathIdentity?.fingerprint == intendedRevision,
                   finalReservedIdentity == finalPathIdentity else {
-                try? await services.controlStore.rollbackManagedCreationIdentity(
+                try? await researchWorkspaceDependencies.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: reference.target.vaultID,
                     relativePath: reference.target.relativePath
@@ -1340,7 +1363,7 @@ extension WorkspaceHandle {
         } else {
             guard finalPathIdentity == nil,
                   finalReservedIdentity == nil else {
-                try? await services.controlStore.rollbackManagedCreationIdentity(
+                try? await researchWorkspaceDependencies.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: reference.target.vaultID,
                     relativePath: reference.target.relativePath
@@ -1348,7 +1371,7 @@ extension WorkspaceHandle {
                 throw TriptychTransactionError.recoveryRequired(record)
             }
         }
-        try await services.transactionRecoveryStore.resolve(record)
+        try await researchWorkspaceDependencies.transactionRecoveryStore.resolve(record)
         return reference.target
     }
 
@@ -1358,10 +1381,10 @@ extension WorkspaceHandle {
         critiqueRelativePath: String
     ) async throws -> CritiqueAssociation? {
         try requireActive()
-        if let issue = await services.critiqueRegistry.healthError() {
+        if let issue = await researchWorkspaceDependencies.critiqueRegistry.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(issue)
         }
-        return await services.critiqueRegistry.association(
+        return await researchWorkspaceDependencies.critiqueRegistry.association(
             critiqueRelativePath: critiqueRelativePath
         )
     }
@@ -1386,15 +1409,15 @@ extension WorkspaceHandle {
                 workNote.relativePath
             )
         }
-        if let issue = await services.critiqueRegistry.healthError() {
+        if let issue = await researchWorkspaceDependencies.critiqueRegistry.healthError() {
             throw ScholiumApplicationError.researchStoreUnavailable(issue)
         }
-        guard let current = await services.critiqueRegistry.association(
+        guard let current = await researchWorkspaceDependencies.critiqueRegistry.association(
             workNoteID: context.identity.id
         ), current.rounds.contains(where: { $0.id == roundID }) else {
             throw CritiqueRegistryError.roundNotFound(roundID)
         }
-        let association = try await services.critiqueRegistry.setFindingDisposition(
+        let association = try await researchWorkspaceDependencies.critiqueRegistry.setFindingDisposition(
             roundID: roundID,
             findingID: findingID,
             decision: decision,
@@ -1422,12 +1445,12 @@ extension WorkspaceHandle {
                 workNote.relativePath
             )
         }
-        guard let current = await services.critiqueRegistry.association(
+        guard let current = await researchWorkspaceDependencies.critiqueRegistry.association(
             workNoteID: context.identity.id
         ), current.rounds.contains(where: { $0.id == roundID }) else {
             throw CritiqueRegistryError.roundNotFound(roundID)
         }
-        let association = try await services.critiqueRegistry.completeRound(
+        let association = try await researchWorkspaceDependencies.critiqueRegistry.completeRound(
             roundID: roundID
         )
         guard association.rounds.contains(where: {
@@ -1448,7 +1471,7 @@ extension WorkspaceHandle {
     ) async throws -> PortableResearchRecord {
         let record: PortableResearchRecord
         do {
-            record = try await services.portableResearchRecordStore.record(id: id)
+            record = try await researchWorkspaceDependencies.portableResearchRecordStore.record(id: id)
         } catch ResearchRecordStoreV1Error.recordNotFound(_),
                 ResearchRecordStoreV1Error.recordPermanentlyDeleted(_) {
             throw ResearchRecordChangeRecoveryError.recordUnavailable
@@ -1465,7 +1488,7 @@ extension WorkspaceHandle {
     private func currentResearchSource(
         noteID: UUID
     ) async throws -> CurrentResearchSource? {
-        guard let controlled = try await services.controlStore.identityRecord(id: noteID) else {
+        guard let controlled = try await researchWorkspaceDependencies.controlStore.identityRecord(id: noteID) else {
             return nil
         }
         let note = VaultQualifiedNoteID(

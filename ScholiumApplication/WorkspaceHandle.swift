@@ -374,6 +374,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let zoteroBindings: ZoteroBindingOperations
 
     let services: WorkspaceServices
+    let researchContinuationDependencies:
+        WorkspaceResearchContinuationDependencies
+    let researchWorkspaceDependencies:
+        WorkspaceResearchOperationsDependencies
     let researchFunctionCoordinator: ResearchFunctionCoordinator
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
@@ -479,6 +483,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.assignment = assignment
         self.mode = mode
         self.services = services
+        self.researchContinuationDependencies = services.researchContinuationDependencies
+        self.researchWorkspaceDependencies = services.researchWorkspaceDependencies
         self.researchFunctionCoordinator = researchFunctionCoordinator
         self.leases = leases
         currentSnapshot = initialSnapshot
@@ -720,7 +726,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 initialBuild = try await WorkspaceSnapshotBuilder.buildOpening(
                     assignment: assignment,
                     mode: mode,
-                    services: services,
+                    dependencies: services.snapshotBuilderDependencies,
                     availableVault: openingVault,
                     workspaceGeneration: initialWorkspaceGeneration
                 )
@@ -728,7 +734,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 initialBuild = try await WorkspaceSnapshotBuilder.build(
                     assignment: assignment,
                     mode: mode,
-                    services: services,
+                    dependencies: services.snapshotBuilderDependencies,
                     graphGeneration: 1,
                     workspaceGeneration: initialWorkspaceGeneration
                 )
@@ -737,7 +743,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 .repairBeforePublication(
                     build: initialBuild,
                     triptychID: assignment.id,
-                    services: services
+                    dependencies: services.researchStateReconcilerDependencies
                 )
             let snapshotReady = clock.now
             let initialSnapshot = repairedInitialBuild.snapshot
@@ -2639,7 +2645,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
-                services: services,
+                dependencies: services.snapshotBuilderDependencies,
                 graphGeneration: graphGeneration,
                 workspaceGeneration: workspaceGeneration
             )
@@ -2648,7 +2654,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 .repairBeforePublication(
                     build: build,
                     triptychID: assignment.id,
-                    services: services
+                    dependencies: services.researchStateReconcilerDependencies
                 )
             snapshot = repairedBuild.snapshot
             measurement = repairedBuild.measurement

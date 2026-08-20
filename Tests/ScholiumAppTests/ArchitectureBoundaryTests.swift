@@ -348,6 +348,64 @@ struct ArchitectureBoundaryTests {
         #expect(gate.contains("try Task.checkCancellation()"))
     }
 
+    @Test("Snapshot projection does not perform durable Discussion repair")
+    func snapshotProjectionBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let builder = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceSnapshotBuilder.swift"
+            ),
+            encoding: .utf8
+        )
+        let reconciler = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceResearchStateReconciler.swift"
+            ),
+            encoding: .utf8
+        )
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+        let measurement = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Tests/ScholiumApplicationTests/ArchitectureStabilityMeasurementTests.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(!builder.contains("createActiveDiscussion"))
+        #expect(!builder.contains("reconcileDiscussionPassages"))
+        #expect(reconciler.contains("createActiveDiscussion"))
+        #expect(reconciler.contains("reconcileDiscussionPassages"))
+        #expect(handle.contains("repairBeforePublication"))
+        #expect(builder.contains("struct WorkspaceSnapshotBuilderDependencies"))
+        #expect(builder.contains(
+            "dependencies: WorkspaceSnapshotBuilderDependencies"
+        ))
+        #expect(!builder.contains("services."))
+        #expect(reconciler.contains(
+            "struct WorkspaceResearchStateReconcilerDependencies"
+        ))
+        #expect(reconciler.contains(
+            "dependencies: WorkspaceResearchStateReconcilerDependencies"
+        ))
+        #expect(!reconciler.contains("services."))
+        #expect(!measurement.contains("services: WorkspaceServices"))
+        #expect(measurement.contains(
+            "dependencies: WorkspaceSnapshotBuilderDependencies"
+        ))
+    }
+
     @Test("Workspace service composition is not borrowed by external callers")
     func workspaceCapabilityBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -414,6 +472,7 @@ struct ArchitectureBoundaryTests {
             "LocalResearchExecutionStore",
             "LocalResearchExecutionStoreIssue",
             "LocalResearchExecutionStoreError",
+            "LocalResearchExecutionListing",
             "research-execution-v10",
         ] {
             #expect(
@@ -423,7 +482,11 @@ struct ArchitectureBoundaryTests {
         }
         #expect(localStoreSource.contains("public struct LocalResearchExecutionRecord"))
         #expect(localStoreSource.contains("public actor LocalResearchExecutionStore"))
+        #expect(localStoreSource.contains("public struct LocalResearchExecutionListing"))
+        #expect(localStoreSource.contains("public struct LocalResearchExecutionStoreIssue"))
         #expect(localStoreSource.contains("LocalResearchExecutionStoreError"))
+        #expect(localStoreSource.contains("public enum LocalResearchExecutionStoreError"))
+        #expect(localStoreSource.contains("research-execution-v10"))
         #expect(!localStoreSource.contains("ResearchRecordStoreV1Error"))
         #expect(!localStoreSource.contains("PortableResearchRecordError"))
         #expect(!localStoreSource.contains("ResearchFunctionRecordStoreError"))
@@ -453,6 +516,80 @@ struct ArchitectureBoundaryTests {
             )
             #expect(!source.contains("StoredFunctionRecord"))
         }
+    }
+
+    @Test("Research continuation does not borrow the full workspace service aggregate")
+    func researchContinuationDependencyBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let continuation = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchContinuationOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(continuation.contains(
+            "struct WorkspaceResearchContinuationDependencies"
+        ))
+        #expect(continuation.contains(
+            "researchContinuationDependencies"
+        ))
+        #expect(!continuation.contains("services."))
+        #expect(handle.contains(
+            "let researchContinuationDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchContinuationDependencies"
+        ))
+    }
+
+    @Test("Research workspace operations use a bounded dependency bundle")
+    func researchWorkspaceDependencyBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let operations = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchWorkspaceOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(operations.contains(
+            "struct WorkspaceResearchOperationsDependencies"
+        ))
+        #expect(operations.contains("researchWorkspaceDependencies"))
+        #expect(!operations.contains("services."))
+        #expect(handle.contains(
+            "let researchWorkspaceDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchWorkspaceDependencies"
+        ))
     }
 
     @Test("Research execution lifecycle has one Workspace coordinator")
