@@ -348,6 +348,48 @@ struct ArchitectureBoundaryTests {
         #expect(gate.contains("try Task.checkCancellation()"))
     }
 
+    @Test("Workspace service composition is not borrowed by external callers")
+    func workspaceCapabilityBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let runtime = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceRuntime.swift"
+            ),
+            encoding: .utf8
+        )
+        let connection = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchAgentConnectionOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let ports = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceCapabilityPorts.swift"
+            ),
+            encoding: .utf8
+        )
+        let workspaceHandleStart = try #require(
+            connection.range(of: "extension WorkspaceHandle {")
+        )
+        let externalCallers = connection[..<workspaceHandleStart.lowerBound]
+
+        #expect(!runtime.contains("current.services."))
+        #expect(!externalCallers.contains("services."))
+        #expect(!externalCallers.contains("WorkspaceServices"))
+        #expect(connection[workspaceHandleStart.lowerBound...].contains("services."))
+        #expect(ports.contains("validatePortableIdentityForReidentification"))
+        #expect(ports.contains("revokeResearchAgentSession"))
+        #expect(ports.contains("researchSourceMaterialStatus"))
+    }
+
     @Test("Research execution lifecycle has one Workspace coordinator")
     func researchFunctionCoordinatorBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

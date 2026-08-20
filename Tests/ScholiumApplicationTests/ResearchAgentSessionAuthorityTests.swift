@@ -594,6 +594,43 @@ struct ResearchAgentSessionAuthorityTests {
         await runtime.shutdown()
     }
 
+    @Test("Research Operations revoke an Agent session through the Workspace capability")
+    func operationsRevokeAgentSessionThroughWorkspaceCapability() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let helpers = ResearchFunctionOperationsTests()
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: handle,
+                actionID: .discuss,
+                target: helpers.actionNote(target)
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+
+        try await handle.research.revokeAgentSession(credential.sessionID)
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Pairing is one-time, scoped, and a re-pair revokes the prior writer")
     func oneTimeAndRepairRevocation() async throws {
         let random = FixedResearchRandomSource()

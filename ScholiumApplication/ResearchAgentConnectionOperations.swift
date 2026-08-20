@@ -204,10 +204,7 @@ extension ResearchOperations {
 
     public func revokeAgentSession(_ sessionID: UUID) async throws {
         let handle = try await reference.requireHandle()
-        guard let sessions = handle.services.researchAgentSessions else {
-            throw ResearchAgentConnectionError.secureRandomUnavailable
-        }
-        await sessions.revokeSession(sessionID)
+        try await handle.revokeResearchAgentSession(sessionID)
     }
 }
 
@@ -567,8 +564,8 @@ extension WorkspaceHandle {
                     guard let self else {
                         return .repairRequired(.bookmarkUnavailable)
                     }
-                    return await self.services.researchSourceAccessStore.status(
-                        analysisNoteID: record.snapshot.request.target.noteID
+                    return await self.researchSourceMaterialStatus(
+                        for: record.snapshot.request.target.noteID
                     )
                 }
             )

@@ -574,6 +574,39 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("inspectMaterials reports source loss through the Workspace capability")
+    func inspectMaterialsReportsSourceLossThroughWorkspaceCapability() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let prepared = try await preparedAnalysis(handle: handle, fixture: fixture)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        try await handle.research.removeSourceAccess(for: analysis)
+        let response = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .inspectMaterials,
+                    useEligibility: .contextUse
+                )]
+            )
+        )
+        let outcome = try #require(response.outcomes.first)
+        #expect(outcome.availability == .unavailable)
+        #expect(outcome.items.isEmpty)
+        #expect(outcome.limitations.contains {
+            $0.contains("missing from its authoritative source binding")
+        })
+        await runtime.shutdown()
+    }
+
     @Test("Researcher-state Context Use preserves content and verifies its current owner")
     func verifiedResearcherStateContextUse() async throws {
         let fixture = try await ResearchFixture.make()

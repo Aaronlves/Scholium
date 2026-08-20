@@ -324,8 +324,7 @@ public actor WorkspaceRuntime {
         guard let current = handles[currentID] else {
             throw ScholiumApplicationError.workspaceNotFound(currentID)
         }
-        try await current.services.researchConfigurationStore
-            .validatePortableIdentityForReidentification(stableID)
+        try await current.validatePortableIdentityForReidentification(stableID)
         let assignment = try await registry.reidentifyTriptych(id: currentID, as: stableID)
         let prepared = await prepareChangedReplacements(
             registry: registry,
