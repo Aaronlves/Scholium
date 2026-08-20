@@ -434,15 +434,44 @@ struct ArchitectureBoundaryTests {
             ),
             encoding: .utf8
         )
+        let servicesCompositionStart = try #require(
+            connection.range(of: "extension WorkspaceServices")
+        )
+        let runtimeStart = try #require(
+            connection.range(
+                of: "extension WorkspaceRuntime",
+                range: servicesCompositionStart.upperBound..<connection.endIndex
+            )
+        )
         let workspaceHandleStart = try #require(
             connection.range(of: "extension WorkspaceHandle {")
         )
-        let externalCallers = connection[..<workspaceHandleStart.lowerBound]
+        let callersBeforeComposition = connection[..<servicesCompositionStart.lowerBound]
+        let callersAfterComposition = connection[runtimeStart.lowerBound...]
 
         #expect(!runtime.contains("current.services."))
-        #expect(!externalCallers.contains("services."))
-        #expect(!externalCallers.contains("WorkspaceServices"))
-        #expect(connection[workspaceHandleStart.lowerBound...].contains("services."))
+        #expect(!callersBeforeComposition.contains("services."))
+        #expect(!callersBeforeComposition.contains("WorkspaceServices"))
+        #expect(!callersAfterComposition.contains("services."))
+        #expect(!callersAfterComposition.contains("WorkspaceServices"))
+        #expect(connection.contains(
+            "struct WorkspaceResearchAgentConnectionDependencies"
+        ))
+        #expect(!connection[workspaceHandleStart.lowerBound...].contains(
+            "services."
+        ))
+        #expect(connection.contains(
+            "researchAgentConnectionDependencies"
+        ))
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(handle.contains(
+            "services.researchAgentConnectionDependencies"
+        ))
         #expect(ports.contains("validatePortableIdentityForReidentification"))
         #expect(ports.contains("revokeResearchAgentSession"))
         #expect(ports.contains("researchSourceMaterialStatus"))

@@ -3,6 +3,23 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchAgentConnectionDependencies: Sendable {
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let researchAgentSessions: ResearchAgentSessionAuthority?
+    let controlStore: TriptychControlStore
+}
+
+extension WorkspaceServices {
+    var researchAgentConnectionDependencies:
+        WorkspaceResearchAgentConnectionDependencies {
+        WorkspaceResearchAgentConnectionDependencies(
+            localResearchExecutionStore: localResearchExecutionStore,
+            researchAgentSessions: researchAgentSessions,
+            controlStore: controlStore
+        )
+    }
+}
+
 extension WorkspaceRuntime {
     public func startResearchAgentRun(
         triptychID: UUID,
@@ -292,7 +309,7 @@ extension WorkspaceHandle {
         guard request.actionID == .analyze,
               let creation = request.newAnalysis,
               request.target == nil,
-              let analysisVaultID = services.manifest.vaultIDs[.paperAnalysis],
+              let analysisVaultID = self.assignment.vault(for: .paperAnalysis)?.id,
               creation.target.vaultID == analysisVaultID,
               WorkspaceDocumentLifecycle(
                   relativePath: creation.target.relativePath
@@ -300,9 +317,9 @@ extension WorkspaceHandle {
             throw ResearchActionExecutionContractError.staleResolution
         }
 
-        let settings = try await services.controlStore.settings()
+        let settings = try await researchAgentConnectionDependencies.controlStore.settings()
         let reservedIdentity = Self.agentStartStableIdentity(
-            triptychID: services.manifest.id,
+            triptychID: self.id,
             requestID: creation.requestID,
             target: creation.target,
             settingsRevision: settings.revision
@@ -328,7 +345,7 @@ extension WorkspaceHandle {
         _ = try await refresh()
 
         if let source = creation.source {
-            let bindings = try await services.controlStore.zoteroBindings()
+            let bindings = try await researchAgentConnectionDependencies.controlStore.zoteroBindings()
             let binding = try AnalysisZoteroBinding(
                 noteID: reservedIdentity,
                 library: source.library,
@@ -379,12 +396,12 @@ extension WorkspaceHandle {
 
     func validateActiveResearchAgentRun(_ runID: UUID) async throws {
         try requireActive()
-        if let record = try await services.localResearchExecutionStore
+        if let record = try await researchAgentConnectionDependencies.localResearchExecutionStore
             .recordIfPresent(id: runID) {
             _ = try activeAction(in: record)
             return
         }
-        let improvement = try await services.localResearchExecutionStore
+        let improvement = try await researchAgentConnectionDependencies.localResearchExecutionStore
             .methodImprovement(id: runID)
         guard improvement.state == .prepared || improvement.state == .writing else {
             throw ResearchAgentConnectionError.runUnavailable
@@ -396,14 +413,14 @@ extension WorkspaceHandle {
         validity: TimeInterval
     ) async throws -> ResearchAgentHandoff {
         try requireActive()
-        let record = try await services.localResearchExecutionStore.record(id: runID)
+        let record = try await researchAgentConnectionDependencies.localResearchExecutionStore.record(id: runID)
         let action = try activeAction(in: record)
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentConnectionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         return try await sessions.issuePairing(
             runID: runID,
-            triptychID: services.manifest.id,
+            triptychID: self.id,
             canWrite: !action.authority.writableNotes.isEmpty,
             validity: validity
         )
@@ -415,7 +432,7 @@ extension WorkspaceHandle {
         sessionValidity: TimeInterval
     ) async throws -> ResearchConnectionCredential {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentConnectionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let credential = try await sessions.exchange(
@@ -429,7 +446,7 @@ extension WorkspaceHandle {
             requiresWrite: false,
             claimCoreProtocol: false
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             await sessions.revokeSession(credential.sessionID)
             throw ResearchAgentSessionError.sessionRejected
         }
@@ -442,7 +459,7 @@ extension WorkspaceHandle {
         run: ResearchRunLocator
     ) async throws -> ResearchAuthenticatedRunContext {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentConnectionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let coreProtocol = try BundledResearchSkillResources.coreProtocol()
@@ -451,10 +468,10 @@ extension WorkspaceHandle {
             run: run,
             requiresWrite: false
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        let record = try await services.localResearchExecutionStore.record(
+        let record = try await researchAgentConnectionDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         let action: ResearchActionSnapshot
@@ -511,7 +528,7 @@ extension WorkspaceHandle {
         provider: any ResearchContextProviding = FoundationResearchContextProvider()
     ) async throws -> ResearchContextResponse {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentConnectionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -520,10 +537,10 @@ extension WorkspaceHandle {
             requiresWrite: false,
             claimCoreProtocol: false
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        let record = try await services.localResearchExecutionStore.record(
+        let record = try await researchAgentConnectionDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         let action = try activeAction(in: record)
@@ -578,7 +595,7 @@ extension WorkspaceHandle {
         run: ResearchRunLocator
     ) async throws -> ResearchRunEndReceipt {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentConnectionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -588,10 +605,10 @@ extension WorkspaceHandle {
             claimCoreProtocol: false,
             allowFinalized: true
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        if let improvement = try? await services.localResearchExecutionStore
+        if let improvement = try? await researchAgentConnectionDependencies.localResearchExecutionStore
             .methodImprovement(id: authenticated.runID) {
             let recoveryRetained = improvement.state == .writing
             await sessions.revokeRun(authenticated.runID)
@@ -603,7 +620,7 @@ extension WorkspaceHandle {
                     : "The Method improvement Run ended and no new Agent operation is authorized."
             )
         }
-        let record = try await services.localResearchExecutionStore.record(
+        let record = try await researchAgentConnectionDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         if let completion = record.completion,
@@ -651,7 +668,7 @@ extension WorkspaceHandle {
     private func activeAction(
         in record: LocalResearchExecutionRecord
     ) throws -> ResearchActionSnapshot {
-        guard record.triptychID == services.manifest.id,
+        guard record.triptychID == self.id,
               let action = record.snapshot.actionSnapshot else {
             throw ResearchAgentConnectionError.runUnavailable
         }
