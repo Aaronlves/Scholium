@@ -29,15 +29,8 @@ struct CLIContext: Sendable {
     /// construct the ordinary snapshot runtime or touch vault state.
     static func makeAgentBridge() throws -> AgentBridgeOperations {
         let environment = ProcessInfo.processInfo.environment
-        var bridgeEnvironment = environment
-#if DEBUG
-        if bridgeEnvironment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"] == nil,
-           let legacy = bridgeEnvironment["SCHOLIUM_AGENT_BRIDGE_APPLICATION_SUPPORT"] {
-            bridgeEnvironment["SCHOLIUM_AGENT_BRIDGE_CONTAINER"] = legacy
-        }
-#endif
         let bridgeContainerURL = try ScholiumPaths.agentBridgeContainerURL(
-            environment: bridgeEnvironment
+            environment: environment
         )
         return try AgentBridgeOperations(
             applicationSupportURL: bridgeContainerURL
