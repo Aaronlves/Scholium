@@ -1084,6 +1084,13 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("window.toolbarStyle = .unified"))
         #expect(!toolbarSource.contains("unifiedCompact"))
         #expect(toolbarSource.contains("ScholiumWorkspaceDocumentIdentityToolbarView"))
+        #expect(toolbarSource.contains("visibilityPriority: .low"))
+        #expect(toolbarSource.contains(
+            "host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)"
+        ))
+        #expect(toolbarSource.contains(
+            ".frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)"
+        ))
         #expect(toolbarSource.contains("ScholiumWorkspaceDocumentModeToolbarView"))
         #expect(toolbarSource.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
         #expect(toolbarSource.contains("ScholiumWorkspaceDocumentNavigationToolbarView"))
@@ -1142,6 +1149,12 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
+        #expect(windowManagementSource.contains("windowDidEnterFullScreen"))
+        #expect(windowManagementSource.contains("windowDidExitFullScreen"))
+        #expect(
+            windowManagementSource.contains(
+                "window.standardWindowButton(.closeButton)?"
+            ))
         #expect(windowManagementSource.contains("scholium.workspaceToolbar.loading"))
         #expect(windowManagementSource.contains("installLoadingToolbarIfNeeded()"))
         #expect(
@@ -1149,6 +1162,10 @@ struct FrontendArchitectureTests {
                 "loadingToolbar.itemIdentifiers = [.flexibleSpace]"
             ))
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
+        #expect(
+            contentSource.contains(
+                ".toolbarBackground(.clear, for: .windowToolbar)"
+            ))
         #expect(
             contentSource.contains(
                 ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"

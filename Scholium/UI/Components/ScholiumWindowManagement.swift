@@ -798,6 +798,24 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         previousDelegate?.windowDidBecomeKey?(notification)
     }
 
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        if let window,
+           let notificationWindow = notification.object as? NSWindow,
+           notificationWindow === window {
+            reapplyWindowChromeAfterFullScreenTransition()
+        }
+        previousDelegate?.windowDidEnterFullScreen?(notification)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        if let window,
+           let notificationWindow = notification.object as? NSWindow,
+           notificationWindow === window {
+            reapplyWindowChromeAfterFullScreenTransition()
+        }
+        previousDelegate?.windowDidExitFullScreen?(notification)
+    }
+
     func windowWillClose(_ notification: Notification) {
         // Release App-wide claims before SwiftUI tears down the per-window
         // model so an unresolved request can move to another exact window.
@@ -1009,9 +1027,24 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private func applyWindowChrome(to window: NSWindow) {
         window.styleMask.insert(.fullSizeContentView)
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
+        window.toolbarStyle = .unified
         window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
+        applyNativeTitlebarBackground(to: window)
+    }
+
+    private func applyNativeTitlebarBackground(to window: NSWindow) {
+        // Full-screen mode promotes AppKit's toolbar into a separate native
+        // titlebar container. Keep that container on the same opaque semantic
+        // plane as the workspace so the system toolbar cannot expose its white
+        // default material during the transition.
+        guard let titlebarContainer = window.standardWindowButton(.closeButton)?
+            .superview?.superview else { return }
+        titlebarContainer.wantsLayer = true
+        titlebarContainer.layer?.backgroundColor =
+            ScholiumColorRole.documentBackground.nsColor.cgColor
     }
 
     private func installToolbarIfPossible() {
@@ -1022,6 +1055,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if let toolbarController,
            toolbarController.controls(splitController.nativeSplitViewController) {
             toolbarController.install(in: window)
+            applyWindowChrome(to: window)
             return
         }
         let controller = ScholiumWorkspaceToolbarController(
@@ -1031,6 +1065,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         )
         toolbarController = controller
         controller.install(in: window)
+        applyWindowChrome(to: window)
+    }
+
+    private func reapplyWindowChromeAfterFullScreenTransition() {
+        guard let window else { return }
+        applyWindowChrome(to: window)
+        installLoadingToolbarIfNeeded()
+        installToolbarIfPossible()
     }
 
     /// Keep the native toolbar band present from the window's first frame.

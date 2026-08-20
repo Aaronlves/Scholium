@@ -136,6 +136,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             return hostedItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Document"),
+                // The document identity is useful context, but it must yield
+                // before command controls and the trailing Inspector when a
+                // long title exhausts the native toolbar's width.
+                visibilityPriority: .low,
                 view: ScholiumWorkspaceDocumentIdentityToolbarView(
                     appState: appState,
                     documentController: appState.documentController,
@@ -203,6 +207,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             )
         )
         host.sizingOptions = [.intrinsicContentSize]
+        if identifier == Item.documentIdentity {
+            // NSToolbar may compress this hosted item before moving the
+            // command and Inspector items into an overlapping/clipped region.
+            host.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
         host.wantsLayer = true
         host.layer?.backgroundColor = NSColor.clear.cgColor
         item.view = host
@@ -500,11 +510,13 @@ private struct ScholiumWorkspaceDocumentIdentityToolbarView: View {
                 Text(note.title ?? note.displayName)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .layoutPriority(-1)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .scholiumForeground(.secondaryText)
                     .help(note.title ?? note.displayName)
                     .accessibilityIdentifier("scholium.documentNoteName")
             }
-            .fixedSize(horizontal: true, vertical: false)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("scholium.documentToolbarIdentity")
         } else {
