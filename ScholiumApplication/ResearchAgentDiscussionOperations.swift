@@ -2,6 +2,23 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchAgentDiscussionDependencies: Sendable {
+    let researchAgentSessions: ResearchAgentSessionAuthority?
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let portableResearchRecordStore: PortableResearchRecordStore
+}
+
+extension WorkspaceServices {
+    var researchAgentDiscussionDependencies:
+        WorkspaceResearchAgentDiscussionDependencies {
+        WorkspaceResearchAgentDiscussionDependencies(
+            researchAgentSessions: researchAgentSessions,
+            localResearchExecutionStore: localResearchExecutionStore,
+            portableResearchRecordStore: portableResearchRecordStore
+        )
+    }
+}
+
 extension WorkspaceRuntime {
     /// Appends one attributed Agent turn to the active Discussion owned by
     /// this authenticated Run. The Session authenticates the Run; it does
@@ -36,7 +53,7 @@ extension WorkspaceHandle {
         request: ResearchAgentDiscussionReplyRequest
     ) async throws -> ResearchAgentDiscussionReplyReceipt {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentDiscussionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -45,13 +62,13 @@ extension WorkspaceHandle {
             requiresWrite: false,
             claimCoreProtocol: false
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
 
-        guard let execution = try await services.localResearchExecutionStore
+        guard let execution = try await researchAgentDiscussionDependencies.localResearchExecutionStore
             .recordIfPresent(id: authenticated.runID),
-              execution.triptychID == services.manifest.id,
+              execution.triptychID == self.id,
               execution.completion == nil,
               let action = execution.snapshot.actionSnapshot,
               action.actionID == .discuss,
@@ -63,11 +80,11 @@ extension WorkspaceHandle {
 
         let expected = try ResearchDiscussionFactory.make(
             snapshot: execution.snapshot,
-            triptychID: services.manifest.id
+            triptychID: self.id
         )
         let active: PortableResearchDiscussion
         do {
-            active = try await services.portableResearchRecordStore
+            active = try await researchAgentDiscussionDependencies.portableResearchRecordStore
                 .activeDiscussion(id: authenticated.runID)
         } catch ResearchRecordStoreV1Error.discussionNotFound {
             throw ResearchAgentConnectionError.runUnavailable

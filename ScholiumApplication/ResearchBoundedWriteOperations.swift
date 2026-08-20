@@ -2,6 +2,27 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchBoundedWriteDependencies: Sendable {
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let controlStore: TriptychControlStore
+    let researchAgentSessions: ResearchAgentSessionAuthority?
+    let agentChangeEvidenceStore: AgentChangeEvidenceStore
+    let transactionRecoveryStore: TriptychMutationRecoveryStore
+}
+
+extension WorkspaceServices {
+    var researchBoundedWriteDependencies:
+        WorkspaceResearchBoundedWriteDependencies {
+        WorkspaceResearchBoundedWriteDependencies(
+            localResearchExecutionStore: localResearchExecutionStore,
+            controlStore: controlStore,
+            researchAgentSessions: researchAgentSessions,
+            agentChangeEvidenceStore: agentChangeEvidenceStore,
+            transactionRecoveryStore: transactionRecoveryStore
+        )
+    }
+}
+
 public struct ResearchWriteSetExtensionDelivery: Sendable {
     public let record: ResearchWriteSetExtensionRecord?
     public let result: ResearchWriteSetExtensionResult
@@ -250,7 +271,7 @@ extension WorkspaceHandle {
         at now: Date
     ) async throws -> [ResearchWriteSetExtensionRecord] {
         try requireActive()
-        let listing = try await services.localResearchExecutionStore.listing()
+        let listing = try await researchBoundedWriteDependencies.localResearchExecutionStore.listing()
         guard listing.issues.isEmpty else {
             throw ResearchBoundedWriteSetError.invalidExtensionRecord
         }
@@ -258,7 +279,7 @@ extension WorkspaceHandle {
         for execution in listing.records {
             for request in execution.writeSetExtensionRecords where request.isUnresolved {
                 if request.expiresAt <= now {
-                    _ = try await services.localResearchExecutionStore
+                    _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
                         .resolveWriteSetExtension(
                             runID: request.runID,
                             requestID: request.id,
@@ -279,7 +300,7 @@ extension WorkspaceHandle {
         at now: Date
     ) async throws -> ResearchWriteSetExtensionRecord {
         try requireActive()
-        let listing = try await services.localResearchExecutionStore.listing()
+        let listing = try await researchBoundedWriteDependencies.localResearchExecutionStore.listing()
         guard listing.issues.isEmpty,
               let execution = listing.records.first(where: { record in
                   record.writeSetExtensionRecords.contains { $0.id == requestID }
@@ -290,7 +311,7 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.targetUnavailable
         }
         if request.isUnresolved, request.expiresAt <= now {
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .resolveWriteSetExtension(
                     runID: request.runID,
                     requestID: request.id,
@@ -298,7 +319,7 @@ extension WorkspaceHandle {
                     entries: [],
                     decidedAt: now
                 )
-            return try await services.localResearchExecutionStore
+            return try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .writeSetExtension(runID: request.runID, requestID: request.id)
         }
         return request
@@ -315,7 +336,7 @@ extension WorkspaceHandle {
             run: run,
             requiresWrite: true
         )
-        var execution = try await services.localResearchExecutionStore.record(
+        var execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         let action = try activeResearchAction(execution)
@@ -375,7 +396,7 @@ extension WorkspaceHandle {
             receivedAt: now,
             expiresAt: now.addingTimeInterval(10 * 60)
         )
-        execution = try await services.localResearchExecutionStore
+        execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .installWriteSetExtension(pending)
         guard let stored = execution.writeSetExtensionRecords.first(where: {
             $0.id == requestID
@@ -400,11 +421,11 @@ extension WorkspaceHandle {
                 basis: .collaborationPolicy,
                 decidedAt: now
             )
-            execution = try await services.localResearchExecutionStore.record(
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
                 id: authenticated.runID
             )
         }
-        let current = try await services.localResearchExecutionStore
+        let current = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .writeSetExtension(runID: authenticated.runID, requestID: requestID)
         return extensionDelivery(current, execution: execution)
     }
@@ -416,7 +437,7 @@ extension WorkspaceHandle {
         decidedAt: Date = Date()
     ) async throws -> ResearchWriteSetExtensionRecord {
         try requireActive()
-        let listing = try await services.localResearchExecutionStore.listing()
+        let listing = try await researchBoundedWriteDependencies.localResearchExecutionStore.listing()
         guard listing.issues.isEmpty,
               let execution = listing.records.first(where: { record in
                   record.writeSetExtensionRecords.contains { $0.id == requestID }
@@ -439,7 +460,7 @@ extension WorkspaceHandle {
             guard allowedHandles.isEmpty else {
                 throw ResearchBoundedWriteSetError.invalidExtensionRecord
             }
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .resolveWriteSetExtension(
                     runID: request.runID,
                     requestID: request.id,
@@ -450,7 +471,7 @@ extension WorkspaceHandle {
         case .pending, .stale, .expired:
             throw ResearchBoundedWriteSetError.invalidExtensionRecord
         }
-        return try await services.localResearchExecutionStore.writeSetExtension(
+        return try await researchBoundedWriteDependencies.localResearchExecutionStore.writeSetExtension(
             runID: request.runID,
             requestID: request.id
         )
@@ -467,7 +488,7 @@ extension WorkspaceHandle {
             run: run,
             requiresWrite: true
         )
-        var execution = try await services.localResearchExecutionStore.record(
+        var execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         _ = try activeResearchAction(execution)
@@ -627,7 +648,7 @@ extension WorkspaceHandle {
                 finishedAt: Date(),
                 warning: "The document changed outside this Run before the write began."
             )
-            execution = try await services.localResearchExecutionStore
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .recordDocumentWriteOutcome(conflict, entryState: .conflict)
             entry = try requiredEntry(entry.handle, in: execution)
             return writeResult(conflict, entry: entry)
@@ -647,7 +668,7 @@ extension WorkspaceHandle {
                 startedAt: Date(),
                 finishedAt: Date()
             )
-            execution = try await services.localResearchExecutionStore
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .recordDocumentWriteOutcome(unchanged, entryState: .ready)
             return writeResult(
                 unchanged,
@@ -655,7 +676,7 @@ extension WorkspaceHandle {
             )
         }
 
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let writeSetRevision = try execution.boundedWriteSet.authorizationRevision()
@@ -689,7 +710,7 @@ extension WorkspaceHandle {
             state: .writing,
             startedAt: startedAt
         )
-        _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
+        _ = try await researchBoundedWriteDependencies.localResearchExecutionStore.beginDocumentWrite(writing)
 
         let save = try await saveResearchDocument(
             entry.note,
@@ -711,7 +732,7 @@ extension WorkspaceHandle {
                 data: outcome.committedValue.document.sourceBytes,
                 endingRevision: outcome.committedValue.document.fingerprint
             )
-            execution = try await services.localResearchExecutionStore
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: authenticated.runID,
                     operationID: operationID,
@@ -740,7 +761,7 @@ extension WorkspaceHandle {
                  .atomicCommitUnsupported:
                 expectedRevision
             }
-            execution = try await services.localResearchExecutionStore
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: authenticated.runID,
                     operationID: operationID,
@@ -751,14 +772,14 @@ extension WorkspaceHandle {
                     finishedAt: Date()
                 )
             if case .targetIdentityChanged = reason {
-                execution = try await services.localResearchExecutionStore
+                execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                     .markWriteSetEntryStale(
                         runID: authenticated.runID,
                         handle: entry.handle
                     )
             }
         case .recoveryRequired(let recovery):
-            execution = try await services.localResearchExecutionStore
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: authenticated.runID,
                     operationID: operationID,
@@ -791,7 +812,7 @@ extension WorkspaceHandle {
             run: run,
             requiresWrite: true
         )
-        var execution = try await services.localResearchExecutionStore.record(
+        var execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         _ = try activeResearchAction(execution)
@@ -851,7 +872,7 @@ extension WorkspaceHandle {
             )
         }
 
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let writeSetRevision = try execution.boundedWriteSet.authorizationRevision()
@@ -872,7 +893,7 @@ extension WorkspaceHandle {
             expectedRevision: expectedRevision,
             operationID: operationID
         )
-        let before = try await services.controlStore.zoteroBindings()
+        let before = try await researchBoundedWriteDependencies.controlStore.zoteroBindings()
         let startedAt = Date()
         let writing = try ResearchZoteroBindingWriteRecord(
             id: operationID,
@@ -885,7 +906,7 @@ extension WorkspaceHandle {
             state: .writing,
             startedAt: startedAt
         )
-        _ = try await services.localResearchExecutionStore
+        _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .beginZoteroBindingWrite(writing)
 
         let state: ResearchZoteroBindingWriteState
@@ -910,7 +931,7 @@ extension WorkspaceHandle {
                 ? .unchanged
                 : .committed
         } catch {
-            let observed = try? await services.controlStore.zoteroBindings()
+            let observed = try? await researchBoundedWriteDependencies.controlStore.zoteroBindings()
             observedRevision = observed?.revision
             warning = error.localizedDescription
             if observed?.binding(for: entry.noteID) == intendedBinding,
@@ -925,7 +946,7 @@ extension WorkspaceHandle {
                 state = .recoveryRequired
             }
         }
-        execution = try await services.localResearchExecutionStore
+        execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .finishZoteroBindingWrite(
                 runID: authenticated.runID,
                 operationID: operationID,
@@ -957,7 +978,7 @@ extension WorkspaceHandle {
         guard write.state == .writing else {
             return zoteroBindingWriteResult(write, entry: entry)
         }
-        let observed = try await services.controlStore.zoteroBindings()
+        let observed = try await researchBoundedWriteDependencies.controlStore.zoteroBindings()
         let state: ResearchZoteroBindingWriteState
         if observed.binding(for: entry.noteID) == write.intendedBinding,
            observed.revision != write.expectedRevision {
@@ -967,7 +988,7 @@ extension WorkspaceHandle {
         } else {
             state = .recoveryRequired
         }
-        let updated = try await services.localResearchExecutionStore
+        let updated = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .finishZoteroBindingWrite(
                 runID: write.runID,
                 operationID: write.id,
@@ -1035,7 +1056,7 @@ extension WorkspaceHandle {
                 reservedIdentity: entry.noteID
             )
         )
-        let currentSettings = try await services.controlStore.settings()
+        let currentSettings = try await researchBoundedWriteDependencies.controlStore.settings()
         guard currentSettings.revision == settingsRevision else {
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
@@ -1050,7 +1071,7 @@ extension WorkspaceHandle {
             relativePath: entry.note.relativePath
         )
 
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let writeSetRevision = try initialExecution.boundedWriteSet
@@ -1084,7 +1105,7 @@ extension WorkspaceHandle {
             state: .writing,
             startedAt: Date()
         )
-        _ = try await services.localResearchExecutionStore.beginDocumentWrite(writing)
+        _ = try await researchBoundedWriteDependencies.localResearchExecutionStore.beginDocumentWrite(writing)
 
         var state: ResearchDocumentWriteState
         var observedRevision: DocumentFingerprint?
@@ -1174,7 +1195,7 @@ extension WorkspaceHandle {
                 ).id
             }
         }
-        let execution = try await services.localResearchExecutionStore
+        let execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .finishDocumentWrite(
                 runID: authenticated.runID,
                 operationID: operationID,
@@ -1210,7 +1231,7 @@ extension WorkspaceHandle {
 
         let identity: ResearchCreationIdentityObservation
         do {
-            if let record = try await services.controlStore.identityRecord(
+            if let record = try await researchBoundedWriteDependencies.controlStore.identityRecord(
                 vaultID: entry.note.vaultID,
                 relativePath: entry.note.relativePath
             ) {
@@ -1297,7 +1318,7 @@ extension WorkspaceHandle {
             )
         )
         do {
-            try await services.transactionRecoveryStore.record(record)
+            try await researchBoundedWriteDependencies.transactionRecoveryStore.record(record)
         } catch {
             throw TriptychTransactionError.recoveryPersistenceFailed(
                 record,
@@ -1328,7 +1349,7 @@ extension WorkspaceHandle {
             run: run,
             requiresWrite: true
         )
-        var execution = try await services.localResearchExecutionStore.record(
+        var execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         _ = try activeResearchAction(execution)
@@ -1396,7 +1417,7 @@ extension WorkspaceHandle {
                 }
             )
             let current = try await exactCurrentDocument(for: entry)
-            _ = try await services.agentChangeEvidenceStore
+            _ = try await researchBoundedWriteDependencies.agentChangeEvidenceStore
                 .replaceStartingRevision(
                     runID: authenticated.runID,
                     noteID: entry.noteID,
@@ -1433,7 +1454,7 @@ extension WorkspaceHandle {
                     state: .readyToRetry,
                     resolvedAt: now
                 )
-                execution = try await services.localResearchExecutionStore
+                execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
                     .resolveWriteConflict(resolution, refreshedEntry: refreshed)
                 entry = try requiredEntry(entry.handle, in: execution)
                 return try conflictResolutionResult(resolution, execution: execution)
@@ -1456,9 +1477,9 @@ extension WorkspaceHandle {
                 state: .abandoned,
                 resolvedAt: now
             )
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .resolveWriteConflict(resolution, refreshedEntry: nil)
-            execution = try await services.localResearchExecutionStore.record(
+            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
                 id: authenticated.runID
             )
             return try conflictResolutionResult(resolution, execution: execution)
@@ -1470,7 +1491,7 @@ extension WorkspaceHandle {
         run: ResearchRunLocator,
         requiresWrite: Bool
     ) async throws -> ResearchAuthenticatedRun {
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -1479,7 +1500,7 @@ extension WorkspaceHandle {
             requiresWrite: requiresWrite,
             claimCoreProtocol: false
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
         return authenticated
@@ -1488,7 +1509,7 @@ extension WorkspaceHandle {
     private func activeResearchAction(
         _ execution: LocalResearchExecutionRecord
     ) throws -> ResearchActionSnapshot {
-        guard execution.triptychID == services.manifest.id,
+        guard execution.triptychID == self.id,
               let action = execution.snapshot.actionSnapshot,
               execution.completion == nil else {
             throw ResearchAgentConnectionError.runUnavailable
@@ -1514,11 +1535,11 @@ extension WorkspaceHandle {
         let platform = try platformAction(action.actionID)
         let allowed = Set(platform.extensionWriteOperations)
         let settings = selectors.contains(where: { $0.operations == [.createNote] })
-            ? try await services.controlStore.settings()
+            ? try await researchBoundedWriteDependencies.controlStore.settings()
             : nil
         let zoteroBindings = selectors.contains(where: {
             $0.operations.contains(where: \.isZoteroBindingOperation)
-        }) ? try await services.controlStore.zoteroBindings() : nil
+        }) ? try await researchBoundedWriteDependencies.controlStore.zoteroBindings() : nil
         var candidates: [ResearchWriteSetCandidate] = []
         for selector in selectors {
             guard Set(selector.operations).isSubset(of: allowed),
@@ -1580,7 +1601,7 @@ extension WorkspaceHandle {
                     throw ResearchBoundedWriteSetError.staleAuthorization
                 }
                 let note = existingEntry.note
-                guard let identity = try await services.controlStore.identityRecord(
+                guard let identity = try await researchBoundedWriteDependencies.controlStore.identityRecord(
                     vaultID: note.vaultID,
                     relativePath: note.relativePath
                 ), identity.id == existingEntry.noteID,
@@ -1676,7 +1697,7 @@ extension WorkspaceHandle {
         relativePath: String
     ) async throws {
         do {
-            guard try await services.controlStore.identityRecord(
+            guard try await researchBoundedWriteDependencies.controlStore.identityRecord(
                 vaultID: vaultID,
                 relativePath: relativePath
             ) == nil else {
@@ -1719,7 +1740,7 @@ extension WorkspaceHandle {
             for candidate in request.candidates where allowed.contains(candidate.handle) {
                 switch candidate.expectation {
                 case .absent(let settingsRevision):
-                    let currentSettings = try await services.controlStore.settings()
+                    let currentSettings = try await researchBoundedWriteDependencies.controlStore.settings()
                     guard currentSettings.revision == settingsRevision else {
                         throw ResearchBoundedWriteSetError.staleAuthorization
                     }
@@ -1750,12 +1771,12 @@ extension WorkspaceHandle {
                         throw ResearchBoundedWriteSetError.staleAuthorization
                     }
                     if let expectedBindingsRevision = candidate.zoteroBindingsRevision {
-                        guard try await services.controlStore.zoteroBindings().revision
+                        guard try await researchBoundedWriteDependencies.controlStore.zoteroBindings().revision
                                 == expectedBindingsRevision else {
                             throw ResearchBoundedWriteSetError.staleAuthorization
                         }
                     }
-                    _ = try await services.agentChangeEvidenceStore
+                    _ = try await researchBoundedWriteDependencies.agentChangeEvidenceStore
                         .captureStartingRevision(
                             runID: request.runID,
                             noteID: candidate.noteID,
@@ -1785,7 +1806,7 @@ extension WorkspaceHandle {
                     ))
                 }
             }
-            return try await services.localResearchExecutionStore
+            return try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .resolveWriteSetExtension(
                     runID: request.runID,
                     requestID: request.id,
@@ -1795,7 +1816,7 @@ extension WorkspaceHandle {
                 )
         } catch {
             for noteID in capturedNoteIDs {
-                try? await services.agentChangeEvidenceStore.discard(
+                try? await researchBoundedWriteDependencies.agentChangeEvidenceStore.discard(
                     runID: request.runID,
                     noteID: noteID
                 )
@@ -1807,7 +1828,7 @@ extension WorkspaceHandle {
     private func exactCurrentCandidate(
         _ candidate: ResearchWriteSetCandidate
     ) async throws -> NoteDocument {
-        guard let identity = try await services.controlStore.identityRecord(
+        guard let identity = try await researchBoundedWriteDependencies.controlStore.identityRecord(
             vaultID: candidate.note.vaultID,
             relativePath: candidate.note.relativePath
         ), identity.id == candidate.noteID,
@@ -1829,7 +1850,7 @@ extension WorkspaceHandle {
     private func exactCurrentDocument(
         for entry: ResearchBoundedWriteSetEntry
     ) async throws -> NoteDocument {
-        guard let identity = try await services.controlStore.identityRecord(
+        guard let identity = try await researchBoundedWriteDependencies.controlStore.identityRecord(
             vaultID: entry.note.vaultID,
             relativePath: entry.note.relativePath
         ), identity.id == entry.noteID,
@@ -1865,7 +1886,7 @@ extension WorkspaceHandle {
             policy: current.document.policy,
             request: request
         ) == .mayProceed else {
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .markWriteSetEntryStale(
                     runID: runID,
                     handle: entry.handle
@@ -1924,7 +1945,7 @@ extension WorkspaceHandle {
                     state = .recoveryRequired
                 }
             }
-            let updated = try await services.localResearchExecutionStore
+            let updated = try await researchBoundedWriteDependencies.localResearchExecutionStore
                 .finishDocumentWrite(
                     runID: write.runID,
                     operationID: write.id,
@@ -1975,7 +1996,7 @@ extension WorkspaceHandle {
         data: Data,
         endingRevision: DocumentFingerprint
     ) async throws {
-        _ = try await services.agentChangeEvidenceStore.recordEndingRevision(
+        _ = try await researchBoundedWriteDependencies.agentChangeEvidenceStore.recordEndingRevision(
             runID: execution.id,
             noteID: entry.noteID,
             data: data,

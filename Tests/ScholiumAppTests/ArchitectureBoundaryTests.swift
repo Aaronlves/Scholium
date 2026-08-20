@@ -592,6 +592,44 @@ struct ArchitectureBoundaryTests {
         ))
     }
 
+    @Test("Agent Discussion operations use a bounded dependency bundle")
+    func researchAgentDiscussionDependencyBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let discussion = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchAgentDiscussionOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(discussion.contains(
+            "struct WorkspaceResearchAgentDiscussionDependencies"
+        ))
+        #expect(discussion.contains(
+            "researchAgentDiscussionDependencies"
+        ))
+        #expect(!discussion.contains("services."))
+        #expect(handle.contains(
+            "let researchAgentDiscussionDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchAgentDiscussionDependencies"
+        ))
+    }
+
     @Test("Research execution lifecycle has one Workspace coordinator")
     func researchFunctionCoordinatorBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -733,6 +771,17 @@ struct ArchitectureBoundaryTests {
         ))
         #expect(boundedWrites.contains("func extendResearchWriteSet("))
         #expect(boundedWrites.contains("func writeResearchDocument("))
+        #expect(boundedWrites.contains(
+            "struct WorkspaceResearchBoundedWriteDependencies"
+        ))
+        #expect(boundedWrites.contains("researchBoundedWriteDependencies"))
+        #expect(!boundedWrites.contains("services."))
+        #expect(handle.contains(
+            "let researchBoundedWriteDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchBoundedWriteDependencies"
+        ))
         #expect(!boundedWrites.contains("activeResearchActivityKeys["))
         #expect(!boundedWrites.contains("raw_session_secret"))
         for retiredPath in [
