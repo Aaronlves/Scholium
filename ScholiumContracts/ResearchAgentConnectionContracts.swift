@@ -15,35 +15,212 @@ public struct ResearchRunLocator: RawRepresentable, Codable, Hashable, Sendable 
     }
 }
 
+/// The portable Zotero relationship supplied when an Agent starts a new
+/// Analysis. It is not bibliographic content and not a request to read
+/// Zotero's database; Scholium attaches it only to a stable Analysis identity.
+public struct ResearchAgentNewAnalysisSource: Codable, Hashable, Sendable {
+    public let library: ZoteroLibraryIdentity
+    public let itemKey: String
+
+    public init(
+        library: ZoteroLibraryIdentity,
+        itemKey: String
+    ) throws {
+        let normalized = try AnalysisZoteroBinding(
+            noteID: UUID(),
+            library: library,
+            itemKey: itemKey
+        ).itemKey
+        self.library = library
+        self.itemKey = normalized
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case library
+        case itemKey = "item_key"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: CodingKeys.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            library: container.decode(ZoteroLibraryIdentity.self, forKey: .library),
+            itemKey: container.decode(String.self, forKey: .itemKey)
+        )
+    }
+}
+
+/// Declares that the researcher will provide the source directly to the
+/// external Agent. Scholium receives neither a path nor source bytes for this
+/// route and therefore cannot resolve, cache, or attest to that local file.
+public enum ResearchAgentSourceRoute: String, Codable, Hashable, Sendable {
+    case researcherProvided = "researcher_provided"
+}
+
+/// Explicit creation input for an Agent-originated Analyze Run. The path and
+/// typed Analysis fields are supplied once; an optional external Zotero
+/// relationship is supplied when that route is wanted. The Application owns
+/// the new stable identity, Settings revision, seed composition, and the
+/// subsequent Analyze preparation.
+public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    /// Retried delivery of one start request must retain this UUID. It is
+    /// used only to derive the reserved stable identity; it is not an
+    /// identity chosen for the Note itself.
+    public let requestID: UUID
+    public let target: VaultQualifiedNoteID
+    public let metadata: AnalysisCreationMetadata
+    /// Optional explicit Zotero relationship. When absent, the enclosing
+    /// start request must declare `researcher_provided` instead; no local file
+    /// locator or source bytes enter this contract.
+    public let source: ResearchAgentNewAnalysisSource?
+
+    public init(
+        requestID: UUID = UUID(),
+        target: VaultQualifiedNoteID,
+        metadata: AnalysisCreationMetadata,
+        source: ResearchAgentNewAnalysisSource? = nil
+    ) throws {
+        guard Self.validRelativePath(target.relativePath) else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.requestID = requestID
+        self.target = target
+        self.metadata = metadata
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case requestID = "request_id"
+        case target, metadata, source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: CodingKeys.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentStartContractError.unsupportedSchemaVersion
+        }
+        try self.init(
+            requestID: container.decode(UUID.self, forKey: .requestID),
+            target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
+            metadata: container.decode(AnalysisCreationMetadata.self, forKey: .metadata),
+            source: container.decodeIfPresent(
+                ResearchAgentNewAnalysisSource.self,
+                forKey: .source
+            )
+        )
+    }
+
+    private static func validRelativePath(_ value: String) -> Bool {
+        guard !value.isEmpty,
+              value.utf8.count <= 4_096,
+              !value.hasPrefix("/"),
+              !value.hasSuffix("/"),
+              !value.contains("\\"),
+              !value.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return false
+        }
+        let components = value.split(separator: "/", omittingEmptySubsequences: false)
+        return !components.isEmpty && components.allSatisfy {
+            !$0.isEmpty && $0 != "." && $0 != ".."
+        }
+    }
+}
+
 /// Delivery-neutral request for an Agent-originated Run. Scholium resolves the
 /// current Note identity, Action Profile, Method, and revision after receiving
 /// this request; the request never carries a write grant or source bytes.
 public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID
-    public let target: VaultQualifiedNoteID
+    /// Exactly one of `target` and `newAnalysis` is present. The former starts
+    /// from an existing stable Note; the latter asks the Application to use the
+    /// managed creator before preparing Analyze.
+    public let target: VaultQualifiedNoteID?
+    public let newAnalysis: ResearchAgentNewAnalysisRequest?
+    /// Analyze-only declaration that the researcher will provide a local
+    /// source directly to the external Agent. This never carries a path.
+    public let sourceRoute: ResearchAgentSourceRoute?
     public let academicPurpose: String?
 
     public init(
         actionID: ResearchActionID,
         target: VaultQualifiedNoteID,
-        academicPurpose: String? = nil
+        academicPurpose: String? = nil,
+        sourceRoute: ResearchAgentSourceRoute? = nil
+    ) throws {
+        try self.init(
+            actionID: actionID,
+            target: target,
+            newAnalysis: nil,
+            sourceRoute: sourceRoute,
+            academicPurpose: academicPurpose
+        )
+    }
+
+    public init(
+        actionID: ResearchActionID,
+        newAnalysis: ResearchAgentNewAnalysisRequest,
+        academicPurpose: String? = nil,
+        sourceRoute: ResearchAgentSourceRoute? = nil
+    ) throws {
+        try self.init(
+            actionID: actionID,
+            target: nil,
+            newAnalysis: newAnalysis,
+            sourceRoute: sourceRoute,
+            academicPurpose: academicPurpose
+        )
+    }
+
+    private init(
+        actionID: ResearchActionID,
+        target: VaultQualifiedNoteID?,
+        newAnalysis: ResearchAgentNewAnalysisRequest?,
+        sourceRoute: ResearchAgentSourceRoute?,
+        academicPurpose: String?
     ) throws {
         let normalizedPurpose = academicPurpose?.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
         guard normalizedPurpose == nil || normalizedPurpose?.isEmpty == false,
               normalizedPurpose?.utf8.count ?? 0 <= 16 * 1_024,
-              !target.relativePath.isEmpty,
-              !target.relativePath.hasPrefix("/"),
-              !target.relativePath.contains("\\") else {
+              (target == nil) != (newAnalysis == nil),
+              newAnalysis == nil || actionID == .analyze,
+              sourceRoute == nil || actionID == .analyze,
+              sourceRoute == nil
+                  || (newAnalysis == nil && target != nil)
+                  || newAnalysis?.source == nil else {
             throw ResearchAgentStartContractError.invalidRequest
+        }
+        if let newAnalysis {
+            guard newAnalysis.source != nil
+                    || sourceRoute == .researcherProvided,
+                  !(newAnalysis.source != nil && sourceRoute != nil) else {
+                throw ResearchAgentStartContractError.invalidRequest
+            }
         }
         schemaVersion = Self.currentSchemaVersion
         self.actionID = actionID
         self.target = target
+        self.newAnalysis = newAnalysis
+        self.sourceRoute = sourceRoute
         self.academicPurpose = normalizedPurpose
     }
 
@@ -51,6 +228,8 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         case schemaVersion = "schema_version"
         case actionID = "action_id"
         case target
+        case newAnalysis = "new_analysis"
+        case sourceRoute = "source_route"
         case academicPurpose = "academic_purpose"
     }
 
@@ -67,14 +246,24 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         }
         try self.init(
             actionID: container.decode(ResearchActionID.self, forKey: .actionID),
-            target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
+            target: container.decodeIfPresent(
+                VaultQualifiedNoteID.self,
+                forKey: .target
+            ),
+            newAnalysis: container.decodeIfPresent(
+                ResearchAgentNewAnalysisRequest.self,
+                forKey: .newAnalysis
+            ),
+            sourceRoute: container.decodeIfPresent(
+                ResearchAgentSourceRoute.self,
+                forKey: .sourceRoute
+            ),
             academicPurpose: container.decodeIfPresent(
                 String.self,
                 forKey: .academicPurpose
             )
         )
     }
-
 }
 
 public struct ResearchAgentStartReceipt: Codable, Hashable, Sendable {

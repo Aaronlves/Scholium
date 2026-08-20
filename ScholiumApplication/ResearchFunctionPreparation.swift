@@ -441,6 +441,7 @@ extension ResearchFunctionCoordinator {
     func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
         _ proposedRequest: ResearchFunctionRequest,
         fidelityInvocation: FidelityInvocationKind? = nil,
+        allowsResearcherProvidedSource: Bool = false,
         host: isolated Host
     ) async throws -> ResearchFunctionPreparation {
         let actionContext = try await host.resolveDefaultResearchActionContext(
@@ -450,6 +451,7 @@ extension ResearchFunctionCoordinator {
             proposedRequest,
             fidelityInvocation: fidelityInvocation,
             actionContext: actionContext,
+            allowsResearcherProvidedSource: allowsResearcherProvidedSource,
             host: host
         )
     }
@@ -463,6 +465,7 @@ extension ResearchFunctionCoordinator {
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         requiresAgentChangeEvidence: Bool = true,
+        allowsResearcherProvidedSource: Bool = false,
         suppressRefresh: Bool = false,
         host: isolated Host
     ) async throws -> ResearchFunctionPreparation {
@@ -505,7 +508,8 @@ extension ResearchFunctionCoordinator {
         try request.validate()
         let sourceAccess = try await requiredResearchSourceAccess(
             for: target,
-            function: request.function
+            function: request.function,
+            allowsResearcherProvidedSource: allowsResearcherProvidedSource
         )
         let zoteroContext = try await zoteroBibliographicContext(for: target)
         _ = try await validateResearchFunctionWriteTargets(request, host: host)
@@ -584,7 +588,8 @@ extension ResearchFunctionCoordinator {
             _ = try await validateResearchFunctionFidelityTargets(request, host: host)
             let revalidatedSource = try await requiredResearchSourceAccess(
                 for: target,
-                function: request.function
+                function: request.function,
+                allowsResearcherProvidedSource: allowsResearcherProvidedSource
             )
             guard revalidatedSource?.reference == sourceAccess?.reference else {
                 throw ResearchFunctionContractError.sourceAccessUnavailable(
@@ -667,7 +672,8 @@ extension ResearchFunctionCoordinator {
             confirmationToken: confirmationToken,
             fidelityHandoffChecks: automaticFidelityChecks,
             zoteroContext: zoteroContext,
-            sourceAccess: sourceAccess
+            sourceAccess: sourceAccess,
+            allowsResearcherProvidedSource: allowsResearcherProvidedSource
         )
         let liveInstructions = try sourceAccessDeliveryInstructions(
             base: functionInstructions,
@@ -687,7 +693,8 @@ extension ResearchFunctionCoordinator {
             )
             let finalSource = try await requiredResearchSourceAccess(
                 for: target,
-                function: request.function
+                function: request.function,
+                allowsResearcherProvidedSource: allowsResearcherProvidedSource
             )
             guard finalSource?.reference == sourceAccess?.reference else {
                 throw ResearchFunctionContractError.sourceAccessUnavailable(

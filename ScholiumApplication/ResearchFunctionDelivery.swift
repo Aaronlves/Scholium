@@ -147,7 +147,8 @@ extension ResearchFunctionCoordinator {
         confirmationToken: UUID,
         fidelityHandoffChecks: Set<FidelityCheck>,
         zoteroContext: ZoteroBibliographicContext?,
-        sourceAccess: ResolvedResearchSourceAccess? = nil
+        sourceAccess: ResolvedResearchSourceAccess? = nil,
+        allowsResearcherProvidedSource: Bool = false
     ) throws -> String {
         let usesBoundedWriteSet = [.develop, .revise].contains(request.function)
         let includesFingerprint = !usesBoundedWriteSet
@@ -226,6 +227,13 @@ extension ResearchFunctionCoordinator {
                 "## Explicit source access",
                 "Analyze must open the exact regular file supplied by the live delivery packet and verify this source fingerprint before relying on it. The transient locator is not write authority and is never stored in the Research Record. Do not substitute the Analysis note, Zotero metadata, or a similarly named file if access fails.",
                 try renderFunctionJSON(sourceAccess.reference),
+            ]
+        }
+        if allowsResearcherProvidedSource {
+            sections += [
+                "",
+                "## Researcher-provided source",
+                "Scholium does not locate or provide a source file for this Run. The researcher must provide the local source directly to the external Agent. No path, source bytes, or source-access claim enters Scholium; if the researcher-provided source is unavailable or ambiguous, the Agent must report that limitation rather than substitute the Analysis note or a similarly named file.",
             ]
         }
         if let zoteroContext {

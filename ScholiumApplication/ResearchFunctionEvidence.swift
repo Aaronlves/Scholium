@@ -6,9 +6,13 @@ import ScholiumCore
 extension ResearchFunctionCoordinator {
     func requiredResearchSourceAccess(
         for target: ValidatedFunctionObject,
-        function: ResearchFunctionID
+        function: ResearchFunctionID,
+        allowsResearcherProvidedSource: Bool = false
     ) async throws -> ResolvedResearchSourceAccess? {
         guard function == .develop, target.note.schemaProfile == .analysis else {
+            return nil
+        }
+        if allowsResearcherProvidedSource {
             return nil
         }
         if try await usesExternalZoteroRoute(for: target) {

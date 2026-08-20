@@ -140,6 +140,20 @@ preparation. Both routes create the same Run and use the same subsequent
 Context, bounded-write, Result, continuation, End, conflict, and recovery
 contracts.
 
+The direct Agent route also accepts one explicit `new_analysis` start shape
+for Analyze. It names one exact Analysis path and one typed source-type/property
+payload. It may additionally name one stable Zotero library/item relationship;
+when it does not, the request must explicitly declare `source_route` as
+`researcher_provided`. The Application uses the managed creator with the
+current Settings revision and reserved identity, jointly reads back the source
+and identity, establishes the Zotero relationship when present, and only then
+prepares the ordinary Analyze Run against the new target. It never infers a
+source relationship from YAML, title, path, or similarity. Under the
+`researcher_provided` route, Scholium receives no local-file path or source
+bytes: the researcher gives that source directly to the external Agent, and
+Scholium records no source-access claim for it. The same explicit route may be
+used when starting Analyze against an existing Analysis target.
+
 Direct Agent connection is local, provider-neutral, and bound to the current
 Scholium application process. The researcher deliberately copies one complete
 handoff into the selected Agent conversation. It contains the opaque Run
@@ -640,7 +654,11 @@ retryable until authority and transaction outcomes are known.
    selection remains the selected Scholium source route; a Zotero attachment
    relationship or absent source selection uses the external route. The
    binding remains a data-acquisition relationship, not paper content or
-   evidence by itself.
+   evidence by itself. A direct Agent Run may instead declare
+   `source_route: researcher_provided`: the researcher gives a local source
+   directly to the external Agent, while Scholium receives no path or source
+   bytes and records no `sourceReference`; unavailable or ambiguous
+   researcher-provided material remains an explicit limitation.
 2. Use **Analyze** to create, extend, correct, clarify, reorganize, or leave
    warranted content unchanged.
 3. Analyze reconstructs the source before critical pressure and distinguishes

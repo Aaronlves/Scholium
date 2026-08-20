@@ -20,19 +20,21 @@ private struct ResolvedResearchActionCandidate: Sendable {
 
 extension WorkspaceHandle {
     func researchActionAvailability(
-        for target: ResearchActionNoteSnapshot
+        for target: ResearchActionNoteSnapshot,
+        checkingSourceAccess: Bool = true
     ) async throws -> [ResearchActionAvailability] {
         try requireCompleteWorkspace()
         let functionTarget = target.functionTarget
         return try await resolvedResearchActions(
             for: functionTarget,
-            checkingSourceAccess: true
+            checkingSourceAccess: checkingSourceAccess
         )
             .map(\.availability)
     }
 
     func prepareResearchAction(
-        _ request: ResearchActionExecutionRequest
+        _ request: ResearchActionExecutionRequest,
+        allowsResearcherProvidedSource: Bool = false
     ) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
         let resolved = try await resolvedResearchActionExecution(request)
@@ -41,6 +43,7 @@ extension WorkspaceHandle {
             actionContext: resolved.context,
             requiresAgentChangeEvidence:
                 !resolved.context.authority.writableNotes.isEmpty,
+            allowsResearcherProvidedSource: allowsResearcherProvidedSource,
             host: self
         )
         let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(

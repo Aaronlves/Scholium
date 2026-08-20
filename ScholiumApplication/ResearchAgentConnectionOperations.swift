@@ -13,7 +13,12 @@ extension WorkspaceRuntime {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let handle = try await openWorkspace(id: triptychID)
-        let started = try await handle.startResearchAgentRun(request)
+        let started: (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot)
+        if request.newAnalysis != nil {
+            started = try await handle.startNewAnalysisResearchAgentRun(request)
+        } else {
+            started = try await handle.startResearchAgentRun(request)
+        }
         do {
             let session = try await sessions.issueAgentSession(
                 runID: started.preparation.runID,
@@ -211,12 +216,19 @@ extension WorkspaceHandle {
         _ request: ResearchAgentStartRequest
     ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
         try requireCompleteWorkspace()
-        guard let note = currentSnapshot.document(id: request.target),
-              note.id.vaultID == request.target.vaultID,
-              note.id.relativePath == request.target.relativePath,
+        guard let requestedTarget = request.target,
+              let note = currentSnapshot.document(id: requestedTarget),
+              note.id.vaultID == requestedTarget.vaultID,
+              note.id.relativePath == requestedTarget.relativePath,
               note.lifecycle == .active,
               let stableID = note.stableIdentity.resolvedID,
               let functionRole = ResearchFunctionTargetRole(vaultRole: note.vaultRole) else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let allowsResearcherProvidedSource =
+            request.sourceRoute == .researcherProvided
+        guard !allowsResearcherProvidedSource
+                || (request.actionID == .analyze && functionRole == .analysis) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
         let role: ResearchActionTargetRole = switch functionRole {
@@ -232,7 +244,10 @@ extension WorkspaceHandle {
             fingerprint: note.fingerprint,
             title: researchFunctionCoordinator.researchFunctionTitle(for: note)
         )
-        let available = try await researchActionAvailability(for: target)
+        let available = try await researchActionAvailability(
+            for: target,
+            checkingSourceAccess: !allowsResearcherProvidedSource
+        )
         guard let action = available.first(where: {
             $0.id == request.actionID && $0.isEnabled
         }) else {
@@ -255,12 +270,114 @@ extension WorkspaceHandle {
             platformInputs: try ResearchActionPlatformInputs(),
             academicInputs: academicInputs
         )
-        let preparation = try await prepareResearchAction(execution)
+        let preparation = try await prepareResearchAction(
+            execution,
+            allowsResearcherProvidedSource: allowsResearcherProvidedSource
+        )
         guard [ResearchActionRunState.prepared, .awaitingFidelity]
             .contains(preparation.state) else {
             throw ResearchAgentConnectionError.runUnavailable
         }
         return (preparation, target)
+    }
+
+    /// Starts Analyze from an absent Analysis path. Creation is intentionally
+    /// a preflight of the existing Run preparation: the managed creator still
+    /// owns the exact Settings revision, reserved identity, source/identity
+    /// readback, and no-replace path claim, while the resulting Run keeps the
+    /// ordinary target fingerprint and write authority. The optional Zotero
+    /// relationship is portable metadata only; when it is absent, the
+    /// researcher-provided source route is carried outside Scholium.
+    func startNewAnalysisResearchAgentRun(
+        _ request: ResearchAgentStartRequest
+    ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
+        try requireCompleteWorkspace()
+        guard request.actionID == .analyze,
+              let creation = request.newAnalysis,
+              request.target == nil,
+              let analysisVaultID = services.manifest.vaultIDs[.paperAnalysis],
+              creation.target.vaultID == analysisVaultID,
+              WorkspaceDocumentLifecycle(
+                  relativePath: creation.target.relativePath
+              ) == .active else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+
+        let settings = try await services.controlStore.settings()
+        let reservedIdentity = Self.agentStartStableIdentity(
+            triptychID: services.manifest.id,
+            requestID: creation.requestID,
+            target: creation.target,
+            settingsRevision: settings.revision
+        )
+        let managedRequest = try ManagedNoteCreationRequest(
+            vaultID: creation.target.vaultID,
+            destination: .exact(relativePath: creation.target.relativePath),
+            analysisMetadata: creation.metadata,
+            authority: .authenticatedAgent(
+                settingsRevision: settings.revision,
+                reservedIdentity: reservedIdentity
+            )
+        )
+        let created = try await createManagedNote(managedRequest)
+        guard created.committedValue.id == creation.target,
+              created.committedValue.stableIdentity.resolvedID == reservedIdentity else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+
+        // Creation publishes a source-ahead identity before the next complete
+        // snapshot is available. Resolve the newly created target through the
+        // same refresh boundary used by the ordinary Note lifecycle.
+        _ = try await refresh()
+
+        if let source = creation.source {
+            let bindings = try await services.controlStore.zoteroBindings()
+            let binding = try AnalysisZoteroBinding(
+                noteID: reservedIdentity,
+                library: source.library,
+                itemKey: source.itemKey
+            )
+            _ = try await setPortableZoteroBinding(
+                binding,
+                expectedRevision: bindings.revision
+            )
+        }
+
+        // Re-enter the existing target-based preparation path. This keeps
+        // Action/Profile/Method/source-context resolution and Result handling
+        // single-owned instead of introducing a parallel Analyze lifecycle.
+        let existingTargetRequest = try ResearchAgentStartRequest(
+            actionID: request.actionID,
+            target: creation.target,
+            academicPurpose: request.academicPurpose,
+            sourceRoute: creation.source == nil ? .researcherProvided : nil
+        )
+        return try await startResearchAgentRun(existingTargetRequest)
+    }
+
+    private static func agentStartStableIdentity(
+        triptychID: UUID,
+        requestID: UUID,
+        target: VaultQualifiedNoteID,
+        settingsRevision: SettingsRevision
+    ) -> UUID {
+        let material = [
+            triptychID.uuidString.lowercased(),
+            "agent-start-new-analysis",
+            requestID.uuidString.lowercased(),
+            target.vaultID.uuidString.lowercased(),
+            target.relativePath,
+            settingsRevision.fingerprint.sha256,
+        ].joined(separator: ":")
+        let digest = DocumentFingerprint(content: material).sha256
+        let value = [
+            String(digest.prefix(8)),
+            String(digest.dropFirst(8).prefix(4)),
+            String(digest.dropFirst(12).prefix(4)),
+            String(digest.dropFirst(16).prefix(4)),
+            String(digest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")
+        return UUID(uuidString: value)!
     }
 
     func validateActiveResearchAgentRun(_ runID: UUID) async throws {

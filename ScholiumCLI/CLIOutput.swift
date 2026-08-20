@@ -220,7 +220,7 @@ private extension ScholiumCLI {
             "agent start": AgentCLICommandHelp(
                 usage: "scholium agent start --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, action_id, target {vault_id, relative_path}, and optional academic_purpose. The current Note, Action Profile, Method, revision, and initial Bounded Write Set are resolved by Scholium.",
+                input: "Strict JSON fields: schema_version, action_id, exactly one of target {vault_id, relative_path} or new_analysis {schema_version, request_id, target {vault_id, relative_path}, metadata {source_type, properties}, optional source {library, item_key}}, optional source_route=researcher_provided, and optional academic_purpose. new_analysis is Analyze-only: Scholium uses the managed creator, binds an explicitly declared Zotero route when present, or accepts a researcher-provided source without a path, then resolves the ordinary Action Profile, Method, revision, and Bounded Write Set.",
                 output: "ResearchAgentStartReceipt with the new Run locator, Action, target revision, state, and a non-secret message. The Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
                     "scholium agent context --run <locator>",

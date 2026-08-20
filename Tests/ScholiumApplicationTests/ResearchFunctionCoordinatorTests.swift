@@ -1,9 +1,109 @@
+import Foundation
 import ScholiumContracts
 import Testing
 @testable import ScholiumApplication
 
 @Suite("Research Function coordinator ownership")
 struct ResearchFunctionCoordinatorTests {
+    @Test("Agent start creates an absent Analysis through the managed creator")
+    func agentStartCreatesNewAnalysis() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let analysisVaultID = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)?.id
+        )
+        let createdID = VaultQualifiedNoteID(
+            vaultID: analysisVaultID,
+            relativePath: "Agent/Created Analysis.md"
+        )
+        let creation = try ResearchAgentNewAnalysisRequest(
+            requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000456")!,
+            target: createdID,
+            metadata: try AnalysisCreationMetadata(
+                sourceType: .journalArticle,
+                properties: [
+                    try CanonicalPropertyInput(
+                        key: "title",
+                        value: .string("Agent-created Analysis")
+                    ),
+                ]
+            )
+        )
+        let request = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: creation,
+            academicPurpose: "Reconstruct the source argument with bounded evidence.",
+            sourceRoute: .researcherProvided
+        )
+
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: request,
+            sessionValidity: 300
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let document = try await handle.documents.load(createdID)
+        #expect(document.parsedFrontmatter["type"]?.scalarString
+            == AnalysisSourceType.journalArticle.rawValue)
+        #expect(document.parsedFrontmatter["title"]?.scalarString
+            == "Agent-created Analysis")
+
+        let note = try #require(try await handle.snapshot().document(id: createdID))
+        #expect(note.stableIdentity.resolvedID == started.receipt.target.noteID)
+        let binding = try await handle.services.controlStore.zoteroBindings()
+            .binding(for: started.receipt.target.noteID)
+        #expect(binding == nil)
+
+        do {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: request,
+                sessionValidity: 300
+            )
+            Issue.record("A repeated exact new-Analysis path must not create a second Note.")
+        } catch let error as DocumentCreationError {
+            #expect(error == .portableIdentityAlreadyExists)
+        } catch {
+            Issue.record("Unexpected repeated-creation error: \(error.localizedDescription)")
+        }
+
+        let context = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(context.brief.actionID == .analyze)
+        #expect(context.brief.initialObjectRole == .analysis)
+        #expect(context.boundedWriteSet.contains(where: {
+            $0.relativePath == createdID.relativePath
+                && $0.operations.contains(.modifyMarkdown)
+        }))
+
+        let services = await handle.services
+        let sessions = try #require(services.researchAgentSessions)
+        let authenticated = try await sessions.authenticate(
+            started.credential,
+            run: started.receipt.run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
+        let execution = try await services.localResearchExecutionStore.record(
+            id: authenticated.runID
+        )
+        #expect(execution.snapshot.sourceReference == nil)
+        #expect(execution.preparedInstructions.contains("Researcher-provided source"))
+        #expect(!execution.preparedInstructions.contains("machineLocalPath"))
+
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        await runtime.shutdown()
+    }
+
     @Test("Coordinator owns protected preparation and completion on the Workspace actor")
     func protectedPreparationAndCompletionOwnership() async throws {
         let fixture = try await ApplicationFixture.make()

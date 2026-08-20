@@ -112,6 +112,15 @@
   resolves a selected Triptych and current Analysis/Action directly, stores a
   process-bound Session credential locally, and requires no Pairing Code.
   Both routes use the same protected Session for subsequent operations.
+- `agent start` additionally accepts the strict Analyze-only `new_analysis`
+  shape. It supplies one exact path and typed Analysis creation metadata, with
+  either an explicit Zotero library/item relationship or the
+  `researcher_provided` source route. The Application uses the common managed
+  creator, reads back source plus stable identity, establishes the Zotero
+  relationship when present, and then enters the ordinary target-based Analyze
+  Run. The researcher-provided route carries no local-file path or source bytes
+  through Scholium and performs no title/keyword merge; the same explicit route
+  is available when starting Analyze from an existing Analysis.
 - Research Context composes current Search, exact Note reads, direct Relations,
   Properties, Records, the current Run's explicitly selected path-free source
   Material and frozen Zotero bibliographic snapshot, and explicitly proven
@@ -130,13 +139,19 @@
   `modify_markdown` changes body only; `modify_source` accepts the complete
   authored Markdown source; `modify_properties` changes only exact approved
   top-level keys. GUI, researcher CLI, and Agent creation use the same managed
-  creator. Agent creation is idempotent for one request and forms a
+  creator. Run-bound Agent `create_note` remains idempotent for one request and forms a
   preimage-free `created` Record mutation only after source and identity
   jointly read back; partial or unreadable outcomes retain a durable creation
   recovery duty instead of guessing absence. Recovery may add or remove only
   the exact reserved identity; any other identity at the path, a binding on an
   identity that would be removed, or moved, changed, or unreadable state stops
   for separate researcher resolution.
+- The `agent start` `new_analysis` route is a bounded creation preflight before
+  the ordinary Analyze Run rather than a second parallel Run lifecycle. A
+  repeated exact path is rejected once its portable identity exists; the
+  route does not claim a Run-bound `create_note` Record mutation for that
+  preflight. External packaged-Agent, restart, conflict/recovery, and source-
+  fidelity trials remain open.
   Linked reconciliation coordinates source mutation, performs a final joint
   readback, and treats an already-settled write as cleanup-only. Unlinked
   records never claim Agent reconciliation.
