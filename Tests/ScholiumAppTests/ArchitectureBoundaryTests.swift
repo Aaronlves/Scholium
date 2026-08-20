@@ -833,6 +833,28 @@ struct ArchitectureBoundaryTests {
         #expect(!actionResolver.contains(".completeProtectedFunction("))
         #expect(agentResults.contains("func submitResearchAgentResult("))
         #expect(agentResults.contains(".completeProtectedFunction("))
+        #expect(agentResults.contains(
+            "struct WorkspaceResearchAgentResultDependencies"
+        ))
+        #expect(agentResults.contains("researchAgentResultDependencies"))
+        #expect(!agentResults.contains("services."))
+        #expect(handle.contains(
+            "let researchAgentResultDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchAgentResultDependencies"
+        ))
+        #expect(actionResolver.contains(
+            "struct WorkspaceResearchActionResolverDependencies"
+        ))
+        #expect(actionResolver.contains("researchActionResolverDependencies"))
+        #expect(!actionResolver.contains("services."))
+        #expect(handle.contains(
+            "let researchActionResolverDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchActionResolverDependencies"
+        ))
         #expect(actionResolver.contains(
             "researchFunctionCoordinator.prepareResearchFunction("
         ))

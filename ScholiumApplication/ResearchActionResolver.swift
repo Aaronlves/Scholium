@@ -2,6 +2,21 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchActionResolverDependencies: Sendable {
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let researchConfigurationStore: ResearchConfigurationStore
+}
+
+extension WorkspaceServices {
+    var researchActionResolverDependencies:
+        WorkspaceResearchActionResolverDependencies {
+        WorkspaceResearchActionResolverDependencies(
+            portableResearchRecordStore: portableResearchRecordStore,
+            researchConfigurationStore: researchConfigurationStore
+        )
+    }
+}
+
 struct ResolvedResearchActionContext: Sendable {
     let availability: ResearchActionAvailability
     let function: ResearchFunctionID
@@ -121,16 +136,17 @@ extension WorkspaceHandle {
         try requireCompleteWorkspace()
         guard request.actionID == .synthesize,
               request.expectedExecutionKind == .synthesis,
-              context.triptychID == services.manifest.id,
+              context.triptychID == self.id,
               context.recordedRevision != context.currentRevision,
               context.material.stableNoteID.flatMap(UUID.init(uuidString:))
                 == context.materialNoteID else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        let record = try await services.portableResearchRecordStore.record(
+        let record = try await researchActionResolverDependencies
+            .portableResearchRecordStore.record(
             id: context.recordID
         )
-        guard record.triptychID == services.manifest.id,
+        guard record.triptychID == self.id,
               record.kind == .action,
               record.action?.actionID == .synthesize,
               record.primaryNoteID == context.topicNoteID,
@@ -144,7 +160,8 @@ extension WorkspaceHandle {
               }) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        let recordListing = try await services.portableResearchRecordStore.listing()
+        let recordListing = try await researchActionResolverDependencies
+            .portableResearchRecordStore.listing()
         guard WorkspaceSnapshotBuilder.isLatestSynthesisMaterialUse(
             recordID: context.recordID,
             topicNoteID: context.topicNoteID,
@@ -291,7 +308,8 @@ extension WorkspaceHandle {
             for: request.function,
             targetRole: request.target.role
         )
-        guard let profileSnapshot = try await services.researchConfigurationStore
+        guard let profileSnapshot = try await researchActionResolverDependencies
+            .researchConfigurationStore
             .profileSnapshot(),
               let profile = profileSnapshot.document.profile(for: definition.id),
               profile.isEnabled,
@@ -304,7 +322,8 @@ extension WorkspaceHandle {
             profileRevision: profile.contentRevision(),
             profileDocumentRevision: profileSnapshot.revision
         )
-        let method = try await services.researchConfigurationStore.methodSnapshot(
+        let method = try await researchActionResolverDependencies
+            .researchConfigurationStore.methodSnapshot(
             for: definition.id
         )
         guard method.registration.isEnabled else {
@@ -372,9 +391,11 @@ extension WorkspaceHandle {
                 ($0.function, $0)
             }
         )
-        guard let profileSnapshot = try await services.researchConfigurationStore
+        guard let profileSnapshot = try await researchActionResolverDependencies
+            .researchConfigurationStore
             .profileSnapshot(),
-              let registrationSnapshot = try await services.researchConfigurationStore
+              let registrationSnapshot = try await researchActionResolverDependencies
+                .researchConfigurationStore
                 .registrationSnapshot() else {
             throw ResearchConfigurationStoreError.missingProfiles
         }
@@ -398,7 +419,8 @@ extension WorkspaceHandle {
             let registration = registrationSnapshot.document.registration(
                 for: definition.id
             )
-            let method = try? await services.researchConfigurationStore.methodSnapshot(
+            let method = try? await researchActionResolverDependencies
+                .researchConfigurationStore.methodSnapshot(
                 for: definition.id
             )
             let functionState = functionAvailability[function]

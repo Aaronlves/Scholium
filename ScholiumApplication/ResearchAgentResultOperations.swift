@@ -2,6 +2,25 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchAgentResultDependencies: Sendable {
+    let researchAgentSessions: ResearchAgentSessionAuthority?
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let researchSourceAccessStore: ResearchSourceAccessStore
+}
+
+extension WorkspaceServices {
+    var researchAgentResultDependencies:
+        WorkspaceResearchAgentResultDependencies {
+        WorkspaceResearchAgentResultDependencies(
+            researchAgentSessions: researchAgentSessions,
+            localResearchExecutionStore: localResearchExecutionStore,
+            portableResearchRecordStore: portableResearchRecordStore,
+            researchSourceAccessStore: researchSourceAccessStore
+        )
+    }
+}
+
 extension WorkspaceRuntime {
     public func submitResearchAgentResult(
         credential: ResearchConnectionCredential,
@@ -49,7 +68,7 @@ extension WorkspaceHandle {
         submission: ResearchAgentResultSubmission
     ) async throws -> ResearchAgentResultReceipt {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchAgentResultDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -59,18 +78,18 @@ extension WorkspaceHandle {
             claimCoreProtocol: false,
             allowFinalized: true
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
 
         let submissionFingerprint = try submission.contentFingerprint()
         let stored: LocalResearchExecutionRecord
         do {
-            stored = try await services.localResearchExecutionStore.record(
+            stored = try await researchAgentResultDependencies.localResearchExecutionStore.record(
                 id: authenticated.runID
             )
         } catch LocalResearchExecutionStoreError.executionNotFound(let id) {
-            guard await services.portableResearchRecordStore
+            guard await researchAgentResultDependencies.portableResearchRecordStore
                 .isRecordPermanentlyDeleted(id: id) else {
                 throw LocalResearchExecutionStoreError.executionNotFound(id)
             }
@@ -78,7 +97,7 @@ extension WorkspaceHandle {
                 "The Research Record for this Action was permanently deleted and cannot be recreated."
             )
         }
-        guard stored.triptychID == services.manifest.id,
+        guard stored.triptychID == self.id,
               let action = stored.snapshot.actionSnapshot,
               action.actionID != .discuss else {
             throw ResearchAgentConnectionError.runUnavailable
@@ -362,11 +381,11 @@ extension WorkspaceHandle {
                 zoteroBibliographicContext:
                     snapshot.zoteroBibliographicContext,
                 runID: snapshot.runID,
-                triptychID: services.manifest.id
+                triptychID: self.id
               ) else {
             throw ResearchAgentResultContractError.invalidContextUse
         }
-        let status = await services.researchSourceAccessStore.status(
+        let status = await researchAgentResultDependencies.researchSourceAccessStore.status(
             analysisNoteID: snapshot.request.target.noteID
         )
         guard status.state == .available,
@@ -389,7 +408,7 @@ extension WorkspaceHandle {
               reference.retrievalReason == .recordSearch else {
             throw ResearchAgentResultContractError.invalidContextUse
         }
-        let listing = try await services.portableResearchRecordStore.listing()
+        let listing = try await researchAgentResultDependencies.portableResearchRecordStore.listing()
         guard listing.issues.isEmpty,
               let revision = listing.revisions.first(where: { $0.id == recordID }),
               reference.fingerprint == revision.fingerprint else {
