@@ -340,7 +340,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     public let instruction: String?
     public let scope: ResearchFunctionScope?
     public let checks: Set<FidelityCheck>
-    public let commentIDs: [UUID]
     /// Optional request-scoped presentation modules for a read-only Discuss.
     ///
     /// Nil inherits the current Triptych default at preparation time. An
@@ -359,7 +358,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         instruction: String? = nil,
         scope: ResearchFunctionScope? = nil,
         checks: Set<FidelityCheck> = [],
-        commentIDs: [UUID] = [],
         dialogueResponseModules: [DialogueResponseModule]? = nil,
         fidelityTargets: [ResearchFunctionTarget]? = nil
     ) {
@@ -370,7 +368,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         self.instruction = normalized?.isEmpty == false ? normalized : nil
         self.scope = scope
         self.checks = checks
-        self.commentIDs = commentIDs
         self.dialogueResponseModules = dialogueResponseModules.map { modules in
             modules.sorted { lhs, rhs in
                 let lhsIndex = DialogueResponseModule.allCases.firstIndex(of: lhs) ?? 0
@@ -436,9 +433,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         } else if fidelityTargets != nil {
             throw ResearchFunctionContractError.unexpectedFidelityTargets
         }
-        guard Set(commentIDs).count == commentIDs.count else {
-            throw ResearchFunctionContractError.duplicateComment
-        }
         if function == .discuss {
             if let dialogueResponseModules,
                Set(dialogueResponseModules).count != dialogueResponseModules.count {
@@ -473,7 +467,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case function, target, materials, instruction, scope, checks, commentIDs
+        case function, target, materials, instruction, scope, checks
         case dialogueResponseModules
         case fidelityTargets
     }
@@ -494,7 +488,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             instruction: try container.decodeIfPresent(String.self, forKey: .instruction),
             scope: try container.decodeIfPresent(ResearchFunctionScope.self, forKey: .scope),
             checks: try container.decodeIfPresent(Set<FidelityCheck>.self, forKey: .checks) ?? [],
-            commentIDs: try container.decodeIfPresent([UUID].self, forKey: .commentIDs) ?? [],
             dialogueResponseModules: try container.decodeIfPresent(
                 [DialogueResponseModule].self,
                 forKey: .dialogueResponseModules
@@ -514,7 +507,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         try container.encodeIfPresent(instruction, forKey: .instruction)
         try container.encodeIfPresent(scope, forKey: .scope)
         if !checks.isEmpty { try container.encode(checks, forKey: .checks) }
-        if !commentIDs.isEmpty { try container.encode(commentIDs, forKey: .commentIDs) }
         try container.encodeIfPresent(dialogueResponseModules, forKey: .dialogueResponseModules)
         try container.encodeIfPresent(fidelityTargets, forKey: .fidelityTargets)
     }
@@ -658,10 +650,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// final-fingerprint Fidelity handoff. Each child retains its own
     /// permission, change-evidence, record, and completion state.
     public let requiredChildFunctions: [ResearchFunctionID]
-    /// Request-time revisions of selected Comments or other structured
-    /// evidence whose identifiers alone do not change when their content is
-    /// edited.
-    public let evidenceRevisions: [DocumentFingerprint]
     /// Analysis-only, task-scoped bibliographic context. This projection is
     /// never written back to Markdown and is not a source-evidence claim.
     public let zoteroBibliographicContext: ZoteroBibliographicContext?
@@ -690,7 +678,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         case actionSnapshot
         case recordID
         case requiredChildFunctions
-        case evidenceRevisions
         case zoteroBibliographicContext
         case sourceReference
         case citationStyle
@@ -720,10 +707,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
             requiredChildFunctions: try container.decode(
                 [ResearchFunctionID].self,
                 forKey: .requiredChildFunctions
-            ),
-            evidenceRevisions: try container.decode(
-                [DocumentFingerprint].self,
-                forKey: .evidenceRevisions
             ),
             zoteroBibliographicContext: try container.decodeIfPresent(
                 ZoteroBibliographicContext.self,
@@ -771,7 +754,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         actionSnapshot: ResearchActionSnapshot? = nil,
         recordID: UUID? = nil,
         requiredChildFunctions: [ResearchFunctionID] = [],
-        evidenceRevisions: [DocumentFingerprint] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         sourceReference: ResearchSourceReference? = nil,
         citationStyle: String? = nil,
@@ -790,7 +772,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.requiredChildFunctions = Array(Set(requiredChildFunctions)).sorted {
             $0.rawValue < $1.rawValue
         }
-        self.evidenceRevisions = evidenceRevisions
         self.zoteroBibliographicContext = zoteroBibliographicContext
         self.sourceReference = sourceReference
         self.citationStyle = citationStyle
@@ -1086,7 +1067,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     }
 }
 
-/// A stable audit key. A changed Target, Material/evidence revision, check,
+/// A stable audit key. A changed Target, Material revision, check,
 /// registered primary Method, Practice, or Profile revision creates a new key
 /// and therefore cannot silently reuse stale Fidelity evidence.
 public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
@@ -1132,17 +1113,6 @@ public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
             // adapters cannot schedule duplicate Fidelity work merely by
             // choosing a different Codable spelling for the default.
             lines.append("scope:whole")
-        }
-        for id in snapshot.request.commentIDs.sorted(by: {
-            $0.uuidString < $1.uuidString
-        }) {
-            lines.append("comment:\(id.uuidString.lowercased())")
-        }
-        for revision in snapshot.evidenceRevisions.sorted(by: {
-            if $0.sha256 != $1.sha256 { return $0.sha256 < $1.sha256 }
-            return $0.byteCount < $1.byteCount
-        }) {
-            lines.append("evidence:\(revision.sha256):\(revision.byteCount)")
         }
         if let style = snapshot.citationStyle {
             lines.append("citation-style:\(style)")
@@ -1205,7 +1175,6 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case unexpectedFidelityTargets
     case materialChanged(String)
     case sourceAccessUnavailable(ResearchSourceAccessFailure)
-    case duplicateComment
     case invalidScope
     case missingFidelityCheck
     case unexpectedFidelityCheck
@@ -1258,8 +1227,6 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "The Material '\(title)' changed while the Action was being prepared."
         case .sourceAccessUnavailable(let failure):
             "Analyze requires the exact readable source. Source access failed with \(failure.code.rawValue); choose the source again before continuing."
-        case .duplicateComment:
-            "Each Comment may be selected only once."
         case .invalidScope:
             "Passage scope requires a selection from the exact Target revision; Whole scope has no selection."
         case .missingFidelityCheck:

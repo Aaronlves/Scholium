@@ -171,25 +171,15 @@ struct ResearchSourceAccessContractsTests {
         }
     }
 
-    @Test("Function snapshots written before Source Reference remain decodable")
-    func legacyFunctionSnapshotDecoding() throws {
+    @Test("Function snapshots without a local source route remain decodable")
+    func snapshotWithoutSourceReferenceDecoding() throws {
         let snapshot = ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(function: .develop, target: target()),
-            sourceReference: try ResearchSourceReference(
-                identity: .localFile(id: sourceID),
-                displayName: "Source.pdf",
-                fingerprint: DocumentFingerprint(content: "source")
-            )
+            request: ResearchFunctionRequest(function: .develop, target: target())
         )
         let encoded = try JSONEncoder().encode(snapshot)
-        var object = try #require(
-            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-        )
-        object["sourceReference"] = nil
-        let legacy = try JSONSerialization.data(withJSONObject: object)
         let decoded = try JSONDecoder().decode(
             ResearchFunctionSnapshot.self,
-            from: legacy
+            from: encoded
         )
         #expect(decoded.sourceReference == nil)
         #expect(decoded.request == snapshot.request)

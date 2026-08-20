@@ -362,8 +362,6 @@ extension ResearchFunctionCoordinator {
                   record.snapshot.request.materials
                     == parentRequest.materials,
                   record.snapshot.request.scope == parentRequest.scope,
-                  Set(record.snapshot.request.commentIDs)
-                    == Set(parentRequest.commentIDs),
                   record.snapshot.request.checks == handoff.checks else {
                 return false
             }
@@ -394,8 +392,7 @@ extension ResearchFunctionCoordinator {
             target: finalTarget,
             materials: parentRequest.materials,
             scope: parentRequest.scope,
-            checks: handoff.checks,
-            commentIDs: parentRequest.commentIDs
+            checks: handoff.checks
         )
         let actionContext = try await host.resolveDefaultResearchActionContext(
             for: request
@@ -499,11 +496,6 @@ extension ResearchFunctionCoordinator {
             expandedRequest.materials,
             host: host
         )
-        guard expandedRequest.commentIDs.isEmpty else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Legacy Comment evidence is reveal-only and cannot enter a current Action."
-            )
-        }
         let request = expandedRequest
         try request.validate()
         let sourceAccess = try await requiredResearchSourceAccess(
@@ -608,7 +600,6 @@ extension ResearchFunctionCoordinator {
 
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
-        let evidenceRevisions: [DocumentFingerprint] = []
         let handoff = request.function.requiresFinalFidelity && request.function != .manuscript
             ? ResearchFunctionFidelityHandoff(
                 required: true,
@@ -626,7 +617,6 @@ extension ResearchFunctionCoordinator {
             // Develop and Revise expose only a pending Fidelity child here: its
             // exact workflow is prepared later against the final fingerprint.
             requiredChildFunctions: handoff == nil ? [] : [.fidelity],
-            evidenceRevisions: evidenceRevisions,
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
             citationStyle: phases.first?.citationStyle,

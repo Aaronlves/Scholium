@@ -842,7 +842,7 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
         let document = try await handle.documents.load(fixture.workID)
-        let first = try await createCommentExchange(
+        _ = try await createCommentExchange(
             for: target,
             anchor: commentAnchor(in: document, quotation: "claim requiring Critique"),
             researcherText: "Test the missing premise.",
@@ -850,7 +850,7 @@ extension ResearchFunctionOperationsTests {
             finish: true,
             handle: handle
         )
-        let second = try await createCommentExchange(
+        _ = try await createCommentExchange(
             for: target,
             anchor: commentAnchor(in: document, quotation: "See [[Analysis]]"),
             researcherText: "Check this evidential link.",
@@ -858,7 +858,7 @@ extension ResearchFunctionOperationsTests {
             finish: true,
             handle: handle
         )
-        let unfinished = try await createCommentExchange(
+        _ = try await createCommentExchange(
             for: target,
             anchor: commentAnchor(in: document, quotation: "Draft Argument"),
             researcherText: "This exchange is not finished.",
@@ -867,17 +867,6 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
 
-        let callerSuppliedID = UUID()
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(
-                    function: .critique,
-                    target: target,
-                    scope: .whole,
-                    commentIDs: [callerSuppliedID]
-                )
-            )
-        }
         let preparation = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .critique,
@@ -886,11 +875,6 @@ extension ResearchFunctionOperationsTests {
             )
         )
 
-        #expect(preparation.snapshot.request.commentIDs.isEmpty)
-        #expect(!preparation.snapshot.request.commentIDs.contains(first))
-        #expect(!preparation.snapshot.request.commentIDs.contains(second))
-        #expect(!preparation.snapshot.request.commentIDs.contains(unfinished))
-        #expect(!preparation.snapshot.request.commentIDs.contains(callerSuppliedID))
         #expect(!preparation.instructions.contains("Test the missing premise."))
         #expect(!preparation.instructions.contains("The linked Analysis supplies context but not support."))
         #expect(!preparation.instructions.contains("This exchange is not finished."))
@@ -913,7 +897,7 @@ extension ResearchFunctionOperationsTests {
             in: document,
             quotation: "A claim requiring Critique"
         )
-        let overlapping = try await createCommentExchange(
+        _ = try await createCommentExchange(
             for: target,
             anchor: commentAnchor(in: document, quotation: "claim requiring"),
             researcherText: "Inspect this inference.",
@@ -921,7 +905,7 @@ extension ResearchFunctionOperationsTests {
             finish: true,
             handle: handle
         )
-        let outsidePassage = try await createCommentExchange(
+        _ = try await createCommentExchange(
             for: target,
             anchor: commentAnchor(in: document, quotation: "See [[Analysis]]"),
             researcherText: "Inspect the link separately.",
@@ -938,9 +922,6 @@ extension ResearchFunctionOperationsTests {
             )
         )
 
-        #expect(preparation.snapshot.request.commentIDs.isEmpty)
-        #expect(!preparation.snapshot.request.commentIDs.contains(overlapping))
-        #expect(!preparation.snapshot.request.commentIDs.contains(outsidePassage))
         #expect(!preparation.instructions.contains("Inspect this inference."))
         #expect(!preparation.instructions.contains("Inspect the link separately."))
         await runtime.shutdown()

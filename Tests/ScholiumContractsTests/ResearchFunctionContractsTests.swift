@@ -285,10 +285,48 @@ struct ResearchFunctionContractsTests {
             "materials": [],
             "instruction": "State the bounded academic outcome.",
             "checks": [],
-            "commentIDs": [],
         ])
         let defaults = try decoder.decode(ResearchFunctionRequest.self, from: defaultData)
         #expect(defaults.dialogueResponseModules == nil)
+    }
+
+    @Test("Retired Comment evidence fields fail closed")
+    func retiredCommentEvidenceFieldsAreRejected() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        var request = try #require(
+            JSONSerialization.jsonObject(
+                with: encoder.encode(ResearchFunctionRequest(
+                    function: .develop,
+                    target: target(role: .analysis)
+                ))
+            ) as? [String: Any]
+        )
+        request["commentIDs"] = []
+        #expect(throws: ResearchFunctionContractError.self) {
+            _ = try decoder.decode(
+                ResearchFunctionRequest.self,
+                from: JSONSerialization.data(withJSONObject: request)
+            )
+        }
+
+        var snapshot = try #require(
+            JSONSerialization.jsonObject(
+                with: encoder.encode(ResearchFunctionSnapshot(
+                    request: ResearchFunctionRequest(
+                        function: .develop,
+                        target: target(role: .analysis)
+                    )
+                ))
+            ) as? [String: Any]
+        )
+        snapshot["evidenceRevisions"] = []
+        #expect(throws: ResearchFunctionContractError.self) {
+            _ = try decoder.decode(
+                ResearchFunctionSnapshot.self,
+                from: JSONSerialization.data(withJSONObject: snapshot)
+            )
+        }
     }
 
     @Test("Unsupported Dialogue identifiers are rejected instead of projected")
@@ -446,7 +484,7 @@ struct ResearchFunctionContractsTests {
 
     }
 
-    @Test("Fidelity evidence identity changes with revision, scope, comments, and exact Method context")
+    @Test("Fidelity evidence identity changes with revision, scope, and exact Method context")
     func fidelityEvidenceIdentity() throws {
         let target = target(role: .analysis)
         let anchor = CommentAnchor(
@@ -464,31 +502,21 @@ struct ResearchFunctionContractsTests {
         let whole = try snapshot(
             target: target,
             scope: .whole,
-            evidence: [DocumentFingerprint(content: "comment-v1")],
             method: exactMethod
         )
         let implicitWhole = try snapshot(
             target: target,
             scope: nil,
-            evidence: [DocumentFingerprint(content: "comment-v1")],
             method: exactMethod
         )
         let passage = try snapshot(
             target: target,
             scope: .passage(anchor),
-            evidence: [DocumentFingerprint(content: "comment-v1")],
-            method: exactMethod
-        )
-        let changedComment = try snapshot(
-            target: target,
-            scope: .whole,
-            evidence: [DocumentFingerprint(content: "comment-v2")],
             method: exactMethod
         )
         let changedPractice = try snapshot(
             target: target,
             scope: .whole,
-            evidence: [DocumentFingerprint(content: "comment-v1")],
             method: method(
                 primarySource: exactMethod.primaryMarkdownSource,
                 practiceSource: "# Conceptual Analyst\n\nContent v2.\n"
@@ -497,7 +525,6 @@ struct ResearchFunctionContractsTests {
         let changedCitationStyle = try snapshot(
             target: target,
             scope: .whole,
-            evidence: [DocumentFingerprint(content: "comment-v1")],
             method: exactMethod,
             citationStyle: "chicago-author-date"
         )
@@ -512,7 +539,6 @@ struct ResearchFunctionContractsTests {
         #expect(makeKey(whole) == makeKey(whole))
         #expect(makeKey(whole) == makeKey(implicitWhole))
         #expect(makeKey(whole) != makeKey(passage))
-        #expect(makeKey(whole) != makeKey(changedComment))
         #expect(makeKey(whole) != makeKey(changedPractice))
         #expect(makeKey(whole) != makeKey(changedCitationStyle))
         #expect(ResearchFidelityEvidenceKey(
@@ -568,7 +594,6 @@ struct ResearchFunctionContractsTests {
     private func snapshot(
         target: ResearchFunctionTarget,
         scope: ResearchFunctionScope?,
-        evidence: [DocumentFingerprint],
         method: ResearchMethodSnapshot,
         citationStyle: String? = "apa-7"
     ) throws -> ResearchFunctionSnapshot {
@@ -623,11 +648,9 @@ struct ResearchFunctionContractsTests {
                 function: .fidelity,
                 target: target,
                 scope: scope,
-                checks: [.content],
-                commentIDs: [target.noteID]
+                checks: [.content]
             ),
             actionSnapshot: action,
-            evidenceRevisions: evidence,
             citationStyle: citationStyle
         )
     }

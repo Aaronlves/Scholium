@@ -499,7 +499,6 @@ extension WorkspaceHandle {
                     ? [.content]
                     : Set(platformInputs.fidelityChecks))
                 : [],
-            commentIDs: [],
             dialogueResponseModules: function == .discuss ? [] : nil
         )
         try request.validate()

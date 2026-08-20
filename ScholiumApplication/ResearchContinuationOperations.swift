@@ -373,7 +373,6 @@ extension WorkspaceHandle {
                         ? [.content]
                         : Set(request.fidelityChecks))
                     : [],
-                commentIDs: [],
                 dialogueResponseModules: function == .discuss ? [] : nil
             )
             let actionContext = try await resolvedDefaultActionContext(

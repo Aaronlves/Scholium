@@ -203,13 +203,6 @@ extension ResearchFunctionCoordinator {
                 "Actually-used Material identities must be a distinct subset of the prepared Material set."
             )
         }
-        guard snapshot.request.commentIDs.isEmpty,
-              snapshot.evidenceRevisions.isEmpty else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Legacy Comment evidence cannot participate in a current Action run."
-            )
-        }
-
         let targetChanged = finalTargetFingerprint
             != snapshot.request.target.fingerprint
         let didConfirmTargetWrite = confirmedWriteSet.map { confirmed in
@@ -1131,8 +1124,7 @@ extension ResearchFunctionCoordinator {
                       ) else { return false }
             }
 
-            return snapshot.request.commentIDs.isEmpty
-                && snapshot.evidenceRevisions.isEmpty
+            return true
         } catch {
             // Missing, unreadable, moved, or identity-mismatched evidence is
             // stale for planning. The durable record remains untouched.
@@ -1222,15 +1214,6 @@ extension ResearchFunctionCoordinator {
         let requiredChecks = parent.fidelityHandoff?.checks ?? []
         let parentScopeKind = parentRequest.scope?.kind ?? .whole
         let childScopeKind = childRequest.scope?.kind ?? .whole
-        let parentEvidence = parent.evidenceRevisions.sorted {
-            if $0.sha256 != $1.sha256 { return $0.sha256 < $1.sha256 }
-            return $0.byteCount < $1.byteCount
-        }
-        let childEvidence = child.snapshot.evidenceRevisions.sorted {
-            if $0.sha256 != $1.sha256 { return $0.sha256 < $1.sha256 }
-            return $0.byteCount < $1.byteCount
-        }
-
         guard childRequest.target.noteID == parentRequest.target.noteID,
               childRequest.target.note == parentRequest.target.note,
               childRequest.target.role == parentRequest.target.role,
@@ -1242,11 +1225,9 @@ extension ResearchFunctionCoordinator {
               Set(completion.fidelityOutcomes.map(\.check)) == requiredChecks,
               Set(childRequest.materials) == Set(parentRequest.materials),
               completion.materialFingerprints == finalMaterialFingerprints,
-              Set(childRequest.commentIDs) == Set(parentRequest.commentIDs),
-              childEvidence == parentEvidence,
               childScopeKind == parentScopeKind else {
             throw ResearchFunctionContractError.invalidCompletion(
-                "The selected Fidelity child does not match the final Target fingerprint, Materials, scope, Comments, or required checks of this handoff."
+                "The selected Fidelity child does not match the final Target fingerprint, Materials, scope, or required checks of this handoff."
             )
         }
         return completion

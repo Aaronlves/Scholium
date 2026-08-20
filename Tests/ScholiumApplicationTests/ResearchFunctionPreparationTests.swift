@@ -209,8 +209,6 @@ extension ResearchFunctionOperationsTests {
             == develop.snapshot.request.materials)
         #expect(automatic.preparation.snapshot.request.scope
             == develop.snapshot.request.scope)
-        #expect(automatic.preparation.snapshot.request.commentIDs
-            == develop.snapshot.request.commentIDs)
 
         let repeated = try await handle.research.prepareProtectedAutomaticFidelity(
             parentRunID: develop.runID
