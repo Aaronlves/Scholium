@@ -432,6 +432,29 @@ struct ArchitectureBoundaryTests {
         ))
     }
 
+    @Test("Research function execution uses the local execution record directly")
+    func localResearchExecutionRecordBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        for fileName in [
+            "ResearchFunctionCoordinator.swift",
+            "ResearchFunctionDelivery.swift",
+            "ResearchFunctionCompletion.swift",
+        ] {
+            let source = try String(
+                contentsOf: applicationRoot.appendingPathComponent(fileName),
+                encoding: .utf8
+            )
+            #expect(!source.contains("StoredFunctionRecord"))
+        }
+    }
+
     @Test("Research execution lifecycle has one Workspace coordinator")
     func researchFunctionCoordinatorBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

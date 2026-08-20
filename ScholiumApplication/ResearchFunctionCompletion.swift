@@ -43,8 +43,7 @@ extension ResearchFunctionCoordinator {
         if let existing = stored.completion {
             switch existing.state {
             case .complete:
-                guard case .local(let local) = stored,
-                      local.completionSubmissionDigest == submissionDigest else {
+                guard stored.completionSubmissionDigest == submissionDigest else {
                     throw ResearchFunctionContractError.completionAlreadyRecorded(
                         submission.runID
                     )
@@ -52,7 +51,7 @@ extension ResearchFunctionCoordinator {
                 try await ensurePortableResearchRecord(
                     completion: existing,
                     stored: stored,
-                    confirmedWrite: local.writeReport
+                    confirmedWrite: stored.writeReport
                 )
                 await host.finalizeResearchAgentRunAccess(runID: existing.runID)
                 return existing
@@ -103,7 +102,7 @@ extension ResearchFunctionCoordinator {
             let durableStatements = try await validatedDiscussionStatements(
                 snapshot: snapshot
             )
-            guard let discussion = stored.discussionExecution,
+            guard let discussion = stored.discussion,
                   discussion.responseContract.validationIssues.isEmpty,
                   durableStatements.contains(where: { statement in
                       statement.author == .agent
@@ -511,7 +510,7 @@ extension ResearchFunctionCoordinator {
             host: host
         ) {
             let refreshed = try await record(runID: advanced.runID)
-            if case .local(let local) = refreshed, local.isCompacted {
+            if refreshed.isCompacted {
                 _ = try await dependencies.portableResearchRecordStore.record(
                     id: advanced.runID
                 )
@@ -619,7 +618,7 @@ extension ResearchFunctionCoordinator {
             if let durable = try? await record(runID: completion.runID),
                let advanced = durable.completion,
                [.complete, .unverified].contains(advanced.state) {
-                if case .local(let local) = durable, local.isCompacted {
+                if durable.isCompacted {
                     _ = try await dependencies.portableResearchRecordStore.record(
                         id: advanced.runID
                     )
@@ -686,7 +685,7 @@ extension ResearchFunctionCoordinator {
 
     private func ensurePortableResearchRecord(
         completion: ResearchFunctionCompletion,
-        stored: StoredFunctionRecord,
+        stored: LocalResearchExecutionRecord,
         confirmedWrite: ResearchRunWriteReport?
     ) async throws {
         guard [.complete, .unverified].contains(completion.state) else { return }
@@ -761,7 +760,7 @@ extension ResearchFunctionCoordinator {
 
     private func portableResearchRecord(
         completion: ResearchFunctionCompletion,
-        stored: StoredFunctionRecord,
+        stored: LocalResearchExecutionRecord,
         confirmedWrite: ResearchRunWriteReport?,
         resultPayloadOverride: ResearchRunResultPayload? = nil,
         storagePreflightForAwaitingFidelity: Bool = false
@@ -1321,7 +1320,7 @@ extension ResearchFunctionCoordinator {
 extension ResearchFunctionCoordinator {
     private func validateResearchContinuation(
         _ snapshot: ResearchFunctionSnapshot,
-        stored: StoredFunctionRecord
+        stored: LocalResearchExecutionRecord
     ) async throws {
         guard let lineage = snapshot.continuationLineage else { return }
         _ = stored
@@ -1406,7 +1405,7 @@ extension ResearchFunctionCoordinator {
 
 extension ResearchFunctionCoordinator {
     private func confirmBoundedWriteSet<Host: ResearchFunctionCoordinatorHost>(
-        stored: StoredFunctionRecord,
+        stored: LocalResearchExecutionRecord,
         snapshot: ResearchFunctionSnapshot,
         completedAt: Date,
         host: isolated Host

@@ -7,56 +7,6 @@ struct ValidatedFunctionObject: Sendable {
     let note: WorkspaceNoteSnapshot
 }
 
-enum StoredFunctionRecord: Sendable {
-    case local(LocalResearchExecutionRecord)
-
-    private var localRecord: LocalResearchExecutionRecord {
-        switch self {
-        case .local(let record): record
-        }
-    }
-
-    var snapshot: ResearchFunctionSnapshot {
-        localRecord.snapshot
-    }
-
-    var completion: ResearchFunctionCompletion? {
-        localRecord.completion
-    }
-
-    var preparedInstructions: String? {
-        localRecord.preparedInstructions
-    }
-
-    var discussionExecution: ResearchDiscussionExecutionContract? {
-        localRecord.discussion
-    }
-
-    var boundedWriteSet: ResearchBoundedWriteSet {
-        localRecord.boundedWriteSet
-    }
-
-    var documentWriteRecords: [ResearchDocumentWriteRecord] {
-        localRecord.documentWriteRecords
-    }
-
-    var zoteroBindingWriteRecords: [ResearchZoteroBindingWriteRecord] {
-        localRecord.zoteroBindingWriteRecords
-    }
-
-    var writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord] {
-        localRecord.writeConflictResolutionRecords
-    }
-
-    var writeReport: ResearchRunWriteReport? {
-        localRecord.writeReport
-    }
-
-    var resultPayload: ResearchRunResultPayload? {
-        localRecord.resultPayload
-    }
-}
-
 /// Stable authorities used by one Workspace's protected execution lifecycle.
 /// This is intentionally narrower than the Workspace-wide service aggregate:
 /// the coordinator cannot reach search, permission, recovery-policy, or window
@@ -129,16 +79,16 @@ final class ResearchFunctionCoordinator: Sendable {
         self.dependencies = dependencies
     }
 
-    func record(runID: UUID) async throws -> StoredFunctionRecord {
+    func record(runID: UUID) async throws -> LocalResearchExecutionRecord {
         guard let local = try await localExecutionStore.recordIfPresent(id: runID) else {
             throw ResearchFunctionContractError.preparationNotFound(runID)
         }
-        return .local(local)
+        return local
     }
 
     func persistCompletion(
         _ completion: ResearchFunctionCompletion,
-        in stored: StoredFunctionRecord,
+        in stored: LocalResearchExecutionRecord,
         resultPayload: ResearchRunResultPayload? = nil,
         writeReport: ResearchRunWriteReport? = nil,
         submissionDigest: String? = nil
@@ -155,7 +105,7 @@ final class ResearchFunctionCoordinator: Sendable {
 
     func stageResultPayload(
         _ payload: ResearchRunResultPayload,
-        in stored: StoredFunctionRecord
+        in stored: LocalResearchExecutionRecord
     ) async throws {
         guard payload.runID == stored.snapshot.runID else {
             throw ResearchAgentResultContractError.invalidSubmission
@@ -229,7 +179,7 @@ final class ResearchFunctionCoordinator: Sendable {
 
     private func cancel<Host: ResearchFunctionCoordinatorHost>(
         runID: UUID,
-        stored: StoredFunctionRecord,
+        stored: LocalResearchExecutionRecord,
         host: isolated Host
     ) async throws {
         if let existing = stored.completion {

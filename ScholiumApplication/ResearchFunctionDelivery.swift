@@ -497,10 +497,10 @@ extension ResearchFunctionCoordinator {
     }
 
     func deliveryInstructions<Host: ResearchFunctionCoordinatorHost>(
-        for stored: StoredFunctionRecord,
+        for stored: LocalResearchExecutionRecord,
         host: isolated Host
     ) async throws -> String {
-        var base = stored.preparedInstructions ?? ""
+        var base = stored.preparedInstructions
         let snapshot = stored.snapshot
         if snapshot.request.function == .develop,
            snapshot.request.target.role == .analysis {
