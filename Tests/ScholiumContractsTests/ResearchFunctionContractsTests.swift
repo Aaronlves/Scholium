@@ -201,6 +201,28 @@ struct ResearchFunctionContractsTests {
         }
     }
 
+    @Test("Retired record-kind snapshot fields fail closed")
+    func retiredRecordKindSnapshotFieldIsRejected() throws {
+        let encoder = JSONEncoder()
+        var retired = try #require(
+            JSONSerialization.jsonObject(
+                with: encoder.encode(ResearchFunctionSnapshot(
+                    request: ResearchFunctionRequest(
+                        function: .develop,
+                        target: target(role: .topic)
+                    )
+                ))
+            ) as? [String: Any]
+        )
+        retired["recordKind"] = "function_envelope"
+        #expect(throws: ResearchFunctionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchFunctionSnapshot.self,
+                from: JSONSerialization.data(withJSONObject: retired)
+            )
+        }
+    }
+
     @Test("Discuss module selection is ordered and request scoped")
     func discussResponseModuleSelection() throws {
         let analysis = target(role: .analysis)
@@ -270,13 +292,10 @@ struct ResearchFunctionContractsTests {
     }
 
     @Test("Unsupported Dialogue identifiers are rejected instead of projected")
-    func legacyDialogueIdentifiersAreRejected() throws {
+    func unsupportedDialogueIdentifiersAreRejected() throws {
         let data = Data("\"dialogue\"".utf8)
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(ResearchFunctionID.self, from: data)
-        }
-        #expect(throws: DecodingError.self) {
-            try JSONDecoder().decode(ResearchFunctionRecordKind.self, from: data)
         }
     }
 
@@ -399,12 +418,10 @@ struct ResearchFunctionContractsTests {
         let parentRunID = UUID()
         let manual = ResearchFunctionSnapshot(
             request: request,
-            recordKind: .functionEnvelope,
             fidelityInvocation: .manual
         )
         let automatic = ResearchFunctionSnapshot(
             request: request,
-            recordKind: .functionEnvelope,
             fidelityInvocation: .automatic(parentRunID: parentRunID)
         )
         let encoder = JSONEncoder()
@@ -610,7 +627,6 @@ struct ResearchFunctionContractsTests {
                 commentIDs: [target.noteID]
             ),
             actionSnapshot: action,
-            recordKind: .functionEnvelope,
             evidenceRevisions: evidence,
             citationStyle: citationStyle
         )

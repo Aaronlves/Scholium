@@ -190,7 +190,7 @@
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.
-- Once a portable Record exists, schema-14 Local Execution compacts to a
+- Once a portable Record exists, schema-15 Local Execution compacts to a
   terminal receipt and deletes its prepared instructions, Bounded Write Set,
   extensions, write ledgers, and conflict rows. Diff and direct Undo use the
   portable Record plus `(Run ID, Note ID)` Agent evidence instead.

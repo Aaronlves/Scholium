@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 10 and Local Execution schema 14")
+@Suite("Portable Research Record storage v1/schema 10 and Local Execution schema 15")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -926,14 +926,14 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution schema 14 round-trips and rejects retired schema 13")
+    @Test("Local Execution schema 15 round-trips and rejects retired schema 14")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 14)
+        #expect(stored.schemaVersion == 15)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
@@ -945,8 +945,8 @@ struct ResearchRecordV1StoresTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 14)
-        object["schema_version"] = 13
+        #expect(object["schema_version"] as? Int == 15)
+        object["schema_version"] = 14
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()
@@ -1503,7 +1503,6 @@ struct ResearchRecordV1StoresTests {
             runID: runID,
             request: request,
             actionSnapshot: action,
-            recordKind: .functionEnvelope,
             recordID: runID,
             confirmationToken: UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!,
             preparedAt: Date(timeIntervalSince1970: 10)

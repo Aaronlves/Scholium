@@ -602,7 +602,6 @@ private func makeDeletionTestLocalExecution(
             target: target
         ),
         actionSnapshot: action,
-        recordKind: .functionEnvelope,
         recordID: runID,
         confirmationToken: UUID(),
         preparedAt: Date(timeIntervalSince1970: 10)

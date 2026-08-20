@@ -52,7 +52,6 @@ struct ResearchSourceAccessContractsTests {
                 function: .develop,
                 target: target()
             ),
-            recordKind: .functionEnvelope,
             sourceReference: reference
         )
         let snapshotData = try JSONEncoder().encode(snapshot)
@@ -176,7 +175,6 @@ struct ResearchSourceAccessContractsTests {
     func legacyFunctionSnapshotDecoding() throws {
         let snapshot = ResearchFunctionSnapshot(
             request: ResearchFunctionRequest(function: .develop, target: target()),
-            recordKind: .functionEnvelope,
             sourceReference: try ResearchSourceReference(
                 identity: .localFile(id: sourceID),
                 displayName: "Source.pdf",

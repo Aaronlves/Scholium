@@ -524,30 +524,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     }
 }
 
-public enum ResearchFunctionRecordKind: String, Codable, Hashable, Sendable {
-    case discuss
-    case critique
-    case functionEnvelope = "function_envelope"
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
-        if let kind = Self(rawValue: value) {
-            self = kind
-        } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown Research Function record kind: \(value)"
-            )
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
-}
-
 public enum ResearchFunctionRunState: String, Codable, Hashable, Sendable {
     case prepared
     case awaitingFidelity = "awaiting_fidelity"
@@ -667,15 +643,15 @@ private struct ResearchContinuationLineageAnyCodingKey: CodingKey {
     }
 }
 
-/// Immutable request-time evidence embedded in an existing Dialogue or
-/// Critique record. It records only resources actually resolved for the run.
+/// Immutable request-time evidence for one prepared Action run.
+///
+/// It records the frozen request and resolution evidence needed to execute and
+/// complete that run; protected execution details remain in Local Execution.
 public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let runID: UUID
     public let request: ResearchFunctionRequest
-    /// Public Action identity and frozen authority for new resolver-prepared
-    /// runs. Nil is accepted only for retained Function-era records.
+    /// Public Action identity and frozen authority when the run is resolved.
     public let actionSnapshot: ResearchActionSnapshot?
-    public let recordKind: ResearchFunctionRecordKind
     public let recordID: UUID?
     /// Functions coordinated through independent child runs. Manuscript uses
     /// this for its selected phases; write-capable functions use it for their
@@ -708,11 +684,91 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let confirmationToken: UUID
     public let preparedAt: Date
 
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case runID
+        case request
+        case actionSnapshot
+        case recordID
+        case requiredChildFunctions
+        case evidenceRevisions
+        case zoteroBibliographicContext
+        case sourceReference
+        case citationStyle
+        case continuationLineage
+        case continuationHandoff
+        case resynthesisContext
+        case fidelityHandoff
+        case fidelityInvocation
+        case confirmationToken
+        case preparedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchFunctionContractCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            runID: try container.decode(UUID.self, forKey: .runID),
+            request: try container.decode(ResearchFunctionRequest.self, forKey: .request),
+            actionSnapshot: try container.decodeIfPresent(
+                ResearchActionSnapshot.self,
+                forKey: .actionSnapshot
+            ),
+            recordID: try container.decodeIfPresent(UUID.self, forKey: .recordID),
+            requiredChildFunctions: try container.decode(
+                [ResearchFunctionID].self,
+                forKey: .requiredChildFunctions
+            ),
+            evidenceRevisions: try container.decode(
+                [DocumentFingerprint].self,
+                forKey: .evidenceRevisions
+            ),
+            zoteroBibliographicContext: try container.decodeIfPresent(
+                ZoteroBibliographicContext.self,
+                forKey: .zoteroBibliographicContext
+            ),
+            sourceReference: try container.decodeIfPresent(
+                ResearchSourceReference.self,
+                forKey: .sourceReference
+            ),
+            citationStyle: try container.decodeIfPresent(
+                String.self,
+                forKey: .citationStyle
+            ),
+            continuationLineage: try container.decodeIfPresent(
+                ResearchContinuationLineage.self,
+                forKey: .continuationLineage
+            ),
+            continuationHandoff: try container.decodeIfPresent(
+                ResearchContinuationHandoffContext.self,
+                forKey: .continuationHandoff
+            ),
+            resynthesisContext: try container.decodeIfPresent(
+                MaterialChangedSinceUseAttentionContext.self,
+                forKey: .resynthesisContext
+            ),
+            fidelityHandoff: try container.decodeIfPresent(
+                ResearchFunctionFidelityHandoff.self,
+                forKey: .fidelityHandoff
+            ),
+            fidelityInvocation: try container.decodeIfPresent(
+                FidelityInvocationKind.self,
+                forKey: .fidelityInvocation
+            ),
+            confirmationToken: try container.decode(
+                UUID.self,
+                forKey: .confirmationToken
+            ),
+            preparedAt: try container.decode(Date.self, forKey: .preparedAt)
+        )
+    }
+
     public init(
         runID: UUID = UUID(),
         request: ResearchFunctionRequest,
         actionSnapshot: ResearchActionSnapshot? = nil,
-        recordKind: ResearchFunctionRecordKind,
         recordID: UUID? = nil,
         requiredChildFunctions: [ResearchFunctionID] = [],
         evidenceRevisions: [DocumentFingerprint] = [],
@@ -730,7 +786,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.runID = runID
         self.request = request
         self.actionSnapshot = actionSnapshot
-        self.recordKind = recordKind
         self.recordID = recordID
         self.requiredChildFunctions = Array(Set(requiredChildFunctions)).sorted {
             $0.rawValue < $1.rawValue

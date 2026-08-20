@@ -621,7 +621,6 @@ extension ResearchFunctionCoordinator {
             runID: runID,
             request: request,
             actionSnapshot: actionSnapshot,
-            recordKind: request.function == .discuss ? .discuss : .functionEnvelope,
             recordID: runID,
             // Manuscript does not impose one universal philosophical pipeline.
             // Develop and Revise expose only a pending Fidelity child here: its

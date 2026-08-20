@@ -195,7 +195,7 @@ complete outer envelope before it writes a frame.
 Continue Result schema 3 and authenticated Run Context schema 6 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 14 persists active child handoff and independent
+Execution schema 15 persists active child handoff and independent
 Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
 Context schema 6 also carries one optional typed Zotero Integration Adapter containing
@@ -359,7 +359,7 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-14 Local Execution, exact
+`noteReviewStates`, and `resultArrivals` from schema-15 Local Execution, exact
 schema-10 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
@@ -461,7 +461,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-14
+the one current `methodImprovementRun` in its parent Local Execution schema-15
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every
