@@ -249,6 +249,40 @@ public actor WorkspaceRuntime {
         try WorkspaceBootstrap.candidate(for: request)
     }
 
+    /// Reads only the selected Triptych's portable Research Guidance and the
+    /// installed Core resource. It does not construct a WorkspaceHandle,
+    /// inventory research vaults, open Search, or start watchers.
+    public func skillDiscoverySourceManifest(
+        workspaceID: UUID
+    ) async throws -> WorkspaceSkillSourceManifest {
+        try requireActive()
+        let assignment = try await assignment(id: workspaceID)
+        guard let works = assignment.vault(for: .output) else {
+            throw ScholiumApplicationError.incompleteTriptych(assignment.id)
+        }
+        let worksURL = URL(
+            fileURLWithPath: works.canonicalPath,
+            isDirectory: true
+        ).standardizedFileURL
+        let controlStore = TriptychControlStore(worksVaultURL: worksURL)
+        let manifest = try await controlStore.manifest()
+        guard manifest.id == assignment.id else {
+            throw ScholiumApplicationError.manifestIdentityMismatch(
+                expected: assignment.id,
+                actual: manifest.id
+            )
+        }
+        let controlURL = await controlStore.controlURL
+        let configuration = ResearchConfigurationStore(
+            controlURL: controlURL,
+            triptychID: assignment.id
+        )
+        return try await configuration.skillDiscoverySourceManifest(
+            workspaceRootURL: worksURL.deletingLastPathComponent(),
+            triptychName: assignment.triptych.name
+        )
+    }
+
     public func registeredVaults() async throws -> [RegisteredVault] {
         try requireActive()
         switch membership {

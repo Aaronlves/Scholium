@@ -99,6 +99,12 @@ public actor ResearchConfigurationStore {
         }
     }
 
+    /// Internal identity projections for the source-only project Skill
+    /// discovery assembly. They do not expose mutable storage or a public
+    /// delivery contract.
+    var skillDiscoveryControlURL: URL { controlURL }
+    var skillDiscoveryTriptychID: UUID { triptychID }
+
     public func registrationSnapshot() throws -> ResearchSkillRegistrationSnapshot? {
         try registrations.snapshot().map {
             ResearchSkillRegistrationSnapshot(document: $0.document, revision: $0.revision)

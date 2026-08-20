@@ -5,6 +5,9 @@ description: Check one exact Analysis, Topic, or Work revision for source, conce
 
 # Content Fidelity
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Audit the exact Target revision read-only. This method checks whether content remains faithful to its claimed basis; it does not supply a peer Critique, improve prose, or certify truth.
 
 ## Checks

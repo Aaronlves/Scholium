@@ -724,7 +724,9 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage("Usage: scholium workspace <catalog|attention|bootstrap>")
+            throw CLIError.usage(
+                "Usage: scholium workspace <catalog|skill-sources|attention|bootstrap>"
+            )
         }
         if subcommand == "bootstrap" {
             try await runWorkspaceBootstrap(Array(arguments.dropFirst()), context: context)
@@ -733,6 +735,18 @@ extension ScholiumCLI {
         let assignment = try await context.selectedTriptych(
             selector: option("--triptych", in: arguments)
         )
+        if subcommand == "skill-sources" {
+            guard (option("--format", in: arguments) ?? "json") == "json" else {
+                throw CLIError.usage("Workspace Skill sources supports --format json.")
+            }
+            let manifest = try await context.runtime.skillDiscoverySourceManifest(
+                workspaceID: assignment.id
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            write(String(decoding: try encoder.encode(manifest), as: UTF8.self) + "\n")
+            return
+        }
         let handle = try await context.handle(for: assignment)
         let snapshot = try await handle.discovery.snapshot().catalog
         guard (option("--format", in: arguments) ?? "json") == "json" else {

@@ -73,6 +73,7 @@ extension ScholiumCLI {
           scholium graph trace <source> <target> --max-depth 3 --format json
           scholium graph relation-trace <source> <target> --max-depth 3 --format json
           scholium workspace catalog [--triptych <uuid-or-unique-name>] --format json
+          scholium workspace skill-sources [--triptych <uuid-or-unique-name>] --format json
           scholium workspace attention [--triptych <uuid-or-unique-name>] [--kind <queue>] --format json
           scholium workspace bootstrap --triptych <uuid-or-unique-name> --target <directory>
               [--conventions-file <file>] [--format markdown|json]
@@ -103,7 +104,9 @@ extension ScholiumCLI {
         Triptych roles: analyses, topics, works
         Authenticated Agent commands preserve Run, Method, Practice, Research
         Context, Bounded Write Set, Result, and continuation boundaries. The
-        CLI never scans Skill folders or grants edit permission.
+        CLI never scans arbitrary Skill folders or grants edit permission.
+        Workspace Skill sources reports exact registered project-discovery
+        candidates; it creates no link and exposes no machine-local Method.
         Workspace bootstrap is candidate-only: it never writes or overwrites AGENTS.md.
         Zotero MCP status locates Scholium's first-party CLI transport by default.
         Add --probe to perform only the MCP initialize lifecycle check; it does
@@ -403,6 +406,7 @@ private extension ScholiumCLI {
             "graph trace": "Usage: scholium graph trace <source> <target> [--max-depth <1...10>] --format json",
             "graph relation-trace": "Usage: scholium graph relation-trace <source> <target> [--max-depth <1...10>] --format json",
             "workspace catalog": "Usage: scholium workspace catalog [--triptych <selector>] --format json",
+            "workspace skill-sources": "Usage: scholium workspace skill-sources [--triptych <selector>] --format json\n\nReports the release-managed Core Protocol and exact enabled Triptych-managed Method folders that an authorized setup Agent may link into its host's project-level Skill directory. It creates no link, scans no arbitrary folder, and exposes no machine-local Method locator.",
             "workspace attention": "Usage: scholium workspace attention [--triptych <selector>] [--kind <queue>] --format json",
             "workspace bootstrap": "Usage: scholium workspace bootstrap --triptych <selector> --target <directory> [--conventions-file <file>] [--format markdown|json]",
             "action available": "Usage: scholium action available --from <target-json|-> --format json",

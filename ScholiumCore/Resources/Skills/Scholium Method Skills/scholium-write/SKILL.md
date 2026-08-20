@@ -5,6 +5,9 @@ description: Draft or revise the current Work while preserving researcher author
 
 # Write
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Modify only the current Work Target within the exact authorized scope. Treat Analyses, Topics, sources, Critiques, Comments, and Discussion turns as read-only inputs.
 
 ## Method

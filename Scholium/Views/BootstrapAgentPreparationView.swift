@@ -88,7 +88,7 @@ struct BootstrapAgentPreparationView: View {
                     Divider()
 
                     BootstrapAgentTaskRow(number: 2, title: "Let the Agent finish setup") {
-                        Text("The Agent installs and verifies the CLI, reads Scholium's Agent help, and prepares the applicable instruction file.")
+                        Text("The Agent installs and verifies the CLI, reads Scholium's Agent help, and prepares the applicable project instructions and Skill discovery links.")
                             .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -179,7 +179,8 @@ struct BootstrapAgentPreparationView: View {
 
 enum BootstrapAgentPreparationPrompt {
     static func text(triptychRootURL: URL) -> String {
-        let root = triptychRootURL.standardizedFileURL.path(percentEncoded: false)
+        let root = triptychRootURL.resolvingSymlinksInPath()
+            .standardizedFileURL.path(percentEncoded: false)
         return """
         Prepare an external Agent project for Scholium.
 
@@ -192,20 +193,36 @@ enum BootstrapAgentPreparationPrompt {
         Project preparation:
         1. Open or create a separate Agent project whose project root and workspace root are both the exact folder above.
         2. Inspect this root and its ancestors for applicable AGENTS.md and CLAUDE.md instructions before creating anything.
-        3. If no applicable instruction file exists, create the instruction file yourself at the project root:
-           - Create AGENTS.md when your Agent supports it.
-           - If you are Claude Code, create only the minimal CLAUDE.md needed for Claude and have it refer to AGENTS.md instead of duplicating the rules.
-           - Never overwrite, merge, shadow, or silently replace an existing instruction file. Report the exact blocker instead.
-           - Read every file back and report the exact paths you created or used.
-        4. In those instructions, prefer Scholium-provided CLI and Agent tools for research work. Ordinary read tools remain your choice.
-        5. Follow Scholium's file rules strictly:
+        3. Obtain Scholium's exact project Skill sources with:
+           $HOME/.local/bin/scholium workspace skill-sources --format json
+           - Accept only schema_version 1.
+           - Require workspace_root to equal the exact project root above.
+           - Do not scan for, infer, or substitute any other Skill source.
+        4. Determine which supported Agent host you are currently running in and use only its project-level Skill discovery directory under the exact workspace root:
+           - Codex: .agents/skills
+           - Claude Code: .claude/skills
+           - For another host, create no discovery directory or link unless its current project-level Agent Skills location is already authoritatively known; otherwise report that discovery setup is unsupported.
+           - Require every existing discovery-directory component beneath the workspace root to be a real directory, not a symlink, and require the resolved discovery directory to remain beneath the exact workspace root. Create only missing directory components; otherwise stop and report the exact blocker.
+        5. For every entry returned in skills, create one directory symlink whose leaf name is exactly name and whose target is exactly source_directory.
+           - Create links only inside the selected project-level Skill discovery directory.
+           - If a destination is already a symlink to the same resolved source, leave it unchanged.
+           - If a destination is a file, directory, dangling link, or points anywhere else, stop and report the exact conflict. Never overwrite, merge, rename, or repair it.
+           - Do not copy or edit Skill contents and do not inspect sibling directories. This setup instruction permits only resolving the exact returned folder and confirming its SKILL.md exists; the link itself never grants permission to read research or edit .scholium.
+           - Read back every link target without loading the Method body, then report the exact links created or reused.
+        6. If no applicable AGENTS.md exists, generate its exact candidate with the manifest's triptych_id and workspace_root:
+           $HOME/.local/bin/scholium workspace bootstrap --triptych <triptych_id> --target <workspace_root>
+           Verify the target again, create AGENTS.md without replacing any existing path, read it back exactly, and remove only any task-owned temporary candidate. If an applicable AGENTS.md already exists, use it unchanged.
+           If you are Claude Code and no applicable CLAUDE.md exists, create only the minimal CLAUDE.md needed for Claude and have it refer to AGENTS.md instead of duplicating the rules.
+           Never overwrite, merge, shadow, or silently replace an existing instruction file. Report the exact blocker instead.
+        7. Use the current host's own Skill listing to confirm that every returned name is discovered from the exact project link. Do not inspect or modify skills in another scope. If a newly created discovery directory requires a restart or new Agent task, report that requirement as the blocker and do not claim Ready yet.
+        8. Follow Scholium's file rules strictly:
            - Treat exact Markdown bytes as authoritative.
            - Never edit .scholium directly.
            - Preserve BOM, newline style, comments, unknown YAML, ordering, quoting, multiline values, and final newlines outside an explicitly changed range.
            - For an existing Note mutation that needs Scholium's bounded-write, diff, Undo, conflict, and recovery guarantees, use the current Run's authenticated, fingerprint-checked Scholium mutation path. A raw filesystem write is an external edit, not a Scholium-authorized write.
-        6. Do not read Triptych research files or request a pairing code now. Wait for a specific Research Run handoff from Scholium.
+        9. Do not read Triptych research files or request a pairing code now. A later researcher request may start an eligible Run through `scholium agent start`; a GUI-created Run still begins from its specific copied handoff.
 
-        Finish by reporting either Ready, including the project root, workspace root, CLI result, and instruction-file paths, or one precise blocker.
+        Finish by reporting either Ready, including the Agent host, project root, workspace root, CLI result, instruction-file paths, discovery links, and confirmed host discovery, or one precise blocker.
         """
     }
 }

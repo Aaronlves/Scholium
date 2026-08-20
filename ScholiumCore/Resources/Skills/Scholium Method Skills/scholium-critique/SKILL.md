@@ -5,6 +5,9 @@ description: Critique an exact Work or passage as an attributed, read-only schol
 
 # Critique
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Assess the exact current Work revision independently. The Work and all Materials remain read-only; findings become attributed feedback, not silent edits or application facts.
 
 ## Method

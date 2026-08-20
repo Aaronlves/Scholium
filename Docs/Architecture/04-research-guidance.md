@@ -175,7 +175,22 @@ capability availability, command inputs, and Research Context remain typed
 current data. Installed CLI help and tool schemas own current invocation
 syntax.
 
+`ResearchConfigurationStore` also assembles one read-only project
+Skill-source manifest from the release-managed Core Protocol and enabled
+Triptych-control Method registrations. It verifies each discoverable primary
+`SKILL.md` against the stable Action Skill name and a bounded nonempty
+description, contains every returned Method folder beneath the exact portable
+control root, and excludes machine-local Method locators. A source-only
+`WorkspaceRuntime` route validates the selected portable manifest and binds the
+result to the Works-parent Triptych root without constructing a Workspace,
+inventorying research vaults, opening Search, or starting watchers. CLI
+serializes it but does not detect a host, enumerate directories, create links,
+or edit Agent configuration. The external setup Agent alone maps those exact
+sources into its current host's project-level discovery directory.
+
 The bundle is not a package manager or second prompt store. Research Guidance
 has no staged installer, resource preview, package validation, version
 comparison, Skill snapshot history, marketplace, per-Skill permission editor,
-or executable extension surface.
+or executable extension surface. Project discovery links do not change the
+current Method owner, default-restoration contract, or authenticated Run
+delivery.

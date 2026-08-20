@@ -1,12 +1,23 @@
 ---
 name: scholium-core-protocol
-description: Enforce the stable Run, evidence, authority, write, and Result boundaries for every Scholium-mediated Research Action; this protected System Skill supplies mechanism and never an intellectual method.
+description: Start or govern every Scholium-mediated Research Action, including a researcher's direct request to analyze, discuss, synthesize, write, critique, or check content in a Scholium workspace; enforce stable Run, evidence, authority, write, and Result boundaries without supplying an intellectual method.
 ---
 
 # Scholium Core Protocol
 
 This protected System Skill governs one Research Run. The registered primary
 Method and ordered linked Practices supply its intellectual procedure.
+
+## Project discovery entry
+
+When this Skill is loaded from an authorized project-level discovery link and
+no Run exists yet, treat the researcher's current request as the only possible
+authority to begin a direct Scholium Action. Resolve the exact current
+Triptych and target through Scholium, inspect `scholium help agent start`, use
+`scholium agent start` only for an eligible unambiguous request, then load
+`scholium agent context` before applying the registered Method. Ask when the
+Action or target is materially ambiguous. The discovery link grants no
+research read, write, Session, Run, or reusable authority.
 
 ## Runtime contract
 

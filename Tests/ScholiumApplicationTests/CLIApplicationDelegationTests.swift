@@ -13,6 +13,26 @@ struct CLIApplicationDelegationTests {
         #expect(sources.entry.contains("await context.shutdown()"))
         #expect(sources.workspace.contains("handle.discovery.search("))
         #expect(sources.workspace.contains("handle.discovery.snapshot().catalog"))
+        #expect(sources.workspace.contains(
+            "context.runtime.skillDiscoverySourceManifest("
+        ))
+        #expect(sources.workspace.contains("Workspace Skill sources supports --format json"))
+        let discoveryStart = try #require(sources.runtime.range(
+            of: "    public func skillDiscoverySourceManifest("
+        ))
+        let discoveryEnd = try #require(sources.runtime.range(
+            of: "    public func registeredVaults()",
+            range: discoveryStart.upperBound..<sources.runtime.endIndex
+        ))
+        let discovery = String(
+            sources.runtime[discoveryStart.lowerBound..<discoveryEnd.lowerBound]
+        )
+        #expect(discovery.contains("ResearchConfigurationStore("))
+        #expect(discovery.contains("configuration.skillDiscoverySourceManifest("))
+        #expect(!discovery.contains("openWorkspace("))
+        #expect(!discovery.contains("WorkspaceHandle.open("))
+        #expect(!discovery.contains("sourceInventory("))
+        #expect(!discovery.contains("searchIndex"))
         #expect(sources.workspace.contains("let research = handle.research"))
         #expect(sources.workspace.contains("research.activeDiscussions(noteID: nil)"))
         #expect(sources.entry.contains(#"case "discuss":"#))
@@ -174,6 +194,7 @@ struct CLIApplicationDelegationTests {
 private struct CLISources {
     let entry: String
     let context: String
+    let runtime: String
     let workspace: String
     let output: String
     let document: String
@@ -194,6 +215,12 @@ private struct CLISources {
             ),
             context: String(
                 contentsOf: cli.appendingPathComponent("CLIContext.swift"),
+                encoding: .utf8
+            ),
+            runtime: String(
+                contentsOf: root.appendingPathComponent(
+                    "ScholiumApplication/WorkspaceRuntime.swift"
+                ),
                 encoding: .utf8
             ),
             workspace: String(

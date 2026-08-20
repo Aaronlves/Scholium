@@ -22,6 +22,11 @@ struct WorkspaceBootstrapTests {
         #expect(candidate.triptychName == "Ethics Research")
         #expect(candidate.content.contains("Triptych selector: `triptych-123`"))
         #expect(candidate.content.contains("Use the researcher\'s exact terminology."))
+        #expect(candidate.content.contains("scholium workspace skill-sources"))
+        #expect(candidate.content.contains("scholium agent start"))
+        #expect(candidate.content.contains(
+            "An instruction file or Skill discovery link never grants note-edit permission."
+        ))
         #expect(!FileManager.default.fileExists(
             atPath: fixture.target.appendingPathComponent("AGENTS.md").path
         ))

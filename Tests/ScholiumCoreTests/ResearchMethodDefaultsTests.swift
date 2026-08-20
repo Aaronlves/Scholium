@@ -57,6 +57,111 @@ struct ResearchMethodDefaultsTests {
         #expect(Set(practices.map(\.title)).contains("Dialectical Partner"))
     }
 
+    @Test("Project discovery exposes Core and enabled Triptych-managed Methods only")
+    func projectSkillDiscoveryManifest() async throws {
+        let workspace = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "scholium-skill-discovery-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let control = workspace.appendingPathComponent(".scholium", isDirectory: true)
+        let machine = workspace.appendingPathComponent("machine", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try FileManager.default.createDirectory(
+            at: control,
+            withIntermediateDirectories: true
+        )
+        let store = ResearchConfigurationStore(
+            controlURL: control,
+            triptychID: UUID(),
+            machineStorageURL: machine
+        )
+        try await store.bootstrapDefaults()
+
+        let initial = try await store.skillDiscoverySourceManifest(
+            workspaceRootURL: workspace,
+            triptychName: "Discovery"
+        )
+        #expect(initial.workspaceRoot == workspace.resolvingSymlinksInPath().path)
+        #expect(initial.skills.count == 7)
+        #expect(initial.skills.first?.name == "scholium-core-protocol")
+        #expect(Set(initial.skills.compactMap(\.actionID)) == [
+            .analyze, .checkFidelity, .critique, .discuss, .synthesize, .write,
+        ])
+        #expect(initial.skills.filter { $0.ownership == .researcherOwned }
+            .allSatisfy { $0.sourceDirectory.hasPrefix(control.path + "/") })
+
+        let registrations = try #require(await store.registrationSnapshot())
+        let externalFolder = workspace.appendingPathComponent(
+            "external-analyze",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: externalFolder,
+            withIntermediateDirectories: true
+        )
+        let externalMethod = externalFolder.appendingPathComponent("SKILL.md")
+        try Data("""
+        ---
+        name: scholium-analyze
+        description: External Analyze
+        ---
+        # Analyze
+        """.utf8).write(to: externalMethod)
+        _ = try await store.registerExternalMethod(
+            actionID: .analyze,
+            displayName: "External Analyze",
+            primaryMarkdownPath: externalMethod.path,
+            skillFolderPath: externalFolder.path,
+            expectedRegistrationRevision: registrations.revision
+        )
+
+        let afterExternal = try await store.skillDiscoverySourceManifest(
+            workspaceRootURL: workspace,
+            triptychName: "Discovery"
+        )
+        #expect(!afterExternal.skills.contains { $0.actionID == .analyze })
+        #expect(!String(decoding: try JSONEncoder().encode(afterExternal), as: UTF8.self)
+            .contains(externalFolder.path))
+    }
+
+    @Test("Project discovery rejects changed routing metadata without replacing source")
+    func projectSkillDiscoveryRejectsInvalidMetadata() async throws {
+        let workspace = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "scholium-skill-metadata-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let control = workspace.appendingPathComponent(".scholium", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try FileManager.default.createDirectory(
+            at: control,
+            withIntermediateDirectories: true
+        )
+        let store = ResearchConfigurationStore(
+            controlURL: control,
+            triptychID: UUID()
+        )
+        try await store.bootstrapDefaults()
+        let write = try await store.methodSnapshot(for: .write)
+        let invalid = write.primaryMarkdownSource.replacingOccurrences(
+            of: "name: scholium-write",
+            with: "name: ../outside"
+        )
+        _ = try await store.savePrimaryMethod(
+            registrationKey: write.registration.key,
+            source: invalid,
+            expectedRevision: write.primaryMarkdownRevision
+        )
+
+        await #expect(throws: WorkspaceSkillDiscoveryError.self) {
+            _ = try await store.skillDiscoverySourceManifest(
+                workspaceRootURL: workspace,
+                triptychName: "Discovery"
+            )
+        }
+        #expect(try await store.methodSnapshot(for: .write).primaryMarkdownSource
+            == invalid)
+    }
+
     @Test("The resource tree has no package catalog or workflow evaluation owner")
     func noPackageCatalogResource() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -83,6 +188,9 @@ struct ResearchMethodDefaultsTests {
                     atPath: directory.appendingPathComponent(resource).path
                 ))
             }
+            #expect(try BundledResearchMethodDefaults.primarySource(
+                for: definition.actionID
+            ).contains("Apply `scholium-core-protocol`"))
         }
     }
 
@@ -118,6 +226,7 @@ struct ResearchMethodDefaultsTests {
             #expect(runtime.contains(requirement))
         }
         let bundledRuntime = try BundledResearchSkillResources.coreProtocol()
+        #expect(coreSource.contains("including a researcher's direct request"))
         #expect(coreSource.contains("references/runtime-protocol.md"))
         #expect(bundledRuntime == runtime)
         #expect(applicationSource.contains(

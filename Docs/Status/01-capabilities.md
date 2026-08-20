@@ -222,3 +222,10 @@
   inspects, executes, updates, or removes the CLI. The external Agent may place
   only the release executable and resource bundle under `~/.local/bin`, then
   verifies the required version fields while ignoring unrelated JSON fields.
+- The first-launch preparation prompt uses a CLI read-only Skill-source
+  manifest and deterministic workspace-bootstrap candidate. The manifest
+  exposes only the installed Core Protocol and enabled Triptych-managed Method
+  folders, excluding machine-local registrations. The Agent creates only its
+  supported host's project-level directory symlinks, reuses exact links, and
+  stops on every conflicting path; Scholium neither detects the host nor
+  creates or verifies those links.

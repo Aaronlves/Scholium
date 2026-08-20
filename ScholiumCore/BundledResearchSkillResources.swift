@@ -2,6 +2,12 @@ import Foundation
 import ScholiumContracts
 
 public enum BundledResearchSkillResources {
+    public static func coreProtocolSkillDirectoryURL() throws -> URL {
+        try skillDirectory(
+            "Scholium System Skills/scholium-core-protocol"
+        )
+    }
+
     public static func coreProtocol() throws -> String {
         String(
             decoding: try data(
@@ -37,15 +43,7 @@ public enum BundledResearchSkillResources {
         directory: String,
         relativePath: String
     ) throws -> Data {
-        guard let skillsRoot = Bundle.module.url(
-            forResource: "Skills",
-            withExtension: nil
-        ) else {
-            throw ResearchConfigurationStoreError.invalidMethod("bundled Skills")
-        }
-        let root = skillsRoot
-            .appendingPathComponent(directory, isDirectory: true)
-            .standardizedFileURL
+        let root = try skillDirectory(directory)
         let url = root.appendingPathComponent(relativePath).standardizedFileURL
         guard url.path.hasPrefix(root.path + "/") else {
             throw ResearchConfigurationStoreError.invalidMethod(relativePath)
@@ -62,5 +60,24 @@ public enum BundledResearchSkillResources {
             throw ResearchConfigurationStoreError.invalidMethod(url.path)
         }
         return data
+    }
+
+    private static func skillDirectory(_ directory: String) throws -> URL {
+        guard let skillsRoot = Bundle.module.url(
+            forResource: "Skills",
+            withExtension: nil
+        ) else {
+            throw ResearchConfigurationStoreError.invalidMethod("bundled Skills")
+        }
+        let root = skillsRoot
+            .appendingPathComponent(directory, isDirectory: true)
+            .standardizedFileURL
+        let values = try root.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw ResearchConfigurationStoreError.invalidMethod(root.path)
+        }
+        return root.resolvingSymlinksInPath().standardizedFileURL
     }
 }

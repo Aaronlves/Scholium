@@ -203,6 +203,7 @@ extension ScholiumCLI {
                 options: ["--max-depth": .value, "--format": .value]
             ),
             "workspace catalog": .init(pathLength: 2, options: selected),
+            "workspace skill-sources": .init(pathLength: 2, options: selected),
             "workspace attention": .init(
                 pathLength: 2,
                 options: ["--triptych": .value, "--kind": .value, "--format": .value]

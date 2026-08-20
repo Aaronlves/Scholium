@@ -5,6 +5,9 @@ description: Conduct a bounded researcher-agent philosophical discussion about a
 
 # Discuss
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Treat the researcher's comment or instruction as a philosophical turn, not as a form field. Respond as a rigorous interlocutor while leaving every Note unchanged.
 
 ## Method

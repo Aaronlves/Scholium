@@ -5,6 +5,9 @@ description: Coordinate the smallest explicit sequence of independently authoriz
 
 # Manuscript
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Coordinate a bounded Work plan without merging permissions across phases. This optional Method is not enabled by default.
 
 Read `references/method.md`. Select only the phases genuinely required from Write, Check Fidelity, and optional Critique. Each phase receives its own Target revision, Method snapshot, permission, exact-note recovery when it writes, completion validation, and feedback. Materials remain read-only and the current Work remains the only document Target.

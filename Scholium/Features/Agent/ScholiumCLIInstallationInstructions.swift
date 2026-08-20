@@ -14,7 +14,7 @@ enum ScholiumCLIInstallationInstructions {
         - scholium
         - Scholium_ScholiumCore.bundle
 
-        Do not use sudo. Do not edit PATH, shell profiles, Agent configuration, or macOS quarantine metadata.
+        Do not use sudo. Do not edit PATH, shell profiles, global Agent configuration, or macOS quarantine metadata. The separate project-preparation instructions may authorize exact project-local files and links.
 
         1. First run:
            $HOME/.local/bin/scholium version --format json

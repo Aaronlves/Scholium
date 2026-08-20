@@ -5,6 +5,9 @@ description: Integrate verified Analyses, source-grounded results, and reliable 
 
 # Synthesize
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Update only the current Topic as the conceptual home of a problem, concept, position, debate, objection, or relation. Analyses, sources, and other Materials remain read-only.
 
 ## Method

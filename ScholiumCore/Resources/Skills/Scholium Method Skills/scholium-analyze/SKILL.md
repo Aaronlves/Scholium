@@ -5,6 +5,9 @@ description: Analyze or reanalyze one paper into its current Analysis note, reco
 
 # Analyze
 
+Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
+its project-discovery route before applying this Method.
+
 Analyze one explicit source and update only the current Analysis Target. Decide from the existing Analysis and source whether this is an initial analysis or a reanalysis; do not ask the researcher to choose a mode.
 
 ## Nonnegotiable boundary

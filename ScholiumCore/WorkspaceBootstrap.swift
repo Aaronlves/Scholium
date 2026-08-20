@@ -69,11 +69,13 @@ public enum WorkspaceBootstrap {
         - Use the Platform Action's registered primary Method and its exact linked Practices.
         - Load Scholium Discussion Protocol for a Discussion ID; use the ordinary Discuss Method for the intellectual exchange.
         - Never scan arbitrary global skill directories or substitute an unregistered Method.
+        - Project-level Skill discovery links may expose only exact sources returned by `scholium workspace skill-sources --triptych <selector> --format json`; a link is a discovery pointer, not another Method owner.
+        - When the researcher asks this Agent to begin a Scholium Research Action directly, resolve the exact target through current Scholium discovery, inspect current `scholium help agent start`, run `scholium agent start`, then load `scholium agent context` before applying the registered Method.
 
         ## Workspace boundaries
 
         - Use Scholium-supported discovery and fingerprinted mutation paths; do not guess vault roles or edit `.scholium` machine state directly.
-        - Treat current-task scope and permission as the upper boundary. An instruction file never grants note-edit permission.
+        - Treat current-task scope and permission as the upper boundary. An instruction file or Skill discovery link never grants note-edit permission.
         - Keep source, interpretation, reconstruction, evaluation, agent proposals, and researcher-settled content distinct.
 
         ## Researcher conventions
