@@ -26,6 +26,9 @@ Analyze one explicit source and update only the current Analysis Target. Decide 
 ## Method
 
 Read `references/method.md` and perform its three passes. Read
+`references/method-fit.md` when the source's philosophical method,
+cross-disciplinary inference, or methodological adequacy materially affects
+the reconstruction or evaluation. Read
 `references/literature-recommendations.md` before completing the required
 `literatureRecommendations` array. Reconstruct concepts and arguments before
 applying critical pressure. Critical testing is part of Analyze, not a separate
@@ -42,6 +45,8 @@ Report in first person:
 - whether the run was initial analysis or reanalysis;
 - what changed and what was deliberately left unchanged;
 - access limits, uncertain reconstructions, and unresolved objections;
+- the source's operative method and success conditions when method fit was
+  material, including implications or connections established by the source;
 - any source-grounded literature recommendations, including an explicit empty
   array when there are none;
 - any Topic contribution worth considering in a separately authorized Synthesize run.

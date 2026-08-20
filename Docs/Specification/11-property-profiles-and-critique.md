@@ -140,12 +140,17 @@ Analyses and Topics; distinguish what those notes report, support, dispute, or
 leave uncertain from the agent's own reconstruction or evaluation; and treat
 neither neutral links nor transitive paths as evidence.
 
-For the whole Work it addresses material strengths, weaknesses, source
-coverage, omissions, objections, alternatives, and priorities. For a selected
-passage it identifies the exact target, issue, significance, research basis,
-and recommendation. It records the Materials actually consulted, access limits,
-and uncertainty. Any Traced, Untraced, Disputed, or Beyond Sources label remains
-an attributed agent judgment, never a Scholium status.
+For the whole Work it addresses material strengths, weaknesses, method fit,
+source and perspective coverage, conceptual and argumentative command,
+sustained contribution, defensibility, omissions, implications, objections,
+alternatives, and priorities. These are conditional burdens relative to the
+Work's genre, scope, and inspected evidence, not a score or universal method.
+For a selected passage it identifies the exact target, issue, significance,
+research basis, and recommendation without judging the whole Work. It records
+the Materials actually consulted, access limits, and uncertainty. It never
+certifies novelty, publishability, doctoral level, field completeness, or
+researcher competence. Any Traced, Untraced, Disputed, or Beyond Sources label
+remains an attributed agent judgment, never a Scholium status.
 
 Critique never modifies the target Work. A recommended source change requires
 current Write authority. The Critique registration's editable primary Markdown

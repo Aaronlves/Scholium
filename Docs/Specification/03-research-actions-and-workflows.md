@@ -88,6 +88,10 @@ Triptych begins with editable current default methods. Updates never overwrite
 researcher edits. **Restore Default…** means the current app-bundled default
 and states the replacement consequence before writing.
 
+Bundled defaults may state research burdens, not one universal method or
+researcher grade. Scoped Agent judgments never certify novelty,
+publishability, doctoral level, field completeness, or acceptance.
+
 Scholium-mediated Skill or Practice edits replace only the exact expected
 current source and read it back. There is no recovery copy, revision list,
 version browser, comparison history, package lineage, or past-method
@@ -671,10 +675,11 @@ retryable until authority and transaction outcomes are known.
    researcher-provided material remains an explicit limitation.
 2. Use **Analyze** to create, extend, correct, clarify, reorganize, or leave
    warranted content unchanged.
-3. Analyze reconstructs the source before critical pressure and distinguishes
-   source-explicit claims, reconstruction, charitable repair, and Agent
-   criticism; rival definitions, objections, replies, and residual pressure
-   retain their actual status.
+3. Analyze reconstructs before critical pressure, identifies the operative
+   method when material, and applies relevant success conditions rather than a
+   universal argument template. Source-explicit claims, reconstruction,
+   charitable repair, Agent criticism, rival definitions, objections, replies,
+   implications, and residual pressure retain their actual status.
 4. If a Scholium-owned local source cannot be reopened, Analyze returns a
    bounded access failure and cannot simulate source analysis from the
    Analysis note alone. On the external Zotero route, unavailable MCP,
@@ -696,7 +701,9 @@ Neither field is a completion grade.
    disagreement, limitations, and uncertainty.
 2. Use **Discuss** for read-only conceptual and dialectical work.
 3. Use **Synthesize** to integrate warranted material into the current Topic;
-   the Topic is the initial write member.
+   the Topic is the initial write member. It states its bounded material basis,
+   preserves methodological asymmetry, and distinguishes any local provisional
+   stopping point from practical cutoff or lack of progress.
 4. Additional exact documents may join the same Run's Bounded Write Set under
    Section 8.3; they do not become child Runs or a persistent target group.
 5. Use Check Fidelity for each affected exact revision and let the researcher
@@ -731,10 +738,11 @@ any resulting source change requires Write authority in a current Run.
 
 Critique uses the current Work or selected passage, applicable Discussion
 anchors, and optional focus or disciplinary lens. Whole evaluates important
-claims, premises, arguments, sources, objections, and alternatives against
-selected Analyses and Topics; this is an attributed assessment, never an
-automatic diagnostic. Passage remains bounded unless the researcher broadens
-it.
+claims, arguments, method fit, coverage, sustained contribution, objections,
+implications, and alternatives against selected Analyses and Topics. It reports
+scoped research burdens without certifying maturity, originality, or readiness;
+this is an attributed assessment, never an automatic diagnostic. Passage
+remains bounded unless the researcher broadens it.
 
 The Action uses the current registered Critique Skill. **Edit Critique
 Method...** opens **Settings → Research Guidance → Methods → Critique**, where

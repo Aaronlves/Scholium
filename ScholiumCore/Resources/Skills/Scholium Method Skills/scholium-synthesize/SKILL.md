@@ -18,4 +18,9 @@ Preserve source authority, philosophical settlement, and the researcher's commit
 
 ## Feedback
 
-Report the Materials actually used, the contribution each made, exact Topic changes, intentionally unchanged sections, and unresolved tensions. If a Material was selected but unused, say so without inventing a reason. Do not modify an Analysis or Work from this Action.
+Report the Materials actually used, the contribution each made, the bounded
+coverage and selection limits, exact Topic changes, intentionally unchanged
+sections, and unresolved tensions. If a Material was selected but unused, say
+so without inventing a reason. When coverage or stopping adequacy was actually
+in scope, distinguish a practical cutoff from a justified provisional stopping
+point. Do not modify an Analysis or Work from this Action.

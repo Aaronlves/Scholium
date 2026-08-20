@@ -12,12 +12,18 @@ Modify only the current Work Target within the exact authorized scope. Treat Ana
 
 ## Method
 
-Read `references/method.md`. Determine whether the request calls for new prose, revision, argument repair, or feedback disposition, then do the smallest coherent operation. Preserve the researcher's intended thesis unless the researcher explicitly authorizes an alternative argument.
+Read `references/method.md`. Determine whether the request calls for new prose,
+revision, argument repair, or feedback disposition, then do the smallest
+coherent operation. Read `references/genre-and-revision.md` for substantial
+drafting, genre-sensitive writing, long-form structure, or a revision that may
+change an argument, definition, scope, burden, concession, or source role.
+Preserve the researcher's intended thesis unless the researcher explicitly
+authorizes an alternative argument.
 
-Keep exposition, argument, objection, reply, and researcher commitment distinct. Do not turn a reported source view, agent recommendation, or unresolved possibility into the researcher's voice. Stabilize concepts and inferential structure before polishing prose.
+Keep exposition, argument, objection, reply, and researcher commitment distinct. Do not turn a reported source view, agent recommendation, or unresolved possibility into the researcher's voice. Stabilize concepts, method, contribution burden, and inferential structure before polishing prose.
 
 When writing responds to feedback or Critique, read `references/feedback.md`. Decide each relevant item explicitly before editing; never treat agent or human feedback as automatically accepted.
 
 ## Feedback
 
-Report exact changes, intentionally unchanged material, feedback dispositions when applicable, Materials actually used, and any remaining source or philosophical risk. Reread the saved Work and return the required completion evidence. A fluent draft is not evidence that Fidelity passed.
+Report exact changes, intentionally unchanged material, feedback dispositions when applicable, Materials actually used, and any remaining source, methodological, contribution, or philosophical risk. Reread the saved Work and return the required completion evidence. A fluent draft is not evidence that Fidelity passed or that the Work is original, publishable, or complete.

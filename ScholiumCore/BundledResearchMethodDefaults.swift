@@ -36,7 +36,12 @@ enum BundledResearchMethodDefaults {
             actionID: .analyze,
             displayName: "Analyze Note",
             resourceDirectory: "Scholium Method Skills/scholium-analyze",
-            resources: ["SKILL.md", "references/method.md", "references/literature-recommendations.md"]
+            resources: [
+                "SKILL.md",
+                "references/method.md",
+                "references/method-fit.md",
+                "references/literature-recommendations.md",
+            ]
         ),
         Definition(
             actionID: .synthesize,
@@ -48,7 +53,12 @@ enum BundledResearchMethodDefaults {
             actionID: .write,
             displayName: "Write",
             resourceDirectory: "Scholium Method Skills/scholium-write",
-            resources: ["SKILL.md", "references/method.md", "references/feedback.md"]
+            resources: [
+                "SKILL.md",
+                "references/method.md",
+                "references/genre-and-revision.md",
+                "references/feedback.md",
+            ]
         ),
         Definition(
             actionID: .critique,

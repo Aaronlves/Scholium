@@ -14,10 +14,33 @@ As relevant:
 - preserve source qualifications and citation anchors;
 - connect the passage to the surrounding argument without widening the write scope.
 
-## 3. Revise minimally
+## 3. Sustain the Work's philosophical purpose
+
+When the scope extends beyond a local sentence repair, check that the Work's
+question, genre, operative method, intended audience, philosophical purpose,
+and burdens remain aligned. Each section should perform an identifiable
+philosophical function and connect to the larger network of claims without
+hiding a bridge premise in a transition.
+
+Only when the Work itself claims a research contribution, or its genre and
+purpose require one, state that contribution at the narrowest strength the
+available field basis can support. A paper or chapter may advance a useful
+distinction, connection, objection, or solution without verified novelty; a
+review, talk, teaching Work, or other expository object need not manufacture a
+research contribution at all. Preserve the difference between explaining
+significance and claiming originality. Make cross-disciplinary bridges
+explicit, and explain specialized reasoning to the intended audience without
+removing the qualifications that make it accurate.
+
+## 4. Revise minimally
 
 Change only what the authorized purpose requires. Preserve unrelated wording, structure, Markdown, YAML, citations, and researcher-authored nuance. Do not edit Materials.
 
-## 4. Reopen and audit
+## 5. Reopen and audit
 
-Reread the written bytes. Check philosophical role, source attribution, argument continuity, citations retained, and whether the prose still expresses the researcher's intended view. Report rather than conceal any unresolved problem.
+Reread the written bytes. Check philosophical role, source attribution,
+method transparency when material, argument continuity, philosophical purpose,
+any contribution burden the Work actually claims, citations retained, and
+whether the prose still expresses the researcher's intended view. Report
+rather than conceal any unresolved problem. Do not certify a Work as original,
+publishable, doctoral-level, or complete.

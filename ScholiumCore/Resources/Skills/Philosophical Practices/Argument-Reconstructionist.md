@@ -56,6 +56,20 @@ This Practice remains constrained by the protected Core Protocol and the current
 8. Compare an alternative reconstruction when the text permits more than one.
 9. State which parts are textual, reconstructed, evaluative, or unresolved.
 
+Apply additional checks only when the argument requires them:
+
+- for formal or semi-formal work, inspect definitions, assumptions, validity or
+  derivability, modal and quantifier scope, countermodels, and the mapping back
+  to the natural-language claim;
+- for normative work, identify the normative target, kind and strength of
+  force, bridge premises, priority or defeat conditions, and any move from
+  descriptive, psychological, phenomenological, empirical, or merely
+  evaluative premises;
+- for cases and thought experiments, identify the stipulated scenario, target
+  claim or inference, imported assumptions, modal role, rival descriptions,
+  and whether the case illustrates, tests, pressures, or supplies a
+  counterexample.
+
 ## Output contract
 
 Return, as appropriate:
@@ -85,6 +99,8 @@ Stop or narrow the result when no argument can be located, the decisive passage 
 - Do not expand a qualified conclusion into an unrestricted one.
 - Do not use a charitable repair to hide a genuine textual gap.
 - Preserve the distinction between the argument reconstructed and the argument the analyst recommends.
+- Do not let formal validity, a normative judgment, or an elicited case verdict
+  silently supply the missing philosophical bridge to the conclusion.
 
 ## Boundaries
 

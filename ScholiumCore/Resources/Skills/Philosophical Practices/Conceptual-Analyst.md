@@ -42,6 +42,11 @@ This Practice remains constrained by the protected Core Protocol and the current
 - The concept’s role in an argument, explanation, practice, or philosophical problem.
 - Translation, transliteration, historical change, and imported vocabulary.
 - Whether the concept is defined, characterized by use, reconstructed, or stipulated locally.
+- Whether a formulation is a necessary or sufficient condition, biconditional
+  analysis, stipulation, explication, ordinary-language characterization,
+  source-derived definition, or working formulation.
+- Central, edge, and limiting cases; circularity, overbreadth, underbreadth,
+  regress, and equivocation only as appropriate to that formulation type.
 
 ## Procedure
 
@@ -52,7 +57,12 @@ This Practice remains constrained by the protected Core Protocol and the current
 5. Identify necessary distinctions, neighboring concepts, and possible equivocations.
 6. Test what role the concept plays in the relevant argument or theoretical structure.
 7. State the strongest candidate formulation or map of senses.
-8. Record ambiguities, rival interpretations, and unresolved questions.
+8. If a proposed formulation is load-bearing, compare it with the current
+   formulation and trace what would change in scope, contrast class,
+   explanatory or normative role, source relation, arguments, objections,
+   cases, or downstream sections.
+9. Record ambiguities, rival interpretations, affected dependencies, and
+   unresolved questions.
 
 ## Output contract
 
@@ -65,6 +75,7 @@ Return, as appropriate:
 - **Relations to neighboring concepts**
 - **Role in the argument or theory**
 - **Rival interpretations**
+- **Change-impact map**, when a load-bearing formulation is proposed
 - **Unresolved ambiguity or source gaps**
 - **Provisional formulation**, if one is justified
 
@@ -83,6 +94,8 @@ Stop or return a provisional map when the target has no recoverable use-context,
 - Do not force necessary and sufficient conditions when the material supports only a role-based characterization.
 - Do not infer conceptual equivalence from keyword overlap.
 - Do not present a reconstructed distinction as one the author explicitly made.
+- Do not treat conceptual clarification as authorization to rewrite every
+  dependent argument, source interpretation, or Work passage.
 
 ## Boundaries
 

@@ -55,6 +55,12 @@ struct ResearchMethodDefaultsTests {
         let practices = try await store.practiceCatalog()
         #expect(practices.count == 9)
         #expect(Set(practices.map(\.title)).contains("Dialectical Partner"))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(
+            "skill-folders/analyze/references/method-fit.md"
+        ).path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(
+            "skill-folders/write/references/genre-and-revision.md"
+        ).path))
     }
 
     @Test("Project discovery exposes Core and enabled Triptych-managed Methods only")
@@ -290,6 +296,215 @@ struct ResearchMethodDefaultsTests {
         let source = try BundledResearchMethodDefaults.primarySource(for: .analyze)
         #expect(source.contains("independent Zotero/MCP capability"))
         #expect(!source.contains("source supplied by Scholium"))
+    }
+
+    @Test("Advanced research guidance stays pluralist, bounded, and non-certifying")
+    func advancedResearchGuidanceBoundaries() throws {
+        let analyze = try #require(BundledResearchMethodDefaults.definitions.first {
+            $0.actionID == .analyze
+        })
+        #expect(analyze.resources.contains("references/method-fit.md"))
+        let methodFit = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: analyze.resourceDirectory,
+                relativePath: "references/method-fit.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(methodFit.contains("universal default"))
+        #expect(methodFit.contains("comparative weakness"))
+        #expect(methodFit.contains("Historical or exegetical"))
+        #expect(methodFit.contains("Empirically informed or interdisciplinary"))
+        #expect(methodFit.contains("**Genealogical:**"))
+        #expect(methodFit.contains("**Critical or diagnostic:**"))
+        #expect(methodFit.contains("**Normative:**"))
+        #expect(methodFit.contains("**Reflective equilibrium:**"))
+        #expect(methodFit.contains("Do not require reflective-equilibrium"))
+        #expect(methodFit.contains(
+            "source-stated consequences separate from agent-derived implications"
+        ))
+        #expect(methodFit.contains("does not certify"))
+        let analyzeMethod = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: analyze.resourceDirectory,
+                relativePath: "references/method.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(analyzeMethod.contains("requested depth, intended use"))
+        #expect(analyzeMethod.contains("must not override a"))
+        #expect(analyzeMethod.contains("requested thorough analysis"))
+        #expect(analyzeMethod.contains("printed pagination, PDF pagination"))
+        #expect(analyzeMethod.contains("self-positioning as verified field history"))
+
+        let synthesize = try #require(BundledResearchMethodDefaults.definitions.first {
+            $0.actionID == .synthesize
+        })
+        let synthesisMethod = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: synthesize.resourceDirectory,
+                relativePath: "references/method.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(synthesisMethod.contains("practical cutoff"))
+        #expect(synthesisMethod.contains("provisionally saturated"))
+        #expect(synthesisMethod.contains("Apply this step only when"))
+        #expect(synthesisMethod.contains("do not infer a stopping state"))
+        #expect(synthesisMethod.contains("**not assessed:**"))
+        #expect(synthesisMethod.contains("**insufficient basis:**"))
+        #expect(synthesisMethod.contains("Without inspected change history"))
+        #expect(synthesisMethod.contains("Never infer complete literature coverage"))
+
+        let critique = try BundledResearchMethodDefaults.primarySource(for: .critique)
+        #expect(critique.contains("For passage scope"))
+        #expect(critique.contains("never certifies originality, publishability, doctoral level"))
+
+        let write = try #require(BundledResearchMethodDefaults.definitions.first {
+            $0.actionID == .write
+        })
+        #expect(write.resources.contains("references/genre-and-revision.md"))
+        let genreAndRevision = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: write.resourceDirectory,
+                relativePath: "references/genre-and-revision.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(genreAndRevision.contains("Route by philosophical function"))
+        #expect(genreAndRevision.contains("Revise in philosophical priority order"))
+        #expect(genreAndRevision.contains("Do not silently propagate the change"))
+        #expect(genreAndRevision.contains("illustrative rather than exhaustive"))
+        #expect(genreAndRevision.contains("**Genealogical, critical, or diagnostic:**"))
+        #expect(genreAndRevision.contains("**Comparative or cross-tradition:**"))
+        let writeMethod = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: write.resourceDirectory,
+                relativePath: "references/method.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(writeMethod.contains("Sustain the Work's philosophical purpose"))
+        #expect(writeMethod.contains("Only when the Work itself claims"))
+        #expect(writeMethod.contains("need not manufacture a"))
+        let feedback = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: write.resourceDirectory,
+                relativePath: "references/feedback.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(feedback.contains("human reader or a prior Critique"))
+        #expect(feedback.contains("do not use it to generate new independent"))
+        #expect(feedback.contains("not applicable"))
+        #expect(feedback.contains("concession or residual risk"))
+
+        let fidelity = try #require(BundledResearchMethodDefaults.definitions.first {
+            $0.actionID == .checkFidelity
+        })
+        let contentFidelity = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: fidelity.resourceDirectory,
+                relativePath: "references/content.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(contentFidelity.contains("Calibrate by claim type"))
+        #expect(contentFidelity.contains("publication readiness, workflow status"))
+        #expect(contentFidelity.contains("exact wording and authorship"))
+        #expect(contentFidelity.contains("Settle, authorization, selection, or silence"))
+        #expect(contentFidelity.contains("researcher-authored wording without inferred"))
+        #expect(contentFidelity.contains("researcher-stated commitment"))
+
+        let manuscript = try #require(BundledResearchMethodDefaults.definitions.first {
+            $0.actionID == .manuscript
+        })
+        let manuscriptMethod = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: manuscript.resourceDirectory,
+                relativePath: "references/method.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(manuscriptMethod.contains("does not establish that the corresponding"))
+        #expect(manuscriptMethod.contains("readiness for that human decision"))
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let explorer = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumCore/Resources/Skills/Philosophical Practices/Research-Explorer.md"
+            ),
+            encoding: .utf8
+        )
+        #expect(explorer.contains("field-supported"))
+        #expect(!explorer.contains("field-verified"))
+        #expect(explorer.contains("blocked-or-stuck"))
+        #expect(explorer.contains("empty result set"))
+        #expect(explorer.contains("not-assessed"))
+        #expect(explorer.contains("insufficient-basis"))
+        #expect(explorer.contains("actual sequence of additions"))
+        let conceptualAnalyst = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumCore/Resources/Skills/Philosophical Practices/Conceptual-Analyst.md"
+            ),
+            encoding: .utf8
+        )
+        #expect(conceptualAnalyst.contains("Change-impact map"))
+        #expect(conceptualAnalyst.contains("authorization to rewrite every"))
+        #expect(conceptualAnalyst.contains("biconditional"))
+        let argumentReconstructionist = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumCore/Resources/Skills/Philosophical Practices/Argument-Reconstructionist.md"
+            ),
+            encoding: .utf8
+        )
+        #expect(argumentReconstructionist.contains("formal or semi-formal work"))
+        #expect(argumentReconstructionist.contains("for normative work"))
+        #expect(argumentReconstructionist.contains("for cases and thought experiments"))
+
+        for source in [
+            analyzeMethod,
+            genreAndRevision,
+            writeMethod,
+            feedback,
+            contentFidelity,
+            manuscriptMethod,
+            conceptualAnalyst,
+            argumentReconstructionist,
+        ] {
+            #expect(!source.contains("Philosophical Reports"))
+            #expect(!source.contains("Dissertation Vault"))
+            #expect(!source.contains("Hongqing"))
+        }
+
+        let resourceRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumCore/Resources/Skills",
+            isDirectory: true
+        )
+        let resourceEnumerator = try #require(FileManager.default.enumerator(
+            at: resourceRoot,
+            includingPropertiesForKeys: nil
+        ))
+        var checkedMarkdownResources = 0
+        for case let url as URL in resourceEnumerator where url.pathExtension == "md" {
+            checkedMarkdownResources += 1
+            let source = try String(contentsOf: url, encoding: .utf8)
+            for privateMarker in [
+                "Philosophical Reports",
+                "Dissertation Vault",
+                "Hongqing",
+                "WORKSPACE_ROOT",
+                "advisor-ready",
+                "committee-ready",
+                "submission-ready",
+            ] {
+                #expect(!source.contains(privateMarker))
+            }
+        }
+        #expect(checkedMarkdownResources > 0)
     }
 
     @Test("No parallel Research Integration prompt owner remains")
