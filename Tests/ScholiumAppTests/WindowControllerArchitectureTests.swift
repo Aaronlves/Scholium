@@ -2348,13 +2348,11 @@ struct WindowControllerArchitectureTests {
         #expect(!toolbarSource.contains("appState.objectWillChange"))
         #expect(!toolbarSource.contains("visibilityObservation"))
         #expect(toolbarSource.contains("static var itemIdentifiers:"))
-        #expect(toolbarSource.contains(
-            "private struct ScholiumWorkspaceSidebarToolbarView: View"
-        ))
-        #expect(toolbarSource.contains(
-            "private struct ScholiumWorkspaceInspectorToolbarView: View"
-        ))
-        #expect(toolbarSource.contains("@ObservedObject var shellState: WindowShellState"))
+        #expect(toolbarSource.contains("appState.commandObservation.$revision"))
+        #expect(toolbarSource.contains("appState.researchController.$records"))
+        #expect(!toolbarSource.contains("ScholiumWorkspaceSidebarToolbarView"))
+        #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
+        #expect(!toolbarSource.contains("@ObservedObject var shellState"))
     }
 
     @Test("Records, Overview, and Document keep Response, Changes, and Note Review distinct")

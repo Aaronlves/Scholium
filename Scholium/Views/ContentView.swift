@@ -147,7 +147,6 @@ struct ContentView: View {
         // The native split and each opaque semantic background fill the complete
         // titlebar frame. Each container keeps its actual content inside the
         // live toolbar safe area.
-        .toolbarBackground(.clear, for: .windowToolbar)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

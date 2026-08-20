@@ -352,6 +352,20 @@ struct WorkspaceWindowActions {
     let canShowAttention: @MainActor () -> Bool
 }
 
+/// The AppKit window is the appearance ancestor for native titlebar and
+/// toolbar content. SwiftUI projects the same researcher choice into the
+/// document hierarchy; this boundary maps it once for the native window.
+@MainActor
+enum ScholiumWindowAppearance {
+    static func apply(_ choice: WindowColorSchemeChoice, to window: NSWindow) {
+        window.appearance = switch choice {
+        case .dark: NSAppearance(named: .darkAqua)
+        case .light: NSAppearance(named: .aqua)
+        case .system: nil
+        }
+    }
+}
+
 @MainActor
 protocol ScholiumWorkspaceSplitControlling: AnyObject {
     var nativeSplitViewController: NSSplitViewController { get }
@@ -380,6 +394,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     nonisolated(unsafe) private var previousDelegate: (any NSWindowDelegate)?
     private var toolbarController: ScholiumWorkspaceToolbarController?
     private let loadingToolbar: NSToolbar
+    private var colorScheme = WindowColorSchemeChoice.system
     private var reduceMotion = false
     private var closeIsAuthorized = false
     private var flushInFlight = false
@@ -480,6 +495,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     func update(reduceMotion: Bool) {
         self.reduceMotion = reduceMotion
+    }
+
+    func update(colorScheme: WindowColorSchemeChoice) {
+        guard self.colorScheme != colorScheme else { return }
+        self.colorScheme = colorScheme
+        if let window {
+            ScholiumWindowAppearance.apply(colorScheme, to: window)
+        }
     }
 
     func activate(
@@ -598,9 +621,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.identifier = NSUserInterfaceItemIdentifier(
             "scholium-main-\(windowID.uuidString)"
         )
-        window.titleVisibility = .hidden
         window.tabbingMode = .disallowed
-        applyWindowChrome(to: window)
+        configureWindowFrame(window)
         installLoadingToolbarIfNeeded()
         previousDelegate = window.delegate
         window.delegate = self
@@ -796,24 +818,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             )
         }
         previousDelegate?.windowDidBecomeKey?(notification)
-    }
-
-    func windowDidEnterFullScreen(_ notification: Notification) {
-        if let window,
-           let notificationWindow = notification.object as? NSWindow,
-           notificationWindow === window {
-            reapplyWindowChromeAfterFullScreenTransition()
-        }
-        previousDelegate?.windowDidEnterFullScreen?(notification)
-    }
-
-    func windowDidExitFullScreen(_ notification: Notification) {
-        if let window,
-           let notificationWindow = notification.object as? NSWindow,
-           notificationWindow === window {
-            reapplyWindowChromeAfterFullScreenTransition()
-        }
-        previousDelegate?.windowDidExitFullScreen?(notification)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -1025,26 +1029,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         lifecycleRegistry.markReady(id: windowID)
     }
 
-    private func applyWindowChrome(to window: NSWindow) {
+    private func configureWindowFrame(_ window: NSWindow) {
+        ScholiumWindowAppearance.apply(colorScheme, to: window)
         window.styleMask.insert(.fullSizeContentView)
-        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        window.toolbarStyle = .unified
         window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
-        applyNativeTitlebarBackground(to: window)
-    }
-
-    private func applyNativeTitlebarBackground(to window: NSWindow) {
-        // Full-screen mode promotes AppKit's toolbar into a separate native
-        // titlebar container. Keep that container on the same opaque semantic
-        // plane as the workspace so the system toolbar cannot expose its white
-        // default material during the transition.
-        guard let titlebarContainer = window.standardWindowButton(.closeButton)?
-            .superview?.superview else { return }
-        titlebarContainer.wantsLayer = true
-        titlebarContainer.layer?.backgroundColor =
-            ScholiumColorRole.documentBackground.nsColor.cgColor
     }
 
     private func installToolbarIfPossible() {
@@ -1055,7 +1045,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if let toolbarController,
            toolbarController.controls(splitController.nativeSplitViewController) {
             toolbarController.install(in: window)
-            applyWindowChrome(to: window)
             return
         }
         let controller = ScholiumWorkspaceToolbarController(
@@ -1065,14 +1054,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         )
         toolbarController = controller
         controller.install(in: window)
-        applyWindowChrome(to: window)
-    }
-
-    private func reapplyWindowChromeAfterFullScreenTransition() {
-        guard let window else { return }
-        applyWindowChrome(to: window)
-        installLoadingToolbarIfNeeded()
-        installToolbarIfPossible()
     }
 
     /// Keep the native toolbar band present from the window's first frame.
@@ -1083,7 +1064,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if window.toolbar !== loadingToolbar {
             window.toolbar = loadingToolbar
         }
-        window.toolbarStyle = .unified
     }
 
     private func replaceConfiguredToolbarWithLoadingToolbar() {
@@ -1162,17 +1142,22 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
 struct WorkspaceWindowAttachment: NSViewRepresentable {
     let coordinator: WorkspaceWindowCoordinator
+    let colorScheme: WindowColorSchemeChoice
 
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()
-        view.onWindowAttachment = { [weak coordinator] window in
-            coordinator?.attach(to: window)
-        }
+        view.onWindowAttachment = configure
         return view
     }
 
     func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
-        if let window = nsView.window { coordinator.attach(to: window) }
+        nsView.onWindowAttachment = configure
+        if let window = nsView.window { configure(window) }
+    }
+
+    private func configure(_ window: NSWindow) {
+        coordinator.update(colorScheme: colorScheme)
+        coordinator.attach(to: window)
     }
 
     static func dismantleNSView(
@@ -1183,6 +1168,7 @@ struct WorkspaceWindowAttachment: NSViewRepresentable {
 
 struct ResearchRecordsWindowAttachment: NSViewRepresentable {
     let triptychID: UUID
+    let colorScheme: WindowColorSchemeChoice
 
     func makeNSView(context: Context) -> WindowAttachmentView {
         let view = WindowAttachmentView()
@@ -1198,8 +1184,8 @@ struct ResearchRecordsWindowAttachment: NSViewRepresentable {
         window.identifier = NSUserInterfaceItemIdentifier(
             "scholium-research-records-\(triptychID.uuidString.lowercased())"
         )
+        ScholiumWindowAppearance.apply(colorScheme, to: window)
         window.styleMask.insert(.fullSizeContentView)
-        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.backgroundColor = ScholiumColorRole.documentBackground.nsColor

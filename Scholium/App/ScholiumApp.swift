@@ -144,7 +144,7 @@ struct ScholiumApp: App {
                 ? .disabled
                 : .automatic
         )
-        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowToolbarStyle(.unified(showsTitle: true))
         .commands { ScholiumCommands(storageReady: applicationBootstrap.isReady) }
 
         WindowGroup(
@@ -251,7 +251,9 @@ private struct ScholiumResearchRecordsRoot: View {
         )
         .environment(\.layoutDirection, recordsLayoutDirection)
         .background(ResearchRecordsWindowAttachment(
-            triptychID: triptychID
+            triptychID: triptychID,
+            colorScheme:
+                WindowColorSchemeChoice(rawValue: storedColorScheme) ?? .system
         ))
         .task(id: triptychID) { await loadCapabilities() }
         .onAppear { registerRecordsEndpoint() }
@@ -820,6 +822,7 @@ private struct ScholiumWindowObservedRoot: View {
     @ObservedObject private var shellState: WindowShellState
     @ObservedObject private var presentationRouter: WindowPresentationRouter
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
+    @ObservedObject private var commandObservation: WindowCommandObservation
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
@@ -844,6 +847,7 @@ private struct ScholiumWindowObservedRoot: View {
         _windowWorkspaceController = ObservedObject(
             wrappedValue: appState.windowWorkspaceController
         )
+        _commandObservation = ObservedObject(wrappedValue: appState.commandObservation)
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
         self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
@@ -862,13 +866,17 @@ private struct ScholiumWindowObservedRoot: View {
                 ScholiumLaunchPlaceholderView()
             }
         }
+            .navigationTitle(workspaceWindowTitle)
             .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
             .focusedSceneObject(appState)
             .focusedSceneObject(appState.commandObservation)
             .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
             .background(
-                WorkspaceWindowAttachment(coordinator: windowCoordinator)
+                WorkspaceWindowAttachment(
+                    coordinator: windowCoordinator,
+                    colorScheme: shellState.colorScheme
+                )
             )
             .sheet(item: Binding(
                 get: { windowWorkspaceController.state.accessRecovery },
@@ -1008,6 +1016,11 @@ private struct ScholiumWindowObservedRoot: View {
                 appState.persistWindowSessionNow()
             }
             .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
+    }
+
+    private var workspaceWindowTitle: String {
+        let _ = commandObservation.revision
+        return appState.currentNote.map { $0.title ?? $0.displayName } ?? "Scholium"
     }
 
     private func selectMarkdownFilesForImportIfRequested() async {

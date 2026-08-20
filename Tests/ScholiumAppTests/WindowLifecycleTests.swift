@@ -756,9 +756,13 @@ struct WindowLifecycleTests {
             window.close()
         }
 
-        let attachment = ResearchRecordsWindowAttachment(triptychID: triptychID)
+        let attachment = ResearchRecordsWindowAttachment(
+            triptychID: triptychID,
+            colorScheme: .light
+        )
         attachment.configure(window)
         let collectionFrame = window.frame
+        #expect(window.appearance?.name == .aqua)
 
         attachment.configure(window)
         let detailFrame = window.frame

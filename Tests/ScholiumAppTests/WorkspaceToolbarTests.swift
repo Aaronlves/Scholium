@@ -6,6 +6,21 @@ import Testing
 @Suite("Workspace toolbar")
 @MainActor
 struct WorkspaceToolbarTests {
+    @Test("Window appearance keeps native toolbar chrome aligned with the selected scheme")
+    func nativeToolbarAppearanceFollowsWindowChoice() {
+        let window = testWindow()
+        defer { window.close() }
+
+        ScholiumWindowAppearance.apply(.light, to: window)
+        #expect(window.appearance?.name == .aqua)
+
+        ScholiumWindowAppearance.apply(.dark, to: window)
+        #expect(window.appearance?.name == .darkAqua)
+
+        ScholiumWindowAppearance.apply(.system, to: window)
+        #expect(window.appearance == nil)
+    }
+
     @Test("The explicit Apparatus boundary does not invoke Inspector auto-discovery")
     func apparatusBoundaryHasOneGeometryOwner() {
         #expect(
@@ -63,5 +78,117 @@ struct WorkspaceToolbarTests {
 
         #expect(apparatus.contains("scholium.noDocumentInspectorState"))
         #expect(!apparatus.contains("Color.clear"))
+    }
+
+    @Test("The native toolbar owns command identity, overflow, and navigation")
+    func nativeToolbarOwnsLayout() throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let split = testSplitViewController()
+        let window = testWindow()
+        window.contentViewController = split
+        window.toolbarStyle = .unified
+        window.layoutIfNeeded()
+        defer {
+            window.toolbar = nil
+            window.close()
+        }
+
+        let controller = ScholiumWorkspaceToolbarController(
+            appState: model,
+            windowActions: inertWindowActions,
+            splitViewController: split
+        )
+        controller.install(in: window)
+
+        let toolbar = try #require(window.toolbar)
+        #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
+
+        let heading = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.headingOutline,
+            in: toolbar
+        ))
+        #expect(heading is NSMenuToolbarItem)
+        #expect(heading.visibilityPriority == .high)
+        #expect(heading.title.isEmpty)
+        #expect(heading.label == "Heading Outline")
+
+        for identifier in [
+            ScholiumWorkspaceToolbarController.Item.back,
+            ScholiumWorkspaceToolbarController.Item.forward,
+            ScholiumWorkspaceToolbarController.Item.search,
+            ScholiumWorkspaceToolbarController.Item.documentMode,
+            ScholiumWorkspaceToolbarController.Item.researchRecords,
+        ] {
+            let command = try #require(item(identifier, in: toolbar))
+            #expect(command.view == nil)
+            #expect(command.target === controller)
+            #expect(command.action != nil)
+            #expect(command.visibilityPriority == .high)
+            let overflowCommand = try #require(command.menuFormRepresentation)
+            #expect(overflowCommand.target === controller)
+            #expect(overflowCommand.action == command.action)
+            #expect(overflowCommand.image != nil)
+        }
+
+        #expect(try #require(item(
+            ScholiumWorkspaceToolbarController.Item.back,
+            in: toolbar
+        )).isNavigational)
+        #expect(try #require(item(
+            ScholiumWorkspaceToolbarController.Item.forward,
+            in: toolbar
+        )).isNavigational)
+        #expect(try #require(item(
+            ScholiumWorkspaceToolbarController.Item.sidebar,
+            in: toolbar
+        )).visibilityPriority == .user)
+        #expect(try #require(item(
+            ScholiumWorkspaceToolbarController.Item.inspector,
+            in: toolbar
+        )).visibilityPriority == .user)
+    }
+
+    private var inertWindowActions: WorkspaceWindowActions {
+        WorkspaceWindowActions(
+            setLibraryVisible: { _ in },
+            setResearchInspectorVisible: { _ in },
+            showNoteResearchRecords: {},
+            showTriptychResearchRecords: {},
+            showAttention: { _, _ in },
+            showPreferredAttention: {},
+            canShowAttention: { false }
+        )
+    }
+
+    private func item(
+        _ identifier: NSToolbarItem.Identifier,
+        in toolbar: NSToolbar
+    ) -> NSToolbarItem? {
+        toolbar.items.first { $0.itemIdentifier == identifier }
+    }
+
+    private func testSplitViewController() -> NSSplitViewController {
+        let split = NSSplitViewController()
+        split.addSplitViewItem(NSSplitViewItem(
+            sidebarWithViewController: NSViewController()
+        ))
+        split.addSplitViewItem(NSSplitViewItem(
+            viewController: NSViewController()
+        ))
+        split.addSplitViewItem(NSSplitViewItem(
+            inspectorWithViewController: NSViewController()
+        ))
+        return split
+    }
+
+    private func testWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
+            styleMask: [.titled, .resizable, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        return window
     }
 }

@@ -1057,56 +1057,42 @@ struct FrontendArchitectureTests {
             sidebarSource.contains(
                 ".accessibilityIdentifier(\"scholium.triptychManagement\")"
             ))
-        #expect(toolbarSource.contains("identifier: \"scholium.toggleSidebar\""))
         #expect(!toolbarSource.contains("private var desiredItemIdentifiers"))
-        #expect(toolbarSource.contains("static var itemIdentifiers:"))
-        #expect(toolbarSource.contains("toolbar.itemIdentifiers = Self.itemIdentifiers"))
-        #expect(toolbarSource.contains("NSTrackingSeparatorToolbarItem("))
-        #expect(toolbarSource.contains("dividerIndex: 0"))
-        #expect(toolbarSource.contains("dividerIndex: 1"))
-        #expect(toolbarSource.contains(".flexibleSpace"))
+        #expect(ScholiumWorkspaceToolbarController.itemIdentifiers == [
+            ScholiumWorkspaceToolbarController.Item.sidebar,
+            ScholiumWorkspaceToolbarController.Item.back,
+            ScholiumWorkspaceToolbarController.Item.forward,
+            ScholiumWorkspaceToolbarController.Item.libraryDivider,
+            ScholiumWorkspaceToolbarController.Item.headingOutline,
+            .flexibleSpace,
+            ScholiumWorkspaceToolbarController.Item.search,
+            ScholiumWorkspaceToolbarController.Item.documentMode,
+            ScholiumWorkspaceToolbarController.Item.researchRecords,
+            ScholiumWorkspaceToolbarController.Item.apparatusDivider,
+            .flexibleSpace,
+            ScholiumWorkspaceToolbarController.Item.inspector,
+        ])
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
-        #expect(toolbarSource.contains("ScholiumNativeToolbarButton("))
-        #expect(toolbarSource.contains("ScholiumNativeToolbarMenu("))
-        #expect(toolbarSource.contains("ScholiumNativeToolbarPresentation"))
-        #expect(
-            toolbarSource.components(
-                separatedBy: "ScholiumNativeToolbarPresentation.controlSize"
-            ).count == 3)
-        #expect(toolbarSource.contains("NSFont.systemFontSize)"))
-        #expect(toolbarSource.contains("textStyle: .body"))
-        #expect(toolbarSource.contains("scale: .medium"))
-        #expect(toolbarSource.contains("button.bezelStyle = .toolbar"))
-        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = true"))
-        #expect(toolbarSource.contains("item.isBordered = false"))
-        #expect(toolbarSource.contains("item.style = .plain"))
-        #expect(toolbarSource.contains("window.toolbarStyle = .unified"))
-        #expect(!toolbarSource.contains("unifiedCompact"))
-        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentIdentityToolbarView"))
-        #expect(toolbarSource.contains("visibilityPriority: .low"))
-        #expect(toolbarSource.contains(
-            "host.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)"
-        ))
-        #expect(toolbarSource.contains(
-            ".frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)"
-        ))
-        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentModeToolbarView"))
-        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
-        #expect(toolbarSource.contains("ScholiumWorkspaceDocumentNavigationToolbarView"))
+        #expect(toolbarSource.contains("NSMenuToolbarItem(itemIdentifier:"))
+        #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
+        #expect(appSource.contains("@ObservedObject private var commandObservation"))
+        #expect(!toolbarSource.contains("window?.title ="))
+        #expect(!toolbarSource.contains("NSHostingView"))
+        #expect(!toolbarSource.contains("documentTitleMaximumWidth"))
+        #expect(!toolbarSource.contains("documentIdentity"))
+        #expect(!toolbarSource.contains("documentCommands"))
         #expect(!contentSource.contains("private func documentIdentityHeader"))
         #expect(!contentSource.contains("documentIdentityHeader(for:"))
         #expect(toolbarSource.contains("static let inspector = NSToolbarItem.Identifier"))
         #expect(toolbarSource.contains("\"scholium.toolbar.inspector\""))
-        #expect(toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
-        #expect(toolbarSource.contains("identifier: \"scholium.toggleInspector\""))
         #expect(
             toolbarSource.contains(
-                "windowActions.setResearchInspectorVisible(!shellState.inspector.isVisible)"
+                "windowActions.setResearchInspectorVisible(!appState.shellState.inspector.isVisible)"
             ))
         #expect(
             toolbarSource.contains(
-                "documentController.selectedDocument != nil"
+                "appState.documentController.selectedDocument != nil"
             ))
         #expect(toolbarSource.contains("Hide Sidebar"))
         #expect(toolbarSource.contains("Hide Research Inspector"))
@@ -1121,26 +1107,6 @@ struct FrontendArchitectureTests {
             appSource.contains(
                 "&& appState?.currentNote == nil"
             ))
-        #expect(!toolbarSource.contains("identifiers.append(.toggleInspector)"))
-        #expect(!toolbarSource.contains("case .toggleInspector"))
-        #expect(!toolbarSource.contains("updateStandardInspectorItem"))
-        #expect(!toolbarSource.contains("#selector(toggleInspector"))
-        #expect(
-            toolbarSource.contains(
-                "let item = NSToolbarItem(itemIdentifier: identifier)"
-            ))
-        #expect(
-            toolbarSource.contains(
-                "host.layer?.backgroundColor = NSColor.clear.cgColor"
-            ))
-        #expect(
-            toolbarSource.contains(
-                "item.isBordered = false"
-            ))
-        #expect(
-            toolbarSource.contains(
-                "item.style = .plain"
-            ))
         #expect(!toolbarSource.contains("glassEffect"))
         #expect(noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
@@ -1149,12 +1115,11 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
-        #expect(windowManagementSource.contains("windowDidEnterFullScreen"))
-        #expect(windowManagementSource.contains("windowDidExitFullScreen"))
-        #expect(
-            windowManagementSource.contains(
-                "window.standardWindowButton(.closeButton)?"
-            ))
+        #expect(!windowManagementSource.contains("windowDidEnterFullScreen"))
+        #expect(!windowManagementSource.contains("windowDidExitFullScreen"))
+        #expect(windowManagementSource.contains("ScholiumWindowAppearance.apply"))
+        #expect(!windowManagementSource.contains("titlebarContainer"))
+        #expect(!windowManagementSource.contains("layer?.backgroundColor"))
         #expect(windowManagementSource.contains("scholium.workspaceToolbar.loading"))
         #expect(windowManagementSource.contains("installLoadingToolbarIfNeeded()"))
         #expect(
@@ -1162,10 +1127,7 @@ struct FrontendArchitectureTests {
                 "loadingToolbar.itemIdentifiers = [.flexibleSpace]"
             ))
         #expect(windowManagementSource.contains("window.styleMask.insert(.fullSizeContentView)"))
-        #expect(
-            contentSource.contains(
-                ".toolbarBackground(.clear, for: .windowToolbar)"
-            ))
+        #expect(!contentSource.contains(".toolbarBackground(.clear, for: .windowToolbar)"))
         #expect(
             contentSource.contains(
                 ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
@@ -1231,30 +1193,35 @@ struct FrontendArchitectureTests {
             identifiers.firstIndex(of: Item.libraryDivider)
         )
         let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
-        let navigationIndex = try #require(
-            identifiers.firstIndex(of: Item.documentNavigationHistory)
+        let backIndex = try #require(identifiers.firstIndex(of: Item.back))
+        let forwardIndex = try #require(identifiers.firstIndex(of: Item.forward))
+        let headingIndex = try #require(
+            identifiers.firstIndex(of: Item.headingOutline)
         )
-        let documentIndex = try #require(
-            identifiers.firstIndex(of: Item.documentIdentity)
-        )
-        let commandsIndex = try #require(
-            identifiers.firstIndex(of: Item.documentCommands)
+        let searchIndex = try #require(identifiers.firstIndex(of: Item.search))
+        let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
+        let recordsIndex = try #require(
+            identifiers.firstIndex(of: Item.researchRecords)
         )
         let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
         let apparatusDividerIndex = try #require(
             identifiers.firstIndex(of: Item.apparatusDivider)
         )
-        #expect(sidebarIndex < navigationIndex)
-        #expect(navigationIndex < libraryDividerIndex)
-        #expect(libraryDividerIndex < documentIndex)
-        #expect(documentIndex < documentFlexibleSpaceIndex)
-        #expect(documentFlexibleSpaceIndex < commandsIndex)
-        #expect(commandsIndex < apparatusDividerIndex)
+        #expect(sidebarIndex < backIndex)
+        #expect(backIndex < forwardIndex)
+        #expect(forwardIndex < libraryDividerIndex)
+        #expect(libraryDividerIndex < headingIndex)
+        #expect(headingIndex < documentFlexibleSpaceIndex)
+        #expect(documentFlexibleSpaceIndex < searchIndex)
+        #expect(searchIndex < modeIndex)
+        #expect(modeIndex < recordsIndex)
+        #expect(recordsIndex < apparatusDividerIndex)
         #expect(apparatusDividerIndex < apparatusFlexibleSpaceIndex)
         #expect(apparatusFlexibleSpaceIndex < inspectorIndex)
         #expect(identifiers.filter { $0 == .flexibleSpace }.count == 2)
         #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
-        #expect(identifiers.filter { $0 == Item.documentNavigationHistory }.count == 1)
+        #expect(identifiers.filter { $0 == Item.back }.count == 1)
+        #expect(identifiers.filter { $0 == Item.forward }.count == 1)
         #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
 
         let toolbarSource = try String(
@@ -2812,22 +2779,25 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(toolbar.contains("\"scholium.headingOutline\""))
-        #expect(toolbar.contains("\"scholium.documentSearch\""))
-        #expect(toolbar.contains("\"scholium.showResearchRecords\""))
+        #expect(
+            ScholiumWorkspaceToolbarController.Item.headingOutline.rawValue
+                == "scholium.toolbar.headingOutline"
+        )
+        #expect(
+            ScholiumWorkspaceToolbarController.Item.search.rawValue
+                == "scholium.toolbar.search"
+        )
+        #expect(
+            ScholiumWorkspaceToolbarController.Item.researchRecords.rawValue
+                == "scholium.toolbar.researchRecords"
+        )
         #expect(toolbar.contains("windowActions.showNoteResearchRecords()"))
         #expect(toolbar.contains("windowActions.showTriptychResearchRecords()"))
         #expect(toolbar.contains("hasRecords(in: presentation.scope) ? \"tray.full\" : \"tray\""))
         #expect(toolbar.contains("record.participatingNotes.contains { $0.noteID == noteID }"))
         #expect(!toolbar.contains("clock.arrow.circlepath"))
-        #expect(toolbar.contains("\"scholium.toolbar.inspector\""))
-        #expect(toolbar.contains("ScholiumWorkspaceInspectorToolbarView"))
-        #expect(toolbar.contains("static let documentCommands"))
-        #expect(toolbar.contains("HStack(spacing: ScholiumGrid.Spacing.inlineControlGap)"))
-        #expect(toolbar.contains("systemImage: \"arrow.left\""))
-        #expect(toolbar.contains("systemImage: \"arrow.right\""))
-        #expect(toolbar.contains("documentController.selectedDocument != nil"))
-        #expect(toolbar.contains("isEnabled: presentation.isEnabled"))
+        #expect(!toolbar.contains("static let documentCommands"))
+        #expect(!toolbar.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
         #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
