@@ -390,6 +390,48 @@ struct ArchitectureBoundaryTests {
         #expect(ports.contains("researchSourceMaterialStatus"))
     }
 
+    @Test("Local execution storage owns its error and file boundary")
+    func localResearchExecutionErrorBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let coreSource = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("ScholiumCore")
+                .appendingPathComponent("ResearchRecordV1Stores.swift"),
+            encoding: .utf8
+        )
+        let localStoreSource = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("ScholiumCore")
+                .appendingPathComponent("LocalResearchExecutionStore.swift"),
+            encoding: .utf8
+        )
+
+        for retiredLocalSymbol in [
+            "LocalResearchExecutionRecord",
+            "LocalResearchExecutionStore",
+            "LocalResearchExecutionStoreIssue",
+            "LocalResearchExecutionStoreError",
+            "research-execution-v10",
+        ] {
+            #expect(
+                !coreSource.contains(retiredLocalSymbol),
+                Comment(rawValue: "Portable store file regained \(retiredLocalSymbol)")
+            )
+        }
+        #expect(localStoreSource.contains("public struct LocalResearchExecutionRecord"))
+        #expect(localStoreSource.contains("public actor LocalResearchExecutionStore"))
+        #expect(localStoreSource.contains("LocalResearchExecutionStoreError"))
+        #expect(!localStoreSource.contains("ResearchRecordStoreV1Error"))
+        #expect(!localStoreSource.contains("PortableResearchRecordError"))
+        #expect(!localStoreSource.contains("ResearchFunctionRecordStoreError"))
+        #expect(localStoreSource.contains(
+            "public let issues: [LocalResearchExecutionStoreIssue]"
+        ))
+    }
+
     @Test("Research execution lifecycle has one Workspace coordinator")
     func researchFunctionCoordinatorBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

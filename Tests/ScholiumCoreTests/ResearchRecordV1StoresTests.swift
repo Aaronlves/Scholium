@@ -952,7 +952,7 @@ struct ResearchRecordV1StoresTests {
         let listing = try await store.listing()
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
-        await #expect(throws: Error.self) {
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.record(id: record.id)
         }
     }
@@ -977,7 +977,7 @@ struct ResearchRecordV1StoresTests {
         let listing = try await store.listing()
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
             try await store.validateStoreHealth()
         }
     }
@@ -1043,7 +1043,7 @@ struct ResearchRecordV1StoresTests {
             literatureRecommendations: replacement,
             completedAt: awaiting.completedAt
         )
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.setCompletion(
                 tamperedTerminal,
                 writeReport: report,
@@ -1070,7 +1070,7 @@ struct ResearchRecordV1StoresTests {
         let listing = try await store.listing()
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
-        await #expect(throws: ResearchRecordStoreV1Error.self) {
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.record(id: runID)
         }
     }

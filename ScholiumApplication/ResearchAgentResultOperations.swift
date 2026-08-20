@@ -69,10 +69,10 @@ extension WorkspaceHandle {
             stored = try await services.localResearchExecutionStore.record(
                 id: authenticated.runID
             )
-        } catch ResearchRecordStoreV1Error.executionNotFound(let id) {
+        } catch LocalResearchExecutionStoreError.executionNotFound(let id) {
             guard await services.portableResearchRecordStore
                 .isRecordPermanentlyDeleted(id: id) else {
-                throw ResearchRecordStoreV1Error.executionNotFound(id)
+                throw LocalResearchExecutionStoreError.executionNotFound(id)
             }
             throw ResearchFunctionContractError.invalidCompletion(
                 "The Research Record for this Action was permanently deleted and cannot be recreated."

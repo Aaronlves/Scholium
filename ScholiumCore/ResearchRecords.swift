@@ -8,30 +8,6 @@ private func persistentlyEquivalent<T: Encodable>(_ lhs: T, _ rhs: T) throws -> 
     return try encoder.encode(lhs) == encoder.encode(rhs)
 }
 
-public enum ResearchFunctionRecordStoreError: LocalizedError, Sendable {
-    case runNotFound(UUID)
-    case duplicateRun(UUID)
-    case preparationMismatch(UUID)
-    case completionMismatch(UUID)
-    case runAlreadyCompleted(UUID)
-
-    public var errorDescription: String? {
-        switch self {
-        case .runNotFound(let id):
-            "Action run not found: \(id.uuidString)"
-        case .duplicateRun(let id):
-            "Action run is recorded more than once: \(id.uuidString)"
-        case .preparationMismatch(let id):
-            "Action preflight finalization does not preserve its fixed run: \(id.uuidString)"
-        case .completionMismatch(let id):
-            "Action completion does not match its prepared run: \(id.uuidString)"
-        case .runAlreadyCompleted(let id):
-            "Action run already has different completion evidence: \(id.uuidString)"
-        }
-    }
-}
-
-
 public actor CritiqueRegistry {
     private static let currentSchemaVersion = 3
 
