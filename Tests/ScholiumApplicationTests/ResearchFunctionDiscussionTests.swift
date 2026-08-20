@@ -673,7 +673,130 @@ extension ResearchFunctionOperationsTests {
         let restored = try await handle.research.activeDiscussion(id: preparation.runID)
         #expect(restored.id == preparation.runID)
         #expect(restored.statements.first?.text == "Restore this interrupted preparation.")
+        let restoredSnapshot = try await handle.snapshot()
+        #expect(restoredSnapshot.phase.isComplete)
+        #expect(restoredSnapshot.research.activeDiscussions.contains {
+            $0.id == preparation.runID
+        })
+        #expect(restoredSnapshot.research.healthIssues.allSatisfy {
+            !$0.hasPrefix("Discussion \(preparation.runID.uuidString):")
+        })
+        #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
+            $0.id == preparation.runID
+        })
+        #expect((await handle.latestRefreshMeasurement).researchStateDuration > .zero)
         _ = try await handle.research.protectedFunctionRun(id: preparation.runID)
+        await runtime.shutdown()
+    }
+
+    @Test("Refresh repairs an active Discussion passage before publication")
+    func refreshRepairsActiveDiscussionPassage() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let original = try await handle.documents.load(fixture.analysisID)
+        let discussion = try await handle.research.createDiscussion(
+            target: target,
+            focalNotes: [],
+            passage: try commentAnchor(in: original),
+            researcherMessage: "Reattach this passage after a source revision."
+        )
+        let finishedBeforeRefresh = try await handle.snapshot()
+
+        let revisedSource = original.rawContent.replacingOccurrences(
+            of: "Exact philosophical claim",
+            with: "A revised Exact philosophical claim"
+        )
+        try Data(revisedSource.utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            options: .atomic
+        )
+
+        let refreshed = try await handle.refresh()
+        let repaired = try #require(refreshed.research.activeDiscussions.first {
+            $0.id == discussion.id
+        })
+        #expect(repaired.passage?.state == .attached)
+        #expect(repaired.passage?.fingerprint == DocumentFingerprint(content: revisedSource))
+        #expect(!refreshed.research.healthIssues.contains {
+            $0.contains(discussion.id.uuidString)
+        })
+        #expect(refreshed.research.finishedResearchRecords
+            == finishedBeforeRefresh.research.finishedResearchRecords)
+        await runtime.shutdown()
+    }
+
+    @Test("A failed Discussion repair retains the previously published snapshot")
+    func failedDiscussionRepairRetainsPublishedSnapshot() async throws {
+        enum InjectedRepairFailure: Error {
+            case beforeRepair
+        }
+
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let before = try await handle.snapshot()
+        await handle.setResearchStateRepairBarrierForTesting {
+            throw InjectedRepairFailure.beforeRepair
+        }
+
+        await #expect(throws: InjectedRepairFailure.self) {
+            _ = try await handle.refresh()
+        }
+
+        await handle.setResearchStateRepairBarrierForTesting(nil)
+        let after = try await handle.snapshot()
+        #expect(after.generatedAt == before.generatedAt)
+        #expect(after.discovery.searchGeneration == before.discovery.searchGeneration)
+        #expect(after.research.activeDiscussions == before.research.activeDiscussions)
+        #expect(after.research.finishedResearchRecords == before.research.finishedResearchRecords)
+        await runtime.shutdown()
+    }
+
+    @Test("A refresh repairs a missing active Discussion before publication")
+    func refreshRepairsMissingActiveDiscussionIntoSnapshot() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .discuss,
+                target: actionNote(target),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Repair this active Discussion on refresh."),
+                ]
+            )
+        )
+        let activeURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        try FileManager.default.removeItem(at: activeURL)
+
+        let refreshed = try await handle.discovery.refresh()
+        #expect(refreshed.phase.isComplete)
+        #expect(refreshed.research.activeDiscussions.contains {
+            $0.id == preparation.runID
+        })
+        #expect(try await handle.research.activeDiscussion(id: preparation.runID).id
+            == preparation.runID)
+        #expect(refreshed.research.healthIssues.allSatisfy {
+            !$0.hasPrefix("Discussion \(preparation.runID.uuidString):")
+        })
         await runtime.shutdown()
     }
 

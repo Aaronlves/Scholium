@@ -486,85 +486,8 @@ enum WorkspaceSnapshotBuilder {
             .portableResearchRecordStore.listing()
         let noteReviewListing = try await services.portableResearchRecordStore
             .noteReviewListing()
-        var activeDiscussionListing = try await services
+        let activeDiscussionListing = try await services
             .portableResearchRecordStore.activeDiscussions()
-        var activeDiscussionReconciliationIssues: [String] = []
-        let finishedByID = Dictionary(
-            uniqueKeysWithValues: finishedResearchRecordListing.records.map { ($0.id, $0) }
-        )
-        if activeDiscussionListing.issues.isEmpty,
-           finishedResearchRecordListing.issues.isEmpty {
-            for local in localExecutionListing.records
-                where local.snapshot.request.function == .discuss {
-                do {
-                    let expected = try ResearchDiscussionFactory.make(
-                        snapshot: local.snapshot,
-                        triptychID: assignment.id
-                    )
-                    if let active = activeDiscussionListing.discussions.first(where: {
-                        $0.id == local.id
-                    }) {
-                        guard ResearchDiscussionFactory.activeMatches(
-                            active,
-                            expected: expected
-                        ) else {
-                            throw ResearchFunctionContractError.invalidCompletion(
-                                "The active Discussion does not match its current Run."
-                            )
-                        }
-                    } else if let finished = finishedByID[local.id] {
-                        guard ResearchDiscussionFactory.finishedMatches(
-                            finished,
-                            expected: expected
-                        ) else {
-                            throw ResearchFunctionContractError.invalidCompletion(
-                                "The finished Discussion does not match its current Run."
-                            )
-                        }
-                    } else if local.completion == nil,
-                              !activeDiscussionListing.discussions.contains(where: {
-                                  $0.primaryNoteID == expected.primaryNoteID
-                              }) {
-                        _ = try await services.portableResearchRecordStore
-                            .createActiveDiscussion(expected)
-                    } else {
-                        throw ResearchFunctionContractError.invalidCompletion(
-                            "The current Discuss Run has no exact portable Discussion pair."
-                        )
-                    }
-                } catch {
-                    activeDiscussionReconciliationIssues.append(
-                        "Discussion \(local.id.uuidString): \(error.localizedDescription)"
-                    )
-                }
-            }
-        }
-        activeDiscussionListing = try await services.portableResearchRecordStore
-            .activeDiscussions()
-        for discussion in activeDiscussionListing.issues.isEmpty
-            ? activeDiscussionListing.discussions
-            : [] {
-            guard let loaded = loadedVaults.first(where: { vault in
-                vault.identityStates.values.contains(.resolved(discussion.primaryNoteID))
-            }), let relativePath = loaded.identityStates.first(where: {
-                $0.value == .resolved(discussion.primaryNoteID)
-            })?.key, let document = loaded.activeDocuments.first(where: {
-                $0.relativePath == relativePath
-            }) else { continue }
-            do {
-                _ = try await services.portableResearchRecordStore
-                    .reconcileDiscussionPassages(
-                        id: discussion.id,
-                        primaryDocument: document
-                    )
-            } catch {
-                activeDiscussionReconciliationIssues.append(
-                    "Discussion \(discussion.id.uuidString): \(error.localizedDescription)"
-                )
-            }
-        }
-        activeDiscussionListing = try await services.portableResearchRecordStore
-            .activeDiscussions()
         let latestSettlementByNoteID = Dictionary(
             settlements.map { ($0.noteID, $0) },
             uniquingKeysWith: { lhs, rhs in
@@ -683,7 +606,6 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: activeDiscussionListing.issues.map {
             "Active Discussion \($0.fileName): \($0.reason)"
         })
-        healthIssues.append(contentsOf: activeDiscussionReconciliationIssues)
         healthIssues.append(contentsOf: finishedResearchRecordListing.issues.map {
             "Portable Research Record \($0.fileName): \($0.reason)"
         })

@@ -627,6 +627,7 @@ struct WorkspaceRuntimeTests {
         #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
         #expect(openingEvent.snapshot.discovery.catalog.graph == nil)
         #expect(!openingEvent.snapshot.research.finishedResearchRecordProjectionIsComplete)
+        #expect(openingEvent.snapshot.research.activeDiscussions.isEmpty)
         #expect(await handle.ownedBackgroundTaskCount >= 2)
 
         let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
@@ -721,6 +722,71 @@ struct WorkspaceRuntimeTests {
 
         await runtime.shutdown()
         #expect(await handle.ownedBackgroundTaskCount == 0)
+    }
+
+    @Test("Progressive opening defers orphan Discussion repair until completion")
+    func progressiveOpeningDefersOrphanDiscussionRepair() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+
+        let seedRuntime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let seedHandle = try await seedRuntime.openWorkspace(id: fixture.assignment.id)
+        let helpers = ResearchFunctionOperationsTests()
+        let target = try await researchFunctionTarget(
+            fixture.analysisNoteID,
+            role: .analysis,
+            handle: seedHandle
+        )
+        let preparation = try await seedHandle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: seedHandle,
+                actionID: .discuss,
+                target: helpers.actionNote(target),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Defer this orphan repair until completion."),
+                ]
+            )
+        )
+        await seedRuntime.shutdown()
+
+        let activeURL = fixture.rootURL
+            .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
+            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
+        try FileManager.default.removeItem(at: activeURL)
+
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(
+            id: fixture.assignment.id,
+            openingVault: .paperAnalysis
+        )
+        let opening = try await handle.snapshot()
+        #expect(opening.phase == .opening(availableVault: .paperAnalysis))
+        #expect(opening.research.activeDiscussions.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: activeURL.path))
+
+        await handle.openingPresentationDidComplete()
+        var completeSnapshot: WorkspaceSnapshot?
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(20))
+            let snapshot = try await handle.snapshot()
+            if snapshot.phase.isComplete {
+                completeSnapshot = snapshot
+                break
+            }
+        }
+        let complete = try #require(completeSnapshot)
+        #expect(complete.research.activeDiscussions.contains {
+            $0.id == preparation.runID
+        })
+        #expect(FileManager.default.fileExists(atPath: activeURL.path))
+        await runtime.shutdown()
     }
 
     @Test("Native live events publish one stable-identity move to every window")

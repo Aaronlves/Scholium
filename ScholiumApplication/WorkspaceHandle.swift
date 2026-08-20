@@ -411,6 +411,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         (@Sendable () async -> Void)?
     private var progressiveActivationReconciliationBarrierForTesting:
         (@Sendable () async -> Void)?
+    private var researchStateRepairBarrierForTesting:
+        (@Sendable () async throws -> Void)?
     private var didCompleteActivationReconciliation = false
 
     func setManagedCreationPreLeaseBarrierForTesting(
@@ -447,6 +449,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ barrier: (@Sendable () async -> Void)?
     ) {
         progressiveActivationReconciliationBarrierForTesting = barrier
+    }
+
+    func setResearchStateRepairBarrierForTesting(
+        _ barrier: (@Sendable () async throws -> Void)?
+    ) {
+        researchStateRepairBarrierForTesting = barrier
     }
     private init(
         assignment: TriptychAssignment,
@@ -725,9 +733,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     workspaceGeneration: initialWorkspaceGeneration
                 )
             }
+            let repairedInitialBuild = try await WorkspaceResearchStateReconciler
+                .repairBeforePublication(
+                    build: initialBuild,
+                    triptychID: assignment.id,
+                    services: services
+                )
             let snapshotReady = clock.now
-            let initialSnapshot = initialBuild.snapshot
-            logRefresh(initialBuild.measurement, publicationDuration: nil)
+            let initialSnapshot = repairedInitialBuild.snapshot
+            logRefresh(repairedInitialBuild.measurement, publicationDuration: nil)
             try Task.checkCancellation()
             let reference = WorkspaceHandleReference(workspaceID: assignment.id)
             let documentOperations = DocumentOperations(reference: reference)
@@ -762,7 +776,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 services: services,
                 leases: leases,
                 initialSnapshot: initialSnapshot,
-                initialRefreshMeasurement: initialBuild.measurement,
+                initialRefreshMeasurement: repairedInitialBuild.measurement,
                 initialWorkspaceGeneration: initialWorkspaceGeneration,
                 reference: reference,
                 researchFunctionCoordinator: researchFunctionCoordinator,
@@ -2629,8 +2643,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 graphGeneration: graphGeneration,
                 workspaceGeneration: workspaceGeneration
             )
-            snapshot = build.snapshot
-            measurement = build.measurement
+            try await researchStateRepairBarrierForTesting?()
+            let repairedBuild = try await WorkspaceResearchStateReconciler
+                .repairBeforePublication(
+                    build: build,
+                    triptychID: assignment.id,
+                    services: services
+                )
+            snapshot = repairedBuild.snapshot
+            measurement = repairedBuild.measurement
             latestRefreshMeasurement = measurement
         } catch {
             for catalog in services.sourceCatalogs.values {
