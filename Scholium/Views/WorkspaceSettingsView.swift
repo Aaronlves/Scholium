@@ -4,66 +4,135 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
+    case triptychs
+    case propertyProfiles
+    case appearance
+    case attention
+    case methods
+    case profilesPractices
+    case collaboration
+    case sources
+
+    var id: String { rawValue }
+
+    static let primary: [Self] = [
+        .triptychs,
+        .propertyProfiles,
+        .appearance,
+        .attention,
+    ]
+
+    static let researchGuidance: [Self] = [
+        .methods,
+        .profilesPractices,
+        .collaboration,
+        .sources,
+    ]
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .triptychs: ScholiumL10n.Settings.triptychs
+        case .propertyProfiles: ScholiumL10n.Settings.propertyProfiles
+        case .appearance: ScholiumL10n.Settings.appearance
+        case .attention: ScholiumL10n.Settings.attention
+        case .methods: ResearchGuidanceCategory.methods.localizedTitle
+        case .profilesPractices:
+            ResearchGuidanceCategory.profilesPractices.localizedTitle
+        case .collaboration: ResearchGuidanceCategory.collaboration.localizedTitle
+        case .sources: ResearchGuidanceCategory.sources.localizedTitle
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .triptychs: "rectangle.3.group"
+        case .propertyProfiles: "slider.horizontal.3"
+        case .appearance: "paintbrush"
+        case .attention: "exclamationmark.triangle"
+        case .methods: ResearchGuidanceCategory.methods.symbol
+        case .profilesPractices: ResearchGuidanceCategory.profilesPractices.symbol
+        case .collaboration: ResearchGuidanceCategory.collaboration.symbol
+        case .sources: ResearchGuidanceCategory.sources.symbol
+        }
+    }
+
+    var pane: WorkspaceSettingsPane {
+        switch self {
+        case .triptychs: .triptychs
+        case .propertyProfiles: .propertyProfiles
+        case .appearance: .appearance
+        case .attention: .attention
+        case .methods, .profilesPractices, .collaboration, .sources:
+            .researchGuidance
+        }
+    }
+
+    var researchGuidanceCategory: ResearchGuidanceCategory? {
+        switch self {
+        case .methods: .methods
+        case .profilesPractices: .profilesPractices
+        case .collaboration: .collaboration
+        case .sources: .sources
+        case .triptychs, .propertyProfiles, .appearance, .attention: nil
+        }
+    }
+
+    var usesTriptychScope: Bool {
+        switch self {
+        case .triptychs, .appearance: false
+        case .propertyProfiles, .attention, .methods, .profilesPractices,
+             .collaboration, .sources: true
+        }
+    }
+
+    static func restored(
+        pane: WorkspaceSettingsPane,
+        researchCategory: ResearchGuidanceCategory
+    ) -> Self {
+        switch pane {
+        case .triptychs: .triptychs
+        case .propertyProfiles: .propertyProfiles
+        case .appearance: .appearance
+        case .attention: .attention
+        case .researchGuidance:
+            switch researchCategory {
+            case .methods: .methods
+            case .profilesPractices: .profilesPractices
+            case .collaboration: .collaboration
+            case .sources: .sources
+            }
+        }
+    }
+}
+
 struct ScholiumSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "triptychs"
+    @AppStorage("scholium.settings.researchGuidanceCategory")
+    private var persistedResearchCategory = ResearchGuidanceCategory.methods.rawValue
+    @State private var destination = ScholiumSettingsDestination.triptychs
 
     var body: some View {
-        TabView(selection: selectedPane) {
-            WorkspaceSettingsView()
-                .tabItem {
-                    Label(
-                        ScholiumL10n.Settings.triptychs,
-                        systemImage: "rectangle.3.group"
-                    )
-                }
-                .tag(WorkspaceSettingsPane.triptychs)
+        HStack(spacing: 0) {
+            settingsSidebar
 
-            TriptychScopedSettingsView {
-                PropertiesSettingsView()
-            }
-                .tabItem {
-                    Label(
-                        ScholiumL10n.Settings.propertyProfiles,
-                        systemImage: "slider.horizontal.3"
-                    )
-                }
-                .tag(WorkspaceSettingsPane.propertyProfiles)
+            Divider()
 
-            Group {
-                if let store = settingsModel.cssSnippetStore {
-                    AppearanceSettingsView(store: store)
-                } else {
-                    ScholiumContentStateView(
-                        "Appearance Unavailable",
-                        detail: Text("Appearance profiles are unavailable in this Settings session."),
-                        indicator: .symbol("paintbrush", role: .attention)
-                    )
-                }
-            }
-                .tabItem {
-                    Label(ScholiumL10n.Settings.appearance, systemImage: "paintbrush")
-                }
-                .tag(WorkspaceSettingsPane.appearance)
-
-            TriptychScopedSettingsView {
-                AttentionSettingsView()
-            }
-                .tabItem {
-                    Label(ScholiumL10n.Settings.attention, systemImage: "exclamationmark.triangle")
-                }
-                .tag(WorkspaceSettingsPane.attention)
-
-            TriptychScopedSettingsView {
-                ResearchGuidanceSettingsView()
-            }
-                .tabItem {
-                    Label(ScholiumL10n.Settings.researchGuidance, systemImage: "text.bubble")
-                }
-                .tag(WorkspaceSettingsPane.researchGuidance)
+            settingsDetail
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
+                .scholiumSettingsPaneSurface()
+                .clipped()
         }
-        .padding(ScholiumGrid.Spacing.inlineControlGap)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
+        .scholiumSettingsPaneSurface()
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.root")
         .overlay(alignment: .bottom) {
             if let message = settingsModel.toastMessage {
@@ -88,48 +157,142 @@ struct ScholiumSettingsView: View {
             settingsModel.dismissToast(message)
         }
         .onAppear {
-            let restoredPane = WorkspaceSettingsPane(rawValue: persistedPane)
-                ?? .triptychs
-            settingsModel.selectPane(restoredPane)
+            let pane = WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs
+            let category = ResearchGuidanceCategory(
+                rawValue: persistedResearchCategory
+            ) ?? .methods
+            destination = ScholiumSettingsDestination.restored(
+                pane: pane,
+                researchCategory: category
+            )
+            settingsModel.selectPane(destination.pane)
         }
-        .onChange(of: settingsModel.selectedPane) { _, pane in
-            persistedPane = pane.rawValue
+        .onChange(of: destination) { _, destination in
+            settingsModel.selectPane(destination.pane)
+            persistedPane = destination.pane.rawValue
+            if let category = destination.researchGuidanceCategory {
+                persistedResearchCategory = category.rawValue
+            }
         }
     }
 
-    private var selectedPane: Binding<WorkspaceSettingsPane> {
+    private var sidebarSelection: Binding<ScholiumSettingsDestination?> {
         Binding(
-            get: { settingsModel.selectedPane },
-            set: { settingsModel.selectPane($0) }
+            get: { destination },
+            set: { if let value = $0 { destination = value } }
         )
     }
-}
 
-private struct TriptychScopedSettingsView<Content: View>: View {
-    @ViewBuilder let content: () -> Content
+    private var settingsSidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Settings")
+                .font(ScholiumTypography.interface(.primaryTitle))
+                .scholiumForeground(.primaryText)
+                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.top, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
+                .accessibilityAddTraits(.isHeader)
 
-    var body: some View {
-        VStack(spacing: 0) {
-            TriptychSettingsScopeBar()
-            content()
+            List(selection: sidebarSelection) {
+                Section {
+                    ForEach(ScholiumSettingsDestination.primary) { item in
+                        settingsSidebarRow(item)
+                    }
+                }
+
+                Section {
+                    ForEach(ScholiumSettingsDestination.researchGuidance) { item in
+                        settingsSidebarRow(item)
+                    }
+                } header: {
+                    Text(ScholiumL10n.Settings.researchGuidance)
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        .scholiumForeground(.secondaryText)
+                        .textCase(nil)
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .accessibilityIdentifier("scholium.settings.sidebarList")
+
+            if destination.usesTriptychScope {
+                SettingsTriptychScopeFooter()
+            }
+        }
+        .frame(
+            minWidth: ScholiumMetrics.Settings.sidebarWidth,
+            idealWidth: ScholiumMetrics.Settings.sidebarWidth,
+            maxWidth: ScholiumMetrics.Settings.sidebarWidth,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
+        .background(ScholiumColorRole.navigationSurfaceBackground.color)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.settings.sidebar")
+    }
+
+    private func settingsSidebarRow(
+        _ item: ScholiumSettingsDestination
+    ) -> some View {
+        Label {
+            Text(item.title)
+        } icon: {
+            Image(systemName: item.symbol)
+        }
+        .tag(item)
+        .accessibilityIdentifier("scholium.settings.destination.\(item.rawValue)")
+    }
+
+    @ViewBuilder
+    private var settingsDetail: some View {
+        switch destination {
+        case .triptychs:
+            WorkspaceSettingsView()
+        case .propertyProfiles:
+            PropertiesSettingsView()
+        case .appearance:
+            if let store = settingsModel.cssSnippetStore {
+                AppearanceSettingsView(store: store)
+            } else {
+                ScholiumContentStateView(
+                    "Appearance Unavailable",
+                    detail: Text(
+                        "Appearance profiles are unavailable in this Settings session."
+                    ),
+                    indicator: .symbol("paintbrush", role: .attention)
+                )
+                .padding(ScholiumGrid.Spacing.regionContentInset)
+            }
+        case .attention:
+            AttentionSettingsView()
+        case .methods:
+            ResearchGuidanceSettingsView(category: .methods)
+        case .profilesPractices:
+            ResearchGuidanceSettingsView(category: .profilesPractices)
+        case .collaboration:
+            ResearchGuidanceSettingsView(category: .collaboration)
+        case .sources:
+            ResearchGuidanceSettingsView(category: .sources)
         }
     }
 }
 
-private struct TriptychSettingsScopeBar: View {
+private struct SettingsTriptychScopeFooter: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Divider()
+            Text("Triptych")
+                .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                .scholiumForeground(.secondaryText)
+
             if settingsModel.registeredTriptychs.isEmpty {
                 Label("No Triptych Registered", systemImage: "rectangle.3.group")
-                    .font(ScholiumTypography.interface(.body))
+                    .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Triptych")
-                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .scholiumForeground(.secondaryText)
-
                 Picker("Triptych", selection: activeTriptychID) {
                     ForEach(settingsModel.registeredTriptychs) { assignment in
                         Text(settingsTriptychLabel(
@@ -140,12 +303,11 @@ private struct TriptychSettingsScopeBar: View {
                     }
                 }
                 .labelsHidden()
-                .frame(maxWidth: 320)
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
                 .disabled(settingsModel.isRefreshing)
                 .accessibilityIdentifier("scholium.settings.triptychScope")
             }
-
-            Spacer(minLength: ScholiumMetrics.Settings.trailingControlMinimumSpacing)
 
             if settingsModel.isRefreshing {
                 ProgressView()
@@ -153,9 +315,8 @@ private struct TriptychSettingsScopeBar: View {
                     .accessibilityLabel("Changing Triptych")
             }
         }
-        .padding(.horizontal, ScholiumMetrics.Settings.editorContentInset)
-        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(ScholiumGrid.Spacing.regionContentInset)
+        .background(ScholiumColorRole.apparatusSurfaceBackground.color)
         .accessibilityElement(children: .contain)
     }
 
@@ -186,7 +347,7 @@ private struct AttentionSettingsView: View {
             settingsTitle(
                 ScholiumL10n.Settings.attention,
                 detail: LocalizedStringResource(
-                    "Choose when dismissed derived reminders return, or restore every dismissed item on this Mac.",
+                    "Set when dismissed reminders return and restore local dismissals.",
                     table: "Localizable",
                     bundle: .module
                 )
@@ -195,8 +356,12 @@ private struct AttentionSettingsView: View {
 
             Divider()
 
-            Form {
-                Section("Reminder Timing for This Triptych") {
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                ) {
+                    settingsEditorSection("Reminder Timing for This Triptych") {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                             reminderTimingPicker
@@ -212,35 +377,49 @@ private struct AttentionSettingsView: View {
                         }
                     }
 
-                    Text("Timed dismissal hides only the derived reminder for the selected duration. Leave Unchanged hides only the exact Material revision pair until the Material changes again. Neither action changes a note, its Connections, or Research Record facts.")
-                        .font(ScholiumTypography.interface(.small))
+                    Text("Dismissal hides only the reminder. Leave Unchanged applies only to the current Material revision pair; neither action changes notes, Connections, or Records.")
+                        .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
-                }
-
-                Section("Dismissed Items on This Mac") {
-                    Button("Restore All Dismissed Items") {
-                        var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-                        ledger.removeAll()
-                        dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
-                    .disabled(!hasDismissedAttention)
 
-                    Text("This restores dismissed derived reminders across every Triptych on this Mac. Research notes and portable Triptych settings remain unchanged.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                }
+                    Divider()
 
-                Section("What Attention Can Report") {
-                    Text("Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                    Text("Attention does not judge truth, evidence, philosophical quality, or how a note may be used.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                    settingsEditorSection("Dismissed Items on This Mac") {
+                        Button("Restore All Dismissed Items") {
+                            var ledger = AttentionPreferences.decodeLedger(
+                                dismissalLedgerData
+                            )
+                            ledger.removeAll()
+                            dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
+                        }
+                        .disabled(!hasDismissedAttention)
+
+                        Text("Restores dismissed reminders on this Mac without changing Triptych data.")
+                            .font(ScholiumTypography.interface(.body))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider()
+
+                    settingsEditorSection("What Attention Can Report") {
+                        Text("Reports structural, metadata, identity, Connection, and settled-revision issues.")
+                            .font(ScholiumTypography.interface(.body))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Never judges truth, evidence, philosophical quality, or appropriate use.")
+                            .font(ScholiumTypography.interface(.body))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .padding(ScholiumGrid.Spacing.regionContentInset)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
         }
+        .scholiumSettingsPaneSurface()
         .task {
             let stored = settingsModel.triptychSettings.attentionDismissalDays
             dismissalDays = durations.contains(stored)
@@ -493,7 +672,7 @@ private struct PropertiesSettingsView: View {
             settingsTitle(
                 ScholiumL10n.Settings.propertyProfiles,
                 detail: LocalizedStringResource(
-                    "Manage future New Note YAML, Agent creation requirements, and About for each Triptych role.",
+                    "Configure New Note YAML, Agent requirements, and About fields by role.",
                     table: "Localizable",
                     bundle: .module
                 )
@@ -589,13 +768,12 @@ private struct PropertiesSettingsView: View {
     }
 
     private var unavailableSettingsContent: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            ScholiumContentStateView(
-                unavailableSettingsTitle,
-                detail: settingsModel.errorMessage.map(Text.init(verbatim:))
-                    ?? Text(unavailableSettingsDetail),
-                indicator: .symbol("slider.horizontal.3", role: .attention)
-            )
+        ScholiumContentStateView(
+            unavailableSettingsTitle,
+            detail: settingsModel.errorMessage.map(Text.init(verbatim:))
+                ?? Text(unavailableSettingsDetail),
+            indicator: .symbol("slider.horizontal.3", role: .attention)
+        ) {
             Button("Retry Properties Settings") {
                 Task { await settingsModel.refresh() }
             }
@@ -679,7 +857,7 @@ private struct PropertiesSettingsView: View {
                     .accessibilityLabel("Closing YAML boundary added by Scholium")
             }
 
-            Text("This source becomes part of every new note and may sync with the Triptych. Do not store passwords, access tokens, or machine-local paths here.")
+            Text("Saved into every new note and may sync with the Triptych. Do not include secrets or machine-local paths.")
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
             if let diagnostic = currentSeedDiagnostic {
@@ -829,7 +1007,8 @@ private struct PropertiesSettingsView: View {
     }
 
     private var displayOrderColumn: some View {
-        GroupBox("About") {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            settingsSectionTitle("About")
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if selectedConfiguration.visibleFields.isEmpty {
                     Text("No fields are shown in About.")
@@ -1331,19 +1510,10 @@ struct AgentCLISettingsView: View {
             bundle: .module
         )) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Label("Install with your Agent", systemImage: "terminal")
-                    .accessibilityIdentifier("scholium.agentCLI.section")
-                Text("Scholium does not inspect or modify command-line installations. Copy the official instructions when an Agent needs to install or update the CLI.")
-                    .font(ScholiumTypography.interface(.small))
+                Text("Scholium does not manage this Mac’s CLI. Copy the official instructions for your Agent.")
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(ScholiumCLIDistribution.downloadURL)
-                    .font(ScholiumTypography.exact(.small))
-                    .scholiumForeground(.secondaryText)
-                    .textSelection(.enabled)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .accessibilityLabel("Official Scholium CLI download")
                 Button("Copy CLI Installation Instructions") {
                     let copied = ScholiumPasteboardWriter.general.writeText(
                         ScholiumCLIInstallationInstructions.text
@@ -1361,10 +1531,10 @@ struct AgentCLISettingsView: View {
                         )
                     settingsModel.showToast(message)
                 }
-                .accessibilityHint("Copies the official Agent instructions without changing this Mac")
                 .accessibilityIdentifier("scholium.agentCLI.copyInstructions")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("scholium.agentCLI.section")
         }
     }
 }
@@ -1506,7 +1676,7 @@ struct ZoteroSettingsView: View {
 
     var body: some View {
         researchSettingsSection(LocalizedStringResource(
-            "READ-ONLY ZOTERO ACCESS ON THIS MAC",
+            "READ-ONLY ZOTERO ON THIS MAC",
             table: "Localizable",
             bundle: .module
         )) {
@@ -1527,8 +1697,8 @@ struct ZoteroSettingsView: View {
                         zoteroActions
                     }
                 }
-                Text("Scholium talks only to Zotero Desktop on localhost. No account, password, online API key, or Zotero data-folder permission is required. Scholium never modifies Zotero data.")
-                    .font(ScholiumTypography.interface(.small))
+                Text("Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required.")
+                    .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                 if info.status == .apiDisabled {
                     Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
@@ -1551,12 +1721,13 @@ struct ZoteroSettingsView: View {
         }
         Button("Check Connection") { refresh() }
             .disabled(isTesting)
-        Button("Clear Connection History", role: .destructive) {
+        Button("Clear History", role: .destructive) {
             Task {
                 try? await settingsModel.clearZoteroConnectionHistory()
                 info = await settingsModel.zoteroConnectionInfo()
             }
         }
+        .accessibilityLabel("Clear Connection History")
     }
 
     private var statusTitle: String {
@@ -1604,7 +1775,7 @@ struct WorkspaceSettingsView: View {
                 settingsTitle(
                     ScholiumL10n.Settings.triptychs,
                     detail: LocalizedStringResource(
-                        "Manage registered Triptychs and their three independent, researcher-controlled folders.",
+                        "Manage registered Triptychs and their three researcher-controlled folders.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -1644,6 +1815,7 @@ struct WorkspaceSettingsView: View {
                 )
             }
         }
+        .scholiumSettingsPaneSurface()
         .task {
             await settingsModel.refreshRegisteredVaults()
             if selectedTriptychID == nil {
@@ -1732,7 +1904,7 @@ private struct AppearanceSettingsView: View {
             settingsTitle(
                 ScholiumL10n.Settings.appearance,
                 detail: LocalizedStringResource(
-                    "Choose a named document configuration, then adjust line width, typography, and each semantic callout independently. Changes apply after saving; line width is shared by Review, Edit, and Source.",
+                    "Choose the document appearance shared by Review, Edit, and Source.",
                     table: "Localizable",
                     bundle: .module
                 )
@@ -1741,88 +1913,27 @@ private struct AppearanceSettingsView: View {
 
             Divider()
 
-            Form {
-                Section("Configuration") {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                            appearancePicker
-                            appearanceActions
-                        }
-                        VStack(
-                            alignment: .leading,
-                            spacing: ScholiumGrid.Spacing.labelAccessoryGap
-                        ) {
-                            appearancePicker
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                                    appearanceActions
-                                }
-                                VStack(alignment: .leading) {
-                                    appearanceActions
-                                }
-                            }
-                        }
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                ) {
+                    configurationSection
+
+                    Divider()
+
+                    if let draftBinding {
+                        AppearanceProfileEditor(profile: draftBinding)
                     }
-                    Text("Exactly one configuration is active. Configurations are stored in Scholium’s Application Support folder, not in the research vault.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+
+                    Divider()
+
+                    advancedCSSSection
                 }
-
-                if let draftBinding {
-                    AppearanceProfileEditor(profile: draftBinding)
-
-                    Section {
-                        HStack {
-                            Button("Save Appearance") {
-                                guard let draft else { return }
-                                store.updateAppearance(draft)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!hasUnsavedChanges || !store.canModify)
-
-                            if hasUnsavedChanges {
-                                Text("Unsaved changes")
-                                    .font(ScholiumTypography.interface(.small))
-                                    .scholiumForeground(.secondaryText)
-                            }
-                        }
-                    }
-                }
-
-                Section("Advanced CSS") {
-                    Text("Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-
-                    ForEach(store.snippets) { snippet in
-                        CSSSnippetRow(
-                            snippet: snippet,
-                            error: store.validationErrors[snippet.id],
-                            store: store
-                        )
-                    }
-
-                    if store.snippets.isEmpty {
-                        Text("No CSS snippets imported.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                    }
-
-                    HStack {
-                        Button("Import CSS Snippet…") { importSnippet() }
-                            .disabled(!store.canModify)
-                        Button {
-                            store.revealManagedFolder()
-                        } label: {
-                            Label("Reveal Styles in Finder", systemImage: "folder")
-                        }
-                        Spacer()
-                        Button("Disable All Snippets") { store.disableAll() }
-                            .disabled(store.enabledCount == 0 || !store.canModify)
-                    }
-                }
+                .padding(ScholiumGrid.Spacing.regionContentInset)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .accessibilityIdentifier("scholium.appearance.form")
 
             if let reason = store.safeModeReason {
@@ -1848,6 +1959,7 @@ private struct AppearanceSettingsView: View {
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
         }
+        .scholiumSettingsPaneSurface()
         .onAppear { loadSelectedDraft() }
         .onChange(of: store.selectedAppearanceProfileID) { _, _ in loadSelectedDraft() }
         .alert("Rename Appearance", isPresented: $showRename) {
@@ -1884,6 +1996,79 @@ private struct AppearanceSettingsView: View {
         )
     }
 
+    private var configurationSection: some View {
+        settingsEditorSection("Configuration") {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                appearancePicker
+
+                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+
+                Button("Save") {
+                    guard let draft else { return }
+                    store.updateAppearance(draft)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!hasUnsavedChanges || !store.canModify)
+                .accessibilityLabel("Save Appearance")
+
+                appearanceManagementMenu
+            }
+
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text("Stored on this Mac")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                if hasUnsavedChanges {
+                    Text("Unsaved changes")
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        .scholiumForeground(.attention)
+                }
+            }
+        }
+    }
+
+    private var advancedCSSSection: some View {
+        settingsEditorSection("Advanced CSS") {
+            Text("Optional CSS snippets are additive compatibility overrides; the selected appearance remains primary.")
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(store.snippets) { snippet in
+                CSSSnippetRow(
+                    snippet: snippet,
+                    error: store.validationErrors[snippet.id],
+                    store: store
+                )
+            }
+
+            if store.snippets.isEmpty {
+                Text("No snippets imported.")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+            }
+
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Button("Import CSS Snippet…") { importSnippet() }
+                    .disabled(!store.canModify)
+
+                Menu {
+                    Button {
+                        store.revealManagedFolder()
+                    } label: {
+                        Label("Reveal Styles in Finder", systemImage: "folder")
+                    }
+                    Button("Disable All Snippets") { store.disableAll() }
+                        .disabled(store.enabledCount == 0 || !store.canModify)
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+        }
+    }
+
     private var appearancePicker: some View {
         Picker("Configuration", selection: selectedProfileID) {
             ForEach(store.appearanceProfiles) { profile in
@@ -1891,23 +2076,30 @@ private struct AppearanceSettingsView: View {
             }
         }
         .labelsHidden()
-        .frame(maxWidth: 280)
+        .frame(width: ScholiumMetrics.Settings.appearancePickerWidth)
     }
 
-    @ViewBuilder
-    private var appearanceActions: some View {
-        Button("New") { store.createAppearance() }
-        Button("Duplicate") {
-            guard let id = store.selectedAppearanceProfileID else { return }
-            store.duplicateAppearance(id)
-        }
-        .disabled(store.selectedAppearanceProfileID == nil)
-        Button("Rename…") { beginRename() }
+    private var appearanceManagementMenu: some View {
+        Menu {
+            Button("New Appearance") { store.createAppearance() }
+            Button("Duplicate Appearance") {
+                guard let id = store.selectedAppearanceProfileID else { return }
+                store.duplicateAppearance(id)
+            }
             .disabled(store.selectedAppearanceProfileID == nil)
-        Button("Delete…", role: .destructive) {
-            showDeleteConfirmation = true
+            Button("Rename Appearance…") { beginRename() }
+                .disabled(store.selectedAppearanceProfileID == nil)
+            Divider()
+            Button("Delete Appearance…", role: .destructive) {
+                showDeleteConfirmation = true
+            }
+            .disabled(store.appearanceProfiles.count <= 1)
+        } label: {
+            Label("Manage", systemImage: "ellipsis.circle")
         }
-        .disabled(store.appearanceProfiles.count <= 1)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityIdentifier("scholium.appearance.manage")
     }
 
     private var draftBinding: Binding<DocumentAppearanceProfile>? {
@@ -1965,95 +2157,94 @@ private struct AppearanceProfileEditor: View {
     @Binding var profile: DocumentAppearanceProfile
 
     var body: some View {
-        Section("Layout") {
-            AppearanceDoubleControl(
-                "Line width",
-                value: $profile.settings.lineWidthCharacterUnits,
-                range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
-                step: 1,
-                suffix: "ch",
-                precision: 0,
-                accessibilityUnit: "character-width units"
-            )
-            Text("Line width is measured in CSS character-width units; the exact number of characters varies by typeface.")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-        }
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+            settingsEditorSection("Layout") {
+                AppearanceDoubleControl(
+                    "Line width",
+                    value: $profile.settings.lineWidthCharacterUnits,
+                    range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
+                    step: 1,
+                    suffix: "ch",
+                    precision: 0,
+                    accessibilityUnit: "character-width units"
+                )
+                Text("Measured in CSS character-width units; the exact measure varies by typeface.")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-        Section("Body") {
-            Picker("Typeface", selection: $profile.settings.body.fontFamily) {
-                ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { family in
-                    Text(family.label).tag(family)
-                }
-            }
-            AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
-            AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
-            AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
-            AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
-            AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
-            AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
-            Picker("Alignment", selection: $profile.settings.body.alignment) {
-                ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
-                    Text(alignment.label).tag(alignment)
-                }
-            }
-            Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
-                ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
-                    Text(hyphenation.label).tag(hyphenation)
-                }
-            }
-            Toggle("Kerning", isOn: $profile.settings.body.kerning)
-            Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
-        }
+            Divider()
 
-        Section("Headings") {
-            Picker("Typeface", selection: $profile.settings.headings.fontFamily) {
-                ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { family in
-                    Text(family.label).tag(family)
+            settingsEditorSection("Body") {
+                Picker("Typeface", selection: $profile.settings.body.fontFamily) {
+                    ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { family in
+                        Text(family.label).tag(family)
+                    }
+                }
+                AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
+                AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+                AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
+                AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
+                AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+                AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
+                Picker("Alignment", selection: $profile.settings.body.alignment) {
+                    ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
+                        Text(alignment.label).tag(alignment)
+                    }
+                }
+                Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
+                    ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
+                        Text(hyphenation.label).tag(hyphenation)
+                    }
+                }
+                Toggle("Kerning", isOn: $profile.settings.body.kerning)
+                Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
+            }
+
+            Divider()
+
+            settingsEditorSection("Headings") {
+                Picker("Typeface", selection: $profile.settings.headings.fontFamily) {
+                    ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { family in
+                        Text(family.label).tag(family)
+                    }
+                }
+                Picker("Style", selection: $profile.settings.headings.style) {
+                    ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
+                AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
+                AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+
+                DisclosureGroup("Document title (H1)") {
+                    HeadingLevelAppearanceEditor(level: $profile.settings.headings.title)
+                }
+                DisclosureGroup("Section heading (H2)") {
+                    HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
+                }
+                DisclosureGroup("Lower headings (H3–H6)") {
+                    HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
                 }
             }
-            Picker("Style", selection: $profile.settings.headings.style) {
-                ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
-                    Text(style.label).tag(style)
-                }
-            }
-            AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
-            AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
-            AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
 
-            DisclosureGroup("Document title (H1)") {
-                HeadingLevelAppearanceEditor(level: $profile.settings.headings.title)
-            }
-            DisclosureGroup("Section heading (H2)") {
-                HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
-            }
-            DisclosureGroup("Lower headings (H3–H6)") {
-                HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
-            }
-        }
+            Divider()
 
-        Section("Callouts") {
-            Text("Typography is inherited from Body. These controls adjust the role’s spacing and composition without changing its semantic identity.")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-            ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
-                if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
-                    DisclosureGroup(role.label) {
-                        CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
+            settingsEditorSection("Callouts") {
+                Text("Callouts inherit Body typography; each role controls only spacing and composition.")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
+                    if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
+                        DisclosureGroup(role.label) {
+                            CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
+                        }
                     }
                 }
             }
-        }
-
-        Section("Mathematics") {
-            LabeledContent("Display equations") {
-                Text("Centered, italic, numbered at right")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-            }
-            Text("Mathematics, code, and tables use Scholium’s shared restrained styles so their semantics and Read/Live parity remain stable across configurations.")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
         }
     }
 }
@@ -2149,7 +2340,7 @@ private struct AppearanceDoubleControl: View {
                     range: range,
                     step: step
                 )
-                    .frame(minWidth: 150, idealWidth: 220)
+                    .frame(minWidth: 150, idealWidth: 220, maxWidth: 260)
                     .accessibilityLabel(Text(title))
                     .accessibilityValue(spokenValue)
                 Text(formattedValue)
@@ -2192,6 +2383,7 @@ private struct AppearanceNativeSlider: NSViewRepresentable {
         )
         slider.isContinuous = true
         slider.keyboardStep = step
+        slider.trackFillColor = ScholiumColorRole.accent.nsColor
         return slider
     }
 
@@ -2200,6 +2392,7 @@ private struct AppearanceNativeSlider: NSViewRepresentable {
         slider.minValue = range.lowerBound
         slider.maxValue = range.upperBound
         slider.keyboardStep = step
+        slider.trackFillColor = ScholiumColorRole.accent.nsColor
         if slider.doubleValue != value {
             slider.doubleValue = value
         }
@@ -2430,15 +2623,23 @@ private struct WorkspacePathEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Form {
-                Section("Triptych") {
+                Section {
                     TextField("Name", text: $triptychName)
                         .accessibilityIdentifier("scholium.triptychName")
                     Text("The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects.")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
+                        .frame(
+                            maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
+                            alignment: .leading
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                header: {
+                    settingsSectionTitle("Triptych")
                 }
 
-                Section("Research Folders") {
+                Section {
                     WorkspaceFolderRow(
                         title: "Analyses",
                         subtitle: "Source-facing reports and evidence records",
@@ -2458,8 +2659,11 @@ private struct WorkspacePathEditor: View {
                         url: $outputURL
                     )
                 }
+                header: {
+                    settingsSectionTitle("Research Folders")
+                }
 
-                Section("Portable Triptych Data") {
+                Section {
                     PortableControlFolderRow(
                         worksURL: outputURL,
                         containerURL: $portableContainerURL
@@ -2467,6 +2671,14 @@ private struct WorkspacePathEditor: View {
                     Text("Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault.")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
+                        .frame(
+                            maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
+                            alignment: .leading
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                header: {
+                    settingsSectionTitle("Portable Triptych Data")
                 }
 
                 Section {
@@ -2479,7 +2691,7 @@ private struct WorkspacePathEditor: View {
                     }
                 }
             }
-            .formStyle(.grouped)
+            .scholiumSettingsForm()
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")

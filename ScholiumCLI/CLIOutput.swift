@@ -183,6 +183,7 @@ private extension ScholiumCLI {
         "agent context",
         "agent reload",
         "agent query",
+        "agent discuss-reply",
         "agent extend-write-set",
         "agent write",
         "agent write-zotero-binding",
@@ -264,6 +265,16 @@ private extension ScholiumCLI {
                 nextSteps: [
                     "Repeat scholium agent query with a narrower request when needed",
                     "Use the returned context in the current Method, then continue to the applicable write or Result command",
+                ]
+            ),
+            "agent discuss-reply": AgentCLICommandHelp(
+                usage: "scholium agent discuss-reply --run <locator> --from <json|->",
+                inputContract: "AgentDiscussionReplyDraft",
+                input: "Strict JSON fields: statement_id (a stable UUID reused for an outcome-unknown retry), attribution, and text. The input appends one Agent-attributed turn to the active Discussion for this authenticated Discuss Run; it does not accept a local source path.",
+                output: "ResearchAgentDiscussionReplyReceipt with recorded or already_recorded state. The portable Discussion remains the scholarly owner of the turn.",
+                nextSteps: [
+                    "Repeat the same statement_id and content after an uncertain result; an exact retry is idempotent",
+                    "The researcher finishes the Discussion, or scholium agent end --run <locator> cancels the unfinished Run",
                 ]
             ),
             "agent extend-write-set": AgentCLICommandHelp(
@@ -409,7 +420,7 @@ private extension ScholiumCLI {
             "note delete": "Usage: scholium note delete <vault>:<Trash/path> --permanent --expected <sha256>",
             "discuss list": "Usage: scholium discuss list [--triptych <selector>] [--format text|json]",
             "discuss show": "Usage: scholium discuss show <discussion-id> [--triptych <selector>] [--format text|json]",
-            "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]",
+            "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis is a researcher-operated manual attribution route. External Agents must use the authenticated scholium agent discuss-reply command.",
             "zotero mcp config": "Usage: scholium zotero mcp config [--format text|json]",
             "zotero mcp status": "Usage: scholium zotero mcp status [--probe] [--format text|json]",
             "zotero mcp serve": "Usage: scholium zotero mcp serve",

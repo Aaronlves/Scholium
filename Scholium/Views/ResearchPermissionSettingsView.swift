@@ -18,7 +18,7 @@ struct ResearchPermissionSettingsView: View {
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Choose one Triptych-wide rule for when Scholium asks before extending a Run's bounded write set. This choice never grants blanket writes and is not attached to a Skill or Agent.",
+                        "Choose when Scholium asks to extend a Run’s bounded write set.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -76,6 +76,7 @@ struct ResearchPermissionSettingsView: View {
             .frame(maxWidth: 680, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
+        .scholiumSettingsPaneSurface()
         .disabled(
             isWorking
                 || loadedTriptychID != settingsModel.activeTriptychServicesID

@@ -513,7 +513,8 @@ struct ResearchContinuationOperationsTests {
         var retiredContext = try #require(
             JSONSerialization.jsonObject(with: contextBytes) as? [String: Any]
         )
-        #expect(retiredContext["schema_version"] as? Int == 6)
+        #expect(retiredContext["schema_version"] as? Int
+            == ResearchAuthenticatedRunContext.currentSchemaVersion)
         retiredContext["schema_version"] = 5
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try decoder.decode(

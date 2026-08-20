@@ -502,6 +502,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
     public let writeInitialObject: Bool
     public let extendWriteSet: Bool
     public let continueResearch: Bool
+    public let discussionReply: Bool
 
     public init(
         search: Bool,
@@ -513,7 +514,8 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         zotero: Bool,
         writeInitialObject: Bool,
         extendWriteSet: Bool,
-        continueResearch: Bool = false
+        continueResearch: Bool = false,
+        discussionReply: Bool = false
     ) {
         self.search = search
         self.read = read
@@ -525,6 +527,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         self.writeInitialObject = writeInitialObject
         self.extendWriteSet = extendWriteSet
         self.continueResearch = continueResearch
+        self.discussionReply = discussionReply
     }
 }
 
@@ -615,7 +618,7 @@ public struct ResearchZoteroIntegrationAdapter: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.
@@ -626,6 +629,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     /// snapshot contains Zotero bibliographic context.
     public let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter?
     public let resultContract: ResearchResultContract
+    /// Present only for a Discuss Run. It describes the academic response
+    /// shape; the authenticated Session, not this value, authorizes the
+    /// idempotent Agent turn.
+    public let discussionResponseContract: DialogueResponseContract?
     /// Current, capability-free view of the Run-local bounded write set. The
     /// Application retains Note identity, expected revisions, change evidence,
     /// and one-use capabilities; the Agent receives only the exact selectors
@@ -640,7 +647,8 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter? = nil,
         resultContract: ResearchResultContract,
         boundedWriteSet: [ResearchBoundedWriteSetViewEntry],
-        continuationHandoff: ResearchContinuationHandoffContext? = nil
+        continuationHandoff: ResearchContinuationHandoffContext? = nil,
+        discussionResponseContract: DialogueResponseContract? = nil
     ) throws {
         guard zoteroIntegrationAdapter == nil
                 || (brief.initialObjectRole == .analysis
@@ -653,6 +661,11 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         self.method = method
         self.zoteroIntegrationAdapter = zoteroIntegrationAdapter
         self.resultContract = resultContract
+        guard discussionResponseContract == nil
+                || brief.capabilities.discussionReply else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.discussionResponseContract = discussionResponseContract
         self.boundedWriteSet = boundedWriteSet.sorted {
             if $0.role != $1.role { return $0.role.rawValue < $1.role.rawValue }
             return $0.relativePath < $1.relativePath
@@ -666,6 +679,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         case brief, method
         case zoteroIntegrationAdapter = "zotero_integration_adapter"
         case resultContract = "result_contract"
+        case discussionResponseContract = "discussion_response_contract"
         case boundedWriteSet = "bounded_write_set"
         case continuationHandoff = "continuation_handoff"
     }
@@ -707,6 +721,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             continuationHandoff: try container.decodeIfPresent(
                 ResearchContinuationHandoffContext.self,
                 forKey: .continuationHandoff
+            ),
+            discussionResponseContract: try container.decodeIfPresent(
+                DialogueResponseContract.self,
+                forKey: .discussionResponseContract
             )
         )
     }

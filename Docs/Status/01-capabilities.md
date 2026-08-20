@@ -162,6 +162,12 @@
   current, changed, missing, or unavailable. Parent-Run Researcher State
   references are stripped from the child handoff; a typed flag requires the
   child to query current researcher-owned facts in its own Run scope.
+- Authenticated Discuss Runs expose their frozen Dialogue Response Contract and
+  the `agent discuss-reply` command. A stable Agent statement ID makes an
+  outcome-unknown retry idempotent; the route appends only an attributed Agent
+  turn to the active portable Discussion and grants no Note/Property mutation,
+  Finish, evaluation, Undo, recovery, cross-Run, or arbitrary filesystem
+  authority.
 - Closing an Action presentation leaves unfinished work active. End cancels a
   no-write Action; confirmed changes require Result submission so their Record
   and Review cannot be lost, while unresolved recovery blocks End.

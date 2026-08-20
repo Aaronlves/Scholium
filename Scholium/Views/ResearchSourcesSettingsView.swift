@@ -14,7 +14,7 @@ struct ResearchSourcesSettingsView: View {
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Long-lived source, citation, agent-handoff, and command-line configuration lives here. Action-specific source choice remains in the Action sheet.",
+                        "Manage machine-local CLI and Zotero access plus the Triptych citation style.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -29,6 +29,7 @@ struct ResearchSourcesSettingsView: View {
             .frame(maxWidth: 720, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
+        .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.researchGuidance.sources")
     }
 }

@@ -272,6 +272,10 @@ public enum DiscussResponseTransport {
         Comment preservation: \(contract.commentPreservation)
         Retrieve the exact request and response contract with:
         scholium discuss show \(discussionID.uuidString) --triptych \(triptychID.uuidString) --format json
+        Append an attributed Agent turn through the authenticated Run with:
+        scholium agent discuss-reply --run <locator> --from <json|->
+        Use one stable statement_id per turn and repeat the same statement_id,
+        attribution, and text after an outcome-unknown response.
         """
     }
 }

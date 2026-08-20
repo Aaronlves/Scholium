@@ -118,9 +118,10 @@ resolved by the material itself.
 The Agent-facing contract has one owner per concern. The protected Core
 Protocol owns the stable workflow instructions and sequence—pairing,
 authenticated delivery, conditional adapter routing, context query, bounded
-write-set extension, document-write request, conflict/reload, Result, Continue
-Research, and End. Application owns authorization, adapter eligibility and
-delivery, and execution of those operations. Typed command contracts own
+write-set extension, Discuss turn submission, document-write request,
+conflict/reload, Result, Continue Research, and End. Application owns
+authorization, adapter eligibility and delivery, and execution of those
+operations. Typed command contracts own
 current fields, allowed values, and result forms. A release-managed Integration
 Adapter owns stable integration-specific interpretation and safety, while the
 registered primary Skill and its Practices own the academic method and
@@ -139,6 +140,15 @@ CLI. Direct start requires no Pairing Code and does not wait for GUI
 preparation. Both routes create the same Run and use the same subsequent
 Context, bounded-write, Result, continuation, End, conflict, and recovery
 contracts.
+
+For a Discuss Run, the authenticated Session also exposes the frozen
+`DialogueResponseContract` and `agent discuss-reply`. That command accepts one
+researcher-visible attribution, text, and Agent-supplied `statement_id`, then
+appends only an Agent turn to the active portable Discussion. Repeating the
+same ID with identical content returns `already_recorded`; different content
+for an existing ID fails closed. The key does not grant Note or Property
+mutation, Finish, Result acceptance, evaluation, Undo, recovery, another Run,
+or arbitrary filesystem access.
 
 The direct Agent route also accepts one explicit `new_analysis` start shape
 for Analyze. It names one exact Analysis path and one typed source-type/property

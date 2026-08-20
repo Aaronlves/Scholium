@@ -4178,6 +4178,16 @@
         }
       }
     },
+    "Assign one primary Markdown Method to each Action and inspect its linked Practices." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为每项操作指定一个主 Markdown 方法，并检查其链接的实践。"
+          }
+        }
+      }
+    },
     "Attachment cleanup needs attention: %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -5302,6 +5312,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Callout"
+          }
+        }
+      }
+    },
+    "Callouts inherit Body typography; each role controls only spacing and composition." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Callout 继承正文排版；每种角色只控制间距与构成。"
           }
         }
       }
@@ -6484,6 +6504,16 @@
         }
       }
     },
+    "Choose the document appearance shared by Review, Edit, and Source." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择审阅、编辑和源码模式共用的文稿外观。"
+          }
+        }
+      }
+    },
     "Choose the exact source again before Analyze." : {
       "localizations" : {
         "en" : {
@@ -6628,6 +6658,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择您控制的三个文件夹。"
+          }
+        }
+      }
+    },
+    "Choose when Scholium asks to extend a Run’s bounded write set." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择 Scholium 何时询问是否扩展运行的有界写入集合。"
           }
         }
       }
@@ -6849,6 +6889,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除筛选条件"
+          }
+        }
+      }
+    },
+    "Clear History" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除历史记录"
           }
         }
       }
@@ -7949,6 +7999,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "配置不可用"
+          }
+        }
+      }
+    },
+    "Configure Action fields and the exact Markdown Practices linked from Methods." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置操作字段及从方法链接的精确 Markdown 实践。"
+          }
+        }
+      }
+    },
+    "Configure New Note YAML, Agent requirements, and About fields by role." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按角色配置新建笔记 YAML、智能体要求和概览字段。"
           }
         }
       }
@@ -10133,6 +10203,16 @@
         }
       }
     },
+    "Delete Appearance…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除外观…"
+          }
+        }
+      }
+    },
     "Delete Column" : {
       "localizations" : {
         "en" : {
@@ -10846,6 +10926,16 @@
         }
       }
     },
+    "Dismissal hides only the reminder. Leave Unchanged applies only to the current Material revision pair; neither action changes notes, Connections, or Records." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "忽略操作只会隐藏提醒。“保持不变”仅适用于当前材料修订对；两者都不会更改笔记、关联或记录。"
+          }
+        }
+      }
+    },
     "Dismissed Attention" : {
       "localizations" : {
         "en" : {
@@ -11199,6 +11289,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建副本"
+          }
+        }
+      }
+    },
+    "Duplicate Appearance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制外观"
           }
         }
       }
@@ -16417,6 +16517,16 @@
         }
       }
     },
+    "Manage machine-local CLI and Zotero access plus the Triptych citation style." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理本机 CLI 和 Zotero 访问，以及脉络引用样式。"
+          }
+        }
+      }
+    },
     "Manage registered Triptychs and their three independent, researcher-controlled folders." : {
       "localizations" : {
         "en" : {
@@ -16429,6 +16539,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理已注册的脉络及其三个相互独立、由研究者掌控的文件夹。"
+          }
+        }
+      }
+    },
+    "Manage registered Triptychs and their three researcher-controlled folders." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理已注册的脉络及其三个由研究者掌控的文件夹。"
           }
         }
       }
@@ -16805,6 +16925,16 @@
         }
       }
     },
+    "Measured in CSS character-width units; the exact measure varies by typeface." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以 CSS 字符宽度单位计量；实际宽度会随字体变化。"
+          }
+        }
+      }
+    },
     "Medium" : {
       "localizations" : {
         "zh-Hans" : {
@@ -16987,6 +17117,16 @@
         }
       }
     },
+    "Methods and Practices guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法和实践指导学术工作；它们从不授予权限，也不会更改会话、修订、冲突或恢复规则。"
+          }
+        }
+      }
+    },
     "Methods opt into Practices only through exact Wikilinks." : {
       "localizations" : {
         "zh-Hans" : {
@@ -17121,6 +17261,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等宽 A/B 校样"
+          }
+        }
+      }
+    },
+    "More" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多"
           }
         }
       }
@@ -17781,6 +17931,16 @@
         }
       }
     },
+    "Never judges truth, evidence, philosophical quality, or appropriate use." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不会判断真理性、证据、哲学质量或适当用途。"
+          }
+        }
+      }
+    },
     "New" : {
       "localizations" : {
         "en" : {
@@ -17842,6 +18002,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建操作"
+          }
+        }
+      }
+    },
+    "New Appearance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建外观"
           }
         }
       }
@@ -19039,6 +19209,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有安全修订"
+          }
+        }
+      }
+    },
+    "No snippets imported." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未导入 CSS 代码片段。"
           }
         }
       }
@@ -20640,6 +20820,16 @@
         }
       }
     },
+    "Optional CSS snippets are additive compatibility overrides; the selected appearance remains primary." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选 CSS 代码片段是附加的兼容性覆盖；所选外观仍是主要配置。"
+          }
+        }
+      }
+    },
     "Optional CSS snippets remain available for advanced compatibility. They are additive and do not replace the selected structured configuration." : {
       "localizations" : {
         "en" : {
@@ -22183,6 +22373,16 @@
         }
       }
     },
+    "Profiles and Practices shape academic inputs and results; they never grant authority or alter Session, write, revision, conflict, or recovery rules." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置和实践塑造学术输入与结果；它们从不授予权限，也不会更改会话、写入、修订、冲突或恢复规则。"
+          }
+        }
+      }
+    },
     "Profiles define each Action's researcher-facing academic fields. Practices are exact Markdown linked from a primary Method; they guide research but never grant authority." : {
       "localizations" : {
         "zh-Hans" : {
@@ -22717,6 +22917,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这台 Mac 上的只读 Zotero 访问"
+          }
+        }
+      }
+    },
+    "READ-ONLY ZOTERO ON THIS MAC" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Mac 上的只读 Zotero"
           }
         }
       }
@@ -24442,6 +24652,16 @@
         }
       }
     },
+    "Rename Appearance…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名外观…"
+          }
+        }
+      }
+    },
     "Rename CSS Snippet" : {
       "localizations" : {
         "en" : {
@@ -24786,6 +25006,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "报告者"
+          }
+        }
+      }
+    },
+    "Reports structural, metadata, identity, Connection, and settled-revision issues." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告结构、元数据、身份、关联及暂定后修订问题。"
           }
         }
       }
@@ -25832,6 +26062,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已恢复到 Agent 工作前"
+          }
+        }
+      }
+    },
+    "Restores dismissed reminders on this Mac without changing Triptych data." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复这台 Mac 上已忽略的提醒，而不更改脉络数据。"
           }
         }
       }
@@ -27324,6 +27564,16 @@
         }
       }
     },
+    "Saved into every new note and may sync with the Triptych. Do not include secrets or machine-local paths." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会保存到每篇新笔记，并可能随脉络同步。请勿包含机密信息或本机路径。"
+          }
+        }
+      }
+    },
     "Saved searches remain in Scholium’s Application Support folder and never modify a vault." : {
       "localizations" : {
         "en" : {
@@ -27566,6 +27816,16 @@
         }
       }
     },
+    "Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 仅通过 localhost 连接 Zotero Desktop，且绝不修改其数据。无需账户或 API 密钥。"
+          }
+        }
+      }
+    },
     "Scholium could not attach this selection to one exact source range. Select the passage again in Review, Edit, or Source." : {
       "localizations" : {
         "en" : {
@@ -27788,6 +28048,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 不检查或修改命令行工具的安装状态。智能体需要安装或更新 CLI 时，请复制官方指令。"
+          }
+        }
+      }
+    },
+    "Scholium does not manage this Mac’s CLI. Copy the official instructions for your Agent." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 不管理这台 Mac 上的 CLI。请为你的智能体复制官方说明。"
           }
         }
       }
@@ -29084,6 +29354,16 @@
         }
       }
     },
+    "Set when dismissed reminders return and restore local dismissals." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置已忽略提醒的返回时间，并恢复本机忽略记录。"
+          }
+        }
+      }
+    },
     "Settings" : {
       "localizations" : {
         "en" : {
@@ -30320,6 +30600,16 @@
         }
       }
     },
+    "Stored on this Mac" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储于这台 Mac"
+          }
+        }
+      }
+    },
     "Strikethrough" : {
       "localizations" : {
         "en" : {
@@ -31182,6 +31472,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前 Triptych 已更改。属性草稿已保留，且未写入。"
+          }
+        }
+      }
+    },
+    "The active appearance is stored on this Mac, outside the Triptych." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前外观存储在这台 Mac 上，而非脉络中。"
           }
         }
       }

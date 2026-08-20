@@ -7,6 +7,7 @@ public enum LocalAgentBridgeOperation: String, Codable, Sendable {
     case pair
     case context
     case query
+    case discussionReply = "discussion_reply"
     case extendWriteSet = "extend_write_set"
     case writeDocument = "write_document"
     case writeZoteroBinding = "write_zotero_binding"
@@ -65,7 +66,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 12
+    public static let currentSchemaVersion = 13
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -76,6 +77,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
     public let pairingCode: ResearchPairingCode?
     public let credential: ResearchConnectionCredential?
     public let contextRequest: ResearchContextRequest?
+    public let discussionReplyRequest: ResearchAgentDiscussionReplyRequest?
     public let writeSetIntent: ResearchWriteSetExtensionIntent?
     public let documentWriteIntent: ResearchDocumentWriteIntent?
     public let zoteroBindingWriteIntent: ResearchZoteroBindingWriteIntent?
@@ -93,6 +95,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         pairingCode: ResearchPairingCode? = nil,
         credential: ResearchConnectionCredential? = nil,
         contextRequest: ResearchContextRequest? = nil,
+        discussionReplyRequest: ResearchAgentDiscussionReplyRequest? = nil,
         writeSetIntent: ResearchWriteSetExtensionIntent? = nil,
         documentWriteIntent: ResearchDocumentWriteIntent? = nil,
         zoteroBindingWriteIntent: ResearchZoteroBindingWriteIntent? = nil,
@@ -131,6 +134,16 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
                 && contextRequest != nil
+                && writeSetIntent == nil && documentWriteIntent == nil
+                && zoteroBindingWriteIntent == nil
+                && conflictResolutionIntent == nil
+                && resultSubmission == nil && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .discussionReply:
+            triptychID == nil && startRequest == nil
+                && run != nil && pairingCode == nil && credential != nil
+                && contextRequest == nil
+                && discussionReplyRequest != nil
                 && writeSetIntent == nil && documentWriteIntent == nil
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
@@ -218,7 +231,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && continuationRequest == nil
                 && methodImprovementSubmission == nil
         }
-        guard shapeIsValid else {
+        guard shapeIsValid,
+              (operation == .discussionReply
+                  ? discussionReplyRequest != nil
+                  : discussionReplyRequest == nil) else {
             throw LocalAgentBridgeError.invalidRequest
         }
         schemaVersion = Self.currentSchemaVersion
@@ -230,6 +246,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         self.pairingCode = pairingCode
         self.credential = credential
         self.contextRequest = contextRequest
+        self.discussionReplyRequest = discussionReplyRequest
         self.writeSetIntent = writeSetIntent
         self.documentWriteIntent = documentWriteIntent
         self.zoteroBindingWriteIntent = zoteroBindingWriteIntent
@@ -249,6 +266,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         case pairingCode = "pairing_code"
         case credential
         case contextRequest = "context_request"
+        case discussionReplyRequest = "discussion_reply_request"
         case writeSetIntent = "write_set_intent"
         case documentWriteIntent = "document_write_intent"
         case zoteroBindingWriteIntent = "zotero_binding_write_intent"
@@ -272,6 +290,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             forKey: .credential
         )
         try container.encodeIfPresent(contextRequest, forKey: .contextRequest)
+        try container.encodeIfPresent(
+            discussionReplyRequest,
+            forKey: .discussionReplyRequest
+        )
         try container.encodeIfPresent(writeSetIntent, forKey: .writeSetIntent)
         try container.encodeIfPresent(documentWriteIntent, forKey: .documentWriteIntent)
         try container.encodeIfPresent(
@@ -334,6 +356,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             contextRequest: container.decodeIfPresent(
                 ResearchContextRequest.self,
                 forKey: .contextRequest
+            ),
+            discussionReplyRequest: container.decodeIfPresent(
+                ResearchAgentDiscussionReplyRequest.self,
+                forKey: .discussionReplyRequest
             ),
             writeSetIntent: container.decodeIfPresent(
                 ResearchWriteSetExtensionIntent.self,
@@ -415,7 +441,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 13
+    public static let currentSchemaVersion = 14
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -423,6 +449,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     public let startReceipt: ResearchAgentStartReceipt?
     public let context: ResearchAuthenticatedRunContext?
     public let researchContext: ResearchContextResponse?
+    public let discussionReplyReceipt: ResearchAgentDiscussionReplyReceipt?
     public let writeSetResult: ResearchWriteSetExtensionResult?
     public let documentWriteResult: ResearchDocumentWriteResult?
     public let zoteroBindingWriteResult: ResearchZoteroBindingWriteResult?
@@ -440,6 +467,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         startReceipt: ResearchAgentStartReceipt? = nil,
         context: ResearchAuthenticatedRunContext? = nil,
         researchContext: ResearchContextResponse? = nil,
+        discussionReplyReceipt: ResearchAgentDiscussionReplyReceipt? = nil,
         writeSetResult: ResearchWriteSetExtensionResult? = nil,
         documentWriteResult: ResearchDocumentWriteResult? = nil,
         zoteroBindingWriteResult: ResearchZoteroBindingWriteResult? = nil,
@@ -456,6 +484,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             startReceipt != nil,
             context != nil,
             researchContext != nil,
+            discussionReplyReceipt != nil,
             writeSetResult != nil,
             documentWriteResult != nil,
             zoteroBindingWriteResult != nil,
@@ -480,6 +509,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         self.startReceipt = startReceipt
         self.context = context
         self.researchContext = researchContext
+        self.discussionReplyReceipt = discussionReplyReceipt
         self.writeSetResult = writeSetResult
         self.documentWriteResult = documentWriteResult
         self.zoteroBindingWriteResult = zoteroBindingWriteResult
@@ -502,6 +532,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         case correlationID = "correlation_id"
         case credential, startReceipt = "start_receipt", context
         case researchContext = "research_context"
+        case discussionReplyReceipt = "discussion_reply_receipt"
         case writeSetResult = "write_set_result"
         case documentWriteResult = "document_write_result"
         case zoteroBindingWriteResult = "zotero_binding_write_result"
@@ -525,6 +556,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         try container.encodeIfPresent(startReceipt, forKey: .startReceipt)
         try container.encodeIfPresent(context, forKey: .context)
         try container.encodeIfPresent(researchContext, forKey: .researchContext)
+        try container.encodeIfPresent(
+            discussionReplyReceipt,
+            forKey: .discussionReplyReceipt
+        )
         try container.encodeIfPresent(writeSetResult, forKey: .writeSetResult)
         try container.encodeIfPresent(documentWriteResult, forKey: .documentWriteResult)
         try container.encodeIfPresent(
@@ -576,6 +611,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             researchContext: container.decodeIfPresent(
                 ResearchContextResponse.self,
                 forKey: .researchContext
+            ),
+            discussionReplyReceipt: container.decodeIfPresent(
+                ResearchAgentDiscussionReplyReceipt.self,
+                forKey: .discussionReplyReceipt
             ),
             writeSetResult: container.decodeIfPresent(
                 ResearchWriteSetExtensionResult.self,
@@ -750,6 +789,7 @@ public enum LocalAgentBridgeHandlerResult: Sendable {
     case credential(ResearchConnectionCredential)
     case context(ResearchAuthenticatedRunContext)
     case researchContext(ResearchContextResponse)
+    case discussionReply(ResearchAgentDiscussionReplyReceipt)
     case writeSet(ResearchWriteSetExtensionResult)
     case documentWrite(ResearchDocumentWriteResult)
     case zoteroBindingWrite(ResearchZoteroBindingWriteResult)
@@ -978,6 +1018,11 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,
                     researchContext: context
+                )
+            case .discussionReply(let receipt):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    discussionReplyReceipt: receipt
                 )
             case .writeSet(let result):
                 try LocalAgentBridgeResponse(

@@ -62,6 +62,57 @@ struct LocalAgentBridgeTests {
         #expect(!String(reflecting: response).contains(credential.secret))
     }
 
+    @Test("Bridge Discussion replies use the authenticated Run payload")
+    func discussionReplyShape() throws {
+        let run = try #require(
+            ResearchRunLocator(rawValue: "bridgediscussionreply1")
+        )
+        let credential = try testCredential()
+        let reply = try ResearchAgentDiscussionReplyRequest(
+            statementID: UUID(uuidString: "00000000-0000-4000-8000-000000000902")!,
+            attribution: "External Agent",
+            text: "This reply remains attributed and portable."
+        )
+        let request = try LocalAgentBridgeRequest(
+            operation: .discussionReply,
+            run: run,
+            credential: credential,
+            discussionReplyRequest: reply
+        )
+        let data = try LocalAgentBridgeWireCoding.encode(request)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        #expect(object["discussion_reply_request"] != nil)
+        #expect(object["context_request"] == nil)
+        let decoded = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: data
+        )
+        #expect(decoded.operation == .discussionReply)
+        #expect(decoded.run == run)
+        #expect(decoded.credential == credential)
+        #expect(decoded.discussionReplyRequest == reply)
+
+        let receipt = try ResearchAgentDiscussionReplyReceipt(
+            run: run,
+            discussionID: UUID(),
+            statementID: reply.statementID,
+            state: .recorded,
+            message: "The Agent Discussion reply was recorded."
+        )
+        let response = try LocalAgentBridgeResponse(
+            correlationID: request.correlationID,
+            discussionReplyReceipt: receipt
+        )
+        let decodedResponse = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(response)
+        )
+        #expect(decodedResponse.discussionReplyReceipt == receipt)
+        #expect(decodedResponse.context == nil)
+    }
+
     @Test("Bridge document-write JSON omits only operation-irrelevant fields")
     func documentWriteIntentOperationShapes() throws {
         let run = try #require(ResearchRunLocator(rawValue: "bridgewriteshapeabcd"))

@@ -36,7 +36,7 @@ struct ResearchMethodsSettingsView: View {
                 settingsTitle(
                     LocalizedStringResource("Methods", table: "Localizable", bundle: .module),
                     detail: LocalizedStringResource(
-                        "Each Action routes to one current primary Markdown method. Practices are derived only from exact Wikilinks in that method; an optional local folder remains ordinary Agent-readable storage, not a package.",
+                        "Assign one primary Markdown Method to each Action and inspect its linked Practices.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -93,7 +93,7 @@ struct ResearchMethodsSettingsView: View {
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    Text("Method and Practice prose guides scholarly work. It cannot change Platform Action support, Session scope, collaboration policy, write authorization, exact revisions, conflicts, or recovery.")
+                    Text("Methods and Practices guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -103,6 +103,7 @@ struct ResearchMethodsSettingsView: View {
             .frame(maxWidth: 720, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
+        .scholiumSettingsPaneSurface()
         .disabled(
             loadedTriptychID != settingsModel.activeTriptychServicesID
                 || isWorking

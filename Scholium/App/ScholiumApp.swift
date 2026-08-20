@@ -1078,6 +1078,8 @@ private struct ScholiumWindowObservedRoot: View {
 }
 
 private struct ScholiumSettingsRoot: View {
+    @AppStorage(WindowColorSchemeChoice.defaultsKey)
+    private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
     @ObservedObject private var workspaceStore: WorkspaceStore
     @StateObject private var settingsModel: WorkspaceSettingsModel
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
@@ -1095,7 +1097,11 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
-            .frame(width: 700, height: 560)
+            .frame(width: 700, height: 560, alignment: .topLeading)
+            .tint(ScholiumColorRole.accent.color)
+            .preferredColorScheme(
+                WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
+            )
             .task(id: workspaceStore.latestWorkspaceActivation?.runtimeIdentity.activationID) {
                 await settingsModel.restorePreferredWorkspaceIfNeeded(
                     activeTriptychID: workspaceStore.latestWorkspaceActivation?.workspaceID

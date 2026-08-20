@@ -29,6 +29,7 @@ extension ResearchFunctionOperationsTests {
         let handoff = try await handle.research.issueAgentHandoff(
             runID: preparation.runID
         )
+        #expect(preparation.instructions.contains("agent discuss-reply"))
         let credential = try await handle.research.pairAgent(
             run: handoff.run,
             pairingCode: handoff.pairingCode
@@ -161,6 +162,87 @@ extension ResearchFunctionOperationsTests {
         let cancelled = try #require(try await handle.services.localResearchExecutionStore.listing().records
             .first { $0.id == fidelity.runID }?.completion)
         #expect(cancelled.state == .cancelled)
+        await runtime.shutdown()
+    }
+
+    @Test("Authenticated Discuss replies are idempotent and remain bounded")
+    func authenticatedAgentDiscussionReplyIsIdempotent() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .discuss,
+                target: actionNote(target),
+                academicValues: [
+                    ResearchAcademicFieldID(rawValue: "research-request")!:
+                        .freeText("Which premise needs a bounded reply?"),
+                ]
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        #expect(preparation.instructions.contains("agent discuss-reply"))
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        let context = try await handle.research.authenticatedAgentContext(
+            credential: credential,
+            run: handoff.run
+        )
+        #expect(context.brief.capabilities.discussionReply)
+        #expect(context.discussionResponseContract != nil)
+
+        let request = try ResearchAgentDiscussionReplyRequest(
+            statementID: UUID(uuidString: "00000000-0000-4000-8000-000000000903")!,
+            attribution: "External Agent",
+            text: "The premise needs a narrower source-faithful reconstruction."
+        )
+        let first = try await runtime.replyToResearchAgentDiscussion(
+            credential: credential,
+            run: handoff.run,
+            request: request
+        )
+        #expect(first.state == .recorded)
+        let repeated = try await runtime.replyToResearchAgentDiscussion(
+            credential: credential,
+            run: handoff.run,
+            request: request
+        )
+        #expect(repeated.state == .alreadyRecorded)
+
+        let active = try await handle.research.activeDiscussion(id: preparation.runID)
+        #expect(active.statements.count == 2)
+        #expect(active.statements.last?.author == .agent)
+        #expect(active.statements.last?.text == request.text)
+
+        let changed = try ResearchAgentDiscussionReplyRequest(
+            statementID: request.statementID,
+            attribution: request.attribution,
+            text: "A different payload must not reuse the statement ID."
+        )
+        await #expect(throws: PortableResearchDiscussionError.self) {
+            _ = try await runtime.replyToResearchAgentDiscussion(
+                credential: credential,
+                run: handoff.run,
+                request: changed
+            )
+        }
+
+        let end = try await runtime.endResearchAgentRun(
+            credential: credential,
+            run: handoff.run
+        )
+        #expect(!end.recoveryRetained)
         await runtime.shutdown()
     }
 

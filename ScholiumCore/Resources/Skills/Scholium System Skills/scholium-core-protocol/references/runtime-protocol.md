@@ -54,17 +54,21 @@ directly.
    selected Triptych and target identity. This direct route does not use a
    Pairing Code; GUI-created Runs use `agent pair` with the copied handoff.
 1. Use `agent query` when the Method needs additional Research Context.
-2. Use `agent extend-write-set` only when the Method requires another target.
+2. For a Discuss Run, use `agent discuss-reply` with one stable `statement_id`
+   and the attributed Agent turn. An exact retry is idempotent. This appends
+   only to the active portable Discussion; it does not edit a Note or finish
+   the Discussion.
+3. Use `agent extend-write-set` only when the Method requires another target.
    For one returned current member, use `agent write` for `create_note`,
    `modify_markdown`, or `modify_properties`; use
    `agent write-zotero-binding` for `set_zotero_binding` or
    `clear_zotero_binding`. Never put a binding operation in a document-write
    payload.
-3. On a conflict, use the action returned for `agent resolve-write-conflict`.
+4. On a conflict, use the action returned for `agent resolve-write-conflict`.
    Reread changed source before deciding whether to create a new write input.
-4. Use `agent reload` whenever the current authenticated Run state is
+5. Use `agent reload` whenever the current authenticated Run state is
    uncertain.
-5. Finish with `agent submit-result`; use `agent continue` only for a distinct
+6. Finish with `agent submit-result`; use `agent continue` only for a distinct
    next Action, or `agent end` to stop an unfinished Run without a Result.
 
 The authenticated Run packet and command inputs own current fields, allowed

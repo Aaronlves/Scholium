@@ -30,7 +30,8 @@
 - Exercise the separately downloaded CLI archive and sandboxed installed App
   in a clean external account, including the copied Agent instruction,
   user-local installation, and production bridge: pairing, restart
-  invalidation, re-pairing, Research Context, bounded
+  invalidation, re-pairing, Research Context, authenticated Discuss turns,
+  bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
   and credential cleanup.
 - Conduct sustained real research use and an independent source-fidelity and

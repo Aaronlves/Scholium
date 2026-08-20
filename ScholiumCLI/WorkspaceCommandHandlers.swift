@@ -865,11 +865,11 @@ extension ScholiumCLI {
             }
         case "reply":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
-                throw CLIError.usage("Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->)")
+                throw CLIError.usage("Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->). External Agents must use authenticated scholium agent discuss-reply.")
             }
             let agentName = option("--agent", in: arguments)?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let agentName, !agentName.isEmpty else {
-                throw CLIError.usage("Discuss replies require --agent <name>.")
+                throw CLIError.usage("Discuss replies require --agent <name>. External Agents must use authenticated scholium agent discuss-reply.")
             }
             let replyText: String
             if let text = option("--text", in: arguments) {

@@ -479,6 +479,9 @@ extension WorkspaceHandle {
             shouldDeliverZoteroIntegrationAdapter
             ? try BundledResearchSkillResources.zoteroIntegrationAdapter()
             : nil
+        let discussionResponseContract = action.actionID == .discuss
+            ? record.discussion?.responseContract
+            : nil
         let purpose: String? = if case .freeText(let text)? =
             action.academicInputs.values["research-request"] { text } else { nil }
         return try ResearchAuthenticatedRunContext(
@@ -499,7 +502,8 @@ extension WorkspaceHandle {
             boundedWriteSet: record.boundedWriteSet.entries.map(
                 ResearchBoundedWriteSetViewEntry.init
             ),
-            continuationHandoff: record.snapshot.continuationHandoff
+            continuationHandoff: record.snapshot.continuationHandoff,
+            discussionResponseContract: discussionResponseContract
         )
     }
 
@@ -684,7 +688,8 @@ extension WorkspaceHandle {
             zotero: operations.contains(.useZotero),
             writeInitialObject: operations.contains(.modifyInitialNote),
             extendWriteSet: operations.contains(.extendWriteSet),
-            continueResearch: operations.contains(.continueResearch)
+            continueResearch: operations.contains(.continueResearch),
+            discussionReply: operations.contains(.discuss)
         )
     }
 

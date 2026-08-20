@@ -267,7 +267,7 @@ extension ResearchFunctionCoordinator {
                 case .topic: "Synthesize"
                 case .work: "Write"
                 }
-                boundary = "The Target and Materials are read-only. If the exchange warrants a note change, begin a separately authorized \(nextAction) Action."
+                boundary = "The Target and Materials are read-only. Submit each Agent turn through the authenticated scholium agent discuss-reply command. If the exchange warrants a note change, begin a separately authorized \(nextAction) Action."
             case .fidelity:
                 boundary = "The Target and Materials are read-only. Recheck every fingerprint before use and stop on drift."
         }
@@ -335,6 +335,15 @@ extension ResearchFunctionCoordinator {
             sections += [
                 "Use the authenticated Agent CLI for every mutation. The current Run owns one bounded write set; each member is independently revision checked, recorded for diff and Undo, read back, and recoverable.",
                 "Submit the frozen Result Contract through the authenticated Run only after every started document write has reached a known state. Do not calculate or transcribe fingerprints, candidate paths, or a write key.",
+            ]
+            return sections.joined(separator: "\n")
+        }
+        if request.function == .discuss {
+            sections += [
+                "Use scholium agent discuss-reply --run <locator> --from <json|-> for each attributed Agent turn. The strict JSON fields are statement_id, attribution, and text; generate one stable statement_id per turn and reuse the same ID and content after an outcome-unknown response.",
+                "The authenticated key appends only to this Run's active portable Discussion. It does not finish the Discussion, accept a Result, edit Notes or Properties, or authorize another Run. The researcher owns Finish and any later Action.",
+                "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
+                "Cancel this prepared run with: scholium action cancel \(runID.uuidString.lowercased()) --triptych \(workspaceID.uuidString.lowercased())",
             ]
             return sections.joined(separator: "\n")
         }

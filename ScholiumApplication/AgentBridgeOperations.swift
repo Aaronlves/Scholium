@@ -78,6 +78,23 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         return context
     }
 
+    public func replyToDiscussion(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        request: ResearchAgentDiscussionReplyRequest
+    ) throws -> ResearchAgentDiscussionReplyReceipt {
+        let response = try client.send(try LocalAgentBridgeRequest(
+            operation: .discussionReply,
+            run: run,
+            credential: credential,
+            discussionReplyRequest: request
+        ))
+        guard let receipt = response.discussionReplyReceipt else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return receipt
+    }
+
     public func extendWriteSet(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

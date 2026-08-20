@@ -437,6 +437,11 @@ public protocol AgentBridgeUseCases: Sendable {
         credential: ResearchConnectionCredential,
         request: ResearchContextRequest
     ) async throws -> ResearchContextResponse
+    func replyToDiscussion(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        request: ResearchAgentDiscussionReplyRequest
+    ) async throws -> ResearchAgentDiscussionReplyReceipt
     func extendWriteSet(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

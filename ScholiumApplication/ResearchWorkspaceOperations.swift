@@ -409,6 +409,15 @@ extension WorkspaceHandle {
         return stored
     }
 
+    func appendAgentDiscussionStatement(
+        _ statement: PortableResearchStatement,
+        to discussion: PortableResearchDiscussion
+    ) async throws -> PortableResearchDiscussion {
+        let stored = try await appendDiscussionStatement(statement, to: discussion)
+        try await refreshAfterResearchCommit("The Agent Discussion")
+        return stored
+    }
+
     private func appendDiscussionStatement(
         _ statement: PortableResearchStatement,
         to discussion: PortableResearchDiscussion

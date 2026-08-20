@@ -43,7 +43,7 @@ struct ProfilesPracticesSettingsView: View {
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Profiles define each Action's researcher-facing academic fields. Practices are exact Markdown linked from a primary Method; they guide research but never grant authority.",
+                        "Configure Action fields and the exact Markdown Practices linked from Methods.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -124,7 +124,7 @@ struct ProfilesPracticesSettingsView: View {
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    Text("Profiles and Practices can shape scholarly work and truthful Result fields. They cannot change Platform Actions, Research Context ownership, Session lifetime, collaboration policy, a Bounded Write Set, exact revisions, conflicts, or recovery.")
+                    Text("Profiles and Practices shape academic inputs and results; they never grant authority or alter Session, write, revision, conflict, or recovery rules.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -134,6 +134,7 @@ struct ProfilesPracticesSettingsView: View {
             .frame(maxWidth: 760, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
+        .scholiumSettingsPaneSurface()
         .accessibilityIdentifier("scholium.researchGuidance.profilesPractices")
         .disabled(
             loadedTriptychID != settingsModel.activeTriptychServicesID

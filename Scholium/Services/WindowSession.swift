@@ -177,6 +177,24 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                         run: run,
                         request: contextRequest
                     ))
+                case .discussionReply:
+                    guard let run = request.run,
+                          let credential = request.credential,
+                          let reply = request.discussionReplyRequest else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    return .discussionReply(
+                        try await runtime.replyToResearchAgentDiscussion(
+                            credential: credential,
+                            run: run,
+                            request: reply
+                        )
+                    )
                 case .extendWriteSet:
                     guard let run = request.run,
                           let credential = request.credential,

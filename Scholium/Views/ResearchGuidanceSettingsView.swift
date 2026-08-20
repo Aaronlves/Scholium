@@ -33,109 +33,24 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
 }
 
 struct ResearchGuidanceSettingsView: View {
-    @AppStorage("scholium.settings.researchGuidanceCategory")
-    private var persistedCategory = ResearchGuidanceCategory.methods.rawValue
-    @State private var category: ResearchGuidanceCategory = .methods
+    let category: ResearchGuidanceCategory
 
     var body: some View {
-        HSplitView {
-            List(ResearchGuidanceCategory.allCases, selection: $category) { item in
-                Label {
-                    Text(item.localizedTitle)
-                } icon: {
-                    Image(systemName: item.symbol)
-                }
-                    .tag(item)
-                    .accessibilityIdentifier(
-                        "scholium.researchGuidance.category.\(item.id)"
-                    )
+        Group {
+            switch category {
+            case .methods:
+                ResearchMethodsSettingsView()
+            case .profilesPractices:
+                ProfilesPracticesSettingsView()
+            case .collaboration:
+                ResearchPermissionSettingsView()
+            case .sources:
+                ResearchSourcesSettingsView()
             }
-            .listStyle(.sidebar)
-            .frame(
-                minWidth: ScholiumMetrics.ResearchGuidance.categorySidebarMinimumWidth,
-                idealWidth: ScholiumMetrics.ResearchGuidance.categorySidebarIdealWidth,
-                maxWidth: ScholiumMetrics.ResearchGuidance.categorySidebarMaximumWidth
-            )
-            .accessibilityIdentifier("scholium.researchGuidance.categoryList")
-
-            Group {
-                switch category {
-                case .methods:
-                    ResearchMethodsSettingsView()
-                case .profilesPractices:
-                    ProfilesPracticesSettingsView()
-                case .collaboration:
-                    ResearchPermissionSettingsView()
-                case .sources:
-                    ResearchSourcesSettingsView()
-                }
-            }
-            .frame(
-                minWidth: ScholiumMetrics.ResearchGuidance.contentMinimumWidth,
-                maxWidth: .infinity,
-                maxHeight: .infinity
-            )
         }
-        .onAppear {
-            category = ResearchGuidanceCategory(rawValue: persistedCategory) ?? .methods
-        }
-        .onChange(of: category) { _, value in
-            persistedCategory = value.rawValue
-        }
+        .scholiumSettingsPaneSurface()
+        .accessibilityIdentifier("scholium.researchGuidance.detail")
     }
-}
-
-@MainActor
-func settingsTitle(
-    _ title: LocalizedStringResource,
-    detail: LocalizedStringResource
-) -> some View {
-    VStack(
-        alignment: .leading,
-        spacing: ScholiumMetrics.ResearchGuidance.titleDetailSpacing
-    ) {
-        Text(title)
-            .font(ScholiumTypography.interface(.primaryTitle))
-            .accessibilityAddTraits(.isHeader)
-        Text(detail)
-            .font(ScholiumTypography.interface(.body))
-            .scholiumForeground(.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-@MainActor
-func researchSettingsSection<Content: View>(
-    _ title: LocalizedStringResource,
-    @ViewBuilder content: () -> Content
-) -> some View {
-    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-        Text(title)
-            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .scholiumForeground(.secondaryText)
-            .accessibilityAddTraits(.isHeader)
-        content()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-}
-
-@MainActor
-func researchSettingsCollectionRow<Content: View, Actions: View>(
-    @ViewBuilder content: () -> Content,
-    @ViewBuilder actions: () -> Actions
-) -> some View {
-    HStack(
-        alignment: .top,
-        spacing: ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing
-    ) {
-        content()
-        Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
-        actions()
-    }
-    .padding(
-        .vertical,
-        ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset
-    )
 }
 
 func actionTitle(_ actionID: ResearchActionID) -> String {

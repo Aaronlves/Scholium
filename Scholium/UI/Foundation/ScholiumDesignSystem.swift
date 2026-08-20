@@ -1468,10 +1468,6 @@ enum ScholiumMetrics {
     }
 
     enum ResearchGuidance {
-        static let categorySidebarMinimumWidth: CGFloat = 190
-        static let categorySidebarIdealWidth: CGFloat = 210
-        static let categorySidebarMaximumWidth: CGFloat = 240
-        static let contentMinimumWidth: CGFloat = 430
         static let titleDetailSpacing = ScholiumGrid.ResearchGuidance.titleDetailGap
         static let collectionRowColumnSpacing =
             ScholiumGrid.ResearchGuidance.collectionRowColumnGap
@@ -1555,9 +1551,14 @@ enum ScholiumMetrics {
     }
 
     enum Settings {
+        static let sidebarWidth = ScholiumGrid.foundationUnit * 54
         static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
         static let columnSpacing = ScholiumGrid.foundationUnit * 6
-        static let editorContentInset = ScholiumGrid.foundationUnit * 4.5
+        static let editorContentInset = ScholiumGrid.Spacing.regionContentInset
+        static let headerMaximumWidth = ScholiumGrid.foundationUnit * 155
+        static let formMaximumWidth = ScholiumGrid.foundationUnit * 165
+        static let formExplanationMaximumWidth = ScholiumGrid.foundationUnit * 105
+        static let appearancePickerWidth = ScholiumGrid.foundationUnit * 42
         static let listRowSpacing = ScholiumGrid.foundationUnit * 1.25
         static let rowControlSpacing = ScholiumGrid.foundationUnit * 1.5
         static let labelActionMinimumSpacing = ScholiumGrid.foundationUnit * 1.5

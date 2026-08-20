@@ -88,6 +88,32 @@ extension ScholiumCLI {
             try writeAgentJSON(response)
             return
         }
+        if arguments.first == "discuss-reply" {
+            guard let rawRun = option("--run", in: arguments),
+                  let run = ResearchRunLocator(rawValue: rawRun),
+                  let input = option("--from", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium agent discuss-reply --run <locator> --from <json|->"
+                )
+            }
+            let draft = try JSONDecoder().decode(
+                AgentDiscussionReplyDraft.self,
+                from: agentInput(input)
+            )
+            let request = try ResearchAgentDiscussionReplyRequest(
+                statementID: draft.statementID,
+                attribution: draft.attribution,
+                text: draft.text
+            )
+            let credential = try credentialStore.load(for: run)
+            let receipt = try await operations.replyToDiscussion(
+                run: run,
+                credential: credential,
+                request: request
+            )
+            try writeAgentJSON(receipt)
+            return
+        }
         if arguments.first == "extend-write-set" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
@@ -334,7 +360,7 @@ extension ScholiumCLI {
             return
         }
         throw CLIError.usage(
-            "Usage: scholium agent pair|context|reload|query|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
+            "Usage: scholium agent pair|context|reload|query|discuss-reply|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
         )
     }
 
@@ -466,6 +492,32 @@ private struct AgentPairingReport: Encodable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case paired, run
+    }
+}
+
+private struct AgentDiscussionReplyDraft: Decodable {
+    let statementID: UUID
+    let attribution: String
+    let text: String
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case statementID = "statement_id"
+        case attribution
+        case text
+    }
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: AgentWriteCodingKey.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw CLIError.usage(
+                "The Agent Discussion reply JSON contains an unknown field."
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        statementID = try container.decode(UUID.self, forKey: .statementID)
+        attribution = try container.decode(String.self, forKey: .attribution)
+        text = try container.decode(String.self, forKey: .text)
     }
 }
 

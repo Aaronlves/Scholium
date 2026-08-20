@@ -106,8 +106,11 @@ The Agent enters the code through CLI standard input. An Agent-originated
 `agent start` request uses the same Application preparation path and returns a
 protected Session directly; it does not create or consume a Pairing Code.
 Both routes use the loopback-only framed bridge and the same authenticated
-Context, write, Result, End, conflict, and recovery owners. The UI's End Action
-route calls the same Application cancellation owner as authenticated CLI end;
+Context, Discuss-turn, write, Result, End, conflict, and recovery owners. A
+Discuss-turn request uses the same authenticated Session and appends only to
+the active `PortableResearchDiscussion`; it does not use the Bounded Write Set
+or finish the exchange. The UI's End Action route calls the same Application
+cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
 current portable exchange into a finished Research Record before removing the
 active projection, so researcher-authored statements are not discarded.
@@ -403,7 +406,10 @@ rather than substituting a different Record.
 `PortableResearchDiscussion` remains the single active exchange owner.
 Comments retain stable Note/fingerprint and inclusive line range without a
 passage copy. Each attributed researcher/Agent turn updates only the active
-exchange. Finish validates current participants and forms one Record; closing
+exchange. The authenticated Agent `discuss-reply` route validates the frozen
+Discuss Run and response contract, uses a stable statement ID for outcome-
+unknown retry, and writes no Note or Property. Finish validates current
+participants and forms one Record; closing
 the sheet performs no storage action. Discussion does not use Bounded Write
 Set unless it explicitly continues into a separate write Action.
 
