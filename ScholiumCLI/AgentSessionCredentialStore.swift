@@ -152,6 +152,17 @@ struct AgentSessionCredentialStore {
     }
 
     private func prepareDirectory() throws {
+        let parentURL = directoryURL.deletingLastPathComponent()
+        if mkdir(parentURL.path, 0o700) != 0, errno != EEXIST {
+            throw AgentSessionCredentialStoreError.unsafeState
+        }
+        var parentInfo = stat()
+        guard lstat(parentURL.path, &parentInfo) == 0,
+              parentInfo.st_uid == geteuid(),
+              (parentInfo.st_mode & S_IFMT) == S_IFDIR,
+              (parentInfo.st_mode & 0o077) == 0 else {
+            throw AgentSessionCredentialStoreError.unsafeState
+        }
         if mkdir(directoryURL.path, 0o700) != 0, errno != EEXIST {
             throw AgentSessionCredentialStoreError.unsafeState
         }

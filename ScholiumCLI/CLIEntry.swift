@@ -28,6 +28,19 @@ struct ScholiumCLI {
             let operations = try CLIContext.makeAgentBridge()
             let credentialStore = CLIContext.makeAgentCredentialStore()
             if agentArguments.first == "start" {
+                if let selector = option("--triptych", in: agentArguments),
+                   let triptychID = UUID(uuidString: selector) {
+                    // A UUID is already the bridge's typed identity. Let the
+                    // running App validate it instead of requiring the CLI's
+                    // local registry merely to translate the same value.
+                    try await runAgent(
+                        agentArguments,
+                        triptychID: triptychID,
+                        operations: operations,
+                        credentialStore: credentialStore
+                    )
+                    return
+                }
                 let context = try await CLIContext.make()
                 do {
                     let assignment = try await context.selectedTriptych(

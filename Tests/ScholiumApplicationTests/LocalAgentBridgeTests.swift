@@ -62,6 +62,32 @@ struct LocalAgentBridgeTests {
         #expect(!String(reflecting: response).contains(credential.secret))
     }
 
+    @Test("Bridge errors distinguish stale projection, missing source evidence, and expired Session")
+    func structuredRecoveryErrors() {
+        let stale = LocalAgentBridgeWireCoding.errorPayload(
+            ScholiumApplicationError.operationCommittedButRefreshFailed(
+                operation: "Agent Analysis creation",
+                reason: "disposable projection failed"
+            )
+        )
+        #expect(stale.code == .staleProjection)
+        #expect(!stale.message.contains("disposable projection failed"))
+
+        let missingSource = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchFunctionContractError.sourceAccessUnavailable(
+                ResearchSourceAccessFailure(code: .missingBinding)
+            )
+        )
+        #expect(missingSource.code == .missingSourceEvidence)
+        #expect(missingSource.message.contains("source_route=researcher_provided"))
+
+        let expired = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentSessionError.sessionRejected
+        )
+        #expect(expired.code == .sessionExpired)
+        #expect(expired.message.contains("copy a new handoff"))
+    }
+
     @Test("Bridge Discussion replies use the authenticated Run payload")
     func discussionReplyShape() throws {
         let run = try #require(

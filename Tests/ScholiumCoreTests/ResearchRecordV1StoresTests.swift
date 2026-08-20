@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 10 and Local Execution schema 15")
+@Suite("Portable Research Record storage v1/schema 11 and Local Execution schema 16")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -926,14 +926,14 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution schema 15 round-trips and rejects retired schema 14")
+    @Test("Local Execution schema 16 round-trips and rejects retired schema 15")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 15)
+        #expect(stored.schemaVersion == 16)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
@@ -945,8 +945,8 @@ struct ResearchRecordV1StoresTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 15)
-        object["schema_version"] = 14
+        #expect(object["schema_version"] as? Int == 16)
+        object["schema_version"] = 15
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()
@@ -1390,6 +1390,7 @@ struct ResearchRecordV1StoresTests {
                     fingerprint: DocumentFingerprint(content: "source bytes")
                 )
                 : nil,
+            analysisSourceRoute: actionID == .analyze ? .scholiumSource : nil,
             participatingNotes: [note],
             statements: [try PortableResearchStatement(
                 author: .agent,

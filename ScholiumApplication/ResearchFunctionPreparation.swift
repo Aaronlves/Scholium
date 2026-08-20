@@ -619,6 +619,12 @@ extension ResearchFunctionCoordinator {
             requiredChildFunctions: handoff == nil ? [] : [.fidelity],
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
+            analysisSourceRoute: request.function == .develop
+                    && request.target.role == .analysis
+                ? (allowsResearcherProvidedSource
+                    ? .researcherProvided
+                    : (sourceAccess != nil ? .scholiumSource : .externalZotero))
+                : nil,
             citationStyle: phases.first?.citationStyle,
             continuationLineage: continuationLineage,
             continuationHandoff: continuationHandoff,

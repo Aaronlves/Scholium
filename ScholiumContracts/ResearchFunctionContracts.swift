@@ -639,6 +639,17 @@ private struct ResearchContinuationLineageAnyCodingKey: CodingKey {
 ///
 /// It records the frozen request and resolution evidence needed to execute and
 /// complete that run; protected execution details remain in Local Execution.
+public enum ResearchAnalysisSourceRoute: String, Codable, Hashable, Sendable {
+    /// Scholium resolved and fingerprinted one explicit local source binding.
+    case scholiumSource = "scholium_source"
+    /// The Run froze a portable Zotero relationship and bibliographic context;
+    /// the external Agent retrieves paper data through its own integration.
+    case externalZotero = "external_zotero"
+    /// The researcher supplied the source directly to the external Agent.
+    /// Scholium receives no path, bytes, or source-access claim.
+    case researcherProvided = "researcher_provided"
+}
+
 public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let runID: UUID
     public let request: ResearchFunctionRequest
@@ -656,6 +667,10 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// Exact source identity and revision validated for Analyze. This safe
     /// projection contains no bookmark, absolute path, or source bytes.
     public let sourceReference: ResearchSourceReference?
+    /// Frozen Analyze source routing. This distinguishes an intentionally
+    /// researcher-provided source from an accidentally missing binding without
+    /// fabricating a `ResearchSourceReference` for material Scholium never saw.
+    public let analysisSourceRoute: ResearchAnalysisSourceRoute?
     /// Exact citation style selected for this run, when citation checking is active.
     public let citationStyle: String?
     public let continuationLineage: ResearchContinuationLineage?
@@ -680,6 +695,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         case requiredChildFunctions
         case zoteroBibliographicContext
         case sourceReference
+        case analysisSourceRoute
         case citationStyle
         case continuationLineage
         case continuationHandoff
@@ -715,6 +731,10 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
             sourceReference: try container.decodeIfPresent(
                 ResearchSourceReference.self,
                 forKey: .sourceReference
+            ),
+            analysisSourceRoute: try container.decodeIfPresent(
+                ResearchAnalysisSourceRoute.self,
+                forKey: .analysisSourceRoute
             ),
             citationStyle: try container.decodeIfPresent(
                 String.self,
@@ -756,6 +776,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         requiredChildFunctions: [ResearchFunctionID] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         sourceReference: ResearchSourceReference? = nil,
+        analysisSourceRoute: ResearchAnalysisSourceRoute? = nil,
         citationStyle: String? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
@@ -774,6 +795,7 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         }
         self.zoteroBibliographicContext = zoteroBibliographicContext
         self.sourceReference = sourceReference
+        self.analysisSourceRoute = analysisSourceRoute
         self.citationStyle = citationStyle
         self.continuationLineage = continuationLineage
         self.continuationHandoff = continuationHandoff

@@ -273,7 +273,7 @@ canonical `PropertyContract`: it can report key/value source ranges without
 granting an unknown key semantic or judgment authority. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-10 Records,
+matcher. The portable Record store supplies exact decoded schema-11 Records,
 schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or

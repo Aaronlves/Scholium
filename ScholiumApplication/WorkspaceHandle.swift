@@ -3182,6 +3182,47 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
+    /// Waits for the Workspace-owned projection task that follows an already
+    /// committed source mutation. If that disposable task failed, one explicit
+    /// refresh may repair it; the caller receives a typed committed-but-stale
+    /// outcome and must never repeat the source creation.
+    func awaitCommittedSourceProjection(
+        id: VaultQualifiedNoteID,
+        stableIdentity: UUID,
+        fingerprint: DocumentFingerprint
+    ) async throws -> WorkspaceNoteSnapshot {
+        if let sourceCommitRefreshTask {
+            await sourceCommitRefreshTask.value
+        }
+        if let note = currentSnapshot.document(id: id),
+           note.stableIdentity.resolvedID == stableIdentity,
+           note.fingerprint == fingerprint {
+            return note
+        }
+        do {
+            _ = try await refresh(
+                publication: .explicit,
+                failureDisposition: .staleAfterCommittedMutation(
+                    affectedVaultIDs: [id.vaultID]
+                )
+            )
+        } catch {
+            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
+                operation: "Agent Analysis creation",
+                reason: error.localizedDescription
+            )
+        }
+        guard let note = currentSnapshot.document(id: id),
+              note.stableIdentity.resolvedID == stableIdentity,
+              note.fingerprint == fingerprint else {
+            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
+                operation: "Agent Analysis creation",
+                reason: "The complete Workspace projection does not yet contain the committed Note identity and revision."
+            )
+        }
+        return note
+    }
+
     private func runLiveIndexRefresh(token: UUID) async {
         while !isShutDown, !pendingLiveEvents.isEmpty {
             guard !sourceOperationGate.sourceMutationIsActive else { break }

@@ -972,6 +972,7 @@ extension ResearchFunctionCoordinator {
             method: try PortableResearchMethodReference(snapshot: actionSnapshot),
             sourceReference: snapshot.sourceReference,
             zoteroBibliographicContext: snapshot.zoteroBibliographicContext,
+            analysisSourceRoute: snapshot.analysisSourceRoute,
             continuationLineage: snapshot.continuationLineage,
             primaryNoteID: actionSnapshot.target.noteID,
             participatingNotes: participatingNotes,
@@ -1607,17 +1608,34 @@ extension ResearchFunctionCoordinator {
               snapshot.request.target.role == .analysis else {
             return nil
         }
-        guard let expected = snapshot.sourceReference else {
-            // A Zotero-only Analyze intentionally has no Scholium-owned source
-            // locator. Its frozen bibliographic context is the provenance that
-            // permits completion; a source-less, context-less Analyze is still
-            // invalid and must not become a record by omission.
-            guard snapshot.zoteroBibliographicContext != nil else {
+        switch snapshot.analysisSourceRoute {
+        case .researcherProvided:
+            guard snapshot.sourceReference == nil,
+                  snapshot.zoteroBibliographicContext == nil else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "A researcher-provided source route cannot claim Scholium source or Zotero context."
+                )
+            }
+            return nil
+        case .externalZotero:
+            guard snapshot.sourceReference == nil,
+                  snapshot.zoteroBibliographicContext != nil else {
                 throw ResearchFunctionContractError.sourceAccessUnavailable(
                     ResearchSourceAccessFailure(code: .missingBinding)
                 )
             }
             return nil
+        case .scholiumSource:
+            break
+        case nil:
+            throw ResearchFunctionContractError.sourceAccessUnavailable(
+                ResearchSourceAccessFailure(code: .missingBinding)
+            )
+        }
+        guard let expected = snapshot.sourceReference else {
+            throw ResearchFunctionContractError.sourceAccessUnavailable(
+                ResearchSourceAccessFailure(code: .missingBinding)
+            )
         }
         let resolved: ResolvedResearchSourceAccess
         if let currentTarget {

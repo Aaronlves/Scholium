@@ -93,7 +93,7 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 10)
+        #expect(object["schema_version"] as? Int == 11)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -113,7 +113,7 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 10 requires a frozen title and rejects every retired schema")
+    @Test("Schema 11 requires a frozen title and rejects every retired schema")
     func schemaSevenIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
@@ -912,6 +912,7 @@ struct PortableResearchRecordContractsTests {
             action: ResearchActionRecordIdentity(actionID: .analyze),
             method: base.method,
             sourceReference: base.sourceReference,
+            analysisSourceRoute: .scholiumSource,
             continuationLineage: base.continuationLineage,
             primaryNoteID: base.primaryNoteID,
             participatingNotes: base.participatingNotes,

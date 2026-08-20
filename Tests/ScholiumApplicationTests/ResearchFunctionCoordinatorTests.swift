@@ -5,6 +5,73 @@ import Testing
 
 @Suite("Research Function coordinator ownership")
 struct ResearchFunctionCoordinatorTests {
+    @Test("Agent Analysis creation survives a stale projection and exact retry does not duplicate source")
+    func agentStartCreationProjectionRecovery() async throws {
+        enum InjectedFailure: Error { case staleProjection }
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        await handle.setResearchStateRepairBarrierForTesting {
+            throw InjectedFailure.staleProjection
+        }
+        let analysisVaultID = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)?.id
+        )
+        let target = VaultQualifiedNoteID(
+            vaultID: analysisVaultID,
+            relativePath: "Agent/Projection Recovery.md"
+        )
+        let request = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: ResearchAgentNewAnalysisRequest(
+                requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000457")!,
+                target: target,
+                metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
+            ),
+            sourceRoute: .researcherProvided
+        )
+
+        do {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: request,
+                sessionValidity: 300
+            )
+            Issue.record("A failed derived projection must remain visible to the caller.")
+        } catch let error as ScholiumApplicationError {
+            guard case .operationCommittedButRefreshFailed = error else {
+                Issue.record("Unexpected committed creation result: \(error)")
+                return
+            }
+        }
+        let committed = try await handle.documents.load(target)
+        let identity = try #require(
+            try await handle.services.controlStore.identityRecord(
+                vaultID: target.vaultID,
+                relativePath: target.relativePath
+            )
+        )
+        #expect(identity.fingerprint == committed.fingerprint)
+
+        await handle.setResearchStateRepairBarrierForTesting(nil)
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: request,
+            sessionValidity: 300
+        )
+        #expect(started.receipt.target.noteID == identity.id)
+        #expect(try await handle.documents.load(target).fingerprint == committed.fingerprint)
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        await runtime.shutdown()
+    }
+
     @Test("Agent start creates an absent Analysis through the managed creator")
     func agentStartCreatesNewAnalysis() async throws {
         let fixture = try await ApplicationFixture.make()
@@ -57,23 +124,54 @@ struct ResearchFunctionCoordinatorTests {
         let binding = try await handle.services.controlStore.zoteroBindings()
             .binding(for: started.receipt.target.noteID)
         #expect(binding == nil)
+        let services = await handle.services
+        let sessions = try #require(services.researchAgentSessions)
+        let firstAuthenticated = try await sessions.authenticate(
+            started.credential,
+            run: started.receipt.run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
 
-        do {
+        let changedCreation = try ResearchAgentNewAnalysisRequest(
+            requestID: creation.requestID,
+            target: creation.target,
+            metadata: try AnalysisCreationMetadata(
+                sourceType: .journalArticle,
+                properties: [try CanonicalPropertyInput(
+                    key: "title",
+                    value: .string("A different payload must not reuse the committed Note")
+                )]
+            )
+        )
+        let changedRequest = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: changedCreation,
+            academicPurpose: request.academicPurpose,
+            sourceRoute: .researcherProvided
+        )
+        await #expect(throws: DocumentCreationError.portableIdentityAlreadyExists) {
             _ = try await runtime.startResearchAgentRun(
                 triptychID: fixture.assignment.id,
-                request: request,
+                request: changedRequest,
                 sessionValidity: 300
             )
-            Issue.record("A repeated exact new-Analysis path must not create a second Note.")
-        } catch let error as DocumentCreationError {
-            #expect(error == .portableIdentityAlreadyExists)
-        } catch {
-            Issue.record("Unexpected repeated-creation error: \(error.localizedDescription)")
         }
 
+        let retried = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: request,
+            sessionValidity: 300
+        )
+        #expect(retried.receipt.run != started.receipt.run)
+        #expect(retried.receipt.target.noteID == started.receipt.target.noteID)
+        let retriedDocument = try await handle.documents.load(createdID)
+        #expect(retriedDocument.fingerprint == document.fingerprint)
+        #expect(retriedDocument.sourceBytes == document.sourceBytes)
+
         let context = try await runtime.researchAgentContext(
-            credential: started.credential,
-            run: started.receipt.run
+            credential: retried.credential,
+            run: retried.receipt.run
         )
         #expect(context.brief.actionID == .analyze)
         #expect(context.brief.initialObjectRole == .analysis)
@@ -82,24 +180,59 @@ struct ResearchFunctionCoordinatorTests {
                 && $0.operations.contains(.modifyMarkdown)
         }))
 
-        let services = await handle.services
-        let sessions = try #require(services.researchAgentSessions)
         let authenticated = try await sessions.authenticate(
-            started.credential,
-            run: started.receipt.run,
+            retried.credential,
+            run: retried.receipt.run,
             requiresWrite: false,
             claimCoreProtocol: false
         )
+        #expect(authenticated.runID == firstAuthenticated.runID)
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await sessions.authenticate(
+                started.credential,
+                run: started.receipt.run,
+                requiresWrite: false,
+                claimCoreProtocol: false
+            )
+        }
         let execution = try await services.localResearchExecutionStore.record(
             id: authenticated.runID
         )
         #expect(execution.snapshot.sourceReference == nil)
+        #expect(execution.snapshot.analysisSourceRoute == .researcherProvided)
         #expect(execution.preparedInstructions.contains("Researcher-provided source"))
         #expect(!execution.preparedInstructions.contains("machineLocalPath"))
 
+        let receipt = try await runtime.submitResearchAgentResult(
+            credential: retried.credential,
+            run: retried.receipt.run,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Researcher-provided source analysis"),
+                academicResults: ResearchAcademicFieldValues(
+                    rawValues: [
+                        "source-reconstruction": .freeText(
+                            "The researcher-provided source supports one bounded reconstruction."
+                        ),
+                        "coverage": .singleChoice("specified-part-only"),
+                        "reliability": .multipleChoice(["no-material-limitations"]),
+                    ],
+                    definitions: context.resultContract.academicFields
+                ),
+                literatureRecommendations: []
+            )
+        )
+        #expect(receipt.state == .finalized)
+        #expect(receipt.recordFormed)
+        let record = try await services.portableResearchRecordStore.record(
+            id: authenticated.runID
+        )
+        #expect(record.analysisSourceRoute == .researcherProvided)
+        #expect(record.sourceReference == nil)
+        #expect(record.zoteroBibliographicContext == nil)
+
         _ = try await runtime.endResearchAgentRun(
-            credential: started.credential,
-            run: started.receipt.run
+            credential: retried.credential,
+            run: retried.receipt.run
         )
         await runtime.shutdown()
     }

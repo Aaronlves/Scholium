@@ -107,45 +107,54 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.headingOutline,
             in: toolbar
         ))
-        #expect(heading is NSMenuToolbarItem)
+        let headingButton = try #require(heading.view?.subviews.first as? NSButton)
         #expect(heading.visibilityPriority == .high)
-        #expect(heading.title.isEmpty)
         #expect(heading.label == "Heading Outline")
+        #expect(!heading.isBordered)
+        #expect(heading.isNavigational)
+        #expect(headingButton.isBordered)
+        #expect(headingButton.showsBorderOnlyWhileMouseInside)
+        #expect(headingButton.imagePosition == .imageOnly)
+        #expect(headingButton.accessibilityRole() == .popUpButton)
+        #expect(headingButton.target === controller)
+        #expect(headingButton.action != nil)
 
         for identifier in [
+            ScholiumWorkspaceToolbarController.Item.sidebar,
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
             ScholiumWorkspaceToolbarController.Item.search,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.researchRecords,
+            ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
             let command = try #require(item(identifier, in: toolbar))
-            #expect(command.view == nil)
-            #expect(command.target === controller)
-            #expect(command.action != nil)
-            #expect(command.visibilityPriority == .high)
+            let button = try #require(command.view?.subviews.first as? NSButton)
+            #expect(button.target === controller)
+            #expect(button.action != nil)
+            #expect(command.visibilityPriority == (
+                identifier == ScholiumWorkspaceToolbarController.Item.sidebar
+                    || identifier == ScholiumWorkspaceToolbarController.Item.inspector
+                    ? .user
+                    : .high
+            ))
+            #expect(!command.isBordered)
+            #expect(button.isBordered)
+            #expect(button.showsBorderOnlyWhileMouseInside)
+            #expect(button.imagePosition == .imageOnly)
             let overflowCommand = try #require(command.menuFormRepresentation)
             #expect(overflowCommand.target === controller)
-            #expect(overflowCommand.action == command.action)
+            #expect(overflowCommand.action == button.action)
             #expect(overflowCommand.image != nil)
         }
 
-        #expect(try #require(item(
-            ScholiumWorkspaceToolbarController.Item.back,
-            in: toolbar
-        )).isNavigational)
-        #expect(try #require(item(
-            ScholiumWorkspaceToolbarController.Item.forward,
-            in: toolbar
-        )).isNavigational)
-        #expect(try #require(item(
+        for identifier in [
             ScholiumWorkspaceToolbarController.Item.sidebar,
-            in: toolbar
-        )).visibilityPriority == .user)
-        #expect(try #require(item(
-            ScholiumWorkspaceToolbarController.Item.inspector,
-            in: toolbar
-        )).visibilityPriority == .user)
+            ScholiumWorkspaceToolbarController.Item.back,
+            ScholiumWorkspaceToolbarController.Item.forward,
+        ] {
+            #expect(!(try #require(item(identifier, in: toolbar))).isNavigational)
+        }
     }
 
     private var inertWindowActions: WorkspaceWindowActions {

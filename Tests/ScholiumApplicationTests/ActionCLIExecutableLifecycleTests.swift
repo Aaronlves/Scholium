@@ -214,7 +214,12 @@ struct ActionCLIExecutableLifecycleTests {
         }
         defer { server.stop() }
 
-        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let freshAgentHome = fixture.rootURL.appendingPathComponent(
+            "fresh-agent-home",
+            isDirectory: true
+        )
+        #expect(!FileManager.default.fileExists(atPath: freshAgentHome.path))
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: freshAgentHome)
         let environment = [
             "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
         ]
@@ -230,9 +235,15 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(startedOutput.contains(run.rawValue))
         #expect(!startedOutput.contains(credential.secret))
 
-        let credentialURL = fixture.homeURL
+        let credentialURL = freshAgentHome
             .appendingPathComponent("sessions", isDirectory: true)
             .appendingPathComponent(run.rawValue + ".json")
+        let homeMode = try #require(
+            FileManager.default.attributesOfItem(atPath: freshAgentHome.path)[
+                .posixPermissions
+            ] as? NSNumber
+        ).intValue
+        #expect(homeMode == 0o700)
         let mode = try #require(
             FileManager.default.attributesOfItem(atPath: credentialURL.path)[
                 .posixPermissions

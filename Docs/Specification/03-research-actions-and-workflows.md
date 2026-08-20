@@ -154,19 +154,18 @@ for an existing ID fails closed. The key does not grant Note or Property
 mutation, Finish, Result acceptance, evaluation, Undo, recovery, another Run,
 or arbitrary filesystem access.
 
-The direct Agent route also accepts one explicit `new_analysis` start shape
-for Analyze. It names one exact Analysis path and one typed source-type/property
-payload. It may additionally name one stable Zotero library/item relationship;
-when it does not, the request must explicitly declare `source_route` as
-`researcher_provided`. The Application uses the managed creator with the
-current Settings revision and reserved identity, jointly reads back the source
-and identity, establishes the Zotero relationship when present, and only then
-prepares the ordinary Analyze Run against the new target. It never infers a
-source relationship from YAML, title, path, or similarity. Under the
-`researcher_provided` route, Scholium receives no local-file path or source
-bytes: the researcher gives that source directly to the external Agent, and
-Scholium records no source-access claim for it. The same explicit route may be
-used when starting Analyze against an existing Analysis target.
+The direct Agent route accepts one Analyze-only `new_analysis` shape with an
+exact path and typed source/property payload. It names either a stable Zotero
+relationship or `source_route: researcher_provided`. Application uses the
+managed creator, current Settings revision, and reserved identity; reads back
+source and identity; establishes any Zotero relationship; then prepares the
+ordinary Run. It never infers a relationship from YAML, title, path, or
+similarity. The complete payload is the request identity: exact replay resumes
+the same committed Note and unfinished Run with a replacement process-bound
+Session, while changed input cannot reuse them. Source and identity commit
+before projection; a stale projection reports exact-replay recovery without
+duplicate creation. The researcher-provided route may also target an existing
+Analysis; Scholium receives no source path or bytes and records no access claim.
 
 Direct Agent connection is local, provider-neutral, and bound to the current
 Scholium application process. The researcher deliberately copies one complete
@@ -540,7 +539,8 @@ portable owner stores one current cumulative Note Review fact per Note,
 separate from Record bytes and excluded from finalized-result identity. A Record
 retains its frozen Record Title, attributed researcher and Agent statements, participating exact Note
 revisions, Action, minimal method provenance, Context Use Report, confirmed
-changes, discrepancies, Fidelity completion, Analyze-only Literature
+changes, discrepancies, Fidelity completion, the explicit Analyze source route,
+Analyze-only Literature
 Recommendations, and current Researcher Response. Researcher Response is
 excluded from the finalized-result fingerprint. It excludes raw secrets,
 bookmarks, absolute paths, method/folder snapshots, prompts, token counts,

@@ -47,7 +47,12 @@ struct ResearchAgentStartContractsTests {
         #expect(decoded.newAnalysis == creation)
         #expect(decoded.newAnalysis?.source?.itemKey == "ABCD1234")
         #expect(decoded.sourceRoute == nil)
-        #expect(String(decoding: data, as: UTF8.self).contains("new_analysis"))
+        let json = String(decoding: data, as: UTF8.self)
+        #expect(json.contains("new_analysis"))
+        #expect(json.contains("vault_id"))
+        #expect(json.contains("relative_path"))
+        #expect(!json.contains("vaultID"))
+        #expect(!json.contains("relativePath"))
     }
 
     @Test("New Analysis can declare a researcher-provided source without a path")
@@ -122,6 +127,22 @@ struct ResearchAgentStartContractsTests {
             try ResearchAgentStartRequest(
                 actionID: .analyze,
                 newAnalysis: withoutRoute
+            )
+        }
+
+        var camelCaseTarget = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(existing)
+            ) as? [String: Any]
+        )
+        camelCaseTarget["target"] = [
+            "vaultID": creation.target.vaultID.uuidString,
+            "relativePath": creation.target.relativePath,
+        ]
+        #expect(throws: ResearchAgentStartContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchAgentStartRequest.self,
+                from: JSONSerialization.data(withJSONObject: camelCaseTarget)
             )
         }
     }

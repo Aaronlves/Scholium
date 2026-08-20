@@ -105,6 +105,11 @@ a replacement, and copies it while retaining the same Run and recovery state.
 The Agent enters the code through CLI standard input. An Agent-originated
 `agent start` request uses the same Application preparation path and returns a
 protected Session directly; it does not create or consume a Pairing Code.
+For `new_analysis`, a deterministic digest of the complete current request owns
+the reserved Note and Run identities. Exact replay reopens only that identity
+and Run, while a changed payload cannot claim the committed path. The managed
+creator's source/identity readback queues the sole derived refresh; direct start
+awaits that owner rather than racing a second Workspace generation.
 Both routes use the loopback-only framed bridge and the same authenticated
 Context, Discuss-turn, write, Result, End, conflict, and recovery owners. A
 Discuss-turn request uses the same authenticated Session and appends only to
@@ -195,8 +200,8 @@ complete outer envelope before it writes a frame.
 Continue Result schema 3 and authenticated Run Context schema 6 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 15 persists active child handoff and independent
-Zotero-binding write state. Agent change evidence is keyed directly by
+Execution schema 16 persists the frozen Analyze source route, active child
+handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
 Context schema 6 also carries one optional typed Zotero Integration Adapter containing
 the exact release-managed System Skill and capability contract. Application
@@ -309,14 +314,15 @@ closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
 
-`PortableResearchRecordStore` owns strict schema-10 Records, including the
-frozen Record Title, exact source-byte fingerprints, and researcher-owned
+`PortableResearchRecordStore` owns strict schema-11 Records, including the
+frozen Record Title, explicit Analyze source route, exact source-byte
+fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
 the single cumulative portable Note Review boundary. Analyze recommendation
 mutation and atomic Response replacement use one revision-safe replacement
 primitive under portable coordination and lock, distinguish pre-commit refusal
 from post-commit uncertainty, and read back before success. Record schemas 1
-through 8 have no decoder or mutation route; their bytes remain
+through 10 have no decoder or mutation route; their bytes remain
 untouched and nonauthorizing when encountered.
 
 `saveResearcherResponse` uses exact Record ID, expected Evaluation revision,
@@ -359,8 +365,8 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-15 Local Execution, exact
-schema-10 Record reads, and schema-1 Note Reviews. The projections
+`noteReviewStates`, and `resultArrivals` from schema-16 Local Execution, exact
+schema-11 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, source bytes, prompts,
@@ -461,7 +467,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-15
+the one current `methodImprovementRun` in its parent Local Execution schema-16
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every
@@ -507,9 +513,13 @@ attachment relationship or absent source selection uses the external route.
 Zotero
 bibliographic metadata is read once per Run, labelled as metadata, and never
 substitutes for source content; a resumed Run uses its frozen snapshot and a
-new Run reads again. Completion accepts either a current Scholium source
-reference or the frozen Zotero context, while the external Agent remains
-responsible for reporting the exact paper data it actually retrieved.
+new Run reads again. `ResearchFunctionSnapshot` freezes exactly one Analyze
+route: current Scholium source, external Zotero, or `researcher_provided`.
+Completion revalidates the first, requires the frozen context for the second,
+and accepts the third only while both source reference and Zotero context remain
+absent. Schema-11 Records retain that route without fabricating a source claim;
+the external Agent remains responsible for reporting the exact paper data it
+actually retrieved and every access limitation.
 
 Check Fidelity remains a read-only exact-revision Action. Multi-document writes
 may request separate checks for each final revision, but no check collapses
@@ -526,4 +536,7 @@ CLI decodes Contracts, invokes the same Application capabilities, and encodes
 canonical Run/Context/write/result families. Secrets arrive only through
 hidden local input and never shell arguments. CLI owns no eligibility, method
 routing, parser/ranker, write set, repository transaction, Record schema, or
-shell command string.
+shell command string. Agent-start target JSON has one versioned snake-case wire
+shape. A UUID Triptych identity needs no CLI-side registry lookup; Application
+still authorizes it through the bridge. The protected credential store creates
+and validates its current-user-only parent and session directories on first use.

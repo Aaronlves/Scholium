@@ -405,6 +405,9 @@ public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
     case invalidRequest = "invalid_request"
     case unsupportedVersion = "unsupported_version"
     case permissionDenied = "permission_denied"
+    case sessionExpired = "session_expired"
+    case staleProjection = "stale_projection"
+    case missingSourceEvidence = "missing_source_evidence"
     case timeout
     case outcomeUnknown = "outcome_unknown"
     case operationFailed = "operation_failed"
@@ -441,7 +444,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 14
+    public static let currentSchemaVersion = 15
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -1153,9 +1156,16 @@ enum LocalAgentBridgeWireCoding {
         case LocalAgentBridgeError.unavailable:
             code = .unavailable
         case LocalAgentBridgeError.permissionDenied,
-             ResearchAgentSessionError.sessionRejected,
              ResearchAgentSessionError.pairingRejected:
             code = .permissionDenied
+        case ResearchAgentSessionError.sessionRejected:
+            code = .sessionExpired
+        case ScholiumApplicationError.operationCommittedButRefreshFailed,
+             ScholiumApplicationError.workspaceStillLoading:
+            code = .staleProjection
+        case ResearchFunctionContractError.sourceAccessUnavailable(let failure)
+            where failure.code == .missingBinding:
+            code = .missingSourceEvidence
         case LocalAgentBridgeError.timeout: code = .timeout
         case LocalAgentBridgeError.outcomeUnknown: code = .outcomeUnknown
         case LocalAgentBridgeError.unsupportedVersion(_): code = .unsupportedVersion
@@ -1173,6 +1183,12 @@ enum LocalAgentBridgeWireCoding {
         case .invalidRequest: "The bridge request was invalid."
         case .unsupportedVersion: "The bridge schema version is unsupported."
         case .permissionDenied: "The bridge request was not authorized."
+        case .sessionExpired:
+            "The Connection Session expired or was revoked. In Scholium, copy a new handoff for the unfinished Run, then pair again with the returned Run locator."
+        case .staleProjection:
+            "Authoritative state may already be committed, but the Workspace projection is stale. Do not create or write again; reload, then retry only the exact same idempotent request when instructed."
+        case .missingSourceEvidence:
+            "Analyze has no valid frozen source route. Provide a current Scholium source, a bound Zotero route, or explicitly start with source_route=researcher_provided."
         case .timeout: "The bridge operation timed out."
         case .outcomeUnknown:
             "The Agent request outcome is unknown. Query the same request ID before retrying."

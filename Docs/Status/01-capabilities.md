@@ -111,7 +111,10 @@
   Pairing Code for the installed CLI. The CLI also exposes `agent start`, which
   resolves a selected Triptych and current Analysis/Action directly, stores a
   process-bound Session credential locally, and requires no Pairing Code.
-  Both routes use the same protected Session for subsequent operations.
+  A UUID selector goes directly to Application validation without a CLI-side
+  registry lookup. First use creates and validates the current-user-only CLI
+  home and Session directory. Both routes use the same protected Session for
+  subsequent operations.
 - `agent start` additionally accepts the strict Analyze-only `new_analysis`
   shape. It supplies one exact path and typed Analysis creation metadata, with
   either an explicit Zotero library/item relationship or the
@@ -121,6 +124,15 @@
   Run. The researcher-provided route carries no local-file path or source bytes
   through Scholium and performs no title/keyword merge; the same explicit route
   is available when starting Analyze from an existing Analysis.
+  The complete request owns deterministic reserved Note and Run identities:
+  exact replay resumes the same unfinished Run with a replacement Session,
+  while changed input cannot reuse the committed path. A stale derived
+  projection preserves the source/identity commit and returns a structured
+  non-duplication recovery result.
+- Bridge failures distinguish stale projection, missing source evidence,
+  expired Session, permission refusal, timeout, and outcome unknown. App
+  restart still invalidates Session authority; Copy New Handoff re-pairs the
+  unchanged unfinished Run instead of persisting a bearer credential.
 - Research Context composes current Search, exact Note reads, direct Relations,
   Properties, Records, the current Run's explicitly selected path-free source
   Material and frozen Zotero bibliographic snapshot, and explicitly proven
@@ -147,8 +159,9 @@
   identity that would be removed, or moved, changed, or unreadable state stops
   for separate researcher resolution.
 - The `agent start` `new_analysis` route is a bounded creation preflight before
-  the ordinary Analyze Run rather than a second parallel Run lifecycle. A
-  repeated exact path is rejected once its portable identity exists; the
+  the ordinary Analyze Run rather than a second parallel Run lifecycle. An
+  unrelated or changed request is rejected once the path has a portable
+  identity; exact request replay resumes that identity and Run. The
   route does not claim a Run-bound `create_note` Record mutation for that
   preflight. External packaged-Agent, restart, conflict/recovery, and source-
   fidelity trials remain open.
@@ -177,9 +190,11 @@
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-10 Records. One cumulative schema-1 portable Note Review per Note owns
+  schema-11 Records. Analyze Records retain one explicit Scholium-source,
+  external-Zotero, or researcher-provided route without inventing source
+  evidence. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-10 Records reject schemas 1 through 9 rather than migrating them. Credentials,
+  Schema-11 Records reject schemas 1 through 10 rather than migrating them. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected
@@ -190,7 +205,7 @@
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.
-- Once a portable Record exists, schema-15 Local Execution compacts to a
+- Once a portable Record exists, schema-16 Local Execution compacts to a
   terminal receipt and deletes its prepared instructions, Bounded Write Set,
   extensions, write ledgers, and conflict rows. Diff and direct Undo use the
   portable Record plus `(Run ID, Note ID)` Agent evidence instead.

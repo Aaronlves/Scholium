@@ -181,6 +181,21 @@ visual acceptance.
 
 ## Focused Agent-inheritance evidence
 
+On 2026-08-21, the external Analyze handoff repair passed 40 focused Contracts
+tests, 39 Core storage and Search tests, 101 Application and bridge tests, and
+2 executable standalone-CLI lifecycles with Xcode 27 beta and Swift 6.4. The
+fixtures prove the strict snake-case Agent-start target, first-use CLI Session
+directory creation and modes, an explicit `researcher_provided` source route
+through completion and portable Record schema 11, exact `new_analysis` replay
+without duplicate Notes or Runs, committed-source projection repair after a
+post-commit refresh failure, structured safe bridge errors, and re-pairing the
+same unfinished Run after an App-process restart. A Debug CLI build and the
+documentation-authority validator also passed. This is disposable-fixture and
+local executable evidence; it does not prove a packaged clean-account Agent
+journey, real-vault use, or human acceptance. The complete repository gate was
+not used because unrelated in-progress toolbar changes are present in this
+worktree and would enter that evidence boundary.
+
 On 2026-08-20, the project Skill-discovery cutover passed 26 focused tests:
 13 Core, 2 Contracts, 4 Application-boundary, and 7 App/bootstrap tests with
 Xcode 27 beta and Swift 6.4. The fixtures cover the strict source-manifest

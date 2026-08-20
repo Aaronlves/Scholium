@@ -5,6 +5,65 @@ import Testing
 
 @Suite("Process-bound Research Agent sessions", .serialized)
 struct ResearchAgentSessionAuthorityTests {
+    @Test("App restart invalidates the old Session while an unfinished Run can be handed off again")
+    func unfinishedRunRepairsAfterRestart() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let firstRuntime = fixture.runtime()
+        let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
+        let target = try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: firstHandle
+        )
+        let helpers = ResearchFunctionOperationsTests()
+        let preparation = try await firstHandle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: firstHandle,
+                actionID: .synthesize,
+                target: helpers.actionNote(target)
+            )
+        )
+        let firstHandoff = try await firstHandle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let firstCredential = try await firstHandle.research.pairAgent(
+            run: firstHandoff.run,
+            pairingCode: firstHandoff.pairingCode
+        )
+        await firstRuntime.shutdown()
+
+        let restartedRuntime = fixture.runtime()
+        let restartedHandle = try await restartedRuntime.openWorkspace(
+            id: fixture.assignment.id
+        )
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await restartedHandle.research.authenticatedAgentContext(
+                credential: firstCredential,
+                run: firstHandoff.run
+            )
+        }
+
+        let replacement = try await restartedHandle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let replacementCredential = try await restartedHandle.research.pairAgent(
+            run: replacement.run,
+            pairingCode: replacement.pairingCode
+        )
+        let context = try await restartedHandle.research.authenticatedAgentContext(
+            credential: replacementCredential,
+            run: replacement.run
+        )
+        #expect(context.brief.actionID == .synthesize)
+        #expect(context.brief.initialObjectRole == .topic)
+        _ = try await restartedRuntime.endResearchAgentRun(
+            credential: replacementCredential,
+            run: replacement.run
+        )
+        await restartedRuntime.shutdown()
+    }
+
     @Test("Authenticated reload returns the frozen Method and Result Contract after one complete Agent handoff")
     func authenticatedRunContext() async throws {
         let fixture = try await ResearchFixture.make()

@@ -49,13 +49,15 @@ extension WorkspaceHandle {
 
     func prepareResearchAction(
         _ request: ResearchActionExecutionRequest,
-        allowsResearcherProvidedSource: Bool = false
+        allowsResearcherProvidedSource: Bool = false,
+        runIDOverride: UUID? = nil
     ) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
         let resolved = try await resolvedResearchActionExecution(request)
         let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
             resolved.request,
             actionContext: resolved.context,
+            runIDOverride: runIDOverride,
             requiresAgentChangeEvidence:
                 !resolved.context.authority.writableNotes.isEmpty,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource,

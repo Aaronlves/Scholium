@@ -1,5 +1,39 @@
 import Foundation
 
+/// The Agent-start wire shape is deliberately independent of Swift property
+/// spelling. Other internal and portable contracts retain their own versions;
+/// this adapter owns only the documented `agent start` JSON boundary.
+private struct ResearchAgentStartWireNoteID: Codable {
+    let value: VaultQualifiedNoteID
+
+    init(_ value: VaultQualifiedNoteID) {
+        self.value = value
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case vaultID = "vault_id"
+        case relativePath = "relative_path"
+    }
+
+    init(from decoder: Decoder) throws {
+        try ResearchAgentStartCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = VaultQualifiedNoteID(
+            vaultID: try container.decode(UUID.self, forKey: .vaultID),
+            relativePath: try container.decode(String.self, forKey: .relativePath)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(value.vaultID, forKey: .vaultID)
+        try container.encode(value.relativePath, forKey: .relativePath)
+    }
+}
+
 public struct ResearchRunLocator: RawRepresentable, Codable, Hashable, Sendable {
     public let rawValue: String
 
@@ -67,7 +101,7 @@ public enum ResearchAgentSourceRoute: String, Codable, Hashable, Sendable {
 /// the new stable identity, Settings revision, seed composition, and the
 /// subsequent Analyze preparation.
 public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     /// Retried delivery of one start request must retain this UUID. It is
@@ -116,13 +150,25 @@ public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
         }
         try self.init(
             requestID: container.decode(UUID.self, forKey: .requestID),
-            target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
+            target: container.decode(
+                ResearchAgentStartWireNoteID.self,
+                forKey: .target
+            ).value,
             metadata: container.decode(AnalysisCreationMetadata.self, forKey: .metadata),
             source: container.decodeIfPresent(
                 ResearchAgentNewAnalysisSource.self,
                 forKey: .source
             )
         )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(requestID, forKey: .requestID)
+        try container.encode(ResearchAgentStartWireNoteID(target), forKey: .target)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encodeIfPresent(source, forKey: .source)
     }
 
     private static func validRelativePath(_ value: String) -> Bool {
@@ -145,7 +191,7 @@ public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
 /// current Note identity, Action Profile, Method, and revision after receiving
 /// this request; the request never carries a write grant or source bytes.
 public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID
@@ -247,9 +293,9 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         try self.init(
             actionID: container.decode(ResearchActionID.self, forKey: .actionID),
             target: container.decodeIfPresent(
-                VaultQualifiedNoteID.self,
+                ResearchAgentStartWireNoteID.self,
                 forKey: .target
-            ),
+            )?.value,
             newAnalysis: container.decodeIfPresent(
                 ResearchAgentNewAnalysisRequest.self,
                 forKey: .newAnalysis
@@ -263,6 +309,19 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
                 forKey: .academicPurpose
             )
         )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(actionID, forKey: .actionID)
+        try container.encodeIfPresent(
+            target.map(ResearchAgentStartWireNoteID.init),
+            forKey: .target
+        )
+        try container.encodeIfPresent(newAnalysis, forKey: .newAnalysis)
+        try container.encodeIfPresent(sourceRoute, forKey: .sourceRoute)
+        try container.encodeIfPresent(academicPurpose, forKey: .academicPurpose)
     }
 }
 
@@ -757,6 +816,27 @@ private enum ResearchAgentConnectionCoding {
         let allowedNames = Set(Key.allCases.map(\.stringValue))
         guard raw.allKeys.allSatisfy({ allowedNames.contains($0.stringValue) }) else {
             throw error
+        }
+    }
+
+    private struct AnyCodingKey: CodingKey {
+        let stringValue: String
+        let intValue: Int? = nil
+
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
+}
+
+private enum ResearchAgentStartCoding {
+    static func rejectUnknownFields<Key: CodingKey & CaseIterable>(
+        in decoder: Decoder,
+        allowed: Key.Type
+    ) throws {
+        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
+        let allowedNames = Set(Key.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowedNames.contains($0.stringValue) }) else {
+            throw ResearchAgentStartContractError.invalidRequest
         }
     }
 

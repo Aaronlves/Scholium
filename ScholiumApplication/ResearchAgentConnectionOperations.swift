@@ -227,7 +227,8 @@ extension ResearchOperations {
 
 extension WorkspaceHandle {
     func startResearchAgentRun(
-        _ request: ResearchAgentStartRequest
+        _ request: ResearchAgentStartRequest,
+        runIDOverride: UUID? = nil
     ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
         try requireCompleteWorkspace()
         guard let requestedTarget = request.target,
@@ -286,7 +287,8 @@ extension WorkspaceHandle {
         )
         let preparation = try await prepareResearchAction(
             execution,
-            allowsResearcherProvidedSource: allowsResearcherProvidedSource
+            allowsResearcherProvidedSource: allowsResearcherProvidedSource,
+            runIDOverride: runIDOverride
         )
         guard [ResearchActionRunState.prepared, .awaitingFidelity]
             .contains(preparation.state) else {
@@ -318,12 +320,30 @@ extension WorkspaceHandle {
         }
 
         let settings = try await researchAgentConnectionDependencies.controlStore.settings()
-        let reservedIdentity = Self.agentStartStableIdentity(
-            triptychID: self.id,
-            requestID: creation.requestID,
-            target: creation.target,
-            settingsRevision: settings.revision
+        let reservedIdentity = try Self.agentStartDeterministicID(
+            namespace: "agent-start-new-analysis",
+            request: request
         )
+        let runID = try Self.agentStartDeterministicID(
+            namespace: "agent-start-run",
+            request: request
+        )
+
+        if let existingRun = try await researchAgentConnectionDependencies
+            .localResearchExecutionStore.recordIfPresent(id: runID) {
+            let expectedRoute: ResearchAnalysisSourceRoute = creation.source == nil
+                ? .researcherProvided
+                : .externalZotero
+            guard existingRun.snapshot.runID == runID,
+                  existingRun.snapshot.actionSnapshot?.actionID == .analyze,
+                  existingRun.snapshot.request.target.note == creation.target,
+                  existingRun.snapshot.analysisSourceRoute == expectedRoute,
+                  let target = existingRun.snapshot.actionSnapshot?.target else {
+                throw ResearchActionExecutionContractError.staleResolution
+            }
+            return (try await researchActionRun(id: runID), target)
+        }
+
         let managedRequest = try ManagedNoteCreationRequest(
             vaultID: creation.target.vaultID,
             destination: .exact(relativePath: creation.target.relativePath),
@@ -333,16 +353,45 @@ extension WorkspaceHandle {
                 reservedIdentity: reservedIdentity
             )
         )
-        let created = try await createManagedNote(managedRequest)
-        guard created.committedValue.id == creation.target,
-              created.committedValue.stableIdentity.resolvedID == reservedIdentity else {
+        let commit: WorkspaceManagedNoteCommit
+        if let existingIdentity = try await researchAgentConnectionDependencies
+            .controlStore.identityRecord(
+                vaultID: creation.target.vaultID,
+                relativePath: creation.target.relativePath
+            ) {
+            guard existingIdentity.id == reservedIdentity else {
+                throw DocumentCreationError.portableIdentityAlreadyExists
+            }
+            let existingDocument = try await repository(
+                vaultID: creation.target.vaultID
+            ).load(relativePath: creation.target.relativePath)
+            guard existingIdentity.fingerprint == existingDocument.fingerprint else {
+                throw ResearchActionExecutionContractError.staleResolution
+            }
+            commit = WorkspaceManagedNoteCommit(
+                id: creation.target,
+                vaultRole: .sourceCorpus,
+                stableIdentity: .resolved(reservedIdentity),
+                document: existingDocument
+            )
+        } else {
+            commit = try await createManagedNote(managedRequest).committedValue
+        }
+        guard commit.id == creation.target,
+              commit.stableIdentity.resolvedID == reservedIdentity else {
             throw ResearchActionExecutionContractError.staleResolution
         }
 
-        // Creation publishes a source-ahead identity before the next complete
-        // snapshot is available. Resolve the newly created target through the
-        // same refresh boundary used by the ordinary Note lifecycle.
-        _ = try await refresh()
+        // Creation already queued the one Workspace-owned refresh. Await that
+        // owner instead of racing it with another generation. A failed
+        // projection remains a committed-but-stale result, and an exact retry
+        // resumes from the deterministic identity above without creating a
+        // duplicate Note.
+        _ = try await awaitCommittedSourceProjection(
+            id: creation.target,
+            stableIdentity: reservedIdentity,
+            fingerprint: commit.document.fingerprint
+        )
 
         if let source = creation.source {
             let bindings = try await researchAgentConnectionDependencies.controlStore.zoteroBindings()
@@ -366,24 +415,21 @@ extension WorkspaceHandle {
             academicPurpose: request.academicPurpose,
             sourceRoute: creation.source == nil ? .researcherProvided : nil
         )
-        return try await startResearchAgentRun(existingTargetRequest)
+        return try await startResearchAgentRun(
+            existingTargetRequest,
+            runIDOverride: runID
+        )
     }
 
-    private static func agentStartStableIdentity(
-        triptychID: UUID,
-        requestID: UUID,
-        target: VaultQualifiedNoteID,
-        settingsRevision: SettingsRevision
-    ) -> UUID {
-        let material = [
-            triptychID.uuidString.lowercased(),
-            "agent-start-new-analysis",
-            requestID.uuidString.lowercased(),
-            target.vaultID.uuidString.lowercased(),
-            target.relativePath,
-            settingsRevision.fingerprint.sha256,
-        ].joined(separator: ":")
-        let digest = DocumentFingerprint(content: material).sha256
+    private static func agentStartDeterministicID(
+        namespace: String,
+        request: ResearchAgentStartRequest
+    ) throws -> UUID {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        var material = Data((namespace + "\u{0}").utf8)
+        material.append(try encoder.encode(request))
+        let digest = DocumentFingerprint(data: material).sha256
         let value = [
             String(digest.prefix(8)),
             String(digest.dropFirst(8).prefix(4)),

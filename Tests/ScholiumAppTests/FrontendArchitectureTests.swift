@@ -1074,7 +1074,7 @@ struct FrontendArchitectureTests {
         ])
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
-        #expect(toolbarSource.contains("NSMenuToolbarItem(itemIdentifier:"))
+        #expect(toolbarSource.contains("button.setAccessibilityRole(.popUpButton)"))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
         #expect(appSource.contains("@ObservedObject private var commandObservation"))
         #expect(!toolbarSource.contains("window?.title ="))
@@ -3574,6 +3574,7 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
         #expect(!splitSource.contains("NSBackgroundExtensionView"))
         #expect(toolbarSource.contains("item.isBordered = false"))
+        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = true"))
     }
 
     @Test("Native and WebKit color roles use one semantic vocabulary")
