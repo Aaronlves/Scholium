@@ -2,6 +2,23 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct WorkspaceResearchMethodImprovementDependencies: Sendable {
+    let portableResearchRecordStore: PortableResearchRecordStore
+    let localResearchExecutionStore: LocalResearchExecutionStore
+    let researchAgentSessions: ResearchAgentSessionAuthority?
+}
+
+extension WorkspaceServices {
+    var researchMethodImprovementDependencies:
+        WorkspaceResearchMethodImprovementDependencies {
+        WorkspaceResearchMethodImprovementDependencies(
+            portableResearchRecordStore: portableResearchRecordStore,
+            localResearchExecutionStore: localResearchExecutionStore,
+            researchAgentSessions: researchAgentSessions
+        )
+    }
+}
+
 extension WorkspaceRuntime {
     public func researchMethodImprovementContext(
         credential: ResearchConnectionCredential,
@@ -91,7 +108,7 @@ extension WorkspaceHandle {
         validity: TimeInterval
     ) async throws -> ResearchAgentHandoff {
         try requireActive()
-        let portable = try await services.portableResearchRecordStore.record(
+        let portable = try await researchMethodImprovementDependencies.portableResearchRecordStore.record(
             id: recordID
         )
         guard let comment = portable.methodFeedbackComment,
@@ -100,7 +117,7 @@ extension WorkspaceHandle {
             throw ResearchMethodImprovementError.runUnavailable
         }
         let resultFingerprint = try portable.finalizedResultFingerprint()
-        let parent = try await services.localResearchExecutionStore.record(
+        let parent = try await researchMethodImprovementDependencies.localResearchExecutionStore.record(
             id: recordID
         )
         guard parent.completion.map({
@@ -140,7 +157,7 @@ extension WorkspaceHandle {
             improvement = try ResearchMethodImprovementRun(
                 id: runID,
                 parentRecordID: recordID,
-                triptychID: services.manifest.id,
+                triptychID: self.id,
                 registrationKey: methodReference.registrationKey,
                 actionID: actionID,
                 method: method,
@@ -150,17 +167,17 @@ extension WorkspaceHandle {
             )
             if let previous = parent.methodImprovementRun,
                previous.id != runID {
-                await services.researchAgentSessions?.revokeRun(previous.id)
+                await researchMethodImprovementDependencies.researchAgentSessions?.revokeRun(previous.id)
             }
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchMethodImprovementDependencies.localResearchExecutionStore
                 .installMethodImprovement(improvement)
         }
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchMethodImprovementDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         return try await sessions.issuePairing(
             runID: improvement.id,
-            triptychID: services.manifest.id,
+            triptychID: self.id,
             canWrite: true,
             validity: validity
         )
@@ -171,7 +188,7 @@ extension WorkspaceHandle {
         run: ResearchRunLocator
     ) async throws -> ResearchMethodImprovementContext {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchMethodImprovementDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -181,12 +198,12 @@ extension WorkspaceHandle {
             claimCoreProtocol: false,
             allowFinalized: true
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        let improvement = try await services.localResearchExecutionStore
+        let improvement = try await researchMethodImprovementDependencies.localResearchExecutionStore
             .methodImprovement(id: authenticated.runID)
-        guard improvement.triptychID == services.manifest.id,
+        guard improvement.triptychID == self.id,
               improvement.state == .prepared || improvement.state == .writing
         else { throw ResearchMethodImprovementError.runUnavailable }
         try await validateCurrentMethodImprovementOwners(improvement)
@@ -202,7 +219,7 @@ extension WorkspaceHandle {
         submission: ResearchMethodImprovementSubmission
     ) async throws -> ResearchMethodImprovementReceipt {
         try requireActive()
-        guard let sessions = services.researchAgentSessions else {
+        guard let sessions = researchMethodImprovementDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
         let authenticated = try await sessions.authenticate(
@@ -212,10 +229,10 @@ extension WorkspaceHandle {
             claimCoreProtocol: false,
             allowFinalized: true
         )
-        guard authenticated.triptychID == services.manifest.id else {
+        guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        var improvement = try await services.localResearchExecutionStore
+        var improvement = try await researchMethodImprovementDependencies.localResearchExecutionStore
             .methodImprovement(id: authenticated.runID)
         let fingerprint = try submission.contentFingerprint()
         if improvement.state == .completed {
@@ -271,13 +288,13 @@ extension WorkspaceHandle {
                intendedRevision == submission.expectedTargetRevision {
                 throw ResearchMethodImprovementError.invalidContract
             }
-            _ = try await services.localResearchExecutionStore
+            _ = try await researchMethodImprovementDependencies.localResearchExecutionStore
                 .beginMethodImprovement(
                     runID: improvement.id,
                     submission: submission,
                     submissionFingerprint: fingerprint
                 )
-            improvement = try await services.localResearchExecutionStore
+            improvement = try await researchMethodImprovementDependencies.localResearchExecutionStore
                 .methodImprovement(id: improvement.id)
             portableState = try await methodImprovementRecordState(improvement)
             currentMethod = try await currentResearchMethod(
@@ -289,14 +306,14 @@ extension WorkspaceHandle {
             )
             if portableState.feedback != .current,
                currentTarget.revision == submission.expectedTargetRevision {
-                _ = try await services.localResearchExecutionStore
+                _ = try await researchMethodImprovementDependencies.localResearchExecutionStore
                     .cancelMethodImprovement(runID: improvement.id)
                 await sessions.revokeRun(improvement.id)
                 throw ResearchMethodImprovementError.feedbackChanged
             }
             if currentTarget.revision != submission.expectedTargetRevision,
                currentTarget.revision != intendedRevision {
-                _ = try await services.localResearchExecutionStore
+                _ = try await researchMethodImprovementDependencies.localResearchExecutionStore
                     .cancelMethodImprovement(runID: improvement.id)
                 await sessions.revokeRun(improvement.id)
                 throw ResearchMethodImprovementError.methodChanged
@@ -362,7 +379,7 @@ extension WorkspaceHandle {
             feedbackCleared = false
         case .current:
             do {
-                _ = try await services.portableResearchRecordStore
+                _ = try await researchMethodImprovementDependencies.portableResearchRecordStore
                     .saveResearcherResponse(
                         try ResearcherResponseDraft(
                             evaluation: try portable.researcherEvaluation.map(
@@ -393,7 +410,7 @@ extension WorkspaceHandle {
             feedbackCleared: feedbackCleared,
             diagnosis: submission.diagnosis
         )
-        _ = try await services.localResearchExecutionStore
+        _ = try await researchMethodImprovementDependencies.localResearchExecutionStore
             .completeMethodImprovement(
                 runID: improvement.id,
                 submissionFingerprint: fingerprint,
@@ -429,7 +446,7 @@ extension WorkspaceHandle {
         record: PortableResearchRecord,
         feedback: MethodFeedbackCurrentness
     ) {
-        let record = try await services.portableResearchRecordStore.record(
+        let record = try await researchMethodImprovementDependencies.portableResearchRecordStore.record(
             id: improvement.parentRecordID
         )
         guard record.method?.registrationKey == improvement.registrationKey,

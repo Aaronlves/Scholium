@@ -382,6 +382,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         WorkspaceResearchBoundedWriteDependencies
     let researchAgentDiscussionDependencies:
         WorkspaceResearchAgentDiscussionDependencies
+    let researchMethodImprovementDependencies:
+        WorkspaceResearchMethodImprovementDependencies
     let researchFunctionCoordinator: ResearchFunctionCoordinator
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
@@ -491,6 +493,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.researchWorkspaceDependencies = services.researchWorkspaceDependencies
         self.researchBoundedWriteDependencies = services.researchBoundedWriteDependencies
         self.researchAgentDiscussionDependencies = services.researchAgentDiscussionDependencies
+        self.researchMethodImprovementDependencies = services.researchMethodImprovementDependencies
         self.researchFunctionCoordinator = researchFunctionCoordinator
         self.leases = leases
         currentSnapshot = initialSnapshot

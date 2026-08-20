@@ -630,6 +630,44 @@ struct ArchitectureBoundaryTests {
         ))
     }
 
+    @Test("Method improvement operations use a bounded dependency bundle")
+    func researchMethodImprovementDependencyBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+        let improvement = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "ResearchMethodImprovementOperations.swift"
+            ),
+            encoding: .utf8
+        )
+        let handle = try String(
+            contentsOf: applicationRoot.appendingPathComponent(
+                "WorkspaceHandle.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(improvement.contains(
+            "struct WorkspaceResearchMethodImprovementDependencies"
+        ))
+        #expect(improvement.contains(
+            "researchMethodImprovementDependencies"
+        ))
+        #expect(!improvement.contains("services."))
+        #expect(handle.contains(
+            "let researchMethodImprovementDependencies:"
+        ))
+        #expect(handle.contains(
+            "services.researchMethodImprovementDependencies"
+        ))
+    }
+
     @Test("Research execution lifecycle has one Workspace coordinator")
     func researchFunctionCoordinatorBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
