@@ -180,61 +180,6 @@ public enum FidelityCheck: String, Codable, CaseIterable, Hashable, Sendable {
     case citations
 }
 
-/// Decode-compatible identifiers from the retired conditional Method
-/// selector. Current Actions expose no resource-choice phase and reject every
-/// nonempty selection; these cases remain only for old machine-local payloads.
-public enum ResearchFunctionConditionalResource: String, Codable, CaseIterable, Hashable, Sendable {
-    case developmentExploration = "development_exploration"
-    case developmentSynthesis = "development_synthesis"
-    case developmentExpression = "development_expression"
-    case developmentDefinitionImpact = "development_definition_impact"
-    case revisionFeedback = "revision_feedback"
-    case revisionOutputContracts = "revision_output_contracts"
-    case manuscriptGates = "manuscript_gates"
-
-    public var kind: ResearchFunctionConditionalResourceKind {
-        switch self {
-        case .developmentExploration, .developmentSynthesis,
-             .developmentExpression, .developmentDefinitionImpact:
-            .method
-        case .revisionFeedback:
-            .method
-        case .revisionOutputContracts:
-            .template
-        case .manuscriptGates:
-            .checklist
-        }
-    }
-
-    public var function: ResearchFunctionID {
-        switch self {
-        case .developmentExploration, .developmentSynthesis,
-             .developmentExpression, .developmentDefinitionImpact:
-            .develop
-        case .revisionFeedback, .revisionOutputContracts:
-            .revise
-        case .manuscriptGates:
-            .manuscript
-        }
-    }
-}
-
-public enum ResearchFunctionConditionalResourceKind: String, Codable, Hashable, Sendable {
-    case method
-    case template
-    case checklist
-}
-
-public extension ResearchFunctionID {
-    /// The split bundled Methods are complete and adaptive. Legacy conditional
-    /// resource values remain decodable for old machine-local records, but no
-    /// current Function exposes them as a researcher or agent mode selector.
-    var conditionalResources: [ResearchFunctionConditionalResource] {
-        []
-    }
-
-}
-
 public enum ResearchFunctionRepairReasonCode: String, Codable, Hashable, Sendable {
     case targetUnavailable = "target_unavailable"
     case targetChanged = "target_changed"
@@ -396,7 +341,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     public let scope: ResearchFunctionScope?
     public let checks: Set<FidelityCheck>
     public let commentIDs: [UUID]
-    public let conditionalResources: Set<ResearchFunctionConditionalResource>?
     /// Optional request-scoped presentation modules for a read-only Discuss.
     ///
     /// Nil inherits the current Triptych default at preparation time. An
@@ -416,7 +360,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         scope: ResearchFunctionScope? = nil,
         checks: Set<FidelityCheck> = [],
         commentIDs: [UUID] = [],
-        conditionalResources: Set<ResearchFunctionConditionalResource>? = nil,
         dialogueResponseModules: [DialogueResponseModule]? = nil,
         fidelityTargets: [ResearchFunctionTarget]? = nil
     ) {
@@ -428,7 +371,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         self.scope = scope
         self.checks = checks
         self.commentIDs = commentIDs
-        self.conditionalResources = conditionalResources
         self.dialogueResponseModules = dialogueResponseModules.map { modules in
             modules.sorted { lhs, rhs in
                 let lhsIndex = DialogueResponseModule.allCases.firstIndex(of: lhs) ?? 0
@@ -447,32 +389,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         } else {
             self.fidelityTargets = fidelityTargets
         }
-    }
-
-    /// Current split Methods never wait for a secondary mode choice. Nil and
-    /// an explicit empty set remain distinguishable only for compatibility
-    /// with already-decoded machine-local records.
-    public var awaitsResourceSelection: Bool {
-        conditionalResources == nil && !function.conditionalResources.isEmpty
-    }
-
-    public func selectingResources(
-        _ resources: Set<ResearchFunctionConditionalResource>
-    ) throws -> ResearchFunctionRequest {
-        let selected = ResearchFunctionRequest(
-            function: function,
-            target: target,
-            materials: materials,
-            instruction: instruction,
-            scope: scope,
-            checks: checks,
-            commentIDs: commentIDs,
-            conditionalResources: resources,
-            dialogueResponseModules: dialogueResponseModules,
-            fidelityTargets: fidelityTargets
-        )
-        try selected.validate()
-        return selected
     }
 
     public func validate() throws {
@@ -523,11 +439,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         guard Set(commentIDs).count == commentIDs.count else {
             throw ResearchFunctionContractError.duplicateComment
         }
-        guard (conditionalResources ?? []).allSatisfy({
-            function.conditionalResources.contains($0)
-        }) else {
-            throw ResearchFunctionContractError.invalidMethodSelection
-        }
         if function == .discuss {
             if let dialogueResponseModules,
                Set(dialogueResponseModules).count != dialogueResponseModules.count {
@@ -563,7 +474,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case function, target, materials, instruction, scope, checks, commentIDs
-        case conditionalResources = "conditional_resources"
         case dialogueResponseModules
         case fidelityTargets
     }
@@ -585,10 +495,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
             scope: try container.decodeIfPresent(ResearchFunctionScope.self, forKey: .scope),
             checks: try container.decodeIfPresent(Set<FidelityCheck>.self, forKey: .checks) ?? [],
             commentIDs: try container.decodeIfPresent([UUID].self, forKey: .commentIDs) ?? [],
-            conditionalResources: try container.decodeIfPresent(
-                Set<ResearchFunctionConditionalResource>.self,
-                forKey: .conditionalResources
-            ),
             dialogueResponseModules: try container.decodeIfPresent(
                 [DialogueResponseModule].self,
                 forKey: .dialogueResponseModules
@@ -609,54 +515,12 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         try container.encodeIfPresent(scope, forKey: .scope)
         if !checks.isEmpty { try container.encode(checks, forKey: .checks) }
         if !commentIDs.isEmpty { try container.encode(commentIDs, forKey: .commentIDs) }
-        try container.encodeIfPresent(conditionalResources, forKey: .conditionalResources)
         try container.encodeIfPresent(dialogueResponseModules, forKey: .dialogueResponseModules)
         try container.encodeIfPresent(fidelityTargets, forKey: .fidelityTargets)
     }
 
     public var resolvedFidelityTargets: [ResearchFunctionTarget] {
         function == .fidelity ? (fidelityTargets ?? [target]) : []
-    }
-}
-
-/// Decode-compatible transport for retired conditional-resource preflights.
-/// No current Function produces a continuation that accepts this value.
-public struct ResearchFunctionResourceSelectionSubmission: Codable, Hashable, Sendable {
-    public let runID: UUID
-    public let confirmationToken: UUID
-    public let resources: Set<ResearchFunctionConditionalResource>
-
-    public init(
-        runID: UUID,
-        confirmationToken: UUID,
-        resources: Set<ResearchFunctionConditionalResource>
-    ) {
-        self.runID = runID
-        self.confirmationToken = confirmationToken
-        self.resources = resources
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case runID, confirmationToken, resources
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            runID: try container.decode(UUID.self, forKey: .runID),
-            confirmationToken: try container.decode(UUID.self, forKey: .confirmationToken),
-            resources: try container.decode(
-                Set<ResearchFunctionConditionalResource>.self,
-                forKey: .resources
-            )
-        )
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(runID, forKey: .runID)
-        try container.encode(confirmationToken, forKey: .confirmationToken)
-        try container.encode(resources, forKey: .resources)
     }
 }
 
@@ -904,7 +768,6 @@ public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
     public let nextActions: [AgentCommandAction]?
 
     public var runID: UUID { snapshot.runID }
-    public var awaitsResourceSelection: Bool { snapshot.request.awaitsResourceSelection }
 
     public init(
         snapshot: ResearchFunctionSnapshot,
@@ -1291,12 +1154,8 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case invalidScope
     case missingFidelityCheck
     case unexpectedFidelityCheck
-    case invalidMethodSelection
     case duplicateDialogueResponseModule
     case unexpectedDialogueResponseModules
-    case methodSelectionNotRequired(ResearchFunctionID)
-    case methodSelectionAlreadyResolved(UUID)
-    case methodSelectionRequired(UUID)
     case citationStyleUnavailable
     case emptyInstruction(ResearchFunctionID)
     case preparationNotFound(UUID)
@@ -1352,18 +1211,10 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "Fidelity requires Content, Citations, or both."
         case .unexpectedFidelityCheck:
             "Fidelity checks belong only to the Fidelity function."
-        case .invalidMethodSelection:
-            "A selected internal method does not belong to this Action."
         case .duplicateDialogueResponseModule:
             "Each optional Discuss response module may be selected only once."
         case .unexpectedDialogueResponseModules:
             "Discuss response modules belong only to the Discuss function."
-        case .methodSelectionNotRequired:
-            "This Action has no pending conditional method selection."
-        case .methodSelectionAlreadyResolved(let id):
-            "Action methods are already finalized for run \(id.uuidString)."
-        case .methodSelectionRequired(let id):
-            "Select the conditional methods, including an explicit empty selection when the primary method is sufficient, before completing run \(id.uuidString)."
         case .citationStyleUnavailable:
             "Citation checking requires an active citation style in Research Guidance."
         case .emptyInstruction:

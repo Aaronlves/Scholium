@@ -4,8 +4,8 @@ import Foundation
 import Testing
 
 extension ResearchFunctionOperationsTests {
-    @Test("Current Methods need no package-resource selection")
-    func splitMethodsNeedNoResourceSelection() async throws {
+    @Test("Current Methods prepare without package-resource selection")
+    func splitMethodsPrepareWithoutResourceSelection() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -28,7 +28,6 @@ extension ResearchFunctionOperationsTests {
                 materials: [material]
             )
         )
-        #expect(!preflight.awaitsResourceSelection)
         #expect(preflight.instructions.contains("authenticated Agent CLI"))
         #expect(preflight.instructions.contains("frozen Result Contract"))
         #expect(preflight.instructions.contains("source-grounded literature recommendations"))
@@ -162,7 +161,7 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
+            ResearchFunctionRequest(function: .develop, target: target)
         )
         let original = try await handle.documents.load(fixture.analysisID)
         let write = try await writePreparedResearchDocument(
@@ -428,7 +427,7 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis, conditionalResources: [])
+            ResearchFunctionRequest(function: .develop, target: analysis)
         )
 
         // Even matching completed manual evidence cannot be attached to an
@@ -486,7 +485,7 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
         let revise = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
+            ResearchFunctionRequest(function: .revise, target: work)
         )
         let unchangedRevise = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
@@ -533,7 +532,7 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
+            ResearchFunctionRequest(function: .develop, target: target)
         )
         let original = try await handle.documents.load(fixture.analysisID)
         _ = try await writePreparedResearchDocument(
@@ -598,7 +597,7 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
         let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
+            ResearchFunctionRequest(function: .develop, target: target)
         )
         #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
         #expect(develop.snapshot.fidelityHandoff?.checks == [.content])
@@ -805,7 +804,7 @@ extension ResearchFunctionOperationsTests {
         #expect(completion.fidelityEvidenceKey != nil)
 
         let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target, conditionalResources: [])
+            ResearchFunctionRequest(function: .develop, target: target)
         )
         #expect(develop.snapshot.fidelityHandoff?.checks == [.content, .citations])
         #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
@@ -865,8 +864,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionRequest(
                 function: .critique,
                 target: work,
-                scope: .whole,
-                conditionalResources: []
+                scope: .whole
             )
         )
         #expect(try await handle.services.localResearchExecutionStore.record(
@@ -905,8 +903,7 @@ extension ResearchFunctionOperationsTests {
             _ = try await handle.research.prepareProtectedFunction(
                 ResearchFunctionRequest(
                     function: .manuscript,
-                    target: work,
-                    conditionalResources: []
+                    target: work
                 )
             )
         }
@@ -948,7 +945,7 @@ extension ResearchFunctionOperationsTests {
         )
 
         let manuscript = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
+            ResearchFunctionRequest(function: .manuscript, target: work)
         )
         #expect(try await handle.services.localResearchExecutionStore.record(
             id: manuscript.runID
@@ -956,7 +953,7 @@ extension ResearchFunctionOperationsTests {
         #expect(manuscript.snapshot.requiredChildFunctions.isEmpty)
         #expect(!manuscript.instructions.contains("Critique, then Revise, then Fidelity"))
         let revise = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
+            ResearchFunctionRequest(function: .revise, target: work)
         )
         let workDocument = try await handle.documents.load(fixture.workID)
         _ = try await writePreparedResearchDocument(

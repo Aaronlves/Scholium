@@ -817,7 +817,6 @@ extension ResearchFunctionOperationsTests {
         #expect(!packet.contains("packageRevision"))
         #expect(!packet.contains("loadedResources"))
         #expect(packet.contains("\"profileRevision\""))
-        #expect(!preparation.awaitsResourceSelection)
         #expect(!packet.contains("## Finalize conditional resources"))
         #expect(!packet.contains("scholium action select-resources"))
         #expect(packet.contains("frozen Result Contract"))
@@ -875,8 +874,7 @@ extension ResearchFunctionOperationsTests {
                     function: .critique,
                     target: target,
                     scope: .whole,
-                    commentIDs: [callerSuppliedID],
-                    conditionalResources: []
+                    commentIDs: [callerSuppliedID]
                 )
             )
         }
@@ -884,8 +882,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionRequest(
                 function: .critique,
                 target: target,
-                scope: .whole,
-                conditionalResources: []
+                scope: .whole
             )
         )
 
@@ -937,8 +934,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionRequest(
                 function: .critique,
                 target: target,
-                scope: .passage(passage),
-                conditionalResources: []
+                scope: .passage(passage)
             )
         )
 

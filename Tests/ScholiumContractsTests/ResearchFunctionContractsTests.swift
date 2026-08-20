@@ -120,7 +120,7 @@ struct ResearchFunctionContractsTests {
         #expect(!ResearchFunctionID.fidelity.requiresAgentChangeEvidence)
     }
 
-    @Test("Requests reject duplicate Targets, invalid scopes, checks, roles, and conditional resources")
+    @Test("Requests reject duplicate Targets, invalid scopes, checks, and roles")
     func requestValidation() throws {
         let analysis = target(role: .analysis)
         let work = target(role: .work)
@@ -164,14 +164,6 @@ struct ResearchFunctionContractsTests {
                 target: analysis
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .develop,
-                target: analysis,
-                conditionalResources: [.revisionFeedback]
-            ).validate()
-        }
-
         let anchor = CommentAnchor(
             fingerprint: analysis.fingerprint,
             utf8Range: 2..<7,
@@ -183,75 +175,30 @@ struct ResearchFunctionContractsTests {
         try ResearchFunctionRequest(
             function: .develop,
             target: analysis,
-            scope: .passage(anchor),
-            conditionalResources: []
+            scope: .passage(anchor)
         ).validate()
     }
 
-    @Test("Legacy conditional resources remain decodable but are not active Method modes")
-    func legacyResourceSelectionIsInactive() throws {
+    @Test("Retired conditional-resource fields fail closed")
+    func retiredConditionalResourceFieldsAreRejected() throws {
         let target = target(role: .analysis)
-        let inherited = ResearchFunctionRequest(function: .develop, target: target)
-        let explicitEmpty = ResearchFunctionRequest(
-            function: .develop,
-            target: target,
-            conditionalResources: []
-        )
-        #expect(inherited.conditionalResources == nil)
-        #expect(explicitEmpty.conditionalResources == [])
-        #expect(!inherited.awaitsResourceSelection)
-        #expect(!explicitEmpty.awaitsResourceSelection)
-        #expect(ResearchFunctionID.develop.conditionalResources.isEmpty)
-        #expect(ResearchFunctionID.discuss.conditionalResources.isEmpty)
-        #expect(ResearchFunctionConditionalResource.developmentSynthesis.kind == .method)
-        #expect(ResearchFunctionConditionalResource.revisionOutputContracts.kind == .template)
-        #expect(ResearchFunctionConditionalResource.manuscriptGates.kind == .checklist)
-
-        #expect(throws: ResearchFunctionContractError.self) {
-            try inherited.selectingResources([.developmentSynthesis])
-        }
-
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
         let decoder = JSONDecoder()
-        let inheritedRoundTrip = try decoder.decode(
-            ResearchFunctionRequest.self,
-            from: encoder.encode(inherited)
+        var retired = try #require(
+            JSONSerialization.jsonObject(
+                with: encoder.encode(ResearchFunctionRequest(
+                    function: .develop,
+                    target: target
+                ))
+            ) as? [String: Any]
         )
-        let explicitRoundTrip = try decoder.decode(
-            ResearchFunctionRequest.self,
-            from: encoder.encode(explicitEmpty)
-        )
-        #expect(inheritedRoundTrip.conditionalResources == nil)
-        #expect(explicitRoundTrip.conditionalResources == [])
-        let legacy = ResearchFunctionRequest(
-            function: .develop,
-            target: target,
-            conditionalResources: [.developmentSynthesis]
-        )
-        let encodedRequest = String(decoding: try encoder.encode(legacy), as: UTF8.self)
-        #expect(encodedRequest.contains("conditional_resources"))
-        #expect(try decoder.decode(
-            ResearchFunctionRequest.self,
-            from: encoder.encode(legacy)
-        ) == legacy)
+        retired["conditional_resources"] = ["development_synthesis"]
         #expect(throws: ResearchFunctionContractError.self) {
-            try legacy.validate()
+            _ = try decoder.decode(
+                ResearchFunctionRequest.self,
+                from: JSONSerialization.data(withJSONObject: retired)
+            )
         }
-
-        let submission = ResearchFunctionResourceSelectionSubmission(
-            runID: UUID(),
-            confirmationToken: UUID(),
-            resources: [.developmentSynthesis]
-        )
-        #expect(try decoder.decode(
-            ResearchFunctionResourceSelectionSubmission.self,
-            from: encoder.encode(submission)
-        ) == submission)
-        let encodedSubmission = String(decoding: try encoder.encode(submission), as: UTF8.self)
-        #expect(encodedSubmission.contains("\"resources\""))
-        #expect(!encodedSubmission.contains("\"methods\""))
-
     }
 
     @Test("Discuss module selection is ordered and request scoped")
@@ -339,8 +286,7 @@ struct ResearchFunctionContractsTests {
         let topic = target(role: .topic)
         let write = ResearchFunctionRequest(
             function: .develop,
-            target: analysis,
-            conditionalResources: []
+            target: analysis
         )
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()

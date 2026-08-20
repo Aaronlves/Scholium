@@ -559,10 +559,10 @@ struct DerivedRefreshStatusTests {
         )
 
         let manuscript = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .manuscript, target: work, conditionalResources: [])
+            ResearchFunctionRequest(function: .manuscript, target: work)
         )
         let revise = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .revise, target: work, conditionalResources: [])
+            ResearchFunctionRequest(function: .revise, target: work)
         )
         try Data([0xFF, 0xFE, 0xFD]).write(to: invalidURL, options: .atomic)
 
