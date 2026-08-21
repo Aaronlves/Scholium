@@ -571,6 +571,7 @@ struct ResearchRecordBrowserModelTests {
             action: base.action,
             method: base.method,
             sourceReference: base.sourceReference,
+            analysisSourceRoute: base.analysisSourceRoute,
             participatingNotes: base.participatingNotes + [topic, tombstone],
             statements: base.statements,
             fidelityCompletion: base.fidelityCompletion,
@@ -1404,6 +1405,7 @@ struct ResearchRecordBrowserModelTests {
                 displayName: "Source.pdf",
                 fingerprint: fingerprint
             ),
+            analysisSourceRoute: .scholiumSource,
             continuationLineage: continuationLineage,
             participatingNotes: [note],
             statements: [

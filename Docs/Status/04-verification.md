@@ -181,6 +181,19 @@ visual acceptance.
 
 ## Focused Agent-inheritance evidence
 
+On 2026-08-21, the App-gate correction replaced three obsolete native-toolbar
+source assertions with checks against the current AppKit toolbar owner and
+updated the shared Research Record browser fixture plus its one Record-copy
+site to preserve schema 11's explicit Scholium-source Analysis route. The
+120-test Frontend-architecture and Research-Record-browser selection and the
+complete 652-test App target passed. The complete repository gate then passed
+documentation and shipped-resource validation; 199 Web editor tests and
+reproducible bundles; 439 Core tests plus 3 performance tests; 147 Contracts
+tests; 257 Application tests, 14 bridge tests, and 1 architecture measurement;
+all 652 App tests; the public symbol-graph guard; all 12 signed executable CLI
+lifecycles; the sandboxed App-to-standalone-CLI bridge probe; and the optimized
+Release build. No production schema validation or Agent requirement changed.
+
 On 2026-08-21, the authenticated final-Fidelity closure passed the complete
 147-test Contracts target, 257 Application tests, 14 serialized bridge tests,
 the architecture measurement, and all 12 signed standalone-CLI lifecycles.

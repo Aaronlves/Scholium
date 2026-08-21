@@ -1278,10 +1278,17 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(toolbarSource.contains("ScholiumDocumentModeToolbarButtonPresentation"))
-        #expect(toolbarSource.contains("identifier: \"scholium.documentModeButton\""))
+        #expect(
+            ScholiumWorkspaceToolbarController.Item.documentMode.rawValue
+                == "scholium.toolbar.documentMode"
+        )
         #expect(toolbarSource.contains("systemImage: presentation.symbol"))
         #expect(toolbarSource.contains("toolTip: presentation.toolTip"))
-        #expect(toolbarSource.contains("mode: documentController.chromeProjection.mode"))
+        #expect(
+            toolbarSource.contains(
+                "mode: appState.documentController.chromeProjection.mode"
+            )
+        )
         #expect(toolbarSource.contains("appState.requestDocumentMode(presentation.destination)"))
         #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
         #expect(!toolbarSource.contains("scholium.documentModeToggle"))
@@ -4847,7 +4854,11 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(toolbarSource.contains("note.workspaceSnapshot?.headings ?? []"))
+        #expect(
+            toolbarSource.contains(
+                "appState.currentNote?.workspaceSnapshot?.headings ?? []"
+            )
+        )
         #expect(!toolbarSource.contains("MarkdownSemanticDocument("))
     }
 
