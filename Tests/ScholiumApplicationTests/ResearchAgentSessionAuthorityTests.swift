@@ -765,6 +765,63 @@ struct ResearchAgentSessionAuthorityTests {
         )).runID == runID)
     }
 
+    @Test("A child attachment is atomic with an unfinished authenticated parent")
+    func childAttachmentRequiresActiveParent() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let authority = try ResearchAgentSessionAuthority(
+            random: FixedResearchRandomSource()
+        )
+        let triptychID = UUID()
+        let parentID = UUID()
+        let issued = try await authority.issueAgentSession(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            sessionValidity: 300,
+            userID: 501
+        )
+        let childID = UUID()
+        let child = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: issued.credential,
+            authorizedBy: issued.run,
+            now: now,
+            userID: 501
+        )
+        #expect((try await authority.authenticate(
+            issued.credential,
+            run: child,
+            requiresWrite: false,
+            now: now,
+            userID: 501
+        )).runID == childID)
+        #expect(try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: issued.credential,
+            authorizedBy: issued.run,
+            now: now,
+            userID: 501
+        ) == child)
+
+        await authority.finalizeRun(parentID)
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await authority.attachRun(
+                runID: UUID(),
+                triptychID: triptychID,
+                canWrite: false,
+                to: issued.credential,
+                authorizedBy: issued.run,
+                now: now,
+                userID: 501
+            )
+        }
+    }
+
     @Test("Expiry, user, Run scope, revocation, and process restart fail closed")
     func lifetimeAndScope() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)

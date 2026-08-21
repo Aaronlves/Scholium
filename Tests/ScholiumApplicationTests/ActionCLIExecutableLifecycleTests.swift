@@ -17,7 +17,7 @@ struct ActionCLIExecutableLifecycleTests {
         ).appendingPathComponent(".build/agent-help", isDirectory: true)
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
-            "start", "pair", "context", "reload", "query", "discuss-reply",
+            "start", "pair", "context", "prepare-fidelity", "reload", "query", "discuss-reply",
             "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
             "submit-result", "continue",
@@ -206,7 +206,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .pair, .query, .discussionReply, .extendWriteSet, .writeZoteroBinding,
+            case .pair, .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
                 throw LocalAgentBridgeError.invalidRequest
@@ -456,7 +456,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .query, .discussionReply, .extendWriteSet, .writeDocument, .writeZoteroBinding,
+            case .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
                 throw LocalAgentBridgeError.invalidRequest
@@ -668,7 +668,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .context, .query, .discussionReply,
+            case .context, .prepareFidelity, .query, .discussionReply,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1116,7 +1116,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
-            case .context, .query, .discussionReply, .extendWriteSet, .writeDocument,
+            case .context, .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1169,6 +1169,209 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: try encoder.encode(resultSubmission),
             contains: "Unknown command 'action complete'"
         )
+    }
+
+    @Test("The real CLI attaches a Fidelity child to the authenticated parent Session")
+    func agentFidelityChildCLI() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+
+        let parentRun = try #require(ResearchRunLocator(
+            rawValue: "fidelityparentabcdefghijk"
+        ))
+        let childRun = try #require(ResearchRunLocator(
+            rawValue: "fidelitychildabcdefghijk"
+        ))
+        let code = try #require(ResearchPairingCode(
+            rawValue: "BCDEFGHJKLMNPQR23456789A"
+        ))
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "f", count: 48)
+        )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .checkFidelity
+            }
+        )
+        let registration = try ResearchSkillRegistration(
+            actionID: .checkFidelity,
+            displayName: "Fidelity Method",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Fidelity Method\n\nKeep unavailable evidence explicit.\n",
+            practices: []
+        )
+        let resultContract = try ResearchResultContract(
+            profile: profile,
+            registrationKey: registration.key,
+            profileRevision: try profile.contentRevision()
+        )
+        let context = try ResearchAuthenticatedRunContext(
+            coreProtocol: "Scholium Core Protocol",
+            brief: ResearchRunBrief(
+                run: childRun,
+                actionID: .checkFidelity,
+                initialObjectTitle: fixture.analysisTarget.title,
+                initialObjectRole: .analysis,
+                academicPurpose: nil,
+                capabilities: ResearchRunCapabilityAvailability(
+                    search: true,
+                    read: true,
+                    relations: true,
+                    properties: true,
+                    records: true,
+                    researchState: true,
+                    zotero: false,
+                    writeInitialObject: false,
+                    extendWriteSet: false
+                )
+            ),
+            method: ResearchMethodContext(snapshot: method),
+            resultContract: resultContract,
+            fidelityContract: ResearchFidelityRunContract(
+                checks: [.content, .citations],
+                requiredUnavailableChecks: [.citations],
+                evidenceLimitation: "No formal source envelope is available."
+            ),
+            boundedWriteSet: []
+        )
+        let preparationReceipt = try ResearchAgentFidelityPreparationReceipt(
+            childRun: childRun,
+            childState: .prepared,
+            parentState: .awaitingFidelity,
+            parentRecordFormed: false,
+            message: "The read-only child is attached to the current Session."
+        )
+        let academicResults = try ResearchAcademicFieldValues(
+            rawValues: [
+                "finding": .freeText("Content checked; citations unavailable."),
+                "finding-status": .singleChoice("unable-to-verify"),
+            ],
+            definitions: resultContract.academicFields
+        )
+        let submission = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("CLI Fidelity child"),
+            academicResults: academicResults,
+            fidelityOutcomes: [
+                FidelityCheckOutcome(
+                    check: .content,
+                    state: .passed,
+                    summary: "The final revision retained the bounded content."
+                ),
+                FidelityCheckOutcome(
+                    check: .citations,
+                    state: .unavailable,
+                    summary: "No formal source envelope is available."
+                ),
+            ]
+        )
+        let resultReceipt = try ResearchAgentResultReceipt(
+            disposition: .completed,
+            state: .unverified,
+            recordFormed: true,
+            parentState: .unverified,
+            parentRecordFormed: true,
+            message: "The child and parent Records formed with explicit unverified evidence."
+        )
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .pair:
+                guard request.run == parentRun,
+                      request.pairingCode == code else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .credential(credential)
+            case .prepareFidelity:
+                guard request.run == parentRun,
+                      request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .fidelityPreparation(preparationReceipt)
+            case .context:
+                guard request.run == childRun,
+                      request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .context(context)
+            case .submitResult:
+                guard request.run == childRun,
+                      request.credential == credential,
+                      request.resultSubmission == submission else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .resultReceipt(resultReceipt)
+            case .start, .query, .discussionReply, .extendWriteSet, .writeDocument,
+                    .writeZoteroBinding, .resolveWriteConflict, .continueResearch,
+                    .methodImprovementContext, .submitMethodImprovement, .end:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        _ = try cli.run(
+            ["agent", "pair", "--run", parentRun.rawValue],
+            stdin: Data((code.rawValue + "\n").utf8),
+            environment: environment
+        )
+        let preparedOutput = try cli.run(
+            ["agent", "prepare-fidelity", "--run", parentRun.rawValue],
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchAgentFidelityPreparationReceipt.self,
+            from: preparedOutput.stdout
+        ) == preparationReceipt)
+        #expect(!String(decoding: preparedOutput.stdout, as: UTF8.self).contains(
+            credential.secret
+        ))
+        let childCredentialURL = fixture.homeURL
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent(childRun.rawValue + ".json")
+        #expect(FileManager.default.fileExists(atPath: childCredentialURL.path))
+
+        let contextOutput = try cli.run(
+            ["agent", "context", "--run", childRun.rawValue],
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchAuthenticatedRunContext.self,
+            from: contextOutput.stdout
+        ).fidelityContract?.requiredUnavailableChecks == [.citations])
+
+        let submittedOutput = try cli.run(
+            ["agent", "submit-result", "--run", childRun.rawValue, "--from", "-"],
+            stdin: try Self.encoder().encode(submission),
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchAgentResultReceipt.self,
+            from: submittedOutput.stdout
+        ) == resultReceipt)
     }
 
 
@@ -1322,7 +1525,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .context, .query, .discussionReply, .extendWriteSet, .writeDocument,
+            case .context, .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
                 throw LocalAgentBridgeError.invalidRequest

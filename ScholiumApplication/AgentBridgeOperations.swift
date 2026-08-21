@@ -61,6 +61,21 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         return context
     }
 
+    public func prepareFidelity(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential
+    ) throws -> ResearchAgentFidelityPreparationReceipt {
+        let response = try client.send(try LocalAgentBridgeRequest(
+            operation: .prepareFidelity,
+            run: run,
+            credential: credential
+        ))
+        guard let receipt = response.fidelityPreparationReceipt else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return receipt
+    }
+
     public func query(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

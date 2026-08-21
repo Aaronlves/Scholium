@@ -327,7 +327,7 @@ extension ResearchFunctionCoordinator {
         } else if request.function.requiresFinalFidelity && !usesBoundedWriteSet {
             sections += [
                 "The run is not complete after the substantive edit. First submit this run with the final Target fingerprint; it will remain Awaiting Fidelity.",
-                "Then run: scholium action prepare-fidelity \(runID.uuidString.lowercased()) --triptych \(workspaceID.uuidString.lowercased()) --format markdown. Scholium constructs or reuses the separate Content Fidelity child against the exact final Target fingerprint with the same Materials, scope kind, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). Complete that read-only child and resubmit this parent with the Fidelity run ID in childRunIDs. Do not submit Fidelity outcomes directly on this write-capable run.",
+                "Then run scholium agent prepare-fidelity --run <current-parent-locator>. Scholium constructs or reuses the separate read-only Fidelity child against the exact final Target fingerprint with the same Materials, scope kind, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). Complete the returned child locator; Scholium validates its lineage and links it back to this parent automatically. Do not submit Fidelity outcomes directly on this write-capable run or transcribe childRunIDs.",
                 "",
             ]
         }
@@ -504,9 +504,15 @@ extension ResearchFunctionCoordinator {
         let snapshot = stored.snapshot
         if snapshot.request.function == .develop,
            snapshot.request.target.role == .analysis {
+            let expectedTargetFingerprint = stored.boundedWriteSet.entries
+                .first(where: {
+                    $0.noteID == snapshot.request.target.noteID
+                })?.expectedRevision
+                ?? stored.completion?.targetFingerprint
+                ?? snapshot.request.target.fingerprint
             let target = try await validateResearchFunctionTarget(
                 snapshot.request.target,
-                expected: snapshot.request.target.fingerprint,
+                expected: expectedTargetFingerprint,
                 host: host
             )
             let source = try await validateSnapshotResearchSourceAccess(

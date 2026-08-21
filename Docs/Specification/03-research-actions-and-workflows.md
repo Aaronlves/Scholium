@@ -134,16 +134,17 @@ syntax. These owners do not replace one another or repeat the same content.
 
 ### 8.2 Agent entry, local pairing, layered delivery, and Research Context
 
-GUI preparation and Agent-originated `agent start` are both valid Run entry
-routes. GUI preparation creates an unfinished Run and offers the one-time
-Pairing Code handoff described below. `agent start` receives a selected
-Triptych, Action, target, and academic purpose through the local bridge;
-Application resolves the current target, Method, Profile, revision, and
-initial Bounded Write Set, then returns a protected Session credential to the
-CLI. Direct start requires no Pairing Code and does not wait for GUI
-preparation. Both routes create the same Run and use the same subsequent
-Context, bounded-write, Result, continuation, End, conflict, and recovery
-contracts.
+GUI preparation and Agent-originated `agent start` are valid entry routes to
+the same Run contract. GUI preparation offers the one-time Pairing Code below;
+direct start supplies Triptych, Action, target, and purpose to Application,
+which resolves current authority and returns a protected Session without a
+Pairing Code. Both routes share Context, writes, Result, continuation, End,
+conflict, and recovery. After a write Result reaches **Awaiting Fidelity**,
+authenticated `agent prepare-fidelity` prepares or reuses the child bound to
+the exact final Target, Materials, scope, and checks, then attaches its opaque
+read-only locator to the same Session. Child completion validates persisted
+lineage and advances the parent; raw UUIDs authorize nothing, and the Agent
+transcribes neither a second secret, `childRunIDs`, nor the parent Result.
 
 For a Discuss Run, the authenticated Session also exposes the frozen
 `DialogueResponseContract` and `agent discuss-reply`. That command accepts one
@@ -154,19 +155,17 @@ for an existing ID fails closed. The key does not grant Note or Property
 mutation, Finish, Result acceptance, evaluation, Undo, recovery, another Run,
 or arbitrary filesystem access.
 
-The direct Agent route accepts one Analyze-only `new_analysis` shape with an
-exact path and typed source/property payload. It names either a stable Zotero
-relationship or `source_route: researcher_provided`. Application uses the
-managed creator, current Settings revision, and reserved identity; reads back
-source and identity; establishes any Zotero relationship; then prepares the
-ordinary Run. It never infers a relationship from YAML, title, path, or
-similarity. The complete payload is the request identity. Replay resumes only
-the same unfinished Run while any current Zotero relationship still equals the
-request; a changed relationship or terminal Run refuses another write or
-Session. Source and identity commit before projection, whose failure reports
-exact-replay recovery without duplicate creation. The researcher-provided route
-may also target an existing Analysis; Scholium receives no source path or bytes,
-freezes no Zotero context, and records no source-access claim.
+The Analyze-only direct `new_analysis` shape carries one exact path, typed
+fields, and either a stable Zotero relationship or
+`source_route: researcher_provided`. Application uses the managed creator,
+current Settings revision, reserved identity, exact readback, and ordinary Run
+preparation; it infers no relationship from document content. The complete
+payload is the replay identity. Only its unfinished Run with the same current
+Zotero relationship may resume; changed or terminal state refuses a new write
+or Session. Source/identity commit precedes projection, so projection failure
+reports exact recovery without duplicate creation. The researcher-provided
+route may also target an existing Analysis but delivers Scholium no source
+path/bytes, Zotero context, or source-access claim.
 
 Direct Agent connection is local, provider-neutral, and bound to the current
 Scholium application process. The researcher deliberately copies one complete
@@ -669,11 +668,12 @@ retryable until authority and transaction outcomes are known.
    selection remains the selected Scholium source route; a Zotero attachment
    relationship or absent source selection uses the external route. The
    binding remains a data-acquisition relationship, not paper content or
-   evidence by itself. A direct Agent Run may instead declare
-   `source_route: researcher_provided`: the researcher gives a local source
-   directly to the external Agent, while Scholium receives no path or source
-   bytes and records no `sourceReference`; unavailable or ambiguous
-   researcher-provided material remains an explicit limitation.
+   evidence by itself. A direct Agent Run may declare
+   `source_route: researcher_provided`: the source stays outside Scholium,
+   which receives no path, bytes, or `sourceReference`. Missing or ambiguous
+   material remains a limitation. Without a formal revision-bound envelope,
+   Citation Fidelity is **Unable to verify**; Note YAML is not verified source
+   evidence.
 2. Use **Analyze** to create, extend, correct, clarify, reorganize, or leave
    warranted content unchanged.
 3. Analyze reconstructs before critical pressure, identifies the operative

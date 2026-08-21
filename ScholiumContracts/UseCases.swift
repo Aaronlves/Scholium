@@ -432,6 +432,10 @@ public protocol AgentBridgeUseCases: Sendable {
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential
     ) async throws -> ResearchAuthenticatedRunContext
+    func prepareFidelity(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential
+    ) async throws -> ResearchAgentFidelityPreparationReceipt
     func query(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

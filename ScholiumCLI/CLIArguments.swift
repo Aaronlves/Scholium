@@ -131,6 +131,10 @@ extension ScholiumCLI {
             ),
             "agent pair": .init(pathLength: 2, options: ["--run": .value]),
             "agent context": .init(pathLength: 2, options: ["--run": .value]),
+            "agent prepare-fidelity": .init(
+                pathLength: 2,
+                options: ["--run": .value]
+            ),
             "agent reload": .init(pathLength: 2, options: ["--run": .value]),
             "agent query": .init(
                 pathLength: 2,

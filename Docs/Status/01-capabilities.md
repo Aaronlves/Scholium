@@ -116,6 +116,11 @@
   validates the UUID directly. First use creates and validates the current-user-
   only CLI home and Session directory. Both routes use the same protected
   Session for subsequent operations.
+- After a staged write Result returns `awaiting_fidelity`, authenticated
+  `agent prepare-fidelity` prepares or reuses the exact final-revision child
+  and attaches its opaque read-only locator to the same protected Session.
+  Child Result completion validates persisted lineage, advances the parent
+  without a second parent payload, and returns typed child/parent Record state.
 - `agent start` additionally accepts the strict Analyze-only `new_analysis`
   shape. It supplies one exact path and typed Analysis creation metadata, with
   either an explicit Zotero library/item relationship or the
@@ -137,6 +142,9 @@
   evidence, expired Session, permission refusal, timeout, and outcome unknown. App
   restart still invalidates Session authority; Copy New Handoff re-pairs the
   unchanged unfinished Run instead of persisting a bearer credential.
+- Action inspection revalidates an Agent-written target against the Run-owned
+  current write/completion revision, so an expected committed write can display
+  `awaiting_fidelity`; a later unrelated external revision still fails stale.
 - Research Context composes current Search, exact Note reads, direct Relations,
   Properties, Records, the current Run's explicitly selected path-free source
   Material and frozen Zotero bibliographic snapshot, and explicitly proven
@@ -182,6 +190,11 @@
   current, changed, missing, or unavailable. Parent-Run Researcher State
   references are stripped from the child handoff; a typed flag requires the
   child to query current researcher-owned facts in its own Run scope.
+- A `researcher_provided` Fidelity child exposes the exact checks plus a typed
+  Citation constraint. Without a formal source envelope, Citation must be
+  `unavailable`; Note YAML URLs remain authored metadata. The resulting child
+  and parent form schema-11 Records with explicit unverified Fidelity rather
+  than a fabricated source claim.
 - Authenticated Discuss Runs expose their frozen Dialogue Response Contract and
   the `agent discuss-reply` command. A stable Agent statement ID makes an
   outcome-unknown retry idempotent; the route appends only an attributed Agent

@@ -864,6 +864,208 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Authenticated Fidelity child closes a researcher-provided Analyze without inventing citation evidence")
+    func researcherProvidedFidelityChildClosesParent() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let currentCitation = try await handle.research.citationMethodStatus()
+        _ = try await handle.research.activateCitationMethod(
+            selection: ResearchCitationMethodSelection(citationStyle: "apa-7"),
+            expectedConfigurationRevision: currentCitation.configurationRevision
+        )
+
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: ResearchAgentStartRequest(
+                actionID: .analyze,
+                target: fixture.analysisID,
+                sourceRoute: .researcherProvided
+            ),
+            sessionValidity: 300
+        )
+        let parentContext = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        let write = try await runtime.writeResearchDocument(
+            credential: started.credential,
+            run: started.receipt.run,
+            intent: ResearchDocumentWriteIntent(
+                requestID: UUID(),
+                role: .analysis,
+                relativePath: fixture.analysisID.relativePath,
+                content: "# Analysis\n\nAgent final revision with an authored URL declaration that is not source evidence.\n"
+            )
+        )
+        #expect(write.state == .committed)
+
+        let parentSubmission = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("Researcher-provided final revision"),
+            academicResults: ResearchAcademicFieldValues(
+                rawValues: [
+                    "source-reconstruction": .freeText(
+                        "A bounded reconstruction from the researcher-provided source."
+                    ),
+                    "coverage": .singleChoice("specified-part-only"),
+                    "reliability": .multipleChoice(["unverified"]),
+                ],
+                definitions: parentContext.resultContract.academicFields
+            ),
+            literatureRecommendations: []
+        )
+        let awaiting = try await runtime.submitResearchAgentResult(
+            credential: started.credential,
+            run: started.receipt.run,
+            submission: parentSubmission
+        )
+        #expect(awaiting.state == .awaitingFidelity)
+        #expect(!awaiting.recordFormed)
+
+        let sessions = try #require((await handle.services).researchAgentSessions)
+        let parentAuthentication = try await sessions.authenticate(
+            started.credential,
+            run: started.receipt.run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
+        let shownParent = try await handle.research.actionRun(
+            id: parentAuthentication.runID
+        )
+        #expect(shownParent.state == .awaitingFidelity)
+
+        let forgedCredential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "x", count: 48)
+        )
+        await #expect(throws: ResearchAgentSessionError.self) {
+            _ = try await runtime.prepareResearchAgentFidelity(
+                credential: forgedCredential,
+                run: started.receipt.run
+            )
+        }
+
+        let handoff = try await runtime.prepareResearchAgentFidelity(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        let childRun = try #require(handoff.childRun)
+        #expect(handoff.childState == .prepared)
+        #expect(handoff.parentState == .awaitingFidelity)
+        #expect(!handoff.parentRecordFormed)
+        let repeatedHandoff = try await runtime.prepareResearchAgentFidelity(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(repeatedHandoff.childRun == childRun)
+
+        let childContext = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: childRun
+        )
+        let fidelityContract = try #require(childContext.fidelityContract)
+        #expect(fidelityContract.checks == [.content, .citations])
+        #expect(fidelityContract.requiredUnavailableChecks == [.citations])
+        #expect(fidelityContract.evidenceLimitation?.contains("Note YAML") == true)
+
+        let fidelityAcademicResults = try ResearchAcademicFieldValues(
+            rawValues: [
+                "finding": .freeText(
+                    "Content was checked against the exact final revision; citation evidence is unavailable."
+                ),
+                "finding-status": .singleChoice("unable-to-verify"),
+            ],
+            definitions: childContext.resultContract.academicFields
+        )
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await runtime.submitResearchAgentResult(
+                credential: started.credential,
+                run: childRun,
+                submission: ResearchAgentResultSubmission(
+                    recordTitle: ResearchRecordTitle("Invalid fabricated citation check"),
+                    academicResults: fidelityAcademicResults,
+                    fidelityOutcomes: [
+                        FidelityCheckOutcome(
+                            check: .content,
+                            state: .passed,
+                            summary: "The final target revision retained the bounded reconstruction."
+                        ),
+                        FidelityCheckOutcome(
+                            check: .citations,
+                            state: .passed,
+                            summary: "The authored URL was incorrectly treated as verified source evidence."
+                        ),
+                    ]
+                )
+            )
+        }
+
+        let childReceipt = try await runtime.submitResearchAgentResult(
+            credential: started.credential,
+            run: childRun,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Exact final-revision Fidelity"),
+                academicResults: fidelityAcademicResults,
+                fidelityOutcomes: [
+                    FidelityCheckOutcome(
+                        check: .content,
+                        state: .passed,
+                        summary: "The final target revision retained the bounded reconstruction."
+                    ),
+                    FidelityCheckOutcome(
+                        check: .citations,
+                        state: .unavailable,
+                        summary: "Scholium has no formal source envelope for citation verification."
+                    ),
+                ]
+            )
+        )
+        #expect(childReceipt.state == .unverified)
+        #expect(childReceipt.recordFormed)
+        #expect(childReceipt.parentState == .unverified)
+        #expect(childReceipt.parentRecordFormed == true)
+
+        let childAuthentication = try await sessions.authenticate(
+            started.credential,
+            run: childRun,
+            requiresWrite: false,
+            claimCoreProtocol: false,
+            allowFinalized: true
+        )
+        let childRecord = try await handle.services.portableResearchRecordStore
+            .record(id: childAuthentication.runID)
+        let parentRecord = try await handle.services.portableResearchRecordStore
+            .record(id: parentAuthentication.runID)
+        #expect(childRecord.schemaVersion == 11)
+        #expect(parentRecord.schemaVersion == 11)
+        #expect(parentRecord.analysisSourceRoute == .researcherProvided)
+        #expect(parentRecord.sourceReference == nil)
+        #expect(parentRecord.fidelityCompletion == .unverified)
+        let finalizedParentExecution = try await handle.services
+            .localResearchExecutionStore.record(id: parentAuthentication.runID)
+        #expect(finalizedParentExecution.completion?.childRunIDs
+            == [childAuthentication.runID])
+        let terminalReplay = try await runtime.prepareResearchAgentFidelity(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(terminalReplay.childRun == nil)
+        #expect(terminalReplay.parentState == .unverified)
+        #expect(terminalReplay.parentRecordFormed)
+        try Data("---\ntitle: Analysis\n---\n# Analysis\n\nLater external revision.\n".utf8)
+            .write(
+                to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+                options: .atomic
+            )
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await handle.research.actionRun(
+                id: parentAuthentication.runID
+            )
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Zotero transport, missing-item, and decoding failures remain non-blocking")
     func zoteroFailuresBecomeTaskWarnings() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "meta0001")

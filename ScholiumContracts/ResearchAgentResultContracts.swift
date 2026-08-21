@@ -256,18 +256,24 @@ public enum ResearchAgentResultFinalizationState: String, Codable, Hashable, Sen
 /// fingerprints, paths, capabilities, and recovery internals remain owned by
 /// Scholium and are deliberately absent from this receipt.
 public struct ResearchAgentResultReceipt: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let disposition: ResearchAgentResultDisposition
     public let state: ResearchAgentResultFinalizationState
     public let recordFormed: Bool
+    /// Present only when completing an automatic Fidelity child also advanced
+    /// its lineage-bound parent Result.
+    public let parentState: ResearchAgentResultFinalizationState?
+    public let parentRecordFormed: Bool?
     public let message: String
 
     public init(
         disposition: ResearchAgentResultDisposition,
         state: ResearchAgentResultFinalizationState,
         recordFormed: Bool,
+        parentState: ResearchAgentResultFinalizationState? = nil,
+        parentRecordFormed: Bool? = nil,
         message: String
     ) throws {
         let message = message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -275,13 +281,20 @@ public struct ResearchAgentResultReceipt: Codable, Hashable, Sendable {
               message.utf8.count <= 1_024,
               !message.unicodeScalars.contains(where: {
                   CharacterSet.controlCharacters.contains($0)
-              }) else {
+              }),
+              (state == .awaitingFidelity) == !recordFormed,
+              (parentState == nil) == (parentRecordFormed == nil),
+              parentState.map({
+                  ($0 == .awaitingFidelity) == (parentRecordFormed == false)
+              }) ?? true else {
             throw ResearchAgentResultContractError.invalidSubmission
         }
         schemaVersion = Self.currentSchemaVersion
         self.disposition = disposition
         self.state = state
         self.recordFormed = recordFormed
+        self.parentState = parentState
+        self.parentRecordFormed = parentRecordFormed
         self.message = message
     }
 
@@ -289,6 +302,8 @@ public struct ResearchAgentResultReceipt: Codable, Hashable, Sendable {
         case schemaVersion = "schema_version"
         case disposition, state
         case recordFormed = "record_formed"
+        case parentState = "parent_state"
+        case parentRecordFormed = "parent_record_formed"
         case message
     }
 
@@ -312,6 +327,95 @@ public struct ResearchAgentResultReceipt: Codable, Hashable, Sendable {
                 forKey: .state
             ),
             recordFormed: container.decode(Bool.self, forKey: .recordFormed),
+            parentState: container.decodeIfPresent(
+                ResearchAgentResultFinalizationState.self,
+                forKey: .parentState
+            ),
+            parentRecordFormed: container.decodeIfPresent(
+                Bool.self,
+                forKey: .parentRecordFormed
+            ),
+            message: container.decode(String.self, forKey: .message)
+        )
+    }
+}
+
+/// Receipt for attaching an exact final-revision Fidelity child to the
+/// authenticated parent Session. The Session secret remains in the CLI's
+/// protected store; only the new opaque child locator crosses ordinary output.
+public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let childRun: ResearchRunLocator?
+    public let childState: ResearchActionRunState
+    public let parentState: ResearchAgentResultFinalizationState
+    public let parentRecordFormed: Bool
+    public let message: String
+
+    public init(
+        childRun: ResearchRunLocator?,
+        childState: ResearchActionRunState,
+        parentState: ResearchAgentResultFinalizationState,
+        parentRecordFormed: Bool,
+        message: String
+    ) throws {
+        let message = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let childIsActive = childState == .prepared
+        guard childIsActive == (childRun != nil),
+              childIsActive || [.complete, .unverified].contains(childState),
+              (parentState == .awaitingFidelity) == !parentRecordFormed,
+              !message.isEmpty,
+              message.utf8.count <= 1_024,
+              !message.unicodeScalars.contains(where: {
+                  CharacterSet.controlCharacters.contains($0)
+              }) else {
+            throw ResearchAgentResultContractError.invalidSubmission
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.childRun = childRun
+        self.childState = childState
+        self.parentState = parentState
+        self.parentRecordFormed = parentRecordFormed
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case childRun = "child_run"
+        case childState = "child_state"
+        case parentState = "parent_state"
+        case parentRecordFormed = "parent_record_formed"
+        case message
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentResultCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentResultContractError.unsupportedSchemaVersion
+        }
+        try self.init(
+            childRun: container.decodeIfPresent(
+                ResearchRunLocator.self,
+                forKey: .childRun
+            ),
+            childState: container.decode(
+                ResearchActionRunState.self,
+                forKey: .childState
+            ),
+            parentState: container.decode(
+                ResearchAgentResultFinalizationState.self,
+                forKey: .parentState
+            ),
+            parentRecordFormed: container.decode(
+                Bool.self,
+                forKey: .parentRecordFormed
+            ),
             message: container.decode(String.self, forKey: .message)
         )
     }

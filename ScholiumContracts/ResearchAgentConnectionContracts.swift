@@ -676,8 +676,62 @@ public struct ResearchZoteroIntegrationAdapter: Codable, Hashable, Sendable {
     }
 }
 
+/// Exact read-only Fidelity obligations delivered only inside an authenticated
+/// Run context. `requiredUnavailableChecks` is Application-established: the
+/// Agent must not convert authored Note metadata into missing source evidence.
+public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
+    public let checks: Set<FidelityCheck>
+    public let requiredUnavailableChecks: Set<FidelityCheck>
+    public let evidenceLimitation: String?
+
+    public init(
+        checks: Set<FidelityCheck>,
+        requiredUnavailableChecks: Set<FidelityCheck> = [],
+        evidenceLimitation: String? = nil
+    ) throws {
+        let limitation = evidenceLimitation?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !checks.isEmpty,
+              requiredUnavailableChecks.isSubset(of: checks),
+              requiredUnavailableChecks.isEmpty == (limitation == nil),
+              limitation?.isEmpty != true,
+              limitation?.utf8.count ?? 0 <= 2_048 else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.checks = checks
+        self.requiredUnavailableChecks = requiredUnavailableChecks
+        self.evidenceLimitation = limitation
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case checks
+        case requiredUnavailableChecks = "required_unavailable_checks"
+        case evidenceLimitation = "evidence_limitation"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentConnectionCoding.rejectUnknownFields(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            checks: container.decode(Set<FidelityCheck>.self, forKey: .checks),
+            requiredUnavailableChecks: container.decode(
+                Set<FidelityCheck>.self,
+                forKey: .requiredUnavailableChecks
+            ),
+            evidenceLimitation: container.decodeIfPresent(
+                String.self,
+                forKey: .evidenceLimitation
+            )
+        )
+    }
+}
+
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 7
+    public static let currentSchemaVersion = 8
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.
@@ -688,6 +742,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     /// snapshot contains Zotero bibliographic context.
     public let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter?
     public let resultContract: ResearchResultContract
+    /// Present only for Check Fidelity. It names the exact checks and any
+    /// check that must remain unavailable because Scholium lacks formal source
+    /// evidence for this Run.
+    public let fidelityContract: ResearchFidelityRunContract?
     /// Present only for a Discuss Run. It describes the academic response
     /// shape; the authenticated Session, not this value, authorizes the
     /// idempotent Agent turn.
@@ -705,6 +763,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         method: ResearchMethodContext,
         zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter? = nil,
         resultContract: ResearchResultContract,
+        fidelityContract: ResearchFidelityRunContract? = nil,
         boundedWriteSet: [ResearchBoundedWriteSetViewEntry],
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
         discussionResponseContract: DialogueResponseContract? = nil
@@ -720,6 +779,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         self.method = method
         self.zoteroIntegrationAdapter = zoteroIntegrationAdapter
         self.resultContract = resultContract
+        guard (fidelityContract != nil) == (brief.actionID == .checkFidelity) else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.fidelityContract = fidelityContract
         guard discussionResponseContract == nil
                 || brief.capabilities.discussionReply else {
             throw ResearchAgentConnectionContractError.invalidHandoff
@@ -738,6 +801,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         case brief, method
         case zoteroIntegrationAdapter = "zotero_integration_adapter"
         case resultContract = "result_contract"
+        case fidelityContract = "fidelity_contract"
         case discussionResponseContract = "discussion_response_contract"
         case boundedWriteSet = "bounded_write_set"
         case continuationHandoff = "continuation_handoff"
@@ -775,6 +839,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             resultContract: try container.decode(
                 ResearchResultContract.self,
                 forKey: .resultContract
+            ),
+            fidelityContract: try container.decodeIfPresent(
+                ResearchFidelityRunContract.self,
+                forKey: .fidelityContract
             ),
             boundedWriteSet: boundedWriteSet,
             continuationHandoff: try container.decodeIfPresent(

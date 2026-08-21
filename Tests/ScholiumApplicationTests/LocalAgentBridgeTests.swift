@@ -145,6 +145,51 @@ struct LocalAgentBridgeTests {
         #expect(decodedResponse.context == nil)
     }
 
+    @Test("Bridge Fidelity preparation carries only authenticated parent input and a non-secret child locator")
+    func fidelityPreparationRoundTrip() throws {
+        let parent = try #require(ResearchRunLocator(
+            rawValue: "bridgefidelityparent1"
+        ))
+        let child = try #require(ResearchRunLocator(
+            rawValue: "bridgefidelitychild12"
+        ))
+        let credential = try testCredential()
+        let request = try LocalAgentBridgeRequest(
+            operation: .prepareFidelity,
+            run: parent,
+            credential: credential
+        )
+        let decodedRequest = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: LocalAgentBridgeWireCoding.encode(request)
+        )
+        #expect(decodedRequest.operation == .prepareFidelity)
+        #expect(decodedRequest.run == parent)
+        #expect(decodedRequest.credential == credential)
+        #expect(decodedRequest.triptychID == nil)
+
+        let receipt = try ResearchAgentFidelityPreparationReceipt(
+            childRun: child,
+            childState: .prepared,
+            parentState: .awaitingFidelity,
+            parentRecordFormed: false,
+            message: "The child is attached read-only."
+        )
+        let response = try LocalAgentBridgeResponse(
+            correlationID: request.correlationID,
+            fidelityPreparationReceipt: receipt
+        )
+        let encodedResponse = try LocalAgentBridgeWireCoding.encode(response)
+        let decodedResponse = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: encodedResponse
+        )
+        #expect(decodedResponse.fidelityPreparationReceipt == receipt)
+        #expect(!String(decoding: encodedResponse, as: UTF8.self).contains(
+            credential.secret
+        ))
+    }
+
     @Test("Bridge document-write JSON omits only operation-irrelevant fields")
     func documentWriteIntentOperationShapes() throws {
         let run = try #require(ResearchRunLocator(rawValue: "bridgewriteshapeabcd"))

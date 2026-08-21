@@ -181,6 +181,29 @@ visual acceptance.
 
 ## Focused Agent-inheritance evidence
 
+On 2026-08-21, the authenticated final-Fidelity closure passed the complete
+147-test Contracts target, the owning source-route, Result, preparation,
+Session, and bridge suites, and all 10 executable standalone-CLI lifecycles.
+Disposable fixtures prove that an authenticated awaiting parent attaches one
+read-only exact-revision child locator to the same Session; forged credentials,
+raw UUIDs, duplicate attachment, and attachment after parent finalization fail
+closed. The child context requires Citation `unavailable` for a
+`researcher_provided` source without a formal envelope, rejects a fabricated
+pass based on Note YAML, automatically advances the lineage-bound parent, and
+forms separate schema-11 child and parent Records. Parent Action inspection
+accepts the Run-owned committed revision while a later external revision still
+fails stale. No real research Note or private source was used.
+
+The same tree entered the complete repository gate. Documentation, shipped
+resources, 199 Web editor tests and reproducible bundles, 439 Core tests plus 3
+performance tests, 147 Contracts tests, 252 Application tests, 14 bridge tests,
+and 1 architecture measurement passed. The gate then reached the 652-test App
+batch and stopped on the same 15 pre-existing failures recorded below: 3 stale
+toolbar source assertions and 12 schema-11-invalid Research Record browser
+fixtures. Later symbol, executable-CLI, sandbox bridge, and Release stages did
+not run in that gate; the separate 10/10 executable CLI run above is the CLI
+evidence for this change.
+
 On 2026-08-21, independent-review hardening passed 34 Core storage tests, 19
 Agent-start and portable-Record Contract tests, 104 Application/bridge tests,
 and 2 real executable CLI start lifecycles. The disposable fixtures prove that

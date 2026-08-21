@@ -107,12 +107,65 @@ struct ResearchAgentResultContractsTests {
         #expect(Set(receiptObject.keys) == [
             "schema_version", "disposition", "state", "record_formed", "message",
         ])
+        #expect(receiptObject["schema_version"] as? Int == 2)
         let source = String(decoding: try encoder.encode(receipt), as: UTF8.self)
         for forbidden in [
             "run_id", "record_id", "triptych_id", "fingerprint", "secret",
             "nonce", "capability",
         ] {
             #expect(!source.contains(forbidden))
+        }
+    }
+
+    @Test("Fidelity attachment receipts and source constraints are strict and nonauthorizing")
+    func strictFidelityAttachmentContracts() throws {
+        let child = try #require(ResearchRunLocator(
+            rawValue: "contractfidelitychild1"
+        ))
+        let receipt = try ResearchAgentFidelityPreparationReceipt(
+            childRun: child,
+            childState: .prepared,
+            parentState: .awaitingFidelity,
+            parentRecordFormed: false,
+            message: "The read-only child is attached."
+        )
+        let data = try JSONEncoder().encode(receipt)
+        #expect(try JSONDecoder().decode(
+            ResearchAgentFidelityPreparationReceipt.self,
+            from: data
+        ) == receipt)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        #expect(Set(object.keys) == [
+            "schema_version", "child_run", "child_state", "parent_state",
+            "parent_record_formed", "message",
+        ])
+        for forbidden in ["secret", "credential", "parent_run_id", "child_run_id"] {
+            #expect(!String(decoding: data, as: UTF8.self).contains(forbidden))
+        }
+
+        let constraint = try ResearchFidelityRunContract(
+            checks: [.content, .citations],
+            requiredUnavailableChecks: [.citations],
+            evidenceLimitation: "No formal source envelope is available."
+        )
+        #expect(try JSONDecoder().decode(
+            ResearchFidelityRunContract.self,
+            from: JSONEncoder().encode(constraint)
+        ) == constraint)
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchFidelityRunContract(
+                checks: [.content],
+                requiredUnavailableChecks: [.citations],
+                evidenceLimitation: "The constraint exceeds the declared checks."
+            )
+        }
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchFidelityRunContract(
+                checks: [.citations],
+                requiredUnavailableChecks: [.citations]
+            )
         }
     }
 

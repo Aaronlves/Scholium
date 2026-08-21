@@ -130,9 +130,15 @@ extension WorkspaceHandle {
                             existing.submissionFingerprint.sha256,
                         host: self
                     )
+                let parent = try await researchFunctionCoordinator
+                    .advanceAutomaticFidelityParent(
+                        childRunID: reconciled.runID,
+                        host: self
+                    )
                 return try resultReceipt(
                     disposition: existing.disposition,
-                    completion: reconciled
+                    completion: reconciled,
+                    automaticParentCompletion: parent
                 )
             }
         }
@@ -207,9 +213,15 @@ extension WorkspaceHandle {
                 candidateResultPayload: payload,
                 host: self
             )
+        let parent = try await researchFunctionCoordinator
+            .advanceAutomaticFidelityParent(
+                childRunID: completion.runID,
+                host: self
+            )
         return try resultReceipt(
             disposition: submission.disposition,
-            completion: completion
+            completion: completion,
+            automaticParentCompletion: parent
         )
     }
 
@@ -517,29 +529,52 @@ extension WorkspaceHandle {
 
     private func resultReceipt(
         disposition: ResearchAgentResultDisposition,
-        completion: ResearchFunctionCompletion
+        completion: ResearchFunctionCompletion,
+        automaticParentCompletion: ResearchFunctionCompletion? = nil
     ) throws -> ResearchAgentResultReceipt {
+        let parentState: ResearchAgentResultFinalizationState?
+        if let parent = automaticParentCompletion {
+            switch parent.state {
+            case .complete: parentState = .finalized
+            case .unverified: parentState = .unverified
+            case .prepared, .awaitingFidelity, .stale, .cancelled:
+                throw ResearchAgentResultContractError.invalidSubmission
+            }
+        } else {
+            parentState = nil
+        }
+        let parentRecordFormed = parentState.map { _ in true }
         switch completion.state {
         case .complete:
             return try ResearchAgentResultReceipt(
                 disposition: disposition,
                 state: .finalized,
                 recordFormed: true,
-                message: "The canonical Result was finalized as one Research Record."
+                parentState: parentState,
+                parentRecordFormed: parentRecordFormed,
+                message: automaticParentCompletion == nil
+                    ? "The canonical Result was finalized as one Research Record."
+                    : "The Fidelity child formed its Research Record and automatically finalized the lineage-bound parent Research Record."
             )
         case .unverified:
             return try ResearchAgentResultReceipt(
                 disposition: disposition,
                 state: .unverified,
                 recordFormed: true,
-                message: "The Result formed one Research Record with explicit unverified Fidelity evidence."
+                parentState: parentState,
+                parentRecordFormed: parentRecordFormed,
+                message: automaticParentCompletion == nil
+                    ? "The Result formed one Research Record with explicit unverified Fidelity evidence."
+                    : "The Fidelity child and its lineage-bound parent each formed one Research Record with explicit unverified Fidelity evidence."
             )
         case .awaitingFidelity:
             return try ResearchAgentResultReceipt(
                 disposition: disposition,
                 state: .awaitingFidelity,
                 recordFormed: false,
-                message: "The Result is staged on this Run and awaits its exact-revision Fidelity completion."
+                parentState: parentState,
+                parentRecordFormed: parentRecordFormed,
+                message: "The Result is staged on this Run. Run scholium agent prepare-fidelity --run <this-parent-locator> to attach the exact-revision Fidelity child to the current protected Session."
             )
         case .prepared, .stale, .cancelled:
             throw ResearchAgentResultContractError.invalidSubmission

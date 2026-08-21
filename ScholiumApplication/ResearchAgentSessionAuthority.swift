@@ -373,6 +373,58 @@ actor ResearchAgentSessionAuthority {
         return locator
     }
 
+    /// Atomically attaches one child only while the supplied parent locator
+    /// remains an unfinished binding in the same authenticated Session. This
+    /// prevents a prepared child from gaining access after concurrent parent
+    /// finalization and makes outcome-unknown retry return the existing child
+    /// locator instead of issuing a duplicate.
+    func attachRun(
+        runID: UUID,
+        triptychID: UUID,
+        canWrite: Bool,
+        to credential: ResearchConnectionCredential,
+        authorizedBy parent: ResearchRunLocator,
+        now: Date = Date(),
+        userID: uid_t = geteuid()
+    ) throws -> ResearchRunLocator {
+        let authenticatedParent = try authenticate(
+            credential,
+            run: parent,
+            requiresWrite: false,
+            claimCoreProtocol: false,
+            allowFinalized: false,
+            now: now,
+            userID: userID
+        )
+        guard authenticatedParent.triptychID == triptychID,
+              authenticatedParent.runID != runID else {
+            throw ResearchAgentSessionError.sessionRejected
+        }
+        if let existing = sessions[credential.sessionID]?.runLocators
+            .compactMap({ locator -> ResearchRunLocator? in
+                guard let binding = runs[locator],
+                      binding.runID == runID,
+                      binding.triptychID == triptychID,
+                      binding.activeSessionID == credential.sessionID,
+                      !binding.isFinalized else {
+                    return nil
+                }
+                return locator
+            })
+            .sorted(by: { $0.rawValue < $1.rawValue })
+            .first {
+            return existing
+        }
+        return try attachRun(
+            runID: runID,
+            triptychID: triptychID,
+            canWrite: canWrite,
+            to: credential,
+            now: now,
+            userID: userID
+        )
+    }
+
     func attachedLocator(
         for runID: UUID,
         credential: ResearchConnectionCredential,

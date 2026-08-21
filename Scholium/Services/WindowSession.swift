@@ -166,6 +166,23 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                         credential: credential,
                         run: run
                     ))
+                case .prepareFidelity:
+                    guard let run = request.run,
+                          let credential = request.credential else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    let triptychID = try await runtime.researchAgentWorkspaceID(
+                        credential: credential,
+                        run: run,
+                        allowFinalized: true
+                    )
+                    try await self.flushEditors(in: triptychID)
+                    return .fidelityPreparation(
+                        try await runtime.prepareResearchAgentFidelity(
+                            credential: credential,
+                            run: run
+                        )
+                    )
                 case .query:
                     guard let run = request.run,
                           let credential = request.credential,

@@ -124,6 +124,12 @@ cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
 current portable exchange into a finished Research Record before removing the
 active projection, so researcher-authored statements are not discarded.
+After an Agent Result reaches `awaiting_fidelity`, authenticated
+`agent prepare-fidelity` resolves the parent locator through
+`ResearchAgentSessionAuthority`, calls the existing exact-child preparation,
+and attaches the read-only child locator to that same Session. The credential
+never re-enters output, raw Run UUIDs authorize nothing, repeated preparation
+returns the same locator, and the child retains its own Run and Record.
 This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-research-guidance.md)
 owns the Method, Practice, Profile, collaboration-policy, and citation
 configuration consumed during preparation.
@@ -202,13 +208,13 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 3 and authenticated Run Context schema 6 carry the
+Continue Result schema 3 and authenticated Run Context schema 8 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
 Execution schema 16 persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
-Context schema 6 also carries one optional typed Zotero Integration Adapter containing
+Context schema 8 also carries optional typed Zotero Integration and Fidelity contracts containing
 the exact release-managed System Skill and capability contract. Application
 includes it only for an Analysis target with frozen Zotero context and a
 Zotero-capable Platform Action; the adapter contains no authority or transport.
@@ -318,6 +324,13 @@ operation/submission digest returns the same Record; a different payload fails
 closed. An interrupted committed source/finalization gap is repaired from the
 Run and transaction evidence unless a Record deletion tombstone forbids
 recreation.
+
+An authenticated automatic Fidelity child completion reopens only its
+persisted parent lineage and the parent's already-staged Agent Result. The
+coordinator validates the exact final Target, Materials, scope, and checks,
+stores the child identity in the parent completion, and forms the parent Record
+without accepting a second parent payload. The receipts expose terminal Record
+states but no internal UUID or Session secret.
 
 `PortableResearchRecordStore` owns strict schema-11 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
@@ -526,7 +539,11 @@ absent. Selecting the third suppresses any existing Zotero snapshot and adapter
 for that Run without changing the portable relationship. Schema-11 Records
 retain that route without fabricating a source claim;
 the external Agent remains responsible for reporting the exact paper data it
-actually retrieved and every access limitation.
+actually retrieved and every access limitation. An automatic Fidelity child
+whose parent used `researcher_provided` receives an authenticated typed
+constraint: Citation must be `unavailable` when Scholium has no formal source
+envelope. Completion enforces the same constraint and never promotes a Note
+YAML URL into source evidence.
 
 Check Fidelity remains a read-only exact-revision Action. Multi-document writes
 may request separate checks for each final revision, but no check collapses

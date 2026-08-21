@@ -695,6 +695,9 @@ extension WorkspaceHandle {
             : nil
         let purpose: String? = if case .freeText(let text)? =
             action.academicInputs.values["research-request"] { text } else { nil }
+        let fidelityContract = try await authenticatedFidelityContract(
+            for: record
+        )
         return try ResearchAuthenticatedRunContext(
             coreProtocol: authenticated.shouldDeliverCoreProtocol
                 ? coreProtocol
@@ -710,11 +713,37 @@ extension WorkspaceHandle {
             method: ResearchMethodContext(snapshot: action.method),
             zoteroIntegrationAdapter: zoteroIntegrationAdapter,
             resultContract: action.resultContract,
+            fidelityContract: fidelityContract,
             boundedWriteSet: record.boundedWriteSet.entries.map(
                 ResearchBoundedWriteSetViewEntry.init
             ),
             continuationHandoff: record.snapshot.continuationHandoff,
             discussionResponseContract: discussionResponseContract
+        )
+    }
+
+    private func authenticatedFidelityContract(
+        for record: LocalResearchExecutionRecord
+    ) async throws -> ResearchFidelityRunContract? {
+        guard record.snapshot.request.function == .fidelity else { return nil }
+        var requiredUnavailable: Set<FidelityCheck> = []
+        var limitation: String?
+        if case .automatic(let parentRunID)? =
+                record.snapshot.resolvedFidelityInvocation {
+            guard let parent = try await researchAgentConnectionDependencies
+                    .localResearchExecutionStore.recordIfPresent(id: parentRunID) else {
+                throw ResearchAgentConnectionError.runUnavailable
+            }
+            if record.snapshot.request.checks.contains(.citations),
+               parent.snapshot.analysisSourceRoute == .researcherProvided {
+                requiredUnavailable.insert(.citations)
+                limitation = "Scholium has no formal source envelope for the researcher-provided paper. Citation Fidelity must remain unavailable; a URL declared in Note YAML is authored metadata, not verified source evidence."
+            }
+        }
+        return try ResearchFidelityRunContract(
+            checks: record.snapshot.request.checks,
+            requiredUnavailableChecks: requiredUnavailable,
+            evidenceLimitation: limitation
         )
     }
 

@@ -377,6 +377,26 @@ extension ResearchFunctionCoordinator {
                 )]
                 : []
         }
+        if snapshot.request.function == .fidelity,
+           case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
+            guard let parent = try await dependencies.localExecutionStore
+                    .recordIfPresent(id: parentRunID) else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The automatic Fidelity child no longer has its exact parent Run."
+                )
+            }
+            if parent.snapshot.analysisSourceRoute == .researcherProvided,
+               requiredChecks.contains(.citations) {
+                let citationOutcomes = fidelityTargetResults.flatMap(\.outcomes)
+                    .filter { $0.check == .citations }
+                guard citationOutcomes.count == 1,
+                      citationOutcomes[0].state == .unavailable else {
+                    throw ResearchFunctionContractError.invalidCompletion(
+                        "Citation Fidelity for a researcher-provided source without a formal source envelope must be reported as unavailable. Authored Note YAML, including URLs, is not verified source evidence."
+                    )
+                }
+            }
+        }
         if [.develop, .revise].contains(snapshot.request.function),
            !submission.fidelityOutcomes.isEmpty {
             throw ResearchFunctionContractError.invalidCompletion(
@@ -576,6 +596,89 @@ extension ResearchFunctionCoordinator {
 // MARK: - Post-commit repair and portable record
 
 extension ResearchFunctionCoordinator {
+    /// Advances the one lineage-bound parent after its automatic Fidelity
+    /// child reaches a terminal exact-evidence state. The parent payload and
+    /// submission digest remain the original authenticated Agent Result; the
+    /// child identity comes only from persisted Application-owned lineage.
+    func advanceAutomaticFidelityParent<Host: ResearchFunctionCoordinatorHost>(
+        childRunID: UUID,
+        host: isolated Host
+    ) async throws -> ResearchFunctionCompletion? {
+        let child = try await record(runID: childRunID)
+        guard case .automatic(let parentRunID)? =
+                child.snapshot.resolvedFidelityInvocation else {
+            return nil
+        }
+        guard try await record(runID: parentRunID).resultPayload != nil else {
+            // Researcher-side completion retains its existing explicit parent
+            // completion route; only an authenticated staged Agent Result can
+            // be advanced without another caller-supplied payload.
+            return nil
+        }
+        return try await advanceFidelityParent(
+            parentRunID: parentRunID,
+            childRunID: childRunID,
+            host: host
+        )
+    }
+
+    /// Links one already-completed child selected by the automatic handoff.
+    /// This also supports exact reusable manual evidence chosen by
+    /// `prepareAutomaticFidelity`; the ordinary child validator remains the
+    /// final authority for target, Materials, scope, checks, and lineage.
+    func advanceFidelityParent<Host: ResearchFunctionCoordinatorHost>(
+        parentRunID: UUID,
+        childRunID: UUID,
+        host: isolated Host
+    ) async throws -> ResearchFunctionCompletion {
+        let child = try await record(runID: childRunID)
+        guard let childCompletion = child.completion,
+              [.complete, .unverified].contains(childCompletion.state) else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Automatic Fidelity cannot advance its parent before the child has terminal exact-revision evidence."
+            )
+        }
+        let parent = try await record(runID: parentRunID)
+        guard let parentCompletion = parent.completion else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The automatic Fidelity parent has no staged Result to advance."
+            )
+        }
+        if [.complete, .unverified].contains(parentCompletion.state) {
+            guard parentCompletion.childRunIDs == [childRunID] else {
+                throw ResearchFunctionContractError.invalidCompletion(
+                    "The finalized parent is not linked to this automatic Fidelity child."
+                )
+            }
+            return parentCompletion
+        }
+        guard parentCompletion.state == .awaitingFidelity,
+              let payload = parent.resultPayload else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "The automatic Fidelity parent is not awaiting one authenticated staged Result."
+            )
+        }
+        return try await completeProtectedFunction(
+            ResearchFunctionCompletionSubmission(
+                runID: parentRunID,
+                confirmationToken: parent.snapshot.confirmationToken,
+                recordTitle: payload.recordTitle,
+                finalTargetFingerprint: parentCompletion.targetFingerprint,
+                finalMaterialFingerprints: parentCompletion.materialFingerprints,
+                actuallyUsedMaterialNoteIDs:
+                    parentCompletion.actuallyUsedMaterialNoteIDs,
+                summary: parentCompletion.summary,
+                didModifyTarget: parentCompletion.didModifyTarget,
+                fidelityOutcomes: [],
+                literatureRecommendations: payload.literatureRecommendations,
+                childRunIDs: [childRunID],
+                submittedAt: payload.submittedAt
+            ),
+            acceptedSubmissionDigest: payload.submissionFingerprint.sha256,
+            host: host
+        )
+    }
+
     private func advanceWithAutomaticFidelityIfAvailable<
         Host: ResearchFunctionCoordinatorHost
     >(

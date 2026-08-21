@@ -184,6 +184,7 @@ private extension ScholiumCLI {
         "agent start",
         "agent pair",
         "agent context",
+        "agent prepare-fidelity",
         "agent reload",
         "agent query",
         "agent discuss-reply",
@@ -244,17 +245,27 @@ private extension ScholiumCLI {
                 usage: "scholium agent context --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the Run locator from the handoff. The CLI loads the hidden Session credential from protected local state.",
-                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief, frozen Method and Practices, Result Contract, current bounded write set, and any continuation handoff.",
+                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief, frozen Method and Practices, Result Contract, any Fidelity evidence constraint, current bounded write set, and continuation handoff.",
                 nextSteps: [
                     "scholium agent query --run <locator> --from <json|-> when more Research Context is needed",
                     "scholium agent reload --run <locator> whenever current Run state is uncertain",
+                ]
+            ),
+            "agent prepare-fidelity": AgentCLICommandHelp(
+                usage: "scholium agent prepare-fidelity --run <parent-locator>",
+                inputContract: "Authenticated parent Run locator; no JSON body",
+                input: "Use this only after the parent Result returns awaiting_fidelity. The CLI authenticates the parent Session; raw child UUIDs do not grant access.",
+                output: "ResearchAgentFidelityPreparationReceipt. An unfinished exact-revision child returns a new opaque child_run locator attached read-only to the same protected Session; reusable completed evidence instead reports the parent Record state. No Session secret is printed.",
+                nextSteps: [
+                    "scholium agent context --run <child_run> when a child locator is returned",
+                    "Submit the child fidelity_outcomes; Scholium links the lineage-bound child to the parent automatically",
                 ]
             ),
             "agent reload": AgentCLICommandHelp(
                 usage: "scholium agent reload --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
-                output: "ResearchAuthenticatedRunContext with the current Run Brief, frozen Method and Practices, Result Contract, bounded write set, and continuation handoff. The one-time Core Protocol is not replayed.",
+                output: "ResearchAuthenticatedRunContext with the current Run Brief, frozen Method and Practices, Result Contract, any Fidelity evidence constraint, bounded write set, and continuation handoff. The one-time Core Protocol is not replayed.",
                 nextSteps: [
                     "Follow the returned current state and run the applicable agent command",
                     "scholium agent end --run <locator> to stop an unfinished Run",
