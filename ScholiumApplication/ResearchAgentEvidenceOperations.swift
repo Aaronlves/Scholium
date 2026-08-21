@@ -10,13 +10,11 @@ struct ResearchAgentEffectiveEvidence: Sendable {
 }
 
 extension WorkspaceHandle {
-    /// Resolves the source-evidence owner for this Run. Every Run now owns its
-    /// own frozen evidence; Check Fidelity is an independent researcher-started
-    /// Action rather than an automatic child.
+    /// Resolves the independently frozen source-evidence owner for this Run.
     func effectiveResearchAgentEvidence(
         for record: LocalResearchExecutionRecord
     ) async throws -> ResearchAgentEffectiveEvidence {
-        return ResearchAgentEffectiveEvidence(
+        ResearchAgentEffectiveEvidence(
             sourceReference: record.snapshot.sourceReference,
             zoteroBibliographicContext:
                 record.snapshot.zoteroBibliographicContext,

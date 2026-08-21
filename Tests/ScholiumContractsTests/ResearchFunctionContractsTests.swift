@@ -201,8 +201,8 @@ struct ResearchFunctionContractsTests {
         }
     }
 
-    @Test("Retired record-kind snapshot fields fail closed")
-    func retiredRecordKindSnapshotFieldIsRejected() throws {
+    @Test("Retired snapshot fields fail closed")
+    func retiredSnapshotFieldsAreRejected() throws {
         let encoder = JSONEncoder()
         var retired = try #require(
             JSONSerialization.jsonObject(
@@ -215,6 +215,14 @@ struct ResearchFunctionContractsTests {
             ) as? [String: Any]
         )
         retired["recordKind"] = "function_envelope"
+        #expect(throws: ResearchFunctionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchFunctionSnapshot.self,
+                from: JSONSerialization.data(withJSONObject: retired)
+            )
+        }
+        retired.removeValue(forKey: "recordKind")
+        retired["requiredChildFunctions"] = []
         #expect(throws: ResearchFunctionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchFunctionSnapshot.self,

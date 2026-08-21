@@ -294,6 +294,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 "The selected system-Trash recovery record is unavailable."
             )
         }
+        try validatePlanShape(plan, recoveryRecord: record)
         guard plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown }),
               plan.deletedRecordIDs.isEmpty,
               plan.removedDiscussionIDs.isEmpty else {
@@ -355,6 +356,7 @@ public actor NoteSystemTrashDeletionCoordinator {
     }
 
     private func validate(_ preview: SystemTrashDeletionPreview) async throws {
+        try validatePreviewShape(preview)
         try await requireNoActiveExecutions(noteIDs: preview.affectedNoteIDs)
         for source in preview.sources {
             switch source.kind {
@@ -365,9 +367,10 @@ public actor NoteSystemTrashDeletionCoordinator {
                         "A Note system-Trash source has an invalid inventory."
                     )
                 }
-                _ = try await repository.preflightExisting(
+                try await repository.preflightSystemTrashNote(
                     relativePath: note.relativePath,
-                    expectedRevision: note.expectedRevision
+                    expectedRevision: note.expectedRevision,
+                    bindingID: source.id
                 )
             case .folder:
                 let expected = Dictionary(uniqueKeysWithValues: source.notes.map {
@@ -376,7 +379,8 @@ public actor NoteSystemTrashDeletionCoordinator {
                 _ = try await repository.moveFolderToSystemTrashPreflight(
                     relativePath: source.relativePath,
                     expectedDocuments: expected,
-                    expectedDirectoryManifest: try requiredDirectoryManifest(source)
+                    expectedDirectoryManifest: try requiredDirectoryManifest(source),
+                    bindingID: source.id
                 )
             }
             for note in source.notes {
@@ -438,6 +442,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 "System-Trash recovery data is missing."
             )
         }
+        try validatePlanShape(plan, recoveryRecord: record)
         do {
             try await portableRecordStore.markNoteDeletionStarted(
                 noteIDs: plan.affectedNoteIDs
@@ -481,20 +486,24 @@ public actor NoteSystemTrashDeletionCoordinator {
                         }
                         resultingURL = try await repository.moveToSystemTrash(
                             relativePath: note.relativePath,
-                            expectedRevision: note.expectedRevision
+                            expectedRevision: note.expectedRevision,
+                            bindingID: source.id
                         )
                     case .folder:
                         resultingURL = try await repository.moveFolderToSystemTrash(
                             relativePath: source.relativePath,
-                            expectedDocuments: Dictionary(uniqueKeysWithValues: source.notes.map {
-                                ($0.relativePath, $0.expectedRevision)
-                            }),
-                            expectedDirectoryManifest: try requiredDirectoryManifest(source)
+                            expectedDirectoryManifest: try requiredDirectoryManifest(source),
+                            bindingID: source.id
                         )
                     }
                     try faultPlan.trigger(.afterSystemTrashMoveBeforeReceipt)
                 } catch {
                     let nativeOutcomeUnknown = error is SystemTrashMoveError
+                    let bindingExists = (try? await repository.systemTrashBindingExists(
+                        relativePath: source.relativePath,
+                        kind: source.kind,
+                        bindingID: source.id
+                    )) ?? true
                     let sourceIsAbsent: Bool
                     switch source.kind {
                     case .note:
@@ -506,7 +515,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                             relativePath: source.relativePath
                         ))
                     }
-                    let unknown = nativeOutcomeUnknown || sourceIsAbsent
+                    let unknown = nativeOutcomeUnknown || (sourceIsAbsent && !bindingExists)
                     if unknown {
                         plan = replacingReceipt(
                             in: plan,
@@ -641,6 +650,95 @@ public actor NoteSystemTrashDeletionCoordinator {
             )
         }
         return manifest
+    }
+
+    private func validatePreviewShape(
+        _ preview: SystemTrashDeletionPreview
+    ) throws {
+        let sourceIDs = preview.sources.map(\.id)
+        let sourcePaths = preview.sources.map(\.relativePath)
+        let noteTargets = preview.sources.flatMap(\.notes)
+        let noteIDs = noteTargets.map(\.noteID)
+        let notePaths = noteTargets.map(\.relativePath)
+        let recordIDs = preview.records.map(\.id)
+        let discussionIDs = preview.activeDiscussionIDs
+        guard !preview.sources.isEmpty,
+              Set(sourceIDs).count == sourceIDs.count,
+              Set(sourcePaths).count == sourcePaths.count,
+              Set(noteIDs).count == noteIDs.count,
+              Set(notePaths).count == notePaths.count,
+              Set(recordIDs).count == recordIDs.count,
+              Set(discussionIDs).count == discussionIDs.count else {
+            throw TriptychTransactionError.invalidPlan(
+                "System-Trash source, Note, Record, and Discussion identities must be unique."
+            )
+        }
+        for source in preview.sources {
+            let participantIDs = source.notes.map(\.noteID)
+            let participantPaths = source.notes.map(\.relativePath)
+            let sourceShapeIsValid = switch source.kind {
+            case .note:
+                source.notes.count == 1
+                    && source.notes.first?.relativePath == source.relativePath
+                    && source.expectedDirectoryManifest == nil
+            case .folder:
+                !source.notes.isEmpty
+                    && source.expectedDirectoryManifest != nil
+                    && source.notes.allSatisfy {
+                        $0.relativePath.hasPrefix(source.relativePath + "/")
+                    }
+            }
+            guard sourceShapeIsValid,
+                  Set(participantIDs).count == participantIDs.count,
+                  Set(participantPaths).count == participantPaths.count else {
+                throw TriptychTransactionError.invalidPlan(
+                    "A system-Trash source has an invalid or duplicate Note inventory."
+                )
+            }
+        }
+        let affectedNoteIDs = preview.affectedNoteIDs
+        for record in preview.records {
+            let participantIDs = record.participantNoteIDs
+            let unaffectedIDs = record.unaffectedParticipants.map(\.noteID)
+            guard !participantIDs.isEmpty,
+                  Set(participantIDs).count == participantIDs.count,
+                  Set(unaffectedIDs).count == unaffectedIDs.count,
+                  !Set(participantIDs).isDisjoint(with: affectedNoteIDs),
+                  Set(unaffectedIDs).isDisjoint(with: affectedNoteIDs),
+                  Set(unaffectedIDs).isSubset(of: Set(participantIDs)) else {
+                throw TriptychTransactionError.invalidPlan(
+                    "A system-Trash Record has an invalid participant inventory."
+                )
+            }
+        }
+    }
+
+    private func validatePlanShape(
+        _ plan: SystemTrashDeletionPlan,
+        recoveryRecord: TriptychMutationRecoveryRecord
+    ) throws {
+        try validatePreviewShape(plan.preview)
+        let sourceIDs = plan.preview.sources.map(\.id)
+        let receiptIDs = plan.sourceReceipts.map(\.targetID)
+        let recordIDs = plan.preview.records.map(\.id)
+        let deletedRecordIDs = plan.deletedRecordIDs
+        let discussionIDs = plan.preview.activeDiscussionIDs
+        let removedDiscussionIDs = plan.removedDiscussionIDs
+        guard recoveryRecord.id == plan.id,
+              recoveryRecord.triptychID == triptychID,
+              recoveryRecord.operation == .systemTrashDeletion,
+              plan.preview.triptychID == triptychID,
+              receiptIDs.count == sourceIDs.count,
+              Set(receiptIDs).count == receiptIDs.count,
+              Set(receiptIDs) == Set(sourceIDs),
+              Set(deletedRecordIDs).count == deletedRecordIDs.count,
+              Set(deletedRecordIDs).isSubset(of: Set(recordIDs)),
+              Set(removedDiscussionIDs).count == removedDiscussionIDs.count,
+              Set(removedDiscussionIDs).isSubset(of: Set(discussionIDs)) else {
+            throw TriptychTransactionError.invalidPlan(
+                "System-Trash recovery identities or progress receipts are inconsistent."
+            )
+        }
     }
 
     private func persist(

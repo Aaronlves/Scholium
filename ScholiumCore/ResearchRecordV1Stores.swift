@@ -275,129 +275,11 @@ public actor PortableResearchRecordStore {
                     in: directories.map(Optional.some)
                 )
                 try initialStorage.recoverAbandonedDeletionFiles(in: "records")
-                try Self.performSchema12Cutover(
-                    storage: initialStorage,
-                    recordDeletionMarkers: initialRecordDeletionMarkers,
-                    triptychID: triptychID
-                )
                 try Self.recoverFinishedDiscussionCutovers(
                     storage: initialStorage,
                     triptychID: triptychID
                 )
             }
-        }
-    }
-
-    /// One bounded portable-schema cutover. Schema-11 finished Records with
-    /// only live participants are rewritten without the obsolete participant
-    /// flag. A schema-11 Record that already contains a deleted-participant
-    /// tombstone is removed as a whole and receives the ordinary durable
-    /// Record-deletion marker, matching the new whole-Record invariant. Active
-    /// schema-1 Discussions can never contain such a tombstone and advance to
-    /// schema 2 after the same field removal.
-    private static func performSchema12Cutover(
-        storage: SecureRecordDirectory,
-        recordDeletionMarkers: SecureRecordDirectory,
-        triptychID: UUID
-    ) throws {
-        for fileName in try storage.fileNames(in: recordsDirectory)
-            where fileName.hasSuffix(".json") {
-            let data = try storage.read(directory: recordsDirectory, fileName: fileName)
-            guard var object = try JSONSerialization.jsonObject(with: data)
-                    as? [String: Any],
-                  (object["schema_version"] as? NSNumber)?.intValue == 11,
-                  let participants = object["participating_notes"] as? [[String: Any]]
-            else { continue }
-            let hasDeletedParticipant = participants.contains {
-                ($0["is_tombstone"] as? NSNumber)?.boolValue == true
-            }
-            if hasDeletedParticipant {
-                guard let rawID = object["id"] as? String,
-                      let id = UUID(uuidString: rawID),
-                      fileName == Self.fileName(id) else {
-                    throw ResearchRecordStoreV1Error.unsafeStore(
-                        "A legacy participant-deletion Record has no valid identity."
-                    )
-                }
-                let marker = recordDeletionMarkerData(id)
-                do {
-                    _ = try recordDeletionMarkers.createExclusive(
-                        marker,
-                        directory: nil,
-                        fileName: fileName
-                    )
-                } catch SecureRecordDirectoryError.alreadyExists(_) {
-                    guard try recordDeletionMarkers.read(
-                        directory: nil,
-                        fileName: fileName
-                    ) == marker else {
-                        throw ResearchRecordStoreV1Error.unsafeStore(
-                            "A legacy Record deletion marker does not match its identity."
-                        )
-                    }
-                }
-                try storage.remove(
-                    directory: recordsDirectory,
-                    fileName: fileName,
-                    expected: data
-                )
-                continue
-            }
-            object["schema_version"] = PortableResearchRecord.currentSchemaVersion
-            object["participating_notes"] = participants.map { participant in
-                var participant = participant
-                participant.removeValue(forKey: "is_tombstone")
-                return participant
-            }
-            let transformed = try JSONSerialization.data(
-                withJSONObject: object,
-                options: [.sortedKeys]
-            )
-            let decoded = try decode(PortableResearchRecord.self, from: transformed)
-            guard decoded.triptychID == triptychID else {
-                throw ResearchRecordStoreV1Error.recordIdentityMismatch(decoded.id)
-            }
-            let (_, canonical) = try validatedStorageEncoding(of: decoded)
-            _ = try storage.replace(
-                canonical,
-                directory: recordsDirectory,
-                fileName: fileName
-            )
-        }
-
-        for fileName in try storage.fileNames(in: "active")
-            where fileName.hasSuffix(".json") {
-            let data = try storage.read(directory: "active", fileName: fileName)
-            guard var object = try JSONSerialization.jsonObject(with: data)
-                    as? [String: Any],
-                  (object["schema_version"] as? NSNumber)?.intValue == 1,
-                  let participants = object["participating_notes"] as? [[String: Any]],
-                  participants.allSatisfy({
-                      ($0["is_tombstone"] as? NSNumber)?.boolValue == false
-                  }) else { continue }
-            object["schema_version"] = PortableResearchDiscussion.currentSchemaVersion
-            object["participating_notes"] = participants.map { participant in
-                var participant = participant
-                participant.removeValue(forKey: "is_tombstone")
-                return participant
-            }
-            let transformed = try JSONSerialization.data(
-                withJSONObject: object,
-                options: [.sortedKeys]
-            )
-            let decoded = try decode(PortableResearchDiscussion.self, from: transformed)
-            guard decoded.triptychID == triptychID else {
-                throw ResearchRecordStoreV1Error.recordIdentityMismatch(decoded.id)
-            }
-            let (canonicalDiscussion, canonical) = try canonicalized(decoded)
-            guard canonicalDiscussion == decoded else {
-                throw ResearchRecordStoreV1Error.recordIdentityMismatch(decoded.id)
-            }
-            _ = try storage.replace(
-                canonical,
-                directory: "active",
-                fileName: fileName
-            )
         }
     }
 
@@ -458,6 +340,9 @@ public actor PortableResearchRecordStore {
         let (canonicalRecord, data) = try Self.validatedStorageEncoding(of: record)
         return try lock.withExclusiveLock {
             try Self.coordinateWrite(at: storageURL) {
+                try requireNoDeletionMarkers(
+                    noteIDs: Set(canonicalRecord.participatingNotes.map(\.noteID))
+                )
                 try requireRecordNotPermanentlyDeleted(id: record.id)
                 do {
                     let readback = try storage.createExclusive(

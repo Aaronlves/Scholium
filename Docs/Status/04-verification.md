@@ -36,13 +36,31 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-22, the post-cutover cleanup passed 71 focused Core tests across
+  vault mutation, coordinated system Trash, portable Record, and Local
+  Execution owners; 14 Research Function contract tests; and 8 preparation
+  tests. The fixtures preserve unsupported schema-11 Records and schema-1
+  Discussions byte-for-byte, gate finished Record creation, reject duplicate
+  recovery identities without trapping, preserve late Note and Folder
+  replacements after the final path check, and resume an interrupted exact
+  Note binding. The complete repository gate then passed 199 Web editor tests;
+  446 Core tests plus 3 performance tests; 146 Contracts tests; 249 Application
+  tests, 13 bridge tests, and 1 architecture measurement; all 646 App tests;
+  documentation, shipped-resource, localization, purity, retired-name, JSON,
+  duplicate-key, whitespace, and reproducibility guards; the public symbol
+  graph; 10 signed executable CLI lifecycles; the sandboxed App-to-standalone-
+  CLI bridge probe; and the optimized Release build. This is disposable local
+  automated evidence, not Finder, multi-window, packaged, assistive-technology,
+  or human acceptance.
+
 - On 2026-08-21, the untagged system-Trash cutover passed 7 coordinated
   deletion tests covering whole multi-Note Record cleanup, active Discussion
   discard, Work-plus-Critique receipts, plan-persistence and post-move crash
   recovery, unknown native outcomes, same-path recreation, and complete
-  Folder-manifest drift. The 22-test Vault repository suite additionally proved
-  that an external directory-entry exchange cannot retarget a native Trash
-  move. The associated 37 Record-store, 25 document-operation, 4 CLI-delegation, 12
+  Folder-manifest drift. The earlier 22-test Vault repository suite exercised
+  an exchange before its last identity check; it did not cover the interval
+  after that check and before the path-based native Trash call. The associated
+  37 Record-store, 25 document-operation, 4 CLI-delegation, 12
   workspace-projection, 58 window-architecture, 98 frontend-architecture, and
   8 localization tests passed on disposable fixtures. The latest aggregate
   `swift test` attempt passed the complete lower-layer batch and 645 of 646 App

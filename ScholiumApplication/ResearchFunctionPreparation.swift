@@ -507,9 +507,6 @@ extension ResearchFunctionCoordinator {
             request: request,
             actionSnapshot: actionSnapshot,
             recordID: runID,
-            // Manuscript does not impose one universal philosophical pipeline.
-            // Write-capable Actions never acquire a Fidelity child automatically.
-            requiredChildFunctions: [],
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
             analysisSourceRoute: request.function == .develop

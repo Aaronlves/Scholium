@@ -197,7 +197,7 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-
+    @Test("Explicit citation style reaches Check Fidelity resources, instructions, snapshots, and evidence")
     func citationStyleExecutionBinding() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -245,7 +245,6 @@ extension ResearchFunctionOperationsTests {
         let develop = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .develop, target: target)
         )
-        #expect(develop.snapshot.requiredChildFunctions.isEmpty)
         #expect(!develop.instructions.contains("Citation style: apa-7"))
         try await handle.research.cancelProtectedFunction(runID: develop.runID)
         await runtime.shutdown()
@@ -388,7 +387,6 @@ extension ResearchFunctionOperationsTests {
         #expect(try await handle.services.localResearchExecutionStore.record(
             id: manuscript.runID
         ).boundedWriteSet.entries.isEmpty)
-        #expect(manuscript.snapshot.requiredChildFunctions.isEmpty)
         #expect(!manuscript.instructions.contains("Critique, then Revise, then Fidelity"))
         let revise = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .revise, target: work)

@@ -226,6 +226,74 @@ struct SystemTrashDeletionTests {
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
+    @Test("Duplicate Record identities in recovery fail closed without moving source")
+    func duplicateRecoveryRecordIdentityIsRejected() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let preview = try await fixture.coordinator().prepareNote(
+            noteID: fixture.firstIdentity.id,
+            vaultID: fixture.vaultID,
+            relativePath: fixture.firstPath,
+            expectedRevision: fixture.firstFingerprint
+        )
+        let malformedPreview = SystemTrashDeletionPreview(
+            id: preview.id,
+            triptychID: preview.triptychID,
+            sources: preview.sources,
+            records: preview.records + preview.records,
+            activeDiscussionIDs: preview.activeDiscussionIDs,
+            preparedAt: preview.preparedAt
+        )
+        try await fixture.persistRecoveryPlan(
+            SystemTrashDeletionPlan(preview: malformedPreview)
+        )
+
+        await #expect(throws: TriptychTransactionError.self) {
+            _ = try await fixture.coordinator().recoverInterruptedTransactions()
+        }
+
+        #expect(FileManager.default.fileExists(atPath: fixture.firstURL.path))
+        #expect(try await fixture.portableRecordStore.record(
+            id: fixture.sharedRecord.id
+        ) == fixture.sharedRecord)
+    }
+
+    @Test("Duplicate folder Note paths in recovery fail closed without trapping")
+    func duplicateRecoveryFolderPathIsRejected() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let preview = try await fixture.coordinator().prepareFolder(
+            vaultID: fixture.vaultID,
+            relativePath: fixture.folderPath
+        )
+        let source = try #require(preview.sources.first)
+        let malformedSource = SystemTrashDeletionSourceTarget(
+            id: source.id,
+            vaultID: source.vaultID,
+            relativePath: source.relativePath,
+            kind: source.kind,
+            notes: source.notes + source.notes,
+            expectedDirectoryManifest: source.expectedDirectoryManifest
+        )
+        let malformedPreview = SystemTrashDeletionPreview(
+            id: preview.id,
+            triptychID: preview.triptychID,
+            sources: [malformedSource],
+            records: preview.records,
+            activeDiscussionIDs: preview.activeDiscussionIDs,
+            preparedAt: preview.preparedAt
+        )
+        try await fixture.persistRecoveryPlan(
+            SystemTrashDeletionPlan(preview: malformedPreview)
+        )
+
+        await #expect(throws: TriptychTransactionError.self) {
+            _ = try await fixture.coordinator().recoverInterruptedTransactions()
+        }
+
+        #expect(FileManager.default.fileExists(atPath: fixture.folderURL.path))
+    }
+
     @Test("A Work and its managed Critique are separate native moves with retained association")
     func managedCritiqueUsesSeparateReceiptAndRetainsPortableRelationship() async throws {
         let fixture = try await Fixture()
@@ -474,6 +542,17 @@ struct SystemTrashDeletionTests {
                 identity: identity,
                 association: association
             )
+        }
+
+        func persistRecoveryPlan(_ plan: SystemTrashDeletionPlan) async throws {
+            try await recoveryStore.record(TriptychMutationRecoveryRecord(
+                id: plan.id,
+                triptychID: triptychID,
+                createdAt: plan.preview.preparedAt,
+                failure: "Malformed recovery fixture.",
+                files: [],
+                systemTrashDeletionPlan: plan
+            ))
         }
 
         func remove() {

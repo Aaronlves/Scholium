@@ -190,9 +190,8 @@ final class ResearchFunctionCoordinator: Sendable {
                 }
                 return
             }
-            // Awaiting-Fidelity and Unverified are already durable completion
-            // evidence for substantive work. Cancellation must not overwrite
-            // that evidence any more than it may overwrite a complete run.
+            // Any existing completion is already durable evidence for this
+            // Run. Cancellation must not overwrite that terminal transition.
             throw ResearchFunctionContractError.cancellationAfterCompletion(runID)
         }
         let hasPendingWriteRecovery = try await host.hasPendingResearchWriteRecovery(

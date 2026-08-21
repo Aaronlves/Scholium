@@ -5,7 +5,7 @@ import ScholiumContracts
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 17
+    public static let currentSchemaVersion = 18
 
     public let schemaVersion: Int
     public let triptychID: UUID

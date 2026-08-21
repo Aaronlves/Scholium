@@ -234,8 +234,8 @@
   external-Zotero, or researcher-provided route without inventing source
   evidence. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-12 Records reject schemas 1 through 10; schema 11 has only the bounded
-  one-way participant cutover. Credentials,
+  Schema-12 Records reject every other schema, including schema 11; unsupported
+  files remain byte-unchanged, unread, and nonauthorizing. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected
@@ -246,7 +246,7 @@
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.
-- Once a portable Record exists, schema-17 Local Execution compacts to a
+- Once a portable Record exists, schema-18 Local Execution compacts to a
   terminal receipt and deletes its prepared instructions, Bounded Write Set,
   extensions, write ledgers, and conflict rows. Diff and direct Undo use the
   portable Record plus `(Run ID, Note ID)` Agent evidence instead.

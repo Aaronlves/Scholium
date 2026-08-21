@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 12 and Local Execution schema 17")
+@Suite("Portable Research Record storage v1/schema 12 and Local Execution schema 18")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -85,46 +85,13 @@ struct ResearchRecordV1StoresTests {
         #expect(try await reopened.record(id: record.id) == stored)
     }
 
-    @Test("Schema 11 participant fields cut over once to schema 12")
-    func legacyParticipantSchemaCutover() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = try fixture.portableStore()
-        let record = try makePortableRecord()
-        _ = try await store.createFinishedRecord(record)
-        let recordURL = fixture.control
-            .appendingPathComponent("research-records/v1/records", isDirectory: true)
-            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
-        var object = try #require(
-            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
-                as? [String: Any]
-        )
-        object["schema_version"] = 11
-        object["participating_notes"] = try #require(
-            object["participating_notes"] as? [[String: Any]]
-        ).map { participant in
-            var participant = participant
-            participant["is_tombstone"] = false
-            return participant
-        }
-        try JSONSerialization.data(withJSONObject: object).write(to: recordURL)
-
-        let reopened = try fixture.portableStore()
-        let migrated = try await reopened.record(id: record.id)
-        let migratedObject = try #require(
-            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
-                as? [String: Any]
-        )
-
-        #expect(migrated == record)
-        #expect(migratedObject["schema_version"] as? Int == 12)
-        #expect(try #require(
-            migratedObject["participating_notes"] as? [[String: Any]]
-        ).allSatisfy { $0["is_tombstone"] == nil })
-    }
-
-    @Test("Schema 11 Record with a deleted participant cuts over to whole-Record deletion")
-    func legacyParticipantDeletionCutsOverToRecordDeletion() async throws {
+    @Test(
+        "Unsupported schema-11 Records remain byte-unchanged and nonauthorizing",
+        arguments: [false, true]
+    )
+    func unsupportedRecordSchemaRemainsUnchanged(
+        hasDeletedParticipant: Bool
+    ) async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.portableStore()
@@ -141,15 +108,54 @@ struct ResearchRecordV1StoresTests {
         var participants = try #require(
             object["participating_notes"] as? [[String: Any]]
         )
-        participants[0]["is_tombstone"] = true
+        for index in participants.indices {
+            participants[index]["is_tombstone"] = hasDeletedParticipant && index == 0
+        }
         object["participating_notes"] = participants
         try JSONSerialization.data(withJSONObject: object).write(to: recordURL)
+        let before = try LegacyCanary(url: recordURL)
 
         let reopened = try fixture.portableStore()
+        let listing = try await reopened.listing()
 
-        #expect(try await reopened.listing().records.isEmpty)
-        #expect(await reopened.isRecordPermanentlyDeleted(id: record.id))
-        #expect(!FileManager.default.fileExists(atPath: recordURL.path))
+        #expect(listing.records.isEmpty)
+        #expect(listing.issues.map(\.fileName) == [recordURL.lastPathComponent])
+        #expect(try LegacyCanary(url: recordURL) == before)
+        let isPermanentlyDeleted = await reopened.isRecordPermanentlyDeleted(id: record.id)
+        #expect(!isPermanentlyDeleted)
+    }
+
+    @Test("Unsupported schema-1 Discussions remain byte-unchanged and nonauthorizing")
+    func unsupportedDiscussionSchemaRemainsUnchanged() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let discussion = try makePortableDiscussion()
+        _ = try await store.createActiveDiscussion(discussion)
+        let discussionURL = fixture.control
+            .appendingPathComponent("research-records/v1/active", isDirectory: true)
+            .appendingPathComponent(discussion.id.uuidString.lowercased() + ".json")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: discussionURL))
+                as? [String: Any]
+        )
+        object["schema_version"] = 1
+        object["participating_notes"] = try #require(
+            object["participating_notes"] as? [[String: Any]]
+        ).map { participant in
+            var participant = participant
+            participant["is_tombstone"] = false
+            return participant
+        }
+        try JSONSerialization.data(withJSONObject: object).write(to: discussionURL)
+        let before = try LegacyCanary(url: discussionURL)
+
+        let reopened = try fixture.portableStore()
+        let listing = try await reopened.activeDiscussions()
+
+        #expect(listing.discussions.isEmpty)
+        #expect(listing.issues.map(\.fileName) == [discussionURL.lastPathComponent])
+        #expect(try LegacyCanary(url: discussionURL) == before)
     }
 
     @Test("Record listings fingerprint the exact persisted JSON bytes")
@@ -708,6 +714,10 @@ struct ResearchRecordV1StoresTests {
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             _ = try await creatingStore.createActiveDiscussion(discussion)
         }
+        let finished = try makePortableRecord()
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await creatingStore.createFinishedRecord(finished)
+        }
         await #expect(throws: ResearchRecordStoreV1Error.self) {
             _ = try await creatingStore.settle(
                 noteID: discussion.primaryNoteID,
@@ -987,14 +997,14 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Local Execution schema 17 round-trips and rejects retired schema 16")
+    @Test("Local Execution schema 18 round-trips and rejects retired schema 17")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 17)
+        #expect(stored.schemaVersion == 18)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
@@ -1006,8 +1016,8 @@ struct ResearchRecordV1StoresTests {
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 17)
-        object["schema_version"] = 16
+        #expect(object["schema_version"] as? Int == 18)
+        object["schema_version"] = 17
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()

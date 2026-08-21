@@ -105,13 +105,18 @@ Triptych editor before both preparation and execution. Relevant nonterminal
 `LocalResearchExecutionStore` entries fail preflight.
 
 `TriptychMutationRecoveryStore` persists the `SystemTrashDeletionPlan` before
-the first filesystem call. Each source owns an independent receipt.
+the first filesystem call. Each source owns an independent receipt and a stable
+binding identity; duplicate source, Note, Record, Discussion, or receipt
+identities fail before the deletion gate or another side effect.
 `VaultRepository` repeats descriptor-relative containment and revision or
-manifest checks; `VaultMutationCoordinator` then calls Foundation's native
-system-Trash API inside an `NSFileCoordinator` deleting accessor. The returned
-URL is machine-local recovery evidence only. Original-path absence after an
-interruption cannot prove Foundation success, so that receipt becomes
-`outcomeUnknown` and blocks all portable cleanup.
+manifest checks. `VaultMutationCoordinator` atomically renames the checked
+directory entry into the plan-owned hidden sibling, verifies the bound inode
+and exact bytes or complete manifest, and only then calls Foundation's native
+system-Trash API inside an `NSFileCoordinator` deleting accessor. A late path
+replacement is restored or retained without entering Trash. A pending plan
+resumes an interrupted binding, while absence of both the original entry and a
+valid binding cannot prove Foundation success and becomes `outcomeUnknown`.
+The returned URL remains machine-local recovery evidence only.
 
 After every source receipt is `movedToSystemTrash`,
 `PortableResearchRecordStore` discards affected active Discussions and deletes
@@ -119,10 +124,11 @@ each previewed finished Record with exact-fingerprint compare-and-swap. A
 durable deletion marker makes retry idempotent. Note Review activities are
 pruned, then local executions and Agent change evidence are removed. Settlement,
 stable identity, source-access records, Zotero bindings, and Critique
-associations are not cleanup targets. Portable Record schema 12 has no deleted-
-participant representation; the bounded schema-11-to-12 cutover converts ordinary
-participants and turns any old deleted-participant Record into one whole-Record
-deletion marker.
+associations are not cleanup targets. The Note-deletion marker shares the
+portable-store lock with active Discussion, Settlement, and finished Record
+creation, so no participating state can appear after confirmation. Portable
+Record schema 12 has no deleted-participant representation; every unsupported
+schema remains byte-unchanged, unread, and nonauthorizing.
 
 Watcher reconciliation, Finder actions, and sync tools cannot construct this
 plan or call its Record cleanup. They publish source inventory changes through

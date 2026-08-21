@@ -85,7 +85,7 @@ extension ResearchFunctionCoordinator {
                || existing.actuallyUsedMaterialNoteIDs
                     != submission.actuallyUsedMaterialNoteIDs) {
             throw ResearchFunctionContractError.invalidCompletion(
-                "Advancing Fidelity cannot replace the Action's recorded recommendation or Material-use testimony."
+                "A completion retry cannot replace the Action's recorded recommendation or Material-use testimony."
             )
         }
         // A prepared Analyze never outlives its exact source authority. Check

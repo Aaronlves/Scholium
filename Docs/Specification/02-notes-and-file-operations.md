@@ -521,6 +521,12 @@ recreate the source.
 Before the first native move, Scholium installs a Note-deletion gate and writes
 one durable forward plan. Each source item has its own pending, moved, or
 outcome-unknown receipt and the machine-local resulting Trash URL when known.
+The native operation is bound to the exact checked directory entry before
+Foundation receives it. A replacement that reaches the original path before
+that binding is detected and preserved rather than retargeted into Trash. If
+the process stops after binding but before a native result, the pending plan
+resumes that same exact bound item; original-path absence alone does not turn a
+known Scholium binding into an unknown Finder outcome.
 For a Work whose managed Critique is elsewhere, or a Folder with an external
 managed Critique, partial native success is representable: no Discussion or
 Record cleanup begins until every disclosed source receipt is moved.
@@ -529,8 +535,9 @@ Record cleanup begins until every disclosed source receipt is moved.
 | --- | --- |
 | Dirty save, external modification, identity drift, folder inventory drift, active Run, or portable-store issue before the plan | No source move and no application-state deletion. |
 | Native move fails while the original path is still proven present | Retain the durable plan for retry; Records and Discussions remain. |
+| Process stops after Scholium binds the exact directory entry but before Foundation returns | Resume the same bound item from the pending plan; do not accept or trash a replacement at the original path. |
 | Process stops after a native move and its resulting URL is durable | Resume forward from that receipt; do not move the same item again. |
-| Process stops after the original path disappears but before a durable native result | Mark outcome unknown; do not infer success and do not delete Records. The researcher may inspect Finder and explicitly retain Records, which clears only the deletion gate and plan. |
+| The original path disappears without either a recoverable Scholium binding or a durable native result | Mark outcome unknown; do not infer success and do not delete Records. The researcher may inspect Finder and explicitly retain Records, which clears only the deletion gate and plan. |
 | All source receipts exist but Discussion or Record deletion fails | Source remains under Finder ownership; restart resumes exact-fingerprint Record cleanup idempotently. |
 | A Record was deleted but Note Review or local evidence cleanup fails | The durable Record-deletion marker proves the irreversible step; retry only the remaining cleanup. |
 | Finder or a sync tool deletes or moves source without a Scholium plan | Refresh Search, Attention, open documents, and identity diagnostics only. Never infer Discussion or Record deletion. |

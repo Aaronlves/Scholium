@@ -124,8 +124,8 @@ public struct SystemTrashDeletionCommit: Hashable, Sendable {
     public let deletedRecordIDs: [UUID]
     public let removedDiscussionIDs: [UUID]
     public let originalRelativePaths: [String]
-    /// Machine-local Finder locations returned by FileManager. They never enter
-    /// Markdown or a portable Research Record.
+    /// Machine-local Finder locations returned by the native Trash operation.
+    /// They never enter Markdown or a portable Research Record.
     public let resultingTrashPaths: [String]
 
     public init(

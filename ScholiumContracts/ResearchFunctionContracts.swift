@@ -609,11 +609,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// Public Action identity and frozen authority when the run is resolved.
     public let actionSnapshot: ResearchActionSnapshot?
     public let recordID: UUID?
-    /// Functions coordinated through independent child runs. Manuscript uses
-    /// this for its selected phases; ordinary write Actions do not acquire a
-    /// Fidelity child. Each selected child retains its own permission,
-    /// change-evidence, Record, and completion state.
-    public let requiredChildFunctions: [ResearchFunctionID]
     /// Analysis-only, task-scoped bibliographic context. This projection is
     /// never written back to Markdown and is not a source-evidence claim.
     public let zoteroBibliographicContext: ZoteroBibliographicContext?
@@ -642,7 +637,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         case request
         case actionSnapshot
         case recordID
-        case requiredChildFunctions
         case zoteroBibliographicContext
         case sourceReference
         case analysisSourceRoute
@@ -668,10 +662,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
                 forKey: .actionSnapshot
             ),
             recordID: try container.decodeIfPresent(UUID.self, forKey: .recordID),
-            requiredChildFunctions: try container.decode(
-                [ResearchFunctionID].self,
-                forKey: .requiredChildFunctions
-            ),
             zoteroBibliographicContext: try container.decodeIfPresent(
                 ZoteroBibliographicContext.self,
                 forKey: .zoteroBibliographicContext
@@ -713,7 +703,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         request: ResearchFunctionRequest,
         actionSnapshot: ResearchActionSnapshot? = nil,
         recordID: UUID? = nil,
-        requiredChildFunctions: [ResearchFunctionID] = [],
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         sourceReference: ResearchSourceReference? = nil,
         analysisSourceRoute: ResearchAnalysisSourceRoute? = nil,
@@ -728,9 +717,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.request = request
         self.actionSnapshot = actionSnapshot
         self.recordID = recordID
-        self.requiredChildFunctions = Array(Set(requiredChildFunctions)).sorted {
-            $0.rawValue < $1.rawValue
-        }
         self.zoteroBibliographicContext = zoteroBibliographicContext
         self.sourceReference = sourceReference
         self.analysisSourceRoute = analysisSourceRoute
