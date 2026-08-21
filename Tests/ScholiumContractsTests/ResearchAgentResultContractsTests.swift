@@ -122,8 +122,113 @@ struct ResearchAgentResultContractsTests {
         let child = try #require(ResearchRunLocator(
             rawValue: "contractfidelitychild1"
         ))
+        let note = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Analysis.md"
+        )
+        let target = ResearchFunctionTarget(
+            noteID: UUID(),
+            note: note,
+            role: .analysis,
+            fingerprint: DocumentFingerprint(content: "# Analysis\n"),
+            title: "Analysis"
+        )
+        let inspection = try ResearchContextRequest(clauses: [
+            ResearchContextClause(
+                kind: .readNote,
+                note: target.note,
+                expectedFingerprint: target.fingerprint,
+                limit: 1,
+                useEligibility: .contextUse
+            ),
+        ])
+
+        let constraint = try ResearchFidelityRunContract(
+            checks: [.content, .citations],
+            targets: [target],
+            materials: [],
+            scope: .whole,
+            sourceReference: nil,
+            requiredUnavailableChecks: [.citations],
+            evidenceLimitation: "No formal source envelope is available.",
+            inspectionRequests: [inspection]
+        )
+        #expect(try JSONDecoder().decode(
+            ResearchFidelityRunContract.self,
+            from: JSONEncoder().encode(constraint)
+        ) == constraint)
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchFidelityRunContract(
+                checks: [.content],
+                targets: [target],
+                materials: [],
+                scope: .whole,
+                sourceReference: nil,
+                requiredUnavailableChecks: [.citations],
+                evidenceLimitation: "The constraint exceeds the declared checks.",
+                inspectionRequests: [inspection]
+            )
+        }
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchFidelityRunContract(
+                checks: [.citations],
+                targets: [target],
+                materials: [],
+                scope: .whole,
+                sourceReference: nil,
+                requiredUnavailableChecks: [.citations],
+                inspectionRequests: [inspection]
+            )
+        }
+
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .checkFidelity
+            }
+        )
+        let registration = try ResearchSkillRegistration(
+            actionID: .checkFidelity,
+            displayName: "Fidelity Method",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Fidelity\n",
+            practices: []
+        )
+        let context = try ResearchAuthenticatedRunContext(
+            coreProtocol: nil,
+            brief: ResearchRunBrief(
+                run: child,
+                actionID: .checkFidelity,
+                state: .prepared,
+                initialObjectTitle: target.title,
+                initialObjectRole: .analysis,
+                academicPurpose: nil,
+                capabilities: ResearchRunCapabilityAvailability(
+                    search: true,
+                    read: true,
+                    relations: true,
+                    properties: true,
+                    records: true,
+                    researchState: true,
+                    zotero: false,
+                    writeInitialObject: false,
+                    extendWriteSet: false
+                )
+            ),
+            method: ResearchMethodContext(snapshot: method),
+            resultContract: ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: try profile.contentRevision()
+            ),
+            fidelityContract: constraint,
+            boundedWriteSet: []
+        )
         let receipt = try ResearchAgentFidelityPreparationReceipt(
             childRun: child,
+            childContext: context,
             childState: .prepared,
             parentState: .awaitingFidelity,
             parentRecordFormed: false,
@@ -138,34 +243,11 @@ struct ResearchAgentResultContractsTests {
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
         #expect(Set(object.keys) == [
-            "schema_version", "child_run", "child_state", "parent_state",
-            "parent_record_formed", "message",
+            "schema_version", "child_run", "child_context", "child_state",
+            "parent_state", "parent_record_formed", "message",
         ])
         for forbidden in ["secret", "credential", "parent_run_id", "child_run_id"] {
             #expect(!String(decoding: data, as: UTF8.self).contains(forbidden))
-        }
-
-        let constraint = try ResearchFidelityRunContract(
-            checks: [.content, .citations],
-            requiredUnavailableChecks: [.citations],
-            evidenceLimitation: "No formal source envelope is available."
-        )
-        #expect(try JSONDecoder().decode(
-            ResearchFidelityRunContract.self,
-            from: JSONEncoder().encode(constraint)
-        ) == constraint)
-        #expect(throws: ResearchAgentConnectionContractError.self) {
-            _ = try ResearchFidelityRunContract(
-                checks: [.content],
-                requiredUnavailableChecks: [.citations],
-                evidenceLimitation: "The constraint exceeds the declared checks."
-            )
-        }
-        #expect(throws: ResearchAgentConnectionContractError.self) {
-            _ = try ResearchFidelityRunContract(
-                checks: [.citations],
-                requiredUnavailableChecks: [.citations]
-            )
         }
     }
 

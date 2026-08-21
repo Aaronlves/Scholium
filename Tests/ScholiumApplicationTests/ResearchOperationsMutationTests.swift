@@ -582,10 +582,18 @@ func makeTestAgentResultSubmission(
     literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil
 ) throws -> ResearchAgentResultSubmission {
     let action = try #require(preparation.snapshot.actionSnapshot)
+    let defaultFidelityFields = ResearchAcademicProfileCatalog.defaultProfiles
+        .first { $0.actionID == .checkFidelity }?.academicResultFields ?? []
+    let academicResults = if action.actionID == .checkFidelity,
+        action.resultContract.academicFields == defaultFidelityFields {
+        try ResearchAcademicFieldValues(rawValues: [:], definitions: [])
+    } else {
+        try testAcademicResults(for: action)
+    }
     return try ResearchAgentResultSubmission(
         recordTitle: ResearchRecordTitle("Test research result"),
         disposition: disposition,
-        academicResults: testAcademicResults(for: action),
+        academicResults: academicResults,
         contextUseClaims: contextUseClaims,
         fidelityOutcomes: fidelityOutcomes,
         literatureRecommendations: literatureRecommendations

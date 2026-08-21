@@ -127,9 +127,15 @@ active projection, so researcher-authored statements are not discarded.
 After an Agent Result reaches `awaiting_fidelity`, authenticated
 `agent prepare-fidelity` resolves the parent locator through
 `ResearchAgentSessionAuthority`, calls the existing exact-child preparation,
-and attaches the read-only child locator to that same Session. The credential
-never re-enters output, raw Run UUIDs authorize nothing, repeated preparation
-returns the same locator, and the child retains its own Run and Record.
+attaches the read-only child locator to that same Session, and returns its full
+authenticated context in the same receipt. The context carries exact Target
+and Material revisions, scope, formal source evidence or an Application-owned
+unavailable constraint, deterministic exact-read requests, and one typed
+submit-Result action with an illustrative strict payload. The credential never
+re-enters output, raw Run UUIDs authorize nothing, repeated preparation returns
+the same locator and context, and the child retains its own Run and Record.
+Re-pair or direct-Session replacement revokes the authority root and all
+locators derived from it while preserving independently attached Runs.
 This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-research-guidance.md)
 owns the Method, Practice, Profile, collaboration-policy, and citation
 configuration consumed during preparation.
@@ -143,8 +149,10 @@ task/object/state, safe capability availability and next action, not a dump or
 summary of research materials. Method Context preserves exact primary Skill
 and Practice text plus the post-authentication folder path. Result Contract
 marks Agent academic fields versus Application machine fields. `reload`
-reconstructs this packet from the frozen Run and never reads later
-method/Profile values or old Research Context responses.
+reconstructs this packet from the frozen Run, revalidates exact Target,
+Materials, and formal source owners, and returns typed `stale_run` rather than
+a usable packet after true drift. It never reads later method/Profile values or
+old Research Context responses.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
@@ -208,14 +216,18 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 3 and authenticated Run Context schema 8 carry the
+Continue Result schema 3 and authenticated Run Context schema 9 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
 Execution schema 16 persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
-Context schema 8 also carries optional typed Zotero Integration and Fidelity contracts containing
-the exact release-managed System Skill and capability contract. Application
+Context schema 9 also carries optional typed Zotero Integration and Fidelity
+contracts. The Fidelity contract contains vault-qualified exact-read selectors
+and expected revisions but no write capability; the Research Context provider
+loads those exact owners directly rather than resolving an ambiguous Search
+path. The Integration contract contains the exact release-managed System Skill
+and capability contract. Application
 includes it only for an Analysis target with frozen Zotero context and a
 Zotero-capable Platform Action; the adapter contains no authority or transport.
 All prior Result, authenticated Context, and Local Execution schemas fail
@@ -539,11 +551,15 @@ absent. Selecting the third suppresses any existing Zotero snapshot and adapter
 for that Run without changing the portable relationship. Schema-11 Records
 retain that route without fabricating a source claim;
 the external Agent remains responsible for reporting the exact paper data it
-actually retrieved and every access limitation. An automatic Fidelity child
-whose parent used `researcher_provided` receives an authenticated typed
-constraint: Citation must be `unavailable` when Scholium has no formal source
-envelope. Completion enforces the same constraint and never promotes a Note
-YAML URL into source evidence.
+actually retrieved and every access limitation. An automatic Analyze Fidelity
+child receives the parent's formal revision-bound source envelope when
+Scholium owns one. When no formal envelope exists—including
+`researcher_provided` and external Zotero retrieval—the authenticated contract
+requires Citation `unavailable`. Completion enforces the same constraint and
+never promotes Note YAML, URL, or bibliographic metadata into source evidence.
+For the default Check Fidelity Profile, Application derives the aggregate
+Finding fields from the attributed per-check outcomes; a researcher-customized
+Profile remains explicit.
 
 Check Fidelity remains a read-only exact-revision Action. Multi-document writes
 may request separate checks for each final revision, but no check collapses

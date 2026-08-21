@@ -593,6 +593,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
 public struct ResearchRunBrief: Codable, Hashable, Sendable {
     public let run: ResearchRunLocator
     public let actionID: ResearchActionID
+    public let state: ResearchActionRunState
     public let initialObjectTitle: String
     public let initialObjectRole: ResearchActionTargetRole
     public let academicPurpose: String?
@@ -601,6 +602,7 @@ public struct ResearchRunBrief: Codable, Hashable, Sendable {
     public init(
         run: ResearchRunLocator,
         actionID: ResearchActionID,
+        state: ResearchActionRunState,
         initialObjectTitle: String,
         initialObjectRole: ResearchActionTargetRole,
         academicPurpose: String?,
@@ -608,6 +610,7 @@ public struct ResearchRunBrief: Codable, Hashable, Sendable {
     ) {
         self.run = run
         self.actionID = actionID
+        self.state = state
         self.initialObjectTitle = initialObjectTitle
         self.initialObjectRole = initialObjectRole
         self.academicPurpose = academicPurpose
@@ -681,33 +684,114 @@ public struct ResearchZoteroIntegrationAdapter: Codable, Hashable, Sendable {
 /// Agent must not convert authored Note metadata into missing source evidence.
 public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
     public let checks: Set<FidelityCheck>
+    /// Exact immutable audit objects. These values are read-only context, not
+    /// authorization tokens, and the Agent never echoes them in its Result.
+    public let targets: [ResearchFunctionTarget]
+    public let materials: [ResearchFunctionMaterial]
+    public let scope: ResearchFunctionScope?
+    /// Present only when Scholium can reopen one formal revision-bound source
+    /// owner for this audit. Authored Note metadata is never promoted here.
+    public let sourceReference: ResearchSourceReference?
     public let requiredUnavailableChecks: Set<FidelityCheck>
     public let evidenceLimitation: String?
+    /// Ready-to-send exact-read requests derived by Scholium. They let a fresh
+    /// Agent inspect the complete frozen boundary without reconstructing query
+    /// JSON or remembering a parent conversation.
+    public let inspectionRequests: [ResearchContextRequest]
 
     public init(
         checks: Set<FidelityCheck>,
+        targets: [ResearchFunctionTarget],
+        materials: [ResearchFunctionMaterial],
+        scope: ResearchFunctionScope?,
+        sourceReference: ResearchSourceReference?,
         requiredUnavailableChecks: Set<FidelityCheck> = [],
-        evidenceLimitation: String? = nil
+        evidenceLimitation: String? = nil,
+        inspectionRequests: [ResearchContextRequest]
     ) throws {
         let limitation = evidenceLimitation?.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
+        let targetIDs = targets.map(\.noteID)
+        let targetNotes = targets.map(\.note)
+        let materialIDs = materials.map(\.noteID)
+        let materialNotes = materials.map(\.note)
+        let inspectionClauses = inspectionRequests.flatMap(\.clauses)
+        let expectedReadKeys = Set((targets.map {
+            "\($0.note.vaultID.uuidString.lowercased()):\($0.note.relativePath):\($0.fingerprint.sha256)"
+        } + materials.map {
+            "\($0.note.vaultID.uuidString.lowercased()):\($0.note.relativePath):\($0.fingerprint.sha256)"
+        }))
+        let deliveredReadKeys: Set<String> = Set(
+            inspectionClauses.compactMap { clause -> String? in
+            guard clause.kind == .readNote,
+                  let note = clause.note,
+                  let fingerprint = clause.expectedFingerprint else {
+                return nil
+            }
+            return "\(note.vaultID.uuidString.lowercased()):\(note.relativePath):\(fingerprint.sha256)"
+            }
+        )
         guard !checks.isEmpty,
+              !targets.isEmpty,
+              targets.count <= 64,
+              Set(targetIDs).count == targetIDs.count,
+              Set(targetNotes).count == targetNotes.count,
+              targets.allSatisfy({
+                  $0.lifecycle == .active && !$0.title.isEmpty
+              }),
+              materials.count <= 64,
+              Set(materialIDs).count == materialIDs.count,
+              Set(materialNotes).count == materialNotes.count,
+              Set(targetIDs).isDisjoint(with: materialIDs),
+              materials.allSatisfy({
+                  $0.lifecycle == .active && !$0.title.isEmpty
+              }),
               requiredUnavailableChecks.isSubset(of: checks),
               requiredUnavailableChecks.isEmpty == (limitation == nil),
               limitation?.isEmpty != true,
-              limitation?.utf8.count ?? 0 <= 2_048 else {
+              limitation?.utf8.count ?? 0 <= 2_048,
+              !inspectionRequests.isEmpty,
+              inspectionRequests.count <= 32,
+              !inspectionClauses.isEmpty,
+              inspectionClauses.allSatisfy({
+                  $0.kind == .readNote || $0.kind == .inspectMaterials
+              }),
+              deliveredReadKeys == expectedReadKeys else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
+        if let scope, scope.kind == .passage {
+            guard targets.count == 1,
+                  scope.selection?.fingerprint == targets[0].fingerprint else {
+                throw ResearchAgentConnectionContractError.invalidHandoff
+            }
+        }
         self.checks = checks
+        self.targets = targets.sorted {
+            if $0.note.vaultID != $1.note.vaultID {
+                return $0.note.vaultID.uuidString < $1.note.vaultID.uuidString
+            }
+            return $0.note.relativePath < $1.note.relativePath
+        }
+        self.materials = materials.sorted {
+            if $0.note.vaultID != $1.note.vaultID {
+                return $0.note.vaultID.uuidString < $1.note.vaultID.uuidString
+            }
+            return $0.note.relativePath < $1.note.relativePath
+        }
+        self.scope = scope
+        self.sourceReference = sourceReference
         self.requiredUnavailableChecks = requiredUnavailableChecks
         self.evidenceLimitation = limitation
+        self.inspectionRequests = inspectionRequests
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case checks
+        case checks, targets, materials, scope
+        case sourceReference = "source_reference"
         case requiredUnavailableChecks = "required_unavailable_checks"
         case evidenceLimitation = "evidence_limitation"
+        case inspectionRequests = "inspection_requests"
     }
 
     public init(from decoder: Decoder) throws {
@@ -718,6 +802,22 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
             checks: container.decode(Set<FidelityCheck>.self, forKey: .checks),
+            targets: container.decode(
+                [ResearchFunctionTarget].self,
+                forKey: .targets
+            ),
+            materials: container.decode(
+                [ResearchFunctionMaterial].self,
+                forKey: .materials
+            ),
+            scope: container.decodeIfPresent(
+                ResearchFunctionScope.self,
+                forKey: .scope
+            ),
+            sourceReference: container.decodeIfPresent(
+                ResearchSourceReference.self,
+                forKey: .sourceReference
+            ),
             requiredUnavailableChecks: container.decode(
                 Set<FidelityCheck>.self,
                 forKey: .requiredUnavailableChecks
@@ -725,13 +825,17 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
             evidenceLimitation: container.decodeIfPresent(
                 String.self,
                 forKey: .evidenceLimitation
+            ),
+            inspectionRequests: container.decode(
+                [ResearchContextRequest].self,
+                forKey: .inspectionRequests
             )
         )
     }
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 8
+    public static let currentSchemaVersion = 9
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.
@@ -756,6 +860,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     /// and states needed to address the protected write route.
     public let boundedWriteSet: [ResearchBoundedWriteSetViewEntry]
     public let continuationHandoff: ResearchContinuationHandoffContext?
+    /// Shell-safe, typed next operations. Fidelity includes a complete
+    /// illustrative Result JSON shape so the Agent supplies judgments rather
+    /// than reverse-engineering the wire contract.
+    public let nextActions: [AgentCommandAction]
 
     public init(
         coreProtocol: String?,
@@ -766,7 +874,8 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         fidelityContract: ResearchFidelityRunContract? = nil,
         boundedWriteSet: [ResearchBoundedWriteSetViewEntry],
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
-        discussionResponseContract: DialogueResponseContract? = nil
+        discussionResponseContract: DialogueResponseContract? = nil,
+        nextActions: [AgentCommandAction] = []
     ) throws {
         guard zoteroIntegrationAdapter == nil
                 || (brief.initialObjectRole == .analysis
@@ -793,6 +902,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             return $0.relativePath < $1.relativePath
         }
         self.continuationHandoff = continuationHandoff
+        self.nextActions = nextActions
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -805,6 +915,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         case discussionResponseContract = "discussion_response_contract"
         case boundedWriteSet = "bounded_write_set"
         case continuationHandoff = "continuation_handoff"
+        case nextActions = "next_actions"
     }
 
     public init(from decoder: Decoder) throws {
@@ -852,6 +963,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             discussionResponseContract: try container.decodeIfPresent(
                 DialogueResponseContract.self,
                 forKey: .discussionResponseContract
+            ),
+            nextActions: try container.decode(
+                [AgentCommandAction].self,
+                forKey: .nextActions
             )
         )
     }

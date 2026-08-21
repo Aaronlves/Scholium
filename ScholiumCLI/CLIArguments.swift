@@ -224,7 +224,6 @@ extension ScholiumCLI {
             "action available": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "action prepare": .init(pathLength: 2, options: ["--from": .value, "--format": .value]),
             "action show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
-            "action prepare-fidelity": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "action cancel": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "read": .init(pathLength: 1, positionalCount: 1 ... 1, options: format),
             "note create": .init(

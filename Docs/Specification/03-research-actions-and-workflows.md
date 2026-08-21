@@ -119,18 +119,12 @@ response remains untrusted research material. A material conflict between the
 researcher request and method is made visible; it is not silently averaged or
 resolved by the material itself.
 
-The Agent-facing contract has one owner per concern. The protected Core
-Protocol owns the stable workflow instructions and sequence—pairing,
-authenticated delivery, conditional adapter routing, context query, bounded
-write-set extension, Discuss turn submission, document-write request,
-conflict/reload, Result, Continue Research, and End. Application owns
-authorization, adapter eligibility and delivery, and execution of those
-operations. Typed command contracts own
-current fields, allowed values, and result forms. A release-managed Integration
-Adapter owns stable integration-specific interpretation and safety, while the
-registered primary Skill and its Practices own the academic method and
-execution guidance. Installed CLI help and tool schemas own current invocation
-syntax. These owners do not replace one another or repeat the same content.
+The Agent-facing contract has one owner per concern. Core Protocol owns the
+stable workflow sequence; Application owns authorization, adapter eligibility,
+delivery, and execution. Typed contracts own current fields and result forms;
+an Integration Adapter owns integration interpretation; the registered Skill
+and Practices own academic method; CLI help and tool schemas own invocation
+syntax. These owners neither replace nor repeat one another.
 
 ### 8.2 Agent entry, local pairing, layered delivery, and Research Context
 
@@ -142,9 +136,13 @@ Pairing Code. Both routes share Context, writes, Result, continuation, End,
 conflict, and recovery. After a write Result reaches **Awaiting Fidelity**,
 authenticated `agent prepare-fidelity` prepares or reuses the child bound to
 the exact final Target, Materials, scope, and checks, then attaches its opaque
-read-only locator to the same Session. Child completion validates persisted
-lineage and advances the parent; raw UUIDs authorize nothing, and the Agent
-transcribes neither a second secret, `childRunIDs`, nor the parent Result.
+read-only locator to the same Session. That operation also returns child state,
+exact read-only Target/Material revisions and scope, formal source evidence or
+an unavailable constraint, ready inspection requests, and a strict Result next
+action. The Agent inspects and supplies per-check judgments; Scholium derives
+default aggregate fields and links child completion to the parent. Raw UUIDs
+authorize nothing; the Agent transcribes no second secret, fingerprint,
+`childRunID`, duplicated default field, or parent Result.
 
 For a Discuss Run, the authenticated Session also exposes the frozen
 `DialogueResponseContract` and `agent discuss-reply`. That command accepts one
@@ -177,50 +175,48 @@ handoff contains no research text, complete method, local path, internal
 fingerprint, permission payload, result schema, Session secret, or reusable
 bearer authority.
 
-Pairing exchanges the one-time code for a hidden **Connection Session**. Codes
-and Session credentials are independently generated, bounded, nonpredictable,
-and never stored in recoverable plain text. The Pairing Code
-may enter only the researcher-selected Agent conversation and pairing standard
-input. It never enters the research vault, command argument, URL, file,
-ordinary output, log, later prompt, Result, or Record. The reusable Session
-secret never enters any copied handoff, prompt, vault, command argument, URL,
-ordinary output, or log.
+Pairing exchanges the one-time code for a hidden **Connection Session**. Both
+values are independently generated, bounded, nonpredictable, and never stored
+in recoverable plain text. The code enters only the researcher-selected Agent
+conversation and pairing standard input; the reusable secret enters neither.
+Neither value enters a vault, command argument, URL, ordinary output, log,
+later prompt, Result, or Record.
 
 A Session binds the current macOS user, current application-process
 generation, allowed Runs, expiry, and revocation. One Run has at most one
-write-capable Session; re-pairing it revokes the old Session's access to that
-Run. Window closure, sleep, a short socket interruption, or ordinary CLI
-reconnection does not require pairing again while that process and Session
-remain valid. Full app exit, crash, update restart, or Mac restart always
-invalidates every old Session. Re-pairing an unfinished Run changes connection
-authority only; it does not rebuild the Run or discard confirmed writes,
-Records, conflicts, or recovery duties. Keychain does not restore Sessions.
+write-capable Session. Re-pair or direct-Session replacement revokes that Run
+and all child locators derived from its authority root, while preserving
+independently attached Runs. Ordinary reconnection needs no new pairing while
+process and Session remain valid; full app exit, crash, update, or Mac restart
+invalidates all Sessions. Re-pairing changes connection authority only, never
+the Run, confirmed writes, Records, conflicts, or recovery. Keychain does not
+restore Sessions.
 
-The supported packaged App and version-matched CLI communicate through one
-per-user, loopback-only local bridge with bounded messages, timeouts, and
-contract-version checks. The bridge relies on the unguessable one-time Pairing
-Code and process-bound Session credential rather than filesystem metadata or
-peer-user inference. It owns no Triptych, Run, Session semantics, research
-content, Record, change evidence, or recovery bytes and exposes no relay, LAN, or
-public network endpoint. Direct pairing is promised only where the Agent can
-reach that local CLI/bridge; manual cloud-Agent copy is not a Session. Transport
-mechanics belong to [Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).
+The packaged App and matching CLI use one per-user, loopback-only bridge with
+bounded messages, timeouts, and version checks. It relies on the Pairing Code
+and process-bound Session, owns no research or recovery state, and exposes no
+relay, LAN, or public endpoint. Pairing requires Agent access to that local
+CLI/bridge; cloud copy is not a Session. Transport mechanics belong to
+[Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).
 
 Delivery is progressive:
 
 - a newly paired Agent session receives Core Protocol, capability catalog, and
   Session boundary once;
-- each Run receives a short Run Brief, exact Method Context, and Result
-  Contract;
+- each Run receives a short Run Brief with current state, exact Method Context,
+  and Result Contract; Fidelity also receives its exact audit boundary,
+  inspection requests, and strict Result template;
 - Research Context arrives only after an explicit query;
 - a specialized capability explains only its additional contract on first
   use; and
 - ordinary calls return data, result, error, next step, current Run/Action,
   and `reload`/`help` anchors without repeating Core Protocol.
 
-`reload` returns the Run-frozen method, Practices, folder-path string, and
-Result Contract. It never substitutes later current method text and never
-replays an old Research Context response, ranking, availability, or cache.
+`reload` revalidates exact Target, Materials, and formal source, then returns
+the frozen method, Practices, folder path, Result Contract, and current state.
+Genuine drift returns `stale_run`; an authenticated write uses the Run-owned
+revision and may report `awaiting_fidelity`. Reload substitutes no later method
+and replays no old Context response, ranking, availability, or cache.
 Local absolute paths are delivered only after authentication.
 
 The versioned, read-only **Research Context Query/Response** contract belongs

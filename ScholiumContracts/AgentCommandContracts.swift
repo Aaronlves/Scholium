@@ -1,11 +1,18 @@
 import Foundation
 
+/// Delivery-neutral structured recovery code surfaced by an Agent command.
+/// The CLI consumes this narrow contract without importing an Application
+/// transport implementation or reconstructing its error taxonomy.
+public protocol AgentCommandErrorCodeProviding: Error {
+    var agentCommandErrorCode: String { get }
+}
+
 public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
     case inspect
     case reply
     case promote
     case selectResources = "select_resources"
-    case prepareFidelity = "prepare_fidelity"
+    case submitResult = "submit_result"
     case cancel
 }
 

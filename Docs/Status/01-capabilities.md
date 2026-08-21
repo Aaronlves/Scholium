@@ -118,9 +118,13 @@
   Session for subsequent operations.
 - After a staged write Result returns `awaiting_fidelity`, authenticated
   `agent prepare-fidelity` prepares or reuses the exact final-revision child
-  and attaches its opaque read-only locator to the same protected Session.
-  Child Result completion validates persisted lineage, advances the parent
-  without a second parent payload, and returns typed child/parent Record state.
+  and attaches its opaque read-only locator to the same protected Session. The
+  same receipt includes the full child context, exact Target/Material/source
+  boundary, ready inspection requests, and a strict submit template. Default
+  Check Fidelity aggregate fields are system-derived from the Agent's
+  per-check outcomes. Child Result completion validates persisted lineage,
+  advances the parent without a second parent payload, and returns typed
+  child/parent Record state.
 - `agent start` additionally accepts the strict Analyze-only `new_analysis`
   shape. It supplies one exact path and typed Analysis creation metadata, with
   either an explicit Zotero library/item relationship or the
@@ -138,10 +142,15 @@
   otherwise replay accepts exact readback or returns `replay_conflict` without
   writing. A stale derived projection preserves the source/identity commit and
   returns a structured non-duplication recovery result.
-- Bridge failures distinguish replay conflict, stale projection, missing source
-  evidence, expired Session, permission refusal, timeout, and outcome unknown. App
+- Bridge failures distinguish replay conflict, true `stale_run`, stale
+  projection, missing source evidence, expired Session, permission refusal,
+  timeout, and outcome unknown. Authenticated reload revalidates exact Target,
+  Materials, and formal source state instead of returning a false-current
+  packet. App
   restart still invalidates Session authority; Copy New Handoff re-pairs the
-  unchanged unfinished Run instead of persisting a bearer credential.
+  unchanged unfinished Run instead of persisting a bearer credential. Parent
+  re-pair or direct-Session replacement also revokes every child locator
+  derived from that parent's old Session without revoking independent Runs.
 - Action inspection revalidates an Agent-written target against the Run-owned
   current write/completion revision, so an expected committed write can display
   `awaiting_fidelity`; a later unrelated external revision still fails stale.

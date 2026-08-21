@@ -67,9 +67,28 @@ directly.
 4. On a conflict, use the action returned for `agent resolve-write-conflict`.
    Reread changed source before deciding whether to create a new write input.
 5. Use `agent reload` whenever the current authenticated Run state is
-   uncertain.
-6. Finish with `agent submit-result`; use `agent continue` only for a distinct
-   next Action, or `agent end` to stop an unfinished Run without a Result.
+   uncertain. A `stale_run` response means an exact Target, Material, or formal
+   source boundary changed. Stop that Run; do not retry a write or Result
+   against the changed boundary.
+6. Finish the substantive parent with `agent submit-result`. If the receipt is
+   `awaiting_fidelity`, run `agent prepare-fidelity` with that parent locator.
+   One call attaches the read-only child and returns its complete
+   `child_context`; do not run a separate context command merely to recover the
+   packet and never transcribe a child UUID.
+7. Send every item in
+   `child_context.fidelity_contract.inspection_requests` unchanged through
+   `agent query` for the returned child locator. Inspect the exact final Target,
+   frozen Materials, and the formal revision-bound source envelope when one is
+   present. If the contract marks a check required-unavailable, report it as
+   unavailable; Note YAML URLs and bibliographic metadata are not source
+   evidence.
+8. Fill the `submit_result` item in `child_context.next_actions` after those
+   inspections, then run its argument vector with the filled input template.
+   Scholium derives identity, revisions, default aggregate Fidelity fields,
+   child lineage, and both Records. The Agent supplies only the per-check
+   academic judgments and any explicitly researcher-customized result fields.
+9. Use `agent continue` only for a distinct next Action, or `agent end` to stop
+   an unfinished Run without a Result.
 
 The authenticated Run packet and command inputs own current fields, allowed
 values, capabilities, write members, and next steps. This protocol does not
@@ -79,6 +98,10 @@ restate those forms.
 
 Return a concise one-line Record Title and the frozen academic Result Contract,
 including an explicit blocked result when the required research cannot be
-completed safely or faithfully. The Record Title names the completed research
-record; it is not a second result, source title, or process narration. Do not
-provide process narration merely to demonstrate compliance.
+completed safely or faithfully. For the default Check Fidelity profile, keep
+`academic_results.values` empty: Scholium derives Finding, Finding Status, and
+suggested correction from the attributed `fidelity_outcomes`. A customized
+profile remains explicit in the returned input template. The Record Title names
+the completed research record; it is not a second result, source title, or
+process narration. Do not provide process narration merely to demonstrate
+compliance.

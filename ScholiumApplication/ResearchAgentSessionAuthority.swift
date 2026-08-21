@@ -95,6 +95,11 @@ actor ResearchAgentSessionAuthority {
         let triptychID: UUID
         let locator: ResearchRunLocator
         let canWrite: Bool
+        /// Root Run whose authenticated authority attached this locator.
+        /// Nil means the Run owns independent Session authority. A derived
+        /// Fidelity locator must disappear when that root is re-paired or
+        /// revoked; persisted Run lineage alone never keeps bearer access.
+        let authorizationRootRunID: UUID?
         var activeSessionID: UUID?
         var isFinalized: Bool
     }
@@ -147,22 +152,8 @@ actor ResearchAgentSessionAuthority {
         let locator = try uniqueLocator()
         let code = try pairingCode()
         let expiresAt = now.addingTimeInterval(boundedValidity)
-        let previousLocators = runs.values
-            .filter { $0.runID == runID }
-            .map(\.locator)
-        for previous in previousLocators {
-            if let sessionID = runs[previous]?.activeSessionID {
-                remove(locator: previous, fromSession: sessionID)
-            }
-            writeCapabilities = writeCapabilities.filter {
-                $0.value.run != previous
-            }
-            methodWriteCapabilities = methodWriteCapabilities.filter {
-                $0.value.run != previous
-            }
-        }
+        revokeAuthorizationLineage(rootRunID: runID)
         pairings = pairings.filter { $0.value.runID != runID }
-        runs = runs.filter { $0.value.runID != runID }
         pairings[locator] = Pairing(
             runID: runID,
             triptychID: triptychID,
@@ -178,6 +169,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
+            authorizationRootRunID: nil,
             activeSessionID: nil,
             isFinalized: false
         )
@@ -209,22 +201,8 @@ actor ResearchAgentSessionAuthority {
         let expiry = now.addingTimeInterval(
             min(max(sessionValidity, 60), 24 * 60 * 60)
         )
-        let previousLocators = runs.values
-            .filter { $0.runID == runID }
-            .map(\.locator)
-        for previous in previousLocators {
-            if let sessionID = runs[previous]?.activeSessionID {
-                remove(locator: previous, fromSession: sessionID)
-            }
-            writeCapabilities = writeCapabilities.filter {
-                $0.value.run != previous
-            }
-            methodWriteCapabilities = methodWriteCapabilities.filter {
-                $0.value.run != previous
-            }
-        }
+        revokeAuthorizationLineage(rootRunID: runID)
         pairings = pairings.filter { $0.value.runID != runID }
-        runs = runs.filter { $0.value.runID != runID }
         sessions[credential.sessionID] = Session(
             id: credential.sessionID,
             secretDigest: Self.digest(Data(secret.utf8)),
@@ -239,6 +217,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
+            authorizationRootRunID: nil,
             activeSessionID: credential.sessionID,
             isFinalized: false
         )
@@ -346,6 +325,7 @@ actor ResearchAgentSessionAuthority {
         triptychID: UUID,
         canWrite: Bool,
         to credential: ResearchConnectionCredential,
+        authorizationRootRunID: UUID? = nil,
         now: Date = Date(),
         userID: uid_t = geteuid()
     ) throws -> ResearchRunLocator {
@@ -364,6 +344,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
+            authorizationRootRunID: authorizationRootRunID,
             activeSessionID: credential.sessionID,
             isFinalized: false
         )
@@ -400,11 +381,14 @@ actor ResearchAgentSessionAuthority {
               authenticatedParent.runID != runID else {
             throw ResearchAgentSessionError.sessionRejected
         }
+        let authorizationRootRunID = runs[parent]?.authorizationRootRunID
+            ?? authenticatedParent.runID
         if let existing = sessions[credential.sessionID]?.runLocators
             .compactMap({ locator -> ResearchRunLocator? in
                 guard let binding = runs[locator],
                       binding.runID == runID,
                       binding.triptychID == triptychID,
+                      binding.authorizationRootRunID == authorizationRootRunID,
                       binding.activeSessionID == credential.sessionID,
                       !binding.isFinalized else {
                     return nil
@@ -420,6 +404,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             canWrite: canWrite,
             to: credential,
+            authorizationRootRunID: authorizationRootRunID,
             now: now,
             userID: userID
         )
@@ -614,7 +599,14 @@ actor ResearchAgentSessionAuthority {
     }
 
     func revokeRun(_ runID: UUID) {
-        let locators = runs.values.filter { $0.runID == runID }.map(\.locator)
+        revokeAuthorizationLineage(rootRunID: runID)
+    }
+
+    private func revokeAuthorizationLineage(rootRunID: UUID) {
+        let locators = runs.values.filter {
+            $0.runID == rootRunID
+                || $0.authorizationRootRunID == rootRunID
+        }.map(\.locator)
         for locator in locators {
             writeCapabilities = writeCapabilities.filter {
                 $0.value.run != locator
@@ -628,6 +620,7 @@ actor ResearchAgentSessionAuthority {
             runs[locator] = nil
             pairings[locator] = nil
         }
+        pairings = pairings.filter { $0.value.runID != rootRunID }
     }
 
     /// Ends all capabilities for a completed Run while retaining only its

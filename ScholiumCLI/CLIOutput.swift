@@ -80,7 +80,6 @@ extension ScholiumCLI {
           scholium action available --from <json|-> --format json
           scholium action prepare --from <json|-> --format json|markdown
           scholium action show <run-id> [--triptych <selector>] --format json|markdown
-          scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown
           scholium action cancel <run-id> [--triptych <selector>]
           scholium read <vault>:<relative-path> [--format json]
           scholium note create <vault>:<path> [--body-from <text-file>]
@@ -245,7 +244,7 @@ private extension ScholiumCLI {
                 usage: "scholium agent context --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the Run locator from the handoff. The CLI loads the hidden Session credential from protected local state.",
-                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief, frozen Method and Practices, Result Contract, any Fidelity evidence constraint, current bounded write set, and continuation handoff.",
+                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief with current state, frozen Method and Practices, Result Contract, any exact Fidelity target/material/source boundary with ready inspection_requests, current bounded write set, continuation handoff, and typed next_actions.",
                 nextSteps: [
                     "scholium agent query --run <locator> --from <json|-> when more Research Context is needed",
                     "scholium agent reload --run <locator> whenever current Run state is uncertain",
@@ -255,26 +254,27 @@ private extension ScholiumCLI {
                 usage: "scholium agent prepare-fidelity --run <parent-locator>",
                 inputContract: "Authenticated parent Run locator; no JSON body",
                 input: "Use this only after the parent Result returns awaiting_fidelity. The CLI authenticates the parent Session; raw child UUIDs do not grant access.",
-                output: "ResearchAgentFidelityPreparationReceipt. An unfinished exact-revision child returns a new opaque child_run locator attached read-only to the same protected Session; reusable completed evidence instead reports the parent Record state. No Session secret is printed.",
+                output: "ResearchAgentFidelityPreparationReceipt. An unfinished exact-revision child returns both a new opaque child_run locator attached read-only to the same protected Session and its complete child_context. That context contains the exact target revisions, frozen Materials and scope, a formal source_reference or required unavailable checks, ready inspection_requests, and a submit-result next_action with a strict input_template. Reusable completed evidence instead reports the parent Record state. No Session secret is printed.",
                 nextSteps: [
-                    "scholium agent context --run <child_run> when a child locator is returned",
-                    "Submit the child fidelity_outcomes; Scholium links the lineage-bound child to the parent automatically",
+                    "Send every returned child_context.fidelity_contract.inspection_requests item unchanged through scholium agent query --run <child_run> --from -",
+                    "After inspecting the responses, fill child_context.next_actions[submit_result].input_template and run its command; Scholium links the lineage-bound child to the parent automatically",
                 ]
             ),
             "agent reload": AgentCLICommandHelp(
                 usage: "scholium agent reload --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
-                output: "ResearchAuthenticatedRunContext with the current Run Brief, frozen Method and Practices, Result Contract, any Fidelity evidence constraint, bounded write set, and continuation handoff. The one-time Core Protocol is not replayed.",
+                output: "ResearchAuthenticatedRunContext with the current Run state and exact current boundaries. A changed target, Material, or formal source returns structured code stale_run instead of a usable context. The one-time Core Protocol is not replayed.",
                 nextSteps: [
                     "Follow the returned current state and run the applicable agent command",
+                    "On stale_run, stop this Run; do not retry a write or Result against the changed boundary",
                     "scholium agent end --run <locator> to stop an unfinished Run",
                 ]
             ),
             "agent query": AgentCLICommandHelp(
                 usage: "scholium agent query --run <locator> --from <json|->",
                 inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schemaVersion, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schemaVersion, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), useEligibility, and only the query, sectionHeading, or cursor fields allowed by its closed kind.",
+                input: "Strict JSON fields: schemaVersion, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schemaVersion, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), useEligibility, and only the fields allowed by its closed kind. Ordinary read_note uses query; a Fidelity inspection request supplied by Scholium instead uses exact note {vaultID, relativePath} plus expectedFingerprint. Send supplied inspection requests unchanged; do not reconstruct identity or fingerprints.",
                 output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with one visible availability, items, limitations, and optional stateless continuation cursor for every requested clause.",
                 nextSteps: [
                     "Repeat scholium agent query with a narrower request when needed",
@@ -335,7 +335,7 @@ private extension ScholiumCLI {
             "agent submit-result": AgentCLICommandHelp(
                 usage: "scholium agent submit-result --run <locator> --from <json|->",
                 inputContract: "ResearchAgentResultSubmission schema \(ResearchAgentResultSubmission.currentSchemaVersion) plus the current Run result_contract",
-                input: "Strict JSON fields: schema_version, record_title, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them. record_title is the concise, one-line identity shown in Records; it is not an academic result field.",
+                input: "Strict JSON fields: schema_version, record_title, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them. Every Fidelity outcome requires check [content, citations], state [passed, issues_found, unavailable], a nonempty attributed summary, and findings as an array of strings. passed requires empty findings; issues_found requires at least one finding; unavailable must be used for each fidelity_contract.required_unavailable_checks. For the default Check Fidelity profile, submit academic_results {values:{}} because Scholium derives the aggregate Finding fields from outcomes; a researcher-customized profile remains explicit in the returned template. The authenticated context next_actions supplies the complete strict template. record_title is the concise, one-line Record identity, not a duplicate academic result.",
                 output: "ResearchAgentResultReceipt with disposition, finalization state, whether a portable Record was formed, and a message.",
                 nextSteps: [
                     "scholium agent continue --run <locator> --from <json|-> only for a distinct next Action",
@@ -423,7 +423,6 @@ private extension ScholiumCLI {
             "action available": "Usage: scholium action available --from <target-json|-> --format json",
             "action prepare": "Usage: scholium action prepare --from <request-json|-> --format json|markdown",
             "action show": "Usage: scholium action show <run-id> [--triptych <selector>] --format json|markdown",
-            "action prepare-fidelity": "Usage: scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown\n\nPrepares or reuses the required final-revision Fidelity child for a completed Analyze, Synthesize, or Write Action.",
             "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
             "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
             "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--analysis-from <json-file>]\n\nCreates through the role's managed New Note YAML. Body input is UTF-8 LF text without a top-level YAML envelope, not complete Markdown source. Analysis JSON is {\"source_type\":\"journal_article\",\"properties\":[{\"key\":\"title\",\"value\":\"Example\"}]}; value is an ordinary JSON scalar, array, or object. Researcher creation does not enforce Agent-only required fields.",

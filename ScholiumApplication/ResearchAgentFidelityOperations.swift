@@ -2,6 +2,13 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
+struct ResearchAgentEffectiveEvidence: Sendable {
+    let sourceReference: ResearchSourceReference?
+    let zoteroBibliographicContext: ZoteroBibliographicContext?
+    let analysisSourceRoute: ResearchAnalysisSourceRoute?
+    let isAnalyzeAction: Bool
+}
+
 extension WorkspaceRuntime {
     public func prepareResearchAgentFidelity(
         credential: ResearchConnectionCredential,
@@ -115,12 +122,53 @@ extension WorkspaceHandle {
             to: credential,
             authorizedBy: run
         )
+        let childContext = try await authenticatedResearchAgentContext(
+            credential: credential,
+            run: locator
+        )
         return try ResearchAgentFidelityPreparationReceipt(
             childRun: locator,
+            childContext: childContext,
             childState: .prepared,
             parentState: .awaitingFidelity,
             parentRecordFormed: false,
             message: "The exact final-revision Fidelity child is attached read-only to this authenticated Session. Load its context and submit that child Result; Scholium will link it back to the parent automatically."
+        )
+    }
+
+    /// Resolves the source-evidence owner inherited by an automatic Fidelity
+    /// child without copying that authority into the child snapshot. Manual
+    /// Runs and ordinary Actions use only their own frozen evidence.
+    func effectiveResearchAgentEvidence(
+        for record: LocalResearchExecutionRecord
+    ) async throws -> ResearchAgentEffectiveEvidence {
+        if case .automatic(let parentRunID)? =
+                record.snapshot.resolvedFidelityInvocation {
+            guard let parent = try await services.localResearchExecutionStore
+                    .recordIfPresent(id: parentRunID),
+                  parent.triptychID == id,
+                  parent.snapshot.request.target.noteID
+                    == record.snapshot.request.target.noteID,
+                  parent.snapshot.request.target.note
+                    == record.snapshot.request.target.note else {
+                throw ResearchAgentConnectionError.runUnavailable
+            }
+            return ResearchAgentEffectiveEvidence(
+                sourceReference: parent.snapshot.sourceReference,
+                zoteroBibliographicContext:
+                    parent.snapshot.zoteroBibliographicContext,
+                analysisSourceRoute: parent.snapshot.analysisSourceRoute,
+                isAnalyzeAction:
+                    parent.snapshot.actionSnapshot?.actionID == .analyze
+            )
+        }
+        return ResearchAgentEffectiveEvidence(
+            sourceReference: record.snapshot.sourceReference,
+            zoteroBibliographicContext:
+                record.snapshot.zoteroBibliographicContext,
+            analysisSourceRoute: record.snapshot.analysisSourceRoute,
+            isAnalyzeAction:
+                record.snapshot.actionSnapshot?.actionID == .analyze
         )
     }
 

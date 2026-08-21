@@ -273,7 +273,9 @@ extension ScholiumCLI {
                 ? arguments[index + 1]
                 : nil
         }.first
-        guard requestedFormat == "json" || requestedFormat == "jsonl" else {
+        let isAgentCommand = arguments.first == "agent"
+        guard requestedFormat == "json" || requestedFormat == "jsonl"
+                || isAgentCommand else {
             writeError("scholium: \(error.localizedDescription)\n")
             return
         }
@@ -297,6 +299,9 @@ extension ScholiumCLI {
     }
 
     private static func errorCode(for error: Error) -> String {
+        if let structured = error as? any AgentCommandErrorCodeProviding {
+            return structured.agentCommandErrorCode
+        }
         if let cli = error as? CLIError {
             switch cli {
             case .usage: return "usage_error"

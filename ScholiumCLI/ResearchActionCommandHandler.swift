@@ -8,7 +8,7 @@ extension ScholiumCLI {
     ) async throws {
         guard let subcommand = arguments.first else {
             throw CLIError.usage(
-                "Usage: scholium action <available|prepare|show|prepare-fidelity|cancel> ..."
+                "Usage: scholium action <available|prepare|show|cancel> ..."
             )
         }
         let encoder = researchActionEncoder()
@@ -82,31 +82,6 @@ extension ScholiumCLI {
                 if !preparation.instructions.hasSuffix("\n") { write("\n") }
             default:
                 throw CLIError.usage("Action show supports --format json or markdown.")
-            }
-
-        case "prepare-fidelity":
-            guard arguments.count >= 2, let parentRunID = UUID(uuidString: arguments[1]) else {
-                throw CLIError.usage(
-                    "Usage: scholium action prepare-fidelity <parent-run-id> [--triptych <selector>] --format json|markdown"
-                )
-            }
-            let assignment = try await context.selectedTriptych(
-                selector: option("--triptych", in: arguments)
-            )
-            let handle = try await context.handle(for: assignment)
-            let automatic = try await handle.research.prepareActionFidelity(
-                parentRunID: parentRunID
-            )
-            switch option("--format", in: arguments) ?? "markdown" {
-            case "json":
-                write(String(decoding: try encoder.encode(automatic), as: UTF8.self) + "\n")
-            case "markdown":
-                write(automatic.preparation.instructions)
-                if !automatic.preparation.instructions.hasSuffix("\n") { write("\n") }
-            default:
-                throw CLIError.usage(
-                    "Action prepare-fidelity supports --format json or markdown."
-                )
             }
 
         case "cancel":

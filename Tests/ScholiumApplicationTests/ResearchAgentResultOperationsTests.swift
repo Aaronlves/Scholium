@@ -574,7 +574,7 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("inspectMaterials reports source loss through the Workspace capability")
+    @Test("Source loss stales authenticated Material inspection before provider delivery")
     func inspectMaterialsReportsSourceLossThroughWorkspaceCapability() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -588,22 +588,20 @@ struct ResearchAgentResultOperationsTests {
         )
 
         try await handle.research.removeSourceAccess(for: analysis)
-        let response = try await handle.research.queryAgentResearchContext(
-            credential: prepared.credential,
-            run: prepared.handoff.run,
-            request: try ResearchContextRequest(
-                clauses: [try ResearchContextClause(
-                    kind: .inspectMaterials,
-                    useEligibility: .contextUse
-                )]
+        await #expect(
+            throws: ResearchAgentConnectionError.runStale(.sourceChanged)
+        ) {
+            _ = try await handle.research.queryAgentResearchContext(
+                credential: prepared.credential,
+                run: prepared.handoff.run,
+                request: try ResearchContextRequest(
+                    clauses: [try ResearchContextClause(
+                        kind: .inspectMaterials,
+                        useEligibility: .contextUse
+                    )]
+                )
             )
-        )
-        let outcome = try #require(response.outcomes.first)
-        #expect(outcome.availability == .unavailable)
-        #expect(outcome.items.isEmpty)
-        #expect(outcome.limitations.contains {
-            $0.contains("missing from its authoritative source binding")
-        })
+        }
         await runtime.shutdown()
     }
 

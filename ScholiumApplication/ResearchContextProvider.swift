@@ -193,6 +193,21 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ProviderOutcome {
+        if clause.kind == .readNote,
+           let exactNote = clause.note,
+           let expectedFingerprint = clause.expectedFingerprint {
+            return try await exactNotePage(
+                query: query,
+                clause: clause,
+                note: exactNote,
+                expectedFingerprint: expectedFingerprint,
+                availability: .current,
+                currentness: .current,
+                hasAdditionalMatches: false,
+                workspace: workspace,
+                access: access
+            )
+        }
         guard let clauseQuery = clause.query else {
             throw ResearchContextContractError.invalidQuery
         }
@@ -356,18 +371,42 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 ]
             )
         }
-        guard let snapshot = workspace.document(id: note.noteReference),
-              snapshot.fingerprint == note.fingerprint,
+        return try await exactNotePage(
+            query: query,
+            clause: clause,
+            note: note.noteReference,
+            expectedFingerprint: note.fingerprint,
+            availability: availability,
+            currentness: currentness,
+            hasAdditionalMatches: response.hasMore,
+            workspace: workspace,
+            access: access
+        )
+    }
+
+    private func exactNotePage(
+        query: ResearchContextQuery,
+        clause: ResearchContextClause,
+        note: VaultQualifiedNoteID,
+        expectedFingerprint: DocumentFingerprint,
+        availability: ResearchContextAvailability,
+        currentness: ResearchContextCurrentness,
+        hasAdditionalMatches: Bool,
+        workspace: WorkspaceSnapshot,
+        access: ResearchContextOwnerAccess
+    ) async throws -> ProviderOutcome {
+        guard let snapshot = workspace.document(id: note),
+              snapshot.fingerprint == expectedFingerprint,
               let stableID = snapshot.stableIdentity.resolvedID,
-              let role = objectRole(note.vaultRole) else {
+              let role = objectRole(snapshot.vaultRole) else {
             return ProviderOutcome(
                 availability: .stale,
                 items: [],
                 limitations: ["The exact-read Note changed identity or revision before delivery."]
             )
         }
-        let document = try await access.loadDocument(note.noteReference)
-        guard document.fingerprint == note.fingerprint else {
+        let document = try await access.loadDocument(note)
+        guard document.fingerprint == expectedFingerprint else {
             return ProviderOutcome(
                 availability: .stale,
                 items: [],
@@ -396,7 +435,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         guard offset >= 0,
               offset < sourceSlice.content.utf8.count || (offset == 0 && sourceSlice.content.isEmpty),
               (clause.cursor.map {
-                  $0.note == note.noteReference
+                  $0.note == note
                       && $0.fingerprint == document.fingerprint
                       && $0.sourceRange == sourceSlice.range
               } != false) else {
@@ -436,17 +475,17 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             sourceKind: .note,
             owner: .note(
                 triptychID: query.triptychID,
-                note: note.noteReference,
+                note: note,
                 stableObjectIdentity: stableID.uuidString.lowercased()
             ),
             actorClass: .unknown,
             objectRole: role,
-            vaultRole: note.vaultRole,
+            vaultRole: snapshot.vaultRole,
             fingerprint: document.fingerprint,
             locator: try .sourceRange(deliveredRange),
             authorizedScope: .triptych(runID: query.runID, triptychID: query.triptychID),
             currentness: currentness,
-            evidentialLayer: note.evidentialLayer,
+            evidentialLayer: evidentialLayer(snapshot.vaultRole),
             retrievalReason: .exactRead,
             materialLimitations:
                 ResearchContextNoteProjection.unknownWriterLimitations
@@ -455,7 +494,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let nextCursor: ResearchContextPageCursor? = page.endUTF8Offset < sourceSlice.content.utf8.count
             ? try ResearchContextPageCursor(
                 clauseID: clause.id,
-                note: note.noteReference,
+                note: note,
                 fingerprint: document.fingerprint,
                 sourceRange: sourceSlice.range,
                 pageStartUTF8Offset: offset,
@@ -465,7 +504,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             )
             : nil
         var limitations: [String] = []
-        if response.hasMore && nextCursor == nil {
+        if hasAdditionalMatches && nextCursor == nil {
             limitations.append("Additional matching Notes were not delivered by this exact-read page; narrow the clause to select another Note.")
         }
         return ProviderOutcome(
@@ -473,7 +512,8 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             items: [try ResearchContextResponseItem(
                 clauseID: clause.id,
                 sourceReference: envelope,
-                title: note.title,
+                title: snapshot.document.parsedFrontmatter["title"]?.scalarString
+                    ?? note.relativePath,
                 contentKind: clause.sectionHeading == nil ? .noteDocument : .noteSection,
                 exactSource: exactSource,
                 contextUseEligibility: clause.useEligibility == .contextUse && currentness == .current
@@ -482,6 +522,14 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             limitations: limitations,
             nextCursor: nextCursor
         )
+    }
+
+    private func evidentialLayer(_ role: VaultRole) -> EvidentialLayer {
+        switch role {
+        case .sourceCorpus: .paperAnalysis
+        case .topicKnowledge, .other: .topicNote
+        case .draftProject: .draftProse
+        }
     }
 
     private func exactPage(
@@ -599,10 +647,10 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         }
         guard let frozen = run.sourceReference else {
             return ProviderOutcome(
-                availability: .current,
+                availability: .unavailable,
                 items: [],
                 limitations: [
-                    "This Run has no explicitly selected source Material. Research Context does not perform generic Material discovery."
+                    "This Run has no formal revision-bound source Material envelope. Research Context does not promote Note metadata or perform generic Material discovery."
                 ]
             )
         }

@@ -831,13 +831,6 @@ public actor ResearchOperations:
         return try await handle.researchActionRun(id: id)
     }
 
-    public func prepareActionFidelity(
-        parentRunID: UUID
-    ) async throws -> ResearchActionFidelityPreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareResearchActionFidelity(parentRunID: parentRunID)
-    }
-
     public func cancelAction(runID: UUID) async throws {
         let handle = try await reference.requireHandle()
         try await functionCoordinator.cancelAction(runID: runID, host: handle)

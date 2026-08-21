@@ -182,27 +182,31 @@ visual acceptance.
 ## Focused Agent-inheritance evidence
 
 On 2026-08-21, the authenticated final-Fidelity closure passed the complete
-147-test Contracts target, the owning source-route, Result, preparation,
-Session, and bridge suites, and all 10 executable standalone-CLI lifecycles.
-Disposable fixtures prove that an authenticated awaiting parent attaches one
-read-only exact-revision child locator to the same Session; forged credentials,
-raw UUIDs, duplicate attachment, and attachment after parent finalization fail
-closed. The child context requires Citation `unavailable` for a
-`researcher_provided` source without a formal envelope, rejects a fabricated
-pass based on Note YAML, automatically advances the lineage-bound parent, and
-forms separate schema-11 child and parent Records. Parent Action inspection
-accepts the Run-owned committed revision while a later external revision still
-fails stale. No real research Note or private source was used.
+147-test Contracts target, 257 Application tests, 14 serialized bridge tests,
+the architecture measurement, and all 12 signed standalone-CLI lifecycles.
+One CLI lifecycle uses the real framed bridge and production Runtime owners to
+start and write an Analyze Run, stage its parent Result, reload
+`awaiting_fidelity`, prepare and query the child, fill the context-supplied
+template, submit once, and read two schema-11 Records. The child packet carries
+exact Target/Material/scope state plus a formal source envelope or enforced
+Citation `unavailable`; Note YAML cannot substitute. Default aggregate fields,
+Record title, unavailable summary, lineage, and `childRunID` are system-owned.
+Parent re-pair and direct-Session replacement revoke old derived child locators
+but preserve independent Runs. True target/material/source drift returns typed
+`stale_run`; an authorized final revision remains reloadable. No real research
+Note or private source was used.
 
 The same tree entered the complete repository gate. Documentation, shipped
 resources, 199 Web editor tests and reproducible bundles, 439 Core tests plus 3
-performance tests, 147 Contracts tests, 252 Application tests, 14 bridge tests,
+performance tests, 147 Contracts tests, 257 Application tests, 14 bridge tests,
 and 1 architecture measurement passed. The gate then reached the 652-test App
 batch and stopped on the same 15 pre-existing failures recorded below: 3 stale
 toolbar source assertions and 12 schema-11-invalid Research Record browser
-fixtures. Later symbol, executable-CLI, sandbox bridge, and Release stages did
-not run in that gate; the separate 10/10 executable CLI run above is the CLI
-evidence for this change.
+fixtures. Later stages therefore did not run inside that gate attempt.
+Separately on the same tree, the public symbol-graph boundary, 12/12 signed
+executable CLI lifecycles, sandboxed App-to-standalone-CLI loopback probe, and
+optimized Release build passed. These are local disposable-fixture engineering
+evidence, not packaged clean-account or human acceptance.
 
 On 2026-08-21, independent-review hardening passed 34 Core storage tests, 19
 Agent-start and portable-Record Contract tests, 104 Application/bridge tests,

@@ -417,6 +417,7 @@ public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
     case permissionDenied = "permission_denied"
     case sessionExpired = "session_expired"
     case staleProjection = "stale_projection"
+    case staleRun = "stale_run"
     case missingSourceEvidence = "missing_source_evidence"
     case replayConflict = "replay_conflict"
     case timeout
@@ -693,7 +694,9 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     public var debugDescription: String { description }
 }
 
-public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
+public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable,
+    AgentCommandErrorCodeProviding
+{
     case unavailable
     case invalidFrame
     case invalidRequest
@@ -726,6 +729,13 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable {
             "The local Agent bridge could not \(operation) (errno \(code))."
         case .remote(let payload): payload.message
         }
+    }
+
+    public var agentCommandErrorCode: String {
+        if case .remote(let payload) = self {
+            return payload.code.rawValue
+        }
+        return LocalAgentBridgeErrorCode.operationFailed.rawValue
     }
 }
 
@@ -1193,6 +1203,12 @@ enum LocalAgentBridgeWireCoding {
         case ScholiumApplicationError.operationCommittedButRefreshFailed,
              ScholiumApplicationError.workspaceStillLoading:
             code = .staleProjection
+        case ResearchAgentConnectionError.runStale,
+             ResearchFunctionContractError.targetUnavailable,
+             ResearchFunctionContractError.targetChanged,
+             ResearchFunctionContractError.targetIdentityChanged,
+             ResearchFunctionContractError.materialChanged:
+            code = .staleRun
         case ResearchFunctionContractError.sourceAccessUnavailable(let failure)
             where failure.code == .missingBinding:
             code = .missingSourceEvidence
@@ -1219,6 +1235,8 @@ enum LocalAgentBridgeWireCoding {
             "The Connection Session expired or was revoked. In Scholium, copy a new handoff for the unfinished Run, then pair again with the returned Run locator."
         case .staleProjection:
             "Authoritative state may already be committed, but the Workspace projection is stale. Do not create or write again; reload, then retry only the exact same idempotent request when instructed."
+        case .staleRun:
+            "The exact Target, Material, or formal source boundary changed. This Run is stale and authorizes no further submission or write. Inspect the current Note in Scholium and start a new Action from the current revision."
         case .missingSourceEvidence:
             "Analyze has no valid frozen source route. Provide a current Scholium source, a bound Zotero route, or explicitly start with source_route=researcher_provided."
         case .replayConflict:

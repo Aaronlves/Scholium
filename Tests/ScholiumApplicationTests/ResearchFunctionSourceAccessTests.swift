@@ -900,6 +900,11 @@ extension ResearchFunctionOperationsTests {
             )
         )
         #expect(write.state == .committed)
+        let afterWriteContext = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(afterWriteContext.brief.state == .prepared)
 
         let parentSubmission = try ResearchAgentResultSubmission(
             recordTitle: ResearchRecordTitle("Researcher-provided final revision"),
@@ -954,37 +959,80 @@ extension ResearchFunctionOperationsTests {
         #expect(handoff.childState == .prepared)
         #expect(handoff.parentState == .awaitingFidelity)
         #expect(!handoff.parentRecordFormed)
+        let childContext = try #require(handoff.childContext)
+        #expect(childContext.brief.run == childRun)
+        #expect(childContext.brief.state == .prepared)
         let repeatedHandoff = try await runtime.prepareResearchAgentFidelity(
             credential: started.credential,
             run: started.receipt.run
         )
         #expect(repeatedHandoff.childRun == childRun)
-
-        let childContext = try await runtime.researchAgentContext(
-            credential: started.credential,
-            run: childRun
-        )
+        #expect(repeatedHandoff.childContext == childContext)
         let fidelityContract = try #require(childContext.fidelityContract)
         #expect(fidelityContract.checks == [.content, .citations])
+        #expect(fidelityContract.targets.count == 1)
+        #expect(fidelityContract.targets[0].note == fixture.analysisID)
+        let finalTargetFingerprint = fidelityContract.targets[0].fingerprint
+        #expect(finalTargetFingerprint != started.receipt.target.fingerprint)
+        #expect(fidelityContract.materials.isEmpty)
+        #expect(fidelityContract.scope == nil)
+        #expect(fidelityContract.sourceReference == nil)
         #expect(fidelityContract.requiredUnavailableChecks == [.citations])
         #expect(fidelityContract.evidenceLimitation?.contains("Note YAML") == true)
-
-        let fidelityAcademicResults = try ResearchAcademicFieldValues(
-            rawValues: [
-                "finding": .freeText(
-                    "Content was checked against the exact final revision; citation evidence is unavailable."
-                ),
-                "finding-status": .singleChoice("unable-to-verify"),
-            ],
-            definitions: childContext.resultContract.academicFields
+        let inspection = try #require(fidelityContract.inspectionRequests.first)
+        #expect(inspection.clauses.contains {
+            $0.kind == .readNote
+                && $0.note == fixture.analysisID
+                && $0.expectedFingerprint == finalTargetFingerprint
+        })
+        #expect(inspection.clauses.contains { $0.kind == .inspectMaterials })
+        let inspected = try await runtime.queryResearchContext(
+            credential: started.credential,
+            run: childRun,
+            request: inspection
         )
-        await #expect(throws: ResearchFunctionContractError.self) {
+        let targetRead = try #require(inspected.outcomes.first {
+            $0.kind == .readNote
+        })
+        #expect(targetRead.availability == .current)
+        #expect(targetRead.items.first?.exactSource?.content.contains(
+            "Agent final revision"
+        ) == true)
+        let sourceRead = try #require(inspected.outcomes.first {
+            $0.kind == .inspectMaterials
+        })
+        #expect(sourceRead.availability == .unavailable)
+        #expect(childContext.nextActions.count == 1)
+        let submitAction = try #require(childContext.nextActions.first)
+        #expect(submitAction.kind == .submitResult)
+        #expect(submitAction.command == [
+            "scholium", "agent", "submit-result", "--run",
+            childRun.rawValue, "--from", "-",
+        ])
+        #expect(submitAction.inputTemplate?.contains(
+            "\"academic_results\" : {\n    \"values\" : {\n\n    }"
+        ) == true)
+        #expect(submitAction.inputTemplate?.contains(
+            "\"record_title\" : \"Fidelity — Analysis\""
+        ) == true)
+        #expect(submitAction.inputTemplate?.contains(
+            "Scholium has no formal revision-bound source envelope"
+        ) == true)
+        #expect(submitAction.inputTemplate?.contains(
+            "REPLACE_WITH_SOURCE_EVIDENCE_LIMITATION"
+        ) == false)
+
+        let emptyAcademicResults = try ResearchAcademicFieldValues(
+            rawValues: [:],
+            definitions: []
+        )
+        await #expect(throws: ResearchAgentResultContractError.self) {
             _ = try await runtime.submitResearchAgentResult(
                 credential: started.credential,
                 run: childRun,
                 submission: ResearchAgentResultSubmission(
                     recordTitle: ResearchRecordTitle("Invalid fabricated citation check"),
-                    academicResults: fidelityAcademicResults,
+                    academicResults: emptyAcademicResults,
                     fidelityOutcomes: [
                         FidelityCheckOutcome(
                             check: .content,
@@ -1001,12 +1049,38 @@ extension ResearchFunctionOperationsTests {
             )
         }
 
+        let exactFinalSource = try await handle.documents.load(
+            fixture.analysisID
+        ).rawContent
+        try Data("---\ntitle: Analysis\n---\n# Analysis\n\nConcurrent external revision.\n".utf8)
+            .write(
+                to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+                options: .atomic
+            )
+        do {
+            _ = try await runtime.researchAgentContext(
+                credential: started.credential,
+                run: childRun
+            )
+            Issue.record("A truly changed Fidelity target reloaded as current.")
+        } catch let error as ResearchAgentConnectionError {
+            #expect(error == .runStale(.targetChanged))
+        }
+        try Data(exactFinalSource.utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
+            options: .atomic
+        )
+        #expect(try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: childRun
+        ).brief.state == .prepared)
+
         let childReceipt = try await runtime.submitResearchAgentResult(
             credential: started.credential,
             run: childRun,
             submission: ResearchAgentResultSubmission(
                 recordTitle: ResearchRecordTitle("Exact final-revision Fidelity"),
-                academicResults: fidelityAcademicResults,
+                academicResults: emptyAcademicResults,
                 fidelityOutcomes: [
                     FidelityCheckOutcome(
                         check: .content,
@@ -1042,6 +1116,9 @@ extension ResearchFunctionOperationsTests {
         #expect(parentRecord.analysisSourceRoute == .researcherProvided)
         #expect(parentRecord.sourceReference == nil)
         #expect(parentRecord.fidelityCompletion == .unverified)
+        #expect(childRecord.academicResults.first {
+            $0.id.rawValue == "finding-status"
+        }?.value == .singleChoice("unable-to-verify"))
         let finalizedParentExecution = try await handle.services
             .localResearchExecutionStore.record(id: parentAuthentication.runID)
         #expect(finalizedParentExecution.completion?.childRunIDs
@@ -1063,6 +1140,110 @@ extension ResearchFunctionOperationsTests {
                 id: parentAuthentication.runID
             )
         }
+        await runtime.shutdown()
+    }
+
+    @Test("Authenticated Fidelity child delivers the formal revision-bound source envelope")
+    func formalSourceFidelityChildContext() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let currentCitation = try await handle.research.citationMethodStatus()
+        _ = try await handle.research.activateCitationMethod(
+            selection: ResearchCitationMethodSelection(citationStyle: "apa-7"),
+            expectedConfigurationRevision: currentCitation.configurationRevision
+        )
+
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: ResearchAgentStartRequest(
+                actionID: .analyze,
+                target: fixture.analysisID
+            ),
+            sessionValidity: 300
+        )
+        let parentContext = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(try await runtime.writeResearchDocument(
+            credential: started.credential,
+            run: started.receipt.run,
+            intent: ResearchDocumentWriteIntent(
+                requestID: UUID(),
+                role: .analysis,
+                relativePath: fixture.analysisID.relativePath,
+                content: "# Analysis\n\nFinal revision checked against the formal source fixture.\n"
+            )
+        ).state == .committed)
+        let awaiting = try await runtime.submitResearchAgentResult(
+            credential: started.credential,
+            run: started.receipt.run,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Formal-source parent Result"),
+                academicResults: ResearchAcademicFieldValues(
+                    rawValues: [
+                        "source-reconstruction": .freeText(
+                            "A bounded reconstruction from the formal source fixture."
+                        ),
+                        "coverage": .singleChoice("specified-part-only"),
+                        "reliability": .multipleChoice(["no-material-limitations"]),
+                    ],
+                    definitions: parentContext.resultContract.academicFields
+                ),
+                literatureRecommendations: []
+            )
+        )
+        #expect(awaiting.state == .awaitingFidelity)
+
+        let prepared = try await runtime.prepareResearchAgentFidelity(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        let childRun = try #require(prepared.childRun)
+        let childContext = try #require(prepared.childContext)
+        let fidelity = try #require(childContext.fidelityContract)
+        let formalSource = try #require(fidelity.sourceReference)
+        #expect(fidelity.requiredUnavailableChecks.isEmpty)
+        #expect(fidelity.evidenceLimitation == nil)
+        let inspection = try #require(fidelity.inspectionRequests.first)
+        let response = try await runtime.queryResearchContext(
+            credential: started.credential,
+            run: childRun,
+            request: inspection
+        )
+        let material = try #require(response.outcomes.first {
+            $0.kind == .inspectMaterials
+        })
+        #expect(material.availability == .current)
+        #expect(material.items.first?.materialContent?.source == formalSource)
+
+        let completed = try await runtime.submitResearchAgentResult(
+            credential: started.credential,
+            run: childRun,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Formal-source Fidelity"),
+                academicResults: ResearchAcademicFieldValues(
+                    rawValues: [:],
+                    definitions: []
+                ),
+                fidelityOutcomes: [
+                    FidelityCheckOutcome(
+                        check: .content,
+                        state: .passed,
+                        summary: "The exact final target retains the bounded reconstruction."
+                    ),
+                    FidelityCheckOutcome(
+                        check: .citations,
+                        state: .passed,
+                        summary: "The formal revision-bound source envelope remained current."
+                    ),
+                ]
+            )
+        )
+        #expect(completed.state == .finalized)
+        #expect(completed.parentState == .finalized)
         await runtime.shutdown()
     }
 

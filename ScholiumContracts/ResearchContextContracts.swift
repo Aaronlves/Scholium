@@ -849,7 +849,7 @@ public struct ResearchContextPageCursor: Codable, Hashable, Sendable {
 /// product, Run, Triptych, or authorization scope; Application binds those
 /// facts after authenticating the request.
 public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let maximumLimit = 20
 
     public let schemaVersion: Int
@@ -857,6 +857,12 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
     public let kind: ResearchContextClauseKind
     public let scope: ResearchContextClauseScope
     public let query: String?
+    /// Application-derived exact selector for a Run-frozen Note. Agent-authored
+    /// discovery continues to use query; a Fidelity inspection packet uses
+    /// this vault-qualified identity plus expectedFingerprint so same-path
+    /// Notes in different vaults cannot be confused.
+    public let note: VaultQualifiedNoteID?
+    public let expectedFingerprint: DocumentFingerprint?
     public let sectionHeading: String?
     public let limit: Int
     public let useEligibility: ResearchContextUseEligibility
@@ -866,6 +872,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         id: UUID = UUID(),
         kind: ResearchContextClauseKind,
         query: String? = nil,
+        note: VaultQualifiedNoteID? = nil,
+        expectedFingerprint: DocumentFingerprint? = nil,
         sectionHeading: String? = nil,
         limit: Int = 8,
         useEligibility: ResearchContextUseEligibility,
@@ -877,6 +885,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             kind: kind,
             scope: .triptych,
             query: query,
+            note: note,
+            expectedFingerprint: expectedFingerprint,
             sectionHeading: sectionHeading,
             limit: limit,
             useEligibility: useEligibility,
@@ -890,6 +900,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         kind: ResearchContextClauseKind,
         scope: ResearchContextClauseScope,
         query: String?,
+        note: VaultQualifiedNoteID?,
+        expectedFingerprint: DocumentFingerprint?,
         sectionHeading: String?,
         limit: Int,
         useEligibility: ResearchContextUseEligibility,
@@ -912,11 +924,15 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         let hasQuery = normalizedQuery != nil
         let clauseIsValid: Bool = switch kind {
         case .discoverNote, .inspectRelations, .inspectProperties, .inspectRecords:
-            hasQuery && normalizedHeading == nil && cursor == nil
+            hasQuery && note == nil && expectedFingerprint == nil
+                && normalizedHeading == nil && cursor == nil
         case .readNote:
-            hasQuery && cursor.map { $0.clauseID == id } != false
+            ((hasQuery && note == nil && expectedFingerprint == nil)
+                || (!hasQuery && note != nil && expectedFingerprint != nil))
+                && cursor.map { $0.clauseID == id } != false
         case .inspectMaterials, .inspectResearcherState:
-            !hasQuery && normalizedHeading == nil && cursor == nil
+            !hasQuery && note == nil && expectedFingerprint == nil
+                && normalizedHeading == nil && cursor == nil
         }
         guard clauseIsValid else { throw ResearchContextContractError.invalidQuery }
         self.schemaVersion = schemaVersion
@@ -924,6 +940,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         self.kind = kind
         self.scope = scope
         self.query = normalizedQuery
+        self.note = note
+        self.expectedFingerprint = expectedFingerprint
         self.sectionHeading = normalizedHeading
         self.limit = limit
         self.useEligibility = useEligibility
@@ -931,7 +949,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion, id, kind, scope, query, sectionHeading, limit, useEligibility, cursor
+        case schemaVersion, id, kind, scope, query, note, expectedFingerprint,
+             sectionHeading, limit, useEligibility, cursor
     }
 
     public init(from decoder: Decoder) throws {
@@ -943,6 +962,14 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             kind: try container.decode(ResearchContextClauseKind.self, forKey: .kind),
             scope: try container.decode(ResearchContextClauseScope.self, forKey: .scope),
             query: try container.decodeIfPresent(String.self, forKey: .query),
+            note: try container.decodeIfPresent(
+                VaultQualifiedNoteID.self,
+                forKey: .note
+            ),
+            expectedFingerprint: try container.decodeIfPresent(
+                DocumentFingerprint.self,
+                forKey: .expectedFingerprint
+            ),
             sectionHeading: try container.decodeIfPresent(String.self, forKey: .sectionHeading),
             limit: try container.decode(Int.self, forKey: .limit),
             useEligibility: try container.decode(ResearchContextUseEligibility.self, forKey: .useEligibility),

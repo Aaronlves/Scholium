@@ -120,6 +120,8 @@ struct ResearchAgentSessionAuthorityTests {
             fingerprint: functionTarget.fingerprint,
             title: functionTarget.title
         )
+        let originalTargetSource = try await handle.documents.load(target.note)
+            .sourceBytes
         let available = try #require(
             try await handle.research.availableActions(for: target).first {
                 $0.id == .discuss && $0.isEnabled
@@ -344,22 +346,40 @@ struct ResearchAgentSessionAuthorityTests {
             options: .atomic
         )
         _ = try await handle.refresh()
-        let changedSource = try await handle.research.queryAgentResearchContext(
-            credential: credential,
-            run: handoff.run,
-            request: ResearchContextRequest(
-                id: readRequest.id,
-                clauses: [try ResearchContextClause(
-                    id: readClause.id,
-                    kind: .readNote,
-                    query: "path:Agency.md",
-                    sectionHeading: "Agency",
-                    useEligibility: .contextUse,
-                    cursor: firstCursor
-                )]
+        await #expect(
+            throws: ResearchAgentConnectionError.runStale(.targetChanged)
+        ) {
+            _ = try await handle.research.queryAgentResearchContext(
+                credential: credential,
+                run: handoff.run,
+                request: ResearchContextRequest(
+                    id: readRequest.id,
+                    clauses: [try ResearchContextClause(
+                        id: readClause.id,
+                        kind: .readNote,
+                        query: "path:Agency.md",
+                        sectionHeading: "Agency",
+                        useEligibility: .contextUse,
+                        cursor: firstCursor
+                    )]
+                )
             )
+        }
+        await #expect(
+            throws: ResearchAgentConnectionError.runStale(.targetChanged)
+        ) {
+            _ = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+        }
+        try originalTargetSource.write(
+            to: fixture.rootURL
+                .appendingPathComponent("Topics", isDirectory: true)
+                .appendingPathComponent("Agency.md"),
+            options: .atomic
         )
-        #expect(changedSource.outcomes.first?.availability == .stale)
+        _ = try await handle.refresh()
         let afterEvidence = try await handle.research.authenticatedAgentContext(
             credential: credential,
             run: handoff.run
@@ -820,6 +840,155 @@ struct ResearchAgentSessionAuthorityTests {
                 userID: 501
             )
         }
+    }
+
+    @Test("Re-pairing a parent revokes its derived child locator without revoking an independent Run")
+    func repairingParentRevokesDerivedChildAuthority() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let authority = try ResearchAgentSessionAuthority(
+            random: FixedResearchRandomSource()
+        )
+        let triptychID = UUID()
+        let parentID = UUID()
+        let first = try await authority.issuePairing(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            userID: 501
+        )
+        let firstCredential = try await authority.exchange(
+            run: first.run,
+            pairingCode: first.pairingCode,
+            now: now,
+            userID: 501
+        )
+        let childID = UUID()
+        let oldChild = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: firstCredential,
+            authorizedBy: first.run,
+            now: now,
+            userID: 501
+        )
+        let independentID = UUID()
+        let independent = try await authority.attachRun(
+            runID: independentID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: firstCredential,
+            now: now,
+            userID: 501
+        )
+
+        let replacement = try await authority.issuePairing(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            userID: 501
+        )
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await authority.authenticate(
+                firstCredential,
+                run: oldChild,
+                requiresWrite: false,
+                now: now,
+                userID: 501
+            )
+        }
+        #expect((try await authority.authenticate(
+            firstCredential,
+            run: independent,
+            requiresWrite: false,
+            now: now,
+            userID: 501
+        )).runID == independentID)
+
+        let replacementCredential = try await authority.exchange(
+            run: replacement.run,
+            pairingCode: replacement.pairingCode,
+            now: now,
+            userID: 501
+        )
+        let replacementChild = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: replacementCredential,
+            authorizedBy: replacement.run,
+            now: now,
+            userID: 501
+        )
+        #expect((try await authority.authenticate(
+            replacementCredential,
+            run: replacementChild,
+            requiresWrite: false,
+            now: now,
+            userID: 501
+        )).runID == childID)
+    }
+
+    @Test("A replacement direct-start Session revokes the prior derived child locator")
+    func replacementDirectSessionRevokesDerivedChildAuthority() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let authority = try ResearchAgentSessionAuthority(
+            random: FixedResearchRandomSource()
+        )
+        let triptychID = UUID()
+        let parentID = UUID()
+        let first = try await authority.issueAgentSession(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            userID: 501
+        )
+        let childID = UUID()
+        let oldChild = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: first.credential,
+            authorizedBy: first.run,
+            now: now,
+            userID: 501
+        )
+
+        let replacement = try await authority.issueAgentSession(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            userID: 501
+        )
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await authority.authenticate(
+                first.credential,
+                run: oldChild,
+                requiresWrite: false,
+                now: now,
+                userID: 501
+            )
+        }
+        let replacementChild = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: replacement.credential,
+            authorizedBy: replacement.run,
+            now: now,
+            userID: 501
+        )
+        #expect((try await authority.authenticate(
+            replacement.credential,
+            run: replacementChild,
+            requiresWrite: false,
+            now: now,
+            userID: 501
+        )).runID == childID)
     }
 
     @Test("Expiry, user, Run scope, revocation, and process restart fail closed")

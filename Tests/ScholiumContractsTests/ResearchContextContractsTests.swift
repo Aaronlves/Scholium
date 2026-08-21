@@ -66,8 +66,10 @@ struct ResearchContextContractsTests {
         var retiredMaterial = try #require(
             JSONSerialization.jsonObject(with: materialBytes) as? [String: Any]
         )
-        #expect(retiredMaterial["schemaVersion"] as? Int == 2)
-        retiredMaterial["schemaVersion"] = 1
+        #expect(retiredMaterial["schemaVersion"] as? Int
+            == ResearchContextClause.currentSchemaVersion)
+        retiredMaterial["schemaVersion"] =
+            ResearchContextClause.currentSchemaVersion - 1
         #expect(throws: ResearchContextContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchContextClause.self,

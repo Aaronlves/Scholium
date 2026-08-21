@@ -112,27 +112,6 @@ extension WorkspaceHandle {
         )
     }
 
-    func prepareResearchActionFidelity(
-        parentRunID: UUID
-    ) async throws -> ResearchActionFidelityPreparation {
-        try requireCompleteWorkspace()
-        let prepared = try await researchFunctionCoordinator.prepareAutomaticFidelity(
-            parentRunID: parentRunID,
-            host: self
-        )
-        let automatic = try researchFunctionCoordinator.attachingAgentActions(
-            to: prepared
-        )
-        let preparation = try await publicActionPreparation(from: automatic.preparation)
-        return ResearchActionFidelityPreparation(
-            parentRunID: automatic.parentRunID,
-            preparation: preparation,
-            effectiveRunID: automatic.effectiveFidelityRunID,
-            reusedExistingEvidence: automatic.reusedExistingEvidence,
-            nextActions: automatic.nextActions ?? []
-        )
-    }
-
     func prepareResearchResynthesis(
         _ request: ResearchActionExecutionRequest,
         context: MaterialChangedSinceUseAttentionContext

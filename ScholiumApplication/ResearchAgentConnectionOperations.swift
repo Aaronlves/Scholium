@@ -681,6 +681,10 @@ extension WorkspaceHandle {
         guard action.target.noteID == record.snapshot.request.target.noteID else {
             throw ResearchAgentConnectionError.runUnavailable
         }
+        try await validateAuthenticatedAgentRunCurrent(record)
+        let runState = Self.agentRunState(
+            record.completion?.state ?? .prepared
+        )
         let platform = try requiredPlatformAction(action.actionID)
         let shouldDeliverZoteroIntegrationAdapter =
             action.target.role == .analysis
@@ -705,6 +709,7 @@ extension WorkspaceHandle {
             brief: ResearchRunBrief(
                 run: run,
                 actionID: action.actionID,
+                state: runState,
                 initialObjectTitle: action.target.title,
                 initialObjectRole: action.target.role,
                 academicPurpose: purpose,
@@ -718,32 +723,40 @@ extension WorkspaceHandle {
                 ResearchBoundedWriteSetViewEntry.init
             ),
             continuationHandoff: record.snapshot.continuationHandoff,
-            discussionResponseContract: discussionResponseContract
+            discussionResponseContract: discussionResponseContract,
+            nextActions: try await authenticatedAgentNextActions(
+                for: record,
+                action: action,
+                run: run
+            )
         )
     }
 
-    private func authenticatedFidelityContract(
+    func authenticatedFidelityContract(
         for record: LocalResearchExecutionRecord
     ) async throws -> ResearchFidelityRunContract? {
         guard record.snapshot.request.function == .fidelity else { return nil }
+        let evidence = try await effectiveResearchAgentEvidence(for: record)
         var requiredUnavailable: Set<FidelityCheck> = []
         var limitation: String?
-        if case .automatic(let parentRunID)? =
-                record.snapshot.resolvedFidelityInvocation {
-            guard let parent = try await researchAgentConnectionDependencies
-                    .localResearchExecutionStore.recordIfPresent(id: parentRunID) else {
-                throw ResearchAgentConnectionError.runUnavailable
-            }
-            if record.snapshot.request.checks.contains(.citations),
-               parent.snapshot.analysisSourceRoute == .researcherProvided {
+        if record.snapshot.request.checks.contains(.citations),
+           evidence.isAnalyzeAction,
+           evidence.sourceReference == nil {
                 requiredUnavailable.insert(.citations)
-                limitation = "Scholium has no formal source envelope for the researcher-provided paper. Citation Fidelity must remain unavailable; a URL declared in Note YAML is authored metadata, not verified source evidence."
-            }
+                limitation = "Scholium has no formal revision-bound source envelope for this Analyze Run. Citation Fidelity must remain unavailable; a URL declared in Note YAML or bibliographic metadata is not verified source evidence."
         }
         return try ResearchFidelityRunContract(
             checks: record.snapshot.request.checks,
+            targets: record.snapshot.request.resolvedFidelityTargets,
+            materials: record.snapshot.request.materials,
+            scope: record.snapshot.request.scope,
+            sourceReference: evidence.sourceReference,
             requiredUnavailableChecks: requiredUnavailable,
-            evidenceLimitation: limitation
+            evidenceLimitation: limitation,
+            inspectionRequests: try fidelityInspectionRequests(
+                for: record,
+                includeSourceMaterial: evidence.isAnalyzeAction
+            )
         )
     }
 
@@ -770,6 +783,7 @@ extension WorkspaceHandle {
             id: authenticated.runID
         )
         let action = try activeAction(in: record)
+        try await validateAuthenticatedAgentRunCurrent(record)
         let platform = try requiredPlatformAction(action.actionID)
         try Self.validateResearchContextCapability(
             request,
@@ -781,13 +795,14 @@ extension WorkspaceHandle {
             triptychID: authenticated.triptychID
         )
         let snapshot = currentSnapshot
+        let evidence = try await effectiveResearchAgentEvidence(for: record)
         let response = try await provider.response(
             for: query,
             run: ResearchContextRunEvidence(
                 action: action,
-                sourceReference: record.snapshot.sourceReference,
+                sourceReference: evidence.sourceReference,
                 zoteroBibliographicContext:
-                    record.snapshot.zoteroBibliographicContext
+                    evidence.zoteroBibliographicContext
             ),
             workspace: snapshot,
             access: ResearchContextOwnerAccess(
@@ -814,6 +829,232 @@ extension WorkspaceHandle {
             )
         )
         return response
+    }
+
+    private func validateAuthenticatedAgentRunCurrent(
+        _ record: LocalResearchExecutionRecord
+    ) async throws {
+        let request = record.snapshot.request
+        let expectedTarget = record.boundedWriteSet.entries.first(where: {
+            $0.noteID == request.target.noteID
+        })?.expectedRevision
+            ?? record.completion?.targetFingerprint
+            ?? request.target.fingerprint
+        do {
+            _ = try await researchFunctionCoordinator.validateResearchFunctionTarget(
+                request.target,
+                expected: expectedTarget,
+                host: self
+            )
+        } catch ResearchFunctionContractError.targetChanged {
+            throw ResearchAgentConnectionError.runStale(.targetChanged)
+        } catch ResearchFunctionContractError.targetUnavailable {
+            throw ResearchAgentConnectionError.runStale(.targetUnavailable)
+        } catch ResearchFunctionContractError.targetIdentityChanged {
+            throw ResearchAgentConnectionError.runStale(.targetIdentityChanged)
+        } catch {
+            throw error
+        }
+        for material in request.materials {
+            do {
+                _ = try await researchFunctionCoordinator
+                    .validateResearchFunctionMaterial(
+                        material,
+                        expected: material.fingerprint,
+                        host: self
+                    )
+            } catch {
+                throw ResearchAgentConnectionError.runStale(.materialChanged)
+            }
+        }
+        let evidence = try await effectiveResearchAgentEvidence(for: record)
+        if let sourceReference = evidence.sourceReference {
+            let status = await researchAgentResultDependencies
+                .researchSourceAccessStore.status(
+                    analysisNoteID: request.target.noteID
+                )
+            guard status.state == .available,
+                  status.reference == sourceReference else {
+                throw ResearchAgentConnectionError.runStale(.sourceChanged)
+            }
+        }
+    }
+
+    private func fidelityInspectionRequests(
+        for record: LocalResearchExecutionRecord,
+        includeSourceMaterial: Bool
+    ) throws -> [ResearchContextRequest] {
+        let request = record.snapshot.request
+        var clauses: [ResearchContextClause] = try (
+            request.resolvedFidelityTargets.map { target in
+                try ResearchContextClause(
+                    id: Self.stableAgentUUID(
+                        runID: record.id,
+                        label: "target:\(target.note.vaultID):\(target.note.relativePath)"
+                    ),
+                    kind: .readNote,
+                    note: target.note,
+                    expectedFingerprint: target.fingerprint,
+                    limit: 1,
+                    useEligibility: .contextUse
+                )
+            } + request.materials.map { material in
+                try ResearchContextClause(
+                    id: Self.stableAgentUUID(
+                        runID: record.id,
+                        label: "material:\(material.note.vaultID):\(material.note.relativePath)"
+                    ),
+                    kind: .readNote,
+                    note: material.note,
+                    expectedFingerprint: material.fingerprint,
+                    limit: 1,
+                    useEligibility: .contextUse
+                )
+            }
+        )
+        if includeSourceMaterial {
+            clauses.append(try ResearchContextClause(
+                id: Self.stableAgentUUID(
+                    runID: record.id,
+                    label: "formal-source-material"
+                ),
+                kind: .inspectMaterials,
+                limit: 1,
+                useEligibility: .contextUse
+            ))
+        }
+        var requests: [ResearchContextRequest] = []
+        for start in stride(
+            from: 0,
+            to: clauses.count,
+            by: ResearchContextRequest.maximumClauses
+        ) {
+            let end = min(start + ResearchContextRequest.maximumClauses, clauses.count)
+            requests.append(try ResearchContextRequest(
+                id: Self.stableAgentUUID(
+                    runID: record.id,
+                    label: "fidelity-inspection:\(start)"
+                ),
+                clauses: Array(clauses[start..<end])
+            ))
+        }
+        return requests
+    }
+
+    private func authenticatedAgentNextActions(
+        for record: LocalResearchExecutionRecord,
+        action: ResearchActionSnapshot,
+        run: ResearchRunLocator
+    ) async throws -> [AgentCommandAction] {
+        guard action.actionID == .checkFidelity else { return [] }
+        let defaultFidelityFields = ResearchAcademicProfileCatalog
+            .defaultProfiles.first(where: { $0.actionID == .checkFidelity })?
+            .academicResultFields ?? []
+        let derivesDefaultAcademicResults =
+            action.resultContract.academicFields == defaultFidelityFields
+        var academicValues: [String: Any] = [:]
+        if !derivesDefaultAcademicResults {
+            for field in action.resultContract.academicFields
+                where field.requirement != .excluded {
+                let value: [String: Any] = switch field.kind {
+                case .freeText:
+                    ["kind": "freeText", "text": "REPLACE_WITH_\(field.fieldID.rawValue)"]
+                case .singleChoice:
+                    [
+                        "kind": "singleChoice",
+                        "choice": "REPLACE_WITH_ONE_OF_\(field.choices.map(\.value).joined(separator: "_OR_"))",
+                    ]
+                case .multipleChoice:
+                    [
+                        "kind": "multipleChoice",
+                        "choices": ["REPLACE_WITH_ZERO_OR_MORE_OF_\(field.choices.map(\.value).joined(separator: "_OR_"))"],
+                    ]
+                }
+                academicValues[field.fieldID.rawValue] = value
+            }
+        }
+        let fidelityContract = try await authenticatedFidelityContract(for: record)
+        let requiredUnavailable = fidelityContract?.requiredUnavailableChecks ?? []
+        let evidenceLimitation = fidelityContract?.evidenceLimitation
+        let outcomes: [[String: Any]] = record.snapshot.request.checks
+            .sorted { $0.rawValue < $1.rawValue }
+            .map { check in
+                let isUnavailable = requiredUnavailable.contains(check)
+                return [
+                    "check": check.rawValue,
+                    "state": isUnavailable
+                        ? "unavailable"
+                        : "REPLACE_WITH_passed_OR_issues_found_OR_unavailable",
+                    "summary": isUnavailable
+                        ? evidenceLimitation
+                            ?? "Scholium has no formal source envelope for this check."
+                        : "REPLACE_WITH_ATTRIBUTED_CHECK_SUMMARY",
+                    "findings": isUnavailable
+                        ? []
+                        : ["REMOVE_FOR_passed_OR_REPLACE_WITH_SPECIFIC_FINDING"],
+                ]
+            }
+        let template: [String: Any] = [
+            "schema_version": ResearchAgentResultSubmission.currentSchemaVersion,
+            "record_title": Self.fidelityRecordTitle(
+                targetTitle: record.snapshot.request.target.title
+            ),
+            "disposition": "completed",
+            "academic_results": ["values": academicValues],
+            "context_use_claims": [],
+            "fidelity_outcomes": outcomes,
+        ]
+        let data = try JSONSerialization.data(
+            withJSONObject: template,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        return [AgentCommandAction(
+            kind: .submitResult,
+            label: derivesDefaultAcademicResults
+                ? "Submit only the attributed Fidelity outcomes; Scholium derives the default aggregate Finding fields"
+                : "Submit the attributed Fidelity outcomes and researcher-customized academic fields",
+            command: [
+                "scholium", "agent", "submit-result", "--run",
+                run.rawValue, "--from", "-",
+            ],
+            inputTemplate: String(decoding: data, as: UTF8.self)
+        )]
+    }
+
+    private static func stableAgentUUID(runID: UUID, label: String) -> UUID {
+        let fingerprint = DocumentFingerprint(
+            content: runID.uuidString.lowercased() + "\u{001F}" + label
+        ).sha256
+        return UUID(uuidString: [
+            String(fingerprint.prefix(8)),
+            String(fingerprint.dropFirst(8).prefix(4)),
+            String(fingerprint.dropFirst(12).prefix(4)),
+            String(fingerprint.dropFirst(16).prefix(4)),
+            String(fingerprint.dropFirst(20).prefix(12)),
+        ].joined(separator: "-"))!
+    }
+
+    private static func fidelityRecordTitle(targetTitle: String) -> String {
+        var title = "Fidelity — "
+            + targetTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        while title.utf8.count > ResearchRecordTitle.maximumUTF8Count,
+              !title.isEmpty {
+            title.removeLast()
+        }
+        return (try? ResearchRecordTitle(title))?.value ?? "Fidelity check"
+    }
+
+    private static func agentRunState(
+        _ state: ResearchFunctionRunState
+    ) -> ResearchActionRunState {
+        switch state {
+        case .prepared: .prepared
+        case .awaitingFidelity: .awaitingFidelity
+        case .complete: .complete
+        case .unverified: .unverified
+        case .stale: .stale
+        case .cancelled: .cancelled
+        }
     }
 
     func endResearchAgentRun(
@@ -961,6 +1202,7 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
     case runUnavailable
     case capabilityUnavailable
     case newAnalysisReplayConflict
+    case runStale(ResearchAgentRunStaleReason)
 
     public var errorDescription: String? {
         switch self {
@@ -972,6 +1214,18 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
             "This Research Context channel is not available for the frozen Action."
         case .newAnalysisReplayConflict:
             "The Analysis creation request no longer matches its current Zotero relationship. Scholium preserved the newer researcher-owned relationship and refused replay."
+        case .runStale(let reason):
+            "This exact Research Run is stale because \(reason.description). Do not submit or write against it. Inspect the current Note in Scholium and start a new Action from the current revision."
         }
     }
+}
+
+public enum ResearchAgentRunStaleReason: String, Hashable, Sendable {
+    case targetChanged = "the Target revision changed"
+    case targetUnavailable = "the Target is unavailable"
+    case targetIdentityChanged = "the Target identity changed"
+    case materialChanged = "a frozen Material changed"
+    case sourceChanged = "the formal source envelope changed or became unavailable"
+
+    var description: String { rawValue }
 }

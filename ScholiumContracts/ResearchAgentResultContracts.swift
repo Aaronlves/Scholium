@@ -344,10 +344,14 @@ public struct ResearchAgentResultReceipt: Codable, Hashable, Sendable {
 /// authenticated parent Session. The Session secret remains in the CLI's
 /// protected store; only the new opaque child locator crosses ordinary output.
 public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let childRun: ResearchRunLocator?
+    /// Returned with every active child so prepare-fidelity is itself the
+    /// complete attach-and-load operation. Reload remains available but is no
+    /// longer a mandatory extra step.
+    public let childContext: ResearchAuthenticatedRunContext?
     public let childState: ResearchActionRunState
     public let parentState: ResearchAgentResultFinalizationState
     public let parentRecordFormed: Bool
@@ -355,6 +359,7 @@ public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendab
 
     public init(
         childRun: ResearchRunLocator?,
+        childContext: ResearchAuthenticatedRunContext? = nil,
         childState: ResearchActionRunState,
         parentState: ResearchAgentResultFinalizationState,
         parentRecordFormed: Bool,
@@ -363,6 +368,8 @@ public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendab
         let message = message.trimmingCharacters(in: .whitespacesAndNewlines)
         let childIsActive = childState == .prepared
         guard childIsActive == (childRun != nil),
+              childIsActive == (childContext != nil),
+              childContext.map({ $0.brief.run == childRun }) ?? true,
               childIsActive || [.complete, .unverified].contains(childState),
               (parentState == .awaitingFidelity) == !parentRecordFormed,
               !message.isEmpty,
@@ -374,6 +381,7 @@ public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendab
         }
         schemaVersion = Self.currentSchemaVersion
         self.childRun = childRun
+        self.childContext = childContext
         self.childState = childState
         self.parentState = parentState
         self.parentRecordFormed = parentRecordFormed
@@ -383,6 +391,7 @@ public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendab
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case childRun = "child_run"
+        case childContext = "child_context"
         case childState = "child_state"
         case parentState = "parent_state"
         case parentRecordFormed = "parent_record_formed"
@@ -403,6 +412,10 @@ public struct ResearchAgentFidelityPreparationReceipt: Codable, Hashable, Sendab
             childRun: container.decodeIfPresent(
                 ResearchRunLocator.self,
                 forKey: .childRun
+            ),
+            childContext: container.decodeIfPresent(
+                ResearchAuthenticatedRunContext.self,
+                forKey: .childContext
             ),
             childState: container.decode(
                 ResearchActionRunState.self,

@@ -327,7 +327,7 @@ extension ResearchFunctionCoordinator {
         } else if request.function.requiresFinalFidelity && !usesBoundedWriteSet {
             sections += [
                 "The run is not complete after the substantive edit. First submit this run with the final Target fingerprint; it will remain Awaiting Fidelity.",
-                "Then run scholium agent prepare-fidelity --run <current-parent-locator>. Scholium constructs or reuses the separate read-only Fidelity child against the exact final Target fingerprint with the same Materials, scope kind, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). Complete the returned child locator; Scholium validates its lineage and links it back to this parent automatically. Do not submit Fidelity outcomes directly on this write-capable run or transcribe childRunIDs.",
+                "Then run scholium agent prepare-fidelity --run <current-parent-locator>. Scholium constructs or reuses the separate read-only Fidelity child against the exact final Target fingerprint with the same Materials, scope kind, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). The receipt already contains the complete child context, exact inspection requests, and a strict submit-result template. Inspect those requests and submit the attributed outcomes through the returned next action; Scholium validates lineage and links both Records automatically. Do not submit Fidelity outcomes on this write-capable run or transcribe childRunIDs, fingerprints, or result-field duplicates.",
                 "",
             ]
         }
@@ -401,13 +401,15 @@ extension ResearchFunctionCoordinator {
         )
     }
 
+    /// Preserves researcher-facing preparation metadata for internal callers.
+    /// Agent attachment remains exclusively owned by authenticated
+    /// `agent prepare-fidelity`; this helper does not expose a raw Run route.
     func attachingAgentActions(
         to automatic: AutomaticFidelityPreparation
     ) throws -> AutomaticFidelityPreparation {
-        let preparation = try attachingAgentActions(to: automatic.preparation)
-        return AutomaticFidelityPreparation(
+        AutomaticFidelityPreparation(
             parentRunID: automatic.parentRunID,
-            preparation: preparation,
+            preparation: try attachingAgentActions(to: automatic.preparation),
             nextActions: []
         )
     }
@@ -423,16 +425,6 @@ extension ResearchFunctionCoordinator {
             command: actionCommand(["show", runID, "--format", "json"])
         )]
         guard state == .prepared else {
-            if [.awaitingFidelity, .unverified].contains(state),
-               [.develop, .revise].contains(snapshot.request.function) {
-                actions.insert(AgentCommandAction(
-                    kind: .prepareFidelity,
-                    label: "Prepare or reuse final-revision Fidelity",
-                    command: actionCommand([
-                        "prepare-fidelity", runID, "--format", "json",
-                    ])
-                ), at: 0)
-            }
             return actions
         }
 
@@ -465,16 +457,6 @@ extension ResearchFunctionCoordinator {
     ) -> [AgentCommandAction] {
         let runID = completion.runID.uuidString.lowercased()
         var actions: [AgentCommandAction] = []
-        if [.awaitingFidelity, .unverified].contains(completion.state),
-           [.develop, .revise].contains(completion.function) {
-            actions.append(AgentCommandAction(
-                kind: .prepareFidelity,
-                label: "Prepare or reuse final-revision Fidelity",
-                command: actionCommand([
-                    "prepare-fidelity", runID, "--format", "json",
-                ])
-            ))
-        }
         actions.append(AgentCommandAction(
             kind: .inspect,
             label: "Show the immutable run and current state",

@@ -62,7 +62,7 @@ struct LocalAgentBridgeTests {
         #expect(!String(reflecting: response).contains(credential.secret))
     }
 
-    @Test("Bridge errors distinguish stale projection, missing source evidence, and expired Session")
+    @Test("Bridge errors distinguish stale Run, stale projection, missing source evidence, and expired Session")
     func structuredRecoveryErrors() {
         let stale = LocalAgentBridgeWireCoding.errorPayload(
             ScholiumApplicationError.operationCommittedButRefreshFailed(
@@ -72,6 +72,15 @@ struct LocalAgentBridgeTests {
         )
         #expect(stale.code == .staleProjection)
         #expect(!stale.message.contains("disposable projection failed"))
+
+        let staleRun = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentConnectionError.runStale(.targetChanged)
+        )
+        #expect(staleRun.code == .staleRun)
+        #expect(staleRun.message.contains("start a new Action"))
+        #expect(LocalAgentBridgeWireCoding.errorPayload(
+            ResearchFunctionContractError.materialChanged("Material")
+        ).code == .staleRun)
 
         let missingSource = LocalAgentBridgeWireCoding.errorPayload(
             ResearchFunctionContractError.sourceAccessUnavailable(
@@ -170,6 +179,7 @@ struct LocalAgentBridgeTests {
 
         let receipt = try ResearchAgentFidelityPreparationReceipt(
             childRun: child,
+            childContext: try testFidelityContext(run: child),
             childState: .prepared,
             parentState: .awaitingFidelity,
             parentRecordFormed: false,
@@ -741,6 +751,82 @@ private func testCredential() throws -> ResearchConnectionCredential {
     try ResearchConnectionCredential(
         sessionID: UUID(),
         secret: String(repeating: "s", count: 48)
+    )
+}
+
+private func testFidelityContext(
+    run: ResearchRunLocator
+) throws -> ResearchAuthenticatedRunContext {
+    let target = ResearchFunctionTarget(
+        noteID: UUID(),
+        note: VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Analysis.md"
+        ),
+        role: .analysis,
+        fingerprint: DocumentFingerprint(content: "# Analysis\n"),
+        title: "Analysis"
+    )
+    let inspection = try ResearchContextRequest(clauses: [
+        ResearchContextClause(
+            kind: .readNote,
+            note: target.note,
+            expectedFingerprint: target.fingerprint,
+            limit: 1,
+            useEligibility: .contextUse
+        ),
+    ])
+    let profile = try #require(
+        ResearchAcademicProfileCatalog.defaultProfiles.first {
+            $0.actionID == .checkFidelity
+        }
+    )
+    let registration = try ResearchSkillRegistration(
+        actionID: .checkFidelity,
+        displayName: "Fidelity Method",
+        primaryMarkdown: .machineLocal()
+    )
+    let method = try ResearchMethodSnapshot(
+        registration: registration,
+        primaryMarkdownSource: "# Fidelity\n",
+        practices: []
+    )
+    return try ResearchAuthenticatedRunContext(
+        coreProtocol: nil,
+        brief: ResearchRunBrief(
+            run: run,
+            actionID: .checkFidelity,
+            state: .prepared,
+            initialObjectTitle: target.title,
+            initialObjectRole: .analysis,
+            academicPurpose: nil,
+            capabilities: ResearchRunCapabilityAvailability(
+                search: true,
+                read: true,
+                relations: true,
+                properties: true,
+                records: true,
+                researchState: true,
+                zotero: false,
+                writeInitialObject: false,
+                extendWriteSet: false
+            )
+        ),
+        method: ResearchMethodContext(snapshot: method),
+        resultContract: ResearchResultContract(
+            profile: profile,
+            registrationKey: registration.key,
+            profileRevision: try profile.contentRevision()
+        ),
+        fidelityContract: ResearchFidelityRunContract(
+            checks: [.content],
+            targets: [target],
+            materials: [],
+            scope: .whole,
+            sourceReference: nil,
+            inspectionRequests: [inspection]
+        ),
+        boundedWriteSet: []
     )
 }
 

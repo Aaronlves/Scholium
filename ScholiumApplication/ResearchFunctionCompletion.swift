@@ -385,14 +385,15 @@ extension ResearchFunctionCoordinator {
                     "The automatic Fidelity child no longer has its exact parent Run."
                 )
             }
-            if parent.snapshot.analysisSourceRoute == .researcherProvided,
+            if parent.snapshot.actionSnapshot?.actionID == .analyze,
+               parent.snapshot.sourceReference == nil,
                requiredChecks.contains(.citations) {
                 let citationOutcomes = fidelityTargetResults.flatMap(\.outcomes)
                     .filter { $0.check == .citations }
                 guard citationOutcomes.count == 1,
                       citationOutcomes[0].state == .unavailable else {
                     throw ResearchFunctionContractError.invalidCompletion(
-                        "Citation Fidelity for a researcher-provided source without a formal source envelope must be reported as unavailable. Authored Note YAML, including URLs, is not verified source evidence."
+                        "Citation Fidelity without a formal revision-bound source envelope must be reported as unavailable. Authored Note YAML and bibliographic metadata are not verified source evidence."
                     )
                 }
             }

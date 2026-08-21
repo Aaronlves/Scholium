@@ -454,28 +454,6 @@ public struct ResearchActionPreparation: Codable, Hashable, Sendable {
 }
 
 
-public struct ResearchActionFidelityPreparation: Codable, Hashable, Sendable {
-    public let parentRunID: UUID
-    public let preparation: ResearchActionPreparation
-    public let effectiveRunID: UUID
-    public let reusedExistingEvidence: Bool
-    public let nextActions: [AgentCommandAction]
-
-    public init(
-        parentRunID: UUID,
-        preparation: ResearchActionPreparation,
-        effectiveRunID: UUID,
-        reusedExistingEvidence: Bool,
-        nextActions: [AgentCommandAction] = []
-    ) {
-        self.parentRunID = parentRunID
-        self.preparation = preparation
-        self.effectiveRunID = effectiveRunID
-        self.reusedExistingEvidence = reusedExistingEvidence
-        self.nextActions = nextActions
-    }
-}
-
 public enum ResearchActionExecutionContractError: LocalizedError, Hashable, Sendable {
     case unsupportedField(String)
     case unknownParameter(String)

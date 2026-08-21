@@ -146,12 +146,19 @@ extension WorkspaceHandle {
         let academicResults = try validateAcademicResults(
             submission.academicResults,
             disposition: submission.disposition,
-            contract: action.resultContract
+            contract: action.resultContract,
+            actionID: action.actionID,
+            fidelityOutcomes: submission.fidelityOutcomes
+        )
+        let fidelityContract = try await authenticatedFidelityContract(
+            for: stored
         )
         try validateActionSpecificResultShape(
             submission,
             action: action,
-            fidelityChecks: stored.snapshot.request.checks
+            fidelityChecks: stored.snapshot.request.checks,
+            requiredUnavailableChecks:
+                fidelityContract?.requiredUnavailableChecks ?? []
         )
         let contextUseReport = try await verifiedContextUseReport(
             claims: submission.contextUseClaims,
@@ -228,11 +235,29 @@ extension WorkspaceHandle {
     private func validateAcademicResults(
         _ submitted: ResearchAcademicFieldValues,
         disposition: ResearchAgentResultDisposition,
-        contract: ResearchResultContract
+        contract: ResearchResultContract,
+        actionID: ResearchActionID,
+        fidelityOutcomes: [FidelityCheckOutcome]
     ) throws -> ResearchAcademicFieldValues {
+        let defaultFidelityFields = ResearchAcademicProfileCatalog
+            .defaultProfiles.first(where: { $0.actionID == .checkFidelity })?
+            .academicResultFields ?? []
+        let values: ResearchAcademicFieldValues
+        if actionID == .checkFidelity,
+           contract.academicFields == defaultFidelityFields {
+            guard submitted.values.isEmpty else {
+                throw ResearchAgentResultContractError.invalidSubmission
+            }
+            values = try Self.derivedDefaultFidelityAcademicResults(
+                from: fidelityOutcomes,
+                definitions: contract.academicFields
+            )
+        } else {
+            values = submitted
+        }
         if disposition == .completed {
             let validated = try ResearchAcademicFieldValues(
-                rawValues: submitted.values,
+                rawValues: values.values,
                 definitions: contract.academicFields
             )
             try ResearchAcademicProfileCatalog.validatePlatformResultRules(
@@ -244,10 +269,10 @@ extension WorkspaceHandle {
         let byID = Dictionary(uniqueKeysWithValues: contract.academicFields.map {
             ($0.fieldID.rawValue, $0)
         })
-        guard submitted.values.keys.allSatisfy({ byID[$0] != nil }) else {
+        guard values.values.keys.allSatisfy({ byID[$0] != nil }) else {
             throw ResearchAcademicProfileError.invalidFieldValues
         }
-        for (fieldID, value) in submitted.values {
+        for (fieldID, value) in values.values {
             guard let definition = byID[fieldID] else {
                 throw ResearchAcademicProfileError.invalidFieldValues
             }
@@ -257,8 +282,8 @@ extension WorkspaceHandle {
             )
         }
         let validated = try ResearchAcademicFieldValues(
-            rawValues: submitted.values,
-            definitions: submitted.values.keys.compactMap { byID[$0] }
+            rawValues: values.values,
+            definitions: values.values.keys.compactMap { byID[$0] }
         )
         try ResearchAcademicProfileCatalog.validatePlatformResultRules(
             validated,
@@ -267,10 +292,46 @@ extension WorkspaceHandle {
         return validated
     }
 
+    private static func derivedDefaultFidelityAcademicResults(
+        from outcomes: [FidelityCheckOutcome],
+        definitions: [ResearchAcademicFieldDefinition]
+    ) throws -> ResearchAcademicFieldValues {
+        let ordered = outcomes.sorted { $0.check.rawValue < $1.check.rawValue }
+        let finding = ordered.map { outcome in
+            let findings = outcome.findings.isEmpty
+                ? ""
+                : " Findings: " + outcome.findings.joined(separator: "; ")
+            return "\(outcome.check.rawValue): \(outcome.summary)\(findings)"
+        }.joined(separator: "\n")
+        let status: String
+        if ordered.contains(where: { $0.state == .issuesFound }) {
+            status = "inconsistency-found"
+        } else if ordered.contains(where: { $0.state == .unavailable }) {
+            status = "unable-to-verify"
+        } else {
+            status = "no-inconsistency-in-checked-scope"
+        }
+        var raw: [String: ResearchAcademicFieldValue] = [
+            "finding": .freeText(finding),
+            "finding-status": .singleChoice(status),
+        ]
+        let corrections = ordered.flatMap(\.findings)
+        if !corrections.isEmpty {
+            raw["suggested-correction"] = .freeText(
+                corrections.joined(separator: "\n")
+            )
+        }
+        return try ResearchAcademicFieldValues(
+            rawValues: raw,
+            definitions: definitions
+        )
+    }
+
     private func validateActionSpecificResultShape(
         _ submission: ResearchAgentResultSubmission,
         action: ResearchActionSnapshot,
-        fidelityChecks: Set<FidelityCheck>
+        fidelityChecks: Set<FidelityCheck>,
+        requiredUnavailableChecks: Set<FidelityCheck>
     ) throws {
         if action.actionID == .analyze {
             guard let recommendations = submission.literatureRecommendations,
@@ -287,7 +348,13 @@ extension WorkspaceHandle {
                   Set(submitted) == expected else {
                 throw ResearchAgentResultContractError.invalidSubmission
             }
-            for outcome in submission.fidelityOutcomes { try outcome.validate() }
+            for outcome in submission.fidelityOutcomes {
+                try outcome.validate()
+                if requiredUnavailableChecks.contains(outcome.check),
+                   outcome.state != .unavailable {
+                    throw ResearchAgentResultContractError.invalidSubmission
+                }
+            }
         } else if !submission.fidelityOutcomes.isEmpty {
             throw ResearchAgentResultContractError.invalidSubmission
         }
@@ -386,7 +453,16 @@ extension WorkspaceHandle {
         _ reference: SourceReferenceEnvelope,
         snapshot: ResearchFunctionSnapshot
     ) async throws -> [ContextUseVerificationFact] {
-        guard let frozen = snapshot.sourceReference,
+        let frozen: ResearchSourceReference?
+        if case .automatic(let parentRunID)? =
+                snapshot.resolvedFidelityInvocation {
+            frozen = try await researchAgentResultDependencies
+                .localResearchExecutionStore.recordIfPresent(id: parentRunID)?
+                .snapshot.sourceReference
+        } else {
+            frozen = snapshot.sourceReference
+        }
+        guard let frozen,
               ResearchContextMaterialProjection.isCurrentReference(
                 reference,
                 source: frozen,
