@@ -65,16 +65,9 @@ final class SidebarOutlineItem: NSObject {
 final class SidebarOutlineHostingCell: NSTableCellView {
     private var hostingView: SidebarOutlineRowHostingView?
     private var disclosureButton: NSButton?
-    private var putBackVeil: SidebarPutBackVeil?
-    private var putBackButton: NSButton?
-    private var putBackProgress: NSProgressIndicator?
     private var disclosureDepth = 0
     private var onDisclosure: (() -> Void)?
-    private var onPutBack: (() -> Void)?
-    private var hasPutBackAccessory = false
-    private var putBackIsInProgress = false
     private var pointerHovered = false
-    private var nativeFocused = false
 
     func configure(
         with row: SidebarTreeNodeRow,
@@ -82,20 +75,11 @@ final class SidebarOutlineHostingCell: NSTableCellView {
         disclosureLabel: String?,
         disclosureIsExpanded: Bool,
         disclosureDepth: Int,
-        onDisclosure: (() -> Void)?,
-        putBackLabel: String?,
-        putBackIdentifier: String?,
-        putBackIsNativeFocused: Bool,
-        putBackIsInProgress: Bool,
-        onPutBack: (() -> Void)?
+        onDisclosure: (() -> Void)?
     ) {
         self.disclosureDepth = disclosureDepth
         self.onDisclosure = onDisclosure
-        self.onPutBack = onPutBack
-        hasPutBackAccessory = putBackLabel != nil
-        self.putBackIsInProgress = putBackIsInProgress
         pointerHovered = isHovered
-        nativeFocused = putBackIsNativeFocused
         if let hostingView {
             hostingView.rootView = row
         } else {
@@ -112,21 +96,11 @@ final class SidebarOutlineHostingCell: NSTableCellView {
         button.toolTip = disclosureLabel
         button.setAccessibilityLabel(disclosureLabel)
         positionDisclosureButton()
-
-        _ = putBackVeil ?? makePutBackVeil()
-        let putBack = putBackButton ?? makePutBackButton()
-        putBack.toolTip = putBackLabel
-        putBack.setAccessibilityLabel(putBackLabel)
-        putBack.setAccessibilityIdentifier(putBackIdentifier)
-        _ = putBackProgress ?? makePutBackProgress()
-        updatePutBackVisibility()
-        positionPutBackAccessory()
     }
 
     func setHovered(_ hovering: Bool) {
         guard pointerHovered != hovering else { return }
         pointerHovered = hovering
-        updatePutBackVisibility()
     }
 
     private func makeDisclosureButton() -> NSButton {
@@ -143,40 +117,10 @@ final class SidebarOutlineHostingCell: NSTableCellView {
         return button
     }
 
-    private func makePutBackButton() -> NSButton {
-        let button = NSButton()
-        button.bezelStyle = .inline
-        button.isBordered = false
-        button.image = NSImage(
-            systemSymbolName: "arrow.uturn.backward",
-            accessibilityDescription: nil
-        )
-        button.imagePosition = .imageOnly
-        button.imageScaling = .scaleProportionallyDown
-        button.contentTintColor = ScholiumColorRole.secondaryText.nsColor
-        button.focusRingType = .default
-        button.target = self
-        button.action = #selector(activatePutBack)
-        addSubview(button, positioned: .above, relativeTo: putBackVeil)
-        putBackButton = button
-        return button
-    }
-
-    private func makePutBackProgress() -> NSProgressIndicator {
-        let progress = NSProgressIndicator()
-        progress.style = .spinning
-        progress.controlSize = .small
-        progress.isIndeterminate = true
-        addSubview(progress, positioned: .above, relativeTo: putBackVeil)
-        putBackProgress = progress
-        return progress
-    }
-
     override func layout() {
         super.layout()
         hostingView?.frame = bounds
         positionDisclosureButton()
-        positionPutBackAccessory()
     }
 
     /// Populated rows are native outline interactions. SwiftUI renders the
@@ -185,7 +129,7 @@ final class SidebarOutlineHostingCell: NSTableCellView {
     /// from the start of a drag without a second gesture recognizer.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let nativeHit = super.hitTest(point)
-        if nativeHit === disclosureButton || nativeHit === putBackButton {
+        if nativeHit === disclosureButton {
             return nativeHit
         }
         guard NSApp.currentEvent?.type == .leftMouseDown else {
@@ -213,90 +157,13 @@ final class SidebarOutlineHostingCell: NSTableCellView {
         )
     }
 
-    private func makePutBackVeil() -> SidebarPutBackVeil {
-        let view = SidebarPutBackVeil()
-        view.material = .sidebar
-        view.blendingMode = .withinWindow
-        view.state = .followsWindowActiveState
-        view.setAccessibilityElement(false)
-        addSubview(view, positioned: .above, relativeTo: hostingView)
-        putBackVeil = view
-        return view
-    }
-
-    private var putBackAccessoryFrame: NSRect {
-        let side = ScholiumMetrics.Accessibility.preferredCustomTarget
-        // AppKit's borderless button exposes an accessibility frame three
-        // points shorter than its view frame. Center a minimally taller native
-        // control so the effective pointer/AX target still spans the complete
-        // 28pt Outline row without changing its height.
-        let controlHeight = side + 3
-        return NSRect(
-            x: max(
-                0,
-                bounds.width - ScholiumMetrics.Library.rowHorizontalInset - side
-            ),
-            y: (bounds.height - controlHeight) / 2,
-            width: side,
-            height: controlHeight
-        )
-    }
-
-    private func positionPutBackAccessory() {
-        let frame = putBackAccessoryFrame
-        let veilLeadingEdge = max(
-            bounds.minX,
-            frame.minX - ScholiumGrid.Spacing.labelAccessoryGap
-        )
-        putBackVeil?.frame = NSRect(
-            x: veilLeadingEdge,
-            y: bounds.minY,
-            width: max(0, bounds.maxX - veilLeadingEdge),
-            height: bounds.height
-        )
-        putBackButton?.frame = frame
-
-        let progressSide: CGFloat = 14
-        putBackProgress?.frame = NSRect(
-            x: frame.midX - progressSide / 2,
-            y: frame.midY - progressSide / 2,
-            width: progressSide,
-            height: progressSide
-        )
-    }
-
-    private func updatePutBackVisibility() {
-        let showsControl = hasPutBackAccessory
-            && sidebarLifecyclePutBackControlIsVisible(
-                isHovered: pointerHovered,
-                isNativeFocused: nativeFocused
-            )
-            && !putBackIsInProgress
-        putBackButton?.isHidden = !showsControl
-        let showsProgress = hasPutBackAccessory && putBackIsInProgress
-        putBackVeil?.isHidden = !(showsControl || showsProgress)
-        putBackVeil?.isEmphasized = nativeFocused
-        putBackProgress?.isHidden = !showsProgress
-        if showsProgress {
-            putBackProgress?.startAnimation(nil)
-        } else {
-            putBackProgress?.stopAnimation(nil)
-        }
-    }
-
     @objc private func activateDisclosure() {
         onDisclosure?()
-    }
-
-    @objc private func activatePutBack() {
-        onPutBack?()
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
         pointerHovered = false
-        nativeFocused = false
-        updatePutBackVisibility()
     }
 
     private var enclosingOutlineView: NSOutlineView? {
@@ -319,13 +186,6 @@ private final class SidebarOutlineRowHostingView: NSHostingView<SidebarTreeNodeR
         enclosingScrollView.scrollWheel(with: event)
     }
 
-}
-
-@MainActor
-private final class SidebarPutBackVeil: NSVisualEffectView {
-    /// The native material is presentation only. Pointer and secondary-click
-    /// routing continue to belong to the row beneath it.
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 @MainActor

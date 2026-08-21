@@ -8,7 +8,6 @@ public struct ResearchActionNoteSnapshot: Codable, Hashable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let role: ResearchActionTargetRole
-    public let lifecycle: WorkspaceDocumentLifecycle
     public let fingerprint: DocumentFingerprint
     public let title: String
 
@@ -16,14 +15,12 @@ public struct ResearchActionNoteSnapshot: Codable, Hashable, Sendable {
         noteID: UUID,
         note: VaultQualifiedNoteID,
         role: ResearchActionTargetRole,
-        lifecycle: WorkspaceDocumentLifecycle,
         fingerprint: DocumentFingerprint,
         title: String
     ) {
         self.noteID = noteID
         self.note = note
         self.role = role
-        self.lifecycle = lifecycle
         self.fingerprint = fingerprint
         self.title = title
     }
@@ -32,7 +29,6 @@ public struct ResearchActionNoteSnapshot: Codable, Hashable, Sendable {
         case noteID
         case note
         case role
-        case lifecycle
         case fingerprint
         case title
     }
@@ -47,10 +43,6 @@ public struct ResearchActionNoteSnapshot: Codable, Hashable, Sendable {
             noteID: try container.decode(UUID.self, forKey: .noteID),
             note: try container.decode(VaultQualifiedNoteID.self, forKey: .note),
             role: try container.decode(ResearchActionTargetRole.self, forKey: .role),
-            lifecycle: try container.decode(
-                WorkspaceDocumentLifecycle.self,
-                forKey: .lifecycle
-            ),
             fingerprint: try container.decode(
                 DocumentFingerprint.self,
                 forKey: .fingerprint

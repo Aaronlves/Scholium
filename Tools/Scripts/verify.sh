@@ -183,6 +183,28 @@ if rg -n --hidden \
   exit 1
 fi
 
+# Note and Folder deletion has one clean system-Trash route. Prevent the
+# retired Set Aside/internal-Trash lifecycle, commands, contracts, and routed
+# specification name from becoming reachable again.
+if rg -n --hidden \
+  --glob '!.git/**' \
+  --glob '!.build/**' \
+  --glob '!Scholium/Resources/Editor/**' \
+  --glob '!Tools/Scripts/verify.sh' \
+  'Set Aside|Put Back|internal Trash|set-aside|put-back|trash-list|trash-restore|NoteLifecycle|FolderLifecycle|WorkspaceDocumentLifecycle|PermanentDeletionContracts|NotePermanentDeletionCoordinator|02-notes-and-lifecycle' \
+  "${ROOT}/Scholium" \
+  "${ROOT}/ScholiumApplication" \
+  "${ROOT}/ScholiumContracts" \
+  "${ROOT}/ScholiumCore" \
+  "${ROOT}/ScholiumCLI" \
+  "${ROOT}/Docs" \
+  "${ROOT}/Tests" \
+  "${ROOT}/UITests" \
+  "${ROOT}/README.md"; then
+  echo "System Trash clean-cutover guard failed: retired file-lifecycle residue remains." >&2
+  exit 1
+fi
+
 # Delivery targets compile only against Contracts plus Application composition.
 # Core is internal and cannot be imported by App, CLI, or their boundary tests.
 DELIVERY_ROOTS=("${ROOT}/Scholium" "${ROOT}/ScholiumCLI")
@@ -265,7 +287,7 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|TriptychControlStore|ResearchSkillStore|DialogueStore|CritiqueRegistry|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NotePermanentDeletionCoordinator)[[:space:]]*\(' \
+if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|TriptychControlStore|ResearchSkillStore|DialogueStore|CritiqueRegistry|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NoteSystemTrashDeletionCoordinator)[[:space:]]*\(' \
   "${DELIVERY_ROOTS[@]}"; then
   echo "Application ownership guard failed: a delivery target constructs an Application-owned authority." >&2
   exit 1

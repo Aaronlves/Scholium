@@ -69,13 +69,13 @@
   toolbar and View menu. A successful visit updates them without moving focus;
   revisiting a document uses the ordinary source-safe transition and preserves
   the current content when its destination is unavailable.
-- Library exposes Triptych identity, Attention, Location, filters, disclosure,
-  Add, hierarchy, selected row, and lifecycle actions without requiring hover.
-  Note and Folder move, root move, Put Back, Expand/Collapse All, and contextual
-  creation retain named non-drag accessibility routes.
+- Library exposes Triptych identity, Attention, filters, disclosure, Add,
+  hierarchy, selected row, and file actions without requiring hover. Note and
+  Folder move, root move, system-Trash deletion, Expand/Collapse All, and
+  contextual creation retain named non-drag accessibility routes.
 - The expanded Library is either at least its declared readable width or
   natively collapsed. An open but unreadably compressed Sidebar is forbidden.
-  English and Simplified Chinese variants retain workspace, Location, row, and
+  English and Simplified Chinese variants retain workspace, row, and
   action reachability at that boundary.
 - Attention exposes heading, filter, groups, selected task, issue, Note,
   locator, state, and actions in one linear order. Loading, stale, and
@@ -248,14 +248,19 @@
   through bibliography, discovery, reason, uncertainty, note, source, parent,
   and technical identity. Narrow or enlarged presentation stacks complete
   groups without changing that order.
-- Permanent deletion and evaluation editing use distinct named controls,
-  confirmation, current state, consequences, and focus restoration. Empty,
-  unavailable, partial, and error states remain named and keyboard reachable.
+- System-Trash source deletion, permanent Research Record deletion, and
+  evaluation editing use distinct named controls, confirmation, current state,
+  consequences, and focus restoration. The system-Trash confirmation exposes
+  every source item, whole-Record consequence, unaffected participants, active
+  Discussion consequence, and non-atomic recovery boundary to VoiceOver in
+  reading order. Unknown-outcome and forward-cleanup recovery actions have
+  distinct accessible names. Empty, unavailable, partial, and error states
+  remain named and keyboard reachable.
 
 ### Acceptance threshold
 
 Test long labels in English and Simplified Chinese, mixed English/Chinese
-content, minimum width, every lifecycle/error state, and native/editor focus
+content, minimum width, every file-operation/error state, and native/editor focus
 transitions. Beta and 1.0 require complete keyboard and VoiceOver coverage for
 the declared core and no unresolved critical or high-severity accessibility
 defects. Their interface-language threshold covers only English and Simplified

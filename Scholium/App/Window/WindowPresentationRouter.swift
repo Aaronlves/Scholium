@@ -5,8 +5,9 @@ enum WindowSheetRoute: Identifiable {
     case frontmatter(FrontmatterPanelRoute)
     case researchAction(ResearchActionPanelRoute)
     case researchAgentPermission(UUID)
-    case lifecycle(NoteLifecycleRequest)
-    case folderLifecycle(FolderLifecycleRequest)
+    case noteFileOperation(NoteFileRequest)
+    case folderFileOperation(FolderFileRequest)
+    case systemTrash(SystemTrashDeletionPreview)
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
     case zoteroBinding(ZoteroBindingPanelRoute)
@@ -18,8 +19,10 @@ enum WindowSheetRoute: Identifiable {
             "research-action:\(route.presentationID.uuidString.lowercased())"
         case .researchAgentPermission(let requestID):
             "research-agent-permission:\(requestID.uuidString.lowercased())"
-        case .lifecycle(let request): "lifecycle:\(request.id)"
-        case .folderLifecycle(let request): "folder-lifecycle:\(request.id)"
+        case .noteFileOperation(let request): "note-file-operation:\(request.id)"
+        case .folderFileOperation(let request): "folder-file-operation:\(request.id)"
+        case .systemTrash(let preview):
+            "system-trash:\(preview.id.uuidString.lowercased())"
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
         case .zoteroBinding(let route): route.id

@@ -212,17 +212,17 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
     }
 }
 
-/// One stable note identity and its revisions during the recorded scholarly
-/// exchange. A missing ending revision is reserved for an explicit tombstone;
-/// it never reconstructs the deleted Markdown.
+/// One stable Note identity and its exact starting and ending revisions during
+/// the recorded scholarly exchange. A Record never substitutes a participant
+/// tombstone for a deleted source: the whole associated Record is deleted by
+/// the confirmed system-Trash plan.
 public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let role: ResearchActionTargetRole
     public let title: String
     public let startingRevision: DocumentFingerprint
-    public let endingRevision: DocumentFingerprint?
-    public let isTombstone: Bool
+    public let endingRevision: DocumentFingerprint
 
     public var id: UUID { noteID }
 
@@ -232,8 +232,7 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
         role: ResearchActionTargetRole,
         title: String,
         startingRevision: DocumentFingerprint,
-        endingRevision: DocumentFingerprint?,
-        isTombstone: Bool = false
+        endingRevision: DocumentFingerprint
     ) throws {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty,
@@ -241,8 +240,7 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
               !PortableResearchRecordValidation.containsAbsolutePath(title),
               PortableResearchRecordValidation.isValidNote(note),
               PortableResearchRecordValidation.isValidFingerprint(startingRevision),
-              endingRevision.map(PortableResearchRecordValidation.isValidFingerprint) ?? true,
-              isTombstone == (endingRevision == nil) else {
+              PortableResearchRecordValidation.isValidFingerprint(endingRevision) else {
             throw PortableResearchRecordError.invalidNoteRevision
         }
         self.noteID = noteID
@@ -251,7 +249,6 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
         self.title = title
         self.startingRevision = startingRevision
         self.endingRevision = endingRevision
-        self.isTombstone = isTombstone
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -259,7 +256,6 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
         case note, role, title
         case startingRevision = "starting_revision"
         case endingRevision = "ending_revision"
-        case isTombstone = "is_tombstone"
     }
 
     public init(from decoder: Decoder) throws {
@@ -280,11 +276,10 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
                 PortableResearchStrictFingerprint.self,
                 forKey: .startingRevision
             ).value,
-            endingRevision: container.decodeIfPresent(
+            endingRevision: container.decode(
                 PortableResearchStrictFingerprint.self,
                 forKey: .endingRevision
-            )?.value,
-            isTombstone: container.decode(Bool.self, forKey: .isTombstone)
+            ).value
         )
     }
 }
@@ -601,7 +596,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 11
+    public static let currentSchemaVersion = 12
 
     public let schemaVersion: Int
     public let id: UUID
@@ -709,8 +704,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   guard let participant = participatingByID[change.noteID] else {
                       return false
                   }
-                  guard participant.isTombstone
-                        || participant.endingRevision == change.endingRevision else {
+                  guard participant.endingRevision == change.endingRevision else {
                       return false
                   }
                   return true

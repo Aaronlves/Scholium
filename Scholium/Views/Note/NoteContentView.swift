@@ -109,7 +109,6 @@ struct DocumentFeatureState {
     let ordinarySearchScope: SearchPresentationScope
     let currentVaultID: UUID?
     let vaultRole: VaultRole
-    let locationScope: NoteLocationScope
     let noteIdentityByPath: [String: UUID]
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
@@ -2668,7 +2667,6 @@ private extension CritiqueFindingDispositionDecision {
         ordinarySearchScope: .triptych,
         currentVaultID: note.workspaceSnapshot?.id.vaultID,
         vaultRole: .topicKnowledge,
-        locationScope: .workspace,
         noteIdentityByPath: [
             note.relativePath: note.workspaceSnapshot?.stableIdentity.resolvedID,
         ].compactMapValues { $0 },

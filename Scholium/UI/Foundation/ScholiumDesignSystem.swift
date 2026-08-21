@@ -1526,6 +1526,13 @@ enum ScholiumMetrics {
             static let idealHeight: CGFloat = 540
         }
 
+        enum SystemTrash {
+            static let minimumWidth: CGFloat = 560
+            static let idealWidth: CGFloat = 620
+            static let minimumHeight: CGFloat = 440
+            static let consequenceScrollMaximumHeight: CGFloat = 320
+        }
+
         enum ReadingLeadNote {
             static let minimumWidth: CGFloat = 440
             static let idealWidth: CGFloat = 480
@@ -1647,7 +1654,7 @@ enum ScholiumMetrics {
         static let workspaceNavigatorTopSpacing = ScholiumGrid.Spacing.nestedContentInset
         static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
         /// Empty, loading, and error content begins one section step below the
-        /// stable LocationHeader while retaining the shared peripheral edge.
+        /// stable LibraryHeader while retaining the shared peripheral edge.
         static let sourceStateVerticalInset = ScholiumGrid.Spacing.sectionSeparation
     }
 

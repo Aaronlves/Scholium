@@ -93,7 +93,7 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 11)
+        #expect(object["schema_version"] as? Int == 12)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -766,33 +766,6 @@ struct PortableResearchRecordContractsTests {
         #expect(record.confirmedChanges[0].startingRevision == nil)
         #expect(record.confirmedChanges[0].endingRevision == finalRevision)
 
-        let tombstone = try PortableResearchNoteRevision(
-            noteID: participant.noteID,
-            note: participant.note,
-            role: participant.role,
-            title: participant.title,
-            startingRevision: createdRevision,
-            endingRevision: nil,
-            isTombstone: true
-        )
-        let deleted = try PortableResearchRecord(
-            id: base.id,
-            triptychID: base.triptychID,
-            title: base.title,
-            kind: base.kind,
-            action: base.action,
-            method: base.method,
-            primaryNoteID: participant.noteID,
-            participatingNotes: [tombstone],
-            statements: base.statements,
-            fidelityCompletion: base.fidelityCompletion,
-            confirmedChanges: record.confirmedChanges,
-            startedAt: base.startedAt,
-            finishedAt: base.finishedAt
-        )
-        #expect(deleted.participatingNotes[0].isTombstone)
-        #expect(deleted.participatingNotes[0].startingRevision == createdRevision)
-        #expect(deleted.confirmedChanges == record.confirmedChanges)
     }
 
     @Test("Discussion Records cannot acquire Researcher Response state")
@@ -938,7 +911,6 @@ struct PortableResearchRecordContractsTests {
                 relativePath: "Problem.md"
             ),
             role: .topic,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "# Topic\n"),
             title: "Problem"
         )

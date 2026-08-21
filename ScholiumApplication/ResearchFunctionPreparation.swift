@@ -15,14 +15,12 @@ struct ResearchFunctionAuthorityBinding: Encodable {
     let noteID: String
     let note: VaultQualifiedNoteID
     let role: ResearchFunctionTargetRole
-    let lifecycle: WorkspaceDocumentLifecycle
     let fingerprint: DocumentFingerprint?
 
     init(_ target: ResearchFunctionTarget, includesFingerprint: Bool) {
         noteID = target.noteID.uuidString.lowercased()
         note = target.note
         role = target.role
-        lifecycle = target.lifecycle
         fingerprint = includesFingerprint ? target.fingerprint : nil
     }
 
@@ -30,7 +28,6 @@ struct ResearchFunctionAuthorityBinding: Encodable {
         noteID = material.noteID.uuidString.lowercased()
         note = material.note
         role = material.role
-        lifecycle = material.lifecycle
         fingerprint = includesFingerprint ? material.fingerprint : nil
     }
 }
@@ -261,7 +258,6 @@ extension ResearchFunctionCoordinator {
 
         return currentSnapshot.vaults.flatMap(\.documents).compactMap { note in
             guard note.id != target.note,
-                  note.lifecycle == .active,
                   !note.capabilities.isManagedCritique,
                   case .resolved(let noteID) = note.stableIdentity,
                   let role = ResearchFunctionTargetRole(vaultRole: note.vaultRole),
@@ -273,7 +269,6 @@ extension ResearchFunctionCoordinator {
                 noteID: noteID,
                 note: note.id,
                 role: role,
-                lifecycle: note.lifecycle,
                 fingerprint: note.fingerprint,
                 title: title
             )
@@ -356,7 +351,6 @@ extension ResearchFunctionCoordinator {
                   record.snapshot.request.target.noteID == parentRequest.target.noteID,
                   record.snapshot.request.target.note == parentRequest.target.note,
                   record.snapshot.request.target.role == parentRequest.target.role,
-                  record.snapshot.request.target.lifecycle == parentRequest.target.lifecycle,
                   record.snapshot.request.target.fingerprint
                     == parentCompletion.targetFingerprint,
                   record.snapshot.request.materials
@@ -383,7 +377,6 @@ extension ResearchFunctionCoordinator {
             noteID: parentRequest.target.noteID,
             note: parentRequest.target.note,
             role: parentRequest.target.role,
-            lifecycle: parentRequest.target.lifecycle,
             fingerprint: parentCompletion.targetFingerprint,
             title: parentRequest.target.title
         )

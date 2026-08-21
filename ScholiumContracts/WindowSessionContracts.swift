@@ -9,7 +9,6 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
     public var openDocuments: [VaultQualifiedNoteID]
     public var selectedDocument: VaultQualifiedNoteID?
     public var scrollPositions: [String: Double]
-    public var location: String
     public var inspectorMode: String
     public var documentMode: String
 
@@ -19,7 +18,6 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
         openDocuments: [VaultQualifiedNoteID] = [],
         selectedDocument: VaultQualifiedNoteID? = nil,
         scrollPositions: [String: Double] = [:],
-        location: String = "workspace",
         inspectorMode: String = "overview",
         documentMode: String = "read"
     ) {
@@ -30,7 +28,6 @@ public struct WindowWorkspaceSessionSnapshot: Codable, Hashable, Sendable {
         self.openDocuments = openDocuments
         self.selectedDocument = selectedDocument
         self.scrollPositions = scrollPositions
-        self.location = location
         self.inspectorMode = inspectorMode
         self.documentMode = documentMode
     }

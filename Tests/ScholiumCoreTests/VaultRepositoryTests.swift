@@ -93,14 +93,10 @@ struct VaultRepositoryTests {
         defer { _ = chmod(unreadable.path, 0o700) }
 
         await #expect(throws: (any Error).self) {
-            _ = try await repository.markdownRelativePaths(
-                includeLifecycle: true
-            )
+            _ = try await repository.markdownRelativePaths()
         }
         await #expect(throws: (any Error).self) {
-            _ = try await repository.folderRelativePaths(
-                includeLifecycle: true
-            )
+            _ = try await repository.folderRelativePaths()
         }
     }
 
@@ -502,8 +498,8 @@ struct VaultRepositoryTests {
         #expect(try String(contentsOf: destination, encoding: .utf8) == "External edit\n")
     }
 
-    @Test("Moves preserve bytes and Set Aside and Trash are locations")
-    func moveSetAsideAndTrash() async throws {
+    @Test("Ordinary moves preserve bytes")
+    func movePreservesBytes() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
@@ -518,38 +514,64 @@ struct VaultRepositoryTests {
         #expect(moved.document.rawContent == original.rawContent)
         #expect(!FileManager.default.fileExists(atPath: f.note.path))
 
-        let setAside = try await repository.setAside(
-            relativePath: moved.relativePath,
-            expectedRevision: moved.document.fingerprint
-        )
-        #expect(setAside.relativePath == "Set Aside/Knowledge/Renamed.md")
-
-        let trashed = try await repository.moveToTrash(
-            relativePath: setAside.relativePath,
-            expectedRevision: setAside.document.fingerprint
-        )
-        #expect(trashed.relativePath == "Trash/Set Aside/Knowledge/Renamed.md")
-        #expect(try await repository.load(relativePath: trashed.relativePath).rawContent == original.rawContent)
+        #expect(try await repository.load(relativePath: moved.relativePath).rawContent == original.rawContent)
     }
 
-    @Test("Permanent deletion is revision checked")
-    func permanentDeletion() async throws {
+    @Test("Native system Trash is revision checked and leaves no internal copy")
+    func systemTrashMove() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)
         let repository = try VaultRepository(vaultURL: f.root, identity: identity, applicationSupportURL: f.support)
         let original = try await repository.load(relativePath: "topics/note.md")
 
-        let deletion = try await repository.deletePermanently(
+        let resultingURL = try await repository.moveToSystemTrash(
             relativePath: "topics/note.md",
             expectedRevision: original.fingerprint
         )
+        defer {
+            if let resultingURL {
+                try? FileManager.default.removeItem(at: resultingURL)
+            }
+        }
         #expect(!FileManager.default.fileExists(atPath: f.note.path))
-        #expect(deletion.fingerprint == original.fingerprint)
+        if let resultingURL {
+            #expect(FileManager.default.fileExists(atPath: resultingURL.path))
+            #expect(try Data(contentsOf: resultingURL) == Data(original.rawContent.utf8))
+        }
     }
 
-    @Test("Lifecycle paths reject traversal, non-Markdown targets, and symlink parents")
-    func lifecyclePathSafety() async throws {
+    @Test("Native system Trash rejects a directory-entry exchange after exact-byte validation")
+    func systemTrashRejectsDirectoryEntryExchange() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let replacement = Data("# External replacement\n".utf8)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(
+                id: UUID(),
+                canonicalPath: f.root.path,
+                bookmarkData: nil
+            ),
+            applicationSupportURL: f.support,
+            mutationHooks: VaultMutationHooks(didReach: { phase in
+                guard phase == .finalCheck else { return }
+                try replacement.write(to: f.note, options: .atomic)
+            })
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await repository.moveToSystemTrash(
+                relativePath: "topics/note.md",
+                expectedRevision: original.fingerprint
+            )
+        }
+        #expect(try Data(contentsOf: f.note) == replacement)
+    }
+
+    @Test("File-operation paths reject traversal, non-Markdown targets, and symlink parents")
+    func fileOperationPathSafety() async throws {
         let f = try fixture()
         defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
         let identity = VaultIdentity(id: UUID(), canonicalPath: f.root.path, bookmarkData: nil)

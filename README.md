@@ -88,7 +88,7 @@ watchers, and filesystem I/O live in `ScholiumCore`; one headless
 delivery target imports Core.
 
 The current product supports independent Triptychs and windows, exact-source
-Markdown editing, Search and Connections, note/folder lifecycle, external-edit
+Markdown editing, Search and Connections, note/folder file operations, external-edit
 conflicts, transaction-only interrupted-save recovery, Settle, unified Discussion,
 Critique, and Research Actions with editable current Methods, academic
 Profiles, and Philosophical Practices. Search v7 gives the app, CLI, Research
@@ -112,13 +112,13 @@ Sustained research use, assistive-technology review, clean-account App/CLI and
 external-Agent acceptance, and comparative evaluation remain explicit evidence
 gates.
 
-Library, Set Aside, and Trash share one native AppKit folder-and-note outline
-and the same browsing grammar. Library creates notes and folders and retains
-menu, keyboard, accessibility, and drag alternatives for organization; Set
-Aside and Trash remain browsable, and Put Back is direct and reversible. A
-durably created or moved source is published immediately in its owning window
-while disposable Search, graph, and diagnostic projections refresh in the
-background.
+Library uses one native AppKit folder-and-note outline. It creates notes and
+folders and retains menu, keyboard, accessibility, and drag alternatives for
+organization. Note and Folder deletion use the macOS system Trash; Finder owns
+restoration, while Scholium durably resumes separately disclosed associated
+Research Record cleanup. A durably created, moved, or absent source is
+published immediately in its owning window while disposable Search, graph, and
+diagnostic projections refresh in the background.
 
 Each Note has a vault-qualified stable identity distinct from its exact source
 fingerprint. Renames and folder moves can therefore preserve editor, tab, and

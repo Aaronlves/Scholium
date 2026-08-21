@@ -44,7 +44,7 @@ extension ScholiumCLI {
     ) async throws {
         guard let subcommand = arguments.first else {
             throw CLIError.usage(
-                "Usage: scholium note <create|replace|move|set-aside|trash|delete> ..."
+                "Usage: scholium note <create|replace|move|move-to-trash> ..."
             )
         }
         switch subcommand {
@@ -136,55 +136,38 @@ extension ScholiumCLI {
             let result = outcome.committedValue
             write("Moved \(vault.name):\(path) -> \(result.destination.relativePath)\n")
             writeMutationWarnings(outcome)
-        case "set-aside", "trash":
-            guard arguments.count >= 2, let expected = option("--expected", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note \(subcommand) <vault>:<path> --expected <sha256>"
-                )
-            }
-            let (vault, path) = try await context.resolveTarget(arguments[1])
-            let assignment = try await context.triptych(containing: [vault.id])
-            let handle = try await context.handle(for: assignment)
-            let noteID = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
-            let current = try await handle.documents.load(noteID)
-            try requireExpected(expected, current: current.fingerprint)
-            let outcome = subcommand == "set-aside"
-                ? try await handle.documents.setAside(
-                    noteID,
-                    expectedRevision: current.fingerprint
-                )
-                : try await handle.documents.moveToTrash(
-                    noteID,
-                    expectedRevision: current.fingerprint
-                )
-            let result = outcome.committedValue
-            write("Moved \(vault.name):\(path) -> \(result.destination.relativePath)\n")
-            writeMutationWarnings(outcome)
-        case "delete":
+        case "move-to-trash":
             guard arguments.count >= 2,
-                  arguments.contains("--permanent"),
+                  arguments.contains("--delete-associated-records"),
                   let expected = option("--expected", in: arguments) else {
                 throw CLIError.usage(
-                    "Usage: scholium note delete <vault>:<Trash/path.md> --permanent --expected <sha256>"
+                    "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256> --delete-associated-records"
                 )
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
-            guard path.hasPrefix("Trash/") else {
-                throw CLIError.usage(
-                    "Permanent deletion is allowed only for a note already in Trash."
-                )
-            }
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
             let noteID = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             let current = try await handle.documents.load(noteID)
             try requireExpected(expected, current: current.fingerprint)
-            let outcome = try await handle.documents.deletePermanently(
-                noteID,
-                expectedRevision: current.fingerprint
+            let snapshots = try await handle.documents.snapshot()
+            guard let note = snapshots.first(where: { $0.vault.id == vault.id })?
+                .documents.first(where: { $0.id == noteID }),
+                  let stableNoteID = note.stableIdentity.resolvedID else {
+                throw CLIError.usage(
+                    "The Note has no resolved stable identity; refresh and resolve it before moving it to Trash."
+                )
+            }
+            let preview = try await handle.documents.prepareSystemTrash(
+                NoteMutationTarget(
+                    documentID: noteID,
+                    stableNoteID: stableNoteID,
+                    revision: current.fingerprint
+                )
             )
+            let outcome = try await handle.documents.moveToSystemTrash(preview)
             write(
-                "Permanently deleted \(vault.name):\(path). Recovery history was retained.\n"
+                "Moved \(vault.name):\(path) to the macOS Trash. Deleted \(outcome.committedValue.deletedRecordIDs.count) associated finished Research Record(s); Finder owns file restoration.\n"
             )
             writeMutationWarnings(outcome)
         default:

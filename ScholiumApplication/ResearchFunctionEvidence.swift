@@ -219,9 +219,6 @@ extension ResearchFunctionCoordinator {
               stableID == target.noteID else {
             return ResearchFunctionRepairReason(code: .targetIdentityChanged)
         }
-        guard note.lifecycle == .active else {
-            return ResearchFunctionRepairReason(code: .inactiveTarget)
-        }
         guard ResearchFunctionTargetRole(vaultRole: note.vaultRole) == target.role else {
             return ResearchFunctionRepairReason(code: .targetIdentityChanged)
         }

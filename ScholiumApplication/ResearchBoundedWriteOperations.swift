@@ -1604,10 +1604,7 @@ extension WorkspaceHandle {
                 guard let identity = try await researchBoundedWriteDependencies.controlStore.identityRecord(
                     vaultID: note.vaultID,
                     relativePath: note.relativePath
-                ), identity.id == existingEntry.noteID,
-                      WorkspaceDocumentLifecycle(
-                          relativePath: note.relativePath
-                      ) == .active else {
+                ), identity.id == existingEntry.noteID else {
                     throw ResearchBoundedWriteSetError.targetUnavailable
                 }
                 let document = try await repository(vaultID: note.vaultID)
@@ -1657,7 +1654,7 @@ extension WorkspaceHandle {
             }
             guard let note = vault.documents.first(where: {
                 $0.id.relativePath == selector.relativePath
-            }), note.lifecycle == .active,
+            }),
                   let noteID = note.stableIdentity.resolvedID else {
                 throw ResearchBoundedWriteSetError.targetUnavailable
             }
@@ -1832,9 +1829,6 @@ extension WorkspaceHandle {
             vaultID: candidate.note.vaultID,
             relativePath: candidate.note.relativePath
         ), identity.id == candidate.noteID,
-              WorkspaceDocumentLifecycle(
-                  relativePath: candidate.note.relativePath
-              ) == .active,
               Self.vaultRole(candidate.role)
                 == (try vault(id: candidate.note.vaultID).role) else {
             throw ResearchBoundedWriteSetError.targetUnavailable
@@ -1854,9 +1848,6 @@ extension WorkspaceHandle {
             vaultID: entry.note.vaultID,
             relativePath: entry.note.relativePath
         ), identity.id == entry.noteID,
-              WorkspaceDocumentLifecycle(
-                  relativePath: entry.note.relativePath
-              ) == .active,
               Self.vaultRole(entry.role)
                 == (try vault(id: entry.note.vaultID).role) else {
             throw ResearchBoundedWriteSetError.targetUnavailable

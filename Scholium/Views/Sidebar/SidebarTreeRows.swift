@@ -4,13 +4,6 @@ import SwiftUI
 
 // MARK: - Tree rows
 
-func sidebarLifecyclePutBackControlIsVisible(
-    isHovered: Bool,
-    isNativeFocused: Bool
-) -> Bool {
-    isHovered || isNativeFocused
-}
-
 enum SidebarNoteCommandSurface: Equatable {
     case contextMenu
     case accessibility
@@ -21,21 +14,17 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
     case duplicate
     case rename
     case move
-    case setAside
-    case moveToTrash
-    case putBack
-    case deletePermanently
+    case moveToSystemTrash
     case copyRelativePath
     case revealInFinder
 
     var id: String { rawValue }
 
-    var requiresLifecycleTarget: Bool {
+    var requiresMutationTarget: Bool {
         switch self {
         case .openInNewTab, .copyRelativePath, .revealInFinder:
             false
-        case .duplicate, .rename, .move, .setAside, .moveToTrash,
-             .putBack, .deletePermanently:
+        case .duplicate, .rename, .move, .moveToSystemTrash:
             true
         }
     }
@@ -46,10 +35,7 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
         case .duplicate: "Duplicate…"
         case .rename: "Rename…"
         case .move: "Move Note…"
-        case .setAside: "Set Aside…"
-        case .moveToTrash: "Move to Trash…"
-        case .putBack: "Put Back"
-        case .deletePermanently: "Delete Permanently…"
+        case .moveToSystemTrash: "Move to Trash…"
         case .copyRelativePath: "Copy Relative Path"
         case .revealInFinder: "Reveal in Finder"
         }
@@ -61,17 +47,14 @@ enum SidebarNoteCommand: String, Hashable, Identifiable {
         case .duplicate: "Duplicate Note"
         case .rename: "Rename Note"
         case .move: "Move Note"
-        case .setAside: "Set Aside"
-        case .moveToTrash: "Move to Trash"
-        case .putBack: "Put Back"
-        case .deletePermanently: "Delete Permanently"
+        case .moveToSystemTrash: "Move to Trash"
         case .copyRelativePath: "Copy Relative Path"
         case .revealInFinder: "Reveal in Finder"
         }
     }
 
     var role: ButtonRole? {
-        self == .deletePermanently ? .destructive : nil
+        self == .moveToSystemTrash ? .destructive : nil
     }
 }
 
@@ -79,7 +62,7 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
     enum Kind: String, Hashable {
         case opening
         case editing
-        case lifecycle
+        case fileActions
         case location
     }
 
@@ -90,7 +73,6 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
 }
 
 func sidebarNoteCommandGroups(
-    locationScope: NoteLocationScope,
     isManagedCritique: Bool,
     surface: SidebarNoteCommandSurface
 ) -> [SidebarNoteCommandGroup] {
@@ -99,31 +81,18 @@ func sidebarNoteCommandGroups(
         commands: [.openInNewTab]
     )]
 
-    switch locationScope {
-    case .workspace:
-        var editing: [SidebarNoteCommand] = []
-        if !isManagedCritique { editing.append(.duplicate) }
-        editing.append(.rename)
-        if surface == .accessibility { editing.append(.move) }
-        groups.append(SidebarNoteCommandGroup(
-            kind: .editing,
-            commands: editing
-        ))
-        groups.append(SidebarNoteCommandGroup(
-            kind: .lifecycle,
-            commands: [.setAside, .moveToTrash]
-        ))
-    case .setAside:
-        groups.append(SidebarNoteCommandGroup(
-            kind: .lifecycle,
-            commands: [.putBack, .moveToTrash]
-        ))
-    case .trash:
-        groups.append(SidebarNoteCommandGroup(
-            kind: .lifecycle,
-            commands: [.putBack, .deletePermanently]
-        ))
-    }
+    var editing: [SidebarNoteCommand] = []
+    if !isManagedCritique { editing.append(.duplicate) }
+    editing.append(.rename)
+    if surface == .accessibility { editing.append(.move) }
+    groups.append(SidebarNoteCommandGroup(
+        kind: .editing,
+        commands: editing
+    ))
+    groups.append(SidebarNoteCommandGroup(
+        kind: .fileActions,
+        commands: [.moveToSystemTrash]
+    ))
 
     groups.append(SidebarNoteCommandGroup(
         kind: .location,
@@ -135,19 +104,16 @@ func sidebarNoteCommandGroups(
 struct SidebarTreeContext {
     let currentVaultID: UUID?
     let currentVaultRole: VaultRole
-    let locationScope: NoteLocationScope
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
-    let requestLifecycle: (NoteLifecycleRequest) -> Void
+    let requestFileOperation: (NoteFileRequest) -> Void
     let canMutateLibrary: Bool
     let createUntitledNote: (String?) -> Void
     let createUntitledFolder: (String?) -> Void
-    let requestFolderLifecycle: (FolderLifecycleRequest) -> Void
-    let moveFolderToTrash: (FolderLifecycleTarget) async throws -> Void
+    let requestFolderFileOperation: (FolderFileRequest) -> Void
+    let requestFolderSystemTrash: (FolderMutationTarget) async throws -> Void
     let copyRelativePath: (String) -> Void
     let revealNote: (String) -> Void
-    let setAside: (NoteLifecycleTarget) async throws -> Void
-    let moveToTrash: (NoteLifecycleTarget) async throws -> Void
-    let deletePermanently: (NoteLifecycleTarget) async throws -> Void
+    let requestSystemTrash: (NoteMutationTarget) async throws -> Void
     let showError: (String) -> Void
 }
 
@@ -157,19 +123,6 @@ struct SidebarTreeNodeRow: View {
     let selectedDocumentPath: String?
     let context: SidebarTreeContext
     let onSelect: (WindowDocumentLocation) -> Void
-    let onPutBack: (WindowDocumentLocation) -> Void
-    let onWillRemove: (WindowDocumentLocation) -> Void
-    let onMutationFailed: (WindowDocumentLocation) -> Void
-
-    @State private var pendingDestructiveAction: DestructiveAction?
-    @State private var pendingFolderTrashTarget: FolderLifecycleTarget?
-
-    private enum DestructiveAction: String, Identifiable {
-        case setAside = "Set Aside"
-        case trash = "Move to Trash"
-        case delete = "Delete Permanently"
-        var id: String { rawValue }
-    }
 
     private var isExpanded: Bool { expandedFolders.contains(node.id) }
 
@@ -224,21 +177,6 @@ struct SidebarTreeNodeRow: View {
         .accessibilityIdentifier("scholium.folderRow.\(node.id)")
         .contextMenu { folderContextMenu }
         .accessibilityActions { folderAccessibilityActions }
-        .confirmationDialog(
-            "Move Folder to Trash?",
-            isPresented: Binding(
-                get: { pendingFolderTrashTarget != nil },
-                set: { if !$0 { pendingFolderTrashTarget = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Move Folder and Notes to Trash", role: .destructive) {
-                guard let target = pendingFolderTrashTarget else { return }
-                pendingFolderTrashTarget = nil
-                performFolderTrash(target)
-            }
-            Button("Cancel", role: .cancel) { pendingFolderTrashTarget = nil }
-        }
     }
 
     private func noteRow(_ note: WindowDocumentLocation) -> some View {
@@ -265,23 +203,6 @@ struct SidebarTreeNodeRow: View {
         .frame(minHeight: ScholiumMetrics.Library.hierarchyRowHeight)
         .contextMenu { noteContextMenu(note) }
         .accessibilityActions { noteAccessibilityActions(note) }
-        .confirmationDialog(
-            pendingDestructiveAction?.rawValue ?? "Confirm",
-            isPresented: Binding(
-                get: { pendingDestructiveAction != nil },
-                set: { if !$0 { pendingDestructiveAction = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let action = pendingDestructiveAction {
-                Button(action.rawValue, role: action == .setAside ? nil : .destructive) {
-                    perform(action, note: note)
-                }
-            }
-            Button("Cancel", role: .cancel) { pendingDestructiveAction = nil }
-        } message: {
-            Text(destructiveMessage(for: pendingDestructiveAction, note: note))
-        }
     }
 
     private var rowLeadingInset: CGFloat {
@@ -300,8 +221,8 @@ struct SidebarTreeNodeRow: View {
                 Button("New Note") { context.createUntitledNote(path) }
                 Button("New Folder") { context.createUntitledFolder(path) }
                 if let target = folderTarget(path) {
-                    Button("Rename Folder…") { context.requestFolderLifecycle(.rename(target)) }
-                    Button("Move Folder…") { context.requestFolderLifecycle(.move(target)) }
+                    Button("Rename Folder…") { context.requestFolderFileOperation(.rename(target)) }
+                    Button("Move Folder…") { context.requestFolderFileOperation(.move(target)) }
                 }
             }
             if !node.children.isEmpty {
@@ -313,7 +234,7 @@ struct SidebarTreeNodeRow: View {
             if canMutateFolder(path) {
                 Divider()
                 Button("Move Folder and Notes to Trash…", role: .destructive) {
-                    pendingFolderTrashTarget = folderTarget(path)
+                    if let target = folderTarget(path) { performFolderTrash(target) }
                 }
             }
         } else if !node.children.isEmpty {
@@ -328,10 +249,10 @@ struct SidebarTreeNodeRow: View {
                 Button("New Note") { context.createUntitledNote(path) }
                 Button("New Folder") { context.createUntitledFolder(path) }
                 if let target = folderTarget(path) {
-                    Button("Rename Folder") { context.requestFolderLifecycle(.rename(target)) }
-                    Button("Move Folder") { context.requestFolderLifecycle(.move(target)) }
+                    Button("Rename Folder") { context.requestFolderFileOperation(.rename(target)) }
+                    Button("Move Folder") { context.requestFolderFileOperation(.move(target)) }
                     Button("Move Folder and Notes to Trash") {
-                        pendingFolderTrashTarget = target
+                        performFolderTrash(target)
                     }
                 }
             }
@@ -346,7 +267,6 @@ struct SidebarTreeNodeRow: View {
     @ViewBuilder
     private func noteContextMenu(_ note: WindowDocumentLocation) -> some View {
         let groups = sidebarNoteCommandGroups(
-            locationScope: context.locationScope,
             isManagedCritique: CritiquePlacement.isManagedCritiquePath(
                 note.relativePath
             ),
@@ -363,7 +283,6 @@ struct SidebarTreeNodeRow: View {
     @ViewBuilder
     private func noteAccessibilityActions(_ note: WindowDocumentLocation) -> some View {
         let groups = sidebarNoteCommandGroups(
-            locationScope: context.locationScope,
             isManagedCritique: CritiquePlacement.isManagedCritiquePath(
                 note.relativePath
             ),
@@ -391,7 +310,7 @@ struct SidebarTreeNodeRow: View {
             Text(title)
         }
         .disabled(
-            command.requiresLifecycleTarget && NoteLifecycleTarget(note) == nil
+            command.requiresMutationTarget && NoteMutationTarget(note) == nil
         )
     }
 
@@ -403,26 +322,33 @@ struct SidebarTreeNodeRow: View {
         case .openInNewTab:
             context.openNote(note, .newTab)
         case .duplicate, .rename, .move:
-            guard let target = NoteLifecycleTarget(note) else {
+            guard let target = NoteMutationTarget(note) else {
                 context.showError(
                     "This note cannot be changed until its identity is resolved."
                 )
                 return
             }
             switch command {
-            case .duplicate: context.requestLifecycle(.duplicate(target))
-            case .rename: context.requestLifecycle(.rename(target))
-            case .move: context.requestLifecycle(.move(target))
+            case .duplicate: context.requestFileOperation(.duplicate(target))
+            case .rename: context.requestFileOperation(.rename(target))
+            case .move: context.requestFileOperation(.move(target))
             default: break
             }
-        case .setAside:
-            pendingDestructiveAction = .setAside
-        case .moveToTrash:
-            pendingDestructiveAction = .trash
-        case .putBack:
-            onPutBack(note)
-        case .deletePermanently:
-            pendingDestructiveAction = .delete
+        case .moveToSystemTrash:
+            guard let target = NoteMutationTarget(note) else {
+                context.showError(
+                    "This note cannot be changed until its identity is resolved."
+                )
+                return
+            }
+            Task {
+                do { try await context.requestSystemTrash(target) }
+                catch {
+                    context.showError(
+                        "Could not prepare Move to Trash. \(error.localizedDescription)"
+                    )
+                }
+            }
         case .copyRelativePath:
             context.copyRelativePath(note.relativePath)
         case .revealInFinder:
@@ -439,59 +365,21 @@ struct SidebarTreeNodeRow: View {
     }
 
     private func canMutateFolder(_ path: String) -> Bool {
-        guard context.locationScope == .workspace,
-              context.canMutateLibrary else { return false }
+        guard context.canMutateLibrary else { return false }
         let candidate = "\(path)/Untitled.md"
         return !context.currentVaultRole.allowsCritique
             || !CritiquePlacement.isManagedCritiquePath(candidate)
     }
 
-    private func folderTarget(_ path: String) -> FolderLifecycleTarget? {
+    private func folderTarget(_ path: String) -> FolderMutationTarget? {
         guard let vaultID = context.currentVaultID else { return nil }
-        return FolderLifecycleTarget(vaultID: vaultID, relativePath: path)
+        return FolderMutationTarget(vaultID: vaultID, relativePath: path)
     }
 
-    private func performFolderTrash(_ target: FolderLifecycleTarget) {
+    private func performFolderTrash(_ target: FolderMutationTarget) {
         Task {
-            do { try await context.moveFolderToTrash(target) }
-            catch { context.showError("Could not move this folder to Trash. \(error.localizedDescription)") }
-        }
-    }
-
-    private func destructiveMessage(
-        for action: DestructiveAction?,
-        note: WindowDocumentLocation
-    ) -> String {
-        let title = note.title ?? note.displayName
-        return switch action {
-        case .setAside: "Move ‘\(title)’ out of the active Workspace?"
-        case .trash: "Move ‘\(title)’ to Trash?"
-        case .delete: "Permanently delete ‘\(title)’? This cannot be undone."
-        case nil: ""
-        }
-    }
-
-    private func perform(_ action: DestructiveAction, note: WindowDocumentLocation) {
-        pendingDestructiveAction = nil
-        guard let target = NoteLifecycleTarget(note) else {
-            onMutationFailed(note)
-            context.showError(
-                "This note cannot be changed until its identity is resolved."
-            )
-            return
-        }
-        onWillRemove(note)
-        Task {
-            do {
-                switch action {
-                case .setAside: try await context.setAside(target)
-                case .trash: try await context.moveToTrash(target)
-                case .delete: try await context.deletePermanently(target)
-                }
-            } catch {
-                onMutationFailed(note)
-                context.showError("Could not \(action.rawValue.lowercased()): \(error.localizedDescription)")
-            }
+            do { try await context.requestFolderSystemTrash(target) }
+            catch { context.showError("Could not prepare this folder for Move to Trash. \(error.localizedDescription)") }
         }
     }
 

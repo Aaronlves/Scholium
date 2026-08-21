@@ -451,24 +451,6 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func selectSidebarLocation(_ title: String) {
-        let picker = app.descendants(matching: .any)[
-            "scholium.locationPicker"
-        ].firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 5))
-        picker.click()
-        let item = app.menuItems.matching(
-            NSPredicate(format: "title == %@ OR label == %@", title, title)
-        ).firstMatch
-        XCTAssertTrue(item.waitForExistence(timeout: 3))
-        item.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            (picker.value as? String) == title
-                || (picker.label == title)
-        })
-    }
-
-    @MainActor
     func selectVault(
         _ identifier: String,
         waitingFor rowIdentifier: String
@@ -1464,8 +1446,7 @@ extension ScholiumUITests {
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
             || name.contains("testLineCommentDiscussReopenAndFinish")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
-            || name.contains("testResearchActionPanelFits")
-            || name.contains("testSidebarWorkspaceLocationHoverPutBackAndTriptychAttentionWindowJourney") {
+            || name.contains("testResearchActionPanelFits") {
             try resetNewTriptychActionFixtureState()
         }
 

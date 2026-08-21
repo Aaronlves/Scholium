@@ -1607,12 +1607,6 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let removalFocusSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarRemovalFocus.swift"
-            ),
-            encoding: .utf8
-        )
         let outlineSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Sidebar/SidebarOutlineSourceList.swift"
@@ -1693,8 +1687,6 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".focusEffectDisabled()"))
         #expect(sidebarSource.contains("ScholiumColorRole.navigationSurfaceBackground.color"))
         #expect(!sidebarSource.contains(".pickerStyle(.segmented)"))
-        #expect(sidebarSource.contains("ScholiumLibraryLocationPicker("))
-        #expect(sidebarSource.contains("focus: $locationPickerFocused"))
         #expect(
             componentsSource.contains(
                 "struct ScholiumEditorialIconControl<NativeControl: View>"
@@ -1707,35 +1699,10 @@ struct FrontendArchitectureTests {
             ).count == 3)
         #expect(filterMenuSource.contains("ScholiumEditorialIconControl("))
         #expect(!filterMenuSource.contains(".menuStyle(.borderlessButton)"))
-        #expect(componentsSource.contains("struct ScholiumLibraryLocationPicker"))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
-        #expect(componentsSource.contains(".menuStyle(.borderlessButton)"))
-        #expect(componentsSource.contains("locationChoice(\"Library\", value: .workspace)"))
-        #expect(componentsSource.contains("locationChoice(\"Set Aside\", value: .setAside)"))
-        #expect(componentsSource.contains("locationChoice(\"Trash\", value: .trash)"))
-        #expect(componentsSource.contains(".accessibilityLabel(\"Location\")"))
-        #expect(componentsSource.contains(".accessibilityValue(selectedTitle)"))
+        #expect(!componentsSource.contains(".menuStyle(.borderlessButton)"))
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
-        #expect(!componentsSource.contains("Picker(\"Location\""))
         #expect(!componentsSource.contains("Image(systemName: \"chevron"))
-        let locationPickerStart = try #require(
-            componentsSource.range(
-                of: "struct ScholiumLibraryLocationPicker"
-            ))
-        let locationPickerEnd = try #require(
-            componentsSource.range(
-                of: "struct ScholiumTriptychWorkspaceNavigator",
-                range: locationPickerStart.upperBound..<componentsSource.endIndex
-            ))
-        let locationPicker = componentsSource[
-            locationPickerStart.lowerBound..<locationPickerEnd.lowerBound
-        ]
-        #expect(!locationPicker.contains("ScholiumColorRole.accent"))
-        #expect(locationPicker.contains(".tint(ScholiumColorRole.secondaryText.color)"))
-        #expect(locationPicker.contains(".menuIndicator(.visible)"))
-        #expect(locationPicker.contains("ScholiumLibraryLocationPickerLabel"))
-        #expect(locationPicker.contains(".scholiumActivationFocus(focus)"))
-        #expect(locationPicker.contains("isFocused: focus.wrappedValue"))
         #expect(componentsSource.contains(".menuIndicator(.hidden)"))
         #expect(treeRowsSource.contains("ScholiumTypography.interface(.body)"))
         #expect(treeRowsSource.contains("ScholiumTypography.interface(.body, emphasis: .strong)"))
@@ -1746,7 +1713,7 @@ struct FrontendArchitectureTests {
             ))
         let workspaceButtonEnd = try #require(
             componentsSource.range(
-                of: "/// Page-level content for a Library Location",
+                of: "/// Page-level Library content",
                 range: workspaceButtonStart.upperBound..<componentsSource.endIndex
             ))
         let workspaceButton = componentsSource[
@@ -1812,7 +1779,7 @@ struct FrontendArchitectureTests {
             sidebarSections.range(
                 of: "ScholiumTriptychWorkspaceNavigator"
             ))
-        let library = try #require(sidebarSections.range(of: "locationHeader"))
+        let library = try #require(sidebarSections.range(of: "libraryHeader"))
         let sourceRegion = try #require(sidebarSections.range(of: "sourceRegion"))
         #expect(workspaceNavigator.lowerBound < library.lowerBound)
         #expect(library.lowerBound < sourceRegion.lowerBound)
@@ -1838,7 +1805,6 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains("projectionRevision: treeProjection.revision"))
         #expect(!sidebarSource.contains("notesAreOrdered"))
         #expect(sidebarSource.contains("treeProjection.value.roots"))
-        #expect(sidebarSource.contains("treeProjection.value.visibleNotePaths("))
         #expect(!sidebarSource.contains("return buildTree("))
         #expect(treeProjectionSource.contains("childFoldersByParent"))
         #expect(treeProjectionSource.contains("final class LibraryTreeProjectionCache"))
@@ -1864,18 +1830,7 @@ struct FrontendArchitectureTests {
         #expect(filterMenuSource.contains("let replaceFilters:"))
         #expect(filterMenuSource.components(separatedBy: "@State").count == 1)
         #expect(!filterMenuSource.contains("@ObservedObject"))
-        #expect(
-            sidebarSource.contains(
-                "@State private var pendingRemovalFocusPlans: [SidebarRemovalFocusPlan]"
-            ))
-        #expect(
-            !sidebarSource.contains(
-                "pendingRemovalFocusPlan: SidebarRemovalFocusPlan?"
-            ))
-        #expect(removalFocusSource.contains("let originDocumentID: VaultQualifiedNoteID"))
-        #expect(removalFocusSource.contains("func sidebarRemovalFocusAfterCompletions("))
-        #expect(removalFocusSource.contains("func sidebarRemovalFocusAfterFailure("))
-        #expect(!removalFocusSource.contains("@State"))
+        #expect(!sidebarSource.contains("SidebarRemovalFocusPlan"))
         #expect(sidebarSource.contains("scholium.noteList"))
         #expect(sidebarSource.contains(".contextMenu"))
         #expect(sidebarSource.contains("rootCreationActions"))
@@ -1949,7 +1904,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".draggable(SidebarFolderDragItem.self)"))
         #expect(!sidebarSource.contains(".dropDestination("))
         #expect(!sidebarSource.contains(".dropConfiguration"))
-        #expect(sidebarSource.contains("SidebarLocationHeaderDropDestination("))
+        #expect(sidebarSource.contains("SidebarLibraryHeaderDropDestination("))
         #expect(nativeDropSource.contains("guard info.draggingSource != nil"))
         #expect(nativeDropSource.contains("override func draggingEntered("))
         #expect(nativeDropSource.contains("override func performDragOperation("))
@@ -2002,7 +1957,6 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".scholiumEditorialIconControlSurface("))
         #expect(!filterMenuSource.contains("@State private var isControlHovering"))
         #expect(!filterMenuSource.contains(".scholiumEditorialIconControlSurface("))
-        #expect(locationPicker.contains(".scholiumContentControlPointerFeedback("))
         #expect(
             outlineRowsSource.contains(
                 "ScholiumContentInteractionSurface.nsColor("
@@ -2025,7 +1979,7 @@ struct FrontendArchitectureTests {
         let brandStart = try #require(sidebarSource.range(of: "private var brandHeader"))
         let brandEnd = try #require(
             sidebarSource.range(
-                of: "// MARK: Location and source region",
+                of: "// MARK: Library source region",
                 range: brandStart.upperBound..<sidebarSource.endIndex
             ))
         let brandHeader = sidebarSource[brandStart.lowerBound..<brandEnd.lowerBound]
@@ -2045,184 +1999,37 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".font(.system(size: 12"))
     }
 
-    @Test("Lifecycle destinations reuse the Library grid with one native Put Back overlay")
-    func lifecycleDestinationGridContract() throws {
+    @Test("System Trash uses one explicit confirmation and no internal lifecycle UI")
+    func systemTrashConfirmationContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sidebarSource = try String(
+        let confirmation = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarView.swift"
+                "Scholium/Views/Note/SystemTrashConfirmationView.swift"
             ),
             encoding: .utf8
         )
-        let componentsSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumComponents.swift"
-            ),
-            encoding: .utf8
-        )
-        let outlineSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarOutlineSourceList.swift"
-            ),
-            encoding: .utf8
-        )
-        let outlineRowsSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
-            ),
-            encoding: .utf8
-        )
-        let outlineCoordinatorSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarOutlineCoordinator.swift"
-            ),
-            encoding: .utf8
-        )
-        let treeRowsSource = try String(
+        let sidebar = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Sidebar/SidebarTreeRows.swift"
             ),
             encoding: .utf8
         )
-        let lifecycleSource = try String(
+        let app = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/NoteLifecycleView.swift"
-            ),
-            encoding: .utf8
-        )
-        let windowDomainSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/App/Window/WindowDomainTypes.swift"
+                "Scholium/App/ScholiumApp.swift"
             ),
             encoding: .utf8
         )
 
-        for required in [
-            "ScholiumLibraryLocationPicker(",
-            "focus: $locationPickerFocused",
-            "ScholiumMetrics.Accessibility.preferredCustomTarget",
-            "ScholiumGrid.Spacing.inlineControlGap",
-            "ScholiumGrid.Spacing.labelAccessoryGap",
-            "ScholiumGrid.Spacing.sectionSeparation",
-            "ScholiumLibrarySourceState",
-        ] {
-            #expect(
-                sidebarSource.contains(required),
-                "Missing lifecycle destination contract: \(required)")
-        }
-        #expect(treeRowsSource.contains("ScholiumMetrics.Library.hierarchyRowHeight"))
-        #expect(treeRowsSource.contains("sidebarLifecyclePutBackControlIsVisible("))
-        for required in [
-            "scholium.lifecyclePutBack.",
-            "putBackDocumentsInProgress",
-            "putBackIsNativeFocused: isNativeFocused",
-        ] {
-            #expect(
-                outlineCoordinatorSource.contains(required),
-                "Missing native outline projection: \(required)")
-        }
-        for required in [
-            "func setHovered(_ hovering: Bool)",
-            "cell?.setHovered(item != nil)",
-            "private func makePutBackButton() -> NSButton",
-            "#selector(activatePutBack)",
-            "putBack.toolTip",
-            "putBack.setAccessibilityLabel",
-            "private var pointerHovered = false",
-            "private var nativeFocused = false",
-            "isHovered: pointerHovered",
-            "isNativeFocused: nativeFocused",
-            "private func makePutBackVeil() -> SidebarPutBackVeil",
-            "view.material = .sidebar",
-            "view.blendingMode = .withinWindow",
-            "private final class SidebarPutBackVeil: NSVisualEffectView",
-            "override func hitTest(_ point: NSPoint) -> NSView? { nil }",
-        ] {
-            #expect(
-                outlineRowsSource.contains(required), "Missing native row projection: \(required)")
-        }
-        #expect(!outlineSource.contains("final class SidebarOutlineRowView"))
-        #expect(!outlineSource.contains("final class Coordinator"))
-        #expect(!outlineRowsSource.contains("NSViewRepresentable"))
-        #expect(!treeRowsSource.contains("usesNativePutBackAccessory"))
-        #expect(!outlineCoordinatorSource.contains("noteDragMovesInProgress"))
-        #expect(!outlineCoordinatorSource.contains("folderDragMovesInProgress"))
-        let treeRowStart = try #require(
-            treeRowsSource.range(
-                of: "struct SidebarTreeNodeRow: View"
-            ))
-        let treeRowEnd = try #require(
-            treeRowsSource.range(
-                of: "struct SidebarNoteRow: View",
-                range: treeRowStart.upperBound..<treeRowsSource.endIndex
-            ))
-        let treeRowSource = String(
-            treeRowsSource[treeRowStart.lowerBound..<treeRowEnd.lowerBound]
-        )
-        #expect(
-            treeRowSource.components(
-                separatedBy: "ScholiumContentControlButtonStyle("
-            ).count == 3
-        )
-        #expect(
-            treeRowSource.components(
-                separatedBy: "tracksHover: false"
-            ).count == 3
-        )
-        #expect(treeRowSource.contains("in: Rectangle()"))
-        #expect(!treeRowsSource.contains("SidebarNavigationButtonStyle"))
-        #expect(treeRowSource.contains("surface: .contextMenu"))
-        #expect(treeRowSource.contains("surface: .accessibility"))
-        #expect(treeRowSource.contains("noteCommandButton(command"))
-        #expect(!treeRowSource.contains("requestedFocusPath"))
-        #expect(!treeRowSource.contains("@FocusState"))
-        #expect(outlineCoordinatorSource.contains("private func handleFocusRequest("))
-        #expect(outlineCoordinatorSource.contains("makeFirstResponder(outlineView)"))
-        for required in [
-            "locationChoice(\"Library\", value: .workspace)",
-            "locationChoice(\"Set Aside\", value: .setAside)",
-            "locationChoice(\"Trash\", value: .trash)",
-            ".menuStyle(.borderlessButton)",
-            ".buttonStyle(.plain)",
-            ".menuIndicator(.visible)",
-            "struct ScholiumLibrarySourceState",
-            ".padding(.horizontal, ScholiumMetrics.Library.contentInset)",
-            ".accessibilityLabel(\"Location\")",
-            ".accessibilityValue(selectedTitle)",
-        ] {
-            #expect(
-                componentsSource.contains(required),
-                "Missing LocationPicker component contract: \(required)")
-        }
-        #expect(!componentsSource.contains("Picker(\"Location\""))
-        #expect(!componentsSource.contains(".accessibilityRepresentation"))
-        #expect(!treeRowsSource.contains("Button(\"Put Back…\")"))
-        #expect(!lifecycleSource.contains("Put Back"))
-        #expect(!windowDomainSource.contains("case putBack"))
-
-        for removed in [
-            "SidebarLifecycleCard",
-            "SidebarLifecycleDestinationView",
-            "lifecycleDestinationScope",
-            "scholium.lifecycleBack",
-            "sidebarBottomRegion",
-            "libraryFooterHeight",
-            ".boundedPanel",
-            ".move(edge: .bottom)",
-            ".snappy(duration: 0.2)",
-            "HStack(spacing: 24)",
-            ".padding(.horizontal, 61)",
-            ".frame(minHeight: 170, idealHeight: 280, maxHeight: 360)",
-        ] {
-            #expect(
-                !sidebarSource.contains(removed), "Retired lifecycle overlay remains: \(removed)")
-        }
-        #expect(!sidebarSource.contains("private enum SidebarSpacing"))
-        #expect(!sidebarSource.contains("private enum LifecycleSpacing"))
-        #expect(ScholiumMetrics.Library.sourceStateVerticalInset == 16)
+        #expect(confirmation.contains("Finder owns file restoration"))
+        #expect(confirmation.contains("finished Research Record"))
+        #expect(confirmation.contains("unaffectedParticipants"))
+        #expect(sidebar.contains("requestSystemTrash"))
+        #expect(sidebar.contains("requestFolderSystemTrash"))
+        #expect(app.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
     }
 
     @Test("Attention search lives in the transient Workspace popover without custom close chrome")
@@ -2842,21 +2649,6 @@ struct FrontendArchitectureTests {
             }
         }
 
-        let sidebarOutlineRows = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(
-            sidebarOutlineRows.contains(
-                "private final class SidebarPutBackVeil: NSVisualEffectView"
-            ))
-        #expect(sidebarOutlineRows.contains("view.material = .sidebar"))
-        #expect(
-            sidebarOutlineRows.contains(
-                "override func hitTest(_ point: NSPoint) -> NSView? { nil }"
-            ))
     }
 
     @Test("Page and pane states share presentation without sharing workflow ownership")

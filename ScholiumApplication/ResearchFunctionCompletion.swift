@@ -923,7 +923,6 @@ extension ResearchFunctionCoordinator {
                     noteID: entry.noteID,
                     note: entry.note,
                     role: entry.role,
-                    lifecycle: .active,
                     fingerprint: startingRevision,
                     title: entry.title
                 )
@@ -1195,7 +1194,6 @@ extension ResearchFunctionCoordinator {
                 noteID: snapshot.request.target.noteID,
                 note: snapshot.request.target.note,
                 role: snapshot.request.target.role,
-                lifecycle: snapshot.request.target.lifecycle,
                 fingerprint: completion.targetFingerprint
             ) else { return false }
 
@@ -1223,7 +1221,6 @@ extension ResearchFunctionCoordinator {
                           noteID: material.noteID,
                           note: material.note,
                           role: material.role,
-                          lifecycle: material.lifecycle,
                           fingerprint: fingerprint
                       ) else { return false }
             }
@@ -1240,15 +1237,13 @@ extension ResearchFunctionCoordinator {
         noteID: UUID,
         note: VaultQualifiedNoteID,
         role: ResearchFunctionTargetRole,
-        lifecycle: WorkspaceDocumentLifecycle,
         fingerprint: DocumentFingerprint
     ) async throws -> Bool {
         guard let identity = try await dependencies.controlStore.identityRecord(
             vaultID: note.vaultID,
             relativePath: note.relativePath
         ), identity.id == noteID,
-              ResearchFunctionTargetRole(vaultRole: try vault(id: note.vaultID).role) == role,
-              WorkspaceDocumentLifecycle(relativePath: note.relativePath) == lifecycle else {
+              ResearchFunctionTargetRole(vaultRole: try vault(id: note.vaultID).role) == role else {
             return false
         }
         let document = try await repository(vaultID: note.vaultID)
@@ -1321,7 +1316,6 @@ extension ResearchFunctionCoordinator {
         guard childRequest.target.noteID == parentRequest.target.noteID,
               childRequest.target.note == parentRequest.target.note,
               childRequest.target.role == parentRequest.target.role,
-              childRequest.target.lifecycle == parentRequest.target.lifecycle,
               childRequest.target.fingerprint == finalTargetFingerprint,
               completion.targetFingerprint == finalTargetFingerprint,
               !completion.didModifyTarget,
@@ -1566,7 +1560,6 @@ extension ResearchFunctionCoordinator {
                 noteID: entry.noteID,
                 note: entry.note,
                 role: role,
-                lifecycle: .active,
                 fingerprint: expectedRevision,
                 title: entry.title
             )
@@ -1638,9 +1631,6 @@ extension ResearchFunctionCoordinator {
               stableID == target.noteID else {
             throw ResearchFunctionContractError.targetIdentityChanged
         }
-        guard note.lifecycle == .active else {
-            throw ResearchFunctionContractError.inactiveTarget
-        }
         guard let role = ResearchFunctionTargetRole(vaultRole: note.vaultRole),
               role == target.role else {
             throw ResearchFunctionContractError.targetIdentityChanged
@@ -1657,7 +1647,6 @@ extension ResearchFunctionCoordinator {
             noteID: material.noteID,
             note: material.note,
             role: material.role,
-            lifecycle: material.lifecycle,
             fingerprint: material.fingerprint,
             title: material.title
         )
@@ -1672,7 +1661,6 @@ extension ResearchFunctionCoordinator {
         }
         let currentSnapshot = host.researchFunctionCurrentSnapshot()
         guard let note = currentSnapshot.document(id: material.note),
-              note.lifecycle == .active,
               case .resolved(let stableID) = note.stableIdentity,
               stableID == material.noteID,
               ResearchFunctionTargetRole(vaultRole: note.vaultRole) == material.role else {

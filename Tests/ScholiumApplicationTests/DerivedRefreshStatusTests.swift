@@ -330,39 +330,27 @@ struct DerivedRefreshStatusTests {
             == saved.committedValue.document.fingerprint)
 
         try await recoverDerivedProjection()
-        let lifecycleEvents = await handle.events.events()
-        var lifecycleIterator = lifecycleEvents.makeAsyncIterator()
-        _ = try #require(await lifecycleIterator.next())
-        try makeDerivedRefreshFail()
-        let moveSource = try await handle.documents.load(fixture.analysisNoteID)
-        let moved = try await handle.documents.moveToTrash(
-            fixture.analysisNoteID,
-            expectedRevision: moveSource.fingerprint
+        let current = try #require(
+            try await handle.snapshot().document(id: fixture.analysisNoteID)
         )
-        #expect(moved.committedValue.destination.relativePath == "Trash/Agency.md")
-        #expect(moved.derivedRefreshWarning == nil)
-        #expect(moved.identityRecoveryWarning == nil)
-        let movedDocument = try await handle.documents.load(moved.committedValue.destination)
-        #expect(movedDocument.sourceBytes == moveSource.sourceBytes)
-        let lifecycleStale = try #require(await lifecycleIterator.next())
-        guard case .stale(let lifecycleIssue) = lifecycleStale.derivedRefreshStatus else {
-            Issue.record("A failed background lifecycle refresh was not marked stale.")
-            await runtime.shutdown()
-            return
+        let stableID = try #require(current.stableIdentity.resolvedID)
+        let preview = try await handle.documents.prepareSystemTrash(
+            NoteMutationTarget(
+                documentID: fixture.analysisNoteID,
+                stableNoteID: stableID,
+                revision: current.fingerprint
+            )
+        )
+        try makeDerivedRefreshFail()
+        let trashed = try await handle.documents.moveToSystemTrash(preview)
+        defer {
+            for path in trashed.committedValue.resultingTrashPaths {
+                try? FileManager.default.removeItem(atPath: path)
+            }
         }
-        #expect(lifecycleIssue.affectedVaultIDs == [fixture.analysisNoteID.vaultID])
-
-        try await recoverDerivedProjection()
-        try makeDerivedRefreshFail()
-        let deleted = try await handle.documents.deletePermanently(
-            moved.committedValue.destination,
-            expectedRevision: movedDocument.fingerprint
-        )
-        #expect(deleted.committedValue.relativePath == "Trash/Agency.md")
-        #expect(deleted.derivedRefreshWarning?.isEmpty == false)
-        #expect(deleted.identityRecoveryWarning == nil)
+        #expect(trashed.derivedRefreshWarning?.isEmpty == false)
         await #expect(throws: VaultRepositoryError.self) {
-            _ = try await handle.documents.load(moved.committedValue.destination)
+            _ = try await handle.documents.load(fixture.analysisNoteID)
         }
 
         await runtime.shutdown()
@@ -603,7 +591,6 @@ struct DerivedRefreshStatusTests {
             noteID: work.noteID,
             note: work.note,
             role: work.role,
-            lifecycle: work.lifecycle,
             fingerprint: revisedFingerprint,
             title: work.title
         )
@@ -679,7 +666,6 @@ private func functionTarget(
         noteID: try #require(note.stableIdentity.resolvedID),
         note: id,
         role: role,
-        lifecycle: note.lifecycle,
         fingerprint: note.fingerprint,
         title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
     )

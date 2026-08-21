@@ -127,7 +127,7 @@ location; settlement fingerprint and changed-since-settled state; Critique
 authorship; and Discussion turns. Agent origin
 does not disappear after Finish, Settle, incorporation, or later editing.
 
-Visible labels stay sparse. Location communicates Analysis, Topic, Work, and
+Visible labels stay sparse. Vault placement communicates Analysis, Topic, Work, and
 Critique roles; do not compose badges such as **Agent — Analysis**. Put useful
 provenance and modification detail in Properties or Research Record and show
 warnings only when relevant.

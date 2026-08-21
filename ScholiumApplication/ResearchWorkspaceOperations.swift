@@ -449,8 +449,7 @@ extension WorkspaceHandle {
             guard let current = currentSnapshot.vaults.lazy
                 .flatMap(\.documents)
                 .first(where: { snapshot in
-                    snapshot.lifecycle == .active
-                        && snapshot.stableIdentity.resolvedID == discussion.primaryNoteID
+                    snapshot.stableIdentity.resolvedID == discussion.primaryNoteID
                 }) else {
                 throw ResearchOperationError.noteUnavailable(discussion.primaryNote.note)
             }
@@ -977,7 +976,29 @@ extension WorkspaceHandle {
                 "The selected recovery record is unavailable for this Triptych."
             )
         }
-        if record.permanentDeletionPlan != nil {
+        if let systemTrashPlan = record.systemTrashDeletionPlan {
+            if systemTrashPlan.sourceReceipts.contains(where: {
+                $0.progress == .outcomeUnknown
+            }) {
+                guard systemTrashPlan.deletedRecordIDs.isEmpty,
+                      systemTrashPlan.removedDiscussionIDs.isEmpty,
+                      let vaultID = systemTrashPlan.preview.sources.first?.vaultID,
+                      systemTrashPlan.preview.sources.allSatisfy({
+                          $0.vaultID == vaultID
+                      }) else {
+                    throw TriptychTransactionError.invalidPlan(
+                        "This unknown native-Trash outcome can no longer be resolved by retaining Records."
+                    )
+                }
+                try await retainRecordsForUnknownSystemTrashOutcome(
+                    recoveryRecordID: record.id,
+                    vaultID: vaultID
+                )
+                try await refreshAfterResearchCommit(
+                    "The unknown system-Trash outcome resolution"
+                )
+                return
+            }
             let issues = await recoverInterruptedDocumentTransactions()
             if let remaining = try await researchWorkspaceDependencies.transactionRecoveryStore
                 .pending().first(where: { $0.id == record.id }) {
@@ -989,7 +1010,7 @@ extension WorkspaceHandle {
                 )
             }
             try await refreshAfterResearchCommit(
-                "The permanent-deletion cleanup"
+                "The system-Trash Record cleanup"
             )
             return
         }
@@ -1100,9 +1121,6 @@ extension WorkspaceHandle {
             vaultID: entry.note.vaultID,
             relativePath: entry.note.relativePath
         ), identity.id == entry.noteID,
-           WorkspaceDocumentLifecycle(
-            relativePath: entry.note.relativePath
-           ) == .active,
            Self.vaultRole(entry.role)
             == (try vault(id: entry.note.vaultID).role) else {
             throw ResearchBoundedWriteSetError.recoveryRequired
@@ -1495,10 +1513,6 @@ extension WorkspaceHandle {
             vaultID: controlled.vaultID,
             relativePath: controlled.relativePath
         )
-        guard !note.relativePath.hasPrefix("Set Aside/"),
-              !note.relativePath.hasPrefix("Trash/") else {
-            return nil
-        }
         let document: NoteDocument
         do {
             document = try await repository(vaultID: note.vaultID).load(
@@ -1554,8 +1568,7 @@ extension WorkspaceHandle {
         guard permits(registeredVault.role) else {
             throw unavailable(registeredVault.role)
         }
-        guard let snapshot = currentSnapshot.document(id: noteID),
-              snapshot.lifecycle == .active else {
+        guard currentSnapshot.document(id: noteID) != nil else {
             throw ResearchOperationError.noteUnavailable(noteID)
         }
         let identity = try await resolvedIdentity(
@@ -1603,8 +1616,7 @@ extension WorkspaceHandle {
             guard let current = currentSnapshot.vaults.lazy
                 .flatMap(\.documents)
                 .first(where: { snapshot in
-                    snapshot.lifecycle == .active
-                        && snapshot.stableIdentity.resolvedID == participant.noteID
+                    snapshot.stableIdentity.resolvedID == participant.noteID
                 }) else {
                 throw ResearchOperationError.noteUnavailable(participant.note)
             }
@@ -1664,9 +1676,7 @@ extension WorkspaceHandle {
         base: String,
         repository: VaultRepository
     ) async throws -> String {
-        let existing = Set(try await repository.markdownRelativePaths(
-            includeLifecycle: true
-        ))
+        let existing = Set(try await repository.markdownRelativePaths())
         let first = "Critiques/\(base) Critique.md"
         if !existing.contains(first) { return first }
         var index = 2

@@ -71,7 +71,6 @@ struct WindowDocumentMetadataProjectionTests {
                 creationDate: nil,
                 modificationDate: nil
             ),
-            lifecycle: .active,
             graphCounts: WorkspaceGraphCounts(
                 incoming: 0,
                 outgoing: 0,
@@ -243,7 +242,6 @@ private func metadataLocation(
             creationDate: nil,
             modificationDate: nil
         ),
-        lifecycle: .active,
         graphCounts: WorkspaceGraphCounts(
             incoming: 0,
             outgoing: 0,

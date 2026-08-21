@@ -51,12 +51,23 @@
   keys, supports structured CreatorLists and authored date text, and
   removes a property only through the same targeted expected-revision write.
 
-## Notes, documents, and lifecycle
+## Notes, documents, and file operations
 
-- New Note, New Folder, duplicate, UTF-8 Markdown import, rename, move, Set
-  Aside, Move to Trash, Put Back, and permanent deletion are reachable through
-  shared Application capabilities. Stable Note identity follows confirmed
-  moves and reconciled external renames.
+- New Note, New Folder, duplicate, UTF-8 Markdown import, rename, move, and
+  native system-Trash deletion are reachable through shared Application
+  capabilities. Stable Note identity follows confirmed moves, remains after
+  system-Trash deletion, and reconciles external renames or Finder restoration.
+- Note and Folder deletion prepare exact source/folder inventories, associated
+  Critiques, active Discussions, and whole finished Records before confirmation.
+  All source items move first; durable recovery then resumes Discussion, exact-
+  fingerprint Record, Note Review, and machine-local evidence cleanup. A
+  multi-Note Record is deleted as one object when any participant is affected.
+- Settlement, source access, stable identity, Zotero binding, and Critique
+  association are retained. External source absence without a Scholium plan
+  refreshes source projections but does not delete Discussions or Records.
+- The researcher CLI exposes the same Note system-Trash preparation and execute
+  path with exact revision and explicit associated-Record consent. No prior
+  holding-location or application-owned restore/delete command is reachable.
 - Review, Edit, and Source share one retained document session. Autosave,
   selection, focus, scroll, composition, Undo, conflict, external-change
   handling, and recovery remain bound to the same exact source.

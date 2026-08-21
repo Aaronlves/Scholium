@@ -238,9 +238,14 @@ extension ScholiumCLI {
             ),
             "note replace": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--from": .value, "--expected": .value]),
             "note move": .init(pathLength: 2, positionalCount: 2 ... 2, options: ["--expected": .value]),
-            "note set-aside": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),
-            "note trash": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--expected": .value]),
-            "note delete": .init(pathLength: 2, positionalCount: 1 ... 1, options: ["--permanent": .flag, "--expected": .value]),
+            "note move-to-trash": .init(
+                pathLength: 2,
+                positionalCount: 1 ... 1,
+                options: [
+                    "--expected": .value,
+                    "--delete-associated-records": .flag,
+                ]
+            ),
             "discuss list": .init(pathLength: 2, options: ["--triptych": .value, "--format": .value]),
             "discuss show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "discuss reply": .init(

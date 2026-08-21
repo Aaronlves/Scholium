@@ -125,7 +125,6 @@ struct InterfacePresentationOwnershipTests {
       to: [
         "ScholiumEditorialIconControl",
         "ScholiumInkIconControl",
-        "ScholiumLibraryLocationPicker",
       ]
     )
     #expect(

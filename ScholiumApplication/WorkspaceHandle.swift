@@ -1799,20 +1799,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try await coordinatedMoveFolder(
             inVault: vaultID,
             from: sourceRelativePath,
-            to: destinationRelativePath,
-            movesToLifecycle: false
-        )
-    }
-
-    func moveFolderToTrash(
-        inVault vaultID: UUID,
-        relativePath: String
-    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
-        try await coordinatedMoveFolder(
-            inVault: vaultID,
-            from: relativePath,
-            to: "Trash/" + relativePath,
-            movesToLifecycle: true
+            to: destinationRelativePath
         )
     }
 
@@ -1830,7 +1817,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func duplicateDocument(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try await duplicateDocument(
@@ -2068,10 +2055,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if let barrier = researchDocumentSavePreflightBarrierForTesting {
                 await barrier()
             }
-            guard WorkspaceDocumentLifecycle(
-                relativePath: id.relativePath
-            ) == .active,
-                  Self.vaultRole(for: researchWrite.role)
+            guard Self.vaultRole(for: researchWrite.role)
                     == (try vault(id: id.vaultID).role),
                   let identity = try await services.controlStore.identityRecord(
                     vaultID: id.vaultID,
@@ -2231,7 +2215,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func moveDocument(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await coordinatedMoveDocument(
@@ -2243,196 +2227,86 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    func setAsideDocument(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let destination = id.relativePath.hasPrefix("Set Aside/")
-            ? id.relativePath
-            : "Set Aside/" + id.relativePath
-        return try await coordinatedMoveDocument(
-            id,
-            to: destination,
-            expectedRevision: expectedRevision,
-            validatesCritiquePlacement: false
-        )
-    }
-
-    func setAsideDocument(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let destination = target.relativePath.hasPrefix("Set Aside/")
-            ? target.relativePath
-            : "Set Aside/" + target.relativePath
-        return try await coordinatedMoveDocument(
-            target.documentID,
-            to: destination,
-            expectedRevision: target.revision,
-            expectedStableNoteID: target.stableNoteID,
-            validatesCritiquePlacement: false
-        )
-    }
-
-    func moveDocumentToTrash(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let destination: String
-        if id.relativePath.hasPrefix("Set Aside/") {
-            destination = "Trash/" + id.relativePath.dropFirst("Set Aside/".count)
-        } else if id.relativePath.hasPrefix("Trash/") {
-            destination = id.relativePath
-        } else {
-            destination = "Trash/" + id.relativePath
-        }
-        return try await coordinatedMoveDocument(
-            id,
-            to: destination,
-            expectedRevision: expectedRevision,
-            validatesCritiquePlacement: false
-        )
-    }
-
-    func moveDocumentToTrash(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let destination: String
-        if target.relativePath.hasPrefix("Set Aside/") {
-            destination = "Trash/" + target.relativePath.dropFirst("Set Aside/".count)
-        } else if target.relativePath.hasPrefix("Trash/") {
-            destination = target.relativePath
-        } else {
-            destination = "Trash/" + target.relativePath
-        }
-        return try await coordinatedMoveDocument(
-            target.documentID,
-            to: destination,
-            expectedRevision: target.revision,
-            expectedStableNoteID: target.stableNoteID,
-            validatesCritiquePlacement: false
-        )
-    }
-
-    func putBackDocument(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let destination: String?
-        if id.relativePath.hasPrefix("Set Aside/") {
-            destination = String(id.relativePath.dropFirst("Set Aside/".count))
-        } else if id.relativePath.hasPrefix("Trash/") {
-            destination = String(id.relativePath.dropFirst("Trash/".count))
-        } else {
-            destination = nil
-        }
-        guard let destination, !destination.isEmpty else {
-            throw VaultRepositoryError.invalidRelativePath(id.relativePath)
-        }
-        return try await coordinatedMoveDocument(
-            id,
-            to: destination,
-            expectedRevision: expectedRevision,
-            validatesCritiquePlacement: true
-        )
-    }
-
-    func putBackDocument(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let destination: String?
-        if target.relativePath.hasPrefix("Set Aside/") {
-            destination = String(target.relativePath.dropFirst("Set Aside/".count))
-        } else if target.relativePath.hasPrefix("Trash/") {
-            destination = String(target.relativePath.dropFirst("Trash/".count))
-        } else {
-            destination = nil
-        }
-        guard let destination, !destination.isEmpty else {
-            throw VaultRepositoryError.invalidRelativePath(target.relativePath)
-        }
-        return try await coordinatedMoveDocument(
-            target.documentID,
-            to: destination,
-            expectedRevision: target.revision,
-            expectedStableNoteID: target.stableNoteID,
-            validatesCritiquePlacement: true
-        )
-    }
-
-    func deleteDocumentPermanently(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
-        try await deleteDocumentPermanently(
-            id,
-            expectedRevision: expectedRevision,
-            expectedStableNoteID: nil
-        )
-    }
-
-    func deleteDocumentPermanently(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
-        try await deleteDocumentPermanently(
-            target.documentID,
-            expectedRevision: target.revision,
-            expectedStableNoteID: target.stableNoteID
-        )
-    }
-
-    private func deleteDocumentPermanently(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint,
-        expectedStableNoteID: UUID?
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
+    func prepareSystemTrash(
+        _ target: NoteMutationTarget
+    ) async throws -> SystemTrashDeletionPreview {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
-        var ownsMutation = true
-        defer {
-            if ownsMutation { endSourceMutation(mutationLease) }
-        }
-        guard id.relativePath.hasPrefix("Trash/") else {
-            throw VaultRepositoryError.invalidRelativePath(id.relativePath)
-        }
+        defer { endSourceMutation(mutationLease) }
         let identity = try await resolvedIdentity(
-            for: id,
-            expectedRevision: expectedRevision
+            for: target.documentID,
+            expectedRevision: target.revision
         )
         try requireExpectedIdentity(
-            expectedStableNoteID,
+            target.stableNoteID,
             resolved: identity.id,
-            relativePath: id.relativePath
+            relativePath: target.relativePath
         )
-        let repository = try repository(vaultID: id.vaultID)
-        let coordinator = NotePermanentDeletionCoordinator(
-            triptychID: services.manifest.id,
-            repository: repository,
-            critiqueRegistry: services.critiqueRegistry,
-            controlStore: services.controlStore,
-            recoveryStore: services.transactionRecoveryStore,
-            sourceAccessStore: services.researchSourceAccessStore,
-            portableRecordStore: services.portableResearchRecordStore,
-            localExecutionStore: services.localResearchExecutionStore,
-            agentChangeEvidenceStore: services.agentChangeEvidenceStore
+        return try await systemTrashCoordinator(vaultID: target.documentID.vaultID)
+            .prepareNote(
+                noteID: identity.id,
+                vaultID: target.documentID.vaultID,
+                relativePath: target.relativePath,
+                expectedRevision: target.revision
+            )
+    }
+
+    func prepareFolderSystemTrash(
+        inVault vaultID: UUID,
+        relativePath: String
+    ) async throws -> SystemTrashDeletionPreview {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+        return try await systemTrashCoordinator(vaultID: vaultID).prepareFolder(
+            vaultID: vaultID,
+            relativePath: relativePath
         )
-        let commit = try await coordinator.delete(
-            noteID: identity.id,
-            vaultID: id.vaultID,
-            relativePath: id.relativePath,
-            expectedRevision: expectedRevision
-        )
+    }
+
+    func moveToSystemTrash(
+        _ preview: SystemTrashDeletionPreview
+    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
+        try requireActive()
+        guard let vaultID = preview.sources.first?.vaultID,
+              preview.sources.allSatisfy({ $0.vaultID == vaultID }) else {
+            throw TriptychTransactionError.invalidPlan(
+                "A system-Trash plan must belong to exactly one vault."
+            )
+        }
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer { if ownsMutation { endSourceMutation(mutationLease) } }
+        let commit: SystemTrashDeletionCommit
+        do {
+            commit = try await systemTrashCoordinator(vaultID: vaultID)
+                .moveToSystemTrash(preview)
+        } catch {
+            endSourceMutation(mutationLease)
+            ownsMutation = false
+            _ = try? await refresh(
+                publication: .explicit,
+                failureDisposition: .staleAfterCommittedMutation(
+                    affectedVaultIDs: [vaultID]
+                )
+            )
+            throw error
+        }
         endSourceMutation(mutationLease)
         ownsMutation = false
+        let deletedIDs = preview.sources.flatMap(\.notes).map {
+            VaultQualifiedNoteID(vaultID: vaultID, relativePath: $0.relativePath)
+        }
         let derivedRefreshWarning: String?
         do {
             _ = try await refresh(
                 publication: .explicit,
                 failureDisposition: .staleAfterCommittedMutation(
-                    affectedVaultIDs: [id.vaultID]
+                    affectedVaultIDs: [vaultID]
                 ),
                 sourceCatalogPreparation: Self.catalogPreparation(
-                    deletions: [id],
-                    refreshFolderVaultIDs: [id.vaultID]
+                    deletions: deletedIDs,
+                    refreshFolderVaultIDs: [vaultID]
                 )
             )
             derivedRefreshWarning = nil
@@ -2442,6 +2316,22 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return WorkspaceMutationOutcome(
             committedValue: commit,
             derivedRefreshWarning: derivedRefreshWarning
+        )
+    }
+
+    private func systemTrashCoordinator(
+        vaultID: UUID
+    ) throws -> NoteSystemTrashDeletionCoordinator {
+        let repository = try repository(vaultID: vaultID)
+        return NoteSystemTrashDeletionCoordinator(
+            triptychID: services.manifest.id,
+            repository: repository,
+            critiqueRegistry: services.critiqueRegistry,
+            controlStore: services.controlStore,
+            recoveryStore: services.transactionRecoveryStore,
+            portableRecordStore: services.portableResearchRecordStore,
+            localExecutionStore: services.localResearchExecutionStore,
+            agentChangeEvidenceStore: services.agentChangeEvidenceStore
         )
     }
 
@@ -2560,13 +2450,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         for (vaultID, repository) in services.repositories.sorted(by: {
             $0.key.uuidString < $1.key.uuidString
         }) {
-            let coordinator = NotePermanentDeletionCoordinator(
+            let coordinator = NoteSystemTrashDeletionCoordinator(
                 triptychID: services.manifest.id,
                 repository: repository,
                 critiqueRegistry: services.critiqueRegistry,
                 controlStore: services.controlStore,
                 recoveryStore: services.transactionRecoveryStore,
-                sourceAccessStore: services.researchSourceAccessStore,
                 portableRecordStore: services.portableResearchRecordStore,
                 localExecutionStore: services.localResearchExecutionStore,
                 agentChangeEvidenceStore: services.agentChangeEvidenceStore
@@ -2578,6 +2467,19 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
         }
         return issues
+    }
+
+    func retainRecordsForUnknownSystemTrashOutcome(
+        recoveryRecordID: UUID,
+        vaultID: UUID
+    ) async throws {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+        try await systemTrashCoordinator(vaultID: vaultID)
+            .retainRecordsForUnknownOutcome(
+                recoveryRecordID: recoveryRecordID
+            )
     }
 
     func refresh() async throws -> WorkspaceSnapshot {
@@ -3735,22 +3637,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         }
 
-        let sourceIsActive = !Self.isLifecyclePath(source.relativePath)
-        let destinationIsActive = !Self.isLifecyclePath(destinationRelativePath)
-        let plan: IncomingLinkRewritePlan
-        let repositories: [UUID: VaultRepository]
-        if sourceIsActive, destinationIsActive {
-            repositories = services.repositories
-            plan = try await workspaceMovePlan(moving: source, to: destination)
-        } else {
-            repositories = [source.vaultID: try repository(vaultID: source.vaultID)]
-            plan = IncomingLinkRewritePlan(
-                movedNote: source,
-                destination: destination,
-                graphGeneration: currentSnapshot.discovery.catalog.graph?.generation ?? 0,
-                rewrites: []
-            )
-        }
+        let repositories = services.repositories
+        let plan = try await workspaceMovePlan(moving: source, to: destination)
 
         let coordinator = TriptychMoveCoordinator(
             triptychID: services.manifest.id,
@@ -3820,8 +3708,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private func coordinatedMoveFolder(
         inVault vaultID: UUID,
         from sourceRelativePath: String,
-        to destinationRelativePath: String,
-        movesToLifecycle: Bool
+        to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -3839,18 +3726,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 sourceRelativePath + " → " + destinationRelativePath
             )
         }
-        guard WorkspaceDocumentLifecycle(
-            relativePath: sourceFolder.rawValue + "/placeholder.md"
-        ) == .active else {
-            throw VaultRepositoryError.invalidRelativePath(sourceFolder.rawValue)
-        }
-        let destinationLifecycle = WorkspaceDocumentLifecycle(
-            relativePath: destinationFolder.rawValue + "/placeholder.md"
-        )
-        guard movesToLifecycle ? destinationLifecycle == .trash : destinationLifecycle == .active else {
-            throw VaultRepositoryError.invalidRelativePath(destinationFolder.rawValue)
-        }
-
         let registeredVault = try vault(id: vaultID)
         let sourceIsManagedCritiqueFolder = CritiquePlacement.isManagedCritiquePath(
             sourceFolder.rawValue + "/placeholder.md"
@@ -3876,27 +3751,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             sourceAheadIdentityRecords: sourceAheadIdentityRecords
         )
 
-        let plan: FolderIncomingLinkRewritePlan
-        let repositories: [UUID: VaultRepository]
-        if !movesToLifecycle {
-            repositories = services.repositories
-            plan = try await workspaceFolderMovePlan(
-                vaultID: vaultID,
-                sourceFolder: sourceFolder,
-                destinationFolder: destinationFolder,
-                noteMoves: noteMoves
-            )
-        } else {
-            repositories = [vaultID: try repository(vaultID: vaultID)]
-            plan = FolderIncomingLinkRewritePlan(
-                vaultID: vaultID,
-                sourceFolder: sourceFolder,
-                destinationFolder: destinationFolder,
-                graphGeneration: currentSnapshot.discovery.catalog.graph?.generation ?? 0,
-                noteMoves: noteMoves,
-                rewrites: []
-            )
-        }
+        let repositories = services.repositories
+        let plan = try await workspaceFolderMovePlan(
+            vaultID: vaultID,
+            sourceFolder: sourceFolder,
+            destinationFolder: destinationFolder,
+            noteMoves: noteMoves
+        )
 
         let coordinator = TriptychFolderMoveCoordinator(
             triptychID: services.manifest.id,
@@ -3982,7 +3843,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if snapshotCanAuthorizeFastPlan,
            let graph = currentSnapshot.discovery.catalog.graph {
             let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
-                .filter { $0.lifecycle == .active }
             let documents = Dictionary(uniqueKeysWithValues: activeSnapshots.map {
                 ($0.id, $0.document)
             })
@@ -4104,7 +3964,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if snapshotCanAuthorizeFastPlan,
            let graph = currentSnapshot.discovery.catalog.graph {
             let activeSnapshots = currentSnapshot.vaults.flatMap(\.documents)
-                .filter { $0.lifecycle == .active }
             let documents = Dictionary(uniqueKeysWithValues: activeSnapshots.map {
                 ($0.id, $0.document)
             })
@@ -4264,10 +4123,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             committedValue: record,
             derivedRefreshWarning: derivedRefreshWarning
         )
-    }
-
-    private static func isLifecyclePath(_ path: String) -> Bool {
-        path.hasPrefix("Set Aside/") || path.hasPrefix("Trash/")
     }
 
     private func orderedVaults() -> [RegisteredVault] {

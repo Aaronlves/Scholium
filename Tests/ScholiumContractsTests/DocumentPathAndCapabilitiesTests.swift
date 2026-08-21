@@ -84,7 +84,6 @@ struct DocumentPathAndCapabilitiesTests {
     func unresolvedFailsClosed(_ identity: DocumentIdentityResolution) {
         let capabilities = DocumentCapabilities(
             role: .topicKnowledge,
-            lifecycle: .active,
             identity: identity,
             isManagedCritique: false
         )
@@ -92,14 +91,13 @@ struct DocumentPathAndCapabilitiesTests {
         #expect(!capabilities.canComment)
         #expect(!capabilities.canUseResearchFunctions)
         #expect(!capabilities.isManagedCritique)
-        #expect(capabilities.lifecycleActions.isEmpty)
+        #expect(capabilities.fileActions.isEmpty)
     }
 
     @Test("Managed Critique is commentable but not editable, reviewable, duplicable, or agent-writable")
     func critiqueBoundary() {
         let capabilities = DocumentCapabilities(
             role: .draftProject,
-            lifecycle: .active,
             identity: .resolved,
             isManagedCritique: true
         )
@@ -108,34 +106,22 @@ struct DocumentPathAndCapabilitiesTests {
         #expect(!capabilities.canUseResearchFunctions)
         #expect(capabilities.isManagedCritique)
         #expect(!capabilities.allows(.duplicate))
-        #expect(capabilities.allows(.moveToTrash))
+        #expect(capabilities.allows(.moveToSystemTrash))
     }
 
-    @Test("Lifecycle projects only relevant actions")
-    func lifecycleMatrix() {
-        let active = DocumentCapabilities(
+    @Test("Resolved ordinary Notes expose only current file actions")
+    func fileActionMatrix() {
+        let capabilities = DocumentCapabilities(
             role: .topicKnowledge,
-            lifecycle: .active,
             identity: .resolved,
             isManagedCritique: false
         )
-        let setAside = DocumentCapabilities(
-            role: .topicKnowledge,
-            lifecycle: .setAside,
-            identity: .resolved,
-            isManagedCritique: false
-        )
-        let trash = DocumentCapabilities(
-            role: .topicKnowledge,
-            lifecycle: .trash,
-            identity: .resolved,
-            isManagedCritique: false
-        )
-        #expect(active.lifecycleActions == [.duplicate, .move, .setAside, .moveToTrash])
-        #expect(setAside.lifecycleActions == [.putBack, .moveToTrash])
-        #expect(trash.lifecycleActions == [.putBack, .deletePermanently])
-        #expect(!setAside.canComment)
-        #expect(!trash.canComment)
+        #expect(capabilities.fileActions == [
+            .duplicate,
+            .move,
+            .moveToSystemTrash,
+        ])
+        #expect(capabilities.canComment)
     }
 
     @Test("Workspace snapshots publish the Application capability projection")
@@ -151,7 +137,6 @@ struct DocumentPathAndCapabilitiesTests {
                 creationDate: nil,
                 modificationDate: nil
             ),
-            lifecycle: .active,
             graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
         )
 

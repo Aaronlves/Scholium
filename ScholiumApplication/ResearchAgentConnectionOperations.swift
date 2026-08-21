@@ -236,7 +236,6 @@ extension WorkspaceHandle {
               let note = currentSnapshot.document(id: requestedTarget),
               note.id.vaultID == requestedTarget.vaultID,
               note.id.relativePath == requestedTarget.relativePath,
-              note.lifecycle == .active,
               let stableID = note.stableIdentity.resolvedID,
               let functionRole = ResearchFunctionTargetRole(vaultRole: note.vaultRole) else {
             throw ResearchActionExecutionContractError.staleResolution
@@ -256,7 +255,6 @@ extension WorkspaceHandle {
             noteID: stableID,
             note: note.id,
             role: role,
-            lifecycle: note.lifecycle,
             fingerprint: note.fingerprint,
             title: researchFunctionCoordinator.researchFunctionTitle(for: note)
         )
@@ -314,10 +312,7 @@ extension WorkspaceHandle {
               let creation = request.newAnalysis,
               request.target == nil,
               let analysisVaultID = self.assignment.vault(for: .paperAnalysis)?.id,
-              creation.target.vaultID == analysisVaultID,
-              WorkspaceDocumentLifecycle(
-                  relativePath: creation.target.relativePath
-              ) == .active else {
+              creation.target.vaultID == analysisVaultID else {
             throw ResearchActionExecutionContractError.staleResolution
         }
 

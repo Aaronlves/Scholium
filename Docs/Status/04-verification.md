@@ -36,9 +36,28 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-21, the untagged system-Trash cutover passed 7 coordinated
+  deletion tests covering whole multi-Note Record cleanup, active Discussion
+  discard, Work-plus-Critique receipts, plan-persistence and post-move crash
+  recovery, unknown native outcomes, same-path recreation, and complete
+  Folder-manifest drift. The 22-test Vault repository suite additionally proved
+  that an external directory-entry exchange cannot retarget a native Trash
+  move. The associated 37 Record-store, 25 document-operation, 4 CLI-delegation, 12
+  workspace-projection, 58 window-architecture, 98 frontend-architecture, and
+  8 localization tests passed on disposable fixtures. The latest aggregate
+  `swift test` attempt passed the complete lower-layer batch and 645 of 646 App
+  tests; its sole failure was an existing serialized Action-sheet test missing
+  its asynchronous capture under the concurrent runner. That exact test passed
+  alone in 0.014 seconds and its complete 20-test suite passed in 0.315 seconds;
+  the WKWebView baseline that timed out in the preceding aggregate attempt also
+  passed in this run. The Debug build, documentation authority (3 manifests, 22
+  chapters, and 109 local links), interface localization, JSON, duplicate-key,
+  whitespace, and retired-name checks passed. This is local automated evidence:
+  no real research vault was used, and Finder restoration, the complete UI
+  suite, VoiceOver speech, and researcher acceptance remain human QA work.
 - On 2026-08-16, the recovery simplification cutover passed focused Core and
   Application owner tests for transaction-only save recovery, monotonic
-  permanent deletion, natural-key Agent evidence, direct Undo after conflict
+  the then-current deletion owner, natural-key Agent evidence, direct Undo after conflict
   and rename, one unified workspace registration, Method/Practice replacement,
   and schema-14 terminal Local Execution compaction. The stabilized cross-layer
   integration passed the complete repository gate: documentation and shipped-

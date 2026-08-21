@@ -737,16 +737,12 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
               targets.count <= 64,
               Set(targetIDs).count == targetIDs.count,
               Set(targetNotes).count == targetNotes.count,
-              targets.allSatisfy({
-                  $0.lifecycle == .active && !$0.title.isEmpty
-              }),
+              targets.allSatisfy({ !$0.title.isEmpty }),
               materials.count <= 64,
               Set(materialIDs).count == materialIDs.count,
               Set(materialNotes).count == materialNotes.count,
               Set(targetIDs).isDisjoint(with: materialIDs),
-              materials.allSatisfy({
-                  $0.lifecycle == .active && !$0.title.isEmpty
-              }),
+              materials.allSatisfy({ !$0.title.isEmpty }),
               requiredUnavailableChecks.isSubset(of: checks),
               requiredUnavailableChecks.isEmpty == (limitation == nil),
               limitation?.isEmpty != true,

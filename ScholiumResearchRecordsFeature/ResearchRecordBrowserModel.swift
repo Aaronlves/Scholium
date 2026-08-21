@@ -34,13 +34,11 @@ package struct ResearchRecordNoteOption: Identifiable, Equatable, Sendable {
     package let id: UUID
     package let title: String
     package let role: ResearchActionTargetRole
-    package let isTombstone: Bool
 }
 
 package struct ResearchRecordParticipantOption: Identifiable, Equatable, Sendable {
     package let filter: ResearchRecordParticipantFilter
     package let title: String
-    package let isTombstone: Bool
 
     package var id: ResearchRecordParticipantFilter { filter }
 }
@@ -149,8 +147,7 @@ extension PortableResearchRecord {
         {
             return primary
         }
-        let liveParticipants = participatingNotes.filter { !$0.isTombstone }
-        return liveParticipants.count == 1 ? liveParticipants.first : nil
+        return participatingNotes.count == 1 ? participatingNotes.first : nil
     }
 
     package var researchRecordFocalNoteTitle: String? {
@@ -159,7 +156,6 @@ extension PortableResearchRecord {
         }
         let liveTitles =
             participatingNotes
-            .filter { !$0.isTombstone }
             .map(\.title)
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         return liveTitles.isEmpty ? nil : liveTitles.joined(separator: ", ")
@@ -1124,17 +1120,13 @@ package final class ResearchRecordBrowserModel {
                 let candidate = ResearchRecordNoteOption(
                     id: note.noteID,
                     title: note.title,
-                    role: note.role,
-                    isTombstone: note.isTombstone
+                    role: note.role
                 )
                 guard let current = notesByID[note.noteID] else {
                     notesByID[note.noteID] = candidate
                     continue
                 }
-                if current.isTombstone && !candidate.isTombstone {
-                    notesByID[note.noteID] = candidate
-                } else if current.isTombstone == candidate.isTombstone,
-                    candidate.title.localizedStandardCompare(current.title)
+                if candidate.title.localizedStandardCompare(current.title)
                         == .orderedAscending
                 {
                     notesByID[note.noteID] = candidate
@@ -1157,8 +1149,7 @@ package final class ResearchRecordBrowserModel {
         }.map {
             ResearchRecordParticipantOption(
                 filter: .author($0),
-                title: $0.rawValue,
-                isTombstone: false
+                title: $0.rawValue
             )
         }
         participantOptions =
@@ -1166,8 +1157,7 @@ package final class ResearchRecordBrowserModel {
             + noteOptions.map {
                 ResearchRecordParticipantOption(
                     filter: .note($0.id),
-                    title: $0.title,
-                    isTombstone: $0.isTombstone
+                    title: $0.title
                 )
             }
     }

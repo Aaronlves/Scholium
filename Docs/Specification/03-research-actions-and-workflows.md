@@ -429,7 +429,7 @@ Agent academic fields, and Scholium machine fields. The Run owns it until every 
 recovery duty is determined. Safe finalization creates exactly one portable
 **Research Record**; Records is the only result-processing interface and there
 is no independent Result object or second durable store. The Action row derives
-its lifecycle from the Run and Record and opens that exact Record only after an
+its state from the Run and Record and opens that exact Record only after an
 explicit researcher action. A crash between commit,
 readback, and finalization may retain overlapping private recovery evidence,
 but startup reconciles it to the same one result and one Record.
@@ -444,6 +444,11 @@ process history. The Record never retains unused candidates, query, ranking,
 provider-internal ID,
 complete response, context assembly, prompt, read count, click, dwell, or tool
 trace.
+
+Section 6 owns system-Trash deletion: whole finished Records and active
+Discussions are removed only after disclosed sources move; external disappearance
+never cascades. Settlement, source access, stable identity, and Critique
+association remain for Finder reconciliation.
 
 Every safely finalized Action Research Record may contain one optional current
 **Researcher Response** owned by that Record. One editor presents **Researcher
@@ -729,7 +734,7 @@ any resulting source change requires Write authority in a current Run.
   without restore or approval semantics.
 - Critiques are recognized only in `Critiques/`.
 - Bodies are read-only in Scholium but remain externally editable and may use
-  ordinary lifecycle operations.
+  ordinary file operations.
 
 ### 11.3 Critique Action
 

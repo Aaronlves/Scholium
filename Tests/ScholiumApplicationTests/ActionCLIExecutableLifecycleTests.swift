@@ -1231,7 +1231,6 @@ struct ActionCLIExecutableLifecycleTests {
             noteID: fixture.analysisTarget.noteID,
             note: fixture.analysisTarget.note,
             role: .analysis,
-            lifecycle: fixture.analysisTarget.lifecycle,
             fingerprint: fixture.analysisTarget.fingerprint,
             title: fixture.analysisTarget.title
         )
@@ -1749,8 +1748,8 @@ struct ActionCLIExecutableLifecycleTests {
             .record(id: parentAuthentication.runID)
         let childRecord = try await handle.services.portableResearchRecordStore
             .record(id: childAuthentication.runID)
-        #expect(parentRecord.schemaVersion == 11)
-        #expect(childRecord.schemaVersion == 11)
+        #expect(parentRecord.schemaVersion == 12)
+        #expect(childRecord.schemaVersion == 12)
         #expect(parentRecord.analysisSourceRoute == .researcherProvided)
         #expect(parentRecord.sourceReference == nil)
         #expect(parentRecord.fidelityCompletion == .unverified)
@@ -2360,7 +2359,6 @@ private struct ActionCLIFixture {
                     noteID: analysisTarget.noteID,
                     note: analysisTarget.note,
                     role: .analysis,
-                    lifecycle: analysisTarget.lifecycle,
                     fingerprint: analysisTarget.fingerprint,
                     title: analysisTarget.title
                 ),
@@ -2401,7 +2399,6 @@ private struct ActionCLIFixture {
             noteID: try #require(note.stableIdentity.resolvedID),
             note: id,
             role: role,
-            lifecycle: note.lifecycle,
             fingerprint: note.fingerprint,
             title: note.document.parsedFrontmatter["title"]?.scalarString
                 ?? id.relativePath

@@ -195,7 +195,7 @@ struct FileProviderProcessInterruptionFixtureTests {
             #expect(try await reopened.interruptedSaveRecoveries().isEmpty)
         }
         #expect(
-            try await reopened.markdownRelativePaths(includeLifecycle: true)
+            try await reopened.markdownRelativePaths()
                 == [fixture.relativePath]
         )
 

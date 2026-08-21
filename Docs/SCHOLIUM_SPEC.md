@@ -33,7 +33,7 @@ copying the same rule into a new summary.
 | Chapter | Owns |
 | --- | --- |
 | [Foundation and Triptych](Specification/01-foundation-and-triptych.md) | Sections 1–4: terminology, product authority, Triptych structure, and Works organization. |
-| [Notes and Lifecycle](Specification/02-notes-and-lifecycle.md) | Sections 5–7: common Note behavior, lifecycle Locations, settlement, annotation, and Discussion. |
+| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | Sections 5–7: common Note behavior, system-Trash deletion, settlement, annotation, and Discussion. |
 | [Research Actions and Workflows](Specification/03-research-actions-and-workflows.md) | Sections 8–11: Actions and the Analysis, Topic, and Work workflows. |
 | [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | Sections 12–14: Connections, Search, Attention, Agent changes, saves, and recovery. |
 | [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | Sections 15–17: Zotero, onboarding, permanent boundaries, and deferred capabilities. |
@@ -46,7 +46,7 @@ copying the same rule into a new summary.
 
 ## Reading routes
 
-- A Note/source/lifecycle task starts with Notes and Lifecycle, then adds the
+- A Note/source/file-operation task starts with Notes and File Operations, then adds the
   relevant storage, interface, or accessibility chapter only when affected.
 - A Research Action task starts with Research Actions and Workflows and adds
   the exact role workflow, interface, or release chapter it changes.

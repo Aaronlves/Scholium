@@ -52,10 +52,8 @@ That bounded use creates no reusable Variable or permission elsewhere.
 The structural Sidebar, Document, and Apparatus planes remain opaque under
 §18.2. Their one approved Workspace depth cue is the opaque-surface
 document-navigation boundary in §19.3; it adds no material or transparency to
-the planes. The §18.3 Put Back veil is an explicitly approved bounded native
-Sidebar material: it transiently covers the untruncated title beneath the
-trailing control, owns no geometry or action state, and creates no card or
-additional plane.
+the planes. Library rows use native selection, hover, focus, context-menu, and
+accessibility presentation without a trailing restore veil or a second plane.
 
 Chrome, menus, presentations, controls, focus, selection, separators, and
 Document tabs stay native. Research Guidance, Actions, permission sheets, and
@@ -65,8 +63,8 @@ avatars, chat bubbles, nested rounded containers, or decorative diagrams.
 Finite ledger fields may use the quiet semantic capsules defined below; they
 are compact value presentations, not decorative badges or status collections.
 
-Library Locations remain in the opaque Navigation plane and add no floating
-layer, local elevation, accessory bar, or sheet motion. Research Records
+Library remains in the opaque Navigation plane and adds no floating layer,
+local elevation, accessory bar, or sheet motion. Research Records
 follows the collection and detail structure in §18.5: its collections are flat,
 rule-separated ledgers on one continuous Document surface; Record detail pairs
 the dominant Document reading plane with a quieter Apparatus evidence rail;
@@ -279,8 +277,8 @@ restoration. Segmented focus and Left/Right traversal live only in the shared
 component; no feature recreates them.
 
 Toolbar controls retain native small-control geometry and feedback without a
-Scholium underline or enclosure. Location-header icons share one **28 × 28pt**
-target and editorial-control shape; the Location picker and Triptych Attention
+Scholium underline or enclosure. Library-header icons share one **28 × 28pt**
+target and editorial-control shape; Library commands and Triptych Attention
 entry fit their complete content at that height. Triptych navigation rows use
 continuous Navigation selection; local mode indexes use editorial-control
 selection. Standard actions and Vector Link relationships use direct SF
@@ -307,7 +305,7 @@ metrics, and absent content contributes no spacing.
 | --- | --- |
 | Shared grid | **2pt** optical alignment; **4pt** label/accessory; **8pt** inline control; **12pt** nested content; **16pt** section; **20pt** region content; **28pt** peripheral page edge. |
 | Shared anchors | Preferred/minimum custom target **28/20pt**; Document tab strip **40pt**; Action target **44pt**; region header **48pt**. There is no general 24pt row role. |
-| Library | **300pt** minimum readable thickness; **12pt** row inset; **28pt** minimum row; **16pt** hierarchy step; **12–14pt** leading slot; **8pt** title gap; **12pt** header-to-workspace gap. Set Aside and Trash reuse these metrics. |
+| Library | **300pt** minimum readable thickness; **12pt** row inset; **28pt** minimum row; **16pt** hierarchy step; **12–14pt** leading slot; **8pt** title gap; **12pt** header-to-workspace gap. |
 | Apparatus | **270pt** system Inspector minimum with no application-defined maximum; **4pt** local-state gap; **78pt** fact-label minimum; **14pt** fact gap; **204pt** horizontal-grid threshold; **44pt** Action row. |
 | Connect | **16pt** between major groups; **8pt** heading-to-first-cluster; **12pt** between clusters; **28pt** Note rows; **4pt** relationship-heading gap; **240pt** direction-control cap. |
 | Records collection | **240pt** View index; **28pt** page edge and column header; **24pt** section header; **8pt** row corners; **48pt** ledger rows. |
@@ -478,7 +476,7 @@ the required meaning.
 | `Sidebar / Document / Apparatus` | Keep Document primary across three opaque planes; one full-height Sidebar-edge cue advances the Document/Apparatus work field without replacing the native divider. | Cards, a floating Inspector, a parallel divider, or a dashboard. | §18.2 |
 | `Triptych Workspace Navigator` | Presents Analyses, Topics, and Works as full-width destinations with one persistent Navigation selection and quiet, exact Note totals. | A Scope filter, pipeline, project selector, segmented band, or Attention counter. | §§3.2, 18.2–18.3 |
 | `Segmented Control` | Equal text segments use a quiet Paper track, one adaptive raised selection, continuous corners, and no Accent fill. Inspector, Connect, Search, Properties, and Records share input and accessibility. | Workspace navigation, tab strips, or mixed actions. | §§18.4–18.5 |
-| `Source List` | Organize Locations and Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, lifecycle badge wall, or content preview card. | §18.3 |
+| `Source List` | Organize Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, status badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §12, §18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §8.1, §18.5 |
 | `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §13, §§18.2–18.3 |

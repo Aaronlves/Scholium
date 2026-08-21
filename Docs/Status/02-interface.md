@@ -33,17 +33,23 @@
 ## Library and navigation
 
 - Library presents Analyses, Topics, and Works as peer workspace destinations
-  with stable selection, keyboard navigation, and ordinary-active-Note totals.
-  Switching saves or fails safely, then restores that workspace's Location,
+  with stable selection, keyboard navigation, and ordinary Note totals.
+  Switching saves or fails safely, then restores that workspace's
   filters, ordering, disclosure, tabs, Document mode, and Inspector mode.
 - On live opening, the selected Vault's usable Library can replace the initial
   full-page Loading state before the remaining two Vaults finish. Their rows
   retain unavailable counts and selection until the complete generation; the
   existing derived-state progress presentation remains visible without
   blocking the available list or moving focus.
-- Library, Set Aside, and Trash share one native hierarchical source list while
-  retaining their distinct actions. Add, context-menu, keyboard, drag, menu,
-  and accessibility routes converge on the same source mutations.
+- Library is the only source-list destination. Add, context-menu, keyboard,
+  drag, menu, and accessibility routes converge on the same source mutations.
+  Note and Folder rows expose **Move to Trash…**; File-menu Command-Delete and
+  named accessibility actions reach the same bounded confirmation.
+- System-Trash confirmation lists every filesystem item, associated active
+  Discussion, whole finished Record, and unaffected multi-Note participant,
+  and states that Finder restoration cannot restore deleted Records. Recovery
+  distinguishes forward cleanup from the outcome-unknown **Retain Records and
+  Resolve** route.
 - New Note and New Folder are immediate. Successful source mutations publish
   their exact selected destination before disposable derived views finish
   refreshing; failures preserve the prior presentation. New Note installs one

@@ -1,4 +1,4 @@
-# Specification: Notes and Lifecycle
+# Specification: Notes and File Operations
 
 [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 5–7.
 
@@ -8,8 +8,8 @@ Analysis, Topic, and ordinary Work notes support:
 
 - Review, Edit, and Source over one exact Markdown buffer;
 - autosaved editing without an ordinary Save button;
-- create, duplicate, import, rename, move, Reveal in Finder, Set Aside, Trash,
-  Put Back, and permanent deletion;
+- create, duplicate, import, rename, move, Reveal in Finder, and move to the
+  macOS system Trash;
 - exact-source preservation, conflict detection, atomic writes, and external
   coordination;
 - source-located Connect relations, passage Comments inside Discussion, and
@@ -377,19 +377,19 @@ the exact existing vault-relative folder without changing research source.
 An ordinary note row exposes **Rename…** rather than combining naming and
 placement in one command. It is a direct one-item drag source: dropping it on
 an ordinary Folder moves it into that exact folder, while dropping it on the
-Library LocationHeader moves it to the current vault root. The drop target
+Library header moves it to the current vault root. The drop target
 highlights only while it can accept the note; a successful move keeps that note
 selected at its destination. Collision, stale revision, unresolved identity,
 cross-vault placement, managed Critique placement, or source mutation failure
 changes nothing and reports the reason. **File → Move Note…** and the named
 accessibility action remain the non-drag placement routes; drag is never the
 only way to move a note. Copy Relative Path and Reveal in Finder remain beside
-the existing open and lifecycle actions, while Open in New Tab, Rename, Move,
+the existing open and file actions, while Open in New Tab, Rename, Move,
 Copy, and Reveal remain available without secondary click.
 
 An ordinary mutable Folder is likewise a direct one-item drag source. Dropping
 it on another ordinary Folder moves the complete source folder inside that
-destination; dropping it on the Library LocationHeader moves it to the current
+destination; dropping it on the Library header moves it to the current
 vault root. The process-private payload contains only its exact vault and path,
 and a target advertises Move only after rejecting cross-vault placement, the
 current parent, the source itself, and every source descendant. Completion uses
@@ -399,7 +399,7 @@ accessibility action remain the non-drag route.
 
 A folder is only a vault-relative filesystem location used for classification.
 It has no UUID, Properties, Research Record, recovery identity, or independent
-lifecycle record. Empty folders remain visible in Library. **New Folder**
+application identity. Empty folders remain visible in Library. **New Folder**
 immediately and atomically claims `Untitled Folder`, `Untitled Folder 2`, and so
 on inside the clicked folder; it opens no sheet. Once that directory claim is
 durable, the exact window installs it immediately and the Workspace completes
@@ -419,12 +419,14 @@ source subtree, or any destination collision aborts the operation. A failed
 link transaction rolls back or leaves durable recovery evidence. Non-Markdown
 contents move with the same directory without being parsed or rewritten.
 
-**Move Folder and Notes to Trash…** requires confirmation, moves the directory
-once beneath `Trash/`, and gives each descendant note the ordinary Trash
-location semantics while preserving its stable identity. The folder itself
-still has no lifecycle identity. Managed Critiques and ambiguous folder
-projections omit all source-mutating folder actions. Every contextual operation
-has an equivalent accessibility action; secondary click is never the only path.
+**Move Folder and Notes to Trash…** requires the system-Trash confirmation in
+section 6. It submits the source directory as one native filesystem item and
+includes the complete hidden, non-Markdown, empty-directory, and Markdown
+descendant manifest in preflight. A managed Critique outside the folder is a
+separate disclosed source item. The folder itself has no stable identity.
+Managed Critiques and ambiguous folder projections omit all source-mutating
+folder actions. Every contextual operation has an equivalent accessibility
+action; secondary click is never the only path.
 
 Scholium atomically claims the first available path in the sequence
 `Untitled.md`, `Untitled 2.md`, `Untitled 3.md`, and so on. It never replaces an
@@ -474,47 +476,74 @@ update resolved incoming links. Ambiguous
 external rename keeps the note readable but blocks identity-dependent mutation,
 Settle, record attachment, and Discussion anchor attachment until confirmation.
 
-## 6. Note location, Set Aside, and Trash
+## 6. System Trash deletion and application cleanup
 
-There is no generic lifecycle status or advance control; location determines
-active, Set Aside, or Trash state.
+Scholium has one Library file tree. It owns no secondary holding area,
+application Trash, restore command, or file-level erase command. **Move to
+Trash…** and **Move Folder and Notes to Trash…** use the macOS system Trash.
+Finder owns source restoration and final emptying. Cancel changes nothing.
 
-- **Set Aside** is direct and reversible. It records no reason or failure
-  status. Set-aside notes remain readable but are excluded from ordinary
-  Search, synthesis, Critique, and agent context unless explicitly included.
-- **Move to Trash** excludes the note from ordinary Search, Connect, agent
-  context, and workflows without immediately erasing it.
-- **Put Back** is direct and reversible. It restores the exact original
-  vault-relative path and reports a conflict rather than inventing another
-  name or destination; it requires no confirmation or destination sheet.
-- **Cancel** changes nothing.
-- **Delete Permanently** purges the note, its active Discussion drafts,
-  Settlements, associated Critique, and note-specific machine state from live
-  storage. A finished shared Research Record survives with a participant
-  tombstone until the researcher separately deletes that record.
+Moving source and deleting Scholium application state are deliberately not one
+atomic claim. Confirmation discloses two ordered boundaries:
 
-Note-specific records follow stable identity into Set Aside and Trash while
-recovery remains possible. Permanent note deletion advertises no source
-recovery; a surviving record tombstone is provenance, not a way to restore the
-deleted note. Before the first destructive step Scholium records one durable
-deletion plan. Failure or process interruption resumes that plan forward until
-source and note-specific state are absent; it never recreates deleted source or
-rolls the deletion back.
+1. every listed source item is moved with Foundation's native system-Trash
+   operation; and
+2. only after all source receipts are durable does Scholium discard affected
+   active Discussions and delete every associated finished Research Record.
 
-Library, Set Aside, and Trash are category projections of one native file-tree
-model, not distinct browsers. They share hierarchy, indentation, disclosure,
-selection, hover, scrolling, keyboard and accessibility navigation, document
-opening, and exact-path presentation. Each category filters the same vault
-inventory and differs only where its lifecycle semantics require different
-available actions or mutation policy. A committed category move updates the
-exact window immediately and queues the complete disposable Workspace refresh;
-it never waits for graph, Search, or research-state assembly before returning.
-When Set Aside, Move to Trash, or Put Back moves the currently presented Note
-out of its visible Location, that document page closes and the Document region
-returns to the restrained no-document state. Other open pages remain available
-without being activated implicitly. Selecting the moved Note in Set Aside,
-Trash, or Library later opens its exact content normally; clearing the prior
-presentation is not deletion and does not make lifecycle content unreadable.
+Preparation flushes every dirty editor in the Triptych, then freezes exact
+vault-qualified paths, stable Note identities, fingerprints, complete folder
+manifests, separately located managed Critiques, affected active Discussion
+IDs, and finished Record IDs plus exact portable-byte fingerprints. A relevant
+active Agent Run, unresolved write recovery, malformed authority store,
+identity ambiguity, source change, folder-manifest change, symlink or special
+file, or Record/Discussion participation change blocks the operation before a
+source move. The confirmation names each finished Record and warns when an
+unaffected Note participates in a Record that will nevertheless be deleted.
+
+A finished Record is the indivisible provenance object. If any participating
+Note is affected, the complete Record is deleted; participants are never
+rewritten into placeholders. Record IDs are deduplicated across Note, Folder,
+and Critique targets. Active Discussions touching an affected Note are
+explicitly discarded after all source moves. The same cleanup prunes deleted
+Record references from Note Review and removes machine-local execution and
+Agent-change evidence only after finished Record deletion commits.
+
+Settlement, stable Note identity, source-access provenance, Zotero binding, and
+Critique association remain. They identify the researcher-governed Note and can
+converge if Finder restores exact source. Finder restore does not restore a
+deleted Research Record. A restored original path is reconciled against its
+retained stable identity and exact bytes; a collision, ambiguous same-content
+copy, or changed source requires the ordinary identity/conflict route rather
+than silent reassignment. If the system Trash has been emptied, Scholium cannot
+recreate the source.
+
+Before the first native move, Scholium installs a Note-deletion gate and writes
+one durable forward plan. Each source item has its own pending, moved, or
+outcome-unknown receipt and the machine-local resulting Trash URL when known.
+For a Work whose managed Critique is elsewhere, or a Folder with an external
+managed Critique, partial native success is representable: no Discussion or
+Record cleanup begins until every disclosed source receipt is moved.
+
+| Observed failure | Required outcome |
+| --- | --- |
+| Dirty save, external modification, identity drift, folder inventory drift, active Run, or portable-store issue before the plan | No source move and no application-state deletion. |
+| Native move fails while the original path is still proven present | Retain the durable plan for retry; Records and Discussions remain. |
+| Process stops after a native move and its resulting URL is durable | Resume forward from that receipt; do not move the same item again. |
+| Process stops after the original path disappears but before a durable native result | Mark outcome unknown; do not infer success and do not delete Records. The researcher may inspect Finder and explicitly retain Records, which clears only the deletion gate and plan. |
+| All source receipts exist but Discussion or Record deletion fails | Source remains under Finder ownership; restart resumes exact-fingerprint Record cleanup idempotently. |
+| A Record was deleted but Note Review or local evidence cleanup fails | The durable Record-deletion marker proves the irreversible step; retry only the remaining cleanup. |
+| Finder or a sync tool deletes or moves source without a Scholium plan | Refresh Search, Attention, open documents, and identity diagnostics only. Never infer Discussion or Record deletion. |
+| Finder restores source after Record cleanup | Reconcile the retained Note identity and source state; do not recreate or fabricate Records. |
+
+Watchers publish source absence, arrival, and rename observations but have no
+authority to create a deletion plan. Multiple windows converge through the
+workspace mutation lease and generation-bound refresh. The initiating window
+flushes all editors before preparation and execution; committed source absence
+closes only pages for missing documents while preserving unrelated tabs and
+focus. Search and Attention remove absent source on the next owned refresh and
+may surface identity or recovery diagnostics; they do not become deletion
+authority.
 
 ## 7. Settlement, annotation, and Discussion
 

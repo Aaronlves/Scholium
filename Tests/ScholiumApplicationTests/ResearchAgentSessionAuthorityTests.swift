@@ -116,7 +116,6 @@ struct ResearchAgentSessionAuthorityTests {
             noteID: functionTarget.noteID,
             note: functionTarget.note,
             role: .topic,
-            lifecycle: functionTarget.lifecycle,
             fingerprint: functionTarget.fingerprint,
             title: functionTarget.title
         )

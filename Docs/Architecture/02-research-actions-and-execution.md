@@ -566,9 +566,12 @@ may request separate checks for each final revision, but no check collapses
 mixed outcomes, certifies truth/acceptance, or owns write authority. A source
 change makes only the affected check stale.
 
-Permanent Note deletion preflights and cleans Run/write-set/source/active-
-Discussion state that could authorize the Note, while finished Records retain
-their tombstoned historical participant. Unsupported pre-production files
+System-Trash preparation rejects any relevant active or write-recovering local
+execution. After all native source receipts commit, its recovery plan discards
+affected active Discussions, deletes each associated finished Record as a
+whole using its exact byte fingerprint, prunes Note Review references, and
+purges local execution and Agent-change evidence. An external source absence
+without that plan performs none of this cleanup. Unsupported pre-production files
 remain byte-unchanged, unread, and nonauthorizing; current decoders do not
 interpret them as configuration, execution, or Record authority.
 

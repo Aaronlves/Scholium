@@ -3,8 +3,8 @@ import Foundation
 @testable import ScholiumApplication
 import Testing
 
-@Suite("Application document lifecycle operations")
-struct DocumentLifecycleOperationsTests {
+@Suite("Application document operations")
+struct DocumentOperationsTests {
     @Test("Pre-rename Settle failure leaves the portable marker unchanged")
     func preRenameSettleFailureLeavesMarkerUnchanged() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -89,48 +89,8 @@ struct DocumentLifecycleOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Moving a Set Aside note to Trash removes the lifecycle prefix")
-    func setAsideToTrashUsesCanonicalPath() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let source = try await handle.documents.load(fixture.targetID)
-        let events = await handle.events.events()
-        var iterator = events.makeAsyncIterator()
-        _ = try #require(await iterator.next())
-
-        let setAside = try await handle.documents.setAside(
-            fixture.targetID,
-            expectedRevision: source.fingerprint
-        ).committedValue
-        let setAsideID = setAside.destination
-        #expect(setAsideID.relativePath == "Set Aside/Target.md")
-        let setAsideDocument = try await handle.documents.load(setAsideID)
-
-        let trash = try await handle.documents.moveToTrash(
-            setAsideID,
-            expectedRevision: setAsideDocument.fingerprint
-        ).committedValue
-
-        #expect(trash.destination.relativePath == "Trash/Target.md")
-        var publishedTrash: WorkspaceNoteSnapshot?
-        for _ in 0..<3 where publishedTrash == nil {
-            let event = try #require(await iterator.next())
-            publishedTrash = event.snapshot.document(id: trash.destination)
-        }
-        #expect(publishedTrash?.lifecycle == .trash)
-        #expect(
-            try await handle.snapshot().document(id: VaultQualifiedNoteID(
-                vaultID: fixture.targetID.vaultID,
-                relativePath: "Trash/Set Aside/Target.md"
-            )) == nil
-        )
-        await runtime.shutdown()
-    }
-
-    @Test("A captured lifecycle target rejects a reused path with another stable identity")
-    func lifecycleTargetRejectsIdentityDrift() async throws {
+    @Test("A captured Trash target rejects a reused path with another stable identity")
+    func mutationTargetRejectsIdentityDrift() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -140,15 +100,15 @@ struct DocumentLifecycleOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projection.stableIdentity.resolvedID)
-        let staleTarget = NoteLifecycleTarget(
+        let staleTarget = NoteMutationTarget(
             documentID: fixture.targetID,
             stableNoteID: UUID(),
             revision: source.fingerprint
         )
 
         do {
-            _ = try await handle.documents.setAside(staleTarget)
-            Issue.record("Expected the stale stable identity to reject the move.")
+            _ = try await handle.documents.prepareSystemTrash(staleTarget)
+            Issue.record("Expected the stale stable identity to reject preparation.")
         } catch NoteIdentityRecoveryError.targetIdentityChanged(let path) {
             #expect(path == fixture.targetID.relativePath)
         }
@@ -157,14 +117,14 @@ struct DocumentLifecycleOperationsTests {
         #expect(unchanged.rawContent == source.rawContent)
         #expect(unchanged.fingerprint == source.fingerprint)
 
-        let target = NoteLifecycleTarget(
+        let target = NoteMutationTarget(
             documentID: fixture.targetID,
             stableNoteID: stableID,
             revision: source.fingerprint
         )
         #expect(staleTarget.id != target.id)
-        let commit = try await handle.documents.setAside(target).committedValue
-        #expect(commit.destination.relativePath == "Set Aside/Target.md")
+        let preview = try await handle.documents.prepareSystemTrash(target)
+        #expect(preview.sources.map(\.relativePath) == ["Target.md"])
         await runtime.shutdown()
     }
 
@@ -1043,8 +1003,8 @@ struct DocumentLifecycleOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Folder creation is direct and folder moves preserve note identities and resolved links")
-    func folderLifecycleTracksNotesRatherThanFolders() async throws {
+    @Test("Folder creation is direct and ordinary moves preserve note identities and resolved links")
+    func folderOperationsTrackNotesRatherThanFolders() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1152,39 +1112,11 @@ struct DocumentLifecycleOperationsTests {
             "Sources/Nested/source.bin"
         )) == attachmentBytes)
 
-        let trashCommit = try await handle.documents.moveFolderToTrash(
-            inVault: vaultID,
-            relativePath: "Sources"
-        ).committedValue
-        #expect(trashCommit.destinationFolder.rawValue == "Trash/Sources")
-        let trashedFirstID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Trash/Sources/First.md"
-        )
-        let trashedSecondID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Trash/Sources/Nested/Second.md"
-        )
-        var publishedTrash: WorkspaceSnapshot?
-        for _ in 0..<3 where publishedTrash == nil {
-            let event = try #require(await iterator.next())
-            if event.snapshot.document(id: trashedFirstID) != nil,
-               event.snapshot.document(id: trashedSecondID) != nil {
-                publishedTrash = event.snapshot
-            }
-        }
-        let trashed = try #require(publishedTrash)
-        #expect(trashed.document(id: trashedFirstID)?.stableIdentity.resolvedID == firstStableID)
-        #expect(trashed.document(id: trashedSecondID)?.stableIdentity.resolvedID == secondStableID)
-        #expect(trashed.document(id: trashedFirstID)?.lifecycle == .trash)
-        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
-            "Trash/Sources/Nested/source.bin"
-        )) == attachmentBytes)
         await runtime.shutdown()
     }
 
-    @Test("Permanent deletion purges coordinated research and recovery state")
-    func permanentDeletionCoordinatesOwnedState() async throws {
+    @Test("System Trash discards an affected active Discussion and preserves stable identity")
+    func systemTrashCoordinatesOwnedState() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1194,42 +1126,80 @@ struct DocumentLifecycleOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
-        _ = try await handle.research.prepareProtectedFunction(
+        let discussion = try await handle.research.createDiscussion(
+            target: ResearchFunctionTarget(
+                noteID: stableID,
+                note: fixture.targetID,
+                role: .analysis,
+                fingerprint: source.fingerprint,
+                title: "Target",
+            ),
+            focalNotes: [],
+            passage: nil,
+            researcherMessage: "Inspect this private note."
+        )
+        let preview = try await handle.documents.prepareSystemTrash(
+            NoteMutationTarget(
+                documentID: fixture.targetID,
+                stableNoteID: stableID,
+                revision: source.fingerprint
+            )
+        )
+        let commit = try await handle.documents.moveToSystemTrash(preview)
+            .committedValue
+        defer {
+            for path in commit.resultingTrashPaths {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
+
+        #expect(commit.noteIDs == [stableID])
+        #expect(commit.removedDiscussionIDs == [discussion.id])
+        #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
+        #expect(try await handle.snapshot().document(id: fixture.targetID) == nil)
+        #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
+            .appendingPathComponent("Target.md").path))
+        await runtime.shutdown()
+    }
+
+    @Test("System Trash preparation rejects a participating active Research Action")
+    func systemTrashRejectsActiveExecution() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let source = try await handle.documents.load(fixture.targetID)
+        let projected = try #require(
+            try await handle.snapshot().document(id: fixture.targetID)
+        )
+        let stableID = try #require(projected.stableIdentity.resolvedID)
+        let preparation = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .discuss,
                 target: ResearchFunctionTarget(
-                noteID: stableID,
+                    noteID: stableID,
                     note: fixture.targetID,
                     role: .analysis,
                     fingerprint: source.fingerprint,
-                title: "Target",
+                    title: "Target"
                 ),
-                instruction: "Inspect this private note."
+                instruction: "Keep this Run active during deletion preflight."
             )
         )
-        let setAside = try await handle.documents.setAside(
-            fixture.targetID,
-            expectedRevision: source.fingerprint
-        ).committedValue
-        let setAsideDocument = try await handle.documents.load(setAside.destination)
-        let trash = try await handle.documents.moveToTrash(
-            setAside.destination,
-            expectedRevision: setAsideDocument.fingerprint
-        ).committedValue
-        let trashDocument = try await handle.documents.load(trash.destination)
 
-        let commit = try await handle.documents.deletePermanently(
-            trash.destination,
-            expectedRevision: trashDocument.fingerprint
-        ).committedValue
+        await #expect(throws: TriptychTransactionError.self) {
+            _ = try await handle.documents.prepareSystemTrash(NoteMutationTarget(
+                documentID: fixture.targetID,
+                stableNoteID: stableID,
+                revision: source.fingerprint
+            ))
+        }
 
-        #expect(commit.noteID == stableID)
-        #expect(commit.relativePath == "Trash/Target.md")
-        #expect(commit.removedDialogueIDs.isEmpty)
-        #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
-        #expect(try await handle.snapshot().document(id: trash.destination) == nil)
-        #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
-            .appendingPathComponent("Trash/Target.md").path))
+        #expect(FileManager.default.fileExists(atPath: fixture.analysesURL
+            .appendingPathComponent("Target.md").path))
+        #expect(try await handle.research.activeDiscussion(id: preparation.runID).id
+            == preparation.runID)
+        try await handle.research.cancelProtectedFunction(runID: preparation.runID)
         await runtime.shutdown()
     }
 

@@ -90,11 +90,10 @@ Application authorizes the visible scope before routing the parsed query. Scope
 is never changed by query text, and adapters do not strip clauses or implement
 a second parser.
 
-The Note provider has one deterministic active-Triptych corpus. **This Vault**
+The Note provider has one deterministic present-source Triptych corpus. **This Vault**
 restricts that corpus to the selected role; **Triptych** does not. **This Note**
 instead searches the current editor revision and returns each non-overlapping
-occurrence without saving it. Vault and Triptych return one row per active Note.
-Set Aside and Trash are excluded except when one is the open This Note.
+occurrence without saving it. Vault and Triptych return one row per present Note.
 
 The shared finite grammar is space-as-AND, escaped exact phrases, trailing
 prefix `*`, clause exclusion, Note lexical fields `title`, `alias`, `heading`,
@@ -307,6 +306,24 @@ unverifiable source is never overwritten or recreated; the candidate remains
 available for inspection and copying. If the candidate is already canonical,
 Recovery verifies that fact and removes only the completed machine-local
 record.
+
+System-Trash deletion recovery is a separate visible forward plan, not a save
+candidate or source backup. It shows the original source items, known resulting
+system-Trash paths, per-item receipt state, affected active Discussions, and
+associated finished Records. When every source receipt is proven moved, Retry
+continues only pending Discussion, exact-fingerprint Record, Note Review, and
+machine-local evidence cleanup. When a native result is outcome-unknown and no
+Discussion or Record cleanup has committed, **Retain Records and Resolve**
+releases the deletion gate and removes only Scholium's plan after researcher
+inspection; it does not move, restore, or erase source. A system-Trash plan
+never exposes a Scholium restore or file-erasure control.
+
+Filesystem watchers and sync observations are refresh evidence only. Source
+absence without an Application-authored deletion plan closes or refreshes
+affected source projections and may surface identity diagnostics, but it never
+authorizes active Discussion or finished Record deletion. Finder restoration
+is likewise an external arrival that must pass ordinary identity and exact-byte
+reconciliation; it cannot recreate a deleted Record.
 
 An ordinary Note save has exactly three terminal Document outcomes after
 Saving: **Saved**, **Conflict**, or **Autosave Failed**. Saved requires the

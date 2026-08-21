@@ -127,6 +127,7 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
     case lifecycleCommitUncertain(String)
     case recordAlreadyExists(UUID)
     case recordNotFound(UUID)
+    case recordChanged(UUID)
     case recordPermanentlyDeleted(UUID)
     case recordIdentityMismatch(UUID)
     case recommendationNotFound(UUID)
@@ -155,6 +156,8 @@ public enum ResearchRecordStoreV1Error: LocalizedError, Sendable {
             "Research Record \(id.uuidString) already exists."
         case .recordNotFound(let id):
             "Research Record \(id.uuidString) was not found."
+        case .recordChanged(let id):
+            "Research Record \(id.uuidString) changed after deletion was confirmed."
         case .recordPermanentlyDeleted(let id):
             "Research Record \(id.uuidString) was permanently deleted."
         case .recordIdentityMismatch(let id):
@@ -272,11 +275,129 @@ public actor PortableResearchRecordStore {
                     in: directories.map(Optional.some)
                 )
                 try initialStorage.recoverAbandonedDeletionFiles(in: "records")
+                try Self.performSchema12Cutover(
+                    storage: initialStorage,
+                    recordDeletionMarkers: initialRecordDeletionMarkers,
+                    triptychID: triptychID
+                )
                 try Self.recoverFinishedDiscussionCutovers(
                     storage: initialStorage,
                     triptychID: triptychID
                 )
             }
+        }
+    }
+
+    /// One bounded portable-schema cutover. Schema-11 finished Records with
+    /// only live participants are rewritten without the obsolete participant
+    /// flag. A schema-11 Record that already contains a deleted-participant
+    /// tombstone is removed as a whole and receives the ordinary durable
+    /// Record-deletion marker, matching the new whole-Record invariant. Active
+    /// schema-1 Discussions can never contain such a tombstone and advance to
+    /// schema 2 after the same field removal.
+    private static func performSchema12Cutover(
+        storage: SecureRecordDirectory,
+        recordDeletionMarkers: SecureRecordDirectory,
+        triptychID: UUID
+    ) throws {
+        for fileName in try storage.fileNames(in: recordsDirectory)
+            where fileName.hasSuffix(".json") {
+            let data = try storage.read(directory: recordsDirectory, fileName: fileName)
+            guard var object = try JSONSerialization.jsonObject(with: data)
+                    as? [String: Any],
+                  (object["schema_version"] as? NSNumber)?.intValue == 11,
+                  let participants = object["participating_notes"] as? [[String: Any]]
+            else { continue }
+            let hasDeletedParticipant = participants.contains {
+                ($0["is_tombstone"] as? NSNumber)?.boolValue == true
+            }
+            if hasDeletedParticipant {
+                guard let rawID = object["id"] as? String,
+                      let id = UUID(uuidString: rawID),
+                      fileName == Self.fileName(id) else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        "A legacy participant-deletion Record has no valid identity."
+                    )
+                }
+                let marker = recordDeletionMarkerData(id)
+                do {
+                    _ = try recordDeletionMarkers.createExclusive(
+                        marker,
+                        directory: nil,
+                        fileName: fileName
+                    )
+                } catch SecureRecordDirectoryError.alreadyExists(_) {
+                    guard try recordDeletionMarkers.read(
+                        directory: nil,
+                        fileName: fileName
+                    ) == marker else {
+                        throw ResearchRecordStoreV1Error.unsafeStore(
+                            "A legacy Record deletion marker does not match its identity."
+                        )
+                    }
+                }
+                try storage.remove(
+                    directory: recordsDirectory,
+                    fileName: fileName,
+                    expected: data
+                )
+                continue
+            }
+            object["schema_version"] = PortableResearchRecord.currentSchemaVersion
+            object["participating_notes"] = participants.map { participant in
+                var participant = participant
+                participant.removeValue(forKey: "is_tombstone")
+                return participant
+            }
+            let transformed = try JSONSerialization.data(
+                withJSONObject: object,
+                options: [.sortedKeys]
+            )
+            let decoded = try decode(PortableResearchRecord.self, from: transformed)
+            guard decoded.triptychID == triptychID else {
+                throw ResearchRecordStoreV1Error.recordIdentityMismatch(decoded.id)
+            }
+            let (_, canonical) = try validatedStorageEncoding(of: decoded)
+            _ = try storage.replace(
+                canonical,
+                directory: recordsDirectory,
+                fileName: fileName
+            )
+        }
+
+        for fileName in try storage.fileNames(in: "active")
+            where fileName.hasSuffix(".json") {
+            let data = try storage.read(directory: "active", fileName: fileName)
+            guard var object = try JSONSerialization.jsonObject(with: data)
+                    as? [String: Any],
+                  (object["schema_version"] as? NSNumber)?.intValue == 1,
+                  let participants = object["participating_notes"] as? [[String: Any]],
+                  participants.allSatisfy({
+                      ($0["is_tombstone"] as? NSNumber)?.boolValue == false
+                  }) else { continue }
+            object["schema_version"] = PortableResearchDiscussion.currentSchemaVersion
+            object["participating_notes"] = participants.map { participant in
+                var participant = participant
+                participant.removeValue(forKey: "is_tombstone")
+                return participant
+            }
+            let transformed = try JSONSerialization.data(
+                withJSONObject: object,
+                options: [.sortedKeys]
+            )
+            let decoded = try decode(PortableResearchDiscussion.self, from: transformed)
+            guard decoded.triptychID == triptychID else {
+                throw ResearchRecordStoreV1Error.recordIdentityMismatch(decoded.id)
+            }
+            let (canonicalDiscussion, canonical) = try canonicalized(decoded)
+            guard canonicalDiscussion == decoded else {
+                throw ResearchRecordStoreV1Error.recordIdentityMismatch(decoded.id)
+            }
+            _ = try storage.replace(
+                canonical,
+                directory: "active",
+                fileName: fileName
+            )
         }
     }
 
@@ -383,7 +504,10 @@ public actor PortableResearchRecordStore {
     /// settlements and machine-local Agent change evidence are
     /// owned by separate stores and are intentionally outside this operation.
     @discardableResult
-    public func deletePermanently(id: UUID) throws -> PortableResearchRecord {
+    public func deletePermanently(
+        id: UUID,
+        expectedFingerprint: DocumentFingerprint? = nil
+    ) throws -> PortableResearchRecord {
         try lock.withExclusiveLock {
             try Self.coordinateWrite(at: storageURL) {
                 let exactData: Data
@@ -396,6 +520,10 @@ public actor PortableResearchRecordStore {
                     record = try Self.decode(PortableResearchRecord.self, from: exactData)
                     guard record.id == id, record.triptychID == triptychID else {
                         throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+                    }
+                    if let expectedFingerprint,
+                       DocumentFingerprint(data: exactData) != expectedFingerprint {
+                        throw ResearchRecordStoreV1Error.recordChanged(id)
                     }
                 } catch let error as SecureRecordDirectoryError {
                     if case .notFound = error {
@@ -467,6 +595,71 @@ public actor PortableResearchRecordStore {
         try lock.withSharedLock {
             try Self.coordinateRead(at: storageURL) {
                 try noteReviewListingWithoutLock()
+            }
+        }
+    }
+
+    /// Removes only review activities whose finished Records no longer exist.
+    /// A review with no remaining activities is removed as a whole. This is a
+    /// separate idempotent step so an interrupted Record deletion can resume
+    /// it after the durable Record-deletion marker proves the first step.
+    public func removeNoteReviewActivities(recordIDs: Set<UUID>) throws {
+        guard !recordIDs.isEmpty else { return }
+        try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                let listing = try noteReviewListingWithoutLock()
+                guard listing.issues.isEmpty else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        listing.issues.map(\.reason).joined(separator: "; ")
+                    )
+                }
+                for review in listing.reviews where review.coveredActivities
+                    .contains(where: { recordIDs.contains($0.recordID) }) {
+                    let fileName = Self.fileName(review.noteID)
+                    let exactData = try storage.read(
+                        directory: Self.noteReviewsDirectory,
+                        fileName: fileName
+                    )
+                    let current = try Self.decode(
+                        PortableResearchNoteReview.self,
+                        from: exactData
+                    )
+                    guard current == review else {
+                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(
+                            review.noteID
+                        )
+                    }
+                    let remaining = review.coveredActivities.filter {
+                        !recordIDs.contains($0.recordID)
+                    }
+                    if remaining.isEmpty {
+                        try storage.remove(
+                            directory: Self.noteReviewsDirectory,
+                            fileName: fileName,
+                            expected: exactData
+                        )
+                    } else {
+                        let updated = try PortableResearchNoteReview(
+                            noteID: review.noteID,
+                            observedRevision: review.observedRevision,
+                            reviewedAt: review.reviewedAt,
+                            coveredActivities: remaining
+                        )
+                        let (_, data) = try Self.canonicalized(updated)
+                        let readback = try storage.replace(
+                            data,
+                            directory: Self.noteReviewsDirectory,
+                            fileName: fileName
+                        )
+                        guard try Self.decode(
+                            PortableResearchNoteReview.self,
+                            from: readback
+                        ) == updated else {
+                            throw ResearchRecordStoreV1Error
+                                .recordIdentityMismatch(review.noteID)
+                        }
+                    }
+                }
             }
         }
     }
@@ -729,8 +922,8 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    /// Establishes a durable machine-local gate before permanent deletion
-    /// mutates Markdown or identity state. The marker and active-record writes
+    /// Establishes a durable machine-local gate before a confirmed system-Trash
+    /// plan moves source files. The marker and active-record writes
     /// share the same cross-process lock, so a creator either wins before the
     /// gate and is later purged, or observes the gate and fails closed.
     public func markNoteDeletionStarted(noteIDs: Set<UUID>) throws {
@@ -759,6 +952,52 @@ public actor PortableResearchRecordStore {
                         throw Self.map(error)
                     }
                 }
+            }
+        }
+    }
+
+    /// Releases only the short-lived gate owned by a completed or abandoned
+    /// system-Trash plan. Permanent Record deletion markers remain separate.
+    public func clearNoteDeletionGate(noteIDs: Set<UUID>) throws {
+        guard !noteIDs.isEmpty else { return }
+        try lock.withExclusiveLock {
+            for noteID in noteIDs.sorted(by: { $0.uuidString < $1.uuidString }) {
+                let expected = Self.deletionMarkerData(noteID)
+                guard try deletionMarkers.readIfPresent(
+                    directory: nil,
+                    fileName: Self.fileName(noteID)
+                ) != nil else { continue }
+                try deletionMarkers.remove(
+                    directory: nil,
+                    fileName: Self.fileName(noteID),
+                    expected: expected
+                )
+            }
+        }
+    }
+
+    /// Removes unfinished Discussions directly participating in the deletion
+    /// plan. It never forms a finished Record as a side effect of source loss.
+    public func discardActiveDiscussions(noteIDs: Set<UUID>) throws -> [UUID] {
+        guard !noteIDs.isEmpty else { return [] }
+        return try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                let listing = try activeListingWithoutCoordination()
+                guard listing.issues.isEmpty else {
+                    throw ResearchRecordStoreV1Error.unsafeStore(
+                        listing.issues.map(\.id).joined(separator: ", ")
+                    )
+                }
+                let ids = listing.discussions.filter {
+                    !Set($0.participatingNotes.map(\.noteID)).isDisjoint(with: noteIDs)
+                }.map(\.id).sorted { $0.uuidString < $1.uuidString }
+                for id in ids {
+                    try storage.removeIfPresent(
+                        directory: "active",
+                        fileName: Self.fileName(id)
+                    )
+                }
+                return ids
             }
         }
     }
@@ -1050,68 +1289,6 @@ public actor PortableResearchRecordStore {
                     fileName: Self.fileName(id)
                 )
                 return try readRecord(id: id)
-            }
-        }
-    }
-
-    /// Active drafts are not retained after one of their participants is
-    /// permanently deleted. Finished records survive and are rewritten only
-    /// to replace the deleted participant's ending revision with a tombstone.
-    public func handlePermanentDeletion(noteIDs: Set<UUID>) throws {
-        guard !noteIDs.isEmpty else { return }
-        try lock.withExclusiveLock {
-            try Self.coordinateWrite(at: storageURL) {
-                let active = try activeListingWithoutCoordination()
-                guard active.issues.isEmpty else {
-                    throw ResearchRecordStoreV1Error.unsafeStore(
-                        active.issues.map(\.id).joined(separator: ", ")
-                    )
-                }
-                for discussion in active.discussions
-                    where !Set(discussion.participatingNotes.map(\.noteID))
-                        .isDisjoint(with: noteIDs) {
-                    try storage.removeIfPresent(
-                        directory: "active",
-                        fileName: Self.fileName(discussion.id)
-                    )
-                }
-                for fileName in try storage.fileNames(in: Self.recordsDirectory)
-                    where fileName.hasSuffix(".json") {
-                        let data = try storage.read(
-                            directory: Self.recordsDirectory,
-                            fileName: fileName
-                        )
-                        let record = try Self.decode(PortableResearchRecord.self, from: data)
-                        guard record.triptychID == triptychID,
-                              fileName == Self.fileName(record.id) else {
-                            throw ResearchRecordStoreV1Error.recordIdentityMismatch(record.id)
-                        }
-                        guard record.participatingNotes.contains(where: {
-                            noteIDs.contains($0.noteID) && !$0.isTombstone
-                        }) else { continue }
-                        let updatedNotes = try record.participatingNotes.map { note in
-                            guard noteIDs.contains(note.noteID) else { return note }
-                            return try PortableResearchNoteRevision(
-                                noteID: note.noteID,
-                                note: note.note,
-                                role: note.role,
-                                title: note.title,
-                                startingRevision: note.startingRevision,
-                                endingRevision: nil,
-                                isTombstone: true
-                            )
-                        }
-                        let updated = try Self.replacingParticipants(
-                            in: record,
-                            with: updatedNotes
-                        )
-                        let (_, encoded) = try Self.canonicalized(updated)
-                        _ = try storage.replace(
-                            encoded,
-                            directory: Self.recordsDirectory,
-                            fileName: fileName
-                        )
-                }
             }
         }
     }
@@ -1509,42 +1686,7 @@ public actor PortableResearchRecordStore {
                 && note.role == active.role
                 && note.title == active.title
                 && note.startingRevision == active.startingRevision
-                && !note.isTombstone
-                && note.endingRevision != nil
         }
-    }
-
-    private static func replacingParticipants(
-        in record: PortableResearchRecord,
-        with participatingNotes: [PortableResearchNoteRevision]
-    ) throws -> PortableResearchRecord {
-        try PortableResearchRecord(
-            id: record.id,
-            triptychID: record.triptychID,
-            title: record.title,
-            kind: record.kind,
-            action: record.action,
-            method: record.method,
-            sourceReference: record.sourceReference,
-            zoteroBibliographicContext: record.zoteroBibliographicContext,
-            analysisSourceRoute: record.analysisSourceRoute,
-            continuationLineage: record.continuationLineage,
-            primaryNoteID: record.primaryNoteID,
-            participatingNotes: participatingNotes,
-            statements: record.statements,
-            resultDisposition: record.resultDisposition,
-            academicResults: record.academicResults,
-            contextUseReport: record.contextUseReport,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
-            fidelityCompletion: record.fidelityCompletion,
-            confirmedChanges: record.confirmedChanges,
-            discrepancies: record.discrepancies,
-            literatureRecommendations: record.literatureRecommendations,
-            startedAt: record.startedAt,
-            finishedAt: record.finishedAt,
-            researcherEvaluation: record.researcherEvaluation,
-            methodFeedbackComment: record.methodFeedbackComment
-        )
     }
 
     private static func replacingRecommendations(

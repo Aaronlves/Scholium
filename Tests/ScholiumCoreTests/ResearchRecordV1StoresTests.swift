@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 11 and Local Execution schema 16")
+@Suite("Portable Research Record storage v1/schema 12 and Local Execution schema 16")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -83,6 +83,73 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.issues.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: abandoned.path))
         #expect(try await reopened.record(id: record.id) == stored)
+    }
+
+    @Test("Schema 11 participant fields cut over once to schema 12")
+    func legacyParticipantSchemaCutover() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+        let recordURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
+                as? [String: Any]
+        )
+        object["schema_version"] = 11
+        object["participating_notes"] = try #require(
+            object["participating_notes"] as? [[String: Any]]
+        ).map { participant in
+            var participant = participant
+            participant["is_tombstone"] = false
+            return participant
+        }
+        try JSONSerialization.data(withJSONObject: object).write(to: recordURL)
+
+        let reopened = try fixture.portableStore()
+        let migrated = try await reopened.record(id: record.id)
+        let migratedObject = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
+                as? [String: Any]
+        )
+
+        #expect(migrated == record)
+        #expect(migratedObject["schema_version"] as? Int == 12)
+        #expect(try #require(
+            migratedObject["participating_notes"] as? [[String: Any]]
+        ).allSatisfy { $0["is_tombstone"] == nil })
+    }
+
+    @Test("Schema 11 Record with a deleted participant cuts over to whole-Record deletion")
+    func legacyParticipantDeletionCutsOverToRecordDeletion() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let record = try makePortableRecord()
+        _ = try await store.createFinishedRecord(record)
+        let recordURL = fixture.control
+            .appendingPathComponent("research-records/v1/records", isDirectory: true)
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: recordURL))
+                as? [String: Any]
+        )
+        object["schema_version"] = 11
+        var participants = try #require(
+            object["participating_notes"] as? [[String: Any]]
+        )
+        participants[0]["is_tombstone"] = true
+        object["participating_notes"] = participants
+        try JSONSerialization.data(withJSONObject: object).write(to: recordURL)
+
+        let reopened = try fixture.portableStore()
+
+        #expect(try await reopened.listing().records.isEmpty)
+        #expect(await reopened.isRecordPermanentlyDeleted(id: record.id))
+        #expect(!FileManager.default.fileExists(atPath: recordURL.path))
     }
 
     @Test("Record listings fingerprint the exact persisted JSON bytes")
@@ -537,8 +604,8 @@ struct ResearchRecordV1StoresTests {
         #expect(detached.passage?.fingerprint == ambiguous.passage?.fingerprint)
     }
 
-    @Test("Permanent deletion purges active drafts and tombstones finished participants")
-    func discussionDeletionPreservesFinishedRecord() async throws {
+    @Test("Discarding a participating active Discussion does not rewrite finished Records")
+    func discussionDiscardDoesNotRewriteFinishedRecord() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.portableStore()
@@ -555,18 +622,12 @@ struct ResearchRecordV1StoresTests {
         _ = try await store.createActiveDiscussion(active)
 
         let deletedNoteID = active.primaryNoteID
-        try await store.handlePermanentDeletion(noteIDs: [deletedNoteID])
+        let removed = try await store.discardActiveDiscussions(noteIDs: [deletedNoteID])
 
+        #expect(removed == [active.id])
         #expect(try await store.activeDiscussions().discussions.isEmpty)
         let retained = try await store.record(id: finished.id)
-        #expect(retained.statements == finished.statements)
-        #expect(retained.fidelityCompletion == finished.fidelityCompletion)
-        #expect(retained.participatingNotes.first {
-            $0.noteID == deletedNoteID
-        }?.isTombstone == true)
-        #expect(retained.participatingNotes.first {
-            $0.noteID != deletedNoteID
-        }?.isTombstone == false)
+        #expect(retained == finished)
     }
 
     @Test("Only one active Discussion may own a primary Note")
@@ -1137,7 +1198,7 @@ struct ResearchRecordV1StoresTests {
             .literatureRecommendations == nil)
     }
 
-    @Test("Permanent-deletion cleanup removes only executions containing the Note")
+    @Test("System Trash cleanup removes only executions containing the Note")
     func localExecutionPurgeIsIdentityBound() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -1160,6 +1221,23 @@ struct ResearchRecordV1StoresTests {
         #expect(removed == [deletedRun.id])
         #expect(try await store.recordIfPresent(id: deletedRun.id) == nil)
         #expect(try await store.record(id: retainedRun.id) == retainedRun)
+    }
+
+    @Test("Prepared execution is an active deletion conflict only for participating Notes")
+    func activeExecutionDetectionIsIdentityBound() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let activeNoteID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
+        let unrelatedNoteID = UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!
+        let activeRun = try makeLocalExecutionRecord(
+            runID: UUID(),
+            noteID: activeNoteID
+        )
+        _ = try await store.create(activeRun)
+
+        #expect(try await store.activeExecutionIDs(containing: [activeNoteID]) == [activeRun.id])
+        #expect(try await store.activeExecutionIDs(containing: [unrelatedNoteID]).isEmpty)
     }
 
     @Test("Researcher Response replaces Evaluation and Method Feedback in one CAS")
@@ -1422,6 +1500,16 @@ struct ResearchRecordV1StoresTests {
                 noteID: participant.noteID
             ),
         ])
+
+        try await store.removeNoteReviewActivities(recordIDs: [changed.id])
+        #expect(try await store.noteReviewListing().reviews.first?.coveredActivities == [
+            PortableResearchNoteActivityReference(
+                recordID: lateRecord.id,
+                noteID: participant.noteID
+            ),
+        ])
+        try await store.removeNoteReviewActivities(recordIDs: [lateRecord.id])
+        #expect(try await store.noteReviewListing().reviews.isEmpty)
     }
 
     private func makePortableRecord(
@@ -1554,7 +1642,6 @@ struct ResearchRecordV1StoresTests {
             noteID: action.target.noteID,
             note: action.target.note,
             role: .topic,
-            lifecycle: .active,
             fingerprint: action.target.fingerprint,
             title: action.target.title
         )
@@ -1594,7 +1681,6 @@ struct ResearchRecordV1StoresTests {
                 relativePath: actionID == .analyze ? "Analysis.md" : "Problem.md"
             ),
             role: targetRole,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "# Topic\n"),
             title: actionID == .analyze ? "Analysis" : "Problem"
         )

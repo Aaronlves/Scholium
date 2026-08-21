@@ -805,8 +805,8 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Multiple used Materials derive independently and disappear on tombstone or record deletion")
-    func multipleUsedMaterialsRespectLifecycleAndRecordExistence() async throws {
+    @Test("Multiple used Materials derive independently and disappear on whole Record deletion")
+    func multipleUsedMaterialsRespectRecordExistence() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let secondURL = fixture.analysesURL.appendingPathComponent("Second.md")
@@ -868,34 +868,6 @@ extension ResearchFunctionOperationsTests {
         #expect(refreshed.discovery.catalog.attention.filter {
             $0.kind == .materialChangedSinceUse
         }.count == 2)
-
-        let currentSecond = try await handle.documents.load(secondID)
-        let movedSecond = try await handle.documents.move(
-            secondID,
-            to: "Trash/Second.md",
-            expectedRevision: currentSecond.fingerprint
-        ).committedValue
-        let trashedSecond = try await handle.documents.load(movedSecond.destination)
-        _ = try await handle.documents.deletePermanently(
-            movedSecond.destination,
-            expectedRevision: trashedSecond.fingerprint
-        )
-        refreshed = try await handle.refresh()
-        let surviving = refreshed.discovery.catalog.attention.filter {
-            $0.kind == .materialChangedSinceUse
-        }
-        #expect(surviving.count == 1)
-        #expect(surviving.first?.materialChangedSinceUse?.materialNoteID == first.noteID)
-        let tombstonedRecord = try #require(
-            try await handle.research.finishedResearchRecords(noteID: nil)
-                .first { $0.id == preparation.runID }
-        )
-        #expect(tombstonedRecord.participatingNotes.contains {
-            $0.noteID == second.noteID && $0.isTombstone
-        })
-        #expect(tombstonedRecord.actuallyUsedMaterials.contains {
-            $0.noteID == second.noteID
-        })
 
         try await handle.research.deleteResearchRecordPermanently(
             id: preparation.runID

@@ -262,18 +262,17 @@ private extension ResearchRecordSearchIndexTests {
                 text: "A newer sortable response.",
                 finishedAt: now.addingTimeInterval(-60)
             )
-            let tombstone = try Self.note(
+            let historicalParticipant = try Self.note(
                 id: UUID(uuidString: "30000000-0000-0000-0000-000000000004")!,
                 vaultID: analysisVaultID,
                 path: "Deleted Position.md",
                 role: .analysis,
-                title: "Deleted Position",
-                tombstone: true
+                title: "Historical Position"
             )
             let tombstoneRecord = try Self.actionRecord(
                 id: tombstoneRecordID,
                 triptychID: triptychID,
-                note: tombstone,
+                note: historicalParticipant,
                 method: method,
                 text: "tombstone-token remains historical.",
                 finishedAt: calendar.date(byAdding: .day, value: -40, to: now)!
@@ -409,8 +408,7 @@ private extension ResearchRecordSearchIndexTests {
             vaultID: UUID,
             path: String,
             role: ResearchActionTargetRole,
-            title: String,
-            tombstone: Bool = false
+            title: String
         ) throws -> PortableResearchNoteRevision {
             let fingerprint = DocumentFingerprint(content: "# \(title)\n")
             return try PortableResearchNoteRevision(
@@ -419,8 +417,7 @@ private extension ResearchRecordSearchIndexTests {
                 role: role,
                 title: title,
                 startingRevision: fingerprint,
-                endingRevision: tombstone ? nil : fingerprint,
-                isTombstone: tombstone
+                endingRevision: fingerprint
             )
         }
 

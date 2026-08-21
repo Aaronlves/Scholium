@@ -1216,7 +1216,6 @@ struct WorkspaceRuntimeTests {
         let cleanDocuments = cleanWorkspace.vaults.flatMap(\.documents)
         #expect(incrementalDocuments.map(\.id) == cleanDocuments.map(\.id))
         #expect(incrementalDocuments.map(\.fingerprint) == cleanDocuments.map(\.fingerprint))
-        #expect(incrementalDocuments.map(\.lifecycle) == cleanDocuments.map(\.lifecycle))
         #expect(incrementalWorkspace.discovery.catalog.graph?.diagnostics
             == cleanWorkspace.discovery.catalog.graph?.diagnostics)
         let incrementalNoteResults = incrementalResults.results.compactMap {

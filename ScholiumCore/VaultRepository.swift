@@ -197,9 +197,9 @@ public actor VaultRepository {
         _ = try prospectiveNewFileURL(relativePath: relativePath)
     }
 
-    /// Returns ordinary active Markdown paths. Set Aside and Trash are excluded
-    /// unless the caller is explicitly presenting recovery content.
-    public func markdownRelativePaths(includeLifecycle: Bool = false) throws -> [String] {
+    /// Returns every ordinary Markdown path in the selected vault. Folder names
+    /// have no hidden-location meaning and are never filtered by repository policy.
+    public func markdownRelativePaths() throws -> [String] {
         var enumerationError: (any Error)?
         guard let enumerator = fileManager.enumerator(
             at: canonicalRoot,
@@ -224,11 +224,6 @@ public actor VaultRepository {
             guard let relativePath = VaultPath.relativePath(for: url, in: canonicalRoot) else {
                 continue
             }
-            if !includeLifecycle,
-               relativePath.hasPrefix("Set Aside/") || relativePath.hasPrefix("Trash/") {
-                if values.isDirectory == true { enumerator.skipDescendants() }
-                continue
-            }
             guard values.isRegularFile == true,
                   url.pathExtension.caseInsensitiveCompare("md") == .orderedSame else { continue }
             paths.append(relativePath)
@@ -240,7 +235,7 @@ public actor VaultRepository {
     /// Returns real directory paths, including empty folders. Directories are
     /// classifications only; callers must continue to track notes by their
     /// stable identities rather than treating these paths as durable IDs.
-    public func folderRelativePaths(includeLifecycle: Bool = false) throws
+    public func folderRelativePaths() throws
         -> [VaultRelativeFolderPath]
     {
         var enumerationError: (any Error)?
@@ -267,12 +262,6 @@ public actor VaultRepository {
             guard values.isDirectory == true,
                   let relativePath = VaultPath.relativePath(for: url, in: canonicalRoot),
                   let path = try? VaultRelativeFolderPath(relativePath) else { continue }
-            if !includeLifecycle,
-               relativePath == "Set Aside" || relativePath.hasPrefix("Set Aside/")
-                || relativePath == "Trash" || relativePath.hasPrefix("Trash/") {
-                enumerator.skipDescendants()
-                continue
-            }
             paths.append(path)
         }
         if let enumerationError { throw enumerationError }
@@ -645,57 +634,142 @@ public actor VaultRepository {
         }
     }
 
-    public func setAside(
+    public func moveToSystemTrash(
         relativePath: String,
         expectedRevision: DocumentFingerprint
-    ) throws -> NoteMoveResult {
-        try move(
-            relativePath: relativePath,
-            to: Self.lifecycleDestination(folder: "Set Aside", relativePath: relativePath),
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func moveToTrash(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> NoteMoveResult {
-        try move(
-            relativePath: relativePath,
-            to: Self.lifecycleDestination(folder: "Trash", relativePath: relativePath),
-            expectedRevision: expectedRevision
-        )
-    }
-
-    /// Permanently removes one exact note. No source copy or restore token is
-    /// created; callers coordinate any remaining idempotent privacy cleanup.
-    public func deletePermanently(
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> NoteDeletionResult {
-        let fileURL = try existingFileURL(relativePath: relativePath)
+    ) throws -> URL? {
         let data = try readSource(relativePath: relativePath)
         let current = DocumentFingerprint(data: data)
         guard current == expectedRevision else {
             throw VaultRepositoryError.conflict(expected: expectedRevision, current: current)
         }
-        let recheckedData = try readSource(relativePath: relativePath)
-        let rechecked = DocumentFingerprint(data: recheckedData)
-        guard rechecked == expectedRevision else {
-            throw VaultRepositoryError.conflict(expected: expectedRevision, current: rechecked)
+        let rechecked = try readSource(relativePath: relativePath)
+        guard DocumentFingerprint(data: rechecked) == expectedRevision else {
+            throw VaultRepositoryError.conflict(
+                expected: expectedRevision,
+                current: DocumentFingerprint(data: rechecked)
+            )
         }
-        try mutationCoordinator.delete(
+        return try mutationCoordinator.moveToSystemTrash(
             path: markdownRelativePath(relativePath),
-            expected: data
+            expected: rechecked
         )
-        removeEmptyParentDirectories(startingAt: fileURL.deletingLastPathComponent())
-        return NoteDeletionResult(relativePath: relativePath, fingerprint: current)
+    }
+
+    func moveFolderToSystemTrash(
+        relativePath: String,
+        expectedDocuments: [String: DocumentFingerprint],
+        expectedDirectoryManifest: DocumentFingerprint
+    ) throws -> URL? {
+        let folder = try folderRelativePath(relativePath)
+        _ = try preflightFolderDocuments(
+            in: folder,
+            expectedDocuments: expectedDocuments
+        )
+        guard try systemTrashDirectoryManifest(relativePath: relativePath)
+                == expectedDirectoryManifest else {
+            throw VaultRepositoryError.commitUncertain(
+                "The folder inventory changed after confirmation."
+            )
+        }
+        return try mutationCoordinator.moveDirectoryToSystemTrash(path: folder) {
+            guard try self.systemTrashDirectoryManifest(relativePath: relativePath)
+                    == expectedDirectoryManifest else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The folder inventory changed during the coordinated system-Trash operation."
+                )
+            }
+        }
+    }
+
+    func moveFolderToSystemTrashPreflight(
+        relativePath: String,
+        expectedDocuments: [String: DocumentFingerprint],
+        expectedDirectoryManifest: DocumentFingerprint
+    ) throws -> VaultRelativeFolderPath {
+        let folder = try VaultRelativeFolderPath(relativePath)
+        _ = try preflightFolderDocuments(
+            in: folder,
+            expectedDocuments: expectedDocuments
+        )
+        guard try systemTrashDirectoryManifest(relativePath: relativePath)
+                == expectedDirectoryManifest else {
+            throw VaultRepositoryError.commitUncertain(
+                "The folder inventory changed after confirmation."
+            )
+        }
+        return folder
+    }
+
+    /// Hashes the complete descendant inventory, including hidden and
+    /// non-Markdown files, so a Folder confirmation cannot silently absorb a
+    /// later Finder or sync-tool change. Symbolic links and special files are
+    /// rejected rather than traversed or omitted.
+    func systemTrashDirectoryManifest(
+        relativePath: String
+    ) throws -> DocumentFingerprint {
+        let folder = try folderRelativePath(relativePath)
+        let folderURL = try existingFolderURL(path: folder)
+        var enumerationError: (any Error)?
+        guard let enumerator = fileManager.enumerator(
+            at: folderURL,
+            includingPropertiesForKeys: [
+                .isDirectoryKey,
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+            ],
+            options: [],
+            errorHandler: { _, error in
+                enumerationError = error
+                return false
+            }
+        ) else {
+            throw VaultRepositoryError.commitUncertain(
+                "The complete folder inventory could not be enumerated."
+            )
+        }
+        var entries: [String] = []
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isSymbolicLink != true,
+                  let path = VaultPath.relativePath(for: url, in: folderURL) else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The folder contains an unsupported symbolic link."
+                )
+            }
+            if values.isDirectory == true {
+                entries.append("D\0\(path)")
+            } else if values.isRegularFile == true {
+                let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+                entries.append(
+                    "F\0\(path)\0\(DocumentFingerprint(data: data).sha256)"
+                )
+            } else {
+                throw VaultRepositoryError.commitUncertain(
+                    "The folder contains an unsupported filesystem object at \(path)."
+                )
+            }
+        }
+        if let enumerationError { throw enumerationError }
+        let canonical = entries.sorted().joined(separator: "\n")
+        return DocumentFingerprint(data: Data(canonical.utf8))
+    }
+
+    func folderExistsForDeletion(relativePath: String) -> Bool {
+        guard let folder = try? VaultRelativeFolderPath(relativePath) else {
+            return false
+        }
+        return folderExists(folder)
     }
 
     /// Removes a file created by the same higher-level transaction when that
     /// transaction must roll back. It is intentionally module-internal and is
     /// bound to the exact fingerprint returned by `create`; ordinary deletion
-    /// continues to use `deletePermanently`.
+    /// remains unavailable through ordinary researcher deletion.
     public func removeCreatedFileForRollback(
         relativePath: String,
         createdRevision: DocumentFingerprint
@@ -1114,7 +1188,7 @@ public actor VaultRepository {
         expectedDocuments: [String: DocumentFingerprint]
     ) throws -> [NoteDocument] {
         let prefix = folder.rawValue + "/"
-        let currentPaths = try markdownRelativePaths(includeLifecycle: true)
+        let currentPaths = try markdownRelativePaths()
             .filter { $0.hasPrefix(prefix) }
         guard Set(currentPaths) == Set(expectedDocuments.keys) else {
             throw VaultRepositoryError.commitUncertain(
@@ -1240,11 +1314,4 @@ public actor VaultRepository {
         }
     }
 
-    private static func lifecycleDestination(folder: String, relativePath: String) -> String {
-        let components = relativePath.split(separator: "/")
-        if components.first.map(String.init) == folder {
-            return relativePath
-        }
-        return folder + "/" + relativePath
-    }
 }

@@ -131,16 +131,16 @@ struct AppCompositionRootTests {
 
         first.discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .paperAnalysis,
-            location: .trash
+            sourceScope: .library
         )
-        #expect(first.discoveryController.library.locationScope == .trash)
-        #expect(second.discoveryController.library.locationScope == .workspace)
+        #expect(first.discoveryController.library.sourceScope == .library)
+        #expect(second.discoveryController.library.sourceScope == .library)
 
         first.pendingSourceLine = 17
         #expect(first.documentController.pendingSourceLine == 17)
         #expect(second.documentController.pendingSourceLine == nil)
 
-        let lifecycleTarget = NoteLifecycleTarget(
+        let mutationTarget = NoteMutationTarget(
             documentID: VaultQualifiedNoteID(
                 vaultID: reference.vaultID,
                 relativePath: reference.relativePath
@@ -148,10 +148,10 @@ struct AppCompositionRootTests {
             stableNoteID: noteID,
             revision: DocumentFingerprint(content: "# Agency\n")
         )
-        first.documentController.requestLifecycle(.move(lifecycleTarget))
-        #expect(first.noteLifecycleRequest == .move(lifecycleTarget))
-        #expect(first.presentationRouter.sheet?.id == "lifecycle:move:\(lifecycleTarget.id)")
-        #expect(second.noteLifecycleRequest == nil)
+        first.documentController.requestFileOperation(.move(mutationTarget))
+        #expect(first.noteFileRequest == .move(mutationTarget))
+        #expect(first.presentationRouter.sheet?.id == "note-file-operation:move:\(mutationTarget.id)")
+        #expect(second.noteFileRequest == nil)
         #expect(second.presentationRouter.sheet == nil)
 
         // Construction and window-local state changes do not activate a vault,
@@ -870,7 +870,7 @@ struct AppCompositionRootTests {
         #expect(firstWindow!.nativeWindowID == windowIDBeforeOpeningTab)
         #expect(firstWindow!.documentTabController.selectedTab(in: .topicKnowledge)?.document.relativePath == "Shared.md")
 
-        let visibleTarget = try #require(NoteLifecycleTarget(firstWindow!.currentNote!))
+        let visibleTarget = try #require(NoteMutationTarget(firstWindow!.currentNote!))
         #expect(visibleTarget.documentID.vaultID == topicsVault.id)
         let duplicatePath = "Duplicated Topic.md"
         _ = try await firstWindow!.duplicateNote(visibleTarget, to: duplicatePath)

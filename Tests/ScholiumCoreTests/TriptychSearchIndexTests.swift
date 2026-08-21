@@ -311,7 +311,7 @@ struct TriptychSearchIndexTests {
         )
         let disk = fixture.item(
             vault: fixture.topics,
-            path: "Set Aside/Current.md",
+            path: "Archive/Current.md",
             source: "# Current\n\nDisk text."
         )
         _ = try await index.synchronize([])
