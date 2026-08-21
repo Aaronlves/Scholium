@@ -48,7 +48,6 @@ extension ResearchFunctionOperationsTests {
             noteID: target.noteID,
             note: target.note,
             role: role,
-            lifecycle: target.lifecycle,
             fingerprint: target.fingerprint,
             title: target.title
         )

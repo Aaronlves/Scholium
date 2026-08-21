@@ -64,23 +64,17 @@ native presentation, interface composition, and localization.
 Replacing a sheet route replaces its complete payload atomically. Conditional
 dismissal uses the route identity, so a stale callback cannot dismiss a newer
 sheet. Route payloads carry note paths only as navigation projections; they do
-not own document sessions. Note creation is not a sheet route; lifecycle sheets
-remain only for operations that require researcher-supplied destinations or
-researcher input. Put Back is a direct reversible Source List command and never
-enters the sheet router. Its immutable `NoteLifecycleTarget` is the complete
-mutation authority, so it does not flush an unrelated writable editor
-while a read-only lifecycle presentation is attaching or detaching. A committed
-category move removes the moved Note's document page; if it was selected, the
+not own document sessions. Note creation is not a sheet route; file-operation
+sheets remain only for operations that require a destination, name, or bounded
+destructive confirmation. An immutable `NoteMutationTarget` carries exact path,
+stable identity, and revision into system-Trash preparation. A committed
+native move removes the absent Note's document page; if it was selected, the
 Document controller clears selection and the native tab container presents its
 existing no-document host without implicitly activating another page. The
-native Outline cell owns the pointer-hover Put Back `NSButton` and its
-hit-test-transparent semantic Sidebar material veil above the full-width hosted
-title; SwiftUI retains only row content, context menu, and accessibility
-actions. The same
-native button remains visible while its Outline row owns keyboard focus; one
-Outline coordinator exclusively consumes row-focus requests. Hover
-reconciliation stores a stable row ID and resolves it against current Outline
-rows so removal never asks AppKit to materialize a stale row object.
+native Outline cell retains ordinary selection, context-menu, drag, and
+accessibility behavior; SwiftUI supplies one semantic command projection. The
+system-Trash command opens the single typed confirmation route and does not
+mutate source from row presentation.
 
 `ContentView` has one `.sheet(item:)`, one typed alert presentation, and one
 persistent `ScholiumWorkspaceSplitView` root for each configured workspace
@@ -160,7 +154,7 @@ Response opens one Evaluation-first, optionally expanded Method-Feedback-second
 editor whose single Save Response operation is atomic. Changes reads exact
 current source state and opens the shared comparison without writing Review. One
 default-closed Technical Details group
-owns schema, identity, and exact revision hashes; confirmed permanent deletion
+owns schema, identity, and exact revision hashes; confirmed Research Record deletion
 remains in the Record header. Record
 detail is the sole finalized-result, Evaluation, and Method Feedback processing
 route; the parent Action presentation contains none of those subtrees. A Context Used Note or
@@ -226,7 +220,7 @@ Resynthesize dismiss before routing through the same exact `WindowModel`.
 contextual route: the stable Sidebar entry whenever Sidebar is visible, then the
 nonempty current-Note Inspector summary. Without either visible anchor the
 command is disabled; it never synthesizes a toolbar or detached presentation
-route. The application-wide lifecycle registry records exact Workspace focus
+route. The application-wide window registry records exact Workspace focus
 changes so the newly active Workspace resets query, kind, Note subset, and
 selected task without treating popover key-window changes or app deactivation
 as Workspace switches. No global window search, notification, model registry,
@@ -236,14 +230,14 @@ Library has no literature-recommendation row, footer, count, or reserved gap.
 The Document toolbar sends a Note-scoped Records request when a resolved Note
 is selected and a Triptych-scoped request when no Document is selected; the
 Research menu sends a Triptych-scoped request. All target the same UUID-keyed auxiliary
-window and neither changes Sidebar, Location, selection, filter, sort,
+window and neither changes Sidebar, selection, filter, sort,
 disclosure, Attention, or Inspector state.
 
-Ordinary workspace and Location navigation uses a workspace-keyed
-`DiscoveryLocationRequest(.stagedReplacement)`. `DiscoveryController` retains
+Ordinary workspace navigation uses a workspace-keyed
+`DiscoveryLibraryRequest(.stagedReplacement)`. `DiscoveryController` retains
 one Library state and one in-flight request per Triptych workspace, so a later
 request supersedes only the same workspace. `WindowModel` first flushes the
-active editor, stages the destination vault/Location projection, validates its
+active editor, stages the destination vault/Library projection, validates its
 retained selected tab, and only then commits Shell selection, the destination
 tab group, Document mode, and Inspector mode. Rapid requests converge on the
 last requested workspace. `WindowModel.currentWorkspaceVaultSnapshot` first consumes

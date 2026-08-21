@@ -100,16 +100,11 @@ actor VaultSourceCatalog {
             try await reconcile(projectionRequirement: projectionRequirement)
         } else {
             if projectionRequirement == .search,
-               records.contains(where: {
-                   WorkspaceDocumentLifecycle(relativePath: $0.key) == .active
-                       && $0.value.searchProjection == nil
-               }) {
+               records.contains(where: { $0.value.searchProjection == nil }) {
                 try completeSearchProjections()
             }
             if refreshFolders {
-                let observedFolders = try await repository.folderRelativePaths(
-                    includeLifecycle: true
-                )
+                let observedFolders = try await repository.folderRelativePaths()
                 if observedFolders != folders {
                     try advanceGeneration()
                     folders = observedFolders
@@ -130,10 +125,8 @@ actor VaultSourceCatalog {
     ) async throws {
         let clock = ContinuousClock()
         let enumerationStart = clock.now
-        let paths = try await repository.markdownRelativePaths(includeLifecycle: true)
-        let observedFolders = try await repository.folderRelativePaths(
-            includeLifecycle: true
-        )
+        let paths = try await repository.markdownRelativePaths()
+        let observedFolders = try await repository.folderRelativePaths()
         let enumerationDuration = enumerationStart.duration(to: clock.now)
         let pathSet = Set(paths)
         var changed = !isInitialized || observedFolders != folders
@@ -230,9 +223,7 @@ actor VaultSourceCatalog {
         var nextFolders = folders
         if refreshFolders {
             let folderStart = clock.now
-            nextFolders = try await repository.folderRelativePaths(
-                includeLifecycle: true
-            )
+            nextFolders = try await repository.folderRelativePaths()
             enumerationDuration = folderStart.duration(to: clock.now)
             if nextFolders != folders { changed = true }
         }
@@ -432,14 +423,11 @@ actor VaultSourceCatalog {
                 relativePath: relativePath
             )
             let parseStart = clock.now
-            let semantic: MarkdownSemanticDocument? =
-                WorkspaceDocumentLifecycle(relativePath: relativePath) == .active
-                    ? MarkdownSemanticDocument(parsing: loaded.document)
-                    : nil
+            let semantic = MarkdownSemanticDocument(parsing: loaded.document)
             let parseDuration = parseStart.duration(to: clock.now)
             let projectionStart = clock.now
             let searchProjection: SearchDocumentProjection?
-            if projectionRequirement == .search, let semantic {
+            if projectionRequirement == .search {
                 searchProjection = SearchDocumentProjection(
                     document: loaded.document,
                     profile: WorkflowProfileResolver.resolve(
@@ -461,7 +449,7 @@ actor VaultSourceCatalog {
                     searchProjection: searchProjection
                 ),
                 didRead: true,
-                didParse: semantic != nil,
+                didParse: true,
                 didProject: searchProjection != nil,
                 readDuration: loaded.readDuration,
                 parseDuration: parseDuration,

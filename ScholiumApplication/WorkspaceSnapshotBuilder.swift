@@ -123,9 +123,7 @@ enum WorkspaceSnapshotBuilder {
             projectionRequirement: .library
         )
         let allDocuments = sourceSnapshot.documents
-        let activeDocuments = allDocuments.filter {
-            WorkspaceDocumentLifecycle(relativePath: $0.relativePath) == .active
-        }
+        let activeDocuments = allDocuments
         let semantics = sourceSnapshot.semantics
 
         let identityProjectionStart = clock.now
@@ -231,9 +229,6 @@ enum WorkspaceSnapshotBuilder {
                     stableIdentity: identityStates[document.relativePath] ?? .unresolved,
                     document: document,
                     fileMetadata: fileMetadata,
-                    lifecycle: WorkspaceDocumentLifecycle(
-                        relativePath: document.relativePath
-                    ),
                     graphCounts: WorkspaceGraphCounts(
                         incoming: 0,
                         outgoing: 0,
@@ -379,9 +374,7 @@ enum WorkspaceSnapshotBuilder {
             let sourceSnapshot = loadedSource.snapshot
             sourceMeasurements.append(sourceSnapshot.measurement)
             let allDocuments = sourceSnapshot.documents
-            let activeDocuments = allDocuments.filter {
-                WorkspaceDocumentLifecycle(relativePath: $0.relativePath) == .active
-            }
+            let activeDocuments = allDocuments
             let semantics = sourceSnapshot.semantics
             for document in activeDocuments {
                 try Task.checkCancellation()
@@ -698,9 +691,6 @@ enum WorkspaceSnapshotBuilder {
                         stableIdentity: loaded.identityStates[document.relativePath] ?? .unresolved,
                         document: document,
                         fileMetadata: fileMetadata,
-                        lifecycle: WorkspaceDocumentLifecycle(
-                            relativePath: document.relativePath
-                        ),
                         graphCounts: WorkspaceGraphCounts(
                             incoming: graph?.incoming[id]?.count ?? 0,
                             outgoing: graph?.outgoing[id]?.count ?? 0,
@@ -895,7 +885,6 @@ enum WorkspaceSnapshotBuilder {
                   record.participatingNotes.contains(where: {
                       $0.noteID == topicNoteID
                           && $0.role == .topic
-                          && !$0.isTombstone
                   }) else { continue }
             let participantsByID = Dictionary(
                 uniqueKeysWithValues: record.participatingNotes.map {
@@ -904,7 +893,6 @@ enum WorkspaceSnapshotBuilder {
             )
             for material in record.actuallyUsedMaterials where material.role == .analysis {
                 guard let participant = participantsByID[material.noteID],
-                      !participant.isTombstone,
                       participant.role == .analysis,
                       participant.note == material.note,
                       participant.title == material.title,

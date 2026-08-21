@@ -415,7 +415,6 @@ private func propertyWorkspaceLocation(
             creationDate: nil,
             modificationDate: nil
         ),
-        lifecycle: .active,
         graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0),
         headings: []
     ))

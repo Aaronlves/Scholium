@@ -83,7 +83,7 @@ public actor TriptychFolderMoveCoordinator {
                 from: plan.sourceFolder,
                 to: plan.destinationFolder,
                 expectedDocuments: expectedDocuments,
-                createMissingParents: destinationNeedsLifecycleParent(plan.destinationFolder)
+                createMissingParents: false
             )
         } catch {
             throw TriptychTransactionError.preflightFailed(
@@ -159,7 +159,7 @@ public actor TriptychFolderMoveCoordinator {
                 from: plan.sourceFolder,
                 to: plan.destinationFolder,
                 expectedDocuments: expectedDocuments,
-                createMissingParents: destinationNeedsLifecycleParent(plan.destinationFolder)
+                createMissingParents: false
             )
             movedDocumentsByPath = Dictionary(uniqueKeysWithValues: folderMove.documents.map {
                 ($0.relativePath, $0)
@@ -367,10 +367,4 @@ public actor TriptychFolderMoveCoordinator {
         throw TriptychTransactionError.recoveryRequired(record)
     }
 
-    private func destinationNeedsLifecycleParent(
-        _ destination: VaultRelativeFolderPath
-    ) -> Bool {
-        destination.components.first == "Trash"
-            || destination.components.first == "Set Aside"
-    }
 }

@@ -278,23 +278,13 @@ extension ScholiumUITests {
         modeHoverScreenshot.lifetime = .keepAlways
         add(modeHoverScreenshot)
 
-        let locationPicker = app.descendants(matching: .any)[
-            "scholium.locationPicker"
-        ]
-        XCTAssertTrue(locationPicker.waitForExistence(timeout: 5))
-        locationPicker.hover()
-        let locationHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
-        locationHoverScreenshot.name = "Library LocationHeader — LocationPicker hover"
-        locationHoverScreenshot.lifetime = .keepAlways
-        add(locationHoverScreenshot)
-
         let libraryFilters = app.descendants(matching: .any)[
             "scholium.libraryFilters"
         ]
         XCTAssertTrue(libraryFilters.waitForExistence(timeout: 5))
         libraryFilters.hover()
         let libraryHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
-        libraryHoverScreenshot.name = "Library LocationHeader — semantic icon hover"
+        libraryHoverScreenshot.name = "Library header — semantic icon hover"
         libraryHoverScreenshot.lifetime = .keepAlways
         add(libraryHoverScreenshot)
 
@@ -304,7 +294,7 @@ extension ScholiumUITests {
         XCTAssertTrue(libraryDisclosure.waitForExistence(timeout: 5))
         libraryDisclosure.hover()
         let disclosureHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
-        disclosureHoverScreenshot.name = "Library LocationHeader — disclosure hover"
+        disclosureHoverScreenshot.name = "Library header — disclosure hover"
         disclosureHoverScreenshot.lifetime = .keepAlways
         add(disclosureHoverScreenshot)
 
@@ -314,7 +304,7 @@ extension ScholiumUITests {
         XCTAssertTrue(libraryCreate.waitForExistence(timeout: 5))
         libraryCreate.hover()
         let createHoverScreenshot = XCTAttachment(screenshot: window.screenshot())
-        createHoverScreenshot.name = "Library LocationHeader — create hover"
+        createHoverScreenshot.name = "Library header — create hover"
         createHoverScreenshot.lifetime = .keepAlways
         add(createHoverScreenshot)
 

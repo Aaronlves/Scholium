@@ -46,17 +46,17 @@ public protocol DocumentUseCases: Sendable {
         from sourceRelativePath: String,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit>
-    func moveFolderToTrash(
+    func prepareFolderSystemTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit>
+    ) async throws -> SystemTrashDeletionPreview
     func duplicate(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
     func duplicate(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
     /// Commits authoritative source bytes and returns before disposable
@@ -76,37 +76,15 @@ public protocol DocumentUseCases: Sendable {
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
     func move(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func setAside(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func setAside(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func moveToTrash(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func moveToTrash(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func putBack(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func putBack(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func deletePermanently(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit>
-    func deletePermanently(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit>
+    func prepareSystemTrash(
+        _ target: NoteMutationTarget
+    ) async throws -> SystemTrashDeletionPreview
+    func moveToSystemTrash(
+        _ preview: SystemTrashDeletionPreview
+    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit>
     func interruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery]
     func interruptedSaveRecoveryContent(
         _ recovery: InterruptedSaveRecovery

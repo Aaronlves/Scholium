@@ -377,7 +377,6 @@ extension WorkspaceHandle {
                 noteID: target.noteID,
                 note: target.note,
                 role: Self.functionRole(target.role),
-                lifecycle: target.lifecycle,
                 fingerprint: target.fingerprint,
                 title: target.title
             )
@@ -559,7 +558,6 @@ extension WorkspaceHandle {
         let note = vault.documents.first(where: {
             $0.id.relativePath == request.targetRelativePath
         }),
-        note.lifecycle == .active,
         let noteID = note.stableIdentity.resolvedID else {
             throw ResearchActionExecutionContractError.staleResolution
         }
@@ -567,7 +565,6 @@ extension WorkspaceHandle {
             noteID: noteID,
             note: note.id,
             role: request.targetRole,
-            lifecycle: note.lifecycle,
             fingerprint: note.fingerprint,
             title: ResearchNoteTitleResolver.resolve(
                 document: note.document,
@@ -650,7 +647,6 @@ extension WorkspaceHandle {
                         relativePath: relativePath
                     )
                   ),
-                  snapshot.lifecycle == .active,
                   snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
                     == reference.owner.stableObjectIdentity else {
                 return (.missing, "The referenced Note owner is missing or has a different stable identity.")

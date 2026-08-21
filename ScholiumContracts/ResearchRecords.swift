@@ -758,7 +758,7 @@ public enum CritiquePlacementError: LocalizedError, Sendable {
         case .invalidCritiquePath(let path):
             "A Critique must remain inside the Works/Critiques folder: \(path)"
         case .crossesCritiqueBoundary(let source, let destination):
-            "Scholium cannot move a Critique outside Works/Critiques or turn an ordinary Work into a Critique by moving it there. Move within Critiques, use Set Aside or Trash, or cancel. (\(source) → \(destination))"
+            "Scholium cannot move a Critique outside Works/Critiques or turn an ordinary Work into a Critique by moving it there. Move within Critiques or cancel. (\(source) → \(destination))"
         case .directCreationRequiresRequestCritique:
             "Use Request Critique on a Work to create its associated Critique."
         case .duplicateNotSupported:
@@ -777,7 +777,7 @@ public enum CritiquePlacement {
     }
 
     public static func isManagedCritiquePath(_ relativePath: String) -> Bool {
-        isActiveCritiquePath(workspacePath(from: relativePath))
+        isActiveCritiquePath(relativePath)
     }
 
     public static func validateOrdinaryMove(from source: String, to destination: String) throws {
@@ -786,13 +786,6 @@ public enum CritiquePlacement {
         guard sourceIsCritique == destinationIsCritique else {
             throw CritiquePlacementError.crossesCritiqueBoundary(source: source, destination: destination)
         }
-    }
-
-    private static func workspacePath(from relativePath: String) -> String {
-        for prefix in ["Set Aside/", "Trash/"] where relativePath.hasPrefix(prefix) {
-            return String(relativePath.dropFirst(prefix.count))
-        }
-        return relativePath
     }
 }
 

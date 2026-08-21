@@ -413,10 +413,6 @@ struct ResearchRecordsTests {
             from: "Critiques/Paper Critique.md",
             to: "Critiques/Renamed Critique.md"
         )
-        try CritiquePlacement.validateOrdinaryMove(
-            from: "Set Aside/Critiques/Paper Critique.md",
-            to: "Critiques/Paper Critique.md"
-        )
         #expect(throws: CritiquePlacementError.self) {
             try CritiquePlacement.validateOrdinaryMove(
                 from: "Critiques/Paper Critique.md",

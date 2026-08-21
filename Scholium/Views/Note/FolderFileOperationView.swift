@@ -1,16 +1,16 @@
 import ScholiumContracts
 import SwiftUI
 
-struct FolderLifecycleActions {
-    let move: @MainActor (FolderLifecycleTarget, String) async throws -> Void
+struct FolderFileActions {
+    let move: @MainActor (FolderMutationTarget, String) async throws -> Void
 }
 
-struct FolderLifecycleView: View {
+struct FolderFileOperationView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let request: FolderLifecycleRequest
+    let request: FolderFileRequest
     let folderRelativePaths: [String]
-    let actions: FolderLifecycleActions
+    let actions: FolderFileActions
 
     @State private var proposedName = ""
     @State private var selectedParent: String?
@@ -73,7 +73,7 @@ struct FolderLifecycleView: View {
         }
     }
 
-    private var target: FolderLifecycleTarget { request.target }
+    private var target: FolderMutationTarget { request.target }
 
     private var title: String {
         switch request {
@@ -113,9 +113,6 @@ struct FolderLifecycleView: View {
         return folderRelativePaths.filter { path in
             path != target.relativePath
                 && !path.hasPrefix(sourcePrefix)
-                && WorkspaceDocumentLifecycle(
-                    relativePath: path + "/placeholder.md"
-                ) == .active
         }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 

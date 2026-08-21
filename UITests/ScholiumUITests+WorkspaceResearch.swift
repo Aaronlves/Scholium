@@ -171,23 +171,23 @@ extension ScholiumUITests {
         })
     }
 
-    /// The fixed LocationHeader—not unoccupied outline space or a root Note
+    /// The fixed LibraryHeader—not unoccupied outline space or a root Note
     /// row—is the native pointer target for moving an item back to the vault
     /// root. The source-ahead projection must publish that root row at commit.
     @MainActor
-    func testNativeLocationHeaderDropMovesNoteToVaultRoot() throws {
+    func testNativeLibraryHeaderDropMovesNoteToVaultRoot() throws {
         let noteList = app.descendants(matching: .any)[
             "scholium.noteList"
         ].firstMatch
         let folder = app.descendants(matching: .any)[
             "scholium.folderRow.Cluster-01"
         ].firstMatch
-        let locationHeader = app.descendants(matching: .any)[
-            "scholium.locationPicker"
+        let libraryHeader = app.descendants(matching: .any)[
+            "scholium.libraryHeader"
         ].firstMatch
         XCTAssertTrue(noteList.waitForExistence(timeout: 10))
         XCTAssertTrue(folder.waitForExistence(timeout: 5))
-        XCTAssertTrue(locationHeader.waitForExistence(timeout: 5))
+        XCTAssertTrue(libraryHeader.waitForExistence(timeout: 5))
 
         if (folder.value as? String) != "Expanded" {
             folder.click()
@@ -202,7 +202,7 @@ extension ScholiumUITests {
         XCTAssertTrue(source.waitForExistence(timeout: 5))
         scrollUntilHittable(source, in: noteList)
         XCTAssertTrue(source.isHittable)
-        XCTAssertTrue(locationHeader.isHittable)
+        XCTAssertTrue(libraryHeader.isHittable)
 
         let sourceURL = triptychDirectory.appendingPathComponent(
             "01-analyses/Cluster-01/analysis-007.md"
@@ -216,7 +216,7 @@ extension ScholiumUITests {
         source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .click(
                 forDuration: 0.35,
-                thenDragTo: locationHeader.coordinate(
+                thenDragTo: libraryHeader.coordinate(
                     withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
                 ),
                 withVelocity: .slow,
@@ -228,7 +228,7 @@ extension ScholiumUITests {
         ].firstMatch
         XCTAssertTrue(
             destination.waitForExistence(timeout: 5),
-            "The LocationHeader drop did not publish the root Note row."
+            "The LibraryHeader drop did not publish the root Note row."
         )
         XCTAssertFalse(source.exists)
         XCTAssertTrue(waitUntil(timeout: 5) {
@@ -817,18 +817,14 @@ extension ScholiumUITests {
         let folderTrashSheet = app.sheets.firstMatch
         XCTAssertTrue(folderTrashSheet.waitForExistence(timeout: 5))
         let confirmFolderTrash = folderTrashSheet.buttons[
-            "Move Folder and Notes to Trash"
+            "Move to Trash and Delete Records"
         ]
         XCTAssertTrue(confirmFolderTrash.waitForExistence(timeout: 5))
-        confirmFolderTrash.click()
-        let trashedFolderURL = triptychDirectory.appendingPathComponent(
-            "01-analyses/Trash/Cluster-01/Renamed Empty",
-            isDirectory: true
-        )
-        XCTAssertTrue(waitUntil(timeout: 10) {
-            FileManager.default.fileExists(atPath: trashedFolderURL.path)
-                && !FileManager.default.fileExists(atPath: renamedFolderURL.path)
-        })
+        XCTAssertTrue(folderTrashSheet.staticTexts[
+            "Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds."
+        ].exists)
+        folderTrashSheet.buttons["Cancel"].click()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamedFolderURL.path))
 
         if folderRow.value as? String == "Expanded" {
             folderRow.click()

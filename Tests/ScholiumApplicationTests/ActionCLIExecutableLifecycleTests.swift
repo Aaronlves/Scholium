@@ -1738,7 +1738,6 @@ private struct ActionCLIFixture {
                     noteID: analysisTarget.noteID,
                     note: analysisTarget.note,
                     role: .analysis,
-                    lifecycle: analysisTarget.lifecycle,
                     fingerprint: analysisTarget.fingerprint,
                     title: analysisTarget.title
                 ),
@@ -1779,7 +1778,6 @@ private struct ActionCLIFixture {
             noteID: try #require(note.stableIdentity.resolvedID),
             note: id,
             role: role,
-            lifecycle: note.lifecycle,
             fingerprint: note.fingerprint,
             title: note.document.parsedFrontmatter["title"]?.scalarString
                 ?? id.relativePath

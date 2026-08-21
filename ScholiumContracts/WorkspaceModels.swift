@@ -10,22 +10,6 @@ public enum WorkspaceConfigurationMode: String, Sendable {
     case snapshot
 }
 
-public enum WorkspaceDocumentLifecycle: String, Codable, Hashable, Sendable {
-    case active
-    case setAside = "set_aside"
-    case trash
-
-    public init(relativePath: String) {
-        if relativePath.hasPrefix("Set Aside/") {
-            self = .setAside
-        } else if relativePath.hasPrefix("Trash/") {
-            self = .trash
-        } else {
-            self = .active
-        }
-    }
-}
-
 public struct WorkspaceFileMetadata: Hashable, Sendable {
     public let byteCount: Int
     public let creationDate: Date?
@@ -111,7 +95,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let stableIdentity: WorkspaceNoteIdentityState
     public let document: NoteDocument
     public let fileMetadata: WorkspaceFileMetadata
-    public let lifecycle: WorkspaceDocumentLifecycle
     public let graphCounts: WorkspaceGraphCounts
     public let derivedProjectionState: WorkspaceNoteDerivedProjectionState
     /// Source-bound heading projection prepared by the workspace catalog for
@@ -134,7 +117,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         }
         return DocumentCapabilities(
             role: vaultRole,
-            lifecycle: lifecycle,
             identity: identity,
             isManagedCritique: vaultRole.allowsCritique
                 && CritiquePlacement.isManagedCritiquePath(document.relativePath)
@@ -154,7 +136,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         stableIdentity: WorkspaceNoteIdentityState,
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
-        lifecycle: WorkspaceDocumentLifecycle,
         graphCounts: WorkspaceGraphCounts,
         headings: [HeadingNode] = [],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current
@@ -165,7 +146,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             stableIdentity: stableIdentity,
             document: document,
             fileMetadata: fileMetadata,
-            lifecycle: lifecycle,
             graphCounts: graphCounts,
             headings: headings,
             derivedProjectionState: derivedProjectionState,
@@ -180,7 +160,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         stableIdentity: WorkspaceNoteIdentityState,
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
-        lifecycle: WorkspaceDocumentLifecycle,
         graphCounts: WorkspaceGraphCounts,
         headings: [HeadingNode],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
@@ -192,7 +171,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.stableIdentity = stableIdentity
         self.document = document
         self.fileMetadata = fileMetadata
-        self.lifecycle = lifecycle
         self.graphCounts = graphCounts
         self.headings = headings
         self.derivedProjectionState = derivedProjectionState
@@ -210,7 +188,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             && lhs.stableIdentity == rhs.stableIdentity
             && lhs.fingerprint == rhs.fingerprint
             && lhs.fileMetadata == rhs.fileMetadata
-            && lhs.lifecycle == rhs.lifecycle
             && lhs.graphCounts == rhs.graphCounts
             && lhs.derivedProjectionState == rhs.derivedProjectionState
     }
@@ -221,7 +198,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(stableIdentity)
         hasher.combine(fingerprint)
         hasher.combine(fileMetadata)
-        hasher.combine(lifecycle)
         hasher.combine(graphCounts)
         hasher.combine(derivedProjectionState)
     }
@@ -262,7 +238,6 @@ public struct WorkspaceManagedNoteCommit: Sendable {
                 creationDate: nil,
                 modificationDate: nil
             ),
-            lifecycle: .active,
             graphCounts: WorkspaceGraphCounts(
                 incoming: 0,
                 outgoing: 0,

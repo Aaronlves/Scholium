@@ -263,10 +263,7 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
     ) async throws -> DocumentFingerprint {
         let lease = try await beginResearchControlledSourceObservation()
         defer { endResearchControlledSourceObservation(lease) }
-        guard WorkspaceDocumentLifecycle(
-            relativePath: target.note.relativePath
-        ) == .active,
-              ResearchFunctionTargetRole(
+        guard ResearchFunctionTargetRole(
                 vaultRole: try vault(id: target.note.vaultID).role
               ) == target.role,
               let identityBefore = try await services.controlStore.identityRecord(

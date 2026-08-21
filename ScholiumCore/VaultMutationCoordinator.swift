@@ -10,6 +10,7 @@ enum VaultMutationPhase: Equatable, Sendable {
     case replaced
     case readback
     case completedReplacement
+    case systemTrashMoved
 }
 
 struct VaultMutationHooks: @unchecked Sendable {
@@ -17,6 +18,17 @@ struct VaultMutationHooks: @unchecked Sendable {
     var presenceOverride: ((String) -> FilePresence?)? = nil
 
     static let none = VaultMutationHooks()
+}
+
+enum SystemTrashMoveError: LocalizedError, Sendable {
+    case outcomeUnknown(resultingURL: URL?, reason: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .outcomeUnknown(_, let reason):
+            "Scholium could not prove the final system Trash result: \(reason)"
+        }
+    }
 }
 
 /// Coordinates short-lived filesystem commits while descriptor-relative,
@@ -463,6 +475,135 @@ final class VaultMutationCoordinator {
                 }
             }
         }
+    }
+
+    /// Uses Foundation's native system-Trash operation after the same
+    /// descriptor-relative exact-byte and parent-identity checks as other
+    /// consequential source mutations. A returned URL is evidence of the
+    /// system destination, not an application-owned restore route.
+    func moveToSystemTrash(path: MarkdownRelativePath, expected: Data) throws -> URL? {
+        let targetURL = try resolver.unresolvedURL(for: path)
+        var resultingURL: URL?
+        try coordinateWriting(targetURL, options: .forDeleting) {
+            try self.withParentDescriptor(path: path) { parentFD, name in
+                let initialIdentity = try VaultDescriptorAccess.identity(
+                    name: name,
+                    parentDescriptor: parentFD
+                )
+                let current = try self.readFile(at: name, parentFD: parentFD)
+                guard current == expected else {
+                    throw VaultRepositoryError.conflict(
+                        expected: DocumentFingerprint(data: expected),
+                        current: DocumentFingerprint(data: current)
+                    )
+                }
+                try self.hooks.didReach?(.finalCheck)
+                try self.descriptorAccess.verifyCurrentParent(
+                    path,
+                    retainedDescriptor: parentFD
+                )
+                guard try VaultDescriptorAccess.identity(
+                    name: name,
+                    parentDescriptor: parentFD
+                ) == initialIdentity else {
+                    throw VaultRepositoryError.commitUncertain(
+                        "The exact source directory entry changed before the system Trash move."
+                    )
+                }
+                var systemResult: NSURL?
+                do {
+                    try FileManager.default.trashItem(
+                        at: targetURL,
+                        resultingItemURL: &systemResult
+                    )
+                } catch {
+                    if case .absent = self.filePresence(name: name, parentFD: parentFD) {
+                        throw SystemTrashMoveError.outcomeUnknown(
+                            resultingURL: systemResult as URL?,
+                            reason: error.localizedDescription
+                        )
+                    }
+                    throw error
+                }
+                resultingURL = systemResult as URL?
+                try self.hooks.didReach?(.systemTrashMoved)
+                guard case .absent = self.filePresence(name: name, parentFD: parentFD) else {
+                    throw SystemTrashMoveError.outcomeUnknown(
+                        resultingURL: resultingURL,
+                        reason: "The original path was occupied again before readback."
+                    )
+                }
+                try self.descriptorAccess.verifyCurrentParent(
+                    path,
+                    retainedDescriptor: parentFD
+                )
+            }
+        }
+        return resultingURL
+    }
+
+    /// Moves one exact directory entry through the native system Trash. The
+    /// repository validates the complete descendant inventory before
+    /// entering this coordinated accessor; this final check rejects a replaced
+    /// directory object and a recreated original path.
+    func moveDirectoryToSystemTrash(
+        path: VaultRelativeFolderPath,
+        finalInventoryCheck: () throws -> Void
+    ) throws -> URL? {
+        let targetURL = try resolver.unresolvedURL(for: path)
+        var resultingURL: URL?
+        try coordinateWriting(targetURL, options: .forDeleting) {
+            try self.withParentDescriptor(path: path) { parentFD, name in
+                var status = stat()
+                guard fstatat(parentFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0,
+                      (status.st_mode & S_IFMT) == S_IFDIR else {
+                    throw VaultRepositoryError.notRegularFile(path.rawValue)
+                }
+                let initialIdentity = VaultDescriptorAccess.FileIdentity(status)
+                try self.hooks.didReach?(.finalCheck)
+                try self.descriptorAccess.verifyCurrentParent(
+                    path,
+                    retainedDescriptor: parentFD
+                )
+                try finalInventoryCheck()
+                guard try VaultDescriptorAccess.identity(
+                    name: name,
+                    parentDescriptor: parentFD
+                ) == initialIdentity else {
+                    throw VaultRepositoryError.commitUncertain(
+                        "The exact folder directory entry changed before the system Trash move."
+                    )
+                }
+                var systemResult: NSURL?
+                do {
+                    try FileManager.default.trashItem(
+                        at: targetURL,
+                        resultingItemURL: &systemResult
+                    )
+                } catch {
+                    if case .absent = self.filePresence(name: name, parentFD: parentFD) {
+                        throw SystemTrashMoveError.outcomeUnknown(
+                            resultingURL: systemResult as URL?,
+                            reason: error.localizedDescription
+                        )
+                    }
+                    throw error
+                }
+                resultingURL = systemResult as URL?
+                try self.hooks.didReach?(.systemTrashMoved)
+                guard case .absent = self.filePresence(name: name, parentFD: parentFD) else {
+                    throw SystemTrashMoveError.outcomeUnknown(
+                        resultingURL: resultingURL,
+                        reason: "The original folder path was occupied again before readback."
+                    )
+                }
+                try self.descriptorAccess.verifyCurrentParent(
+                    path,
+                    retainedDescriptor: parentFD
+                )
+            }
+        }
+        return resultingURL
     }
 
     private func coordinateWriting(

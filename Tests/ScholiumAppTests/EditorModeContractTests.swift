@@ -35,14 +35,14 @@ struct EditorModeContractTests {
         )
         let specification = try String(
             contentsOf: repository.appendingPathComponent(
-                "Docs/Specification/02-notes-and-lifecycle.md"
+                "Docs/Specification/02-notes-and-file-operations.md"
             ),
             encoding: .utf8
         )
 
         #expect(
             contract.authority
-                == "Docs/Specification/02-notes-and-lifecycle.md section 5.1"
+                == "Docs/Specification/02-notes-and-file-operations.md section 5.1"
         )
         #expect(contract.referenceMode == "Review")
         #expect(sourceData.starts(with: [0xEF, 0xBB, 0xBF]))

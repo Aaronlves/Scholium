@@ -309,14 +309,9 @@ struct ScholiumLocalizationTests {
         )
     }
 
-    @Test("Lifecycle destinations use approved Simplified Chinese terminology")
-    func lifecycleDestinationTerminology() {
-        #expect(ScholiumL10n.string("Set Aside", locale: simplifiedChinese) == "搁置")
-        #expect(ScholiumL10n.string("SET ASIDE", locale: simplifiedChinese) == "搁置")
-        #expect(ScholiumL10n.string("Trash", locale: simplifiedChinese) == "纸篓")
-        #expect(ScholiumL10n.string("TRASH", locale: simplifiedChinese) == "纸篓")
+    @Test("System Trash and file operations use approved Simplified Chinese terminology")
+    func fileOperationTerminology() {
         #expect(ScholiumL10n.string("Move to Trash…", locale: simplifiedChinese) == "移至纸篓…")
-        #expect(ScholiumL10n.string("Put Back", locale: simplifiedChinese) == "放回")
         #expect(ScholiumL10n.string("Back to Library", locale: simplifiedChinese) == "返回研究文档")
         #expect(ScholiumL10n.string("Rename Note", locale: simplifiedChinese) == "重命名笔记")
         #expect(ScholiumL10n.string("Rename Note…", locale: simplifiedChinese) == "重命名笔记…")
@@ -343,16 +338,7 @@ struct ScholiumLocalizationTests {
         #expect(englishCount == "3 notes")
         #expect(chineseCount == "3 篇文档")
 
-        let researcherTitle = "QA 议题：Trash/Set Aside"
-        let putBackLabel = String(
-            format: ScholiumL10n.string("Put Back %@", locale: simplifiedChinese),
-            locale: simplifiedChinese,
-            researcherTitle
-        )
-        #expect(putBackLabel == "放回 QA 议题：Trash/Set Aside")
-
         let nativeStrings = SidebarNativeStrings(locale: simplifiedChinese)
-        #expect(nativeStrings.locationName(.workspace) == "研究文档")
         #expect(nativeStrings.newNote == "新建笔记")
         #expect(nativeStrings.newFolder == "新建文件夹")
         #expect(
@@ -375,8 +361,8 @@ struct ScholiumLocalizationTests {
         )
     }
 
-    @Test("Lifecycle catalog retires alternate terms and replaced keys")
-    func lifecycleDestinationCatalogHasNoRetiredEntries() throws {
+    @Test("Interface catalog retires alternate terms and replaced keys")
+    func interfaceCatalogHasNoRetiredEntries() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -403,7 +389,6 @@ struct ScholiumLocalizationTests {
             "\"Opening %arg…\" :",
             "\"Move or Rename Note…\" :",
             "\"Move or Rename…\" :",
-            "\"Put Back…\" :",
         ] {
             #expect(!catalog.contains(retiredCardKey))
         }

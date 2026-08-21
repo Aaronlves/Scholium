@@ -314,7 +314,12 @@ struct TransactionRecoveryView: View {
                 table: "Localizable",
                 bundle: .module
             )
-        case .permanentDeletion: "Permanent Deletion"
+        case .systemTrashDeletion:
+            String(
+                localized: "System Trash and Record Cleanup",
+                table: "Localizable",
+                bundle: .module
+            )
         }
     }
 }
@@ -336,10 +341,18 @@ struct TransactionRecoveryActionPresentation: Equatable {
     )
 
     init(record: TriptychMutationRecoveryRecord) {
-        if record.permanentDeletionPlan != nil {
-            alertTitle = String(localized: "Continue Permanent Deletion?")
-            buttonTitle = String(localized: "Continue Deletion")
-            message = String(localized: "Scholium will recheck each exact planned source and continue deletion and privacy cleanup. Already deleted source is never restored; a changed or unreadable source stops without being removed.")
+        if let plan = record.systemTrashDeletionPlan {
+            if plan.sourceReceipts.contains(where: {
+                $0.progress == .outcomeUnknown
+            }) {
+                alertTitle = String(localized: "Retain Records and Resolve?", table: "Localizable", bundle: .module)
+                buttonTitle = String(localized: "Retain Records", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, this releases the deletion gate and retains every associated finished Research Record. It neither restores nor removes any file.", table: "Localizable", bundle: .module)
+            } else {
+                alertTitle = String(localized: "Continue Record Cleanup?", table: "Localizable", bundle: .module)
+                buttonTitle = String(localized: "Continue Cleanup", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Associated finished Research Records are then deleted one by one with exact-fingerprint checks.", table: "Localizable", bundle: .module)
+            }
             return
         }
         guard record.researchWrite != nil || record.managedCreation != nil else {
@@ -355,7 +368,7 @@ struct TransactionRecoveryActionPresentation: Equatable {
             alertTitle = String(localized: "Reconcile Interrupted Agent Save?")
             buttonTitle = String(localized: "Reconcile Agent Save")
             message = String(localized: "Scholium will recheck the exact current source, reconcile the Run with the interrupted save evidence, and clear completed machine-local recovery records. It will not replace Markdown source.")
-        case .noteMove, .folderMove, .permanentDeletion:
+        case .noteMove, .folderMove, .systemTrashDeletion:
             self = .generic
         }
     }
@@ -698,7 +711,8 @@ private struct RecoveryFileRow: View {
         case .movedFolder:
             String(localized: "Moved folder", table: "Localizable", bundle: .module)
         case .incomingLinkRewrite: "Incoming link rewrite"
-        case .deletedNote: "Deleted note"
+        case .trashedNote: "Note moved to system Trash"
+        case .trashedFolder: "Folder moved to system Trash"
         case .associatedCritique: "Associated Critique"
         }
     }

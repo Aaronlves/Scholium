@@ -331,7 +331,7 @@ Record; a different payload fails closed. An interrupted committed
 source/finalization gap is repaired from the Run and transaction evidence
 unless a Record deletion tombstone forbids recreation.
 
-`PortableResearchRecordStore` owns strict schema-11 Records, including the
+`PortableResearchRecordStore` owns strict schema-12 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
 fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
@@ -382,8 +382,8 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-16 Local Execution, exact
-schema-11 Record reads, and schema-1 Note Reviews. The projections
+`noteReviewStates`, and `resultArrivals` from schema-17 Local Execution, exact
+schema-12 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, source bytes, prompts,
@@ -553,9 +553,12 @@ It never schedules itself, is not required by Analyze or another write Action,
 does not collapse mixed outcomes, certify truth/acceptance, or own write
 authority. A source change makes only the affected check stale.
 
-Permanent Note deletion preflights and cleans Run/write-set/source/active-
-Discussion state that could authorize the Note, while finished Records retain
-their tombstoned historical participant. Unsupported pre-production files
+System-Trash preparation rejects any relevant active or write-recovering local
+execution. After all native source receipts commit, its recovery plan discards
+affected active Discussions, deletes each associated finished Record as a
+whole using its exact byte fingerprint, prunes Note Review references, and
+purges local execution and Agent-change evidence. An external source absence
+without that plan performs none of this cleanup. Unsupported pre-production files
 remain byte-unchanged, unread, and nonauthorizing; current decoders do not
 interpret them as configuration, execution, or Record authority.
 

@@ -91,7 +91,6 @@ public struct ResearchFunctionTarget: Codable, Hashable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let role: ResearchFunctionTargetRole
-    public let lifecycle: WorkspaceDocumentLifecycle
     public let fingerprint: DocumentFingerprint
     public let title: String
 
@@ -99,14 +98,12 @@ public struct ResearchFunctionTarget: Codable, Hashable, Sendable {
         noteID: UUID,
         note: VaultQualifiedNoteID,
         role: ResearchFunctionTargetRole,
-        lifecycle: WorkspaceDocumentLifecycle = .active,
         fingerprint: DocumentFingerprint,
         title: String
     ) {
         self.noteID = noteID
         self.note = note
         self.role = role
-        self.lifecycle = lifecycle
         self.fingerprint = fingerprint
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -118,7 +115,6 @@ public struct ResearchFunctionMaterial: Codable, Hashable, Identifiable, Sendabl
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let role: ResearchFunctionTargetRole
-    public let lifecycle: WorkspaceDocumentLifecycle
     public let fingerprint: DocumentFingerprint
     public let title: String
 
@@ -128,14 +124,12 @@ public struct ResearchFunctionMaterial: Codable, Hashable, Identifiable, Sendabl
         noteID: UUID,
         note: VaultQualifiedNoteID,
         role: ResearchFunctionTargetRole,
-        lifecycle: WorkspaceDocumentLifecycle = .active,
         fingerprint: DocumentFingerprint,
         title: String
     ) {
         self.noteID = noteID
         self.note = note
         self.role = role
-        self.lifecycle = lifecycle
         self.fingerprint = fingerprint
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -382,9 +376,6 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     }
 
     public func validate() throws {
-        guard target.lifecycle == .active else {
-            throw ResearchFunctionContractError.inactiveTarget
-        }
         guard function.allowedTargetRoles.contains(target.role) else {
             throw ResearchFunctionContractError.invalidTargetRole(
                 function: function,
@@ -403,7 +394,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         }) else {
             throw ResearchFunctionContractError.targetRepeatedAsMaterial
         }
-        guard materials.allSatisfy({ $0.lifecycle == .active && !$0.title.isEmpty }) else {
+        guard materials.allSatisfy({ !$0.title.isEmpty }) else {
             throw ResearchFunctionContractError.inactiveMaterial
         }
         if function == .fidelity {
@@ -417,8 +408,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
                       $0.noteID == target.noteID && $0.note == target.note
                   }),
                   targets.allSatisfy({
-                      $0.lifecycle == .active
-                          && !$0.title.isEmpty
+                      !$0.title.isEmpty
                           && ResearchFunctionID.fidelity.allowedTargetRoles.contains($0.role)
                   }) else {
                 throw ResearchFunctionContractError.invalidFidelityTargets
@@ -1133,7 +1123,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
         case .targetIdentityChanged:
             "The Action Target no longer has the same stable identity."
         case .inactiveTarget:
-            "An Action requires an active Target, not a set-aside or trashed note."
+            "The Action Target is not available for this operation."
         case .invalidTargetRole(_, let role):
             "This Action is not available for a \(role.rawValue) Target."
         case .emptyTargetTitle:

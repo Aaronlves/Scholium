@@ -43,9 +43,8 @@ sibling items:
 1. **Sidebar:** a Library navigation region containing Scholium and Triptych
    identity; one vertical **Analyses / Topics / Works**
    TriptychWorkspaceNavigator; one stable Triptych Attention entry; one
-   title-style LocationPicker for **Library**, **Set Aside**, and **Trash**;
-   one selected-workspace-and-location source region; and Library-local Filter
-   and Add. Settings is not a Library destination.
+   selected-workspace Library source region; and Library-local disclosure,
+   Filter, and Add controls. Settings is not a Library destination.
 2. **Document:** selected note or the restrained no-document empty state.
 3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
    projections. It never owns buffers, autosave, Undo, or conflicts;
@@ -88,8 +87,8 @@ session. Menu, toolbar, and content actions send explicit per-window intents to
 the native controller; model observation never continuously reasserts split
 state. Notes/tabs never reconstruct the shell or change peripheral
 visibility. The selected workspace is per-window presentation state, not a
-Note, vault, or Markdown fact. Each workspace retains its own Location,
-filters, disclosure, source-list scroll, selected tab, live Document mode, and
+Note, vault, or Markdown fact. Each workspace retains its own filters,
+disclosure, source-list scroll, selected tab, live Document mode, and
 Inspector mode. A workspace transition saves or fails safely before it commits
 the destination session; it never replaces a dirty buffer or presents the
 destination identity over retained origin content. A new window's first
@@ -153,7 +152,7 @@ Window close, route handoff, and application termination are bounded. A
 content flush, save, or conflict failure keeps the affected window and exact
 buffer available with a retry path. Machine-local window-session or layout
 persistence is best-effort after content is safe; its failure is diagnosed but
-does not veto close or misreport a source-save failure. Late lifecycle work may
+does not veto close or misreport a source-save failure. Late asynchronous work may
 not act on a newer route, window, document, or close attempt.
 
 An ordinary application-cold launch opens the selected Triptych with no
@@ -205,8 +204,8 @@ Menus follow researcher tasks:
   within the group, and lets Tab continue into the selected workspace without
   pointer activation creating a keyboard-only focus ring.
 - Each workspace row places the last trustworthy exact count of ordinary
-  active Notes in that role vault at its logical trailing edge. Set Aside and
-  Trash do not contribute. The count is noninteractive neutral inventory
+  Notes in that role vault at its logical trailing edge. The count is
+  noninteractive neutral inventory
   metadata: system Sans, monospaced digits, and `mutedText` in selected,
   unselected, hover, focus, and inactive-window states. Zero remains visible;
   an unavailable first result uses an em dash rather than claiming zero; a
@@ -235,10 +234,10 @@ Menus follow researcher tasks:
   presents **Expand All Folders** with one direct expand symbol and expands the
   complete tree. It never constructs either mark by stacking glyphs.
   It is unavailable when the tree contains no expandable Folder. The action
-  mutates only the current vault-and-Location disclosure set and never source, order,
-  selection, or another window. Every successful in-app active-Note navigation
+  mutates only the current vault's Library disclosure set and never source,
+  order, selection, or another window. Every successful in-app Note navigation
   independently switches Library to that Note's exact Triptych Scope and
-  Library Location, clears filters only when they exclude that Note, expands
+  Library, clears filters only when they exclude that Note, expands
   only its ancestors, and scrolls only as much as needed without transferring
   keyboard focus. Manually browsing a different Scope remains possible until
   the next document navigation.
@@ -256,7 +255,7 @@ Menus follow researcher tasks:
   state mark precedes title; selected, focused, disclosed, drop-target, and
   inactive-selected remain distinct, and selection stays visible off-focus.
 - Folder and Note rows scroll as one native hierarchy; no Folder becomes a
-  sticky section or floating group row. The LocationHeader and its
+  sticky section or floating group row. The Library header and its
   Filter/disclosure/Add controls remain outside the Source List scroll owner
   and stay available while the hierarchy scrolls.
 - Every enabled, unselected Note and Folder row provides one restrained
@@ -266,12 +265,12 @@ Menus follow researcher tasks:
 - A draggable ordinary Note uses one process-private identity-and-revision
   payload, never source text. A draggable ordinary Folder uses one
   process-private vault-and-path payload. An eligible Folder row and the
-  Library LocationHeader advertise Move and provide a restrained temporary
-  target surface; every other row and Location rejects the drop. Note
+  Library header advertise Move and provide a restrained temporary target
+  surface; every other row rejects the drop. Note
   completion uses the ordinary revision-checked Move transaction; Folder
   completion uses the ordinary complete-descendant flush-and-recheck Move
   transaction. Both resume through the established derived refresh path.
-- When Library is selected, the LocationHeader Add menu offers direct **New
+- The Library header Add menu offers direct **New
   Note** and **New Folder** at the current vault root. A secondary click in
   unoccupied Source List space offers the same two actions without becoming
   their only route.
@@ -297,7 +296,7 @@ Menus follow researcher tasks:
   body insertion point only after editor mode acknowledgement. This explicit
   writing focus is separate from Library reveal and remains recoverable when
   the editor fails after the durable source commit.
-- The Library Location shows no total. Triptych Attention treats zero as the
+- Library shows no total. Triptych Attention treats zero as the
   steady state, **1–3** unresolved items as its primary design condition, and
   larger queues as exceptional accumulation rather than a separate mode or
   hard cap. Its stable BrandHeader control always remains a direct entry. At
@@ -309,9 +308,9 @@ Menus follow researcher tasks:
   complete symbol-and-count target; the symbol never owns a separate circle.
   It neither auto-opens, steals focus, pulses, nor repeats attention-seeking
   motion. Opening it presents the complete Triptych queue without changing the
-  selected workspace, Location, source content, Document, or Sidebar selection.
+  selected workspace, source content, Document, or Sidebar selection.
   Inspector may open the same queue with a current-Note subset. Attention is
-  not a Location.
+  is not Library navigation.
 - Refresh preserves the last trustworthy Triptych total. A first load with no
   trustworthy result never claims zero; checking uses the control's bounded
   native progress state. Failure without a trustworthy result presents a
@@ -354,85 +353,34 @@ Menus follow researcher tasks:
   resolution, refresh, or dismissal removes
   the selected item, focus moves next, previous, then the popover filter/search
   control. Count updates use the same Scope and dismissal ledger as the popover.
-- The stable LocationHeader contains one title-style LocationPicker and only
-  the actions applicable to the selected Location. Its current title always
-  identifies **Library**, **Set Aside**, or **Trash**. Every Location uses the
-  same adaptive Folder disclosure button when its current category projection
-  contains a hierarchy; the button remains unavailable when there is no
-  expandable Folder. Library additionally shows Filter and Add. Set Aside and
-  Trash omit only those Library-specific controls. The header keeps the same
-  position and height while the source region changes. Its matching icon-only
-  controls use the location-header target metric owned by §19.3, secondary ink at rest, primary
-  ink plus the shared shallow semantic interaction surface on hover, native
-  keyboard focus, and the same purpose-owned continuous corner recipe. Filter,
-  disclosure, and Add reuse this complete presentation regardless of whether a
-  native Menu or Button owns activation. They add no persistent Accent tint,
+- The stable Library header contains the adaptive Folder disclosure control,
+  Filter, and Add. The disclosure control is unavailable when there is no
+  expandable Folder. Matching icon-only controls use the header target metric
+  owned by §19.3, secondary ink at rest, primary ink plus the shared shallow
+  semantic interaction surface on hover, native keyboard focus, and the same
+  purpose-owned continuous corner recipe. They add no persistent Accent tint,
   independent radius, hover animation, scale, or shadow.
-- The LocationPicker is one native menu of three mutually exclusive items.
-  Its title presentation is quiet and borderless: it has no enclosing fill,
-  bezel, capsule, custom disclosure glyph, or persistent Accent tint. Its title
-  uses Regular secondary ink at rest, matching the ordinary command icons in
-  the same header without becoming a section heading. Hover or keyboard focus
-  promotes the title to primary ink and places the shared shallow interaction
-  surface behind its complete native title-and-indicator target at the
-  preferred location-header height owned by §19.3. Hover, focus, and press use the same continuous
-  editorial-control corner recipe and never stack a native hover enclosure
-  beneath the Scholium surface.
-  Its selected item uses a checkmark; Set Aside and Trash may show a last-
-  complete count as neutral location metadata. Missing, refreshing, or failed
-  counts never disable selection or change the selected Location. Opening the
-  menu enters its native keyboard order; Arrow keys, Home, End, and Return
-  navigate and choose, while Escape closes the menu and restores focus to the
-  LocationPicker. Leaving Set Aside or Trash requires choosing Library or
-  another Location; there is no parallel Back control, footer toggle, or
-  lifecycle tab row.
-- Ordinary workspace and Location navigation stages the target session and
-  Source List from the latest accepted Workspace snapshot while the last
-  committed workspace session remains intact, then commits the destination
-  atomically after document safety succeeds. It never replaces trustworthy
-  content with a full-page Loading state merely because an in-memory
-  projection crosses an asynchronous boundary. Loading remains available only
-  when no trustworthy committed projection exists or an explicit
-  recovery/refresh owns that state. A staged target failure retains the prior
-  workspace, tabs, Document, Inspector, Location, and content and reports the
-  failure; it never presents destination identity over origin content.
-- **Set Aside** and **Trash** are same-plane Library Locations, never overlays,
-  cards, sheets, or separate Sidebar modes. Selecting one replaces only the
-  source-region content; BrandHeader, TriptychWorkspaceNavigator,
-  Triptych Attention state,
-  LocationHeader retain their ownership.
-  All three Locations project the same native Folder-and-Note outline and row
-  interaction grammar; lifecycle filtering and category-valid actions are the
-  only intentional differences.
-  Switching workspace restores that workspace's retained Location and content.
-  An empty Location remains selected and shows its own short empty state rather
-  than silently returning to Library. At most one Location content subtree
-  accepts input or appears in the accessibility tree; an implementation may
-  retain inactive presentation solely to preserve disclosure or scroll context
-  only while it remains layout-neutral, inert, and accessibility-hidden.
-- Library, Set Aside, and Trash empty, loading, and error states are
-  page-level Location content: they align to the peripheral page edge and begin
-  one section step below LocationHeader. They never borrow the tighter
-  OutlineRow surface inset; §19.3 owns all three metrics. Populated Note and
-  Folder rows retain that row inset and their existing hierarchy rhythm. An
-  initial Library load with no trustworthy projection uses one system
-  indeterminate progress indicator and the explicit **Loading Library…** name;
-  it does not use a shimmer, skeleton, or moving highlight. Staged replacement
-  never places that loading treatment over retained trustworthy content.
-- Lifecycle rows reuse the same Library minimum OutlineRow rhythm and
-  Note semantic slot. A single-line truncated title opens the note in place and
-  retains the complete row width. Its quiet secondary-ink **Put Back** control
-  appears as a trailing native overlay above a semantic Sidebar material veil
-  on full-row pointer hover or keyboard focus; it neither reserves title width
-  nor reflows the row. Put Back is a direct nonmodal action and opens no
-  confirmation or destination sheet. The row's context menu and named
-  accessibility action remain available without hover. Ordinary lifecycle rows
-  draw no separator. After Put Back, Move to Trash, or permanent deletion
-  removes a row, focus moves next, previous, then LocationPicker; cancellation
-  or failure restores the originating row. A successful category move of the
-  currently presented Note also removes that document page and shows the
-  no-document empty state; explicit selection in the destination Location
-  remains the route for browsing its content.
+- Ordinary workspace navigation stages the target session and Library source
+  list from the latest accepted Workspace snapshot while the last committed
+  workspace session remains intact, then commits the destination atomically
+  after document safety succeeds. It never replaces trustworthy content with a
+  full-page Loading state merely because an in-memory projection crosses an
+  asynchronous boundary. A staged target failure retains the prior workspace,
+  tabs, Document, Inspector, and content and reports the failure.
+- Library empty, loading, and error states align to the peripheral page edge
+  and begin one section step below the Library header. They never borrow the
+  tighter OutlineRow surface inset. An initial load with no trustworthy
+  projection uses one system indeterminate progress indicator and the explicit
+  **Loading Library…** name; it does not use a shimmer or skeleton.
+- A Note or Folder row exposes destructive **Move to Trash…** through its
+  context menu and named accessibility action. The focused window also exposes
+  the equivalent File-menu command with the standard Command-Delete shortcut.
+  It always presents the bounded confirmation owned by section 6 before any
+  native move. Confirmation cancellation or preflight failure restores the
+  originating row and focus. After a committed move, focus moves to the next
+  row, previous row, then Library; an open page for absent source closes while
+  unrelated tabs and document focus remain intact. Finder, not Library, owns
+  browsing or restoring system-Trash content.
 - Shared Search follows Section 13: one compact centered surface, always-visible
   provider-specific scope, no empty sheet, and bounded Note or Record results
   that identify match context, source freshness, and destination. Typing a

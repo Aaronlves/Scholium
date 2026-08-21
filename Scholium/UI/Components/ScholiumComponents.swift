@@ -589,87 +589,6 @@ struct ScholiumQuietRowButtonStyle: ButtonStyle {
     }
 }
 
-/// The stable Library / Set Aside / Trash state selector. One native `Menu`
-/// owns both the quiet label and its checkmarked, mutually-exclusive commands;
-/// Scholium adds no bezel, background, or second chevron.
-struct ScholiumLibraryLocationPicker: View {
-    @Binding var selection: NoteLocationScope
-    let focus: FocusState<Bool>.Binding
-
-    var body: some View {
-        Menu {
-            locationChoice("Library", value: .workspace)
-            locationChoice("Set Aside", value: .setAside)
-            locationChoice("Trash", value: .trash)
-        } label: {
-            ScholiumLibraryLocationPickerLabel(title: selectedTitle)
-        }
-        .menuStyle(.borderlessButton)
-        .buttonStyle(.plain)
-        .menuIndicator(.visible)
-        .tint(ScholiumColorRole.secondaryText.color)
-        .fixedSize()
-        .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
-        .scholiumContentControlPointerFeedback(
-            isFocused: focus.wrappedValue,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                style: .continuous
-            )
-        )
-        .scholiumActivationFocus(focus)
-        .accessibilityLabel("Location")
-        .accessibilityValue(selectedTitle)
-        .accessibilityIdentifier("scholium.locationPicker")
-    }
-
-    private func locationChoice(
-        _ title: LocalizedStringKey,
-        value: NoteLocationScope
-    ) -> some View {
-        let isSelected = selection == value
-        return Button {
-            selection = value
-        } label: {
-            if isSelected {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
-        }
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-    }
-
-    private var selectedTitle: String {
-        switch selection {
-        case .workspace:
-            ScholiumL10n.dynamicString("Library")
-        case .setAside:
-            ScholiumL10n.dynamicString("Set Aside")
-        case .trash:
-            ScholiumL10n.dynamicString("Trash")
-        }
-    }
-}
-
-private struct ScholiumLibraryLocationPickerLabel: View {
-    @Environment(\.scholiumContentControlIsEmphasized) private var isEmphasized
-
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(ScholiumTypography.interface(.body))
-            .scholiumForeground(
-                isEmphasized
-                    ? .primaryText
-                    : .secondaryText
-            )
-            .lineLimit(1)
-            .contentShape(Rectangle())
-    }
-}
-
 /// The Analyses / Topics / Works top-level navigator. It owns row presentation,
 /// neutral Note totals, pointer feedback, and vertical keyboard traversal;
 /// WindowShellState remains the sole owner of the selected workspace.
@@ -794,7 +713,7 @@ private struct ScholiumTriptychWorkspaceButton: View {
     }
 }
 
-/// Page-level content for a Library Location when no OutlineRow is being
+/// Page-level Library content when no OutlineRow is being
 /// presented. It deliberately uses the shared peripheral page edge rather
 /// than the tighter row-surface inset used by Notes and Folders.
 struct ScholiumLibrarySourceState<Content: View>: View {

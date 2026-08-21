@@ -13,7 +13,13 @@
   English and Simplified Chinese localization.
 - Recheck fullscreen, native Sidebar/Inspector collapse and restoration,
   scenes, Dock/New Window behavior, last-tab closure, auxiliary windows, and
-  focus restoration after lifecycle and recovery operations.
+  focus restoration after system-Trash and recovery operations.
+- Complete disposable and then human Finder acceptance for Note and Folder
+  Trash naming/collisions, separately moved Critiques, multi-window dirty peers,
+  File Provider/sync races, original-path reappearance, system Trash emptying,
+  process interruption at every receipt boundary, and Finder restoration after
+  Record cleanup. Focused tests do not establish these Finder and multi-window
+  usability outcomes.
 - Complete direct acceptance for long Connect clusters, Attention queue sizes,
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.

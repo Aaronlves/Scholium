@@ -417,29 +417,6 @@ struct ResearchBoundedWriteOperationsTests {
                 noteID: createdEntry.noteID
             )
         }
-        let trashed = try await handle.documents.moveToTrash(
-            createdEntry.note,
-            expectedRevision: finalDocument.fingerprint
-        ).committedValue
-        let trashedDocument = try await handle.documents.load(trashed.destination)
-        _ = try await handle.documents.deletePermanently(
-            trashed.destination,
-            expectedRevision: trashedDocument.fingerprint
-        )
-        let tombstonedRecord = try #require(
-            try await handle.research.finishedResearchRecords(
-                noteID: createdEntry.noteID
-            ).first { $0.id == record.id }
-        )
-        let tombstone = try #require(tombstonedRecord.participatingNotes.first {
-            $0.noteID == createdEntry.noteID
-        })
-        #expect(tombstone.isTombstone)
-        #expect(tombstone.startingRevision == firstCreatedRevision)
-        #expect(tombstone.endingRevision == nil)
-        #expect(tombstonedRecord.confirmedChanges.first {
-            $0.noteID == createdEntry.noteID
-        } == change)
         #expect(try await handle.research.recoveryRecords().isEmpty)
         await runtime.shutdown()
     }
@@ -2051,10 +2028,12 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(afterResearcherEdit.status == .noAgentChangesAwaitingReview)
         #expect(afterResearcherEdit.currentRevision == researcherRevision)
         #expect(afterResearcherEdit.lastReviewedRevision == change.startingRevision)
-        _ = try await handle.documents.moveToTrash(
-            moved.destination,
-            expectedRevision: researcherRevision
+        try FileManager.default.removeItem(
+            at: fixture.analysesURL.appendingPathComponent(
+                moved.destination.relativePath
+            )
         )
+        _ = try await handle.refresh()
         let unavailableState = try await handle.research
             .researchRecordChangeState(recordID: record.id)
         #expect(unavailableState.documents.map(\.status) == [.unavailable])

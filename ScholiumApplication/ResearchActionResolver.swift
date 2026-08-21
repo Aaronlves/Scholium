@@ -587,7 +587,6 @@ extension ResearchFunctionTarget {
             noteID: noteID,
             note: note,
             role: role.actionRole,
-            lifecycle: lifecycle,
             fingerprint: fingerprint,
             title: title
         )
@@ -600,7 +599,6 @@ extension ResearchFunctionMaterial {
             noteID: noteID,
             note: note,
             role: role.actionRole,
-            lifecycle: lifecycle,
             fingerprint: fingerprint,
             title: title
         )
@@ -613,7 +611,6 @@ private extension ResearchActionNoteSnapshot {
             noteID: noteID,
             note: note,
             role: role.functionRole,
-            lifecycle: lifecycle,
             fingerprint: fingerprint,
             title: title
         )
@@ -624,7 +621,6 @@ private extension ResearchActionNoteSnapshot {
             noteID: noteID,
             note: note,
             role: role.functionRole,
-            lifecycle: lifecycle,
             fingerprint: fingerprint,
             title: title
         )

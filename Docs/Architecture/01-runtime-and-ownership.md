@@ -97,7 +97,7 @@ only on `ScholiumContracts`. It owns the transient route, collection/filter
 model, conservative Reading Leads index, continuation folding, and comparison-
 task cancellation. Its collection index stores a lightweight scanning
 projection without scholarly result or statement bodies rather than every
-complete portable Record. Confirmed permanent deletion first publishes a
+complete portable Record. Confirmed Research Record deletion first publishes a
 reversible in-memory projection, then serializes the authoritative Application
 mutation; success reconciles the removal, while failure restores the prior
 projection. It imports neither
@@ -220,11 +220,11 @@ commits, and publishes either the refreshed snapshot or typed stale derived
 state. Matching watcher work waits behind that owned task instead of starting a
 competing refresh. A Graph, Note Search, catalog, or snapshot failure therefore
 cannot become an Autosave Failed result or ask the editor to replay a committed
-mutation. Same-generation research and lifecycle workflows instead call
+mutation. Same-generation research and file workflows instead call
 `DocumentOperations.save`, which explicitly waits for derived publication.
 Every other document create, import,
-source-and-derived save, move, lifecycle mutation, folder mutation, permanent
-delete, and identity resolution returns a `WorkspaceMutationOutcome` once its
+source-and-derived save, move, folder mutation, system-Trash deletion, and
+identity resolution returns a `WorkspaceMutationOutcome` once its
 authoritative commit is proven. Disposable refresh or post-move identity-
 recovery failures travel as nonretryable warnings beside that committed value;
 they never replace it with a generic thrown error. GUI and CLI callers
@@ -273,7 +273,7 @@ canonical `PropertyContract`: it can report key/value source ranges without
 granting an unknown key semantic or judgment authority. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-11 Records,
+matcher. The portable Record store supplies exact decoded schema-12 Records,
 schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or
@@ -392,7 +392,7 @@ root because moving them into a forwarding gateway would add no owner; an
 executable allowlist requires new call families to receive a fresh ownership
 audit.
 `WindowCommandObservation` owns no product state: it advances
-one window-local revision only for the shell, assignment, Library location,
+one window-local revision only for the shell, assignment, Library source,
 document/projection, and Research Action facts that affect focused command
 labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
@@ -420,12 +420,12 @@ portable store. A Continue Research child remains available by exact ID and
 Search, but the feature folds it beneath its direct parent instead of
 projecting a peer collection row.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
-immutable catalog, per-vault snapshots, selected Location's
+immutable catalog, per-vault snapshots, selected Library's
 Notes/tags/authors/revisions and property-filter options, graph, Note
 Search generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing
 event generations, stages a complete `State`, and publishes that state once.
-The selected Location's revision map reuses each immutable document's existing
+The selected Library's revision map reuses each immutable document's existing
 fingerprint and never rehashes exact source merely to construct a window value.
 Research-configuration invalidation advances event order without replaying an
 unchanged projection; a deleted Note remains in the visible projection only
@@ -473,7 +473,7 @@ unions the destination's folder ancestors into window-local disclosure, and
 publishes one generation- and scope-bound reveal request. `SidebarView` consumes
 that request by scrolling to the selected row without taking keyboard focus.
 The same presentation path follows every successful active-Note activation:
-`WindowModel` asynchronously stages the exact Note vault and Library Location,
+`WindowModel` asynchronously stages the exact Note vault and Library source,
 rejects a stale target after any newer navigation, preserves filters when the
 Note already passes them, and otherwise clears only that excluding filter set
 before requesting the minimum scroll needed to expose the row. The adjacent
@@ -490,14 +490,19 @@ directories so empty classifications survive projection, but folder paths never
 enter the portable identity store. Direct New Folder creation atomically claims
 one default directory name. Empty-folder creation and empty-folder moves publish
 only a new folder inventory snapshot; they preserve the current Search and graph
-generations because no Markdown source or note location changed. Rename, Move,
-and Move to Trash flush Triptych-wide
-editors, preflight the complete descendant-note inventory, and commit one
+generations because no Markdown source or note location changed. Rename and
+Move flush Triptych-wide editors, preflight the complete descendant-note
+inventory, and commit one
 descriptor-relative no-replace directory rename. `TriptychFolderMoveCoordinator`
 applies exact resolved-link rewrites against one future graph with rollback and
 durable recovery; Application then rebinds every descendant stable note ID in
 one control-store write and resumes existing idempotent path migrations. Other
-directory contents move with the inode and are not parsed. Copy Relative Path
+directory contents move with the inode and are not parsed. System-Trash folder
+deletion instead freezes the complete directory manifest, including hidden,
+non-Markdown, and empty-directory entries, then submits the directory once
+through `VaultMutationCoordinator` and Foundation's native Trash API. A managed
+Critique outside the directory remains a separately receipted native move.
+Copy Relative Path
 and Reveal in Finder remain delivery actions over an existing folder or note
 vault-relative path and create no Core authority.
 When the accepted Workspace source cohort and graph manifest are coherent, a
@@ -525,7 +530,7 @@ hierarchy's `NSOutlineView` is the sole drag source and Folder-row destination
 owner: its data source writes the process-private pasteboard payload, AppKit
 provides autoscroll and full-row source-list feedback, and the delegate accepts
 only exact Folder-row targets. A native AppKit destination behind the stable
-LocationHeader alone accepts a vault-root move; root Note rows and outline
+Library header alone accepts a vault-root move; root Note rows and outline
 whitespace reject it. The surrounding SwiftUI hierarchy does not register a
 competing drop destination. Acceptance revalidates the current
 revision, destination occupancy, and in-progress identity before dispatch. Core's
@@ -564,21 +569,15 @@ Populated hierarchy ownership is split by responsibility:
 `SidebarOutlineSourceList` configures the `NSOutlineView`, its coordinator owns
 data-source/delegate reconciliation, the row layer owns native reuse and hover,
 and the native-drop layer owns process-local pasteboard decoding plus the
-LocationHeader root target. AppKit-authored menus, tooltips, and accessibility
+Library-header root target. AppKit-authored menus, tooltips, and accessibility
 values pass through one explicit locale projection; researcher Folder and Note
 titles remain verbatim. Library-only filtering is rendered by one stateless
 `SidebarLibraryFilterMenu` from an immutable options value plus the current
 `DiscoveryFilterState`; every change returns one complete replacement intent
 to `DiscoveryController`, which remains the sole filter and ordering owner.
-Lifecycle-row focus restoration keeps one pending plan per vault-qualified
-origin Note. Pure reconciliation retains still-running plans, discards plans
-from another disclosure scope, and lets only the most recently invoked
-completed removal choose the single native next/previous/LocationPicker target;
-a failed operation restores only its own row.
-
 An ordinary Note move flushes the registered editor only when that exact Note
 is active. Every identity-dependent interface command first captures one
-`NoteLifecycleTarget`: its vault-qualified document ID, stable Note ID, and
+`NoteMutationTarget`: its vault-qualified document ID, stable Note ID, and
 exact source revision remain one value through Window, controller, use case,
 and Application. Application re-resolves the stable identity under the source
 mutation lease before a move or deletion can commit, so path reuse cannot
@@ -597,7 +596,7 @@ source at its destination as an explicit source-ahead projection, activates and
 reveals it immediately, and lets the complete derived refresh converge in the
 background.
 Document, Search, and presentation are window-local. Library hierarchy,
-Location, filters, sort, Document tabs, live Document mode, and Inspector mode
+filters, sort, Document tabs, live Document mode, and Inspector mode
 are partitioned by the three Triptych workspaces; Sidebar/Inspector visibility,
 split geometry, toolbar, and window frame remain outer-window state. Controllers
 do not mutate one another. Separate
@@ -624,7 +623,7 @@ Document presentation owns one live Review/Edit/Source selection per workspace,
 defaults each to Review, and carries that selection across Note and tab changes.
 `WindowSessionSnapshot` stores the selected workspace plus three
 `WindowWorkspaceSessionSnapshot` values containing role-partitioned tab order,
-selection, Location, scroll positions, Document mode, and Inspector mode.
+selection, scroll positions, Document mode, and Inspector mode.
 Unsupported session bytes fail closed rather than entering a compatibility
 decoder.
 

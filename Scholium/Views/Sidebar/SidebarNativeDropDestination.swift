@@ -75,16 +75,16 @@ func commitSidebarNativeDrop(
     }
 }
 
-/// The stable LocationHeader is the sole native pointer target for moving an
+/// The stable LibraryHeader is the sole native pointer target for moving an
 /// ordinary Note or Folder back to the current vault root. The populated
 /// outline remains responsible only for Folder-row destinations.
-struct SidebarLocationHeaderDropDestination: NSViewRepresentable {
+struct SidebarLibraryHeaderDropDestination: NSViewRepresentable {
     let dropInventory: SidebarTreeDropInventory
     let onMoveNoteDrop: (SidebarNoteDragItem, String?) -> Void
     let onMoveFolderDrop: (SidebarFolderDragItem, String?) -> Void
 
     func makeNSView(context: Context) -> NSView {
-        let view = SidebarLocationHeaderDropView()
+        let view = SidebarLibraryHeaderDropView()
         view.registerForDraggedTypes(sidebarNativeDraggingTypes)
         view.update(
             dropInventory: dropInventory,
@@ -95,7 +95,7 @@ struct SidebarLocationHeaderDropDestination: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSView, context: Context) {
-        guard let view = view as? SidebarLocationHeaderDropView else { return }
+        guard let view = view as? SidebarLibraryHeaderDropView else { return }
         view.update(
             dropInventory: dropInventory,
             onMoveNoteDrop: onMoveNoteDrop,
@@ -109,7 +109,7 @@ struct SidebarLocationHeaderDropDestination: NSViewRepresentable {
 }
 
 @MainActor
-private final class SidebarLocationHeaderDropView: NSView {
+private final class SidebarLibraryHeaderDropView: NSView {
     private var dropInventory: SidebarTreeDropInventory?
     private var onMoveNoteDrop: ((SidebarNoteDragItem, String?) -> Void)?
     private var onMoveFolderDrop: ((SidebarFolderDragItem, String?) -> Void)?
@@ -125,7 +125,7 @@ private final class SidebarLocationHeaderDropView: NSView {
         self.dropInventory = dropInventory
         self.onMoveNoteDrop = onMoveNoteDrop
         self.onMoveFolderDrop = onMoveFolderDrop
-        if dropInventory.locationScope != .workspace || !dropInventory.canMutate {
+        if dropInventory.sourceScope != .library || !dropInventory.canMutate {
             setDropTargeted(false)
         }
     }

@@ -25,15 +25,15 @@ struct SidebarNoteDragItem: Codable, Identifiable, Sendable {
         )
     }
 
-    var lifecycleTarget: NoteLifecycleTarget {
-        NoteLifecycleTarget(
+    var mutationTarget: NoteMutationTarget {
+        NoteMutationTarget(
             documentID: documentID,
             stableNoteID: stableNoteID,
             revision: revision
         )
     }
 
-    init(_ target: NoteLifecycleTarget) {
+    init(_ target: NoteMutationTarget) {
         documentID = target.documentID
         stableNoteID = target.stableNoteID
         revision = target.revision
@@ -51,11 +51,11 @@ struct SidebarFolderDragItem: Codable, Identifiable, Sendable {
         SidebarFolderDragID(vaultID: vaultID, relativePath: relativePath)
     }
 
-    var lifecycleTarget: FolderLifecycleTarget {
-        FolderLifecycleTarget(vaultID: vaultID, relativePath: relativePath)
+    var mutationTarget: FolderMutationTarget {
+        FolderMutationTarget(vaultID: vaultID, relativePath: relativePath)
     }
 
-    init(_ target: FolderLifecycleTarget) {
+    init(_ target: FolderMutationTarget) {
         vaultID = target.vaultID
         relativePath = target.relativePath
     }
@@ -68,7 +68,7 @@ struct SidebarFolderDragItem: Codable, Identifiable, Sendable {
 /// drops from presenting an accepting target in the first place.
 struct SidebarTreeDropInventory {
     let currentVaultID: UUID?
-    let locationScope: NoteLocationScope
+    let sourceScope: LibrarySourceScope
     let currentVaultRole: VaultRole
     let canMutate: Bool
     let notes: [WindowDocumentLocation]
@@ -81,7 +81,7 @@ struct SidebarTreeDropInventory {
 
     init(
         currentVaultID: UUID?,
-        locationScope: NoteLocationScope,
+        sourceScope: LibrarySourceScope,
         currentVaultRole: VaultRole,
         canMutate: Bool,
         notes: [WindowDocumentLocation],
@@ -91,7 +91,7 @@ struct SidebarTreeDropInventory {
         pendingFolderMoves: Set<SidebarFolderDragID>
     ) {
         self.currentVaultID = currentVaultID
-        self.locationScope = locationScope
+        self.sourceScope = sourceScope
         self.currentVaultRole = currentVaultRole
         self.canMutate = canMutate
         self.notes = notes
@@ -125,14 +125,14 @@ func sidebarValidatedNoteDropDestination(
     folderRelativePath: String?,
     inventory: SidebarTreeDropInventory
 ) -> String? {
-    guard inventory.locationScope == .workspace,
+    guard inventory.sourceScope == .library,
           inventory.canMutate,
           item.documentID.vaultID == inventory.currentVaultID,
           !inventory.pendingNoteMoves.contains(item.id),
           let source = inventory.notes.first(where: {
               $0.relativePath == item.documentID.relativePath
           }),
-          NoteLifecycleTarget(source) == item.lifecycleTarget,
+          NoteMutationTarget(source) == item.mutationTarget,
           !CritiquePlacement.isManagedCritiquePath(source.relativePath),
           sidebarDropFolderIsMutable(folderRelativePath, inventory: inventory),
           let pathComparisonPolicy = inventory.pathComparisonPolicy,
@@ -167,7 +167,7 @@ func sidebarValidatedFolderDropDestination(
     folderRelativePath: String?,
     inventory: SidebarTreeDropInventory
 ) -> String? {
-    guard inventory.locationScope == .workspace,
+    guard inventory.sourceScope == .library,
           inventory.canMutate,
           item.vaultID == inventory.currentVaultID,
           !inventory.pendingFolderMoves.contains(item.id),

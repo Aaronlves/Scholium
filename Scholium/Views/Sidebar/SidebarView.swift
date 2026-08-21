@@ -16,7 +16,7 @@ struct SidebarWorkspaceNoteCounts: Equatable {
 }
 
 /// Immutable Source List projection and exact window actions supplied by the
-/// composition root. Scope, Location, filters, sorting, and disclosure remain
+/// composition root. Filters, sorting, and disclosure remain
 /// owned by `DiscoveryController`; no view retains a parallel Library tree.
 struct SidebarContext {
     let triptychName: String
@@ -35,26 +35,22 @@ struct SidebarContext {
     let currentVaultRole: VaultRole
     let currentWorkspaceSlot: WorkspaceVaultSlot?
     let canMutateLibrary: Bool
-    let lifecycleMutationGeneration: UInt64
+    let sourceMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
     let attentionPopoverSession: AttentionPopoverSession?
     let openAttention: () -> Void
     let retryAttention: () -> Void
-    let selectLocationScope: (NoteLocationScope) -> Void
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let selectTriptychWorkspace: (WorkspaceVaultSlot) -> Void
     let createUntitledNote: (String?) -> Void
     let createUntitledFolder: (String?) -> Void
-    let moveNote: (NoteLifecycleTarget, String) async throws -> Void
-    let moveFolder: (FolderLifecycleTarget, String) async throws -> Void
-    let requestFolderLifecycle: (FolderLifecycleRequest) -> Void
-    let moveFolderToTrash: (FolderLifecycleTarget) async throws -> Void
+    let moveNote: (NoteMutationTarget, String) async throws -> Void
+    let moveFolder: (FolderMutationTarget, String) async throws -> Void
+    let requestFolderFileOperation: (FolderFileRequest) -> Void
+    let requestFolderSystemTrash: (FolderMutationTarget) async throws -> Void
     let copyRelativePath: (String) -> Void
     let revealNote: (String) -> Void
-    let setAside: (NoteLifecycleTarget) async throws -> Void
-    let moveToTrash: (NoteLifecycleTarget) async throws -> Void
-    let putBack: (NoteLifecycleTarget) async throws -> Void
-    let deletePermanently: (NoteLifecycleTarget) async throws -> Void
+    let requestSystemTrash: (NoteMutationTarget) async throws -> Void
     let revealCurrentVault: () -> Void
     let openSettings: () -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
@@ -68,11 +64,8 @@ struct SidebarView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     let context: SidebarContext
 
-    @FocusState private var locationPickerFocused: Bool
     @FocusState private var sourceListFocused: Bool
-    @State private var pendingRemovalFocusPlans: [SidebarRemovalFocusPlan] = []
     @State private var requestedRowFocusPath: String?
-    @State private var putBackDocumentsInProgress: Set<VaultQualifiedNoteID> = []
     @State private var noteDragMovesInProgress: Set<SidebarNoteDragID> = []
     @State private var folderDragMovesInProgress: Set<SidebarFolderDragID> = []
     @State private var sourceRevealProgress: CGFloat = 1
@@ -116,7 +109,7 @@ struct SidebarView: View {
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                 .padding(.top, ScholiumMetrics.Library.workspaceNavigatorTopSpacing)
 
-            locationHeader
+            libraryHeader
                 .padding(.top, ScholiumMetrics.Library.sectionSpacing)
                 .padding(.bottom, ScholiumGrid.Spacing.labelAccessoryGap)
 
@@ -153,12 +146,6 @@ struct SidebarView: View {
         }
         .onChange(of: context.libraryFocusRequestGeneration) { _, _ in
             sourceListFocused = true
-        }
-        .onChange(of: context.lifecycleMutationGeneration) { _, _ in
-            restoreFocusAfterRemoval()
-        }
-        .onChange(of: context.allNotes.map(\.relativePath)) { _, _ in
-            restoreFocusAfterRemoval()
         }
         .onDisappear {
             sourceRevealTask?.cancel()
@@ -246,14 +233,13 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: Location and source region
+    // MARK: Library source region
 
     @ViewBuilder
     private var sourceRegion: some View {
         if sourceListUsesOutlineView {
             VStack(spacing: 0) {
-                if controller.library.locationScope == .workspace,
-                   activeLibraryMenuFilterCount > 0 {
+                if activeLibraryMenuFilterCount > 0 {
                     activeFilterStatus
                         .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                         .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
@@ -278,16 +264,12 @@ struct SidebarView: View {
                     onConsumeRevealRequest: controller.consumeLibraryRevealRequest,
                     onFocusRequestHandled: { requestedRowFocusPath = nil },
                     onSelect: { context.openNote($0, .replaceCurrent) },
-                    putBackDocumentsInProgress: putBackDocumentsInProgress,
                     onMoveNoteDrop: { item, targetFolder in
                         performNoteDrop([item], into: targetFolder)
                     },
                     onMoveFolderDrop: { item, targetFolder in
                         performFolderDrop([item], into: targetFolder)
-                    },
-                    onPutBack: performPutBack,
-                    onWillRemove: prepareRemovalFocus,
-                    onMutationFailed: restoreRemovalFocusAfterFailure
+                    }
                 )
                 .focused($sourceListFocused)
                 .accessibilityIdentifier("scholium.noteList")
@@ -295,8 +277,7 @@ struct SidebarView: View {
         } else {
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if controller.library.locationScope == .workspace,
-                       activeLibraryMenuFilterCount > 0 {
+                    if activeLibraryMenuFilterCount > 0 {
                         activeFilterStatus
                             .padding(.horizontal, ScholiumMetrics.Library.contentInset)
                             .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
@@ -309,50 +290,41 @@ struct SidebarView: View {
             }
             .scrollContentBackground(.hidden)
             .contentShape(Rectangle())
-            .contextMenu {
-                if controller.library.locationScope == .workspace {
-                    rootCreationActions
-                }
-            }
+            .contextMenu { rootCreationActions }
             .focused($sourceListFocused)
             .accessibilityIdentifier("scholium.noteList")
         }
     }
 
     private var sourceListUsesOutlineView: Bool {
-        !controller.library.locationIsLoading
-            && controller.library.locationError == nil
+        !controller.library.sourceIsLoading
+            && controller.library.sourceError == nil
             && !folderTree.isEmpty
     }
 
-    private var locationHeader: some View {
+    private var libraryHeader: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            ScholiumLibraryLocationPicker(
-                selection: locationSelection,
-                focus: $locationPickerFocused
-            )
+            Text("Library")
+                .font(ScholiumTypography.interface(.body, emphasis: .strong))
+                .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 0)
 
-            if controller.library.locationScope == .workspace {
-                libraryFilterMenu
-            }
+            libraryFilterMenu
 
             libraryDisclosureButton
 
-            if controller.library.locationScope == .workspace {
-                ScholiumEditorialIconControl(systemImage: "plus") { label in
-                    Menu {
-                        rootCreationActions
-                    } label: {
-                        label
-                    }
+            ScholiumEditorialIconControl(systemImage: "plus") { label in
+                Menu {
+                    rootCreationActions
+                } label: {
+                    label
                 }
-                .disabled(!context.canMutateLibrary)
-                .help("Create New")
-                .accessibilityLabel("Create New")
-                .accessibilityIdentifier("scholium.libraryCreate")
             }
+            .disabled(!context.canMutateLibrary)
+            .help("Create New")
+            .accessibilityLabel("Create New")
+            .accessibilityIdentifier("scholium.libraryCreate")
         }
         .frame(
             maxWidth: .infinity,
@@ -360,7 +332,7 @@ struct SidebarView: View {
         )
         .padding(.horizontal, ScholiumMetrics.Library.contentInset)
         .background {
-            SidebarLocationHeaderDropDestination(
+            SidebarLibraryHeaderDropDestination(
                 dropInventory: dropInventory,
                 onMoveNoteDrop: { item, targetFolder in
                     performNoteDrop([item], into: targetFolder)
@@ -370,6 +342,7 @@ struct SidebarView: View {
                 }
             )
         }
+        .accessibilityIdentifier("scholium.libraryHeader")
     }
 
     private var libraryDisclosureButton: some View {
@@ -435,17 +408,6 @@ struct SidebarView: View {
         .accessibilityIdentifier("scholium.newFolder")
     }
 
-    private var locationSelection: Binding<NoteLocationScope> {
-        Binding(
-            get: { canonicalPickerLocation },
-            set: { context.selectLocationScope($0) }
-        )
-    }
-
-    private var canonicalPickerLocation: NoteLocationScope {
-        controller.library.locationScope
-    }
-
     private var activeFilterStatus: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(activeLibraryMenuFilterCount == 1
@@ -464,34 +426,38 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var sourceStateContent: some View {
-        if controller.library.locationIsLoading {
+        if controller.library.sourceIsLoading {
             ScholiumLibrarySourceState {
                 ScholiumContentStateView(
-                    title: Text("Loading \(locationName(canonicalPickerLocation))…"),
+                    title: Text("Loading Library…"),
                     indicator: .progress,
                     placement: .leading,
                     density: .compact
                 )
             }
             .accessibilityIdentifier("scholium.libraryLoading")
-        } else if let error = controller.library.locationError {
+        } else if let error = controller.library.sourceError {
             ScholiumLibrarySourceState {
                 ScholiumContentStateView(
-                    locationErrorTitle,
+                    "Could Not Open Library",
                     detail: Text(error),
                     indicator: .symbol("exclamationmark.triangle", role: .attention),
                     placement: .leading,
                     density: .compact
                 ) {
-                    Button("Retry") { context.selectLocationScope(canonicalPickerLocation) }
+                    Button("Retry") {
+                        context.selectTriptychWorkspace(
+                            controller.library.workspaceSlot
+                        )
+                    }
                 }
             }
             .accessibilityIdentifier("scholium.libraryError")
         } else if folderTree.isEmpty {
             ScholiumLibrarySourceState {
                 ScholiumContentStateView(
-                    emptyLocationTitle,
-                    detail: Text(emptyLocationDetail),
+                    "No Notes",
+                    detail: Text("Create a Note to begin."),
                     indicator: .symbol("doc.text"),
                     placement: .leading,
                     density: .compact
@@ -507,19 +473,16 @@ struct SidebarView: View {
         SidebarTreeContext(
             currentVaultID: context.disclosureScope?.vaultID,
             currentVaultRole: context.currentVaultRole,
-            locationScope: controller.library.locationScope,
             openNote: context.openNote,
-            requestLifecycle: { controller.requestLifecycle($0) },
+            requestFileOperation: { controller.requestFileOperation($0) },
             canMutateLibrary: context.canMutateLibrary,
             createUntitledNote: context.createUntitledNote,
             createUntitledFolder: context.createUntitledFolder,
-            requestFolderLifecycle: context.requestFolderLifecycle,
-            moveFolderToTrash: context.moveFolderToTrash,
+            requestFolderFileOperation: context.requestFolderFileOperation,
+            requestFolderSystemTrash: context.requestFolderSystemTrash,
             copyRelativePath: context.copyRelativePath,
             revealNote: context.revealNote,
-            setAside: context.setAside,
-            moveToTrash: context.moveToTrash,
-            deletePermanently: context.deletePermanently,
+            requestSystemTrash: context.requestSystemTrash,
             showError: context.showError
         )
     }
@@ -527,7 +490,7 @@ struct SidebarView: View {
     private var dropInventory: SidebarTreeDropInventory {
         SidebarTreeDropInventory(
             currentVaultID: context.disclosureScope?.vaultID,
-            locationScope: controller.library.locationScope,
+            sourceScope: controller.library.sourceScope,
             currentVaultRole: context.currentVaultRole,
             canMutate: context.canMutateLibrary,
             notes: context.allNotes,
@@ -551,7 +514,7 @@ struct SidebarView: View {
             folderRelativePath: folderRelativePath,
             inventory: dropInventory
         ) else { return }
-        let target = item.lifecycleTarget
+        let target = item.mutationTarget
         noteDragMovesInProgress.insert(item.id)
         Task { @MainActor in
             defer { noteDragMovesInProgress.remove(item.id) }
@@ -576,7 +539,7 @@ struct SidebarView: View {
             folderRelativePath: folderRelativePath,
             inventory: dropInventory
         ) else { return }
-        let target = item.lifecycleTarget
+        let target = item.mutationTarget
         folderDragMovesInProgress.insert(item.id)
         Task { @MainActor in
             defer { folderDragMovesInProgress.remove(item.id) }
@@ -585,123 +548,6 @@ struct SidebarView: View {
             } catch {
                 context.showError("Could not move this folder. \(error.localizedDescription)")
             }
-        }
-    }
-
-    private func locationName(_ location: NoteLocationScope) -> String {
-        switch location {
-        case .workspace: ScholiumL10n.string("Library", locale: locale)
-        case .setAside: ScholiumL10n.string("Set Aside", locale: locale)
-        case .trash: ScholiumL10n.string("Trash", locale: locale)
-        }
-    }
-
-    private var locationErrorTitle: LocalizedStringResource {
-        switch canonicalPickerLocation {
-        case .workspace: "Could Not Open Library"
-        case .setAside: "Could Not Open Set Aside"
-        case .trash: "Could Not Open Trash"
-        }
-    }
-
-    private var emptyLocationTitle: LocalizedStringResource {
-        switch controller.library.locationScope {
-        case .workspace: "No Notes"
-        case .setAside: "No Set Aside Notes"
-        case .trash: "No Notes in Trash"
-        }
-    }
-
-    private var emptyLocationDetail: String {
-        switch controller.library.locationScope {
-        case .workspace: "Create a Note or choose another Scope."
-        case .setAside: "Notes you set aside appear here until you put them back."
-        case .trash: "Notes moved to Trash appear here until you put them back or delete them permanently."
-        }
-    }
-
-    // MARK: Lifecycle focus
-
-    private var visibleNotePaths: [String] {
-        treeProjection.value.visibleNotePaths(
-            expandedFolders: expandedFolders.wrappedValue
-        )
-    }
-
-    private func prepareRemovalFocus(_ note: WindowDocumentLocation) {
-        guard let originDocumentID = note.workspaceSnapshot?.id else { return }
-        let plan = sidebarRemovalFocusPlan(
-            originDocumentID: originDocumentID,
-            originPath: note.relativePath,
-            disclosureScope: context.disclosureScope,
-            visibleNotePaths: visibleNotePaths
-        )
-        pendingRemovalFocusPlans.removeAll {
-            $0.originDocumentID == originDocumentID
-        }
-        pendingRemovalFocusPlans.append(plan)
-    }
-
-    private func restoreFocusAfterRemoval() {
-        guard !pendingRemovalFocusPlans.isEmpty else { return }
-        let remainingDocumentIDs = Set(context.allNotes.compactMap {
-            $0.workspaceSnapshot?.id
-        })
-        let reconciliation = sidebarRemovalFocusAfterCompletions(
-            plans: pendingRemovalFocusPlans,
-            disclosureScope: context.disclosureScope,
-            remainingDocumentIDs: remainingDocumentIDs,
-            remainingVisibleNotePaths: visibleNotePaths
-        )
-        pendingRemovalFocusPlans = reconciliation.pendingPlans
-        applyRemovalFocusDestination(reconciliation.destination)
-    }
-
-    private func performPutBack(_ note: WindowDocumentLocation) {
-        guard let target = NoteLifecycleTarget(note) else {
-            context.showError("This note cannot be put back until its identity is resolved.")
-            requestedRowFocusPath = note.relativePath
-            return
-        }
-        guard !putBackDocumentsInProgress.contains(target.documentID) else { return }
-        prepareRemovalFocus(note)
-        putBackDocumentsInProgress.insert(target.documentID)
-        Task { @MainActor in
-            defer {
-                putBackDocumentsInProgress.remove(target.documentID)
-            }
-            do {
-                try await context.putBack(target)
-            } catch {
-                restoreRemovalFocusAfterFailure(note)
-                context.showError(
-                    "Could not put this note back. \(error.localizedDescription)"
-                )
-            }
-        }
-    }
-
-    private func restoreRemovalFocusAfterFailure(
-        _ note: WindowDocumentLocation
-    ) {
-        guard let originDocumentID = note.workspaceSnapshot?.id else { return }
-        let reconciliation = sidebarRemovalFocusAfterFailure(
-            plans: pendingRemovalFocusPlans,
-            originDocumentID: originDocumentID,
-            originPath: note.relativePath,
-            disclosureScope: context.disclosureScope
-        )
-        pendingRemovalFocusPlans = reconciliation.pendingPlans
-        applyRemovalFocusDestination(reconciliation.destination)
-    }
-
-    private func applyRemovalFocusDestination(
-        _ destination: SidebarRemovalFocusDestination?
-    ) {
-        switch destination {
-        case .row(let path): requestedRowFocusPath = path
-        case .locationPicker: locationPickerFocused = true
-        case nil: break
         }
     }
 

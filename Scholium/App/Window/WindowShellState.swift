@@ -3,11 +3,11 @@ import Foundation
 import ScholiumContracts
 import SwiftUI
 
-/// The Library disclosure namespace for one vault and lifecycle projection.
+/// The Library disclosure namespace for one vault projection.
 /// Folder paths are unique only inside this scope.
 struct LibraryDisclosureScope: Hashable, Sendable {
     let vaultID: UUID
-    let locationScope: NoteLocationScope
+    let sourceScope: LibrarySourceScope
 }
 
 enum WindowColorSchemeChoice: String, CaseIterable {

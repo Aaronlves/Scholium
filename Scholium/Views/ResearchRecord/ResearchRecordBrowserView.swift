@@ -267,9 +267,7 @@ private struct ResearchRecordsFilterMenu: View {
                         case .author(let author):
                             Text(author.interfaceTitle).tag(Optional(option.filter))
                         case .note:
-                            Text(
-                                option.isTombstone ? "Deleted Note — \(option.title)" : option.title
-                            )
+                            Text(option.title)
                             .tag(Optional(option.filter))
                         }
                     }
@@ -1742,10 +1740,7 @@ private struct ResearchLiteratureRecommendationDetailView: View {
     }
 
     private var analysisParticipant: PortableResearchNoteRevision? {
-        guard let participant = occurrence.parentRecord.researchRecordContextParticipant,
-            !participant.isTombstone
-        else { return nil }
-        return participant
+        occurrence.parentRecord.researchRecordContextParticipant
     }
 }
 
@@ -3207,8 +3202,7 @@ private struct ResearchRecordParticipantSection: View {
         }
     }
 
-    /// The Action's focal Note leads the current scholarly routes. Tombstones
-    /// remain visible after every current Note in the complete provenance set.
+    /// The Action's focal Note leads the current scholarly routes.
     private var orderedParticipants: [PortableResearchNoteRevision] {
         participants.sorted { left, right in
             let leftRank = participantRank(left)
@@ -3222,7 +3216,6 @@ private struct ResearchRecordParticipantSection: View {
     }
 
     private func participantRank(_ participant: PortableResearchNoteRevision) -> Int {
-        if participant.isTombstone { return 2 }
         return participant.noteID == primaryNoteID ? 0 : 1
     }
 
@@ -3241,30 +3234,19 @@ private struct ResearchRecordParticipantSection: View {
         focusPresentation: ScholiumActivationFocusPresentation = .contentSurface,
         dismissPopover: (() -> Void)? = nil
     ) -> some View {
-        if participant.isTombstone {
-            ResearchRecordEvidenceEntry(
-                symbol: "trash.slash",
-                title: participant.title,
-                metadata: [participant.role.interfaceTitle, "Deleted Note"],
-                focusPresentation: focusPresentation,
-                identifier:
-                    "scholium.researchRecord.tombstone.\(participant.noteID.uuidString)\(identifierSuffix ?? "")"
-            )
-        } else {
-            ResearchRecordEvidenceEntry(
-                symbol: participantSymbol(participant.role),
-                title: participant.title,
-                metadata: [participant.role.interfaceTitle, "Current Note"],
-                focusPresentation: focusPresentation,
-                identifier:
-                    "scholium.researchRecord.note.\(participant.noteID.uuidString)\(identifierSuffix ?? "")",
-                accessibilityHint: "Open this participating Note in the focused workspace",
-                action: {
-                    dismissPopover?()
-                    context.openNote(participant.noteID, participant.note, nil)
-                }
-            )
-        }
+        ResearchRecordEvidenceEntry(
+            symbol: participantSymbol(participant.role),
+            title: participant.title,
+            metadata: [participant.role.interfaceTitle, "Participating Note"],
+            focusPresentation: focusPresentation,
+            identifier:
+                "scholium.researchRecord.note.\(participant.noteID.uuidString)\(identifierSuffix ?? "")",
+            accessibilityHint: "Open this participating Note in the focused workspace",
+            action: {
+                dismissPopover?()
+                context.openNote(participant.noteID, participant.note, nil)
+            }
+        )
     }
 
     private func participantSymbol(_ role: ResearchActionTargetRole) -> String {
@@ -3383,7 +3365,7 @@ private struct ResearchRecordStatementView: View {
                     .lineSpacing(ScholiumGrid.Spacing.labelAccessoryGap)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                if let lineReference, let primaryParticipant, !primaryParticipant.isTombstone {
+                if let lineReference, let primaryParticipant {
                     ResearchRecordActionButton(
                         "Open Lines \(lineReference.line)–\(lineReference.endLine)",
                         systemImage: "text.line.first.and.arrowtriangle.forward",
@@ -3600,11 +3582,8 @@ private struct ResearchRecordRevisionDetails: View {
                 ScholiumApparatusFact(
                     id: "\(participant.id)-ending",
                     label: String(localized: "Ending revision"),
-                    value: participant.endingRevision?.sha256
-                        ?? String(localized: "Deleted Note"),
-                    valueStyle: participant.endingRevision == nil
-                        ? .researchContent
-                        : .revisionIdentity
+                    value: participant.endingRevision.sha256,
+                    valueStyle: .revisionIdentity
                 ),
             ])
         }

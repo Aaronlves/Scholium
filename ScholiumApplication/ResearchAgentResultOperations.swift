@@ -415,7 +415,6 @@ extension WorkspaceHandle {
         }
         let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
         guard let snapshot = currentSnapshot.document(id: noteID),
-              snapshot.lifecycle == .active,
               let stableID = snapshot.stableIdentity.resolvedID,
               reference.owner.stableObjectIdentity
                 == stableID.uuidString.lowercased(),
@@ -503,7 +502,6 @@ extension WorkspaceHandle {
         _ target: ResearchActionNoteSnapshot
     ) async throws -> NoteDocument {
         guard let snapshot = currentSnapshot.document(id: target.note),
-              snapshot.lifecycle == .active,
               snapshot.stableIdentity.resolvedID == target.noteID,
               snapshot.vaultRole == Self.vaultRole(target.role) else {
             throw ResearchFunctionContractError.targetIdentityChanged
@@ -515,7 +513,6 @@ extension WorkspaceHandle {
         _ material: ResearchFunctionMaterial
     ) async throws -> NoteDocument {
         guard let snapshot = currentSnapshot.document(id: material.note),
-              snapshot.lifecycle == .active,
               snapshot.stableIdentity.resolvedID == material.noteID,
               ResearchFunctionTargetRole(vaultRole: snapshot.vaultRole)
                 == material.role else {

@@ -847,7 +847,7 @@ public actor TriptychControlStore {
         return snapshot.payload.records[index]
     }
 
-    /// Commits a lifecycle move against the portable identity inventory.
+    /// Commits a path move against the portable identity inventory.
     ///
     /// The filesystem move and this identity write are separate actors, so a
     /// watcher or explicit refresh may leave the in-memory ID one step ahead
@@ -877,7 +877,7 @@ public actor TriptychControlStore {
                 $0.vaultID == vaultID && $0.relativePath == sourcePath
             }) {
                 // A stale in-memory ID must not move an unrelated note. The
-                // exact source path is the stronger lifecycle precondition.
+                // exact source path is the stronger move precondition.
                 index = bySource
             } else if let byDestination = payload.records.firstIndex(where: {
                 $0.vaultID == vaultID && $0.relativePath == relativePath
@@ -1258,51 +1258,6 @@ public actor TriptychControlStore {
                 payload.records.append(previous)
             }
             try commitIdentityPayload(payload, replacing: &snapshot)
-        }
-    }
-
-    /// Monotonically removes one exact permanent-deletion identity and every
-    /// portable substate that could reintroduce it. Repetition is idempotent;
-    /// a concurrently moved identity fails closed instead of being redirected.
-    @discardableResult
-    func purgeIdentityPermanently(
-        id: UUID,
-        vaultID: UUID,
-        relativePath: String
-    ) throws -> NoteIdentityRecord? {
-        try withPortableControlLock {
-            var snapshot = try identitySnapshot()
-            let removed = snapshot.payload.records.first { $0.id == id }
-            if let removed {
-                guard removed.vaultID == vaultID,
-                      removed.relativePath == relativePath else {
-                    throw TriptychControlError.invalidIdentityCandidate(id)
-                }
-            }
-            let hadIdentityState = removed != nil
-                || snapshot.payload.pendingRebindings.contains { $0.noteID == id }
-                || snapshot.payload.unresolvedAmbiguities.contains {
-                    $0.candidateIDs.contains(id)
-                }
-            var payload = snapshot.payload
-            payload.records.removeAll { $0.id == id }
-            payload.pendingRebindings.removeAll { $0.noteID == id }
-            payload.unresolvedAmbiguities = payload.unresolvedAmbiguities.compactMap {
-                ambiguity in
-                var ambiguity = ambiguity
-                ambiguity.candidateIDs.removeAll { $0 == id }
-                return ambiguity.candidateIDs.isEmpty ? nil : ambiguity
-            }
-            if hadIdentityState {
-                try commitIdentityPayload(payload, replacing: &snapshot)
-            }
-            let bindings = try zoteroBindings()
-            if bindings.binding(for: id) != nil {
-                _ = try updateZoteroBindings(expectedRevision: bindings.revision) {
-                    $0.removeAll { $0.noteID == id }
-                }
-            }
-            return removed
         }
     }
 

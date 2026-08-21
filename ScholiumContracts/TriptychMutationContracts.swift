@@ -5,7 +5,7 @@ public enum TriptychMutationOperation: String, Codable, Hashable, Sendable {
     case noteCreation
     case noteMove
     case folderMove
-    case permanentDeletion
+    case systemTrashDeletion = "system_trash_deletion"
 }
 
 public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
@@ -14,7 +14,8 @@ public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
     case movedNote
     case movedFolder
     case incomingLinkRewrite
-    case deletedNote
+    case trashedNote
+    case trashedFolder
     case associatedCritique
 }
 
@@ -112,7 +113,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
     public let createdAt: Date
     public let failure: String
     public let files: [TriptychMutationRecoveryFile]
-    public let permanentDeletionPlan: PermanentDeletionPlan?
+    public let systemTrashDeletionPlan: SystemTrashDeletionPlan?
     public let researchWrite: ResearchWriteRecoveryReference?
     public let managedCreation: ManagedCreationRecoveryReference?
 
@@ -133,7 +134,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.createdAt = createdAt
         self.failure = failure
         self.files = files
-        self.permanentDeletionPlan = nil
+        self.systemTrashDeletionPlan = nil
         self.researchWrite = researchWrite
         self.managedCreation = managedCreation
     }
@@ -144,16 +145,16 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date,
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        permanentDeletionPlan: PermanentDeletionPlan,
+        systemTrashDeletionPlan: SystemTrashDeletionPlan,
         researchWrite: ResearchWriteRecoveryReference? = nil
     ) {
         self.id = id
         self.triptychID = triptychID
-        self.operation = .permanentDeletion
+        self.operation = .systemTrashDeletion
         self.createdAt = createdAt
         self.failure = failure
         self.files = files
-        self.permanentDeletionPlan = permanentDeletionPlan
+        self.systemTrashDeletionPlan = systemTrashDeletionPlan
         self.researchWrite = researchWrite
         self.managedCreation = nil
     }

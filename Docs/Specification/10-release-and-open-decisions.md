@@ -27,8 +27,10 @@ Architecture, Status, and evidence rather than copying them into another pack.
   and simplified Actions;
 - native split resize/visibility, Document tabs without shell reconstruction,
   focus, keyboard, light/dark, scaling, minimum width, and core VoiceOver; and
-- external edits, conflicts, stable rename, Set Aside, Trash, Agent direct Undo,
-  save interruption, and cross-window dirty-peer behavior.
+- external edits, conflicts, stable rename, native system-Trash Note and Folder
+  deletion, whole multi-Note Record cleanup, partial/unknown native outcomes,
+  Finder restoration, externally missing source without Record cascade, Agent
+  direct Undo, save interruption, and cross-window dirty-peer behavior.
 
 Beta/1.0 additionally cover applicable Research Actions, Skill
 registrations, exact-Wikilink Practices, Action Profiles and Result Contracts,
@@ -67,7 +69,7 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G1 Functional completeness** | Every in-scope requirement has evidence or waiver. |
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, agents, or manual filesystem work. |
 | **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
-| **G4 Recovery and deletion** | Conflict, Agent direct Undo, interrupted-save recovery, Trash/purge, external rename, and derived failures pass fixture journeys. |
+| **G4 Recovery and deletion** | Conflict, Agent direct Undo, interrupted-save recovery, system-Trash receipts, whole-Record cleanup, external deletion/restore, external rename, and derived failures pass fixture journeys. |
 | **G5 Scholarly transparency** | Authoritative Markdown, Discussion turns, Action outputs, Settle, Critique, Fidelity, provenance, authority, agent feedback, and uncertainty remain visibly distinct. |
 | **G6 Accessibility/localization** | Section 20's English and Simplified Chinese interface and declared accessibility threshold is met. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |

@@ -44,10 +44,6 @@ public struct MarkdownRelativePath: Codable, Hashable, Sendable,
         rawValue.split(separator: "/", omittingEmptySubsequences: false)
     }
 
-    public var lifecycle: WorkspaceDocumentLifecycle {
-        WorkspaceDocumentLifecycle(relativePath: rawValue)
-    }
-
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         try self.init(container.decode(String.self))
@@ -196,13 +192,10 @@ public enum DocumentIdentityResolution: String, Codable, Hashable, Sendable {
     case ambiguous
 }
 
-public enum DocumentLifecycleAction: String, Codable, CaseIterable, Hashable, Sendable {
+public enum DocumentFileAction: String, Codable, CaseIterable, Hashable, Sendable {
     case duplicate
     case move
-    case setAside
-    case moveToTrash
-    case putBack
-    case deletePermanently
+    case moveToSystemTrash
 }
 
 public struct DocumentCapabilities: Codable, Equatable, Sendable {
@@ -210,11 +203,10 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
     public let canComment: Bool
     public let canUseResearchFunctions: Bool
     public let isManagedCritique: Bool
-    public let lifecycleActions: Set<DocumentLifecycleAction>
+    public let fileActions: Set<DocumentFileAction>
 
     public init(
         role: VaultRole,
-        lifecycle: WorkspaceDocumentLifecycle,
         identity: DocumentIdentityResolution,
         isManagedCritique: Bool
     ) {
@@ -223,32 +215,23 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
             canEditSource = false
             canComment = false
             canUseResearchFunctions = false
-            lifecycleActions = []
+            fileActions = []
             return
         }
-        canEditSource = !isManagedCritique && lifecycle == .active
-        canComment = lifecycle == .active && (
+        canEditSource = !isManagedCritique
+        canComment = (
             role == .sourceCorpus
                 || role == .topicKnowledge
                 || role == .draftProject
         )
         canUseResearchFunctions = role != .other
             && !isManagedCritique
-            && lifecycle == .active
-
-        switch lifecycle {
-        case .active:
-            lifecycleActions = isManagedCritique
-                ? [.move, .setAside, .moveToTrash]
-                : [.duplicate, .move, .setAside, .moveToTrash]
-        case .setAside:
-            lifecycleActions = [.putBack, .moveToTrash]
-        case .trash:
-            lifecycleActions = [.putBack, .deletePermanently]
-        }
+        fileActions = isManagedCritique
+            ? [.move, .moveToSystemTrash]
+            : [.duplicate, .move, .moveToSystemTrash]
     }
 
-    public func allows(_ action: DocumentLifecycleAction) -> Bool {
-        lifecycleActions.contains(action)
+    public func allows(_ action: DocumentFileAction) -> Bool {
+        fileActions.contains(action)
     }
 }

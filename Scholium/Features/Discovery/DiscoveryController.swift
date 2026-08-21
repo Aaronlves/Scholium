@@ -16,11 +16,11 @@ struct DiscoveryLibraryState: Equatable {
     /// window transition owner changes it together with that workspace's tab,
     /// Document, and Inspector context.
     var workspaceSlot: WorkspaceVaultSlot = .paperAnalysis
-    var locationScope: NoteLocationScope = .workspace
+    var sourceScope: LibrarySourceScope = .library
     var filters = DiscoveryFilterState()
     var sortOrder: NoteSortOrder = .modifiedNewest
-    var locationIsLoading = false
-    var locationError: String?
+    var sourceIsLoading = false
+    var sourceError: String?
 }
 
 struct DiscoverySearchState: Equatable, Sendable {
@@ -90,20 +90,20 @@ enum DiscoverySearchExecutionError: LocalizedError, Equatable, Sendable {
 }
 
 /// Identity for one asynchronous Source List replacement. A result is valid
-/// only for the exact workspace and Location that requested it; a later
+/// only for the exact workspace and Library source request; a later
 /// request for that workspace invalidates it before visible commit.
-struct DiscoveryLocationRequest: Equatable, Sendable {
+struct DiscoveryLibraryRequest: Equatable, Sendable {
     let id: UUID
     let workspaceSlot: WorkspaceVaultSlot
-    let location: NoteLocationScope
-    let presentation: DiscoveryLocationRequestPresentation
+    let sourceScope: LibrarySourceScope
+    let presentation: DiscoveryLibraryRequestPresentation
 }
 
-enum DiscoveryLocationRequestPresentation: Equatable, Sendable {
+enum DiscoveryLibraryRequestPresentation: Equatable, Sendable {
     /// No trustworthy committed Source List is available for the requested
-    /// projection, so the Location page must expose its loading/error states.
+    /// projection, so Library must expose its loading/error states.
     case contentLoading
-    /// Ordinary workspace/Location navigation stages a complete target while
+    /// Ordinary workspace navigation stages a complete target while
     /// the last committed session remains visible, then replaces it atomically.
     case stagedReplacement
 }
@@ -135,7 +135,7 @@ final class DiscoveryController: ObservableObject {
     @Published private(set) var libraryRevealRequest: DiscoveryLibraryRevealRequest?
     @Published private(set) var search = DiscoverySearchState()
 
-    private var activeLocationRequests: [WorkspaceVaultSlot: DiscoveryLocationRequest] = [:]
+    private var activeLibraryRequests: [WorkspaceVaultSlot: DiscoveryLibraryRequest] = [:]
     private var activeSearchRequestID: UUID?
     private var nextLibraryRevealGeneration: UInt64 = 0
     private let intentHandler: IntentHandler
@@ -257,64 +257,64 @@ final class DiscoveryController: ObservableObject {
         }
     }
 
-    /// Installs a coherent workspace/Location pair after an initial restore or a
+    /// Installs a coherent workspace and Library source after an initial restore or a
     /// fully staged synchronous projection. Asynchronous browsing must use the
     /// request methods below so late results can be rejected.
     func synchronizeLibrarySelection(
         workspaceSlot: WorkspaceVaultSlot,
-        location: NoteLocationScope
+        sourceScope: LibrarySourceScope
     ) {
-        activeLocationRequests[workspaceSlot] = nil
+        activeLibraryRequests[workspaceSlot] = nil
         updateLibraryState(for: workspaceSlot) { library in
             library.workspaceSlot = workspaceSlot
-            library.locationScope = location
-            library.locationIsLoading = false
-            library.locationError = nil
+            library.sourceScope = sourceScope
+            library.sourceIsLoading = false
+            library.sourceError = nil
         }
     }
 
     @discardableResult
-    func beginLocationRequest(
+    func beginLibraryRequest(
         workspaceSlot: WorkspaceVaultSlot,
-        location: NoteLocationScope,
-        presentation: DiscoveryLocationRequestPresentation = .contentLoading
-    ) -> DiscoveryLocationRequest {
-        let request = DiscoveryLocationRequest(
+        sourceScope: LibrarySourceScope,
+        presentation: DiscoveryLibraryRequestPresentation = .contentLoading
+    ) -> DiscoveryLibraryRequest {
+        let request = DiscoveryLibraryRequest(
             id: UUID(),
             workspaceSlot: workspaceSlot,
-            location: location,
+            sourceScope: sourceScope,
             presentation: presentation
         )
-        activeLocationRequests[workspaceSlot] = request
+        activeLibraryRequests[workspaceSlot] = request
         updateLibraryState(for: workspaceSlot) { library in
-            library.locationIsLoading = presentation == .contentLoading
-            library.locationError = nil
+            library.sourceIsLoading = presentation == .contentLoading
+            library.sourceError = nil
         }
         return request
     }
 
     @discardableResult
-    func receiveLocationResult(for request: DiscoveryLocationRequest) -> Bool {
+    func receiveLibraryResult(for request: DiscoveryLibraryRequest) -> Bool {
         guard isCurrent(request) else { return false }
-        activeLocationRequests[request.workspaceSlot] = nil
+        activeLibraryRequests[request.workspaceSlot] = nil
         updateLibraryState(for: request.workspaceSlot) { library in
             library.workspaceSlot = request.workspaceSlot
-            library.locationScope = request.location
-            library.locationIsLoading = false
-            library.locationError = nil
+            library.sourceScope = request.sourceScope
+            library.sourceIsLoading = false
+            library.sourceError = nil
         }
         return true
     }
 
-    func failLocationRequest(
+    func failLibraryRequest(
         _ message: String,
-        for request: DiscoveryLocationRequest
+        for request: DiscoveryLibraryRequest
     ) {
         guard isCurrent(request) else { return }
-        activeLocationRequests[request.workspaceSlot] = nil
+        activeLibraryRequests[request.workspaceSlot] = nil
         updateLibraryState(for: request.workspaceSlot) { library in
-            library.locationIsLoading = false
-            library.locationError = request.presentation == .contentLoading ? message : nil
+            library.sourceIsLoading = false
+            library.sourceError = request.presentation == .contentLoading ? message : nil
         }
     }
 
@@ -589,7 +589,7 @@ final class DiscoveryController: ObservableObject {
     }
 
     func reset() {
-        activeLocationRequests = [:]
+        activeLibraryRequests = [:]
         activeSearchRequestID = nil
         libraryRevealRequest = nil
         librariesByWorkspace = Dictionary(
@@ -599,7 +599,7 @@ final class DiscoveryController: ObservableObject {
                     workspace,
                     DiscoveryLibraryState(
                         workspaceSlot: workspace,
-                        locationScope: current.locationScope,
+                        sourceScope: current.sourceScope,
                         sortOrder: current.sortOrder
                     )
                 )
@@ -632,8 +632,8 @@ final class DiscoveryController: ObservableObject {
         intentHandler(.openSearchResult(result, disposition: disposition))
     }
 
-    func requestLifecycle(_ request: NoteLifecycleRequest) {
-        intentHandler(.presentLifecycle(request))
+    func requestFileOperation(_ request: NoteFileRequest) {
+        intentHandler(.presentNoteFileOperation(request))
     }
 
     private func isCurrent(_ request: DiscoverySearchRequest) -> Bool {
@@ -648,19 +648,19 @@ final class DiscoveryController: ObservableObject {
             && search.results.allSatisfy { $0.freshnessToken == search.freshnessToken }
     }
 
-    func isCurrentLocationRequest(_ request: DiscoveryLocationRequest) -> Bool {
+    func isCurrentLibraryRequest(_ request: DiscoveryLibraryRequest) -> Bool {
         isCurrent(request)
     }
 
-    /// A second explicit workspace/Location choice must be able to supersede an
+    /// A second explicit workspace request must be able to supersede an
     /// in-flight request even when it chooses the still-visible committed
     /// value. The committed pair alone cannot reveal that pending intent.
-    var locationRequestIsActive: Bool {
-        activeLocationRequests[shellState.selectedWorkspace] != nil
+    var libraryRequestIsActive: Bool {
+        activeLibraryRequests[shellState.selectedWorkspace] != nil
     }
 
-    private func isCurrent(_ request: DiscoveryLocationRequest) -> Bool {
-        activeLocationRequests[request.workspaceSlot] == request
+    private func isCurrent(_ request: DiscoveryLibraryRequest) -> Bool {
+        activeLibraryRequests[request.workspaceSlot] == request
     }
 
     private func updateLibraryState(

@@ -1,34 +1,13 @@
 import ScholiumContracts
 import Foundation
 
-/// The library location currently projected by one window.
-///
-/// This is presentation and navigation state. The corresponding lifecycle
-/// operations remain fingerprint-gated application operations.
-enum NoteLocationScope: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case workspace = "Workspace"
-    case setAside = "Set Aside"
-    case trash = "Trash"
+/// The one Library projection owned by a window. The type keeps asynchronous
+/// projection requests scoped without introducing alternate source locations.
+enum LibrarySourceScope: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case library = "Library"
 
     var id: String { rawValue }
 
-    var documentLifecycle: WorkspaceDocumentLifecycle {
-        switch self {
-        case .workspace: .active
-        case .setAside: .setAside
-        case .trash: .trash
-        }
-    }
-}
-
-extension WorkspaceDocumentLifecycle {
-    var libraryPathPrefix: String? {
-        switch self {
-        case .active: nil
-        case .setAside: "Set Aside/"
-        case .trash: "Trash/"
-        }
-    }
 }
 
 enum WorkspaceAccessKind: String, Hashable, Sendable {
@@ -53,7 +32,7 @@ struct WorkspaceAccessRecovery: Identifiable, Hashable, Sendable {
     var id: String { "\(kind.rawValue):\(expectedPath):\(reason ?? "")" }
 }
 
-extension NoteLifecycleTarget {
+extension NoteMutationTarget {
     init?(_ location: WindowDocumentLocation) {
         guard let snapshot = location.workspaceSnapshot,
               let stableNoteID = snapshot.stableIdentity.resolvedID else {
@@ -67,10 +46,10 @@ extension NoteLifecycleTarget {
     }
 }
 
-enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
-    case duplicate(NoteLifecycleTarget)
-    case rename(NoteLifecycleTarget)
-    case move(NoteLifecycleTarget)
+enum NoteFileRequest: Identifiable, Equatable, Sendable {
+    case duplicate(NoteMutationTarget)
+    case rename(NoteMutationTarget)
+    case move(NoteMutationTarget)
 
     var id: String {
         switch self {
@@ -82,8 +61,8 @@ enum NoteLifecycleRequest: Identifiable, Equatable, Sendable {
 }
 
 /// A folder is addressed only by its current vault-relative path. Unlike a
-/// note lifecycle target, it deliberately carries no stable identifier.
-struct FolderLifecycleTarget: Identifiable, Equatable, Sendable {
+/// Note mutation target, it deliberately carries no stable identifier.
+struct FolderMutationTarget: Identifiable, Equatable, Sendable {
     let vaultID: UUID
     let relativePath: String
 
@@ -96,11 +75,11 @@ struct FolderLifecycleTarget: Identifiable, Equatable, Sendable {
     }
 }
 
-enum FolderLifecycleRequest: Identifiable, Equatable, Sendable {
-    case rename(FolderLifecycleTarget)
-    case move(FolderLifecycleTarget)
+enum FolderFileRequest: Identifiable, Equatable, Sendable {
+    case rename(FolderMutationTarget)
+    case move(FolderMutationTarget)
 
-    var target: FolderLifecycleTarget {
+    var target: FolderMutationTarget {
         switch self {
         case .rename(let target), .move(let target): target
         }
@@ -213,7 +192,7 @@ enum WindowIntent: Equatable, Sendable {
     case revealSourceLocator(vaultID: UUID, locator: SourceLocator)
     case switchVault(UUID)
     case presentResearchAction(ResearchActionPanelRoute)
-    case presentLifecycle(NoteLifecycleRequest)
+    case presentNoteFileOperation(NoteFileRequest)
 }
 
 enum SearchResultIdentity {

@@ -502,51 +502,6 @@ struct TriptychControlTests {
         }
     }
 
-    @Test("Permanent identity purge is monotonic and clears the Zotero binding")
-    func bindingFollowsIdentityLifecycle() async throws {
-        let fixture = try Fixture(); defer { fixture.remove() }
-        let store = TriptychControlStore(worksVaultURL: fixture.works)
-        let analysesID = UUID()
-        _ = try await store.bootstrap(vaultIDs: [
-            .paperAnalysis: analysesID,
-            .topicKnowledge: UUID(),
-            .output: UUID(),
-        ])
-        let fingerprint = DocumentFingerprint(content: "Analysis")
-        let original = try #require(try await store.identity(
-            forVaultID: analysesID,
-            relativePath: "A.md",
-            fingerprint: fingerprint
-        ))
-        let bindingRevision = try await store.zoteroBindings().revision
-        _ = try await store.setZoteroBinding(
-            try AnalysisZoteroBinding(noteID: original.id, library: .group(42), itemKey: "ABCD"),
-            expectedRevision: bindingRevision
-        )
-        let duplicate = try await store.duplicateIdentity(
-            from: original.id,
-            to: "A copy.md",
-            fingerprint: fingerprint
-        )
-        #expect(try await store.zoteroBindings().binding(for: duplicate.id)?.library == .group(42))
-
-        try await store.purgeIdentityPermanently(
-            id: original.id,
-            vaultID: analysesID,
-            relativePath: "A.md"
-        )
-        #expect(try await store.zoteroBindings().binding(for: original.id) == nil)
-        #expect(try await store.identityRecord(
-            vaultID: analysesID,
-            relativePath: "A.md"
-        ) == nil)
-        try await store.purgeIdentityPermanently(
-            id: original.id,
-            vaultID: analysesID,
-            relativePath: "A.md"
-        )
-    }
-
     @Test("Creation recovery cannot purge an identity with a Zotero binding")
     func ordinaryIdentityPurgePreservesBoundIdentity() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
@@ -993,15 +948,15 @@ struct TriptychControlTests {
             id: original.id,
             vaultID: vaultID,
             from: "Work.md",
-            to: "Trash/Work.md",
+            to: "Archive/Work.md",
             fingerprint: fingerprint
         )
 
         #expect(recovered.id == original.id)
-        #expect(recovered.relativePath == "Trash/Work.md")
+        #expect(recovered.relativePath == "Archive/Work.md")
         let stored = try await store.identityRecord(
             vaultID: vaultID,
-            relativePath: "Trash/Work.md"
+            relativePath: "Archive/Work.md"
         )
         #expect(stored?.id == recovered.id)
         #expect(stored?.vaultID == recovered.vaultID)
@@ -1009,8 +964,8 @@ struct TriptychControlTests {
         #expect(stored?.fingerprint == recovered.fingerprint)
     }
 
-    @Test("Permanent deletion purges portable identity and pending rebinding state")
-    func permanentDeletionPurgesIdentity() async throws {
+    @Test("Creation rollback purges portable identity and pending rebinding state")
+    func creationRollbackPurgesIdentity() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
@@ -1028,21 +983,21 @@ struct TriptychControlTests {
         ))
         _ = try await store.moveIdentity(
             id: identity.id,
-            to: "Trash/Work.md",
+            to: "Archive/Work.md",
             fingerprint: fingerprint
         )
 
         let removed = try await store.purgeIdentity(
             id: identity.id,
             vaultID: vaultID,
-            relativePath: "Trash/Work.md"
+            relativePath: "Archive/Work.md"
         )
 
         #expect(removed?.id == identity.id)
         #expect(try await store.pendingIdentityRebindings(vaultID: vaultID).isEmpty)
         #expect(try await store.identity(
             forVaultID: vaultID,
-            relativePath: "Trash/Work.md",
+            relativePath: "Archive/Work.md",
             fingerprint: fingerprint,
             createIfMissing: false
         ) == nil)

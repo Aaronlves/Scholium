@@ -8331,16 +8331,6 @@
         }
       }
     },
-    "Continue Permanent Deletion?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "继续永久删除？"
-          }
-        }
-      }
-    },
     "Continue Research" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8776,38 +8766,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法打开资料库"
-          }
-        }
-      }
-    },
-    "Could Not Open Set Aside" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could Not Open Set Aside"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法打开搁置"
-          }
-        }
-      }
-    },
-    "Could Not Open Trash" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could Not Open Trash"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法打开纸篓"
           }
         }
       }
@@ -9292,6 +9250,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建笔记"
+          }
+        }
+      }
+    },
+    "Create a Note to begin." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create a Note to begin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建一则笔记以开始。"
           }
         }
       }
@@ -16083,6 +16057,22 @@
         }
       }
     },
+    "Loading Library…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Loading Library…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入资料库…"
+          }
+        }
+      }
+    },
     "Loading Materials…" : {
       "localizations" : {
         "en" : {
@@ -18578,22 +18568,6 @@
         }
       }
     },
-    "No Set Aside Notes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Set Aside Notes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有搁置的文档"
-          }
-        }
-      }
-    },
     "No Triptych Registered" : {
       "localizations" : {
         "en" : {
@@ -19610,38 +19584,6 @@
         }
       }
     },
-    "Notes moved to Trash appear here until you put them back or delete them permanently." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Notes moved to Trash appear here until you put them back or delete them permanently."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移至纸篓的文档会保留在这里，直到你将其放回或永久删除。"
-          }
-        }
-      }
-    },
-    "Notes you set aside appear here until you put them back." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Notes you set aside appear here until you put them back."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搁置的文档会保留在这里，直到你将其放回。"
-          }
-        }
-      }
-    },
     "Nothing is created until you review and confirm the structure." : {
       "localizations" : {
         "zh-Hans" : {
@@ -20536,44 +20478,12 @@
         }
       }
     },
-    "Opening Set Aside…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opening Set Aside…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在打开搁置…"
-          }
-        }
-      }
-    },
     "Opening Source closes Complete Properties. The unsaved structured draft will be discarded; the note on disk will not change." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开源文本会关闭完整属性。未保存的结构化草稿将被丢弃；磁盘上的笔记不会更改。"
-          }
-        }
-      }
-    },
-    "Opening Trash…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opening Trash…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在打开纸篓…"
           }
         }
       }
@@ -22757,38 +22667,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目的（可选）"
-          }
-        }
-      }
-    },
-    "Put Back" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Put Back"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "放回"
-          }
-        }
-      }
-    },
-    "Put Back %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Put Back %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "放回 %@"
           }
         }
       }
@@ -27119,22 +26997,6 @@
         }
       }
     },
-    "SET ASIDE" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "SET ASIDE"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搁置"
-          }
-        }
-      }
-    },
     "SHA-256 %@…" : {
       "localizations" : {
         "en" : {
@@ -29244,38 +29106,6 @@
         }
       }
     },
-    "Set Aside" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Set Aside"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搁置"
-          }
-        }
-      }
-    },
-    "Set Aside…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Set Aside…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搁置…"
-          }
-        }
-      }
-    },
     "Set Up Later" : {
       "localizations" : {
         "zh-Hans" : {
@@ -30836,22 +30666,6 @@
         }
       }
     },
-    "TRASH" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "TRASH"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "纸篓"
-          }
-        }
-      }
-    },
     "TRIPTYCH CITATION STYLE" : {
       "localizations" : {
         "en" : {
@@ -31206,6 +31020,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "智能体会安装并验证 CLI，阅读 Scholium 的智能体帮助，并准备适用的指令文件。"
+          }
+        }
+      }
+    },
+    "The Agent installs and verifies the CLI, reads Scholium's Agent help, and prepares the applicable project instructions and Skill discovery links." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Agent installs and verifies the CLI, reads Scholium's Agent help, and prepares the applicable project instructions and Skill discovery links."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能体会安装并验证 CLI，阅读 Scholium 的智能体帮助，并准备适用的项目指令与技能发现链接。"
           }
         }
       }
@@ -33979,22 +33809,6 @@
         }
       }
     },
-    "Trash" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Trash"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "纸篓"
-          }
-        }
-      }
-    },
     "Triptych" : {
       "localizations" : {
         "en" : {
@@ -36591,6 +36405,176 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "哲学研究的进展并不总能立即显现。概念之间的张力、反例与修订，需要在缓慢而持续的阅读中逐渐成形。"
+          }
+        }
+      }
+    },
+    "%lld active Discussion(s) will be discarded without becoming Records." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将丢弃 %lld 个进行中的讨论，且不会将其转为研究记录。"
+          }
+        }
+      }
+    },
+    "%lld finished Research Record(s)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个已完成的研究记录"
+          }
+        }
+      }
+    },
+    "Application State Deleted Afterward" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随后删除的应用状态"
+          }
+        }
+      }
+    },
+    "Continue Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续清理"
+          }
+        }
+      }
+    },
+    "Continue Record Cleanup?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续清理研究记录？"
+          }
+        }
+      }
+    },
+    "Files and Folders" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件与文件夹"
+          }
+        }
+      }
+    },
+    "Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder 负责恢复文件，但无法恢复 Scholium 在文件移动成功后删除的已完成研究记录。"
+          }
+        }
+      }
+    },
+    "Move to macOS Trash?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至 macOS 纸篓？"
+          }
+        }
+      }
+    },
+    "Move to Trash and Delete Records" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至纸篓并删除研究记录"
+          }
+        }
+      }
+    },
+    "Moving exact sources and applying the confirmed Record cleanup…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在移动精确来源并执行已确认的研究记录清理…"
+          }
+        }
+      }
+    },
+    "Retain Records" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留研究记录"
+          }
+        }
+      }
+    },
+    "Retain Records and Resolve?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留研究记录并解决此项恢复？"
+          }
+        }
+      }
+    },
+    "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, this releases the deletion gate and retains every associated finished Research Record. It neither restores nor removes any file." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法证明原生纸篓移动是否完成。请先在 Finder 中检查所列路径；此操作随后会解除删除门控并保留所有关联的已完成研究记录。它既不会恢复文件，也不会移除文件。"
+          }
+        }
+      }
+    },
+    "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Associated finished Research Records are then deleted one by one with exact-fingerprint checks." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 只会继续已持久化的前向计划。已移至 macOS 纸篓的项目继续由 Finder 控制；随后将通过精确指纹核对逐一删除关联的已完成研究记录。"
+          }
+        }
+      }
+    },
+    "System Trash and Record Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统纸篓与研究记录清理"
+          }
+        }
+      }
+    },
+    "These steps are recoverable separately, not atomically. If Record cleanup fails after Finder accepts the files, Scholium keeps a recovery plan and resumes only that confirmed cleanup. External file deletion never triggers this cascade." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些步骤可分别恢复，但并非原子操作。若 Finder 接收文件后研究记录清理失败，Scholium 会保留恢复计划，并只继续已确认的清理。外部文件删除绝不会触发这条级联。"
+          }
+        }
+      }
+    },
+    "This whole multi-Note Record will be deleted; these participating Notes are not being moved:" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将删除整条多文档研究记录；以下参与文档不会被移动："
           }
         }
       }

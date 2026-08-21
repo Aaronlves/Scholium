@@ -221,7 +221,7 @@ struct ArchitectureBoundaryTests {
             ("transaction recovery store", #"\bTriptychMutationRecoveryStore\s*\("#),
             ("identity recovery coordinator", #"\bNoteIdentityRecoveryCoordinator\s*\("#),
             ("move coordinator", #"\bTriptychMoveCoordinator\s*\("#),
-            ("permanent-deletion coordinator", #"\bNotePermanentDeletionCoordinator\s*\("#),
+            ("system-Trash coordinator", #"\bNoteSystemTrashDeletionCoordinator\s*\("#),
             ("FSEvents watcher", #"\bFSEventStreamCreate\s*\("#),
             ("Zotero MCP server", #"\bZoteroMCPServer\s*\("#),
             ("Triptych storage path", "appendingPathComponent\\s*\\(\\s*\\\"Triptychs\\\""),
@@ -943,7 +943,7 @@ struct ArchitectureBoundaryTests {
             .deletingLastPathComponent()
         let relativePaths = [
             "Scholium/Views/Frontmatter/FrontmatterEditorView.swift",
-            "Scholium/Views/Note/NoteLifecycleView.swift",
+            "Scholium/Views/Note/NoteFileOperationView.swift",
             "Scholium/Views/Note/TransactionRecoveryView.swift",
             "Scholium/Views/Note/NoteContentView.swift",
         ]

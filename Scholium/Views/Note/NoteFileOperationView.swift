@@ -1,16 +1,16 @@
 import ScholiumContracts
 import SwiftUI
 
-struct NoteLifecycleActions {
-    let duplicate: @MainActor (NoteLifecycleTarget, String) async throws -> Void
-    let move: @MainActor (NoteLifecycleTarget, String) async throws -> Void
+struct NoteFileActions {
+    let duplicate: @MainActor (NoteMutationTarget, String) async throws -> Void
+    let move: @MainActor (NoteMutationTarget, String) async throws -> Void
 }
 
-struct NoteLifecycleView: View {
+struct NoteFileOperationView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let request: NoteLifecycleRequest
-    let actions: NoteLifecycleActions
+    let request: NoteFileRequest
+    let actions: NoteFileActions
 
     @State private var destination = ""
     @State private var isWorking = false

@@ -492,9 +492,6 @@ struct ContentView: View {
             ordinarySearchScope: appState.searchController.ordinaryScope,
             currentVaultID: appState.currentDocumentVaultID,
             vaultRole: appState.currentDocumentVaultRole,
-            locationScope: appState.currentDocumentDescriptor == nil
-                ? appState.noteLocationScope
-                : .workspace,
             noteIdentityByPath: appState.currentDocumentIdentityByPath,
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
@@ -683,18 +680,17 @@ struct ContentView: View {
             disclosureScope: appState.currentRegisteredVault.map {
                 LibraryDisclosureScope(
                     vaultID: $0.id,
-                    locationScope: appState.noteLocationScope
+                    sourceScope: appState.noteSourceScope
                 )
             },
             selectedDocumentPath: selectedLibraryDocumentPath,
             libraryFocusRequestGeneration: appState.libraryFocusRequestGeneration,
             currentVaultRole: appState.currentVaultRole,
             currentWorkspaceSlot: currentWorkspaceSlot,
-            canMutateLibrary: appState.noteLocationScope == .workspace
-                && appState.currentRegisteredVault != nil
+            canMutateLibrary: appState.currentRegisteredVault != nil
                 && !appState.isCreatingNote
                 && !appState.isMutatingFolder,
-            lifecycleMutationGeneration: appState.lifecycleMutationGeneration,
+            sourceMutationGeneration: appState.sourceMutationGeneration,
             filterOptions: SidebarLibraryFilterOptions(
                 catalogIsAvailable: appState.workspaceCatalog != nil,
                 graphIsAvailable: appState.relationshipGraph != nil,
@@ -710,7 +706,6 @@ struct ContentView: View {
             retryAttention: {
                 Task { await appState.refreshWorkspaceCatalog() }
             },
-            selectLocationScope: { appState.requestNoteLocationScope($0) },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
             selectTriptychWorkspace: { appState.requestTriptychWorkspace($0) },
             createUntitledNote: { appState.requestUntitledNoteCreation(in: $0) },
@@ -723,11 +718,11 @@ struct ContentView: View {
             moveFolder: { target, destination in
                 try await appState.moveFolder(target, to: destination)
             },
-            requestFolderLifecycle: {
-                appState.folderLifecycleRequest = $0
+            requestFolderFileOperation: {
+                appState.folderFileRequest = $0
             },
-            moveFolderToTrash: {
-                try await appState.moveFolderToTrash($0)
+            requestFolderSystemTrash: {
+                try await appState.prepareFolderSystemTrash($0)
             },
             copyRelativePath: { path in
                 do {
@@ -744,10 +739,7 @@ struct ContentView: View {
                 }
             },
             revealNote: { appState.showInFinder($0) },
-            setAside: { try await appState.setAsideNote($0) },
-            moveToTrash: { try await appState.moveNoteToTrash($0) },
-            putBack: { try await appState.putBackNote($0) },
-            deletePermanently: { try await appState.deleteNotePermanently($0) },
+            requestSystemTrash: { try await appState.prepareNoteSystemTrash($0) },
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },
             selectSortOrder: { appState.noteSortOrder = $0 },
@@ -775,7 +767,7 @@ struct ContentView: View {
                 continue
             }
             values[slot] = snapshot.documents.count {
-                $0.lifecycle == .active && !$0.capabilities.isManagedCritique
+                !$0.capabilities.isManagedCritique
             }
         }
         return SidebarWorkspaceNoteCounts(values: values)
@@ -895,10 +887,10 @@ struct ContentView: View {
                     }
                 )
             }
-        case .lifecycle(let request):
-            NoteLifecycleView(
+        case .noteFileOperation(let request):
+            NoteFileOperationView(
                 request: request,
-                actions: NoteLifecycleActions(
+                actions: NoteFileActions(
                     duplicate: { source, destination in
                         _ = try await appState.duplicateNote(source, to: destination)
                     },
@@ -907,15 +899,24 @@ struct ContentView: View {
                     }
                 )
             )
-        case .folderLifecycle(let request):
-            FolderLifecycleView(
+        case .folderFileOperation(let request):
+            FolderFileOperationView(
                 request: request,
                 folderRelativePaths: appState.currentLibraryFolders,
-                actions: FolderLifecycleActions(
+                actions: FolderFileActions(
                     move: { target, destination in
                         try await appState.moveFolder(target, to: destination)
                     }
                 )
+            )
+        case .systemTrash(let preview):
+            SystemTrashConfirmationView(
+                preview: preview,
+                confirm: { preview in
+                    try await appState.executeSystemTrash(preview)
+                    appState.presentationRouter.dismissSheet()
+                },
+                cancel: { appState.presentationRouter.dismissSheet() }
             )
         case .transactionRecovery:
             TransactionRecoveryView(

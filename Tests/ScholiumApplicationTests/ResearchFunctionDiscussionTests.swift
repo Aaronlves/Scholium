@@ -266,7 +266,6 @@ extension ResearchFunctionOperationsTests {
             noteID: topic.noteID,
             note: topic.note,
             role: topic.role,
-            lifecycle: topic.lifecycle,
             fingerprint: topic.fingerprint,
             title: topic.title
         )
@@ -328,7 +327,6 @@ extension ResearchFunctionOperationsTests {
             noteID: topic.noteID,
             note: topic.note,
             role: topic.role,
-            lifecycle: topic.lifecycle,
             fingerprint: topic.fingerprint,
             title: topic.title
         )

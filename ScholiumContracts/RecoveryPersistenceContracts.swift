@@ -1,51 +1,51 @@
 import Foundation
 
-/// One exact source target in a monotonic permanent-deletion plan.
-public struct PermanentDeletionTarget: Codable, Hashable, Sendable {
-    public let noteID: UUID
-    public let relativePath: String
-    public let expectedRevision: DocumentFingerprint
+public enum SystemTrashDeletionSourceProgress: String, Codable, Hashable, Sendable {
+    case pending
+    case movedToSystemTrash = "moved_to_system_trash"
+    /// The process stopped before Scholium durably received Foundation's
+    /// resulting URL. Original-path absence alone is not success evidence.
+    case outcomeUnknown = "outcome_unknown"
+}
+
+public struct SystemTrashDeletionSourceReceipt: Codable, Hashable, Sendable {
+    public let targetID: UUID
+    public let progress: SystemTrashDeletionSourceProgress
+    public let resultingTrashPath: String?
 
     public init(
-        noteID: UUID,
-        relativePath: String,
-        expectedRevision: DocumentFingerprint
+        targetID: UUID,
+        progress: SystemTrashDeletionSourceProgress,
+        resultingTrashPath: String? = nil
     ) {
-        self.noteID = noteID
-        self.relativePath = relativePath
-        self.expectedRevision = expectedRevision
+        self.targetID = targetID
+        self.progress = progress
+        self.resultingTrashPath = resultingTrashPath
     }
 }
 
-/// Durable intent for idempotent deletion and privacy cleanup. It contains no
-/// Markdown bytes and cannot restore a deleted source.
-public struct PermanentDeletionPlan: Codable, Hashable, Sendable {
-    public let noteID: UUID
-    public let vaultID: UUID
-    public let relativePath: String
-    public let expectedRevision: DocumentFingerprint
-    public let critique: PermanentDeletionTarget?
-    public let critiqueAssociations: [CritiqueAssociation]
+/// Durable forward-only evidence for two deliberately non-atomic boundaries:
+/// native system-Trash moves first, then irreversible portable Record cleanup.
+public struct SystemTrashDeletionPlan: Codable, Hashable, Sendable {
+    public let preview: SystemTrashDeletionPreview
+    public let sourceReceipts: [SystemTrashDeletionSourceReceipt]
+    public let deletedRecordIDs: [UUID]
+    public let removedDiscussionIDs: [UUID]
 
     public init(
-        noteID: UUID,
-        vaultID: UUID,
-        relativePath: String,
-        expectedRevision: DocumentFingerprint,
-        critique: PermanentDeletionTarget?,
-        critiqueAssociations: [CritiqueAssociation]
+        preview: SystemTrashDeletionPreview,
+        sourceReceipts: [SystemTrashDeletionSourceReceipt]? = nil,
+        deletedRecordIDs: [UUID] = [],
+        removedDiscussionIDs: [UUID] = []
     ) {
-        self.noteID = noteID
-        self.vaultID = vaultID
-        self.relativePath = relativePath
-        self.expectedRevision = expectedRevision
-        self.critique = critique
-        self.critiqueAssociations = critiqueAssociations
+        self.preview = preview
+        self.sourceReceipts = sourceReceipts ?? preview.sources.map {
+            SystemTrashDeletionSourceReceipt(targetID: $0.id, progress: .pending)
+        }
+        self.deletedRecordIDs = deletedRecordIDs.sorted { $0.uuidString < $1.uuidString }
+        self.removedDiscussionIDs = removedDiscussionIDs.sorted { $0.uuidString < $1.uuidString }
     }
 
-    public var deletedNoteIDs: Set<UUID> {
-        var ids: Set<UUID> = [noteID]
-        if let critique { ids.insert(critique.noteID) }
-        return ids
-    }
+    public var id: UUID { preview.id }
+    public var affectedNoteIDs: Set<UUID> { preview.affectedNoteIDs }
 }

@@ -87,9 +87,8 @@ extension ScholiumCLI {
           scholium note import <vault>:<path> --from <markdown-file>
           scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>
           scholium note move <vault>:<path> <new-path> --expected <sha256>
-          scholium note set-aside <vault>:<path> --expected <sha256>
-          scholium note trash <vault>:<path> --expected <sha256>
-          scholium note delete <vault>:<Trash/path> --permanent --expected <sha256>
+          scholium note move-to-trash <vault>:<path> --expected <sha256>
+              --delete-associated-records
           scholium discuss list [--triptych <uuid-or-unique-name>]
               [--format json]
           scholium discuss show <discussion-id> [--triptych <uuid-or-unique-name>] [--format json]
@@ -418,9 +417,7 @@ private extension ScholiumCLI {
             "note import": "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML.",
             "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",
             "note move": "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>",
-            "note set-aside": "Usage: scholium note set-aside <vault>:<path> --expected <sha256>",
-            "note trash": "Usage: scholium note trash <vault>:<path> --expected <sha256>",
-            "note delete": "Usage: scholium note delete <vault>:<Trash/path> --permanent --expected <sha256>",
+            "note move-to-trash": "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256> --delete-associated-records\n\nMoves the exact Note to the macOS system Trash and deletes every finished Research Record in which it directly participates. Multi-Note Records are deleted as whole records. Finder owns file restoration; Scholium cannot restore deleted Records.",
             "discuss list": "Usage: scholium discuss list [--triptych <selector>] [--format text|json]",
             "discuss show": "Usage: scholium discuss show <discussion-id> [--triptych <selector>] [--format text|json]",
             "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis is a researcher-operated manual attribution route. External Agents must use the authenticated scholium agent discuss-reply command.",

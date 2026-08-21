@@ -1112,7 +1112,6 @@ struct ResearchActionControllerTests {
             noteID: UUID(),
             note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: path),
             role: role,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: title),
             title: title
         )

@@ -81,7 +81,8 @@ that pair to the Triptych, exact starting bytes/fingerprint, and optional final 
 bytes/fingerprint. It enforces the Bounded Write Set source-size limit,
 descriptor-safe storage, atomic replacement, and cross-process locking. It is
 not queried as history, cannot reconstruct source authority, and is consumed
-only by exact Record comparison, direct Undo, and note-deletion privacy cleanup.
+only by exact Record comparison, direct Undo, and post-Record system-Trash
+cleanup.
 
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
 bounded machine-local JSON state. It owns no-follow containment, byte limits,
@@ -92,6 +93,42 @@ ledger each retain their
 own schema, path, transaction, recovery, and error semantics, and translate
 primitive failures at that owner boundary. The primitive neither interprets a
 Record nor becomes a writable research-source authority.
+
+## System Trash and Record cleanup boundary
+
+`NoteSystemTrashDeletionCoordinator` is the Core owner for one confirmed
+source-and-Record cutover. `prepareNote` and `prepareFolder` bind exact source,
+stable identities, revisions, complete directory manifests, managed Critiques,
+active Discussions, and finished Record byte fingerprints into one immutable
+preview. `WorkspaceHandle` holds the source-mutation lease and flushes every
+Triptych editor before both preparation and execution. Relevant nonterminal
+`LocalResearchExecutionStore` entries fail preflight.
+
+`TriptychMutationRecoveryStore` persists the `SystemTrashDeletionPlan` before
+the first filesystem call. Each source owns an independent receipt.
+`VaultRepository` repeats descriptor-relative containment and revision or
+manifest checks; `VaultMutationCoordinator` then calls Foundation's native
+system-Trash API inside an `NSFileCoordinator` deleting accessor. The returned
+URL is machine-local recovery evidence only. Original-path absence after an
+interruption cannot prove Foundation success, so that receipt becomes
+`outcomeUnknown` and blocks all portable cleanup.
+
+After every source receipt is `movedToSystemTrash`,
+`PortableResearchRecordStore` discards affected active Discussions and deletes
+each previewed finished Record with exact-fingerprint compare-and-swap. A
+durable deletion marker makes retry idempotent. Note Review activities are
+pruned, then local executions and Agent change evidence are removed. Settlement,
+stable identity, source-access records, Zotero bindings, and Critique
+associations are not cleanup targets. Portable Record schema 12 has no deleted-
+participant representation; the bounded schema-11-to-12 cutover converts ordinary
+participants and turns any old deleted-participant Record into one whole-Record
+deletion marker.
+
+Watcher reconciliation, Finder actions, and sync tools cannot construct this
+plan or call its Record cleanup. They publish source inventory changes through
+the ordinary refresh and stable-identity diagnostics only. Finder restoration
+therefore re-enters as source and may reconcile retained identity, but it never
+reverses a finished Record deletion.
 
 ## Shared read models and metadata
 

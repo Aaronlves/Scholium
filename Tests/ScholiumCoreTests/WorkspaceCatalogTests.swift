@@ -322,23 +322,28 @@ struct WorkspaceCatalogTests {
         ).revisionBoundItemIDs.isEmpty)
     }
 
-    @Test("Set Aside and Trash remain outside ordinary Attention")
-    func inactiveLocationsAreExcluded() {
+    @Test("Folder spellings never suppress ordinary Attention")
+    func folderNamesDoNotSuppressAttention() {
         let topics = vault("Topics", .topicKnowledge)
-        let setAside = note("Set Aside/Old.md", "---\ntitle: [broken\n---\n[[Missing]]")
-        let trash = note("Trash/Deleted.md", "Isolated")
+        let archived = note("Archive/Old.md", "---\ntitle: [broken\n---\n[[Missing]]")
+        let removed = note("Removed/Deleted.md", "Isolated")
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [topics],
-            documents: [topics.id: [setAside, trash]],
+            documents: [topics.id: [archived, removed]],
             settlementStates: [
-                ref(topics, setAside).id: WorkspaceSettlementState(
+                ref(topics, archived).id: WorkspaceSettlementState(
                     settledFingerprint: DocumentFingerprint(content: "older"),
                     changedSinceSettled: true
                 ),
             ]
         )
 
-        #expect(snapshot.attention.isEmpty)
+        #expect(snapshot.attention.contains {
+            $0.note.relativePath == archived.relativePath
+        })
+        #expect(snapshot.attention.contains {
+            $0.note.relativePath == removed.relativePath
+        })
     }
 
     @Test("Unresolved stable identity appears as dismissible derived Attention")

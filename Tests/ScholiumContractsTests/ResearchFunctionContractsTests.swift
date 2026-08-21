@@ -562,7 +562,6 @@ struct ResearchFunctionContractsTests {
             noteID: target.noteID,
             note: target.note,
             role: .analysis,
-            lifecycle: target.lifecycle,
             fingerprint: target.fingerprint,
             title: target.title
         )

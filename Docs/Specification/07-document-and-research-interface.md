@@ -661,9 +661,14 @@ revision check. A later mismatch fails as Conflict, keeps the candidate, and
 updates the row on Refresh. Recovery errors remain visible without hiding valid
 entries from the other recovery class.
 
-Lifecycle and destructive actions use exactly **Set Aside**, **Move to Trash**,
-**Put Back**, **Delete Permanently**, and **Cancel** when applicable. Put Back
-remains the direct reversible exception and is never styled as destructive.
+System-Trash recovery rows are visually and semantically distinct from save
+candidates. They name original source items, known Finder-owned destinations,
+affected Discussions and finished Records, current receipt state, and whether
+the only safe route is forward cleanup or researcher inspection followed by
+**Retain Records and Resolve**. The latter never claims to restore or erase a
+file. File deletion actions use exactly **Move to Trash…** and **Cancel**.
+Standalone Research Record deletion retains its separately named permanent
+confirmation and never presents itself as Finder-restorable.
 
 ## 18.7 Simplified Chinese terminology and translation boundary
 
@@ -694,12 +699,9 @@ punctuation.
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Comment / Discussion / Response | 评论 / 讨论 / 回应 |
 | Research Record | 研究记录 |
-| Set Aside / SET ASIDE | 搁置 |
-| Trash / TRASH | 纸篓 |
 | No Document Selected | 未选择文档 |
 | Expand All Folders / Collapse All Folders | 展开所有文件夹 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |
-| Put Back | 放回 |
 
-The literal `Trash/` directory, paths, stable identifiers, enum/raw values,
-and researcher-authored titles remain verbatim and are never translated.
+System-owned Finder names, paths, stable identifiers, enum/raw values, and
+researcher-authored titles remain verbatim and are never translated.

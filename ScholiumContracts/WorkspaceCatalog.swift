@@ -414,7 +414,7 @@ public enum WorkspaceCatalogBuilder {
                     validationWarnings: document.validationWarnings
                 ))
 
-                if isActiveResearchPath(document.relativePath), !document.validationWarnings.isEmpty {
+                if !document.validationWarnings.isEmpty {
                     attention.append(AttentionQueueItem(
                         kind: .malformedMetadata,
                         severity: .warning,
@@ -423,8 +423,7 @@ public enum WorkspaceCatalogBuilder {
                         locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
                     ))
                 }
-                if isActiveResearchPath(document.relativePath),
-                   settlement?.changedSinceSettled == true {
+                if settlement?.changedSinceSettled == true {
                     attention.append(AttentionQueueItem(
                         kind: .changedSinceSettled,
                         severity: .warning,
@@ -468,8 +467,7 @@ public enum WorkspaceCatalogBuilder {
         // Possible Orphan reports only complete observable disconnection. A
         // neutral, same-vault, or otherwise non-vector link still integrates
         // the Note and must not be promoted into a warning.
-        for note in notes where isActiveResearchPath(note.reference.relativePath)
-            && note.reference.vaultRole != .other {
+        for note in notes where note.reference.vaultRole != .other {
             let noteID = VaultQualifiedNoteID(
                 vaultID: note.reference.vaultID,
                 relativePath: note.reference.relativePath
@@ -492,8 +490,7 @@ public enum WorkspaceCatalogBuilder {
             for ambiguity in identityAmbiguitiesByVault[vaultID, default: []]
                 .sorted(by: { $0.relativePath < $1.relativePath }) {
                 let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: ambiguity.relativePath)
-                guard let note = notesByQualifiedID[noteID],
-                      isActiveResearchPath(note.reference.relativePath) else { continue }
+                guard let note = notesByQualifiedID[noteID] else { continue }
                 attention.append(AttentionQueueItem(
                     kind: .unresolvedIdentity,
                     severity: .warning,
@@ -509,7 +506,6 @@ public enum WorkspaceCatalogBuilder {
         for diagnosticGraph in diagnosticGraphs {
             for diagnostic in diagnosticGraph.diagnostics {
                 guard let note = references["\(diagnostic.source.vaultID.uuidString):\(diagnostic.source.relativePath)"] else { continue }
-                guard isActiveResearchPath(note.relativePath) else { continue }
                 let queueKind: AttentionQueueKind
                 switch diagnostic.code {
                 case .ambiguous, .ambiguousHeading:
@@ -547,10 +543,6 @@ public enum WorkspaceCatalogBuilder {
 
     private static func severityRank(_ severity: AttentionSeverity) -> Int {
         switch severity { case .information: 0; case .warning: 1 }
-    }
-
-    private static func isActiveResearchPath(_ relativePath: String) -> Bool {
-        !relativePath.hasPrefix("Set Aside/") && !relativePath.hasPrefix("Trash/")
     }
 
     private static func attentionReason(for diagnostic: LinkGraphDiagnostic) -> String {

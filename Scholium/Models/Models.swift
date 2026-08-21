@@ -143,7 +143,6 @@ extension WindowDocumentLocation {
         creationDate: nil,
         modificationDate: nil
       ),
-      lifecycle: .active,
       graphCounts: WorkspaceGraphCounts(
         incoming: 0,
         outgoing: 0,

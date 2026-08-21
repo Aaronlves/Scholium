@@ -1368,9 +1368,7 @@ public actor LocalResearchExecutionStore {
     }
 
     /// Returns the local Action runs whose private state mentions one of the
-    /// supplied Notes. Permanent deletion uses this before removing the runs
-    /// so dependent coordination requests can be purged in the same journaled
-    /// privacy-finalization phase.
+    /// supplied Notes.
     public func executionIDs(containing noteIDs: Set<UUID>) throws -> [UUID] {
         guard !noteIDs.isEmpty else { return [] }
         let listing = try listing()
@@ -1385,9 +1383,29 @@ public actor LocalResearchExecutionStore {
             .sorted { $0.uuidString < $1.uuidString }
     }
 
-    /// Removes machine-local runs that contain any permanently deleted note.
-    /// Finished portable records are deliberately not touched; participant
-    /// tombstones belong to the separate Research Record lifecycle.
+    /// Returns relevant Runs that can still write, finish, recover a write, or
+    /// start dependent work. A confirmed system-Trash operation must reject
+    /// these before moving source: deleting their journals would otherwise
+    /// hide live authority while the agent can still race the saved revision.
+    public func activeExecutionIDs(containing noteIDs: Set<UUID>) throws -> [UUID] {
+        guard !noteIDs.isEmpty else { return [] }
+        let listing = try listing()
+        guard listing.issues.isEmpty else {
+            throw LocalResearchExecutionStoreError.unsafeStore(
+                listing.issues.map(\.id).joined(separator: ", ")
+            )
+        }
+        return listing.records
+            .filter {
+                !Self.noteIDs(in: $0).isDisjoint(with: noteIDs)
+                    && Self.hasLiveAuthority($0)
+            }
+            .map(\.id)
+            .sorted { $0.uuidString < $1.uuidString }
+    }
+
+    /// Removes machine-local execution evidence after the native Trash moves
+    /// and associated finished Record deletions have durably committed.
     @discardableResult
     public func purgeExecutions(containing noteIDs: Set<UUID>) throws -> [UUID] {
         guard !noteIDs.isEmpty else { return [] }
@@ -1410,6 +1428,29 @@ public actor LocalResearchExecutionStore {
             }
             return removed
         }
+    }
+
+    private static func hasLiveAuthority(_ record: LocalResearchExecutionRecord) -> Bool {
+        guard let completion = record.completion else { return true }
+        if completion.state == .prepared { return true }
+        if record.boundedWriteSet.entries.contains(where: {
+            [.writing, .recoveryRequired].contains($0.state)
+        }) { return true }
+        if record.documentWriteRecords.contains(where: {
+            [.writing, .recoveryRequired].contains($0.state)
+        }) { return true }
+        if record.zoteroBindingWriteRecords.contains(where: {
+            [.writing, .recoveryRequired].contains($0.state)
+        }) { return true }
+        if record.writeSetExtensionRecords.contains(where: {
+            [.pending, .allowedSubset].contains($0.state)
+        }) { return true }
+        if record.continuationRequests.contains(where: {
+            [.pending, .allowed, .created].contains($0.state)
+        }) { return true }
+        if let state = record.methodImprovementRun?.state,
+           [.prepared, .writing].contains(state) { return true }
+        return false
     }
 
     /// Stages the one canonical Agent/Scholium result payload on its Run.

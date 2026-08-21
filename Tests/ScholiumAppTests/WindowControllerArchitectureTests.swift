@@ -7,8 +7,8 @@ import Testing
 @Suite("Window controller architecture")
 @MainActor
 struct WindowControllerArchitectureTests {
-    @Test("Lifecycle presentation clears moved notes and direct Put Back skips editor flush")
-    func lifecyclePresentationCutover() throws {
+    @Test("System Trash presentation flushes dirty editors and converges missing tabs")
+    func systemTrashPresentationCutover() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -19,52 +19,12 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
-        let putBackStart = try #require(appSource.range(
-            of: "func putBackNote(_ target: NoteLifecycleTarget) async throws"
-        ))
-        let putBackEnd = try #require(appSource.range(
-            of: "func requestDocumentMode(",
-            range: putBackStart.upperBound..<appSource.endIndex
-        ))
-        let putBackSource = appSource[
-            putBackStart.lowerBound..<putBackEnd.lowerBound
-        ]
-        #expect(putBackSource.contains("documentController.putBack(target)"))
-        #expect(!putBackSource.contains("flushRegisteredEditorIfNeeded"))
-        #expect(!putBackSource.contains("currentRegisteredVault"))
-        #expect(!putBackSource.contains("documentRevisions"))
-        #expect(!putBackSource.contains("noteIdentityByPath"))
-
-        let presentationStart = try #require(appSource.range(
-            of: "private func presentCommittedLifecycleMove("
-        ))
-        let presentationEnd = try #require(appSource.range(
-            of: "private func migrateInMemoryPath(",
-            range: presentationStart.upperBound..<appSource.endIndex
-        ))
-        let presentationSource = appSource[
-            presentationStart.lowerBound..<presentationEnd.lowerBound
-        ]
-        #expect(presentationSource.contains(
-            "removePresentedDocumentAfterLifecycleMove("
-        ))
-        #expect(presentationSource.contains(
-            "documentTabController.removeTabs(withIDs: matchingTabIDs)"
-        ))
-        #expect(presentationSource.contains(
-            "documentController.clearSelectionAfterClosingLastTab()"
-        ))
-        #expect(!presentationSource.contains("activateDocument("))
-
-        let splitSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(splitSource.contains(
-            "let showsPlaceholder = tabs.isEmpty || selectedTabID == nil"
-        ))
+        #expect(appSource.contains("func prepareNoteSystemTrash("))
+        #expect(appSource.contains("editorFlushCoordinator.flushAllEditors"))
+        #expect(appSource.contains("presentationRouter.present(.systemTrash(preview))"))
+        #expect(appSource.contains("func executeSystemTrash("))
+        #expect(appSource.contains("documentController.moveToSystemTrash(preview)"))
+        #expect(appSource.contains("synchronizeSystemTrashPresentation(preview)"))
     }
 
     @Test("Folder commands fail explicitly while another folder mutation owns the window")
@@ -80,10 +40,10 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         let moveStart = try #require(appSource.range(
-            of: "func moveFolder(\n        _ target: FolderLifecycleTarget,"
+            of: "func moveFolder(\n        _ target: FolderMutationTarget,"
         ))
         let trashStart = try #require(appSource.range(
-            of: "func moveFolderToTrash(_ target: FolderLifecycleTarget)",
+            of: "func prepareFolderSystemTrash(_ target: FolderMutationTarget)",
             range: moveStart.upperBound ..< appSource.endIndex
         ))
         let refreshStart = try #require(appSource.range(
@@ -100,8 +60,9 @@ struct WindowControllerArchitectureTests {
             ))
             #expect(!source.contains("guard !isMutatingFolder else { return }"))
         }
-        #expect(trashSource.contains("let vaultID = target.vaultID"))
         #expect(trashSource.contains("relativePath: target.relativePath"))
+        #expect(trashSource.contains("editorFlushCoordinator.flushAllEditors"))
+        #expect(trashSource.contains("presentationRouter.present(.systemTrash(preview))"))
     }
 
     @Test("Attention observes only its exact workspace projections")
@@ -134,7 +95,7 @@ struct WindowControllerArchitectureTests {
         workspaceController.setRecoveryMessage("Unrelated recovery state")
         discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .output,
-            location: .setAside
+            sourceScope: .library
         )
         #expect(invalidations == 0)
 
@@ -417,7 +378,7 @@ struct WindowControllerArchitectureTests {
         let document = DocumentController { documentIntents.append($0) }
         let research = ResearchController { researchIntents.append($0) }
         let presentationID = UUID()
-        let lifecycleTarget = NoteLifecycleTarget(
+        let mutationTarget = NoteMutationTarget(
             documentID: VaultQualifiedNoteID(
                 vaultID: reference.vaultID,
                 relativePath: reference.relativePath
@@ -427,7 +388,7 @@ struct WindowControllerArchitectureTests {
         )
 
         discovery.requestOpen(reference, disposition: .newTab)
-        document.requestLifecycle(.move(lifecycleTarget))
+        document.requestFileOperation(.move(mutationTarget))
         research.setActiveDocument(reference)
         research.requestPresentAction(
             .discuss,
@@ -441,7 +402,7 @@ struct WindowControllerArchitectureTests {
                 disposition: .newTab
             )),
         ])
-        #expect(documentIntents == [.presentLifecycle(.move(lifecycleTarget))])
+        #expect(documentIntents == [.presentNoteFileOperation(.move(mutationTarget))])
         #expect(researchIntents == [
             .presentResearchAction(ResearchActionPanelRoute(
                 target: reference,
@@ -450,7 +411,7 @@ struct WindowControllerArchitectureTests {
             )),
         ])
         #expect(document.selectedDocument == nil)
-        #expect(discovery.library.locationScope == .workspace)
+        #expect(discovery.library.sourceScope == .library)
     }
 
     @Test("Two document controllers never share document sessions")
@@ -555,7 +516,7 @@ struct WindowControllerArchitectureTests {
         let secondDiscovery = DiscoveryController(shellState: presentation)
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
-            locationScope: .workspace
+            sourceScope: .library
         )
 
         firstDiscovery.setExpandedFolders(["Ethics", "Ethics/Agency"], in: scope)
@@ -619,7 +580,7 @@ struct WindowControllerArchitectureTests {
         )
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
-            locationScope: .workspace
+            sourceScope: .library
         )
 
         first.setExpandedFolders(["Ethics"], in: scope)
@@ -1045,48 +1006,48 @@ struct WindowControllerArchitectureTests {
         ))
     }
 
-    @Test("Discovery rejects a stale Location completion for the same Scope and Location")
-    func staleLocationCompletion() {
+    @Test("Discovery rejects a stale Library completion for the same workspace")
+    func staleLibraryCompletion() {
         let controller = DiscoveryController()
-        let first = controller.beginLocationRequest(
+        let first = controller.beginLibraryRequest(
             workspaceSlot: .paperAnalysis,
-            location: .trash
+            sourceScope: .library
         )
-        let second = controller.beginLocationRequest(
+        let second = controller.beginLibraryRequest(
             workspaceSlot: .paperAnalysis,
-            location: .trash
+            sourceScope: .library
         )
 
-        controller.failLocationRequest("stale", for: first)
-        #expect(controller.library.locationError == nil)
-        #expect(controller.library.locationIsLoading)
+        controller.failLibraryRequest("stale", for: first)
+        #expect(controller.library.sourceError == nil)
+        #expect(controller.library.sourceIsLoading)
 
-        controller.failLocationRequest("current", for: second)
-        #expect(controller.library.locationError == "current")
-        #expect(!controller.library.locationIsLoading)
+        controller.failLibraryRequest("current", for: second)
+        #expect(controller.library.sourceError == "current")
+        #expect(!controller.library.sourceIsLoading)
     }
 
-    @Test("Location commits one coherent Scope and Location pair")
-    func locationRequestStateMachine() {
+    @Test("Library commits one coherent workspace and source pair")
+    func libraryRequestStateMachine() {
         let shell = WindowShellState()
         let controller = DiscoveryController(shellState: shell)
-        let request = controller.beginLocationRequest(
+        let request = controller.beginLibraryRequest(
             workspaceSlot: .topicKnowledge,
-            location: .setAside
+            sourceScope: .library
         )
-        #expect(!controller.library.locationIsLoading)
-        #expect(controller.libraryState(for: .topicKnowledge).locationIsLoading)
+        #expect(!controller.library.sourceIsLoading)
+        #expect(controller.libraryState(for: .topicKnowledge).sourceIsLoading)
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .workspace)
+        #expect(controller.library.sourceScope == .library)
 
-        #expect(controller.receiveLocationResult(for: request))
+        #expect(controller.receiveLibraryResult(for: request))
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .workspace)
+        #expect(controller.library.sourceScope == .library)
         shell.selectWorkspace(.topicKnowledge)
         #expect(controller.library.workspaceSlot == .topicKnowledge)
-        #expect(controller.library.locationScope == .setAside)
-        #expect(!controller.library.locationIsLoading)
-        #expect(controller.library.locationError == nil)
+        #expect(controller.library.sourceScope == .library)
+        #expect(!controller.library.sourceIsLoading)
+        #expect(controller.library.sourceError == nil)
     }
 
     @Test("Each workspace retains its own Library presentation")
@@ -1095,42 +1056,42 @@ struct WindowControllerArchitectureTests {
         let controller = DiscoveryController(shellState: shell)
         controller.synchronizeLibrarySelection(
             workspaceSlot: .paperAnalysis,
-            location: .trash
+            sourceScope: .library
         )
         controller.synchronizeLibrarySelection(
             workspaceSlot: .topicKnowledge,
-            location: .setAside
+            sourceScope: .library
         )
 
-        #expect(controller.library.locationScope == .trash)
+        #expect(controller.library.sourceScope == .library)
         shell.selectWorkspace(.topicKnowledge)
-        #expect(controller.library.locationScope == .setAside)
+        #expect(controller.library.sourceScope == .library)
         #expect(
-            controller.libraryState(for: .paperAnalysis).locationScope == .trash
+            controller.libraryState(for: .paperAnalysis).sourceScope == .library
         )
     }
 
-    @Test("Ordinary Location navigation stages without replacing trusted content with Loading")
-    func stagedLocationReplacement() {
+    @Test("Ordinary Library navigation stages without replacing trusted content with Loading")
+    func stagedLibraryReplacement() {
         let controller = DiscoveryController()
-        let request = controller.beginLocationRequest(
+        let request = controller.beginLibraryRequest(
             workspaceSlot: .topicKnowledge,
-            location: .trash,
+            sourceScope: .library,
             presentation: .stagedReplacement
         )
 
-        #expect(!controller.library.locationIsLoading)
+        #expect(!controller.library.sourceIsLoading)
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .workspace)
+        #expect(controller.library.sourceScope == .library)
 
-        controller.failLocationRequest("target failed", for: request)
-        #expect(controller.library.locationError == nil)
+        controller.failLibraryRequest("target failed", for: request)
+        #expect(controller.library.sourceError == nil)
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .workspace)
+        #expect(controller.library.sourceScope == .library)
     }
 
-    @Test("Window Scope and Location navigation stages from the published Workspace snapshot")
-    func stagedLocationNavigationAdoption() throws {
+    @Test("Window Library navigation stages from the published Workspace snapshot")
+    func stagedLibraryNavigationAdoption() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -1142,7 +1103,7 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
 
-        // Scope browsing, Location browsing, and automatic current-Note reveal
+        // Workspace browsing, Library browsing, and automatic current-Note reveal
         // all stage from the last accepted Workspace snapshot.
         #expect(
             source.components(separatedBy: "presentation: .stagedReplacement").count - 1 == 3
@@ -1153,32 +1114,32 @@ struct WindowControllerArchitectureTests {
         ))
     }
 
-    @Test("Location requests in different workspaces remain independent")
-    func workspaceLocationRequestsAreIndependent() {
+    @Test("Library requests in different workspaces remain independent")
+    func workspaceLibraryRequestsAreIndependent() {
         let shell = WindowShellState()
         let controller = DiscoveryController(shellState: shell)
-        let setAside = controller.beginLocationRequest(
+        let analysesRequest = controller.beginLibraryRequest(
             workspaceSlot: .paperAnalysis,
-            location: .setAside
+            sourceScope: .library
         )
-        let trash = controller.beginLocationRequest(
+        let worksRequest = controller.beginLibraryRequest(
             workspaceSlot: .output,
-            location: .trash
+            sourceScope: .library
         )
 
-        #expect(controller.receiveLocationResult(for: setAside))
+        #expect(controller.receiveLibraryResult(for: analysesRequest))
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .setAside)
+        #expect(controller.library.sourceScope == .library)
 
-        #expect(controller.receiveLocationResult(for: trash))
+        #expect(controller.receiveLibraryResult(for: worksRequest))
         #expect(controller.library.workspaceSlot == .paperAnalysis)
-        #expect(controller.library.locationScope == .setAside)
+        #expect(controller.library.sourceScope == .library)
         shell.selectWorkspace(.output)
         #expect(controller.library.workspaceSlot == .output)
-        #expect(controller.library.locationScope == .trash)
+        #expect(controller.library.sourceScope == .library)
     }
 
-    @Test("Attention presentation is independent of Library Location")
+    @Test("Attention presentation is independent of Library source state")
     func attentionPresentationIsIndependent() {
         let controller = DiscoveryController()
         let attention = AttentionPresentationState()
@@ -1189,21 +1150,21 @@ struct WindowControllerArchitectureTests {
 
         attention.present(workspaceSlot: .paperAnalysis, noteScope: noteScope)
         #expect(attention.noteScope == noteScope)
-        let request = controller.beginLocationRequest(
+        let request = controller.beginLibraryRequest(
             workspaceSlot: .paperAnalysis,
-            location: .trash
+            sourceScope: .library
         )
-        #expect(controller.receiveLocationResult(for: request))
+        #expect(controller.receiveLibraryResult(for: request))
         #expect(attention.noteScope == noteScope)
-        #expect(controller.library.locationScope == .trash)
+        #expect(controller.library.sourceScope == .library)
 
         attention.selectWorkspaceSlot(.output)
         #expect(attention.workspaceSlot == .output)
         #expect(attention.noteScope == nil)
     }
 
-    @Test("Location requests preserve Library filters, sort, and disclosure")
-    func locationRequestPreservesWorkspacePresentation() {
+    @Test("Library requests preserve filters, sort, and disclosure")
+    func libraryRequestPreservesWorkspacePresentation() {
         let controller = DiscoveryController()
         var filters = DiscoveryFilterState()
         filters.tag = "ethics"
@@ -1212,20 +1173,20 @@ struct WindowControllerArchitectureTests {
         controller.selectSortOrder(.titleAscending)
         let disclosureScope = LibraryDisclosureScope(
             vaultID: UUID(),
-            locationScope: .workspace
+            sourceScope: .library
         )
         controller.setExpandedFolders(["Arguments", "Sources"], in: disclosureScope)
 
-        let request = controller.beginLocationRequest(
+        let request = controller.beginLibraryRequest(
             workspaceSlot: .paperAnalysis,
-            location: .trash
+            sourceScope: .library
         )
-        #expect(controller.receiveLocationResult(for: request))
+        #expect(controller.receiveLibraryResult(for: request))
 
         #expect(controller.library.filters == filters)
         #expect(controller.library.sortOrder == .titleAscending)
         #expect(controller.expandedFolders(in: disclosureScope) == ["Arguments", "Sources"])
-        #expect(controller.library.locationScope == .trash)
+        #expect(controller.library.sourceScope == .library)
     }
 
     @Test("Created Notes clear filters, preserve sort, and request one exact reveal")
@@ -1238,7 +1199,7 @@ struct WindowControllerArchitectureTests {
         controller.selectSortOrder(.titleDescending)
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
-            locationScope: .workspace
+            sourceScope: .library
         )
         controller.setExpandedFolders(["Existing"], in: scope)
 
@@ -1270,7 +1231,7 @@ struct WindowControllerArchitectureTests {
         controller.selectSortOrder(.titleAscending)
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
-            locationScope: .workspace
+            sourceScope: .library
         )
         controller.setExpandedFolders(["Existing"], in: scope)
 
@@ -1454,7 +1415,7 @@ struct WindowControllerArchitectureTests {
         let controller = DiscoveryController(shellState: shellState)
         let scope = LibraryDisclosureScope(
             vaultID: UUID(),
-            locationScope: .workspace
+            sourceScope: .library
         )
         var invalidations = 0
         let observation = controller.objectWillChange.sink { invalidations += 1 }
@@ -1724,7 +1685,7 @@ struct WindowControllerArchitectureTests {
         ))
         #expect(committedFolder.lowerBound < recoveryRefresh.lowerBound)
         #expect(windowModelSource.contains(
-            "private func presentCommittedLifecycleMove("
+            "private func synchronizeSystemTrashPresentation("
         ))
         #expect(windowModelSource.contains(
             "workspaceProjectionController.recordCommittedNoteMove("
@@ -1733,7 +1694,7 @@ struct WindowControllerArchitectureTests {
             of: "func moveNote("
         ))
         let moveEnd = try #require(windowModelSource.range(
-            of: "func setAsideNote(",
+            of: "func prepareNoteSystemTrash(",
             range: moveStart.upperBound..<windowModelSource.endIndex
         ))
         let moveSource = windowModelSource[
@@ -1750,9 +1711,7 @@ struct WindowControllerArchitectureTests {
         #expect(moveSource.contains("if outcome.identityRecoveryWarning == nil"))
         #expect(moveSource.contains("documentController.recordCommittedSnapshot("))
         #expect(moveSource.contains("revealCreatedNoteInLibrary("))
-        #expect(windowModelSource.contains(
-            "let lifecycle = currentNote?.workspaceSnapshot?.lifecycle ?? .active"
-        ))
+        #expect(windowModelSource.contains("currentDocumentCapabilities"))
         #expect(windowModelSource.contains(
             "func importMarkdownFiles(_ urls: [URL]) async throws -> MarkdownImportBatchOutcome"
         ))
@@ -1939,8 +1898,7 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("workspaceStore: WorkspaceStore?"))
         #expect(!windowModelSource.contains("workspaceStore ?? WorkspaceStore()"))
         #expect(!windowModelSource.contains("DocumentSessionStore("))
-        #expect(!windowModelSource.contains("putBackDestination"))
-        #expect(windowModelSource.contains("documentController.putBack("))
+        #expect(windowModelSource.contains("documentController.moveToSystemTrash("))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
         #expect(!windowModelSource.contains("cssSnippetStore.objectWillChange"))
 
@@ -1974,7 +1932,7 @@ struct WindowControllerArchitectureTests {
         ))
 
         for documentOwnedState in [
-            "@Published private(set) var lifecycleMutationGeneration",
+            "@Published private(set) var sourceMutationGeneration",
             "@Published var pendingSourceLine",
             "@Published var requestPresentationMode",
             "@Published var noteIdentityByPath",
@@ -1982,7 +1940,7 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!windowModelSource.contains(documentOwnedState))
         }
-        #expect(controllerSource.contains("@Published var lifecycleMutationGeneration"))
+        #expect(controllerSource.contains("@Published var sourceMutationGeneration"))
         #expect(!controllerSource.contains("@Published var annotationsByNoteID"))
         #expect(controllerSource.contains("@Published var noteIdentityByPath"))
 

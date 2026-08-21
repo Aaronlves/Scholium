@@ -6,7 +6,7 @@ import Foundation
 /// unfinished Discussion. Closing its presentation does not mutate it. Only
 /// an explicit Finish operation converts it into a `PortableResearchRecord`.
 public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let id: UUID
@@ -79,7 +79,7 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
               participatingNotes.count <= 256,
               notesByID.count == participatingNotes.count,
               participatingNotes.allSatisfy({ note in
-                  !note.isTombstone && note.endingRevision == note.startingRevision
+                  note.endingRevision == note.startingRevision
               }),
               !statements.isEmpty,
               statements.count <= 4_096,
@@ -200,8 +200,6 @@ public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Senda
                       && note.role == original.role
                       && note.title == original.title
                       && note.startingRevision == original.startingRevision
-                      && !note.isTombstone
-                      && note.endingRevision != nil
               }),
               finishedAt >= updatedAt else {
             throw PortableResearchDiscussionError.invalidFinish

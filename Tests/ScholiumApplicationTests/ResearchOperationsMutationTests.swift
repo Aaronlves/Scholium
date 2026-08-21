@@ -92,8 +92,8 @@ struct ResearchOperationsMutationTests {
         await runtime.shutdown()
     }
 
-    @Test("Permanent Analysis deletion removes its machine-local source locator")
-    func permanentDeletionPurgesSourceAccess() async throws {
+    @Test("System Trash preserves the Analysis source-access locator for Finder restoration")
+    func systemTrashPreservesSourceAccess() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -119,17 +119,24 @@ struct ResearchOperationsMutationTests {
                 && ($0["canonicalPath"] as? String) == fixture.analysisSourceURL.path
         })
 
-        let document = try await handle.documents.load(fixture.analysisID)
-        let trashed = try await handle.documents.move(
-            fixture.analysisID,
-            to: "Trash/Analysis.md",
-            expectedRevision: document.fingerprint
-        ).committedValue
-        let trashedDocument = try await handle.documents.load(trashed.destination)
-        _ = try await handle.documents.deletePermanently(
-            trashed.destination,
-            expectedRevision: trashedDocument.fingerprint
+        let projection = try #require(
+            try await handle.snapshot().document(id: fixture.analysisID)
         )
+        let stableID = try #require(projection.stableIdentity.resolvedID)
+        let preview = try await handle.documents.prepareSystemTrash(
+            NoteMutationTarget(
+                documentID: fixture.analysisID,
+                stableNoteID: stableID,
+                revision: projection.fingerprint
+            )
+        )
+        let commit = try await handle.documents.moveToSystemTrash(preview)
+            .committedValue
+        defer {
+            for path in commit.resultingTrashPaths {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
 
         let after = try #require(
             JSONSerialization.jsonObject(
@@ -137,47 +144,10 @@ struct ResearchOperationsMutationTests {
             ) as? [String: Any]
         )
         let afterBindings = try #require(after["bindings"] as? [[String: Any]])
-        #expect(!afterBindings.contains {
+        #expect(afterBindings.contains {
             ($0["analysisNoteID"] as? String) == analysis.noteID.uuidString
-                || ($0["canonicalPath"] as? String) == fixture.analysisSourceURL.path
+                && ($0["canonicalPath"] as? String) == fixture.analysisSourceURL.path
         })
-        await runtime.shutdown()
-    }
-
-    @Test("A corrupt source store blocks permanent deletion before source bytes change")
-    func corruptSourceStoreBlocksDeletionPreflight() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let document = try await handle.documents.load(fixture.analysisID)
-        let trashed = try await handle.documents.move(
-            fixture.analysisID,
-            to: "Trash/Analysis.md",
-            expectedRevision: document.fingerprint
-        ).committedValue
-        let trashedDocument = try await handle.documents.load(trashed.destination)
-        let bindingURL = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("source-access", isDirectory: true)
-            .appendingPathComponent("source-bindings-v1.json")
-        try Data("corrupt".utf8).write(to: bindingURL, options: .atomic)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o600)],
-            ofItemAtPath: bindingURL.path
-        )
-
-        await #expect(throws: (any Error).self) {
-            _ = try await handle.documents.deletePermanently(
-                trashed.destination,
-                expectedRevision: trashedDocument.fingerprint
-            )
-        }
-        let unchanged = try Data(
-            contentsOf: fixture.analysesURL.appendingPathComponent("Trash/Analysis.md")
-        )
-        #expect(unchanged == trashedDocument.sourceBytes)
         await runtime.shutdown()
     }
 }
@@ -403,7 +373,6 @@ func researchFunctionTarget(
         noteID: try #require(note.stableIdentity.resolvedID),
         note: id,
         role: role,
-        lifecycle: note.lifecycle,
         fingerprint: note.fingerprint,
         title: note.document.parsedFrontmatter["title"]?.scalarString ?? id.relativePath
     )

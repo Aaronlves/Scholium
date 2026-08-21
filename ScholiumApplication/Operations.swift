@@ -164,12 +164,12 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    public func moveFolderToTrash(
+    public func prepareFolderSystemTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
+    ) async throws -> SystemTrashDeletionPreview {
         let handle = try await reference.requireHandle()
-        return try await handle.moveFolderToTrash(
+        return try await handle.prepareFolderSystemTrash(
             inVault: vaultID,
             relativePath: relativePath
         )
@@ -189,7 +189,7 @@ public actor DocumentOperations: DocumentUseCases {
     }
 
     public func duplicate(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         let handle = try await reference.requireHandle()
@@ -243,7 +243,7 @@ public actor DocumentOperations: DocumentUseCases {
     }
 
     public func move(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         let handle = try await reference.requireHandle()
@@ -253,76 +253,18 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    public func setAside(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+    public func prepareSystemTrash(
+        _ target: NoteMutationTarget
+    ) async throws -> SystemTrashDeletionPreview {
         let handle = try await reference.requireHandle()
-        return try await handle.setAsideDocument(
-            id,
-            expectedRevision: expectedRevision
-        )
+        return try await handle.prepareSystemTrash(target)
     }
 
-    public func setAside(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
+    public func moveToSystemTrash(
+        _ preview: SystemTrashDeletionPreview
+    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
         let handle = try await reference.requireHandle()
-        return try await handle.setAsideDocument(target)
-    }
-
-    public func moveToTrash(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.moveDocumentToTrash(
-            id,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func moveToTrash(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.moveDocumentToTrash(target)
-    }
-
-    public func putBack(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.putBackDocument(
-            id,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func putBack(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.putBackDocument(target)
-    }
-
-    public func deletePermanently(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.deleteDocumentPermanently(
-            id,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func deletePermanently(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
-        let handle = try await reference.requireHandle()
-        return try await handle.deleteDocumentPermanently(target)
+        return try await handle.moveToSystemTrash(preview)
     }
 
     public func interruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery] {

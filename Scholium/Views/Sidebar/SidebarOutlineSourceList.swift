@@ -8,13 +8,7 @@ import SwiftUI
 struct SidebarNativeStrings {
     let locale: Locale
 
-    func locationName(_ scope: NoteLocationScope) -> String {
-        switch scope {
-        case .workspace: ScholiumL10n.string("Library", locale: locale)
-        case .setAside: ScholiumL10n.string("Set Aside", locale: locale)
-        case .trash: ScholiumL10n.string("Trash", locale: locale)
-        }
-    }
+    var libraryName: String { ScholiumL10n.string("Library", locale: locale) }
 
     var newNote: String { ScholiumL10n.string("New Note", locale: locale) }
     var newFolder: String { ScholiumL10n.string("New Folder", locale: locale) }
@@ -24,14 +18,6 @@ struct SidebarNativeStrings {
             ? ScholiumL10n.string("Collapse %@", locale: locale)
             : ScholiumL10n.string("Expand %@", locale: locale)
         return String(format: format, locale: locale, title)
-    }
-
-    func putBackLabel(title: String) -> String {
-        String(
-            format: ScholiumL10n.string("Put Back %@", locale: locale),
-            locale: locale,
-            title
-        )
     }
 
     func folderAccessibilityValue(isEmpty: Bool, isExpanded: Bool) -> String {
@@ -45,7 +31,7 @@ struct SidebarNativeStrings {
     }
 }
 
-/// AppKit owns populated Library, Set Aside, and Trash lists: hierarchy, exact
+/// AppKit owns the populated Library list: hierarchy, exact
 /// scroll extent, and row reuse. SwiftUI remains responsible only for
 /// Scholium's row content and location-valid actions inside the small set of
 /// visible native cells.
@@ -68,19 +54,15 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
     let onConsumeRevealRequest: (DiscoveryLibraryRevealRequest) -> Void
     let onFocusRequestHandled: () -> Void
     let onSelect: (WindowDocumentLocation) -> Void
-    let putBackDocumentsInProgress: Set<VaultQualifiedNoteID>
     let onMoveNoteDrop: (SidebarNoteDragItem, String?) -> Void
     let onMoveFolderDrop: (SidebarFolderDragItem, String?) -> Void
-    let onPutBack: (WindowDocumentLocation) -> Void
-    let onWillRemove: (WindowDocumentLocation) -> Void
-    let onMutationFailed: (WindowDocumentLocation) -> Void
 
     var nativeStrings: SidebarNativeStrings {
         SidebarNativeStrings(locale: locale)
     }
 
     var accessibilityLocationName: String {
-        nativeStrings.locationName(context.locationScope)
+        nativeStrings.libraryName
     }
 
     func makeCoordinator() -> Coordinator {

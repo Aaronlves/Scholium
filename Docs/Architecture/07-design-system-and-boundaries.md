@@ -80,12 +80,6 @@ pointer tracker fails the inventory until its semantic owner and exception
 class are made explicit. The bounded WebKit hover inventory may shrink during
 later simplification but must not grow.
 
-`ScholiumLibraryLocationPicker` owns the borderless native Location menu and
-its single native indicator and shared interaction surface without owning
-Location state or applying a persistent Accent tint. Its plain button
-presentation prevents the native Menu host from adding a second hover shape;
-the title resolves from Regular secondary ink to primary ink through the same
-hover/focus emphasis environment as adjacent commands.
 `ScholiumContentInteractionSurface` is the shared SwiftUI, AppKit, and WebKit
 mapping for content-control selection, hover, keyboard-focus, and press
 emphasis. Hover resolves to a low-opacity semantic `primaryText` veil,
@@ -139,7 +133,7 @@ Paper-derived track, adaptive raised selection plate, continuous corners,
 pointer and press feedback, Left/Right traversal, and accessibility state.
 `ScholiumInspectorModeIndex` is now a semantic adapter into that component.
 `ScholiumEditorialIconControl` is the single presentation owner for Filter,
-disclosure, and Add in LocationHeader. It gives all three one exact 28pt target,
+disclosure, and Add in the Library header. It gives all three one exact 28pt target,
 semantic ink, and one rounded-rectangle hover, focus, and press surface. Its Button or
 Menu child retains only activation, focus, accessibility, and menu tracking;
 the component applies one plain button presentation so Menu hosts cannot add a
@@ -210,7 +204,7 @@ System confirmation actions remain native-owned.
 Evidence rows reuse one shared ledger component with an aligned
 symbol column and no trailing action button. Academic evidence remains visible
 when the rail is shown; the evaluation editor and technical identity use
-separate disclosure controls, and permanent deletion remains in the Record
+separate disclosure controls, and permanent Research Record deletion remains in the Record
 header.
 Bibliography and both Record and Reading Lead technical identity reuse
 `ScholiumApparatusFactGrid`, the same adaptive label/value owner as Inspector
@@ -243,8 +237,8 @@ for Library and Inspector. `ScholiumMetrics.Library` and
 `ScholiumMetrics.Apparatus` map to it; their internal row, hierarchy, and section
 variables remain separate.
 
-`ScholiumLibrarySourceState` owns the common Library/Set Aside/Trash empty,
-loading, and error page inset. It maps horizontal content to the peripheral
+`ScholiumLibrarySourceState` owns the Library empty, loading, and error page
+inset. It maps horizontal content to the peripheral
 edge and vertical entry to `sourceStateVerticalInset`; it does not wrap
 populated OutlineRows or alter their denser row-surface inset.
 

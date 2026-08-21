@@ -51,12 +51,23 @@
   keys, supports structured CreatorLists and authored date text, and
   removes a property only through the same targeted expected-revision write.
 
-## Notes, documents, and lifecycle
+## Notes, documents, and file operations
 
-- New Note, New Folder, duplicate, UTF-8 Markdown import, rename, move, Set
-  Aside, Move to Trash, Put Back, and permanent deletion are reachable through
-  shared Application capabilities. Stable Note identity follows confirmed
-  moves and reconciled external renames.
+- New Note, New Folder, duplicate, UTF-8 Markdown import, rename, move, and
+  native system-Trash deletion are reachable through shared Application
+  capabilities. Stable Note identity follows confirmed moves, remains after
+  system-Trash deletion, and reconciles external renames or Finder restoration.
+- Note and Folder deletion prepare exact source/folder inventories, associated
+  Critiques, active Discussions, and whole finished Records before confirmation.
+  All source items move first; durable recovery then resumes Discussion, exact-
+  fingerprint Record, Note Review, and machine-local evidence cleanup. A
+  multi-Note Record is deleted as one object when any participant is affected.
+- Settlement, source access, stable identity, Zotero binding, and Critique
+  association are retained. External source absence without a Scholium plan
+  refreshes source projections but does not delete Discussions or Records.
+- The researcher CLI exposes the same Note system-Trash preparation and execute
+  path with exact revision and explicit associated-Record consent. No prior
+  holding-location or application-owned restore/delete command is reachable.
 - Review, Edit, and Source share one retained document session. Autosave,
   selection, focus, scroll, composition, Undo, conflict, external-change
   handling, and recovery remain bound to the same exact source.
@@ -200,7 +211,7 @@
 - An explicitly researcher-started `researcher_provided` Check Fidelity Run
   exposes the exact checks plus a typed Citation constraint. Without a formal
   source envelope, Citation must be `unavailable`; Note YAML URLs remain
-  authored metadata. The Fidelity Run forms its own schema-11 Record with
+  authored metadata. The Fidelity Run forms its own schema-12 Record with
   explicit unverified evidence rather than a fabricated source claim; Analyze
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
@@ -219,11 +230,12 @@
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-11 Records. Analyze Records retain one explicit Scholium-source,
+  schema-12 Records. Analyze Records retain one explicit Scholium-source,
   external-Zotero, or researcher-provided route without inventing source
   evidence. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-11 Records reject schemas 1 through 10 rather than migrating them. Credentials,
+  Schema-12 Records reject schemas 1 through 10; schema 11 has only the bounded
+  one-way participant cutover. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected
@@ -234,7 +246,7 @@
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.
-- Once a portable Record exists, schema-16 Local Execution compacts to a
+- Once a portable Record exists, schema-17 Local Execution compacts to a
   terminal receipt and deletes its prepared instructions, Bounded Write Set,
   extensions, write ledgers, and conflict rows. Diff and direct Undo use the
   portable Record plus `(Run ID, Note ID)` Agent evidence instead.

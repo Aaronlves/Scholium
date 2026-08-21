@@ -103,8 +103,7 @@ enum WorkspaceResearchStateReconciler {
             guard let primaryDocument = build.snapshot.vaults
                 .flatMap(\.documents)
                 .first(where: {
-                    $0.lifecycle == .active
-                        && $0.stableIdentity.resolvedID == discussion.primaryNoteID
+                    $0.stableIdentity.resolvedID == discussion.primaryNoteID
                 }) else {
                 continue
             }

@@ -276,9 +276,6 @@ extension SidebarOutlineSourceList {
             isNativeFocused: Bool
         ) {
             let isExpanded = configuration.expandedFolderIDs.contains(item.id)
-            let lifecycleNote = configuration.context.locationScope == .workspace
-                ? nil
-                : item.node.note
             let strings = configuration.nativeStrings
             cell.configure(
                 with: hostedRow(for: item),
@@ -293,23 +290,7 @@ extension SidebarOutlineSourceList {
                 disclosureDepth: item.node.depth,
                 onDisclosure: item.isExpandable ? { [weak self] in
                     self?.toggleDisclosure(item)
-                } : nil,
-                putBackLabel: lifecycleNote.map {
-                    strings.putBackLabel(title: $0.title ?? $0.displayName)
-                },
-                putBackIdentifier: lifecycleNote.map {
-                    let encoded = $0.relativePath.addingPercentEncoding(
-                        withAllowedCharacters: .alphanumerics
-                    ) ?? $0.relativePath
-                    return "scholium.lifecyclePutBack.\(encoded)"
-                },
-                putBackIsNativeFocused: isNativeFocused,
-                putBackIsInProgress: lifecycleNote.flatMap(\.workspaceSnapshot).map {
-                    configuration.putBackDocumentsInProgress.contains($0.id)
-                } ?? false,
-                onPutBack: lifecycleNote.map { note in
-                    { [weak self] in self?.configuration.onPutBack(note) }
-                }
+                } : nil
             )
         }
 
@@ -331,10 +312,7 @@ extension SidebarOutlineSourceList {
                 expandedFolders: configuration.$expandedFolders,
                 selectedDocumentPath: configuration.selectedDocumentPath,
                 context: configuration.context,
-                onSelect: configuration.onSelect,
-                onPutBack: configuration.onPutBack,
-                onWillRemove: configuration.onWillRemove,
-                onMutationFailed: configuration.onMutationFailed
+                onSelect: configuration.onSelect
             )
         }
 
@@ -441,7 +419,6 @@ extension SidebarOutlineSourceList {
         }
 
         private func makeRootMenu() -> NSMenu? {
-            guard configuration.context.locationScope == .workspace else { return nil }
             let menu = NSMenu()
 
             let note = NSMenuItem(
@@ -561,16 +538,16 @@ extension SidebarOutlineSourceList {
             pasteboardWriterForItem item: Any
         ) -> (any NSPasteboardWriting)? {
             guard let item = item as? SidebarOutlineItem,
-                  configuration.dropInventory.locationScope == .workspace,
+                  configuration.dropInventory.sourceScope == .library,
                   configuration.dropInventory.canMutate else { return nil }
 
             if let note = item.node.note,
-               let target = NoteLifecycleTarget(note),
+               let target = NoteMutationTarget(note),
                !CritiquePlacement.isManagedCritiquePath(note.relativePath) {
                 let payload = SidebarNoteDragItem(target)
                 guard !configuration.dropInventory.pendingNoteMoves.contains(payload.id),
                       configuration.dropInventory.notes.contains(where: {
-                          NoteLifecycleTarget($0) == target
+                          NoteMutationTarget($0) == target
                       }) else { return nil }
                 return pasteboardItem(
                     payload,
@@ -580,7 +557,7 @@ extension SidebarOutlineSourceList {
 
             if let path = item.node.folderRelativePath,
                let vaultID = configuration.dropInventory.currentVaultID {
-                let payload = SidebarFolderDragItem(FolderLifecycleTarget(
+                let payload = SidebarFolderDragItem(FolderMutationTarget(
                     vaultID: vaultID,
                     relativePath: path
                 ))

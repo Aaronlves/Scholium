@@ -48,7 +48,6 @@ struct WindowSessionStateTests {
                     vaultID: topicsVaultID,
                     openDocuments: [topic],
                     selectedDocument: topic,
-                    location: "setAside",
                     inspectorMode: "actions",
                     documentMode: "livePreview"
                 ),

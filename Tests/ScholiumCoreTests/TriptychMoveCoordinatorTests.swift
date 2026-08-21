@@ -654,7 +654,7 @@ struct TriptychMoveCoordinatorTests {
         func workspaceGraph() async throws -> ([VaultQualifiedNoteID: NoteDocument], GraphSnapshot) {
             var documents: [VaultQualifiedNoteID: NoteDocument] = [:]
             for slot in WorkspaceVaultSlot.allCases {
-                for path in try await repository(slot).markdownRelativePaths(includeLifecycle: true) {
+                for path in try await repository(slot).markdownRelativePaths() {
                     let document = try await repository(slot).load(relativePath: path)
                     documents[id(slot, path)] = document
                 }

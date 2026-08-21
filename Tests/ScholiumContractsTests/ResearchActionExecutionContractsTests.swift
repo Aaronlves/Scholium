@@ -87,7 +87,6 @@ struct ResearchActionExecutionContractsTests {
             noteID: readable.noteID,
             note: readable.note,
             role: readable.role,
-            lifecycle: readable.lifecycle,
             fingerprint: DocumentFingerprint(content: "changed"),
             title: readable.title
         )
@@ -169,7 +168,6 @@ struct ResearchActionExecutionContractsTests {
                 relativePath: "\(seed).md"
             ),
             role: role,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: seed),
             title: seed
         )

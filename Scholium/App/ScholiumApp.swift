@@ -1236,7 +1236,7 @@ private struct ScholiumCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(
                     appState?.workspaceAssignment == nil
-                        || appState?.noteLocationScope != .workspace
+                        || appState?.noteSourceScope != .library
                         || appState?.isCreatingNote == true
                 )
             Button("Import Markdown…") { appState?.showMarkdownImporter = true }
@@ -1244,22 +1244,30 @@ private struct ScholiumCommands: Commands {
             Divider()
             Button("Duplicate Note…") {
                 guard let note = appState?.currentNote,
-                      let target = NoteLifecycleTarget(note) else { return }
-                appState?.noteLifecycleRequest = .duplicate(target)
+                      let target = NoteMutationTarget(note) else { return }
+                appState?.noteFileRequest = .duplicate(target)
             }
             .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
             Button("Rename Note…") {
                 guard let note = appState?.currentNote,
-                      let target = NoteLifecycleTarget(note) else { return }
-                appState?.noteLifecycleRequest = .rename(target)
+                      let target = NoteMutationTarget(note) else { return }
+                appState?.noteFileRequest = .rename(target)
             }
             .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
             Button("Move Note…") {
                 guard let note = appState?.currentNote,
-                      let target = NoteLifecycleTarget(note) else { return }
-                appState?.noteLifecycleRequest = .move(target)
+                      let target = NoteMutationTarget(note) else { return }
+                appState?.noteFileRequest = .move(target)
             }
             .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
+            Button("Move to Trash…") {
+                appState?.requestCurrentNoteSystemTrash()
+            }
+            .keyboardShortcut(.delete, modifiers: [.command])
+            .disabled(
+                appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
+                    != true
+            )
             Divider()
             Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
                 .disabled(appState?.vaultConfig == nil)
@@ -1712,11 +1720,11 @@ final class WindowModel: ObservableObject {
     private struct StagedWorkspaceLibrarySelection {
         let registeredVault: RegisteredVault
         let workspace: WorkspaceVaultSlot
-        let location: NoteLocationScope
+        let sourceScope: LibrarySourceScope
         let vaultSnapshot: WorkspaceVaultSnapshot
         let vaultConfig: VaultConfig
         let notes: [WindowDocumentLocation]
-        let request: DiscoveryLocationRequest?
+        let request: DiscoveryLibraryRequest?
     }
     private(set) var windowSessionID = UUID()
     let nativeWindowID: UUID
@@ -1988,8 +1996,8 @@ final class WindowModel: ObservableObject {
     }
     // Window-level projections for Library leaves. DiscoveryController remains
     // the sole mutable owner.
-    var noteLocationScope: NoteLocationScope {
-        discoveryController.library.locationScope
+    var noteSourceScope: LibrarySourceScope {
+        discoveryController.library.sourceScope
     }
 
     var isNeedsAttentionFilter: Bool {
@@ -2061,31 +2069,31 @@ final class WindowModel: ObservableObject {
         set { researchController.showResearchInspector(newValue) }
     }
 
-    var noteLifecycleRequest: NoteLifecycleRequest? {
+    var noteFileRequest: NoteFileRequest? {
         get {
-            guard case .lifecycle(let request) = presentationRouter.sheet else { return nil }
+            guard case .noteFileOperation(let request) = presentationRouter.sheet else { return nil }
             return request
         }
         set {
             if let newValue {
-                presentationRouter.present(.lifecycle(newValue))
-            } else if case .lifecycle = presentationRouter.sheet {
+                presentationRouter.present(.noteFileOperation(newValue))
+            } else if case .noteFileOperation = presentationRouter.sheet {
                 presentationRouter.dismissSheet()
             }
         }
     }
 
-    var folderLifecycleRequest: FolderLifecycleRequest? {
+    var folderFileRequest: FolderFileRequest? {
         get {
-            guard case .folderLifecycle(let request) = presentationRouter.sheet else {
+            guard case .folderFileOperation(let request) = presentationRouter.sheet else {
                 return nil
             }
             return request
         }
         set {
             if let newValue {
-                presentationRouter.present(.folderLifecycle(newValue))
-            } else if case .folderLifecycle = presentationRouter.sheet {
+                presentationRouter.present(.folderFileOperation(newValue))
+            } else if case .folderFileOperation = presentationRouter.sheet {
                 presentationRouter.dismissSheet()
             }
         }
@@ -2297,9 +2305,9 @@ final class WindowModel: ObservableObject {
     }
 
     // MARK: Computed Properties
-    private(set) var lifecycleMutationGeneration: UInt64 {
-        get { documentController.lifecycleMutationGeneration }
-        set { documentController.lifecycleMutationGeneration = newValue }
+    private(set) var sourceMutationGeneration: UInt64 {
+        get { documentController.sourceMutationGeneration }
+        set { documentController.sourceMutationGeneration = newValue }
     }
 
     var pendingSourceLine: Int? {
@@ -2384,7 +2392,7 @@ final class WindowModel: ObservableObject {
         if let vaultID = documentController.selectedDocument?.vaultID {
             return vaultID
         }
-        guard noteLocationScope == .workspace,
+        guard noteSourceScope == .library,
               currentNote != nil else { return nil }
         // Identity-recovery notes deliberately have no stable document
         // descriptor yet, but they remain vault-qualified by the Library
@@ -2398,8 +2406,7 @@ final class WindowModel: ObservableObject {
         if let role = currentDocumentDescriptor?.reference.vaultRole {
             return role
         }
-        guard noteLocationScope == .workspace,
-              currentNote != nil else { return .other }
+        guard currentNote != nil else { return .other }
         return currentRegisteredVault?.role ?? .other
     }
 
@@ -2417,9 +2424,7 @@ final class WindowModel: ObservableObject {
         guard let snapshot = currentDocumentVaultSnapshot else {
             return currentNote.map { [$0] } ?? []
         }
-        let lifecycle = currentNote?.workspaceSnapshot?.lifecycle ?? .active
         return snapshot.documents
-            .filter { $0.lifecycle == lifecycle }
             .map(WindowDocumentLocation.workspace)
             .sorted(by: notesAreOrdered)
     }
@@ -2429,14 +2434,8 @@ final class WindowModel: ObservableObject {
               let snapshot = workspaceProjectionController.vaultSnapshot(
                   id: vaultID
               ) else { return [] }
-        let lifecycle = noteLocationScope.documentLifecycle
         return snapshot.folders
             .map(\.rawValue)
-            .filter {
-                WorkspaceDocumentLifecycle(
-                    relativePath: $0 + "/placeholder.md"
-                ) == lifecycle
-            }
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
@@ -2502,7 +2501,6 @@ final class WindowModel: ObservableObject {
                 relativePath: note.relativePath
             ),
             role: role,
-            lifecycle: note.workspaceSnapshot?.lifecycle ?? .active,
             fingerprint: note.document.fingerprint,
             title: note.title ?? note.displayName
         )
@@ -2514,7 +2512,6 @@ final class WindowModel: ObservableObject {
             noteID: target.noteID,
             note: target.note,
             role: target.role.actionRole,
-            lifecycle: target.lifecycle,
             fingerprint: target.fingerprint,
             title: target.title
         )
@@ -2584,17 +2581,15 @@ final class WindowModel: ObservableObject {
         if let capabilities = currentNote?.workspaceSnapshot?.capabilities {
             return capabilities
         }
-        guard let note = currentNote else {
+        guard currentNote != nil else {
             return DocumentCapabilities(
                 role: currentDocumentVaultRole,
-                lifecycle: .active,
                 identity: .unresolved,
                 isManagedCritique: false
             )
         }
         return DocumentCapabilities(
             role: currentDocumentVaultRole,
-            lifecycle: WorkspaceDocumentLifecycle(relativePath: note.relativePath),
             identity: .unresolved,
             isManagedCritique: false
         )
@@ -2666,7 +2661,7 @@ final class WindowModel: ObservableObject {
             reportCommittedMutationWarnings(outcome)
         } catch {
             identityResolutionError = error.localizedDescription
-            try? await refreshNoteLocationScope()
+            try? await refreshLibrarySourceScope()
             if let refreshed = identityAmbiguity(for: ambiguity.relativePath) {
                 selectedIdentityAmbiguity = refreshed
             }
@@ -2675,7 +2670,7 @@ final class WindowModel: ObservableObject {
 
     func retryIdentityRecovery() async {
         do {
-            try await refreshNoteLocationScope()
+            try await refreshLibrarySourceScope()
         } catch {
             identityResolutionError = error.localizedDescription
         }
@@ -2710,9 +2705,9 @@ final class WindowModel: ObservableObject {
     /// Uses the route's exact revision unless it addresses the active editor
     /// session, whose explicit flush may have just committed a newer revision.
     /// In either case the vault and stable note identity remain those captured
-    /// by the lifecycle route, never those of the Library's browsed hierarchy.
-    private func lifecycleExpectedRevision(
-        for target: NoteLifecycleTarget
+    /// by the mutation route, never those of the Library's browsed hierarchy.
+    private func mutationExpectedRevision(
+        for target: NoteMutationTarget
     ) throws -> DocumentFingerprint {
         guard let descriptor = currentDocumentDescriptor,
               descriptor.reference.vaultID == target.documentID.vaultID,
@@ -2765,10 +2760,9 @@ final class WindowModel: ObservableObject {
     }
 
     private func flushRegisteredEditorIfMutatingActiveDocument(
-        _ target: NoteLifecycleTarget
+        _ target: NoteMutationTarget
     ) async throws {
-        guard WorkspaceDocumentLifecycle(relativePath: target.relativePath) == .active,
-              let descriptor = currentDocumentDescriptor,
+        guard let descriptor = currentDocumentDescriptor,
               descriptor.reference.vaultID == target.documentID.vaultID,
               descriptor.reference.relativePath == target.relativePath,
               descriptor.sessionKey.noteID == target.stableNoteID else { return }
@@ -2981,8 +2975,8 @@ final class WindowModel: ObservableObject {
                   researchController.actions.presentationID == route.presentationID,
                   researchController.actions.activeActionID == route.actionID else { return }
             presentationRouter.present(.researchAction(route))
-        case .presentLifecycle(let request):
-            noteLifecycleRequest = request
+        case .presentNoteFileOperation(let request):
+            noteFileRequest = request
         }
     }
 
@@ -3182,14 +3176,14 @@ final class WindowModel: ObservableObject {
         guard requestedWorkspaceSelection != slot,
               shellState.selectedWorkspace != slot
                 || requestedWorkspaceSelection != nil
-                || destination.locationError != nil else { return }
+                || destination.sourceError != nil else { return }
         requestedWorkspaceSelection = slot
         enqueueDocumentTransition { [weak self] in
             guard let self else { return }
             let targetTab = self.documentTabController.selectedTab(in: slot)
             try await self.prepareWorkspaceSelection(
                 slot,
-                location: destination.locationScope,
+                sourceScope: destination.sourceScope,
                 validateDestination: {
                     guard self.requestedWorkspaceSelection == slot else {
                         throw CancellationError()
@@ -3214,44 +3208,8 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func requestNoteLocationScope(_ scope: NoteLocationScope) {
-        Task { [weak self] in await self?.selectNoteLocationScope(scope) }
-    }
-
-    func requestLifecycleNote(_ path: String, in scope: NoteLocationScope) {
-        guard scope == .setAside || scope == .trash else { return }
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
-            guard let self else { return }
-            await self.selectNoteLocationScope(scope)
-            self.openNote(path)
-        }
-    }
-
-    func putBackNote(_ target: NoteLifecycleTarget) async throws {
-        // Set Aside and Trash documents are read-only. A rapid Put Back may
-        // race the previous read presentation's editor-host teardown, so an
-        // unrelated current-editor flush would reject the safe source move as
-        // a stale registration. The lifecycle revision below is the complete
-        // write authority for this direct reversible operation.
-        let outcome: WorkspaceMutationOutcome<TriptychMoveCommit>
-        do {
-            outcome = try await documentController.putBack(target)
-        } catch {
-            await refreshTransactionRecoveryRecords()
-            throw error
-        }
-        let commit = outcome.committedValue
-        let presentationWarning = await presentCommittedLifecycleMove(
-            commit,
-            noteID: target.stableNoteID,
-            identityResolved: outcome.identityRecoveryWarning == nil,
-            vaultID: target.documentID.vaultID
-        )
-        scheduleWorkspaceCatalogRefresh()
-        reportCommittedMutationWarnings(
-            outcome,
-            presentationWarning: presentationWarning
-        )
+    func requestLibrarySourceScope(_ scope: LibrarySourceScope) {
+        Task { [weak self] in await self?.selectLibrarySourceScope(scope) }
     }
 
     func requestDocumentMode(_ mode: NotePresentationMode) {
@@ -3623,9 +3581,6 @@ final class WindowModel: ObservableObject {
 
     var filteredNotes: [WindowDocumentLocation] {
         var result = notes
-        guard noteLocationScope == .workspace else {
-            return result.sorted(by: notesAreOrdered)
-        }
         if isNeedsAttentionFilter, let paths = currentAttentionPaths {
             result = result.filter { paths.contains($0.relativePath) }
         }
@@ -3828,7 +3783,7 @@ final class WindowModel: ObservableObject {
 
     /// The workspace retains its desired mode across Notes, while chrome must
     /// report the mode the selected session is actually presenting. This keeps
-    /// read-only lifecycle and managed Critique documents truthfully in Review
+    /// read-only and managed Critique documents truthfully in Review
     /// without changing the workspace's retained Edit selection.
     var presentedDocumentMode: NotePresentationMode {
         guard currentNote != nil else { return currentPresentationMode }
@@ -3931,13 +3886,12 @@ final class WindowModel: ObservableObject {
         )
 
         for workspace in WorkspaceVaultSlot.allCases {
-            guard let session = restoredPresentation.workspaceSession(for: workspace),
-                  let location = NoteLocationScope(rawValue: session.location) else {
+            guard let session = restoredPresentation.workspaceSession(for: workspace) else {
                 continue
             }
             discoveryController.synchronizeLibrarySelection(
                 workspaceSlot: workspace,
-                location: location
+                sourceScope: .library
             )
             if let vaultID = session.vaultID {
                 documentController.restorePresentationState(
@@ -3946,21 +3900,6 @@ final class WindowModel: ObservableObject {
                 )
             }
         }
-        if discoveryController.libraryState(for: selectedWorkspace).locationScope
-            != .workspace {
-            do {
-                try await prepareWorkspaceSelection(
-                    selectedWorkspace,
-                    location: discoveryController.libraryState(
-                        for: selectedWorkspace
-                    ).locationScope
-                )
-            } catch {
-                vaultError = error.localizedDescription
-                return
-            }
-        }
-
         let inspectorModes = Dictionary(uniqueKeysWithValues:
             WorkspaceVaultSlot.allCases.map { workspace in
                 (
@@ -4108,8 +4047,6 @@ final class WindowModel: ObservableObject {
                 scrollPositions: documentController.presentationSnapshot(
                     vaultID: vaultID
                 ).scrollPositions,
-                location: discoveryController.libraryState(for: workspace)
-                    .locationScope.rawValue,
                 inspectorMode: shellState.inspectorMode(for: workspace).rawValue,
                 documentMode: documentController.presentationMode(for: workspace).rawValue
             )
@@ -4292,7 +4229,7 @@ final class WindowModel: ObservableObject {
         let recoveryIssues = try await documentController.recoverInterruptedTransactions()
         if !recoveryIssues.isEmpty {
             workspaceRecoveryMessage = ([
-                "An interrupted permanent deletion still requires inspection.",
+                "An interrupted system Trash deletion still requires inspection.",
             ] + recoveryIssues).joined(separator: "\n")
         }
         await refreshTransactionRecoveryRecords()
@@ -4720,28 +4657,28 @@ final class WindowModel: ObservableObject {
 
     private func prepareWorkspaceSelection(
         _ slot: WorkspaceVaultSlot,
-        location: NoteLocationScope,
+        sourceScope: LibrarySourceScope,
         validateDestination: () throws -> Void = {}
     ) async throws {
         guard let vault = workspaceAssignment?.vault(for: slot) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let request = discoveryController.beginLocationRequest(
+        let request = discoveryController.beginLibraryRequest(
             workspaceSlot: slot,
-            location: location,
+            sourceScope: sourceScope,
             presentation: .stagedReplacement
         )
         do {
             let staged = try await stageRegisteredVault(
                 vault,
                 slot: slot,
-                locationRequest: request
+                libraryRequest: request
             )
             try validateDestination()
             try commitStagedWorkspaceLibrarySelection(staged)
         } catch {
-            if discoveryController.isCurrentLocationRequest(request) {
-                discoveryController.failLocationRequest(
+            if discoveryController.isCurrentLibraryRequest(request) {
+                discoveryController.failLibraryRequest(
                     error.localizedDescription,
                     for: request
                 )
@@ -4776,12 +4713,12 @@ final class WindowModel: ObservableObject {
     private func browseRegisteredVault(
         _ registered: RegisteredVault,
         slot: WorkspaceVaultSlot? = nil,
-        locationRequest: DiscoveryLocationRequest? = nil
+        libraryRequest: DiscoveryLibraryRequest? = nil
     ) async throws {
         let staged = try await stageRegisteredVault(
             registered,
             slot: slot,
-            locationRequest: locationRequest
+            libraryRequest: libraryRequest
         )
         try commitStagedWorkspaceLibrarySelection(staged)
         await refreshIdentityState()
@@ -4791,7 +4728,7 @@ final class WindowModel: ObservableObject {
     private func stageRegisteredVault(
         _ registered: RegisteredVault,
         slot: WorkspaceVaultSlot? = nil,
-        locationRequest: DiscoveryLocationRequest? = nil
+        libraryRequest: DiscoveryLibraryRequest? = nil
     ) async throws -> StagedWorkspaceLibrarySelection {
         let vaultSnapshot = try await currentWorkspaceVaultSnapshot(
             vaultID: registered.id
@@ -4802,34 +4739,32 @@ final class WindowModel: ObservableObject {
                 isDirectory: true
             )
         )
-        if let locationRequest,
-           !discoveryController.isCurrentLocationRequest(locationRequest) {
+        if let libraryRequest,
+           !discoveryController.isCurrentLibraryRequest(libraryRequest) {
             throw CancellationError()
         }
 
         guard let resolvedSlot = slot ?? workspaceSlot(for: registered) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let targetLocation = locationRequest?.location
-            ?? discoveryController.libraryState(for: resolvedSlot).locationScope
-        let lifecycle = targetLocation.documentLifecycle
+        let targetSourceScope = libraryRequest?.sourceScope
+            ?? discoveryController.libraryState(for: resolvedSlot).sourceScope
         let targetNotes = vaultSnapshot.documents
-            .filter { $0.lifecycle == lifecycle }
             .map(WindowDocumentLocation.workspace)
             .sorted(by: notesAreOrdered)
 
-        if let locationRequest,
-           !discoveryController.isCurrentLocationRequest(locationRequest) {
+        if let libraryRequest,
+           !discoveryController.isCurrentLibraryRequest(libraryRequest) {
             throw CancellationError()
         }
         return StagedWorkspaceLibrarySelection(
             registeredVault: registered,
             workspace: resolvedSlot,
-            location: targetLocation,
+            sourceScope: targetSourceScope,
             vaultSnapshot: vaultSnapshot,
             vaultConfig: targetConfig,
             notes: targetNotes,
-            request: locationRequest
+            request: libraryRequest
         )
     }
 
@@ -4837,20 +4772,20 @@ final class WindowModel: ObservableObject {
         _ staged: StagedWorkspaceLibrarySelection
     ) throws {
         if let request = staged.request,
-           !discoveryController.isCurrentLocationRequest(request) {
+           !discoveryController.isCurrentLibraryRequest(request) {
             throw CancellationError()
         }
         currentRegisteredVault = staged.registeredVault
         currentVaultRole = staged.registeredVault.role
         vaultConfig = staged.vaultConfig
         if let request = staged.request {
-            guard discoveryController.receiveLocationResult(for: request) else {
+            guard discoveryController.receiveLibraryResult(for: request) else {
                 throw CancellationError()
             }
         } else {
             discoveryController.synchronizeLibrarySelection(
                 workspaceSlot: staged.workspace,
-                location: staged.location
+                sourceScope: staged.sourceScope
             )
         }
         attentionPresentationState.selectWorkspaceSlot(staged.workspace)
@@ -4907,7 +4842,6 @@ final class WindowModel: ObservableObject {
             // any visible window state. A failed vault open must leave the
             // current Triptych document and editor intact.
             let targetNotes = vaultSnapshot.documents
-                .filter { $0.lifecycle == .active }
                 .map(WindowDocumentLocation.workspace)
                 .sorted {
                     $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
@@ -4926,7 +4860,7 @@ final class WindowModel: ObservableObject {
             if let slot = workspaceSlot(for: registered) {
                 discoveryController.synchronizeLibrarySelection(
                     workspaceSlot: slot,
-                    location: .workspace
+                    sourceScope: .library
                 )
                 shellState.selectWorkspace(slot)
                 documentController.selectWorkspace(slot)
@@ -5239,7 +5173,7 @@ final class WindowModel: ObservableObject {
         }
         guard refreshToken == projectionRefreshToken, currentRegisteredVault?.id == startingVaultID else { return }
 
-        if noteLocationScope == .workspace, workspaceAssignment != nil {
+        if noteSourceScope == .library, workspaceAssignment != nil {
             scheduleWorkspaceCatalogRefresh()
         }
 
@@ -5253,16 +5187,16 @@ final class WindowModel: ObservableObject {
     }
 
     func rescanVault() async throws {
-        try await refreshNoteLocationScope()
+        try await refreshLibrarySourceScope()
     }
 
-    func selectNoteLocationScope(_ scope: NoteLocationScope) async {
+    func selectLibrarySourceScope(_ scope: LibrarySourceScope) async {
         guard let workspaceSlot = currentWorkspaceSlot else { return }
-        guard scope != noteLocationScope
-                || discoveryController.library.locationError != nil else { return }
-        let request = discoveryController.beginLocationRequest(
+        guard scope != noteSourceScope
+                || discoveryController.library.sourceError != nil else { return }
+        let request = discoveryController.beginLibraryRequest(
             workspaceSlot: workspaceSlot,
-            location: scope,
+            sourceScope: scope,
             presentation: .stagedReplacement
         )
         do {
@@ -5270,14 +5204,14 @@ final class WindowModel: ObservableObject {
                 for: scope,
                 vaultID: currentRegisteredVault?.id
             )
-            guard discoveryController.receiveLocationResult(for: request) else { return }
+            guard discoveryController.receiveLibraryResult(for: request) else { return }
             workspaceProjectionController.replaceVisibleNotes(
                 loaded.sorted(by: notesAreOrdered)
             )
             await refreshIdentityState()
             await refreshWindowProjection()
         } catch {
-            discoveryController.failLocationRequest(
+            discoveryController.failLibraryRequest(
                 error.localizedDescription,
                 for: request
             )
@@ -5285,25 +5219,25 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func refreshNoteLocationScope() async throws {
+    func refreshLibrarySourceScope() async throws {
         guard let workspaceSlot = currentWorkspaceSlot else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let request = discoveryController.beginLocationRequest(
+        let request = discoveryController.beginLibraryRequest(
             workspaceSlot: workspaceSlot,
-            location: noteLocationScope
+            sourceScope: noteSourceScope
         )
         let loaded: [WindowDocumentLocation]
         do {
             loaded = try await loadNotes(
-                for: request.location,
+                for: request.sourceScope,
                 vaultID: currentRegisteredVault?.id
             )
         } catch {
-            discoveryController.failLocationRequest(error.localizedDescription, for: request)
+            discoveryController.failLibraryRequest(error.localizedDescription, for: request)
             throw error
         }
-        guard discoveryController.receiveLocationResult(for: request) else { return }
+        guard discoveryController.receiveLibraryResult(for: request) else { return }
         workspaceProjectionController.replaceVisibleNotes(
             loaded.sorted(by: notesAreOrdered)
         )
@@ -5312,16 +5246,14 @@ final class WindowModel: ObservableObject {
     }
 
     private func loadNotes(
-        for scope: NoteLocationScope,
+        for scope: LibrarySourceScope,
         vaultID: UUID?
     ) async throws -> [WindowDocumentLocation] {
         guard let vaultID else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         let vault = try await currentWorkspaceVaultSnapshot(vaultID: vaultID)
-        let lifecycle = scope.documentLifecycle
         return vault.documents
-            .filter { $0.lifecycle == lifecycle }
             .map(WindowDocumentLocation.workspace)
     }
 
@@ -5349,7 +5281,7 @@ final class WindowModel: ObservableObject {
             preservingCurrentEditorState: false,
             { [weak self] isCurrent in
                 guard let self else { return }
-                guard noteLocationScope == .workspace,
+                guard noteSourceScope == .library,
                       let vault = currentRegisteredVault else {
                     throw WorkspaceRegistryError.incompleteWorkspace
                 }
@@ -5364,7 +5296,7 @@ final class WindowModel: ObservableObject {
                     guard workspaceProjectionController.recordCommittedNote(
                         sourceAheadSnapshot,
                         visibleVaultID: currentRegisteredVault?.id,
-                        visibleLocationScope: noteLocationScope
+                        visibleSourceScope: noteSourceScope
                     ) != nil else {
                         throw WorkspaceRegistryError.incompleteWorkspace
                     }
@@ -5422,7 +5354,7 @@ final class WindowModel: ObservableObject {
 
     func requestUntitledFolderCreation(in parentRelativePath: String?) {
         guard !isMutatingFolder else { return }
-        guard noteLocationScope == .workspace,
+        guard noteSourceScope == .library,
               let vault = currentRegisteredVault else {
             showToast(
                 WorkspaceRegistryError.incompleteWorkspace.localizedDescription,
@@ -5481,7 +5413,7 @@ final class WindowModel: ObservableObject {
     }
 
     func moveFolder(
-        _ target: FolderLifecycleTarget,
+        _ target: FolderMutationTarget,
         to destinationRelativePath: String
     ) async throws {
         guard !isMutatingFolder else {
@@ -5520,7 +5452,7 @@ final class WindowModel: ObservableObject {
            let projection = workspaceProjectionController.recordCommittedFolderMove(
                commit,
                visibleVaultID: currentRegisteredVault?.id,
-               visibleLocationScope: noteLocationScope
+               visibleSourceScope: noteSourceScope
            ) {
             for note in projection.notes {
                 documentController.recordCommittedSnapshot(
@@ -5543,7 +5475,7 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func moveFolderToTrash(_ target: FolderLifecycleTarget) async throws {
+    func prepareFolderSystemTrash(_ target: FolderMutationTarget) async throws {
         guard !isMutatingFolder else {
             throw WindowFileTreeMutationError.folderMutationInProgress
         }
@@ -5553,57 +5485,14 @@ final class WindowModel: ObservableObject {
               }) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let vaultID = target.vaultID
         isMutatingFolder = true
         defer { isMutatingFolder = false }
         try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let outcome: WorkspaceMutationOutcome<FolderMoveCommit>
-        do {
-            outcome = try await documentController.moveFolderToTrash(
-                inVault: vaultID,
-                relativePath: target.relativePath
-            )
-        } catch {
-            await refreshTransactionRecoveryRecords()
-            throw error
-        }
-        let commit = outcome.committedValue
-        projectFolderMove(
-            commit,
-            identityResolved: outcome.identityRecoveryWarning == nil
+        let preview = try await documentController.prepareFolderSystemTrash(
+            inVault: target.vaultID,
+            relativePath: target.relativePath
         )
-        migrateFolderDisclosure(
-            from: commit.sourceFolder.rawValue,
-            to: nil,
-            vaultID: vaultID
-        )
-        lifecycleMutationGeneration &+= 1
-        var presentationWarning: String?
-        if outcome.identityRecoveryWarning == nil,
-           let projection = workspaceProjectionController.recordCommittedFolderMove(
-               commit,
-               visibleVaultID: currentRegisteredVault?.id,
-               visibleLocationScope: noteLocationScope
-           ) {
-            for note in projection.notes {
-                documentController.recordCommittedSnapshot(
-                    note,
-                    vaultName: projection.vault.name,
-                    vaultRole: projection.vault.role
-                )
-            }
-        } else {
-            presentationWarning = String(
-                localized: "The folder moved, but this window is waiting for the committed refresh.",
-                table: "Localizable",
-                bundle: .module
-            )
-        }
-        scheduleWorkspaceCatalogRefresh()
-        reportCommittedMutationWarnings(
-            outcome,
-            presentationWarning: presentationWarning
-        )
+        presentationRouter.present(.systemTrash(preview))
     }
 
     /// Folder mutations publish a new authoritative snapshot before returning,
@@ -5637,20 +5526,14 @@ final class WindowModel: ObservableObject {
                 identityResolved: identityResolved,
                 vaultID: commit.vaultID
             )
-            if WorkspaceDocumentLifecycle(relativePath: move.source.relativePath)
-                != WorkspaceDocumentLifecycle(relativePath: move.destination.relativePath) {
-                removePresentedDocumentAfterLifecycleMove(
-                    sessionKey: sessionKey,
-                    wasSelected: wasSelected
-                )
-            }
+            _ = wasSelected
         }
     }
 
     private func expandFolderAncestors(_ relativePath: String, vaultID: UUID) {
         let visiblePath = libraryCategoryRelativeFolderPath(relativePath)
         guard !visiblePath.isEmpty else { return }
-        let scope = LibraryDisclosureScope(vaultID: vaultID, locationScope: .workspace)
+        let scope = LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
         var expanded = discoveryController.expandedFolders(in: scope)
         let parts = visiblePath.split(separator: "/").map(String.init)
         for count in 1...parts.count {
@@ -5660,7 +5543,7 @@ final class WindowModel: ObservableObject {
     }
 
     private func revealCreatedNoteInLibrary(_ relativePath: String, vaultID: UUID) {
-        let scope = LibraryDisclosureScope(vaultID: vaultID, locationScope: .workspace)
+        let scope = LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
         discoveryController.prepareCreatedNoteReveal(
             relativePath: relativePath,
             folderAncestors: libraryFolderAncestors(forDocumentPath: relativePath),
@@ -5673,7 +5556,7 @@ final class WindowModel: ObservableObject {
         to destinationRelativePath: String?,
         vaultID: UUID
     ) {
-        let scope = LibraryDisclosureScope(vaultID: vaultID, locationScope: .workspace)
+        let scope = LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
         let source = libraryCategoryRelativeFolderPath(sourceRelativePath)
         let destination = destinationRelativePath.map(libraryCategoryRelativeFolderPath)
         guard !source.isEmpty else { return }
@@ -5700,7 +5583,7 @@ final class WindowModel: ObservableObject {
 
     @discardableResult
     func duplicateNote(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to requestedPath: String
     ) async throws -> NoteDocument {
         try await flushRegisteredEditorIfMutatingActiveDocument(target)
@@ -5709,8 +5592,8 @@ final class WindowModel: ObservableObject {
         }) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let expected = try lifecycleExpectedRevision(for: target)
-        let authorizedTarget = NoteLifecycleTarget(
+        let expected = try mutationExpectedRevision(for: target)
+        let authorizedTarget = NoteMutationTarget(
             documentID: target.documentID,
             stableNoteID: target.stableNoteID,
             revision: expected
@@ -5737,7 +5620,7 @@ final class WindowModel: ObservableObject {
     }
 
     func moveNote(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to requestedPath: String
     ) async throws {
         try await flushRegisteredEditorIfMutatingActiveDocument(target)
@@ -5746,8 +5629,8 @@ final class WindowModel: ObservableObject {
         }) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let expected = try lifecycleExpectedRevision(for: target)
-        let authorizedTarget = NoteLifecycleTarget(
+        let expected = try mutationExpectedRevision(for: target)
+        let authorizedTarget = NoteMutationTarget(
             documentID: target.documentID,
             stableNoteID: target.stableNoteID,
             revision: expected
@@ -5778,7 +5661,7 @@ final class WindowModel: ObservableObject {
                commit,
                stableIdentity: .resolved(target.stableNoteID),
                visibleVaultID: currentRegisteredVault?.id,
-               visibleLocationScope: noteLocationScope
+               visibleSourceScope: noteSourceScope
            ) {
             documentController.recordCommittedSnapshot(
                 projection.note,
@@ -5821,103 +5704,85 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func setAsideNote(_ target: NoteLifecycleTarget) async throws {
-        try await flushRegisteredEditorIfMutatingActiveDocument(target)
-        let expected = try lifecycleExpectedRevision(for: target)
-        let authorizedTarget = NoteLifecycleTarget(
-            documentID: target.documentID,
-            stableNoteID: target.stableNoteID,
-            revision: expected
-        )
-        let outcome = try await documentController.setAside(authorizedTarget)
-        let commit = outcome.committedValue
-        let presentationWarning = await presentCommittedLifecycleMove(
-            commit,
-            noteID: target.stableNoteID,
-            identityResolved: outcome.identityRecoveryWarning == nil,
-            vaultID: target.documentID.vaultID
-        )
-        reportCommittedMutationWarnings(
-            outcome,
-            presentationWarning: presentationWarning
-        )
-    }
-
-    func moveNoteToTrash(_ target: NoteLifecycleTarget) async throws {
-        try await flushRegisteredEditorIfMutatingActiveDocument(target)
-        let expected = try lifecycleExpectedRevision(for: target)
-        let authorizedTarget = NoteLifecycleTarget(
-            documentID: target.documentID,
-            stableNoteID: target.stableNoteID,
-            revision: expected
-        )
-        let outcome = try await documentController.moveToTrash(authorizedTarget)
-        let commit = outcome.committedValue
-        let presentationWarning = await presentCommittedLifecycleMove(
-            commit,
-            noteID: target.stableNoteID,
-            identityResolved: outcome.identityRecoveryWarning == nil,
-            vaultID: target.documentID.vaultID
-        )
-        reportCommittedMutationWarnings(
-            outcome,
-            presentationWarning: presentationWarning
-        )
-    }
-
-    func deleteNotePermanently(_ target: NoteLifecycleTarget) async throws {
-        guard WorkspaceDocumentLifecycle(relativePath: target.relativePath) == .trash else {
+    func prepareNoteSystemTrash(_ target: NoteMutationTarget) async throws {
+        guard let assignment = workspaceAssignment else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
+        let expected = try mutationExpectedRevision(for: target)
+        let authorizedTarget = NoteMutationTarget(
+            documentID: target.documentID,
+            stableNoteID: target.stableNoteID,
+            revision: expected
+        )
+        let preview = try await documentController.prepareSystemTrash(authorizedTarget)
+        presentationRouter.present(.systemTrash(preview))
+    }
 
-        let outcome: WorkspaceMutationOutcome<PermanentDeletionCommit>
+    func requestCurrentNoteSystemTrash() {
+        guard let currentNote,
+              let target = NoteMutationTarget(currentNote),
+              currentDocumentCapabilities.allows(.moveToSystemTrash) else {
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await prepareNoteSystemTrash(target)
+            } catch is CancellationError {
+                return
+            } catch {
+                showToast(error.localizedDescription, kind: .error)
+            }
+        }
+    }
+
+    func executeSystemTrash(_ preview: SystemTrashDeletionPreview) async throws {
+        guard let assignment = workspaceAssignment,
+              preview.sources.first?.vaultID != nil else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
+        let outcome: WorkspaceMutationOutcome<SystemTrashDeletionCommit>
         do {
-            outcome = try await documentController.deletePermanently(target)
+            outcome = try await documentController.moveToSystemTrash(preview)
         } catch {
             await refreshTransactionRecoveryRecords()
+            _ = try? await discoveryController.refreshWorkspace()
+            await synchronizeSystemTrashPresentation(preview)
             throw error
         }
-        let commit = outcome.committedValue
-
-        if currentRegisteredVault?.id == target.documentID.vaultID {
-            noteIdentityByPath[target.relativePath] = nil
-            if let critiquePath = commit.removedCritiqueDocumentPath {
-                noteIdentityByPath[critiquePath] = nil
-            }
-        }
-        let deletedPaths = Set([
-            target.relativePath,
-            commit.removedCritiqueDocumentPath,
-        ].compactMap { $0 })
-        var presentationWarnings: [String] = []
-        do {
-            try removeDocumentTabs(
-                vaultID: target.documentID.vaultID,
-                removedPaths: deletedPaths
-            )
-        } catch {
-            presentationWarnings.append(error.localizedDescription)
-            if currentDocumentVaultID == target.documentID.vaultID {
-                documentController.clearSelection(forRemovedPaths: deletedPaths)
-            }
-        }
-        do {
-            try await refreshCachedWorkspaceVaultSnapshot(
-                vaultID: target.documentID.vaultID
-            )
-            if currentRegisteredVault?.id == target.documentID.vaultID {
-                try await refreshNoteLocationScope()
-            }
-        } catch {
-            presentationWarnings.append(error.localizedDescription)
-        }
-        lifecycleMutationGeneration &+= 1
+        await synchronizeSystemTrashPresentation(preview)
+        sourceMutationGeneration &+= 1
         reportCommittedMutationWarnings(
             outcome,
-            presentationWarning: presentationWarnings.isEmpty
-                ? nil
-                : presentationWarnings.joined(separator: " ")
+            presentationWarning: nil
         )
+    }
+
+    private func synchronizeSystemTrashPresentation(
+        _ preview: SystemTrashDeletionPreview
+    ) async {
+        guard let vaultID = preview.sources.first?.vaultID else { return }
+        try? await refreshCachedWorkspaceVaultSnapshot(vaultID: vaultID)
+        let currentPaths = Set(
+            workspaceProjectionController.vaultSnapshot(id: vaultID)?
+                .documents.map { $0.id.relativePath } ?? []
+        )
+        let plannedPaths = Set(preview.sources.flatMap(\.notes).map(\.relativePath))
+        let removedPaths = plannedPaths.subtracting(currentPaths)
+        guard !removedPaths.isEmpty else { return }
+        do {
+            try removeDocumentTabs(vaultID: vaultID, removedPaths: removedPaths)
+        } catch {
+            if currentDocumentVaultID == vaultID {
+                documentController.clearSelection(forRemovedPaths: removedPaths)
+            }
+        }
+        if currentRegisteredVault?.id == vaultID {
+            try? await refreshLibrarySourceScope()
+        }
+        scheduleWorkspaceCatalogRefresh()
     }
 
     func refreshTransactionRecoveryRecords() async {
@@ -6028,89 +5893,6 @@ final class WindowModel: ObservableObject {
             identityResolved: identityResolved,
             vaultID: vaultID
         )
-        if WorkspaceDocumentLifecycle(relativePath: sourcePath) != .active
-            || WorkspaceDocumentLifecycle(relativePath: destinationPath) != .active {
-            lifecycleMutationGeneration &+= 1
-        }
-    }
-
-    /// Applies a proven source move to this window without waiting for graph,
-    /// Search, or research projections. A rare identity-recovery failure keeps
-    /// the previous synchronous recovery path rather than claiming a resolved
-    /// document session.
-    private func presentCommittedLifecycleMove(
-        _ commit: TriptychMoveCommit,
-        noteID: UUID,
-        identityResolved: Bool,
-        vaultID: UUID
-    ) async -> String? {
-        let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
-        let wasSelected = currentDocumentDescriptor?.sessionKey == key
-        migrateAppOwnedState(
-            sourcePath: commit.movedNote.relativePath,
-            destinationPath: commit.destination.relativePath,
-            noteID: noteID,
-            identityResolved: identityResolved,
-            vaultID: vaultID
-        )
-        removePresentedDocumentAfterLifecycleMove(
-            sessionKey: key,
-            wasSelected: wasSelected
-        )
-
-        if identityResolved,
-           let projection = workspaceProjectionController.recordCommittedNoteMove(
-               commit,
-               stableIdentity: .resolved(noteID),
-               visibleVaultID: currentRegisteredVault?.id,
-               visibleLocationScope: noteLocationScope
-           ) {
-            documentController.recordCommittedSnapshot(
-                projection.note,
-                vaultName: projection.vault.name,
-                vaultRole: projection.vault.role
-            )
-            return nil
-        }
-
-        do {
-            try await refreshCachedWorkspaceVaultSnapshot(vaultID: vaultID)
-            try await refreshNoteLocationScope()
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    /// A Note that leaves its visible Location must not remain presented as if
-    /// it were still selected there. Other open document pages remain
-    /// available, but the lifecycle action deliberately returns the central
-    /// Document region to its no-document state instead of activating a
-    /// neighboring page implicitly.
-    private func removePresentedDocumentAfterLifecycleMove(
-        sessionKey: DocumentSessionKey,
-        wasSelected: Bool
-    ) {
-        let matchingTabIDs = Set(documentTabController.allTabs.compactMap { tab in
-            tab.document.sessionKey == sessionKey ? tab.id : nil
-        })
-        guard wasSelected || !matchingTabIDs.isEmpty else { return }
-
-        if wasSelected {
-            documentController.finishEditing(
-                session: documentController.session(for: sessionKey),
-                target: .workspace(sessionKey)
-            )
-        }
-        documentTabController.removeTabs(withIDs: matchingTabIDs)
-        if wasSelected {
-            documentController.clearSelectionAfterClosingLastTab()
-        }
-        reconcileDocumentSessionLeases()
-        Task { @MainActor [weak self] in
-            await Task.yield()
-            self?.documentController.reapDetachedSessions()
-        }
     }
 
     private func migrateInMemoryPath(
@@ -6373,7 +6155,7 @@ final class WindowModel: ObservableObject {
         if shellState.selectedWorkspace != workspace {
             try await prepareWorkspaceSelection(
                 workspace,
-                location: .workspace,
+                sourceScope: .library,
                 validateDestination: {
                     try self.validateDocumentIsAvailable(document)
                 }
@@ -6436,7 +6218,7 @@ final class WindowModel: ObservableObject {
         if shellState.selectedWorkspace != workspace {
             try await prepareWorkspaceSelection(
                 workspace,
-                location: .workspace,
+                sourceScope: .library,
                 validateDestination: {
                     guard self.workspaceProjectionController.cachedNote(
                         vaultID: reference.vaultID,
@@ -6537,7 +6319,7 @@ final class WindowModel: ObservableObject {
 
     /// Every successful in-app document activation converges on this one
     /// presentation path. It changes only Library presentation: the target
-    /// vault and active Location, filters that hide the selected Note, folder
+    /// vault and Library view, filters that hide the selected Note, folder
     /// disclosure, and the minimum scroll needed to expose its row.
     private func scheduleLibraryReveal(for document: WindowSelectedDocument) {
         libraryRevealTask?.cancel()
@@ -6549,12 +6331,11 @@ final class WindowModel: ObservableObject {
 
     private func revealDocumentInLibrary(_ document: WindowSelectedDocument) async {
         guard let vaultID = document.vaultID,
-              let snapshot = workspaceProjectionController.cachedNote(
+              workspaceProjectionController.cachedNote(
                   vaultID: vaultID,
                   stableNoteID: document.sessionKey?.noteID,
                   relativePath: document.relativePath
-              ),
-              snapshot.lifecycle == .active,
+              ) != nil,
               let vault = workspaceAssignment?.vaults.values.first(where: {
                   $0.id == vaultID
               }),
@@ -6562,29 +6343,29 @@ final class WindowModel: ObservableObject {
 
         let scope = LibraryDisclosureScope(
             vaultID: vaultID,
-            locationScope: .workspace
+            sourceScope: .library
         )
         let needsProjection = currentRegisteredVault?.id != vaultID
-            || discoveryController.library.locationScope != .workspace
-            || discoveryController.locationRequestIsActive
+            || discoveryController.library.sourceScope != .library
+            || discoveryController.libraryRequestIsActive
 
         if needsProjection {
-            let request = discoveryController.beginLocationRequest(
+            let request = discoveryController.beginLibraryRequest(
                 workspaceSlot: slot,
-                location: .workspace,
+                sourceScope: .library,
                 presentation: .stagedReplacement
             )
             do {
                 try await browseRegisteredVault(
                     vault,
                     slot: slot,
-                    locationRequest: request
+                    libraryRequest: request
                 )
             } catch is CancellationError {
                 return
             } catch {
-                guard discoveryController.isCurrentLocationRequest(request) else { return }
-                discoveryController.failLocationRequest(
+                guard discoveryController.isCurrentLibraryRequest(request) else { return }
+                discoveryController.failLibraryRequest(
                     error.localizedDescription,
                     for: request
                 )
@@ -6599,7 +6380,7 @@ final class WindowModel: ObservableObject {
         guard !Task.isCancelled,
               documentController.selectedDocument == document,
               currentRegisteredVault?.id == vaultID,
-              discoveryController.library.locationScope == .workspace else { return }
+              discoveryController.library.sourceScope == .library else { return }
 
         let clearsFilters = !filteredNotes.contains {
             $0.relativePath == document.relativePath
@@ -7061,10 +6842,10 @@ final class WindowModel: ObservableObject {
             identityMigrationFailures = []
             return
         }
-        let locationScope = noteLocationScope
+        let sourceScope = noteSourceScope
         guard refreshGeneration == identityRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
-              noteLocationScope == locationScope else { return }
+              noteSourceScope == sourceScope else { return }
         let recovery: NoteIdentityRecoveryState
         let vaultSnapshot: WorkspaceVaultSnapshot
         do {
@@ -7078,18 +6859,18 @@ final class WindowModel: ObservableObject {
         } catch {
             guard refreshGeneration == identityRefreshGeneration,
                   currentRegisteredVault?.id == vault.id,
-                  noteLocationScope == locationScope else { return }
+                  noteSourceScope == sourceScope else { return }
             noteIdentityByPath = [:]
             identityResolutionError = error.localizedDescription
             return
         }
         guard refreshGeneration == identityRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
-              noteLocationScope == locationScope else { return }
+              noteSourceScope == sourceScope else { return }
         installIdentityState(
             recovery,
             vault: vault,
-            locationScope: locationScope,
+            sourceScope: sourceScope,
             refreshGeneration: refreshGeneration,
             visibleSnapshots: vaultSnapshot.documents
         )
@@ -7103,11 +6884,11 @@ final class WindowModel: ObservableObject {
         let refreshGeneration = identityRefreshGeneration
         guard let vault = currentRegisteredVault,
               vault.id == vaultSnapshot.vault.id else { return }
-        let locationScope = noteLocationScope
+        let sourceScope = noteSourceScope
         installIdentityState(
             vaultSnapshot.identityRecovery,
             vault: vault,
-            locationScope: locationScope,
+            sourceScope: sourceScope,
             refreshGeneration: refreshGeneration,
             visibleSnapshots: nil
         )
@@ -7116,13 +6897,13 @@ final class WindowModel: ObservableObject {
     private func installIdentityState(
         _ recovery: NoteIdentityRecoveryState,
         vault: RegisteredVault,
-        locationScope: NoteLocationScope,
+        sourceScope: LibrarySourceScope,
         refreshGeneration: UInt64,
         visibleSnapshots: [WorkspaceNoteSnapshot]?
     ) {
         guard refreshGeneration == identityRefreshGeneration,
               currentRegisteredVault?.id == vault.id,
-              noteLocationScope == locationScope else { return }
+              noteSourceScope == sourceScope else { return }
         let identities = recovery.identities
 
         for rebinding in recovery.completedRebindings {
@@ -7237,7 +7018,7 @@ final class WindowModel: ObservableObject {
     private var workspaceProjectionContext: WindowWorkspaceProjectionContext {
         WindowWorkspaceProjectionContext(
             selectedVaultID: currentRegisteredVault?.id,
-            locationScope: noteLocationScope,
+            sourceScope: noteSourceScope,
             currentDocumentVaultID: currentDocumentVaultID,
             selectedDocumentPath: selectedDocumentPath,
             retainedDeletedDocumentPath: documentController.retainedDeletedDocumentPath
@@ -7288,7 +7069,7 @@ final class WindowModel: ObservableObject {
         guard let vault = workspaceProjectionController.recordCommittedNote(
             note,
             visibleVaultID: currentRegisteredVault?.id,
-            visibleLocationScope: noteLocationScope
+            visibleSourceScope: noteSourceScope
         ) else { return }
         refreshDocumentTabProjections()
         documentController.recordCommittedSnapshot(
@@ -7328,7 +7109,6 @@ final class WindowModel: ObservableObject {
             }.value
             let metadata: WorkspaceFileMetadata
             let identity: WorkspaceNoteIdentityState
-            let lifecycle: WorkspaceDocumentLifecycle
             let graphCounts: WorkspaceGraphCounts
             if let previous {
                 metadata = WorkspaceFileMetadata(
@@ -7337,7 +7117,6 @@ final class WindowModel: ObservableObject {
                     modificationDate: previous.fileMetadata.modificationDate
                 )
                 identity = previous.stableIdentity
-                lifecycle = previous.lifecycle
                 graphCounts = previous.graphCounts
             } else {
                 metadata = WorkspaceFileMetadata(
@@ -7346,7 +7125,6 @@ final class WindowModel: ObservableObject {
                     modificationDate: nil
                 )
                 identity = .resolved(context.noteID)
-                lifecycle = .active
                 graphCounts = WorkspaceGraphCounts(
                     incoming: 0,
                     outgoing: 0,
@@ -7363,7 +7141,6 @@ final class WindowModel: ObservableObject {
                 stableIdentity: identity,
                 document: document,
                 fileMetadata: metadata,
-                lifecycle: lifecycle,
                 graphCounts: graphCounts,
                 headings: semantic.headings,
                 derivedProjectionState: .sourceAhead,

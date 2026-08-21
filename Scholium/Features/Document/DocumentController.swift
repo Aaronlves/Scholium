@@ -125,7 +125,7 @@ struct DocumentWorkspaceReconciliation: Equatable, Sendable {
 }
 
 /// Per-window owner for the selected document and retained editor sessions. Repository writes,
-/// lifecycle transactions, and conflict recovery remain Application calls;
+/// source transactions and conflict recovery remain Application calls;
 /// this controller owns only window and editor-session state.
 @MainActor
 final class DocumentController: ObservableObject {
@@ -138,7 +138,7 @@ final class DocumentController: ObservableObject {
     @Published private(set) var snapshots: [DocumentSessionKey: WorkspaceNoteSnapshot] = [:]
     @Published private(set) var editingDocumentPath: String?
     @Published private(set) var lastSaveError: String?
-    @Published var lifecycleMutationGeneration: UInt64 = 0
+    @Published var sourceMutationGeneration: UInt64 = 0
     @Published var pendingSourceLine: Int?
     @Published var pendingSourceRange: SearchSourceRange?
     @Published var requestedPresentationMode: NotePresentationMode?
@@ -394,11 +394,11 @@ final class DocumentController: ObservableObject {
         )
     }
 
-    func moveFolderToTrash(
+    func prepareFolderSystemTrash(
         inVault vaultID: UUID,
         relativePath: String
-    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
-        try await requireOperations().moveFolderToTrash(
+    ) async throws -> SystemTrashDeletionPreview {
+        try await requireOperations().prepareFolderSystemTrash(
             inVault: vaultID,
             relativePath: relativePath
         )
@@ -417,7 +417,7 @@ final class DocumentController: ObservableObject {
     }
 
     func duplicate(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try await requireOperations().duplicate(
@@ -463,7 +463,7 @@ final class DocumentController: ObservableObject {
     }
 
     func move(
-        _ target: NoteLifecycleTarget,
+        _ target: NoteMutationTarget,
         to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try await requireOperations().move(
@@ -472,59 +472,16 @@ final class DocumentController: ObservableObject {
         )
     }
 
-    func setAside(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().setAside(id, expectedRevision: expectedRevision)
+    func prepareSystemTrash(
+        _ target: NoteMutationTarget
+    ) async throws -> SystemTrashDeletionPreview {
+        try await requireOperations().prepareSystemTrash(target)
     }
 
-    func setAside(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().setAside(target)
-    }
-
-    func moveToTrash(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().moveToTrash(id, expectedRevision: expectedRevision)
-    }
-
-    func moveToTrash(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().moveToTrash(target)
-    }
-
-    func putBack(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().putBack(id, expectedRevision: expectedRevision)
-    }
-
-    func putBack(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().putBack(target)
-    }
-
-    func deletePermanently(
-        _ id: VaultQualifiedNoteID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
-        try await requireOperations().deletePermanently(
-            id,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func deletePermanently(
-        _ target: NoteLifecycleTarget
-    ) async throws -> WorkspaceMutationOutcome<PermanentDeletionCommit> {
-        try await requireOperations().deletePermanently(target)
+    func moveToSystemTrash(
+        _ preview: SystemTrashDeletionPreview
+    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
+        try await requireOperations().moveToSystemTrash(preview)
     }
 
     func recoverInterruptedTransactions() async throws -> [String] {
@@ -1010,8 +967,8 @@ final class DocumentController: ObservableObject {
         intentHandler(.openDocument(route))
     }
 
-    func requestLifecycle(_ request: NoteLifecycleRequest) {
-        intentHandler(.presentLifecycle(request))
+    func requestFileOperation(_ request: NoteFileRequest) {
+        intentHandler(.presentNoteFileOperation(request))
     }
 
     func removeAll(retainingSessions: Bool = false) {

@@ -28,8 +28,9 @@ from YAML, path, filename, title, authors, identifier, date, or similarity.
 
 Only dedicated set/clear Zotero-binding operations may change it;
 `modify_markdown`, `modify_source`, and `modify_properties` cannot. Rename,
-Move, Set Aside, and Trash retain it by stable identity. Duplicate Analysis
-explicitly copies the relationship; permanent deletion removes it. The Zotero
+Move, and system-Trash source deletion retain it by stable identity so Finder
+restoration can reconcile the Analysis. Duplicate Analysis explicitly copies
+the relationship. The Zotero
 integration surface provides visible open, clear, and rebind paths. Agent direct Undo and
 interrupted-save recovery change Markdown only and leave it unchanged.
 

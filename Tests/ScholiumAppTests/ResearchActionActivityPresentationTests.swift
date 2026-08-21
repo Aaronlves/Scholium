@@ -69,7 +69,6 @@ struct ResearchActionActivityPresentationTests {
                 relativePath: "Analyses/Result.md"
             ),
             role: .analysis,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "target"),
             title: "Result"
         )

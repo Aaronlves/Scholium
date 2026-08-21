@@ -30,7 +30,7 @@ struct WindowPropertyFilterOptions: Equatable {
 /// editor whose source disappeared; this controller never owns the buffer.
 struct WindowWorkspaceProjectionContext {
     let selectedVaultID: UUID?
-    let locationScope: NoteLocationScope
+    let sourceScope: LibrarySourceScope
     let currentDocumentVaultID: UUID?
     let selectedDocumentPath: String?
     let retainedDeletedDocumentPath: String?
@@ -255,12 +255,12 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state = next
     }
 
-    /// Updates the cached vault and visible Location as one projection commit.
+    /// Updates the cached vault and visible Library as one projection commit.
     /// Returns the vault metadata needed by the Document controller projection.
     func recordCommittedNote(
         _ note: WorkspaceNoteSnapshot,
         visibleVaultID: UUID?,
-        visibleLocationScope: NoteLocationScope?
+        visibleSourceScope: LibrarySourceScope?
     ) -> RegisteredVault? {
         guard let vaultSnapshot = state.vaultSnapshotsByID[note.id.vaultID] else {
             return nil
@@ -285,9 +285,8 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             folders: vaultSnapshot.folders,
             identityRecovery: vaultSnapshot.identityRecovery
         )
-        let visibleLifecycle = visibleLocationScope?.documentLifecycle
         if visibleVaultID == note.id.vaultID,
-           visibleLifecycle == note.lifecycle {
+           visibleSourceScope != nil {
             let visible = WindowDocumentLocation.workspace(note)
             var notes = next.notes
             if let index = notes.firstIndex(where: {
@@ -351,7 +350,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     func recordCommittedFolderMove(
         _ commit: FolderMoveCommit,
         visibleVaultID: UUID?,
-        visibleLocationScope: NoteLocationScope?
+        visibleSourceScope: LibrarySourceScope?
     ) -> CommittedFolderMoveProjection? {
         guard let vaultSnapshot = state.vaultSnapshotsByID[commit.vaultID] else {
             return nil
@@ -389,9 +388,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                     creationDate: source.fileMetadata.creationDate,
                     modificationDate: source.fileMetadata.modificationDate
                 ),
-                lifecycle: WorkspaceDocumentLifecycle(
-                    relativePath: move.destination.relativePath
-                ),
                 graphCounts: source.graphCounts,
                 headings: source.headings,
                 derivedProjectionState: .sourceAhead,
@@ -428,11 +424,9 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             identityRecovery: vaultSnapshot.identityRecovery
         )
         if visibleVaultID == commit.vaultID,
-           let visibleLocationScope {
-            let lifecycle = visibleLocationScope.documentLifecycle
+           visibleSourceScope != nil {
             installVisibleNotes(
                 documents
-                    .filter { $0.lifecycle == lifecycle }
                     .map(WindowDocumentLocation.workspace),
                 in: &next
             )
@@ -457,7 +451,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         _ commit: TriptychMoveCommit,
         stableIdentity: WorkspaceNoteIdentityState,
         visibleVaultID: UUID?,
-        visibleLocationScope: NoteLocationScope?
+        visibleSourceScope: LibrarySourceScope?
     ) -> CommittedMoveProjection? {
         guard let vaultSnapshot = state.vaultSnapshotsByID[commit.movedNote.vaultID]
         else { return nil }
@@ -491,9 +485,6 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             stableIdentity: stableIdentity,
             document: relocatedDocument,
             fileMetadata: source.fileMetadata,
-            lifecycle: WorkspaceDocumentLifecycle(
-                relativePath: commit.destination.relativePath
-            ),
             graphCounts: source.graphCounts,
             headings: source.headings,
             derivedProjectionState: .sourceAhead,
@@ -514,11 +505,9 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         )
 
         if visibleVaultID == commit.movedNote.vaultID,
-           let visibleLocationScope {
-            let visibleLifecycle = visibleLocationScope.documentLifecycle
+           visibleSourceScope != nil {
             installVisibleNotes(
                 documents
-                    .filter { $0.lifecycle == visibleLifecycle }
                     .map(WindowDocumentLocation.workspace),
                 in: &next
             )
@@ -627,11 +616,9 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var retainedDeletedDocumentPath: String?
         if let vaultID = context.selectedVaultID,
            let vault = snapshot.vault(id: vaultID) {
-            let lifecycle = context.locationScope.documentLifecycle
             var notes = vault.documents
-                .filter { $0.lifecycle == lifecycle }
                 .map(WindowDocumentLocation.workspace)
-            if context.locationScope == .workspace,
+            if context.sourceScope == .library,
                context.currentDocumentVaultID == vaultID,
                let selectedPath = context.selectedDocumentPath,
                context.retainedDeletedDocumentPath == selectedPath,

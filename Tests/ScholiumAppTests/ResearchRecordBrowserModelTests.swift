@@ -543,8 +543,8 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.route == .collection)
     }
 
-    @Test("An Action row keeps its frozen title and projects live note participants")
-    func actionTitleSummarizesLiveParticipants() async throws {
+    @Test("An Action row keeps its frozen title and projects note participants")
+    func actionTitleSummarizesParticipants() async throws {
         let targetID = UUID(uuidString: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF")!
         let base = try makeAction(
             id: deterministicUUID(90),
@@ -557,11 +557,10 @@ struct ResearchRecordBrowserModelTests {
             role: .analysis,
             title: "Additional Analysis"
         )
-        let tombstone = try makeParticipant(
+        let historicalParticipant = try makeParticipant(
             id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
             role: .analysis,
-            title: "Deleted Analysis",
-            isTombstone: true
+            title: "Historical Analysis"
         )
         let record = try PortableResearchRecord(
             id: base.id,
@@ -572,7 +571,7 @@ struct ResearchRecordBrowserModelTests {
             method: base.method,
             sourceReference: base.sourceReference,
             analysisSourceRoute: base.analysisSourceRoute,
-            participatingNotes: base.participatingNotes + [topic, tombstone],
+            participatingNotes: base.participatingNotes + [topic, historicalParticipant],
             statements: base.statements,
             fidelityCompletion: base.fidelityCompletion,
             startedAt: base.startedAt,
@@ -600,7 +599,7 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.visibleEntries.first?.title == "Live Analysis")
         #expect(
             model.visibleEntries.first?.noteTitle
-                == "Additional Analysis, Live Analysis")
+                == "Additional Analysis, Historical Analysis, Live Analysis")
     }
 
     @Test("Confirmed record deletion removes only the selected disposable projection")
@@ -1306,8 +1305,7 @@ struct ResearchRecordBrowserModelTests {
         title: String,
         text: String,
         author: PortableResearchStatementAuthor,
-        finishedAt: Date,
-        isTombstone: Bool = false
+        finishedAt: Date
     ) throws -> PortableResearchRecord {
         let fingerprint = DocumentFingerprint(content: title)
         let note = try PortableResearchNoteRevision(
@@ -1319,8 +1317,7 @@ struct ResearchRecordBrowserModelTests {
             role: .topic,
             title: title,
             startingRevision: fingerprint,
-            endingRevision: isTombstone ? nil : fingerprint,
-            isTombstone: isTombstone
+            endingRevision: fingerprint
         )
         let statement = try PortableResearchStatement(
             id: id,
@@ -1533,8 +1530,7 @@ struct ResearchRecordBrowserModelTests {
     private func makeParticipant(
         id: UUID,
         role: ResearchActionTargetRole,
-        title: String,
-        isTombstone: Bool = false
+        title: String
     ) throws -> PortableResearchNoteRevision {
         let fingerprint = DocumentFingerprint(content: title)
         return try PortableResearchNoteRevision(
@@ -1546,8 +1542,7 @@ struct ResearchRecordBrowserModelTests {
             role: role,
             title: title,
             startingRevision: fingerprint,
-            endingRevision: isTombstone ? nil : fingerprint,
-            isTombstone: isTombstone
+            endingRevision: fingerprint
         )
     }
 

@@ -213,7 +213,6 @@ struct ResearchActionContractsTests {
                 relativePath: "Target.md"
             ),
             role: role,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "target"),
             title: "Target"
         )

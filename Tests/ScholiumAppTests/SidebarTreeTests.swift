@@ -93,10 +93,9 @@ struct SidebarTreeTests {
         #expect(elapsed < .seconds(2))
     }
 
-    @Test("Context menus and accessibility actions share one lifecycle command projection")
+    @Test("Context menus and accessibility actions share one file-command projection")
     func noteCommandProjection() {
         let workspaceMenu = sidebarNoteCommandGroups(
-            locationScope: .workspace,
             isManagedCritique: false,
             surface: .contextMenu
         ).flatMap(\.commands)
@@ -104,14 +103,12 @@ struct SidebarTreeTests {
             .openInNewTab,
             .duplicate,
             .rename,
-            .setAside,
-            .moveToTrash,
+            .moveToSystemTrash,
             .copyRelativePath,
             .revealInFinder,
         ])
 
         let workspaceAccessibility = sidebarNoteCommandGroups(
-            locationScope: .workspace,
             isManagedCritique: false,
             surface: .accessibility
         ).flatMap(\.commands)
@@ -120,44 +117,16 @@ struct SidebarTreeTests {
             .duplicate,
             .rename,
             .move,
-            .setAside,
-            .moveToTrash,
+            .moveToSystemTrash,
             .copyRelativePath,
             .revealInFinder,
         ])
 
         let managedCritique = sidebarNoteCommandGroups(
-            locationScope: .workspace,
             isManagedCritique: true,
             surface: .accessibility
         ).flatMap(\.commands)
         #expect(!managedCritique.contains(.duplicate))
-
-        let setAside = sidebarNoteCommandGroups(
-            locationScope: .setAside,
-            isManagedCritique: false,
-            surface: .accessibility
-        ).flatMap(\.commands)
-        #expect(setAside == [
-            .openInNewTab,
-            .putBack,
-            .moveToTrash,
-            .copyRelativePath,
-            .revealInFinder,
-        ])
-
-        let trash = sidebarNoteCommandGroups(
-            locationScope: .trash,
-            isManagedCritique: false,
-            surface: .accessibility
-        ).flatMap(\.commands)
-        #expect(trash == [
-            .openInNewTab,
-            .putBack,
-            .deletePermanently,
-            .copyRelativePath,
-            .revealInFinder,
-        ])
     }
 
     @Test("Library filter presentation counts only complete property filters")
@@ -216,103 +185,6 @@ struct SidebarTreeTests {
         #expect(window.notesAreOrdered(alphaTie, older))
     }
 
-    @Test("Concurrent row removals retain independent vault-qualified focus plans")
-    func concurrentRemovalFocusPlans() {
-        let vaultID = UUID()
-        let scope = LibraryDisclosureScope(
-            vaultID: vaultID,
-            locationScope: .setAside
-        )
-        let firstID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Set Aside/A.md"
-        )
-        let secondID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Set Aside/B.md"
-        )
-        let remainingID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Set Aside/C.md"
-        )
-        let paths = [
-            firstID.relativePath,
-            secondID.relativePath,
-            remainingID.relativePath,
-        ]
-        let first = sidebarRemovalFocusPlan(
-            originDocumentID: firstID,
-            originPath: firstID.relativePath,
-            disclosureScope: scope,
-            visibleNotePaths: paths
-        )
-        let second = sidebarRemovalFocusPlan(
-            originDocumentID: secondID,
-            originPath: secondID.relativePath,
-            disclosureScope: scope,
-            visibleNotePaths: paths
-        )
-
-        let afterFirst = sidebarRemovalFocusAfterCompletions(
-            plans: [first, second],
-            disclosureScope: scope,
-            remainingDocumentIDs: [secondID, remainingID],
-            remainingVisibleNotePaths: [
-                secondID.relativePath,
-                remainingID.relativePath,
-            ]
-        )
-        #expect(afterFirst.pendingPlans == [second])
-        #expect(afterFirst.destination == .row(secondID.relativePath))
-
-        let afterSecond = sidebarRemovalFocusAfterCompletions(
-            plans: afterFirst.pendingPlans,
-            disclosureScope: scope,
-            remainingDocumentIDs: [remainingID],
-            remainingVisibleNotePaths: [remainingID.relativePath]
-        )
-        #expect(afterSecond.pendingPlans.isEmpty)
-        #expect(afterSecond.destination == .row(remainingID.relativePath))
-    }
-
-    @Test("A failed removal restores only its own row and preserves another plan")
-    func failedRemovalFocusPlan() {
-        let vaultID = UUID()
-        let scope = LibraryDisclosureScope(
-            vaultID: vaultID,
-            locationScope: .trash
-        )
-        let failedID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Trash/A.md"
-        )
-        let pendingID = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Trash/B.md"
-        )
-        let failed = sidebarRemovalFocusPlan(
-            originDocumentID: failedID,
-            originPath: failedID.relativePath,
-            disclosureScope: scope,
-            visibleNotePaths: [failedID.relativePath, pendingID.relativePath]
-        )
-        let pending = sidebarRemovalFocusPlan(
-            originDocumentID: pendingID,
-            originPath: pendingID.relativePath,
-            disclosureScope: scope,
-            visibleNotePaths: [failedID.relativePath, pendingID.relativePath]
-        )
-
-        let result = sidebarRemovalFocusAfterFailure(
-            plans: [failed, pending],
-            originDocumentID: failedID,
-            originPath: failedID.relativePath,
-            disclosureScope: scope
-        )
-        #expect(result.pendingPlans == [pending])
-        #expect(result.destination == .row(failedID.relativePath))
-    }
-
     @Test("Every hierarchy level advances one shared Folder and Note leading axis")
     func hierarchyRowTitleAxes() {
         #expect(sidebarLibraryRowLeadingInset(depth: 0) == 12)
@@ -328,11 +200,6 @@ struct SidebarTreeTests {
             libraryFolderAncestors(
                 forDocumentPath: "papers/Arguments/Agency/Untitled.md"
             ) == ["papers", "papers/Arguments", "papers/Arguments/Agency"]
-        )
-        #expect(
-            libraryFolderAncestors(
-                forDocumentPath: "Set Aside/papers/Arguments/Untitled.md"
-            ) == ["papers", "papers/Arguments"]
         )
     }
 
@@ -429,38 +296,6 @@ struct SidebarTreeTests {
         )
         #expect(projection.expandableFolderIDs == ["papers", "papers/Ethics"])
         #expect(tree.contains { $0.id == "papers" })
-    }
-
-    @Test("Lifecycle categories strip only their category root")
-    func lifecycleCategoriesShareFolderProjection() throws {
-        let tree = buildTree(
-            from: [
-                .syntheticPreview(
-                    relativePath: "Set Aside/papers/Arguments/Agency/Reply.md",
-                    rawContent: "# Reply\n"
-                ),
-            ],
-            folderRelativePaths: [
-                "Set Aside",
-                "Set Aside/papers",
-                "Set Aside/papers/Arguments",
-                "Set Aside/papers/Arguments/Empty Archive",
-            ],
-            notesAreOrdered: { $0.relativePath < $1.relativePath }
-        )
-
-        let papers = try #require(tree.first { $0.id == "papers" })
-        #expect(papers.folderRelativePath == "Set Aside/papers")
-        let arguments = try #require(papers.children.first { $0.id == "papers/Arguments" })
-        #expect(arguments.folderRelativePath == "Set Aside/papers/Arguments")
-        #expect(arguments.children.contains { $0.id == "papers/Arguments/Agency" })
-        #expect(arguments.children.contains {
-            $0.id == "papers/Arguments/Empty Archive"
-        })
-        #expect(!tree.contains { $0.id == "Set Aside" })
-        #expect(libraryFolderAncestors(
-            forDocumentPath: "Trash/topics/Debate/Objection.md"
-        ) == ["topics", "topics/Debate"])
     }
 
     @Test("Native outline visibility stays deterministic")
@@ -568,22 +403,6 @@ struct SidebarTreeTests {
         ))
     }
 
-    @Test("Put Back is quiet at rest and appears for pointer or keyboard focus")
-    func lifecyclePutBackVisibility() {
-        #expect(!sidebarLifecyclePutBackControlIsVisible(
-            isHovered: false,
-            isNativeFocused: false
-        ))
-        #expect(sidebarLifecyclePutBackControlIsVisible(
-            isHovered: true,
-            isNativeFocused: false
-        ))
-        #expect(sidebarLifecyclePutBackControlIsVisible(
-            isHovered: false,
-            isNativeFocused: true
-        ))
-    }
-
     @Test("Only visibly expanded Folders request the Collapse All presentation")
     func visibleExpandedFolderState() throws {
         let tree = buildTree(
@@ -674,11 +493,11 @@ struct SidebarTreeTests {
             path: "papers/Cluster-01/Argument.md",
             source: "# Argument\n"
         )
-        let target = try #require(NoteLifecycleTarget(source))
+        let target = try #require(NoteMutationTarget(source))
         let item = SidebarNoteDragItem(target)
         let base = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [source],
@@ -704,7 +523,7 @@ struct SidebarTreeTests {
 
         let unavailablePolicy = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [source],
@@ -721,7 +540,7 @@ struct SidebarTreeTests {
 
         let stale = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [workspaceNote(
@@ -743,7 +562,7 @@ struct SidebarTreeTests {
 
         let pending = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [source],
@@ -760,7 +579,7 @@ struct SidebarTreeTests {
 
         let collision = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [
@@ -791,7 +610,7 @@ struct SidebarTreeTests {
             caseSensitive: true,
             normalizationSensitive: true
         )
-        let item = SidebarFolderDragItem(FolderLifecycleTarget(
+        let item = SidebarFolderDragItem(FolderMutationTarget(
             vaultID: vaultID,
             relativePath: "papers/Cluster-01/Arguments"
         ))
@@ -802,7 +621,7 @@ struct SidebarTreeTests {
         ]
         let base = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -824,7 +643,7 @@ struct SidebarTreeTests {
 
         let unavailablePolicy = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -841,7 +660,7 @@ struct SidebarTreeTests {
 
         let pending = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -858,7 +677,7 @@ struct SidebarTreeTests {
 
         let occupied = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -889,12 +708,12 @@ struct SidebarTreeTests {
             path: "Target/draft.md",
             source: "# Existing\n"
         )
-        let item = SidebarNoteDragItem(try #require(NoteLifecycleTarget(source)))
+        let item = SidebarNoteDragItem(try #require(NoteMutationTarget(source)))
         let folders: Set<String> = ["Source", "Target"]
 
         let caseInsensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [source, caseVariant],
@@ -914,7 +733,7 @@ struct SidebarTreeTests {
 
         let caseSensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [source, caseVariant],
@@ -945,11 +764,11 @@ struct SidebarTreeTests {
             source: "# Existing\n"
         )
         let unicodeItem = SidebarNoteDragItem(
-            try #require(NoteLifecycleTarget(unicodeSource))
+            try #require(NoteMutationTarget(unicodeSource))
         )
         let normalizationInsensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [unicodeSource, unicodeVariant],
@@ -971,7 +790,7 @@ struct SidebarTreeTests {
     @Test("Native Folder drop validation uses the mounted volume comparison policy")
     func nativeFolderDropUsesVolumeComparisonPolicy() {
         let vaultID = UUID()
-        let item = SidebarFolderDragItem(FolderLifecycleTarget(
+        let item = SidebarFolderDragItem(FolderMutationTarget(
             vaultID: vaultID,
             relativePath: "Source/Arguments"
         ))
@@ -983,7 +802,7 @@ struct SidebarTreeTests {
         ]
         let caseInsensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -1003,7 +822,7 @@ struct SidebarTreeTests {
 
         let caseSensitive = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -1023,7 +842,7 @@ struct SidebarTreeTests {
 
         let currentParentWithDifferentCase = SidebarTreeDropInventory(
             currentVaultID: vaultID,
-            locationScope: .workspace,
+            sourceScope: .library,
             currentVaultRole: .sourceCorpus,
             canMutate: true,
             notes: [],
@@ -1084,7 +903,7 @@ struct SidebarTreeTests {
         )
         let scope = LibraryDisclosureScope(
             vaultID: vaultID,
-            locationScope: .workspace
+            sourceScope: .library
         )
         let expandedFolderIDs: Set<String> = ["Folder"]
         var revealCount = 0
@@ -1179,7 +998,6 @@ struct SidebarTreeTests {
                 creationDate: nil,
                 modificationDate: modificationDate
             ),
-            lifecycle: .active,
             graphCounts: WorkspaceGraphCounts(
                 incoming: 0,
                 outgoing: 0,
@@ -1204,24 +1022,21 @@ private func makeSidebarCoordinatorConfiguration(
     let context = SidebarTreeContext(
         currentVaultID: scope.vaultID,
         currentVaultRole: .other,
-        locationScope: .workspace,
         openNote: { _, _ in },
-        requestLifecycle: { _ in },
+        requestFileOperation: { _ in },
         canMutateLibrary: false,
         createUntitledNote: { _ in },
         createUntitledFolder: { _ in },
-        requestFolderLifecycle: { _ in },
-        moveFolderToTrash: { _ in },
+        requestFolderFileOperation: { _ in },
+        requestFolderSystemTrash: { _ in },
         copyRelativePath: { _ in },
         revealNote: { _ in },
-        setAside: { _ in },
-        moveToTrash: { _ in },
-        deletePermanently: { _ in },
+        requestSystemTrash: { _ in },
         showError: { _ in }
     )
     let dropInventory = SidebarTreeDropInventory(
         currentVaultID: scope.vaultID,
-        locationScope: .workspace,
+        sourceScope: .library,
         currentVaultRole: .other,
         canMutate: false,
         notes: notes,
@@ -1247,12 +1062,8 @@ private func makeSidebarCoordinatorConfiguration(
         onConsumeRevealRequest: onConsumeRevealRequest,
         onFocusRequestHandled: onFocusRequestHandled,
         onSelect: { _ in },
-        putBackDocumentsInProgress: [],
         onMoveNoteDrop: { _, _ in },
-        onMoveFolderDrop: { _, _ in },
-        onPutBack: { _ in },
-        onWillRemove: { _ in },
-        onMutationFailed: { _ in }
+        onMoveFolderDrop: { _, _ in }
     )
 }
 

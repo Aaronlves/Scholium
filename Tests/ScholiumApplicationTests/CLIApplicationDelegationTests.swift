@@ -42,7 +42,9 @@ struct CLIApplicationDelegationTests {
         #expect(sources.document.contains("handle.documents.create("))
         #expect(sources.document.contains("handle.documents.save("))
         #expect(sources.document.contains("handle.documents.move("))
-        #expect(sources.document.contains("handle.documents.deletePermanently("))
+        #expect(sources.document.contains("handle.documents.prepareSystemTrash("))
+        #expect(sources.document.contains("handle.documents.moveToSystemTrash("))
+        #expect(sources.document.contains("--delete-associated-records"))
         #expect(sources.entry.contains(#"case "zotero":"#))
         #expect(sources.entry.contains("context: context"))
         #expect(sources.zotero.contains("context.runtime.zotero"))
@@ -78,7 +80,6 @@ struct CLIApplicationDelegationTests {
             noteID: UUID(),
             note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Work.md"),
             role: .work,
-            lifecycle: .active,
             fingerprint: DocumentFingerprint(content: "work"),
             title: "Work"
         )
@@ -134,7 +135,7 @@ struct CLIApplicationDelegationTests {
         ) == submission)
     }
 
-    @Test("Search v7, catalog, read, and lifecycle output schemas remain stable")
+    @Test("Search v7, catalog, read, and operation output schemas remain stable")
     func serializedOutputContractsRemainStable() throws {
         let sources = try CLISources.load()
 
@@ -174,7 +175,8 @@ struct CLIApplicationDelegationTests {
         #expect(sources.document.contains("Created "))
         #expect(sources.document.contains("Replaced "))
         #expect(sources.document.contains("Moved "))
-        #expect(sources.document.contains("Permanently deleted "))
+        #expect(sources.document.contains("to the macOS Trash"))
+        #expect(sources.document.contains("Finder owns file restoration"))
         #expect(sources.document.contains("let document = outcome.committedValue"))
         #expect(sources.document.contains("writeMutationWarnings(outcome)"))
         #expect(sources.document.contains("do not repeat the mutation"))

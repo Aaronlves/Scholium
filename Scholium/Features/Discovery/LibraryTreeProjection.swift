@@ -265,26 +265,11 @@ final class LibraryTreeProjectionCache {
     }
 }
 
-/// Returns the path presented inside one Library lifecycle category. The exact
-/// vault-relative path remains authoritative for every filesystem operation.
 func libraryCategoryRelativeDocumentPath(_ path: String) -> String {
-    for lifecycle in [WorkspaceDocumentLifecycle.setAside, .trash] {
-        guard let prefix = lifecycle.libraryPathPrefix else { continue }
-        if path.hasPrefix(prefix) {
-            return String(path.dropFirst(prefix.count))
-        }
-    }
     return path
 }
 
 func libraryCategoryRelativeFolderPath(_ path: String) -> String {
-    for lifecycle in [WorkspaceDocumentLifecycle.setAside, .trash] {
-        guard let prefix = lifecycle.libraryPathPrefix else { continue }
-        if path == String(prefix.dropLast()) { return "" }
-        if path.hasPrefix(prefix) {
-            return String(path.dropFirst(prefix.count))
-        }
-    }
     return path
 }
 
