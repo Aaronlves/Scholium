@@ -392,17 +392,7 @@ struct ResearchBoundedWriteOperationsTests {
         ] == finalDocument.fingerprint)
         try FileManager.default.removeItem(at: invalidDerivedSource)
         _ = try await handle.refresh()
-        if !firstReceipt.recordFormed {
-            try await completeAutomaticFidelity(
-                parentRunID: connection.preparation.runID,
-                handle: handle
-            )
-            _ = try await handle.research.submitAgentResult(
-                credential: connection.credential,
-                run: connection.handoff.run,
-                submission: submission
-            )
-        }
+        #expect(firstReceipt.recordFormed)
         let record = try #require(
             try await handle.research.finishedResearchRecords(noteID: createdEntry.noteID)
                 .first(where: { $0.id == connection.preparation.runID })
@@ -1932,17 +1922,7 @@ struct ResearchBoundedWriteOperationsTests {
             run: connection.handoff.run,
             submission: resultSubmission
         )
-        if !receipt.recordFormed {
-            try await completeAutomaticFidelity(
-                parentRunID: connection.preparation.runID,
-                handle: handle
-            )
-            _ = try await handle.research.submitAgentResult(
-                credential: connection.credential,
-                run: connection.handoff.run,
-                submission: resultSubmission
-            )
-        }
+        #expect(receipt.recordFormed)
         let record = try #require(
             try await handle.research.finishedResearchRecords(noteID: nil)
                 .first(where: { $0.id == connection.preparation.runID })
@@ -2354,48 +2334,6 @@ struct ResearchBoundedWriteOperationsTests {
             pairingCode: handoff.pairingCode
         )
         return (preparation, handoff, credential)
-    }
-
-    private func completeAutomaticFidelity(
-        parentRunID: UUID,
-        handle: WorkspaceHandle
-    ) async throws {
-        let automatic = try await handle.research.prepareProtectedAutomaticFidelity(
-            parentRunID: parentRunID
-        )
-        let preparation = automatic.preparation
-        let checks = preparation.snapshot.request.checks.sorted {
-            $0.rawValue < $1.rawValue
-        }
-        let outcomes = checks.map(FidelityCheckOutcome.passed)
-        let targets = preparation.snapshot.request.resolvedFidelityTargets
-        _ = try await completeTestProtectedFunction(
-            handle: handle,
-            submission: ResearchFunctionCompletionSubmission(
-                runID: preparation.runID,
-                confirmationToken: preparation.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: targets.count == 1
-                    ? targets[0].fingerprint
-                    : nil,
-                summary: "Checked every exact final Agent revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: targets.count == 1 ? outcomes : [],
-                fidelityTargetSubmissions: targets.count > 1
-                    ? targets.map { target in
-                        ResearchFunctionFidelityTargetSubmission(
-                            noteID: target.noteID,
-                            note: target.note,
-                            fingerprint: target.fingerprint,
-                            outcomes: outcomes
-                        )
-                    }
-                    : []
-            )
-        )
-        _ = try await handle.research.prepareProtectedAutomaticFidelity(
-            parentRunID: parentRunID
-        )
     }
 
     private func extensionIntent(

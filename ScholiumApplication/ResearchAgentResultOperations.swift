@@ -106,8 +106,7 @@ extension WorkspaceHandle {
             guard existing.submissionFingerprint == submissionFingerprint else {
                 throw ResearchAgentResultContractError.resultAlreadySubmitted
             }
-            if let completion = stored.completion,
-               completion.state != .awaitingFidelity {
+            if let completion = stored.completion {
                 let reconciled = try await researchFunctionCoordinator
                     .completeProtectedFunction(
                         ResearchFunctionCompletionSubmission(
@@ -130,15 +129,9 @@ extension WorkspaceHandle {
                             existing.submissionFingerprint.sha256,
                         host: self
                     )
-                let parent = try await researchFunctionCoordinator
-                    .advanceAutomaticFidelityParent(
-                        childRunID: reconciled.runID,
-                        host: self
-                    )
                 return try resultReceipt(
                     disposition: existing.disposition,
-                    completion: reconciled,
-                    automaticParentCompletion: parent
+                    completion: reconciled
                 )
             }
         }
@@ -220,15 +213,9 @@ extension WorkspaceHandle {
                 candidateResultPayload: payload,
                 host: self
             )
-        let parent = try await researchFunctionCoordinator
-            .advanceAutomaticFidelityParent(
-                childRunID: completion.runID,
-                host: self
-            )
         return try resultReceipt(
             disposition: submission.disposition,
-            completion: completion,
-            automaticParentCompletion: parent
+            completion: completion
         )
     }
 
@@ -453,16 +440,7 @@ extension WorkspaceHandle {
         _ reference: SourceReferenceEnvelope,
         snapshot: ResearchFunctionSnapshot
     ) async throws -> [ContextUseVerificationFact] {
-        let frozen: ResearchSourceReference?
-        if case .automatic(let parentRunID)? =
-                snapshot.resolvedFidelityInvocation {
-            frozen = try await researchAgentResultDependencies
-                .localResearchExecutionStore.recordIfPresent(id: parentRunID)?
-                .snapshot.sourceReference
-        } else {
-            frozen = snapshot.sourceReference
-        }
-        guard let frozen,
+        guard let frozen = snapshot.sourceReference,
               ResearchContextMaterialProjection.isCurrentReference(
                 reference,
                 source: frozen,
@@ -605,52 +583,22 @@ extension WorkspaceHandle {
 
     private func resultReceipt(
         disposition: ResearchAgentResultDisposition,
-        completion: ResearchFunctionCompletion,
-        automaticParentCompletion: ResearchFunctionCompletion? = nil
+        completion: ResearchFunctionCompletion
     ) throws -> ResearchAgentResultReceipt {
-        let parentState: ResearchAgentResultFinalizationState?
-        if let parent = automaticParentCompletion {
-            switch parent.state {
-            case .complete: parentState = .finalized
-            case .unverified: parentState = .unverified
-            case .prepared, .awaitingFidelity, .stale, .cancelled:
-                throw ResearchAgentResultContractError.invalidSubmission
-            }
-        } else {
-            parentState = nil
-        }
-        let parentRecordFormed = parentState.map { _ in true }
         switch completion.state {
         case .complete:
             return try ResearchAgentResultReceipt(
                 disposition: disposition,
                 state: .finalized,
                 recordFormed: true,
-                parentState: parentState,
-                parentRecordFormed: parentRecordFormed,
-                message: automaticParentCompletion == nil
-                    ? "The canonical Result was finalized as one Research Record."
-                    : "The Fidelity child formed its Research Record and automatically finalized the lineage-bound parent Research Record."
+                message: "The canonical Result was finalized as one Research Record."
             )
         case .unverified:
             return try ResearchAgentResultReceipt(
                 disposition: disposition,
                 state: .unverified,
                 recordFormed: true,
-                parentState: parentState,
-                parentRecordFormed: parentRecordFormed,
-                message: automaticParentCompletion == nil
-                    ? "The Result formed one Research Record with explicit unverified Fidelity evidence."
-                    : "The Fidelity child and its lineage-bound parent each formed one Research Record with explicit unverified Fidelity evidence."
-            )
-        case .awaitingFidelity:
-            return try ResearchAgentResultReceipt(
-                disposition: disposition,
-                state: .awaitingFidelity,
-                recordFormed: false,
-                parentState: parentState,
-                parentRecordFormed: parentRecordFormed,
-                message: "The Result is staged on this Run. Run scholium agent prepare-fidelity --run <this-parent-locator> to attach the exact-revision Fidelity child to the current protected Session."
+                message: "The Result formed one Research Record with explicit unverified Fidelity evidence."
             )
         case .prepared, .stale, .cancelled:
             throw ResearchAgentResultContractError.invalidSubmission

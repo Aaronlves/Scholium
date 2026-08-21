@@ -70,24 +70,12 @@ directly.
    uncertain. A `stale_run` response means an exact Target, Material, or formal
    source boundary changed. Stop that Run; do not retry a write or Result
    against the changed boundary.
-6. Finish the substantive parent with `agent submit-result`. If the receipt is
-   `awaiting_fidelity`, run `agent prepare-fidelity` with that parent locator.
-   One call attaches the read-only child and returns its complete
-   `child_context`; do not run a separate context command merely to recover the
-   packet and never transcribe a child UUID.
-7. Send every item in
-   `child_context.fidelity_contract.inspection_requests` unchanged through
-   `agent query` for the returned child locator. Inspect the exact final Target,
-   frozen Materials, and the formal revision-bound source envelope when one is
-   present. If the contract marks a check required-unavailable, report it as
-   unavailable; Note YAML URLs and bibliographic metadata are not source
-   evidence.
-8. Fill the `submit_result` item in `child_context.next_actions` after those
-   inspections, then run its argument vector with the filled input template.
-   Scholium derives identity, revisions, default aggregate Fidelity fields,
-   child lineage, and both Records. The Agent supplies only the per-check
-   academic judgments and any explicitly researcher-customized result fields.
-9. Use `agent continue` only for a distinct next Action, or `agent end` to stop
+6. Finish the substantive Action with `agent submit-result` after applying the
+   selected Method's own checks. Analyze performs its bounded fidelity
+   self-check inside the Analyze Method; it does not create a Check Fidelity
+   child Run. Check Fidelity is a separate read-only Action and is prepared
+   only when the researcher explicitly initiates it.
+7. Use `agent continue` only for a distinct next Action, or `agent end` to stop
    an unfinished Run without a Result.
 
 The authenticated Run packet and command inputs own current fields, allowed

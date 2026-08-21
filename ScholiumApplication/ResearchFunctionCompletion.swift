@@ -57,7 +57,7 @@ extension ResearchFunctionCoordinator {
                 return existing
             case .cancelled:
                 throw ResearchFunctionContractError.completionAlreadyRecorded(submission.runID)
-            case .prepared, .awaitingFidelity, .unverified, .stale:
+            case .prepared, .unverified, .stale:
                 break
             }
         }
@@ -80,7 +80,7 @@ extension ResearchFunctionCoordinator {
             )
         }
         if let existing = stored.completion,
-           [.awaitingFidelity, .unverified, .stale].contains(existing.state),
+           [.unverified, .stale].contains(existing.state),
            (existing.literatureRecommendations != submission.literatureRecommendations
                || existing.actuallyUsedMaterialNoteIDs
                     != submission.actuallyUsedMaterialNoteIDs) {
@@ -233,21 +233,9 @@ extension ResearchFunctionCoordinator {
         let submittedChildRunIDs = submission.childRunIDs ?? []
         switch snapshot.request.function {
         case .develop, .revise:
-            guard submittedChildRunIDs.count <= 1 else {
+            guard submittedChildRunIDs.isEmpty else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "A write-capable Research Action may select at most one final Content Fidelity child run."
-                )
-            }
-            guard didConfirmTargetWrite || submittedChildRunIDs.isEmpty else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "An Action whose Target was unchanged cannot select final Target Fidelity evidence."
-                )
-            }
-            if let confirmedWriteSet,
-               confirmedWriteSet.report.confirmedModifiedNotes.count > 1,
-               !submittedChildRunIDs.isEmpty {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "A multi-note Write uses per-note Fidelity results and cannot attach one single-target child run."
+                    "A write-capable Research Action cannot select a Check Fidelity child run."
                 )
             }
         case .manuscript:
@@ -274,23 +262,11 @@ extension ResearchFunctionCoordinator {
             )
         }
         let manuscriptFidelity = manuscriptChildren?.fidelity
-        let linkedFinalFidelity: ResearchFunctionCompletion?
-        if [.develop, .revise].contains(snapshot.request.function),
-           let fidelityRunID = submittedChildRunIDs.first {
-            linkedFinalFidelity = try await completedFinalFidelityChild(
-                runID: fidelityRunID,
-                for: snapshot,
-                finalTargetFingerprint: finalTargetFingerprint,
-                finalMaterialFingerprints: finalMaterialFingerprints
-            )
-        } else {
-            linkedFinalFidelity = nil
-        }
         let requiredChecks: Set<FidelityCheck>
         if snapshot.request.function == .fidelity {
             requiredChecks = snapshot.request.checks
         } else {
-            requiredChecks = snapshot.fidelityHandoff?.checks ?? []
+            requiredChecks = []
         }
         func validateFidelityOutcomes(_ outcomes: [FidelityCheckOutcome]) throws {
             let submittedChecks = outcomes.map(\.check)
@@ -300,14 +276,14 @@ extension ResearchFunctionCoordinator {
                     "Each Fidelity check may be submitted only once per note."
                 )
             }
-            guard outcomes.isEmpty || Set(submittedChecks) == requiredChecks else {
+            guard Set(submittedChecks) == requiredChecks else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "Fidelity outcomes must cover the exact required check set."
                 )
             }
             guard !requiredChecks.isEmpty || outcomes.isEmpty else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "This Action has no Fidelity handoff."
+                    "This Action has no Fidelity checks."
                 )
             }
         }
@@ -377,31 +353,10 @@ extension ResearchFunctionCoordinator {
                 )]
                 : []
         }
-        if snapshot.request.function == .fidelity,
-           case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
-            guard let parent = try await dependencies.localExecutionStore
-                    .recordIfPresent(id: parentRunID) else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The automatic Fidelity child no longer has its exact parent Run."
-                )
-            }
-            if parent.snapshot.actionSnapshot?.actionID == .analyze,
-               parent.snapshot.sourceReference == nil,
-               requiredChecks.contains(.citations) {
-                let citationOutcomes = fidelityTargetResults.flatMap(\.outcomes)
-                    .filter { $0.check == .citations }
-                guard citationOutcomes.count == 1,
-                      citationOutcomes[0].state == .unavailable else {
-                    throw ResearchFunctionContractError.invalidCompletion(
-                        "Citation Fidelity without a formal revision-bound source envelope must be reported as unavailable. Authored Note YAML and bibliographic metadata are not verified source evidence."
-                    )
-                }
-            }
-        }
         if [.develop, .revise].contains(snapshot.request.function),
            !submission.fidelityOutcomes.isEmpty {
             throw ResearchFunctionContractError.invalidCompletion(
-                "Write-capable runs must link an independently prepared final-fingerprint Fidelity child instead of submitting Fidelity outcomes directly."
+                "Write-capable runs perform their bounded fidelity self-check in the Method; they cannot submit Check Fidelity outcomes."
             )
         }
         if snapshot.request.function != .fidelity,
@@ -414,11 +369,6 @@ extension ResearchFunctionCoordinator {
         var state: ResearchFunctionRunState
         if let manuscriptFidelity {
             state = manuscriptFidelity.state
-        } else if let linkedFinalFidelity {
-            state = linkedFinalFidelity.state
-        } else if [.develop, .revise].contains(snapshot.request.function),
-                  !didConfirmTargetWrite {
-            state = .complete
         } else if requiredChecks.isEmpty {
             state = .complete
         } else if snapshot.request.function == .fidelity,
@@ -427,9 +377,6 @@ extension ResearchFunctionCoordinator {
                       $0.state == .unavailable
                   }) {
             state = .unverified
-        } else if submission.fidelityOutcomes.isEmpty
-                    && fidelityTargetResults.isEmpty {
-            state = .awaitingFidelity
         } else if submission.fidelityOutcomes.contains(where: { $0.state == .unavailable }) {
             state = .unverified
         } else {
@@ -446,7 +393,6 @@ extension ResearchFunctionCoordinator {
             )
             : nil
         let evidenceKey = manuscriptFidelity?.fidelityEvidenceKey
-            ?? linkedFinalFidelity?.fidelityEvidenceKey
             ?? directFidelityEvidenceKey
         let reused: ResearchFunctionCompletion?
         if let evidenceKey, snapshot.request.function == .fidelity {
@@ -458,7 +404,6 @@ extension ResearchFunctionCoordinator {
             reused = nil
         }
         let outcomes = manuscriptFidelity?.fidelityOutcomes
-            ?? linkedFinalFidelity?.fidelityOutcomes
             ?? reused?.fidelityOutcomes
             ?? submission.fidelityOutcomes
         if reused != nil { state = .complete }
@@ -478,9 +423,7 @@ extension ResearchFunctionCoordinator {
             fidelityTargetResults: fidelityTargetResults,
             literatureRecommendations: submission.literatureRecommendations,
             fidelityEvidenceKey: evidenceKey,
-            reusedFidelityRunID: manuscriptFidelity?.runID
-                ?? linkedFinalFidelity?.runID
-                ?? reused?.runID,
+            reusedFidelityRunID: manuscriptFidelity?.runID ?? reused?.runID,
             childRunIDs: submittedChildRunIDs,
             completedAt: stored.completion?.completedAt ?? submission.submittedAt,
             derivedRefreshWarning: stored.completion?.derivedRefreshWarning
@@ -503,7 +446,6 @@ extension ResearchFunctionCoordinator {
                 stored: stored,
                 confirmedWrite: confirmedWriteSet?.report,
                 resultPayloadOverride: candidateResultPayload,
-                storagePreflightForAwaitingFidelity: true
            ) {
             do {
                 try PortableResearchRecordStore.validateStorageEncoding(
@@ -522,40 +464,6 @@ extension ResearchFunctionCoordinator {
             writeReport: confirmedWriteSet?.report,
             submissionDigest: submissionDigest
         )
-        // The substantive completion is authoritative before orchestration
-        // begins. Automatic Fidelity preparation is therefore recoverable.
-        if let advanced = try await advanceWithAutomaticFidelityIfAvailable(
-            completion: completion,
-            submission: submission,
-            acceptedSubmissionDigest: submissionDigest,
-            host: host
-        ) {
-            let refreshed = try await record(runID: advanced.runID)
-            if refreshed.isCompacted {
-                _ = try await dependencies.portableResearchRecordStore.record(
-                    id: advanced.runID
-                )
-            } else {
-                let refreshedWrite = [.develop, .revise].contains(
-                    refreshed.snapshot.request.function
-                ) ? try await confirmBoundedWriteSet(
-                    stored: refreshed,
-                    snapshot: refreshed.snapshot,
-                    completedAt: advanced.completedAt,
-                    host: host
-                ) : nil
-                try await ensurePortableResearchRecord(
-                    completion: advanced,
-                    stored: refreshed,
-                    confirmedWrite: refreshedWrite?.report
-                )
-            }
-            if [.complete, .unverified, .stale, .cancelled].contains(advanced.state) {
-                await host.finalizeResearchAgentRunAccess(runID: advanced.runID)
-            }
-            return advanced
-        }
-
         if [.complete, .unverified].contains(completion.state),
            completion.function != .discuss {
             try await ensurePortableResearchRecord(
@@ -597,154 +505,6 @@ extension ResearchFunctionCoordinator {
 // MARK: - Post-commit repair and portable record
 
 extension ResearchFunctionCoordinator {
-    /// Advances the one lineage-bound parent after its automatic Fidelity
-    /// child reaches a terminal exact-evidence state. The parent payload and
-    /// submission digest remain the original authenticated Agent Result; the
-    /// child identity comes only from persisted Application-owned lineage.
-    func advanceAutomaticFidelityParent<Host: ResearchFunctionCoordinatorHost>(
-        childRunID: UUID,
-        host: isolated Host
-    ) async throws -> ResearchFunctionCompletion? {
-        let child = try await record(runID: childRunID)
-        guard case .automatic(let parentRunID)? =
-                child.snapshot.resolvedFidelityInvocation else {
-            return nil
-        }
-        guard try await record(runID: parentRunID).resultPayload != nil else {
-            // Researcher-side completion retains its existing explicit parent
-            // completion route; only an authenticated staged Agent Result can
-            // be advanced without another caller-supplied payload.
-            return nil
-        }
-        return try await advanceFidelityParent(
-            parentRunID: parentRunID,
-            childRunID: childRunID,
-            host: host
-        )
-    }
-
-    /// Links one already-completed child selected by the automatic handoff.
-    /// This also supports exact reusable manual evidence chosen by
-    /// `prepareAutomaticFidelity`; the ordinary child validator remains the
-    /// final authority for target, Materials, scope, checks, and lineage.
-    func advanceFidelityParent<Host: ResearchFunctionCoordinatorHost>(
-        parentRunID: UUID,
-        childRunID: UUID,
-        host: isolated Host
-    ) async throws -> ResearchFunctionCompletion {
-        let child = try await record(runID: childRunID)
-        guard let childCompletion = child.completion,
-              [.complete, .unverified].contains(childCompletion.state) else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Automatic Fidelity cannot advance its parent before the child has terminal exact-revision evidence."
-            )
-        }
-        let parent = try await record(runID: parentRunID)
-        guard let parentCompletion = parent.completion else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The automatic Fidelity parent has no staged Result to advance."
-            )
-        }
-        if [.complete, .unverified].contains(parentCompletion.state) {
-            guard parentCompletion.childRunIDs == [childRunID] else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The finalized parent is not linked to this automatic Fidelity child."
-                )
-            }
-            return parentCompletion
-        }
-        guard parentCompletion.state == .awaitingFidelity,
-              let payload = parent.resultPayload else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The automatic Fidelity parent is not awaiting one authenticated staged Result."
-            )
-        }
-        return try await completeProtectedFunction(
-            ResearchFunctionCompletionSubmission(
-                runID: parentRunID,
-                confirmationToken: parent.snapshot.confirmationToken,
-                recordTitle: payload.recordTitle,
-                finalTargetFingerprint: parentCompletion.targetFingerprint,
-                finalMaterialFingerprints: parentCompletion.materialFingerprints,
-                actuallyUsedMaterialNoteIDs:
-                    parentCompletion.actuallyUsedMaterialNoteIDs,
-                summary: parentCompletion.summary,
-                didModifyTarget: parentCompletion.didModifyTarget,
-                fidelityOutcomes: [],
-                literatureRecommendations: payload.literatureRecommendations,
-                childRunIDs: [childRunID],
-                submittedAt: payload.submittedAt
-            ),
-            acceptedSubmissionDigest: payload.submissionFingerprint.sha256,
-            host: host
-        )
-    }
-
-    private func advanceWithAutomaticFidelityIfAvailable<
-        Host: ResearchFunctionCoordinatorHost
-    >(
-        completion: ResearchFunctionCompletion,
-        submission: ResearchFunctionCompletionSubmission,
-        acceptedSubmissionDigest: String,
-        host: isolated Host
-    ) async throws -> ResearchFunctionCompletion? {
-        guard completion.state == .awaitingFidelity,
-              completion.didModifyTarget,
-              [.develop, .revise].contains(completion.function),
-              (submission.childRunIDs ?? []).isEmpty else { return nil }
-        do {
-            let automatic = try await prepareAutomaticFidelity(
-                parentRunID: completion.runID,
-                host: host
-            )
-            guard [.complete, .unverified].contains(automatic.state) else {
-                return nil
-            }
-            return try await completeProtectedFunction(
-                ResearchFunctionCompletionSubmission(
-                    runID: submission.runID,
-                    confirmationToken: submission.confirmationToken,
-                    recordTitle: submission.recordTitle,
-                    finalTargetFingerprint: submission.finalTargetFingerprint,
-                    finalMaterialFingerprints: submission.finalMaterialFingerprints,
-                    actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
-                    summary: submission.summary,
-                    didModifyTarget: submission.didModifyTarget,
-                    fidelityOutcomes: submission.fidelityOutcomes,
-                    literatureRecommendations: submission.literatureRecommendations,
-                    childRunIDs: [automatic.effectiveFidelityRunID],
-                    submittedAt: submission.submittedAt
-                ),
-                acceptedSubmissionDigest: acceptedSubmissionDigest,
-                host: host
-            )
-        } catch {
-            if let durable = try? await record(runID: completion.runID),
-               let advanced = durable.completion,
-               [.complete, .unverified].contains(advanced.state) {
-                if durable.isCompacted {
-                    _ = try await dependencies.portableResearchRecordStore.record(
-                        id: advanced.runID
-                    )
-                    return advanced
-                }
-                let write = try await confirmBoundedWriteSet(
-                    stored: durable,
-                    snapshot: durable.snapshot,
-                    completedAt: advanced.completedAt,
-                    host: host
-                )
-                try await ensurePortableResearchRecord(
-                    completion: advanced,
-                    stored: durable,
-                    confirmedWrite: write.report
-                )
-                return advanced
-            }
-            return nil
-        }
-    }
-
     private func completionSubmissionDigest(
         _ submission: ResearchFunctionCompletionSubmission
     ) throws -> String {
@@ -866,13 +626,9 @@ extension ResearchFunctionCoordinator {
         completion: ResearchFunctionCompletion,
         stored: LocalResearchExecutionRecord,
         confirmedWrite: ResearchRunWriteReport?,
-        resultPayloadOverride: ResearchRunResultPayload? = nil,
-        storagePreflightForAwaitingFidelity: Bool = false
+        resultPayloadOverride: ResearchRunResultPayload? = nil
     ) async throws -> PortableResearchRecord? {
-        let canBuildRecord = [.complete, .unverified].contains(completion.state)
-            || (storagePreflightForAwaitingFidelity
-                && completion.state == .awaitingFidelity)
-        guard canBuildRecord,
+        guard [.complete, .unverified].contains(completion.state),
               completion.function != .discuss,
               let actionSnapshot = stored.snapshot.actionSnapshot else {
             return nil
@@ -1085,10 +841,7 @@ extension ResearchFunctionCoordinator {
             academicResults: academicResults,
             contextUseReport: resultPayload.contextUseReport,
             actuallyUsedMaterials: actuallyUsedMaterials,
-            fidelityCompletion: storagePreflightForAwaitingFidelity
-                    && completion.state == .awaitingFidelity
-                ? .notRequired
-                : try portableFidelityCompletion(for: completion),
+            fidelityCompletion: try portableFidelityCompletion(for: completion),
             confirmedChanges: changes,
             discrepancies: discrepancies,
             literatureRecommendations: literatureRecommendations,
@@ -1110,7 +863,7 @@ extension ResearchFunctionCoordinator {
                 )
             }
             return .unverified
-        case .prepared, .awaitingFidelity, .stale, .cancelled:
+        case .prepared, .stale, .cancelled:
             throw ResearchFunctionContractError.invalidCompletion(
                 "Only a complete or unverified Action can create a portable Research Record."
             )
@@ -1272,71 +1025,6 @@ extension ResearchFunctionCoordinator {
         }?.completion
     }
 
-    private func completedFinalFidelityChild(
-        runID: UUID,
-        for parent: ResearchFunctionSnapshot,
-        finalTargetFingerprint: DocumentFingerprint,
-        finalMaterialFingerprints: [UUID: DocumentFingerprint]
-    ) async throws -> ResearchFunctionCompletion {
-        let records = try await authoritativeFunctionRecords()
-        let lineageMatches: Bool
-        if let parentLineage = parent.continuationLineage {
-            lineageMatches = records.first(where: { $0.id == runID })?
-                .snapshot.continuationLineage == ResearchContinuationLineage(
-                    groupID: parentLineage.groupID,
-                    parentRunID: parent.runID,
-                    requestID: parentLineage.requestID,
-                    kind: .fidelity
-                )
-        } else {
-            lineageMatches = true
-        }
-        guard runID != parent.runID,
-              let child = records.first(where: { $0.id == runID }),
-              lineageMatches,
-              child.snapshot.request.function == .fidelity,
-              child.snapshot.preparedAt >= parent.preparedAt,
-              let completion = child.completion,
-              [.complete, .unverified].contains(completion.state),
-              completion.fidelityEvidenceKey != nil,
-              !completion.fidelityOutcomes.isEmpty else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The selected final Fidelity child is unavailable, incomplete, stale, or not an independent Fidelity run."
-            )
-        }
-
-        if case .automatic(let recordedParentRunID)? =
-            child.snapshot.resolvedFidelityInvocation,
-           recordedParentRunID != parent.runID {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The selected automatic Fidelity child belongs to another parent run."
-            )
-        }
-
-        let parentRequest = parent.request
-        let childRequest = child.snapshot.request
-        let requiredChecks = parent.fidelityHandoff?.checks ?? []
-        let parentScopeKind = parentRequest.scope?.kind ?? .whole
-        let childScopeKind = childRequest.scope?.kind ?? .whole
-        guard childRequest.target.noteID == parentRequest.target.noteID,
-              childRequest.target.note == parentRequest.target.note,
-              childRequest.target.role == parentRequest.target.role,
-              childRequest.target.lifecycle == parentRequest.target.lifecycle,
-              childRequest.target.fingerprint == finalTargetFingerprint,
-              completion.targetFingerprint == finalTargetFingerprint,
-              !completion.didModifyTarget,
-              childRequest.checks == requiredChecks,
-              Set(completion.fidelityOutcomes.map(\.check)) == requiredChecks,
-              Set(childRequest.materials) == Set(parentRequest.materials),
-              completion.materialFingerprints == finalMaterialFingerprints,
-              childScopeKind == parentScopeKind else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "The selected Fidelity child does not match the final Target fingerprint, Materials, scope, or required checks of this handoff."
-            )
-        }
-        return completion
-    }
-
     private func completedManuscriptChildren(
         for manuscript: ResearchFunctionSnapshot,
         childRunIDs: [UUID],
@@ -1388,34 +1076,9 @@ extension ResearchFunctionCoordinator {
         let finalFidelity = fidelityRuns.max { lhs, rhs in
             lhs.snapshot.preparedAt < rhs.snapshot.preparedAt
         }
-        if let latestRevision {
-            let revisionFidelity = latestRevision.completion.flatMap { completion in
-                completion.targetFingerprint == finalTargetFingerprint
-                    && completion.fidelityEvidenceKey != nil
-                    && completion.fidelityOutcomes.contains(where: {
-                        $0.check == .content && $0.state != .unavailable
-                    })
-                    ? completion
-                    : nil
-            }
-            let laterIndependentFidelity = finalFidelity.flatMap { child in
-                child.snapshot.preparedAt > latestRevision.snapshot.preparedAt
-                    ? child.completion
-                    : nil
-            }
-            guard let fidelity = laterIndependentFidelity ?? revisionFidelity else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The latest selected Write must carry final Content Fidelity evidence, or be followed by a matching independent Fidelity child."
-                )
-            }
-            return ResearchFunctionManuscriptChildEvidence(
-                fidelity: fidelity,
-                hasRevision: true
-            )
-        }
         return ResearchFunctionManuscriptChildEvidence(
             fidelity: finalFidelity?.completion,
-            hasRevision: false
+            hasRevision: latestRevision != nil
         )
     }
 }
@@ -1476,29 +1139,6 @@ extension ResearchFunctionCoordinator {
                   evidence.startingRevision == snapshot.request.target.fingerprint else {
                 throw ResearchFunctionContractError.invalidCompletion(
                     "The Resynthesize child no longer matches its exact revision pair, Target, Material, or Agent change evidence."
-                )
-            }
-        case .fidelity:
-            guard case .automatic(let fidelityParentID)? =
-                    snapshot.resolvedFidelityInvocation,
-                  fidelityParentID == lineage.parentRunID,
-                  let parent = try await dependencies.localExecutionStore
-                    .recordIfPresent(id: lineage.parentRunID),
-                  let parentLineage = parent.snapshot.continuationLineage,
-                  parentLineage.kind == .resynthesis,
-                  parentLineage.groupID == lineage.groupID,
-                  parentLineage.requestID == lineage.requestID,
-                  parent.completion.map({
-                      [.awaitingFidelity, .unverified, .complete]
-                        .contains($0.state)
-                  }) == true else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The continuation Fidelity run no longer matches its independently completed write child."
-                )
-            }
-            if parent.snapshot.resynthesisContext == nil {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The continuation Fidelity run lost its Resynthesize preparation evidence."
                 )
             }
         }

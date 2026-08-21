@@ -14,9 +14,10 @@
 5. Use Write for authorized drafting, argument or definition repair, and
    disposition of existing human feedback or prior Critique findings. Neither
    kind of feedback is automatic authority.
-6. After a Write phase, bind Check Fidelity to the resulting revision. Use
-   Critique only when an independent assessment is requested or materially
-   needed; Critique never edits and does not decide submission readiness.
+6. Include a Check Fidelity phase only when the researcher explicitly requests
+   that exact-revision audit. Use Critique only when an independent assessment
+   is requested or materially needed; Critique never edits and does not decide
+   submission readiness.
 7. Stop on conflict, stale revision, unavailable evidence, missing permission,
    or a researcher-owned choice about thesis, contribution, concession, or
    submission.

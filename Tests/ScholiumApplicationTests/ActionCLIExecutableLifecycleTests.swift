@@ -17,7 +17,7 @@ struct ActionCLIExecutableLifecycleTests {
         ).appendingPathComponent(".build/agent-help", isDirectory: true)
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
-            "start", "pair", "context", "prepare-fidelity", "reload", "query", "discuss-reply",
+            "start", "pair", "context", "reload", "query", "discuss-reply",
             "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
             "submit-result", "continue",
@@ -207,7 +207,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .pair, .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeZoteroBinding,
+            case .pair, .query, .discussionReply, .extendWriteSet, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
                 throw LocalAgentBridgeError.invalidRequest
@@ -458,7 +458,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeDocument, .writeZoteroBinding,
+            case .query, .discussionReply, .extendWriteSet, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
                 throw LocalAgentBridgeError.invalidRequest
@@ -670,7 +670,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .context, .prepareFidelity, .query, .discussionReply,
+            case .context, .query, .discussionReply,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1118,7 +1118,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
-            case .context, .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeDocument,
+            case .context, .query, .discussionReply, .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1171,595 +1171,6 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: try encoder.encode(resultSubmission),
             contains: "Unknown command 'action complete'"
         )
-    }
-
-    @Test("The real CLI attaches a Fidelity child to the authenticated parent Session")
-    func agentFidelityChildCLI() async throws {
-        guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_ACTION_CLI_BINARY"
-        ], !binaryPath.isEmpty else { return }
-
-        let fixture = try await ActionCLIFixture.make()
-        defer { fixture.remove() }
-        let bridgeContainer = URL(
-            fileURLWithPath: FileManager.default.currentDirectoryPath,
-            isDirectory: true
-        ).appendingPathComponent(
-            ".build/m/\(String(UUID().uuidString.prefix(8)))",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: bridgeContainer,
-            withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
-
-        let parentRun = try #require(ResearchRunLocator(
-            rawValue: "fidelityparentabcdefghijk"
-        ))
-        let childRun = try #require(ResearchRunLocator(
-            rawValue: "fidelitychildabcdefghijk"
-        ))
-        let code = try #require(ResearchPairingCode(
-            rawValue: "BCDEFGHJKLMNPQR23456789A"
-        ))
-        let credential = try ResearchConnectionCredential(
-            sessionID: UUID(),
-            secret: String(repeating: "f", count: 48)
-        )
-        let profile = try #require(
-            ResearchAcademicProfileCatalog.defaultProfiles.first {
-                $0.actionID == .checkFidelity
-            }
-        )
-        let registration = try ResearchSkillRegistration(
-            actionID: .checkFidelity,
-            displayName: "Fidelity Method",
-            primaryMarkdown: .machineLocal()
-        )
-        let method = try ResearchMethodSnapshot(
-            registration: registration,
-            primaryMarkdownSource: "# Fidelity Method\n\nKeep unavailable evidence explicit.\n",
-            practices: []
-        )
-        let resultContract = try ResearchResultContract(
-            profile: profile,
-            registrationKey: registration.key,
-            profileRevision: try profile.contentRevision()
-        )
-        let fidelityTarget = ResearchFunctionTarget(
-            noteID: fixture.analysisTarget.noteID,
-            note: fixture.analysisTarget.note,
-            role: .analysis,
-            lifecycle: fixture.analysisTarget.lifecycle,
-            fingerprint: fixture.analysisTarget.fingerprint,
-            title: fixture.analysisTarget.title
-        )
-        let inspection = try ResearchContextRequest(clauses: [
-            ResearchContextClause(
-                kind: .readNote,
-                note: fidelityTarget.note,
-                expectedFingerprint: fidelityTarget.fingerprint,
-                limit: 1,
-                useEligibility: .contextUse
-            ),
-            ResearchContextClause(
-                kind: .inspectMaterials,
-                limit: 1,
-                useEligibility: .contextUse
-            ),
-        ])
-        let context = try ResearchAuthenticatedRunContext(
-            coreProtocol: "Scholium Core Protocol",
-            brief: ResearchRunBrief(
-                run: childRun,
-                actionID: .checkFidelity,
-                state: .prepared,
-                initialObjectTitle: fixture.analysisTarget.title,
-                initialObjectRole: .analysis,
-                academicPurpose: nil,
-                capabilities: ResearchRunCapabilityAvailability(
-                    search: true,
-                    read: true,
-                    relations: true,
-                    properties: true,
-                    records: true,
-                    researchState: true,
-                    zotero: false,
-                    writeInitialObject: false,
-                    extendWriteSet: false
-                )
-            ),
-            method: ResearchMethodContext(snapshot: method),
-            resultContract: resultContract,
-            fidelityContract: ResearchFidelityRunContract(
-                checks: [.content, .citations],
-                targets: [fidelityTarget],
-                materials: [],
-                scope: .whole,
-                sourceReference: nil,
-                requiredUnavailableChecks: [.citations],
-                evidenceLimitation: "No formal source envelope is available.",
-                inspectionRequests: [inspection]
-            ),
-            boundedWriteSet: [],
-            nextActions: [AgentCommandAction(
-                kind: .submitResult,
-                label: "Submit attributed outcomes",
-                command: [
-                    "scholium", "agent", "submit-result", "--run",
-                    childRun.rawValue, "--from", "-",
-                ],
-                inputTemplate: #"{"schema_version":2,"record_title":"REPLACE","disposition":"completed","academic_results":{"values":{}},"context_use_claims":[],"fidelity_outcomes":[]}"#
-            )]
-        )
-        let preparationReceipt = try ResearchAgentFidelityPreparationReceipt(
-            childRun: childRun,
-            childContext: context,
-            childState: .prepared,
-            parentState: .awaitingFidelity,
-            parentRecordFormed: false,
-            message: "The read-only child is attached to the current Session."
-        )
-        let academicResults = try ResearchAcademicFieldValues(
-            rawValues: [:],
-            definitions: []
-        )
-        let submission = try ResearchAgentResultSubmission(
-            recordTitle: ResearchRecordTitle("CLI Fidelity child"),
-            academicResults: academicResults,
-            fidelityOutcomes: [
-                FidelityCheckOutcome(
-                    check: .content,
-                    state: .passed,
-                    summary: "The final revision retained the bounded content."
-                ),
-                FidelityCheckOutcome(
-                    check: .citations,
-                    state: .unavailable,
-                    summary: "No formal source envelope is available."
-                ),
-            ]
-        )
-        let resultReceipt = try ResearchAgentResultReceipt(
-            disposition: .completed,
-            state: .unverified,
-            recordFormed: true,
-            parentState: .unverified,
-            parentRecordFormed: true,
-            message: "The child and parent Records formed with explicit unverified evidence."
-        )
-        let server = try LocalAgentBridgeServer(
-            applicationSupportURL: bridgeContainer
-        ) { request in
-            switch request.operation {
-            case .pair:
-                guard request.run == parentRun,
-                      request.pairingCode == code else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .credential(credential)
-            case .prepareFidelity:
-                guard request.run == parentRun,
-                      request.credential == credential else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .fidelityPreparation(preparationReceipt)
-            case .context:
-                guard request.run == childRun,
-                      request.credential == credential else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .context(context)
-            case .submitResult:
-                guard request.run == childRun,
-                      request.credential == credential,
-                      request.resultSubmission == submission else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .resultReceipt(resultReceipt)
-            case .start, .query, .discussionReply, .extendWriteSet, .writeDocument,
-                    .writeZoteroBinding, .resolveWriteConflict, .continueResearch,
-                    .methodImprovementContext, .submitMethodImprovement, .end:
-                throw LocalAgentBridgeError.invalidRequest
-            }
-        }
-        defer { server.stop() }
-
-        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
-        let environment = [
-            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
-        ]
-        _ = try cli.run(
-            ["agent", "pair", "--run", parentRun.rawValue],
-            stdin: Data((code.rawValue + "\n").utf8),
-            environment: environment
-        )
-        let preparedOutput = try cli.run(
-            ["agent", "prepare-fidelity", "--run", parentRun.rawValue],
-            environment: environment
-        )
-        #expect(try Self.decoder().decode(
-            ResearchAgentFidelityPreparationReceipt.self,
-            from: preparedOutput.stdout
-        ) == preparationReceipt)
-        #expect(!String(decoding: preparedOutput.stdout, as: UTF8.self).contains(
-            credential.secret
-        ))
-        let prepared = try Self.decoder().decode(
-            ResearchAgentFidelityPreparationReceipt.self,
-            from: preparedOutput.stdout
-        )
-        #expect(prepared.childContext?.brief.state == .prepared)
-        #expect(prepared.childContext?.fidelityContract?.targets == [fidelityTarget])
-        #expect(prepared.childContext?.fidelityContract?.inspectionRequests == [inspection])
-        #expect(prepared.childContext?.nextActions.first?.kind == .submitResult)
-        #expect(prepared.childContext?.nextActions.first?.inputTemplate?.contains(
-            #""academic_results":{"values":{}}"#
-        ) == true)
-        let childCredentialURL = fixture.homeURL
-            .appendingPathComponent("sessions", isDirectory: true)
-            .appendingPathComponent(childRun.rawValue + ".json")
-        #expect(FileManager.default.fileExists(atPath: childCredentialURL.path))
-
-        let submittedOutput = try cli.run(
-            ["agent", "submit-result", "--run", childRun.rawValue, "--from", "-"],
-            stdin: try Self.encoder().encode(submission),
-            environment: environment
-        )
-        #expect(try Self.decoder().decode(
-            ResearchAgentResultReceipt.self,
-            from: submittedOutput.stdout
-        ) == resultReceipt)
-    }
-
-    @Test("The real CLI closes an exact researcher-provided Fidelity journey through production owners")
-    func productionAgentFidelityJourneyCLI() async throws {
-        guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_ACTION_CLI_BINARY"
-        ], !binaryPath.isEmpty else { return }
-
-        let fixture = try await ActionCLIFixture.make(
-            triptychName: "Production Agent Fidelity CLI Fixture"
-        )
-        defer { fixture.remove() }
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.homeURL.appendingPathComponent(
-                "ApplicationSupport",
-                isDirectory: true
-            ),
-            workspaceRegistryStorageURL: fixture.homeURL.appendingPathComponent(
-                "registry",
-                isDirectory: true
-            )
-        )))
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let citationStatus = try await handle.research.citationMethodStatus()
-        _ = try await handle.research.activateCitationMethod(
-            selection: ResearchCitationMethodSelection(citationStyle: "apa-7"),
-            expectedConfigurationRevision: citationStatus.configurationRevision
-        )
-
-        let bridgeContainer = URL(
-            fileURLWithPath: FileManager.default.currentDirectoryPath,
-            isDirectory: true
-        ).appendingPathComponent(
-            ".build/m/\(String(UUID().uuidString.prefix(8)))",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: bridgeContainer,
-            withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
-        let observed = ProductionAgentJourneyObservation()
-        let server = try LocalAgentBridgeServer(
-            applicationSupportURL: bridgeContainer
-        ) { request in
-            switch request.operation {
-            case .start:
-                guard let triptychID = request.triptychID,
-                      let startRequest = request.startRequest else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                let started = try await runtime.startResearchAgentRun(
-                    triptychID: triptychID,
-                    request: startRequest
-                )
-                observed.capture(started: started)
-                return .started(
-                    receipt: started.receipt,
-                    credential: started.credential
-                )
-            case .context:
-                guard let run = request.run,
-                      let credential = request.credential else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                return .context(try await runtime.researchAgentContext(
-                    credential: credential,
-                    run: run
-                ))
-            case .writeDocument:
-                guard let run = request.run,
-                      let credential = request.credential,
-                      let intent = request.documentWriteIntent else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                return .documentWrite(try await runtime.writeResearchDocument(
-                    credential: credential,
-                    run: run,
-                    intent: intent
-                ))
-            case .submitResult:
-                guard let run = request.run,
-                      let credential = request.credential,
-                      let submission = request.resultSubmission else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                return .resultReceipt(try await runtime.submitResearchAgentResult(
-                    credential: credential,
-                    run: run,
-                    submission: submission
-                ))
-            case .prepareFidelity:
-                guard let run = request.run,
-                      let credential = request.credential else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                let receipt = try await runtime.prepareResearchAgentFidelity(
-                    credential: credential,
-                    run: run
-                )
-                observed.capture(preparation: receipt)
-                return .fidelityPreparation(receipt)
-            case .query:
-                guard let run = request.run,
-                      let credential = request.credential,
-                      let contextRequest = request.contextRequest else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                return .researchContext(try await runtime.queryResearchContext(
-                    credential: credential,
-                    run: run,
-                    request: contextRequest
-                ))
-            case .pair, .discussionReply, .extendWriteSet, .writeZoteroBinding,
-                    .resolveWriteConflict, .continueResearch,
-                    .methodImprovementContext, .submitMethodImprovement, .end:
-                throw LocalAgentBridgeError.invalidRequest
-            }
-        }
-
-        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
-        let environment = [
-            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
-        ]
-        let startRequest = try ResearchAgentStartRequest(
-            actionID: .analyze,
-            target: fixture.analysisTarget.note,
-            academicPurpose: "Exercise the exact final-revision Fidelity route.",
-            sourceRoute: .researcherProvided
-        )
-        let startOutput = try cli.run(
-            [
-                "agent", "start", "--triptych",
-                fixture.assignment.id.uuidString, "--from", "-",
-            ],
-            stdin: try Self.encoder().encode(startRequest),
-            environment: environment
-        )
-        let startReceipt = try Self.decoder().decode(
-            ResearchAgentStartReceipt.self,
-            from: startOutput.stdout
-        )
-        let parentContextOutput = try cli.run(
-            ["agent", "context", "--run", startReceipt.run.rawValue],
-            environment: environment
-        )
-        let parentContext = try Self.decoder().decode(
-            ResearchAuthenticatedRunContext.self,
-            from: parentContextOutput.stdout
-        )
-        #expect(parentContext.coreProtocol?.contains(
-            "child_context.fidelity_contract.inspection_requests"
-        ) == true)
-
-        let finalBody = "# Analysis\n\nA final fixture reconstruction whose citation source remains researcher-provided.\n"
-        let writeInput = try JSONSerialization.data(withJSONObject: [
-            "role": "analysis",
-            "relative_path": fixture.analysisTarget.note.relativePath,
-            "operation": "modify_markdown",
-            "content": finalBody,
-        ], options: [.sortedKeys])
-        let writeOutput = try cli.run(
-            [
-                "agent", "write", "--run", startReceipt.run.rawValue,
-                "--from", "-",
-            ],
-            stdin: writeInput,
-            environment: environment
-        )
-        #expect(String(decoding: writeOutput.stdout, as: UTF8.self).contains(
-            "committed"
-        ))
-        #expect(try await handle.documents.load(
-            fixture.analysisTarget.note
-        ).rawContent.hasSuffix(finalBody))
-
-        let parentSubmission = try ResearchAgentResultSubmission(
-            recordTitle: ResearchRecordTitle("Production CLI parent Result"),
-            academicResults: ResearchAcademicFieldValues(
-                rawValues: [
-                    "source-reconstruction": .freeText(
-                        "A bounded researcher-provided reconstruction."
-                    ),
-                    "coverage": .singleChoice("specified-part-only"),
-                    "reliability": .multipleChoice(["unverified"]),
-                ],
-                definitions: parentContext.resultContract.academicFields
-            ),
-            literatureRecommendations: []
-        )
-        let parentResultOutput = try cli.run(
-            [
-                "agent", "submit-result", "--run",
-                startReceipt.run.rawValue, "--from", "-",
-            ],
-            stdin: try Self.encoder().encode(parentSubmission),
-            environment: environment
-        )
-        let awaiting = try Self.decoder().decode(
-            ResearchAgentResultReceipt.self,
-            from: parentResultOutput.stdout
-        )
-        #expect(awaiting.state == .awaitingFidelity)
-        #expect(!awaiting.recordFormed)
-
-        let reloadedParentOutput = try cli.run(
-            ["agent", "reload", "--run", startReceipt.run.rawValue],
-            environment: environment
-        )
-        let reloadedParent = try Self.decoder().decode(
-            ResearchAuthenticatedRunContext.self,
-            from: reloadedParentOutput.stdout
-        )
-        #expect(reloadedParent.brief.state == .awaitingFidelity)
-
-        let preparationOutput = try cli.run(
-            [
-                "agent", "prepare-fidelity", "--run",
-                startReceipt.run.rawValue,
-            ],
-            environment: environment
-        )
-        let preparation = try Self.decoder().decode(
-            ResearchAgentFidelityPreparationReceipt.self,
-            from: preparationOutput.stdout
-        )
-        let childRun = try #require(preparation.childRun)
-        let childContext = try #require(preparation.childContext)
-        let fidelity = try #require(childContext.fidelityContract)
-        #expect(fidelity.targets.first?.note == fixture.analysisTarget.note)
-        #expect(fidelity.sourceReference == nil)
-        #expect(fidelity.requiredUnavailableChecks == [.citations])
-        #expect(fidelity.inspectionRequests.count == 1)
-
-        var inspectedTarget = false
-        var inspectedUnavailableSource = false
-        for request in fidelity.inspectionRequests {
-            let queryOutput = try cli.run(
-                [
-                    "agent", "query", "--run", childRun.rawValue,
-                    "--from", "-",
-                ],
-                stdin: try Self.encoder().encode(request),
-                environment: environment
-            )
-            let response = try Self.decoder().decode(
-                ResearchContextResponse.self,
-                from: queryOutput.stdout
-            )
-            inspectedTarget = inspectedTarget || response.outcomes.contains {
-                $0.kind == .readNote && $0.availability == .current
-                    && $0.items.first?.exactSource?.content.contains(
-                        "final fixture reconstruction"
-                    ) == true
-            }
-            inspectedUnavailableSource = inspectedUnavailableSource
-                || response.outcomes.contains {
-                    $0.kind == .inspectMaterials
-                        && $0.availability == .unavailable
-                }
-        }
-        #expect(inspectedTarget)
-        #expect(inspectedUnavailableSource)
-
-        let submitAction = try #require(childContext.nextActions.first {
-            $0.kind == .submitResult
-        })
-        #expect(submitAction.command == [
-            "scholium", "agent", "submit-result", "--run",
-            childRun.rawValue, "--from", "-",
-        ])
-        let inputTemplate = try #require(submitAction.inputTemplate)
-        let resultTemplateObject = try JSONSerialization.jsonObject(
-            with: Data(inputTemplate.utf8)
-        )
-        var resultTemplate = try #require(
-            resultTemplateObject as? [String: Any]
-        )
-        resultTemplate["record_title"] = "Production CLI Fidelity Result"
-        var outcomes = try #require(
-            resultTemplate["fidelity_outcomes"] as? [[String: Any]]
-        )
-        for index in outcomes.indices {
-            switch outcomes[index]["check"] as? String {
-            case "content":
-                outcomes[index]["state"] = "passed"
-                outcomes[index]["summary"] =
-                    "The inspected final target retains the bounded reconstruction."
-                outcomes[index]["findings"] = []
-            case "citations":
-                outcomes[index]["state"] = "unavailable"
-                outcomes[index]["summary"] =
-                    "No formal revision-bound source envelope is available."
-                outcomes[index]["findings"] = []
-            default:
-                Issue.record("The context template exposed an unexpected check.")
-            }
-        }
-        resultTemplate["fidelity_outcomes"] = outcomes
-        let childResultInput = try JSONSerialization.data(
-            withJSONObject: resultTemplate,
-            options: [.sortedKeys]
-        )
-        let childResultOutput = try cli.run(
-            Array(submitAction.command.dropFirst()),
-            stdin: childResultInput,
-            environment: environment
-        )
-        let completed = try Self.decoder().decode(
-            ResearchAgentResultReceipt.self,
-            from: childResultOutput.stdout
-        )
-        #expect(completed.state == .unverified)
-        #expect(completed.recordFormed)
-        #expect(completed.parentState == .unverified)
-        #expect(completed.parentRecordFormed == true)
-
-        let started = try #require(observed.started)
-        let prepared = try #require(observed.preparation)
-        let sessions = try #require((await handle.services).researchAgentSessions)
-        let parentAuthentication = try await sessions.authenticate(
-            started.credential,
-            run: started.receipt.run,
-            requiresWrite: false,
-            claimCoreProtocol: false,
-            allowFinalized: true
-        )
-        let childAuthentication = try await sessions.authenticate(
-            started.credential,
-            run: try #require(prepared.childRun),
-            requiresWrite: false,
-            claimCoreProtocol: false,
-            allowFinalized: true
-        )
-        let parentRecord = try await handle.services.portableResearchRecordStore
-            .record(id: parentAuthentication.runID)
-        let childRecord = try await handle.services.portableResearchRecordStore
-            .record(id: childAuthentication.runID)
-        #expect(parentRecord.schemaVersion == 11)
-        #expect(childRecord.schemaVersion == 11)
-        #expect(parentRecord.analysisSourceRoute == .researcherProvided)
-        #expect(parentRecord.sourceReference == nil)
-        #expect(parentRecord.fidelityCompletion == .unverified)
-        #expect(try await handle.services.localResearchExecutionStore.record(
-            id: parentAuthentication.runID
-        ).completion?.childRunIDs == [childAuthentication.runID])
-
-        _ = await server.stopAndWait()
-        await runtime.shutdown()
     }
 
     @Test("The real CLI exposes true Run drift as structured stale_run")
@@ -1864,18 +1275,7 @@ struct ActionCLIExecutableLifecycleTests {
         let rootHelp = try cli.run(["help"])
         let rootHelpText = String(decoding: rootHelp.stdout, as: UTF8.self)
         #expect(!rootHelpText.contains(retiredCommand))
-        #expect(!rootHelpText.contains("action prepare-fidelity"))
-        #expect(rootHelpText.contains("agent prepare-fidelity"))
-        let prepareHelp = try cli.run([
-            "help", "agent", "prepare-fidelity", "--format", "json",
-        ])
-        let prepareHelpText = String(
-            decoding: prepareHelp.stdout,
-            as: UTF8.self
-        )
-        #expect(prepareHelpText.contains("child_context"))
-        #expect(prepareHelpText.contains("inspection_requests"))
-        #expect(prepareHelpText.contains("input_template"))
+        #expect(!rootHelpText.contains("prepare-fidelity"))
         let resultHelp = try cli.run([
             "help", "agent", "submit-result", "--format", "json",
         ])
@@ -2009,7 +1409,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .context, .prepareFidelity, .query, .discussionReply, .extendWriteSet, .writeDocument,
+            case .context, .query, .discussionReply, .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
                 throw LocalAgentBridgeError.invalidRequest
@@ -2169,28 +1569,6 @@ private final class LockedMethodImprovementSubmission: @unchecked Sendable {
 
     func capture(_ submission: ResearchMethodImprovementSubmission) {
         lock.withLock { stored = submission }
-    }
-}
-
-private final class ProductionAgentJourneyObservation: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storedStarted: ResearchAgentStartedSession?
-    private var storedPreparation: ResearchAgentFidelityPreparationReceipt?
-
-    var started: ResearchAgentStartedSession? {
-        lock.withLock { storedStarted }
-    }
-
-    var preparation: ResearchAgentFidelityPreparationReceipt? {
-        lock.withLock { storedPreparation }
-    }
-
-    func capture(started: ResearchAgentStartedSession) {
-        lock.withLock { storedStarted = started }
-    }
-
-    func capture(preparation: ResearchAgentFidelityPreparationReceipt) {
-        lock.withLock { storedPreparation = preparation }
     }
 }
 

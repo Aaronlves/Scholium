@@ -305,116 +305,8 @@ extension ResearchFunctionCoordinator {
     ) async throws -> ResearchFunctionPreparation {
         try await prepareResearchFunction(
             request,
-            fidelityInvocation: request.function == .fidelity ? .manual : nil,
+            allowsResearcherProvidedSource: false,
             host: host
-        )
-    }
-
-    /// Prepares, but never executes or completes, the revision-bound Fidelity
-    /// child required after a Develop or Revise completion that actually
-    /// modified its Target. Repeated calls are idempotent for an existing
-    /// current automatic child, and exact completed manual evidence remains
-    /// reusable through the ordinary evidence key.
-    func prepareAutomaticFidelity<Host: ResearchFunctionCoordinatorHost>(
-        parentRunID: UUID,
-        host: isolated Host
-    ) async throws -> AutomaticFidelityPreparation {
-        try requireMatchingActiveHost(host)
-        guard try await dependencies.localExecutionStore
-            .recordIfPresent(id: parentRunID) != nil else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Only a current Action run can authorize Content Fidelity."
-            )
-        }
-        let records = try await authoritativeFunctionRecords()
-        guard let parent = records.first(where: { $0.id == parentRunID }),
-              [.develop, .revise].contains(parent.snapshot.request.function),
-              let handoff = parent.snapshot.fidelityHandoff,
-              handoff.required,
-              let parentCompletion = parent.completion else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Automatic Content Fidelity requires a completed write-capable Action with a final-revision handoff."
-            )
-        }
-        guard parentCompletion.didModifyTarget,
-              parentCompletion.targetFingerprint != handoff.preparedTargetFingerprint else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Automatic Content Fidelity requires a write-capable Action that actually modified its Target."
-            )
-        }
-        guard [.awaitingFidelity, .unverified].contains(parentCompletion.state) else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Automatic Fidelity can be prepared only while the parent run is awaiting valid final-revision evidence."
-            )
-        }
-
-        let parentRequest = parent.snapshot.request
-        if let existing = records.first(where: { record in
-            guard case .automatic(let recordedParentID)? =
-                    record.snapshot.resolvedFidelityInvocation,
-                  recordedParentID == parentRunID,
-                  record.snapshot.request.target.noteID == parentRequest.target.noteID,
-                  record.snapshot.request.target.note == parentRequest.target.note,
-                  record.snapshot.request.target.role == parentRequest.target.role,
-                  record.snapshot.request.target.lifecycle == parentRequest.target.lifecycle,
-                  record.snapshot.request.target.fingerprint
-                    == parentCompletion.targetFingerprint,
-                  record.snapshot.request.materials
-                    == parentRequest.materials,
-                  record.snapshot.request.scope == parentRequest.scope,
-                  record.snapshot.request.checks == handoff.checks else {
-                return false
-            }
-            return record.completion?.state != .stale
-                && record.completion?.state != .cancelled
-        }) {
-            return AutomaticFidelityPreparation(
-                parentRunID: parentRunID,
-                preparation: ResearchFunctionPreparation(
-                    snapshot: existing.snapshot,
-                    instructions: existing.preparedInstructions ?? "",
-                    state: existing.completion?.state ?? .prepared,
-                    reusedCompletion: existing.completion
-                )
-            )
-        }
-
-        let finalTarget = ResearchFunctionTarget(
-            noteID: parentRequest.target.noteID,
-            note: parentRequest.target.note,
-            role: parentRequest.target.role,
-            lifecycle: parentRequest.target.lifecycle,
-            fingerprint: parentCompletion.targetFingerprint,
-            title: parentRequest.target.title
-        )
-        let request = ResearchFunctionRequest(
-            function: .fidelity,
-            target: finalTarget,
-            materials: parentRequest.materials,
-            scope: parentRequest.scope,
-            checks: handoff.checks
-        )
-        let actionContext = try await host.resolveDefaultResearchActionContext(
-            for: request
-        )
-        let fidelityLineage = parent.snapshot.continuationLineage.map {
-            ResearchContinuationLineage(
-                groupID: $0.groupID,
-                parentRunID: parentRunID,
-                requestID: $0.requestID,
-                kind: .fidelity
-            )
-        }
-        let preparation = try await prepareResearchFunction(
-            request,
-            fidelityInvocation: .automatic(parentRunID: parentRunID),
-            actionContext: actionContext,
-            continuationLineage: fidelityLineage,
-            host: host
-        )
-        return AutomaticFidelityPreparation(
-            parentRunID: parentRunID,
-            preparation: preparation
         )
     }
 
@@ -437,7 +329,6 @@ extension ResearchFunctionCoordinator {
 
     func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
         _ proposedRequest: ResearchFunctionRequest,
-        fidelityInvocation: FidelityInvocationKind? = nil,
         allowsResearcherProvidedSource: Bool = false,
         host: isolated Host
     ) async throws -> ResearchFunctionPreparation {
@@ -446,7 +337,6 @@ extension ResearchFunctionCoordinator {
         )
         return try await prepareResearchFunction(
             proposedRequest,
-            fidelityInvocation: fidelityInvocation,
             actionContext: actionContext,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource,
             host: host
@@ -455,7 +345,6 @@ extension ResearchFunctionCoordinator {
 
     func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
         _ proposedRequest: ResearchFunctionRequest,
-        fidelityInvocation: FidelityInvocationKind? = nil,
         actionContext: ResolvedResearchActionContext,
         runIDOverride: UUID? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
@@ -528,13 +417,9 @@ extension ResearchFunctionCoordinator {
             context: actionContext,
             request: request
         )
-        let automaticFidelityChecks = try await automaticFidelityChecks(
-            for: request.function
-        )
         let phases = try await resolveResearchFunctionPhases(
             request,
             actionContext: actionContext,
-            automaticFidelityChecks: automaticFidelityChecks,
             includeZoteroIntegration: zoteroContext != nil
                 || sourceAccess?.reference.identity.route == .zoteroAttachment
         )
@@ -622,23 +507,14 @@ extension ResearchFunctionCoordinator {
 
         let confirmationToken = UUID()
         let preparedAt = researchFunctionRecordTimestamp()
-        let handoff = request.function.requiresFinalFidelity && request.function != .manuscript
-            ? ResearchFunctionFidelityHandoff(
-                required: true,
-                checks: automaticFidelityChecks,
-                preparedTargetFingerprint: request.target.fingerprint
-            )
-            : nil
-
         let snapshot = ResearchFunctionSnapshot(
             runID: runID,
             request: request,
             actionSnapshot: actionSnapshot,
             recordID: runID,
             // Manuscript does not impose one universal philosophical pipeline.
-            // Develop and Revise expose only a pending Fidelity child here: its
-            // exact workflow is prepared later against the final fingerprint.
-            requiredChildFunctions: handoff == nil ? [] : [.fidelity],
+            // Write-capable Actions never acquire a Fidelity child automatically.
+            requiredChildFunctions: [],
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
             analysisSourceRoute: request.function == .develop
@@ -651,8 +527,6 @@ extension ResearchFunctionCoordinator {
             continuationLineage: continuationLineage,
             continuationHandoff: continuationHandoff,
             resynthesisContext: resynthesisContext,
-            fidelityHandoff: handoff,
-            fidelityInvocation: fidelityInvocation,
             confirmationToken: confirmationToken,
             preparedAt: preparedAt
         )
@@ -687,7 +561,6 @@ extension ResearchFunctionCoordinator {
             phases: phases,
             runID: runID,
             confirmationToken: confirmationToken,
-            fidelityHandoffChecks: automaticFidelityChecks,
             zoteroContext: zoteroContext,
             sourceAccess: sourceAccess,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource

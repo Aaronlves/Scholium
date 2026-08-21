@@ -28,13 +28,6 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
         }
     }
 
-    public var requiresFinalFidelity: Bool {
-        switch self {
-        case .develop, .revise, .manuscript: true
-        case .discuss, .fidelity, .critique: false
-        }
-    }
-
     public var allowedTargetRoles: Set<ResearchFunctionTargetRole> {
         switch self {
         case .develop:
@@ -518,39 +511,10 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
 
 public enum ResearchFunctionRunState: String, Codable, Hashable, Sendable {
     case prepared
-    case awaitingFidelity = "awaiting_fidelity"
     case complete
     case unverified
     case stale
     case cancelled
-}
-
-/// Provenance for a Fidelity run. Manual and automatic invocations use the
-/// same exact-revision audit contract and evidence key; this value records how
-/// the run was initiated, not whether an audit actually completed.
-public enum FidelityInvocationKind: Codable, Hashable, Sendable {
-    case manual
-    case automatic(parentRunID: UUID)
-}
-
-public struct ResearchFunctionFidelityHandoff: Codable, Hashable, Sendable {
-    public let required: Bool
-    public let checks: Set<FidelityCheck>
-    /// The revision from which the write-capable run began. This is provenance
-    /// for the handoff, not the revision that Fidelity is authorized to audit.
-    /// Final Fidelity must be prepared independently against the post-edit
-    /// Target fingerprint.
-    public let preparedTargetFingerprint: DocumentFingerprint
-
-    public init(
-        required: Bool,
-        checks: Set<FidelityCheck>,
-        preparedTargetFingerprint: DocumentFingerprint
-    ) {
-        self.required = required
-        self.checks = checks
-        self.preparedTargetFingerprint = preparedTargetFingerprint
-    }
 }
 
 /// Correlation identity for one current Action-to-Action continuation.
@@ -562,7 +526,6 @@ public struct ResearchContinuationLineage: Codable, Hashable, Sendable {
 
     public enum Kind: String, Codable, Hashable, Sendable {
         case continueResearch = "continue_research"
-        case fidelity
         case resynthesis
     }
 
@@ -657,9 +620,9 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     public let actionSnapshot: ResearchActionSnapshot?
     public let recordID: UUID?
     /// Functions coordinated through independent child runs. Manuscript uses
-    /// this for its selected phases; write-capable functions use it for their
-    /// final-fingerprint Fidelity handoff. Each child retains its own
-    /// permission, change-evidence, record, and completion state.
+    /// this for its selected phases; ordinary write Actions do not acquire a
+    /// Fidelity child. Each selected child retains its own permission,
+    /// change-evidence, Record, and completion state.
     public let requiredChildFunctions: [ResearchFunctionID]
     /// Analysis-only, task-scoped bibliographic context. This projection is
     /// never written back to Markdown and is not a source-evidence claim.
@@ -681,9 +644,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     /// Machine-local preparation evidence for a researcher-requested
     /// Resynthesize child. It never enters the portable Research Record.
     public let resynthesisContext: MaterialChangedSinceUseAttentionContext?
-    public let fidelityHandoff: ResearchFunctionFidelityHandoff?
-    /// Present only for Fidelity runs.
-    public let fidelityInvocation: FidelityInvocationKind?
     public let confirmationToken: UUID
     public let preparedAt: Date
 
@@ -700,8 +660,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         case continuationLineage
         case continuationHandoff
         case resynthesisContext
-        case fidelityHandoff
-        case fidelityInvocation
         case confirmationToken
         case preparedAt
     }
@@ -752,14 +710,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
                 MaterialChangedSinceUseAttentionContext.self,
                 forKey: .resynthesisContext
             ),
-            fidelityHandoff: try container.decodeIfPresent(
-                ResearchFunctionFidelityHandoff.self,
-                forKey: .fidelityHandoff
-            ),
-            fidelityInvocation: try container.decodeIfPresent(
-                FidelityInvocationKind.self,
-                forKey: .fidelityInvocation
-            ),
             confirmationToken: try container.decode(
                 UUID.self,
                 forKey: .confirmationToken
@@ -781,8 +731,6 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         continuationLineage: ResearchContinuationLineage? = nil,
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
-        fidelityHandoff: ResearchFunctionFidelityHandoff? = nil,
-        fidelityInvocation: FidelityInvocationKind? = nil,
         confirmationToken: UUID = UUID(),
         preparedAt: Date = Date()
     ) {
@@ -800,17 +748,8 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         self.continuationLineage = continuationLineage
         self.continuationHandoff = continuationHandoff
         self.resynthesisContext = resynthesisContext
-        self.fidelityHandoff = fidelityHandoff
-        self.fidelityInvocation = request.function == .fidelity
-            ? (fidelityInvocation ?? .manual)
-            : nil
         self.confirmationToken = confirmationToken
         self.preparedAt = preparedAt
-    }
-
-    public var resolvedFidelityInvocation: FidelityInvocationKind? {
-        guard request.function == .fidelity else { return nil }
-        return fidelityInvocation
     }
 }
 
@@ -841,34 +780,6 @@ public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
         self.reusedCompletion = reusedCompletion
         self.derivedRefreshWarning = derivedRefreshWarning
         self.nextActions = nextActions.isEmpty ? nil : nextActions
-    }
-}
-
-/// Explicit orchestration state returned when Application prepares the
-/// required post-edit Fidelity child for a Develop or Revise run. A prepared
-/// child is still pending agent work; only `state == .complete` with a durable
-/// completion records finished audit evidence.
-public struct AutomaticFidelityPreparation: Codable, Hashable, Sendable {
-    public let parentRunID: UUID
-    public let preparation: ResearchFunctionPreparation
-    public let nextActions: [AgentCommandAction]?
-
-    public init(
-        parentRunID: UUID,
-        preparation: ResearchFunctionPreparation,
-        nextActions: [AgentCommandAction] = []
-    ) {
-        self.parentRunID = parentRunID
-        self.preparation = preparation
-        self.nextActions = nextActions.isEmpty ? nil : nextActions
-    }
-
-    public var state: ResearchFunctionRunState { preparation.state }
-    public var effectiveFidelityRunID: UUID {
-        preparation.reusedCompletion?.runID ?? preparation.runID
-    }
-    public var reusedExistingEvidence: Bool {
-        preparation.reusedCompletion != nil
     }
 }
 

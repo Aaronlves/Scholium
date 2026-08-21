@@ -799,7 +799,7 @@ struct ArchitectureBoundaryTests {
         #expect(completion.contains("func validateSnapshotResearchSourceAccess"))
         #expect(preparation.contains("func researchFunctionAvailability"))
         #expect(preparation.contains("func prepareResearchFunction"))
-        #expect(preparation.contains("func prepareAutomaticFidelity"))
+        #expect(!preparation.contains("func prepareAutomaticFidelity"))
         #expect(preparation.contains("func researchFunctionRun"))
         #expect(preparation.contains("host: isolated Host"))
         #expect(delivery.contains("func deliveryInstructions"))

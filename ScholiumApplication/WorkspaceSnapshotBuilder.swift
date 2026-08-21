@@ -986,8 +986,7 @@ enum WorkspaceSnapshotBuilder {
             } else if execution.completion?.state == .cancelled {
                 return nil
             } else if !execution.documentWriteRecords.isEmpty
-                || execution.resultPayload != nil
-                || execution.completion?.state == .awaitingFidelity {
+                || execution.resultPayload != nil {
                 state = .running
                 repairReason = nil
             } else {

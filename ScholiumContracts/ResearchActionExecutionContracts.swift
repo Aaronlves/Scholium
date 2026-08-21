@@ -421,7 +421,6 @@ public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
 /// compatibility mechanism and is therefore absent from this value.
 public enum ResearchActionRunState: String, Codable, Hashable, Sendable {
     case prepared
-    case awaitingFidelity = "awaiting_fidelity"
     case complete
     case unverified
     case stale

@@ -5,7 +5,7 @@ import ScholiumContracts
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 16
+    public static let currentSchemaVersion = 17
 
     public let schemaVersion: Int
     public let triptychID: UUID
@@ -49,7 +49,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         if let completion {
             if snapshot.actionSnapshot?.actionID == .analyze {
                 switch completion.state {
-                case .awaitingFidelity, .complete, .unverified, .stale:
+                case .complete, .unverified, .stale:
                     completionRecommendationShapeMatches = completion
                         .literatureRecommendations.map { $0.count <= 256 } ?? true
                 case .prepared, .cancelled:
@@ -92,14 +92,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                             snapshot.actionSnapshot?.authority.writableNotes
                                 .map(\.noteID) ?? []
                         )))
-        case .fidelity:
-            if case .automatic(let parentRunID)? = snapshot.resolvedFidelityInvocation {
-                continuationMatches = snapshot.request.function == .fidelity
-                    && snapshot.continuationLineage?.parentRunID == parentRunID
-                    && snapshot.continuationHandoff == nil
-            } else {
-                continuationMatches = false
-            }
         }
         let initialWritableIDs = Set(
             snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID) ?? []
@@ -1556,7 +1548,7 @@ public actor LocalResearchExecutionStore {
                     if record.completionSubmissionDigest == submissionDigest {
                         return
                     }
-                    guard [.awaitingFidelity, .unverified, .stale].contains(
+                    guard [.unverified, .stale].contains(
                         existing.state
                     ) else {
                         throw LocalResearchExecutionStoreError.executionAlreadyCompleted(runID)
@@ -1719,9 +1711,7 @@ public actor LocalResearchExecutionStore {
     ) -> Bool {
         let stateAdvances: Bool
         switch (existing.state, replacement.state) {
-        case (.awaitingFidelity, .complete),
-             (.awaitingFidelity, .unverified),
-             (.unverified, .complete),
+        case (.unverified, .complete),
              (.stale, .complete):
             stateAdvances = true
         default:
@@ -1754,7 +1744,7 @@ public actor LocalResearchExecutionStore {
               ) else {
             return false
         }
-        let allowed = snapshot.fidelityHandoff?.checks ?? snapshot.request.checks
+        let allowed = snapshot.request.checks
         return Set(replacement.fidelityOutcomes.map(\.check)).isSubset(of: allowed)
     }
 

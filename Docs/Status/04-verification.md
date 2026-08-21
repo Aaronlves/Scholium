@@ -194,22 +194,22 @@ all 652 App tests; the public symbol-graph guard; all 12 signed executable CLI
 lifecycles; the sandboxed App-to-standalone-CLI bridge probe; and the optimized
 Release build. No production schema validation or Agent requirement changed.
 
-On 2026-08-21, the authenticated final-Fidelity closure passed the complete
-147-test Contracts target, 257 Application tests, 14 serialized bridge tests,
-the architecture measurement, and all 12 signed standalone-CLI lifecycles.
-One CLI lifecycle uses the real framed bridge and production Runtime owners to
-start and write an Analyze Run, stage its parent Result, reload
-`awaiting_fidelity`, prepare and query the child, fill the context-supplied
-template, submit once, and read two schema-11 Records. The child packet carries
-exact Target/Material/scope state plus a formal source envelope or enforced
-Citation `unavailable`; Note YAML cannot substitute. Default aggregate fields,
-Record title, unavailable summary, lineage, and `childRunID` are system-owned.
-Parent re-pair and direct-Session replacement revoke old derived child locators
-but preserve independent Runs. True target/material/source drift returns typed
-`stale_run`; an authorized final revision remains reloadable. No real research
-Note or private source was used.
+On 2026-08-21, the Analyze/Fidelity boundary was decoupled. Focused contract
+tests and the product build verify that a completed Analyze or other write does
+not enter `awaiting_fidelity`, invoke `agent prepare-fidelity`, or require a
+Fidelity child. The Analyze Method now owns a bounded fidelity self-check;
+formal Check Fidelity remains an independently prepared, read-only Action only
+when the researcher explicitly requests it. Ordinary authenticated Agent
+continuation remains available, and no real research Note or private source was
+used. The complete repository gate then passed documentation and shipped
+resource validation; 199 Web editor tests; 439 Core tests plus 3 performance
+tests; 146 Contracts tests; 249 Application tests, 13 bridge tests, and 1
+architecture measurement; all 652 App tests; the 10 signed executable CLI
+lifecycles; the sandboxed App-to-standalone-CLI bridge probe; and the optimized
+Release build.
 
-The same tree entered the complete repository gate. Documentation, shipped
+An earlier pre-cutover gate attempt on that tree entered the complete repository
+gate. Documentation, shipped
 resources, 199 Web editor tests and reproducible bundles, 439 Core tests plus 3
 performance tests, 147 Contracts tests, 257 Application tests, 14 bridge tests,
 and 1 architecture measurement passed. The gate then reached the 652-test App

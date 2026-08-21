@@ -4604,22 +4604,6 @@
         }
       }
     },
-    "Awaiting Fidelity" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Awaiting Fidelity"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等待核查"
-          }
-        }
-      }
-    },
     "Awaiting agent completion" : {
       "localizations" : {
         "en" : {
@@ -12765,22 +12749,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此记录版本未能完成核查。"
-          }
-        }
-      }
-    },
-    "Fidelity is still awaiting a check for this revision." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Fidelity is still awaiting a check for this revision."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此修订仍在等待核查。"
           }
         }
       }

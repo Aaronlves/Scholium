@@ -123,19 +123,11 @@ or finish the exchange. The UI's End Action route calls the same Application
 cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
 current portable exchange into a finished Research Record before removing the
-active projection, so researcher-authored statements are not discarded.
-After an Agent Result reaches `awaiting_fidelity`, authenticated
-`agent prepare-fidelity` resolves the parent locator through
-`ResearchAgentSessionAuthority`, calls the existing exact-child preparation,
-attaches the read-only child locator to that same Session, and returns its full
-authenticated context in the same receipt. The context carries exact Target
-and Material revisions, scope, formal source evidence or an Application-owned
-unavailable constraint, deterministic exact-read requests, and one typed
-submit-Result action with an illustrative strict payload. The credential never
-re-enters output, raw Run UUIDs authorize nothing, repeated preparation returns
-the same locator and context, and the child retains its own Run and Record.
-Re-pair or direct-Session replacement revokes the authority root and all
-locators derived from it while preserving independently attached Runs.
+active projection, so researcher-authored statements are not discarded. A
+write Result finalizes after its own exact transaction and Result validation;
+the Application does not prepare, attach, or expose a post-write Fidelity
+child. A separate Fidelity Run is created only through the researcher-visible
+Check Fidelity Action.
 This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-research-guidance.md)
 owns the Method, Practice, Profile, collaboration-policy, and citation
 configuration consumed during preparation.
@@ -219,7 +211,7 @@ complete outer envelope before it writes a frame.
 Continue Result schema 3 and authenticated Run Context schema 9 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 16 persists the frozen Analyze source route, active child
+Execution schema 17 persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
 Context schema 9 also carries optional typed Zotero Integration and Fidelity
@@ -329,20 +321,15 @@ the Record or write set.
 The Run stores one `ResearchResultPayload` partitioned into Record Title, Agent
 academic fields, and machine fields. For write Actions, submission may precede final transaction
 reconciliation, but Record finalization cannot. Application derives actual
-changed/unchanged/conflicted/unknown documents from operation entries,
-completes Fidelity status from exact evidence, and creates one strict portable
-Record in one idempotent finalization. A completion retry with the same
-operation/submission digest returns the same Record; a different payload fails
-closed. An interrupted committed source/finalization gap is repaired from the
-Run and transaction evidence unless a Record deletion tombstone forbids
-recreation.
-
-An authenticated automatic Fidelity child completion reopens only its
-persisted parent lineage and the parent's already-staged Agent Result. The
-coordinator validates the exact final Target, Materials, scope, and checks,
-stores the child identity in the parent completion, and forms the parent Record
-without accepting a second parent payload. The receipts expose terminal Record
-states but no internal UUID or Session secret.
+changed/unchanged/conflicted/unknown documents from operation entries and
+creates one strict portable Record in one idempotent finalization. Fidelity
+status is attached only to an explicitly initiated Fidelity Run; an ordinary
+Analyze, Synthesize, or Write Record may therefore carry `not_required` while
+the registered Method still reports its own checks and limitations. A
+completion retry with the same operation/submission digest returns the same
+Record; a different payload fails closed. An interrupted committed
+source/finalization gap is repaired from the Run and transaction evidence
+unless a Record deletion tombstone forbids recreation.
 
 `PortableResearchRecordStore` owns strict schema-11 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
@@ -497,7 +484,7 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-16
+the one current `methodImprovementRun` in its parent Local Execution schema-17
 record. Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every
@@ -551,20 +538,20 @@ absent. Selecting the third suppresses any existing Zotero snapshot and adapter
 for that Run without changing the portable relationship. Schema-11 Records
 retain that route without fabricating a source claim;
 the external Agent remains responsible for reporting the exact paper data it
-actually retrieved and every access limitation. An automatic Analyze Fidelity
-child receives the parent's formal revision-bound source envelope when
-Scholium owns one. When no formal envelope exists—including
-`researcher_provided` and external Zotero retrieval—the authenticated contract
-requires Citation `unavailable`. Completion enforces the same constraint and
-never promotes Note YAML, URL, or bibliographic metadata into source evidence.
+actually retrieved and every access limitation. When a researcher explicitly
+starts Check Fidelity without a formal revision-bound source envelope—
+including `researcher_provided` and external Zotero retrieval—the Fidelity
+skill reports Citation `unavailable`; Analyze's own self-check applies the
+same evidential limit in its method result. Completion never promotes Note
+YAML, URL, or bibliographic metadata into source evidence.
 For the default Check Fidelity Profile, Application derives the aggregate
 Finding fields from the attributed per-check outcomes; a researcher-customized
 Profile remains explicit.
 
-Check Fidelity remains a read-only exact-revision Action. Multi-document writes
-may request separate checks for each final revision, but no check collapses
-mixed outcomes, certifies truth/acceptance, or owns write authority. A source
-change makes only the affected check stale.
+Check Fidelity remains a researcher-initiated, read-only exact-revision Action.
+It never schedules itself, is not required by Analyze or another write Action,
+does not collapse mixed outcomes, certify truth/acceptance, or own write
+authority. A source change makes only the affected check stale.
 
 Permanent Note deletion preflights and cleans Run/write-set/source/active-
 Discussion state that could authorize the Note, while finished Records retain

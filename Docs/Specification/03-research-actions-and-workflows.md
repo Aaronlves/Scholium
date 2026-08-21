@@ -133,16 +133,14 @@ the same Run contract. GUI preparation offers the one-time Pairing Code below;
 direct start supplies Triptych, Action, target, and purpose to Application,
 which resolves current authority and returns a protected Session without a
 Pairing Code. Both routes share Context, writes, Result, continuation, End,
-conflict, and recovery. After a write Result reaches **Awaiting Fidelity**,
-authenticated `agent prepare-fidelity` prepares or reuses the child bound to
-the exact final Target, Materials, scope, and checks, then attaches its opaque
-read-only locator to the same Session. That operation also returns child state,
-exact read-only Target/Material revisions and scope, formal source evidence or
-an unavailable constraint, ready inspection requests, and a strict Result next
-action. The Agent inspects and supplies per-check judgments; Scholium derives
-default aggregate fields and links child completion to the parent. Raw UUIDs
-authorize nothing; the Agent transcribes no second secret, fingerprint,
-`childRunID`, duplicated default field, or parent Result.
+conflict, and recovery. A write Result becomes final after its own transaction
+and Result validation converge; it does not enter an **Awaiting Fidelity**
+state and does not prepare or attach a Check Fidelity child. Analyze performs
+its bounded source/content fidelity self-check through its registered Method
+before submission. **Check Fidelity** remains a separate read-only Action
+prepared only when the researcher explicitly initiates that Action for an exact
+revision. Raw UUIDs authorize nothing, and no Result completion invents a
+second Run or child lineage.
 
 For a Discuss Run, the authenticated Session also exposes the frozen
 `DialogueResponseContract` and `agent discuss-reply`. That command accepts one
@@ -204,8 +202,8 @@ Delivery is progressive:
 - a newly paired Agent session receives Core Protocol, capability catalog, and
   Session boundary once;
 - each Run receives a short Run Brief with current state, exact Method Context,
-  and Result Contract; Fidelity also receives its exact audit boundary,
-  inspection requests, and strict Result template;
+  and Result Contract; an explicitly initiated Fidelity Run also receives its
+  exact audit boundary, inspection requests, and strict Result template;
 - Research Context arrives only after an explicit query;
 - a specialized capability explains only its additional contract on first
   use; and
@@ -215,8 +213,9 @@ Delivery is progressive:
 `reload` revalidates exact Target, Materials, and formal source, then returns
 the frozen method, Practices, folder path, Result Contract, and current state.
 Genuine drift returns `stale_run`; an authenticated write uses the Run-owned
-revision and may report `awaiting_fidelity`. Reload substitutes no later method
-and replays no old Context response, ranking, availability, or cache.
+revision and completes without scheduling a Fidelity Action. Reload substitutes
+no later method and replays no old Context response, ranking, availability, or
+cache.
 Local absolute paths are delivered only after authentication.
 
 The versioned, read-only **Research Context Query/Response** contract belongs
@@ -385,7 +384,8 @@ guarantees scope, identity, revision, transaction truth, exact displaced bytes,
 conflict, readback, and recovery. It does not certify fidelity to a source,
 preservation of the researcher's thesis, philosophical quality, or researcher
 acceptance. Those remain method, attributed reasons, visible changes,
-recovery, optional Check Fidelity, and researcher judgment.
+recovery, optional researcher-initiated Check Fidelity, and researcher
+judgment.
 
 ### 8.4 Result Contract, one Research Record, and researcher review
 
@@ -683,8 +683,10 @@ retryable until authority and transaction outcomes are known.
    missing attachments, extraction failure, or incomplete pagination narrows
    the result and remains an explicit limitation; metadata alone never
    substitutes for the paper.
-5. Use Discussion for comments, Check Fidelity for an exact revision, and let
-   the researcher decide whether a Topic or Work should change.
+5. Use Discussion for comments. Analyze performs its own bounded fidelity
+   self-check; use Check Fidelity for an exact revision only when the
+   researcher explicitly initiates it, and let the researcher decide whether a
+   Topic or Work should change.
 
 For a long source, maintain one source-level Analysis by default. Each Run
 declares its bounded source scope in the Research Record. Unread, excluded,
@@ -703,8 +705,9 @@ Neither field is a completion grade.
    stopping point from practical cutoff or lack of progress.
 4. Additional exact documents may join the same Run's Bounded Write Set under
    Section 8.3; they do not become child Runs or a persistent target group.
-5. Use Check Fidelity for each affected exact revision and let the researcher
-   decide whether further Notes need attention.
+5. Use Check Fidelity for an affected exact revision only when the researcher
+   explicitly initiates that Action, then let the researcher decide whether
+   further Notes need attention.
 
 Scholium never auto-merges an Analysis into Topics. Selected context, Search
 ranking, neutral links, and transitive paths establish neither use nor support.

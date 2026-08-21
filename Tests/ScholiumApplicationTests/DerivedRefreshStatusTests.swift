@@ -580,25 +580,17 @@ struct DerivedRefreshStatusTests {
         )
         #expect(write.state == .committed)
         let revisedFingerprint = DocumentFingerprint(content: revisedSource)
-        let fidelityOutcomes = try #require(revise.snapshot.fidelityHandoff).checks
-            .sorted(by: { $0.rawValue < $1.rawValue })
-            .map { check in
-                FidelityCheckOutcome(
-                    check: check,
-                    state: .passed,
-                    summary: "The final Work revision passed the selected check."
-                )
-            }
-        let awaitingRevision = try await completeTestProtectedFunction(handle: handle, submission:
+        let revisionCompletion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Revised the Work; final Fidelity remains pending.",
+                summary: "Revised the Work and performed the Method self-check.",
                 didModifyTarget: true
             )
         )
-        #expect(awaitingRevision.state == .awaitingFidelity)
+        #expect(revisionCompletion.state == .complete)
+        #expect(revisionCompletion.derivedRefreshWarning?.isEmpty == false)
         let finalWork = ResearchFunctionTarget(
             noteID: work.noteID,
             note: work.note,
@@ -611,7 +603,7 @@ struct DerivedRefreshStatusTests {
             ResearchFunctionRequest(
                 function: .fidelity,
                 target: finalWork,
-                checks: try #require(revise.snapshot.fidelityHandoff).checks
+                checks: [.content]
             )
         )
         _ = try await completeTestProtectedFunction(handle: handle, submission:
@@ -622,22 +614,9 @@ struct DerivedRefreshStatusTests {
                 finalTargetFingerprint: revisedFingerprint,
                 summary: "Checked the exact final Work revision.",
                 didModifyTarget: false,
-                fidelityOutcomes: fidelityOutcomes
+                fidelityOutcomes: [.derivedRefreshPassedContent]
             )
         )
-        let reviseCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: revise.runID,
-                confirmationToken: revise.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Revised the Work and linked final Fidelity evidence.",
-                didModifyTarget: false,
-                childRunIDs: [fidelity.runID]
-            )
-        )
-        #expect(reviseCompletion.state == .complete)
-        #expect(reviseCompletion.derivedRefreshWarning?.isEmpty == false)
-
         // Child selection consults durable execution evidence, not the
         // disposable workspace projection.
         #expect(try await handle.services.localResearchExecutionStore.record(
@@ -651,12 +630,12 @@ struct DerivedRefreshStatusTests {
                 finalTargetFingerprint: revisedFingerprint,
                 summary: "Coordinated the selected manuscript activity.",
                 didModifyTarget: false,
-                childRunIDs: [revise.runID]
+                childRunIDs: [revise.runID, fidelity.runID]
             )
         )
         #expect(manuscriptCompletion.state == .complete)
-        #expect(manuscriptCompletion.childRunIDs == [revise.runID])
-        #expect(manuscriptCompletion.reusedFidelityRunID == revise.runID)
+        #expect(manuscriptCompletion.childRunIDs == [revise.runID, fidelity.runID])
+        #expect(manuscriptCompletion.reusedFidelityRunID == fidelity.runID)
         #expect(manuscriptCompletion.derivedRefreshWarning?.isEmpty == false)
 
         try FileManager.default.removeItem(at: invalidURL)

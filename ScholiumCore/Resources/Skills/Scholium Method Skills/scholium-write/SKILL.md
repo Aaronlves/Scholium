@@ -26,4 +26,4 @@ When writing responds to feedback or Critique, read `references/feedback.md`. De
 
 ## Feedback
 
-Report exact changes, intentionally unchanged material, feedback dispositions when applicable, Materials actually used, and any remaining source, methodological, contribution, or philosophical risk. Reread the saved Work and return the required completion evidence. A fluent draft is not evidence that Fidelity passed or that the Work is original, publishable, or complete.
+Report exact changes, intentionally unchanged material, feedback dispositions when applicable, Materials actually used, and any remaining source, methodological, contribution, or philosophical risk. Reread the saved Work and return the required completion evidence. Do not claim that a separate Fidelity audit passed unless the researcher explicitly initiated Check Fidelity; a fluent draft is not evidence that the Work is original, publishable, or complete.

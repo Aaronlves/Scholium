@@ -67,7 +67,6 @@ extension ResearchFunctionCoordinator {
     func resolveResearchFunctionPhases(
         _ request: ResearchFunctionRequest,
         actionContext: ResolvedResearchActionContext,
-        automaticFidelityChecks: Set<FidelityCheck>,
         includeZoteroIntegration: Bool
     ) async throws -> [ResolvedFunctionPhase] {
         let phaseFunctions: [ResearchFunctionID]
@@ -87,9 +86,7 @@ extension ResearchFunctionCoordinator {
         var result: [ResolvedFunctionPhase] = []
         for function in phaseFunctions {
             let checks: Set<FidelityCheck> = function == .fidelity
-                ? (request.function == .fidelity
-                    ? request.checks
-                    : automaticFidelityChecks)
+                ? request.checks
                 : []
             let action: ResearchActionDefinition
             if function == request.function {
@@ -125,18 +122,6 @@ extension ResearchFunctionCoordinator {
         return result
     }
 
-    func automaticFidelityChecks(
-        for function: ResearchFunctionID
-    ) async throws -> Set<FidelityCheck> {
-        guard function == .develop || function == .revise else { return [] }
-        var checks: Set<FidelityCheck> = [.content]
-        let citation = try await dependencies.researchConfigurationStore
-            .citationMethodSnapshot()
-        if citation?.document.activeCitationStyle != nil { checks.insert(.citations) }
-        return checks
-    }
-
-
     func renderFunctionInstructions(
         request: ResearchFunctionRequest,
         action: ResearchActionDefinition,
@@ -145,7 +130,6 @@ extension ResearchFunctionCoordinator {
         phases: [ResolvedFunctionPhase],
         runID: UUID,
         confirmationToken: UUID,
-        fidelityHandoffChecks: Set<FidelityCheck>,
         zoteroContext: ZoteroBibliographicContext?,
         sourceAccess: ResolvedResearchSourceAccess? = nil,
         allowsResearcherProvidedSource: Bool = false
@@ -260,7 +244,7 @@ extension ResearchFunctionCoordinator {
             case .critique:
                 boundary = "The Work Target and Materials are read-only. Findings may be written only to the separate Critique record prepared by Scholium."
             case .manuscript:
-                boundary = "This run coordinates only. Prepare each needed Critique, Write, or Content Fidelity Action as an independently permissioned child run. Critique is optional. A substantive Write must carry final Content Fidelity evidence; an independent Content Fidelity child is needed only when that evidence is not already attached to the exact final revision."
+                boundary = "This run coordinates only. Prepare each needed Critique, Write, or Check Fidelity Action as an independently permissioned child run. Critique is optional. A substantive Write completes with its own Method checks; a separate Check Fidelity child is optional and belongs here only when the researcher explicitly requests that exact-revision audit."
             case .discuss:
                 let nextAction = switch request.target.role {
                 case .analysis: "Analyze"
@@ -321,13 +305,7 @@ extension ResearchFunctionCoordinator {
         }
         if request.function == .manuscript {
             sections += [
-                "Do not edit from this coordination packet. Use the Action API only for child Actions this manuscript pass actually needs. When completing Manuscript, select the exact completed child runs; the latest selected Write must bind Content Fidelity evidence for the final Work revision, either on its own completion or through a later independent Content Fidelity child.",
-                "",
-            ]
-        } else if request.function.requiresFinalFidelity && !usesBoundedWriteSet {
-            sections += [
-                "The run is not complete after the substantive edit. First submit this run with the final Target fingerprint; it will remain Awaiting Fidelity.",
-                "Then run scholium agent prepare-fidelity --run <current-parent-locator>. Scholium constructs or reuses the separate read-only Fidelity child against the exact final Target fingerprint with the same Materials, scope kind, and these checks: \(fidelityHandoffChecks.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")). The receipt already contains the complete child context, exact inspection requests, and a strict submit-result template. Inspect those requests and submit the attributed outcomes through the returned next action; Scholium validates lineage and links both Records automatically. Do not submit Fidelity outcomes on this write-capable run or transcribe childRunIDs, fingerprints, or result-field duplicates.",
+                "Do not edit from this coordination packet. Use the Action API only for child Actions this manuscript pass actually needs. When completing Manuscript, select the exact completed child runs; the latest selected Write must bind the final Work revision. Select a matching independent Check Fidelity child only when that researcher-requested audit is part of this Manuscript pass.",
                 "",
             ]
         }
@@ -393,19 +371,6 @@ extension ResearchFunctionCoordinator {
             completedAt: completion.completedAt,
             derivedRefreshWarning: completion.derivedRefreshWarning,
             nextActions: completionAgentActions(completion)
-        )
-    }
-
-    /// Preserves researcher-facing preparation metadata for internal callers.
-    /// Agent attachment remains exclusively owned by authenticated
-    /// `agent prepare-fidelity`; this helper does not expose a raw Run route.
-    func attachingAgentActions(
-        to automatic: AutomaticFidelityPreparation
-    ) throws -> AutomaticFidelityPreparation {
-        AutomaticFidelityPreparation(
-            parentRunID: automatic.parentRunID,
-            preparation: try attachingAgentActions(to: automatic.preparation),
-            nextActions: []
         )
     }
 

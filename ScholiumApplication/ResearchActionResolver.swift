@@ -573,7 +573,6 @@ private extension ResearchActionRunState {
     init(_ state: ResearchFunctionRunState) {
         switch state {
         case .prepared: self = .prepared
-        case .awaitingFidelity: self = .awaitingFidelity
         case .complete: self = .complete
         case .unverified: self = .unverified
         case .stale: self = .stale

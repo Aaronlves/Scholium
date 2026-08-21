@@ -35,6 +35,14 @@ arguments before applying critical pressure. Critical testing is part of
 Analyze, not a separate interface mode, but it must never be presented as the
 source author's own position.
 
+Before submitting, perform one bounded fidelity self-check against the exact
+saved Analysis revision and the source data actually inspected. Check source
+attribution, conceptual and argumentative reconstruction, evidential roles,
+and citations when source evidence permits. Record any unresolved issue or
+unavailable check in the Analyze result and limitations. This is part of the
+Analyze method: it does not create, attach, or require a separate Check
+Fidelity Action or child Run.
+
 Revise the existing Analysis in place when warranted. Preserve useful uncertainty, competing interpretations, exact locators, and unrelated researcher-authored material. Do not create a new source-centered note when the current Analysis is the designated home.
 
 ## Feedback

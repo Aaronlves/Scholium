@@ -461,17 +461,6 @@ public actor ResearchOperations:
         return try functionCoordinator.attachingAgentActions(to: preparation)
     }
 
-    func prepareProtectedAutomaticFidelity(
-        parentRunID: UUID
-    ) async throws -> AutomaticFidelityPreparation {
-        let handle = try await reference.requireHandle()
-        let preparation = try await functionCoordinator.prepareAutomaticFidelity(
-            parentRunID: parentRunID,
-            host: handle
-        )
-        return try functionCoordinator.attachingAgentActions(to: preparation)
-    }
-
     func completeProtectedFunction(
         _ submission: ResearchFunctionCompletionSubmission
     ) async throws -> ResearchFunctionCompletion {

@@ -10,7 +10,7 @@ struct ResearchFunctionContractsTests {
             groupID: UUID(),
             parentRunID: UUID(),
             requestID: UUID(),
-            kind: .fidelity
+            kind: .resynthesis
         )
         let data = try JSONEncoder().encode(lineage)
         #expect(try JSONDecoder().decode(
@@ -442,45 +442,6 @@ struct ResearchFunctionContractsTests {
             ResearchFunctionMaterialCandidate.self,
             from: encoder.encode(candidate)
         ) == candidate)
-
-    }
-
-    @Test("Fidelity invocation provenance round trips without changing evidence identity")
-    func fidelityInvocationProvenance() throws {
-        let target = target(role: .analysis)
-        let request = ResearchFunctionRequest(
-            function: .fidelity,
-            target: target,
-            checks: [.content]
-        )
-        let parentRunID = UUID()
-        let manual = ResearchFunctionSnapshot(
-            request: request,
-            fidelityInvocation: .manual
-        )
-        let automatic = ResearchFunctionSnapshot(
-            request: request,
-            fidelityInvocation: .automatic(parentRunID: parentRunID)
-        )
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
-        let roundTrip = try decoder.decode(
-            ResearchFunctionSnapshot.self,
-            from: encoder.encode(automatic)
-        )
-        #expect(roundTrip.resolvedFidelityInvocation == .automatic(
-            parentRunID: parentRunID
-        ))
-
-        let makeKey: (ResearchFunctionSnapshot) -> ResearchFidelityEvidenceKey = {
-            ResearchFidelityEvidenceKey(
-                snapshot: $0,
-                finalTargetFingerprint: target.fingerprint,
-                finalMaterialFingerprints: [:],
-                checks: [.content]
-            )
-        }
-        #expect(makeKey(manual) == makeKey(automatic))
 
     }
 

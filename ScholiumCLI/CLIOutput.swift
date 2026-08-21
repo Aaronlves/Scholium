@@ -183,7 +183,6 @@ private extension ScholiumCLI {
         "agent start",
         "agent pair",
         "agent context",
-        "agent prepare-fidelity",
         "agent reload",
         "agent query",
         "agent discuss-reply",
@@ -248,16 +247,6 @@ private extension ScholiumCLI {
                 nextSteps: [
                     "scholium agent query --run <locator> --from <json|-> when more Research Context is needed",
                     "scholium agent reload --run <locator> whenever current Run state is uncertain",
-                ]
-            ),
-            "agent prepare-fidelity": AgentCLICommandHelp(
-                usage: "scholium agent prepare-fidelity --run <parent-locator>",
-                inputContract: "Authenticated parent Run locator; no JSON body",
-                input: "Use this only after the parent Result returns awaiting_fidelity. The CLI authenticates the parent Session; raw child UUIDs do not grant access.",
-                output: "ResearchAgentFidelityPreparationReceipt. An unfinished exact-revision child returns both a new opaque child_run locator attached read-only to the same protected Session and its complete child_context. That context contains the exact target revisions, frozen Materials and scope, a formal source_reference or required unavailable checks, ready inspection_requests, and a submit-result next_action with a strict input_template. Reusable completed evidence instead reports the parent Record state. No Session secret is printed.",
-                nextSteps: [
-                    "Send every returned child_context.fidelity_contract.inspection_requests item unchanged through scholium agent query --run <child_run> --from -",
-                    "After inspecting the responses, fill child_context.next_actions[submit_result].input_template and run its command; Scholium links the lineage-bound child to the parent automatically",
                 ]
             ),
             "agent reload": AgentCLICommandHelp(

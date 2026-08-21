@@ -67,24 +67,6 @@ extension ScholiumCLI {
             try writeAgentJSON(context)
             return
         }
-        if arguments.first == "prepare-fidelity" {
-            guard let rawRun = option("--run", in: arguments),
-                  let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent prepare-fidelity --run <parent-locator>"
-                )
-            }
-            let credential = try credentialStore.load(for: run)
-            let receipt = try await operations.prepareFidelity(
-                run: run,
-                credential: credential
-            )
-            if let childRun = receipt.childRun {
-                try credentialStore.save(credential, for: childRun)
-            }
-            try writeAgentJSON(receipt)
-            return
-        }
         if arguments.first == "query" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),

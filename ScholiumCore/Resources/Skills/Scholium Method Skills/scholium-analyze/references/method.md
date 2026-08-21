@@ -74,7 +74,10 @@ own terms from an external standard.
 
 Attribute this pressure-testing to the agent. Do not turn it into a claim about what the author intended or what the researcher believes.
 
-This final source review does not replace independent Content Fidelity against the exact saved revision after the substantive pass.
+This final source review is the Analyze method's bounded fidelity self-check.
+Run it against the exact saved revision before submission. It does not create
+or require a separate Check Fidelity Action; that Action remains available
+only when the researcher explicitly initiates it for an exact revision.
 
 ## Update discipline
 

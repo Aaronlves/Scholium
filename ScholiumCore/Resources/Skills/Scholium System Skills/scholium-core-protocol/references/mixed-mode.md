@@ -82,7 +82,10 @@ Pass the selected or still-competing formulations, argument structure, objection
 
 ### Write to Check Fidelity
 
-Pass the exact changed fingerprint, source-dependent claims, substantive changes, and outstanding content or researcher-installed specialist checks.
+Pass the exact changed fingerprint, source-dependent claims, substantive
+changes, and outstanding content or researcher-installed specialist checks
+only when the researcher explicitly requests a Check Fidelity phase. A write
+phase does not schedule or require that phase.
 
 ### Critique to Write
 
@@ -108,7 +111,11 @@ Continue with later phases only when they remain meaningful and authorized despi
 
 ## 7. Audit scheduling
 
-Collect pending Check Fidelity handoffs by exact Target fingerprint, scope, selected checks, evidence revisions, and package-resource revisions. Prepare one terminal Check Fidelity Action for each distinct final audit key after the last substantive edit. Reuse an existing completion for the same key, mark it stale when Target or evidence changes, and never let Check Fidelity schedule itself.
+Collect Check Fidelity handoffs only from an explicitly researcher-requested
+phase. Bind each audit to the exact Target fingerprint, scope, selected
+checks, evidence revisions, and package-resource revisions. Reuse an existing
+completion for the same key, mark it stale when Target or evidence changes,
+and never let a substantive Action schedule Check Fidelity itself.
 
 If the target changes after audit, mark the previous result stale for the new fingerprint. If a matching audit already exists for the same fingerprint, scope, and evidence, reuse it and report that decision.
 

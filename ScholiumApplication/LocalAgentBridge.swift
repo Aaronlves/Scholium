@@ -6,7 +6,6 @@ public enum LocalAgentBridgeOperation: String, Codable, Sendable {
     case start
     case pair
     case context
-    case prepareFidelity = "prepare_fidelity"
     case query
     case discussionReply = "discussion_reply"
     case extendWriteSet = "extend_write_set"
@@ -67,7 +66,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 14
+    public static let currentSchemaVersion = 15
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -123,15 +122,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && resultSubmission == nil && continuationRequest == nil
                 && methodImprovementSubmission == nil
         case .context:
-            triptychID == nil && startRequest == nil
-                && run != nil && pairingCode == nil && credential != nil
-                && contextRequest == nil
-                && writeSetIntent == nil && documentWriteIntent == nil
-                && zoteroBindingWriteIntent == nil
-                && conflictResolutionIntent == nil
-                && resultSubmission == nil && continuationRequest == nil
-                && methodImprovementSubmission == nil
-        case .prepareFidelity:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil
@@ -456,14 +446,13 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 17
+    public static let currentSchemaVersion = 18
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let credential: ResearchConnectionCredential?
     public let startReceipt: ResearchAgentStartReceipt?
     public let context: ResearchAuthenticatedRunContext?
-    public let fidelityPreparationReceipt: ResearchAgentFidelityPreparationReceipt?
     public let researchContext: ResearchContextResponse?
     public let discussionReplyReceipt: ResearchAgentDiscussionReplyReceipt?
     public let writeSetResult: ResearchWriteSetExtensionResult?
@@ -482,7 +471,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         credential: ResearchConnectionCredential? = nil,
         startReceipt: ResearchAgentStartReceipt? = nil,
         context: ResearchAuthenticatedRunContext? = nil,
-        fidelityPreparationReceipt: ResearchAgentFidelityPreparationReceipt? = nil,
         researchContext: ResearchContextResponse? = nil,
         discussionReplyReceipt: ResearchAgentDiscussionReplyReceipt? = nil,
         writeSetResult: ResearchWriteSetExtensionResult? = nil,
@@ -500,7 +488,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             credential != nil && startReceipt == nil,
             startReceipt != nil,
             context != nil,
-            fidelityPreparationReceipt != nil,
             researchContext != nil,
             discussionReplyReceipt != nil,
             writeSetResult != nil,
@@ -526,7 +513,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         self.credential = credential
         self.startReceipt = startReceipt
         self.context = context
-        self.fidelityPreparationReceipt = fidelityPreparationReceipt
         self.researchContext = researchContext
         self.discussionReplyReceipt = discussionReplyReceipt
         self.writeSetResult = writeSetResult
@@ -550,7 +536,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
         case credential, startReceipt = "start_receipt", context
-        case fidelityPreparationReceipt = "fidelity_preparation_receipt"
         case researchContext = "research_context"
         case discussionReplyReceipt = "discussion_reply_receipt"
         case writeSetResult = "write_set_result"
@@ -575,10 +560,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         )
         try container.encodeIfPresent(startReceipt, forKey: .startReceipt)
         try container.encodeIfPresent(context, forKey: .context)
-        try container.encodeIfPresent(
-            fidelityPreparationReceipt,
-            forKey: .fidelityPreparationReceipt
-        )
         try container.encodeIfPresent(researchContext, forKey: .researchContext)
         try container.encodeIfPresent(
             discussionReplyReceipt,
@@ -631,10 +612,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             context: container.decodeIfPresent(
                 ResearchAuthenticatedRunContext.self,
                 forKey: .context
-            ),
-            fidelityPreparationReceipt: container.decodeIfPresent(
-                ResearchAgentFidelityPreparationReceipt.self,
-                forKey: .fidelityPreparationReceipt
             ),
             researchContext: container.decodeIfPresent(
                 ResearchContextResponse.self,
@@ -825,7 +802,6 @@ public enum LocalAgentBridgeHandlerResult: Sendable {
     )
     case credential(ResearchConnectionCredential)
     case context(ResearchAuthenticatedRunContext)
-    case fidelityPreparation(ResearchAgentFidelityPreparationReceipt)
     case researchContext(ResearchContextResponse)
     case discussionReply(ResearchAgentDiscussionReplyReceipt)
     case writeSet(ResearchWriteSetExtensionResult)
@@ -1051,11 +1027,6 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,
                     context: context
-                )
-            case .fidelityPreparation(let receipt):
-                try LocalAgentBridgeResponse(
-                    correlationID: request.correlationID,
-                    fidelityPreparationReceipt: receipt
                 )
             case .researchContext(let context):
                 try LocalAgentBridgeResponse(

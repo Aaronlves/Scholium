@@ -292,8 +292,7 @@ extension WorkspaceHandle {
             expectedZoteroBinding: expectedZoteroBinding,
             runIDOverride: runIDOverride
         )
-        guard [ResearchActionRunState.prepared, .awaitingFidelity]
-            .contains(preparation.state) else {
+        guard preparation.state == .prepared else {
             throw ResearchAgentConnectionError.runUnavailable
         }
         return (preparation, target)
@@ -358,8 +357,7 @@ extension WorkspaceHandle {
                 )
             }
             let preparation = try await researchActionRun(id: runID)
-            guard [ResearchActionRunState.prepared, .awaitingFidelity]
-                .contains(preparation.state) else {
+            guard preparation.state == .prepared else {
                 throw ResearchAgentConnectionError.runUnavailable
             }
             return (preparation, target)
@@ -1049,7 +1047,6 @@ extension WorkspaceHandle {
     ) -> ResearchActionRunState {
         switch state {
         case .prepared: .prepared
-        case .awaitingFidelity: .awaitingFidelity
         case .complete: .complete
         case .unverified: .unverified
         case .stale: .stale

@@ -107,7 +107,7 @@ struct ResearchAgentResultContractsTests {
         #expect(Set(receiptObject.keys) == [
             "schema_version", "disposition", "state", "record_formed", "message",
         ])
-        #expect(receiptObject["schema_version"] as? Int == 2)
+        #expect(receiptObject["schema_version"] as? Int == 3)
         let source = String(decoding: try encoder.encode(receipt), as: UTF8.self)
         for forbidden in [
             "run_id", "record_id", "triptych_id", "fingerprint", "secret",
@@ -119,9 +119,6 @@ struct ResearchAgentResultContractsTests {
 
     @Test("Fidelity attachment receipts and source constraints are strict and nonauthorizing")
     func strictFidelityAttachmentContracts() throws {
-        let child = try #require(ResearchRunLocator(
-            rawValue: "contractfidelitychild1"
-        ))
         let note = VaultQualifiedNoteID(
             vaultID: UUID(),
             relativePath: "Analysis.md"
@@ -181,74 +178,7 @@ struct ResearchAgentResultContractsTests {
             )
         }
 
-        let profile = try #require(
-            ResearchAcademicProfileCatalog.defaultProfiles.first {
-                $0.actionID == .checkFidelity
-            }
-        )
-        let registration = try ResearchSkillRegistration(
-            actionID: .checkFidelity,
-            displayName: "Fidelity Method",
-            primaryMarkdown: .machineLocal()
-        )
-        let method = try ResearchMethodSnapshot(
-            registration: registration,
-            primaryMarkdownSource: "# Fidelity\n",
-            practices: []
-        )
-        let context = try ResearchAuthenticatedRunContext(
-            coreProtocol: nil,
-            brief: ResearchRunBrief(
-                run: child,
-                actionID: .checkFidelity,
-                state: .prepared,
-                initialObjectTitle: target.title,
-                initialObjectRole: .analysis,
-                academicPurpose: nil,
-                capabilities: ResearchRunCapabilityAvailability(
-                    search: true,
-                    read: true,
-                    relations: true,
-                    properties: true,
-                    records: true,
-                    researchState: true,
-                    zotero: false,
-                    writeInitialObject: false,
-                    extendWriteSet: false
-                )
-            ),
-            method: ResearchMethodContext(snapshot: method),
-            resultContract: ResearchResultContract(
-                profile: profile,
-                registrationKey: registration.key,
-                profileRevision: try profile.contentRevision()
-            ),
-            fidelityContract: constraint,
-            boundedWriteSet: []
-        )
-        let receipt = try ResearchAgentFidelityPreparationReceipt(
-            childRun: child,
-            childContext: context,
-            childState: .prepared,
-            parentState: .awaitingFidelity,
-            parentRecordFormed: false,
-            message: "The read-only child is attached."
-        )
-        let data = try JSONEncoder().encode(receipt)
-        #expect(try JSONDecoder().decode(
-            ResearchAgentFidelityPreparationReceipt.self,
-            from: data
-        ) == receipt)
-        let object = try #require(
-            JSONSerialization.jsonObject(with: data) as? [String: Any]
-        )
-        #expect(Set(object.keys) == [
-            "schema_version", "child_run", "child_context", "child_state",
-            "parent_state", "parent_record_formed", "message",
-        ])
-        for forbidden in ["secret", "credential", "parent_run_id", "child_run_id"] {
-            #expect(!String(decoding: data, as: UTF8.self).contains(forbidden))
-        }
+        #expect(constraint.checks == [.content, .citations])
     }
 
     @Test("Stored Run Results accept only canonical SHA-256 fingerprints")

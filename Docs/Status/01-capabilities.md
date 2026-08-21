@@ -116,15 +116,12 @@
   validates the UUID directly. First use creates and validates the current-user-
   only CLI home and Session directory. Both routes use the same protected
   Session for subsequent operations.
-- After a staged write Result returns `awaiting_fidelity`, authenticated
-  `agent prepare-fidelity` prepares or reuses the exact final-revision child
-  and attaches its opaque read-only locator to the same protected Session. The
-  same receipt includes the full child context, exact Target/Material/source
-  boundary, ready inspection requests, and a strict submit template. Default
-  Check Fidelity aggregate fields are system-derived from the Agent's
-  per-check outcomes. Child Result completion validates persisted lineage,
-  advances the parent without a second parent payload, and returns typed
-  child/parent Record state.
+- A staged Analyze or other write Result completes after the Action's own
+  transaction and Method checks. Analyze performs one bounded fidelity
+  self-check inside its Method and records unresolved or unavailable limits in
+  its Result; this does not create a Check Fidelity child or formal Fidelity
+  evidence. Check Fidelity remains a separate read-only Action prepared only
+  when the researcher explicitly requests an audit for an exact revision.
 - `agent start` additionally accepts the strict Analyze-only `new_analysis`
   shape. It supplies one exact path and typed Analysis creation metadata, with
   either an explicit Zotero library/item relationship or the
@@ -152,8 +149,9 @@
   re-pair or direct-Session replacement also revokes every child locator
   derived from that parent's old Session without revoking independent Runs.
 - Action inspection revalidates an Agent-written target against the Run-owned
-  current write/completion revision, so an expected committed write can display
-  `awaiting_fidelity`; a later unrelated external revision still fails stale.
+  current write/completion revision. A later unrelated external revision still
+  fails stale, while ordinary Agent continuation remains available within the
+  authenticated Run lifecycle.
 - Research Context composes current Search, exact Note reads, direct Relations,
   Properties, Records, the current Run's explicitly selected path-free source
   Material and frozen Zotero bibliographic snapshot, and explicitly proven
@@ -199,11 +197,13 @@
   current, changed, missing, or unavailable. Parent-Run Researcher State
   references are stripped from the child handoff; a typed flag requires the
   child to query current researcher-owned facts in its own Run scope.
-- A `researcher_provided` Fidelity child exposes the exact checks plus a typed
-  Citation constraint. Without a formal source envelope, Citation must be
-  `unavailable`; Note YAML URLs remain authored metadata. The resulting child
-  and parent form schema-11 Records with explicit unverified Fidelity rather
-  than a fabricated source claim.
+- An explicitly researcher-started `researcher_provided` Check Fidelity Run
+  exposes the exact checks plus a typed Citation constraint. Without a formal
+  source envelope, Citation must be `unavailable`; Note YAML URLs remain
+  authored metadata. The Fidelity Run forms its own schema-11 Record with
+  explicit unverified evidence rather than a fabricated source claim; Analyze
+  records the same limitation through its bounded self-check without creating
+  a parent/child Fidelity pair.
 - Authenticated Discuss Runs expose their frozen Dialogue Response Contract and
   the `agent discuss-reply` command. A stable Agent statement ID makes an
   outcome-unknown retry idempotent; the route appends only an attributed Agent

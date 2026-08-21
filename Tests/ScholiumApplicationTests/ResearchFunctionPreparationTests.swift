@@ -149,8 +149,8 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Automatic Fidelity prepares an independent final-revision child and reuses its evidence")
-    func automaticFidelityOrchestration() async throws {
+    @Test("Analyze completion performs its bounded fidelity self-check without a Fidelity child Run")
+    func analyzeCompletionDoesNotPrepareFidelityChild() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -160,603 +160,44 @@ extension ResearchFunctionOperationsTests {
             role: .analysis,
             handle: handle
         )
-        let develop = try await handle.research.prepareProtectedFunction(
+        let analyze = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .develop, target: target)
         )
         let original = try await handle.documents.load(fixture.analysisID)
         let write = try await writePreparedResearchDocument(
-            for: develop,
-            body: original.body + "\nA developed claim.\n",
+            for: analyze,
+            body: original.body + "\nA bounded analyzed claim.\n",
             handle: handle
         )
         #expect(write.state == .committed)
-        let saved = try await handle.documents.load(fixture.analysisID)
-        let recommendations = [try ResearchLiteratureRecommendationSubmission(
-            rawCitation: "A. Author, Frozen Reading Lead (2025)",
-            reason: "The analyzed source identifies this work as a live objection."
-        )]
-        let awaiting = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: develop.runID,
-                confirmationToken: develop.snapshot.confirmationToken,
+
+        let completion = try await completeTestProtectedFunction(
+            handle: handle,
+            submission: ResearchFunctionCompletionSubmission(
+                runID: analyze.runID,
+                confirmationToken: analyze.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Developed one bounded claim.",
-                didModifyTarget: true,
-                literatureRecommendations: recommendations
+                summary: "Analyzed one bounded claim and checked its source fidelity.",
+                didModifyTarget: true
             )
         )
-        #expect(awaiting.state == .awaitingFidelity)
+        #expect(completion.state == .complete)
+        #expect(completion.childRunIDs?.isEmpty != false)
 
-        let afterCompletion = try await handle.services.localResearchExecutionStore.listing().records
-        #expect(afterCompletion.filter { record in
-            record.snapshot.resolvedFidelityInvocation == .automatic(
-                parentRunID: develop.runID
-            )
-        }.count == 1)
-
-        let automatic = try await handle.research.prepareProtectedAutomaticFidelity(
-            parentRunID: develop.runID
-        )
-        #expect(automatic.state == .prepared)
-        #expect(automatic.preparation.snapshot.resolvedFidelityInvocation == .automatic(
-            parentRunID: develop.runID
-        ))
-        #expect(automatic.preparation.snapshot.request.target.fingerprint
-            == saved.fingerprint)
-        #expect(automatic.preparation.snapshot.request.checks
-            == develop.snapshot.fidelityHandoff?.checks)
-        #expect(automatic.preparation.snapshot.request.materials
-            == develop.snapshot.request.materials)
-        #expect(automatic.preparation.snapshot.request.scope
-            == develop.snapshot.request.scope)
-
-        let repeated = try await handle.research.prepareProtectedAutomaticFidelity(
-            parentRunID: develop.runID
-        )
-        #expect(repeated.state == .prepared)
-        #expect(repeated.effectiveFidelityRunID == automatic.effectiveFidelityRunID)
-        #expect(try await handle.services.localResearchExecutionStore.listing().records.filter {
-            $0.snapshot.resolvedFidelityInvocation == .automatic(
-                parentRunID: develop.runID
-            )
-        }.count == 1)
-
-        let fidelityCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: automatic.preparation.runID,
-                confirmationToken: automatic.preparation.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: saved.fingerprint,
-                summary: "Checked the exact final revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passedContent]
-            )
-        )
-        let completedProjection = try await handle.research.prepareProtectedAutomaticFidelity(
-            parentRunID: develop.runID
-        )
-        #expect(completedProjection.state == .complete)
-        #expect(completedProjection.effectiveFidelityRunID == fidelityCompletion.runID)
-
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission:
-                ResearchFunctionCompletionSubmission(
-                    runID: develop.runID,
-                    confirmationToken: develop.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    summary: "Developed and checked one bounded claim.",
-                    didModifyTarget: true,
-                    literatureRecommendations: [
-                        try ResearchLiteratureRecommendationSubmission(
-                            rawCitation: "B. Author, Replacement Lead (2026)",
-                            reason: "A later payload must not replace the first report."
-                        ),
-                    ],
-                    childRunIDs: [automatic.preparation.runID]
-                )
-            )
-        }
-
-        let verified = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: develop.runID,
-                confirmationToken: develop.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Developed and checked one bounded claim.",
-                didModifyTarget: true,
-                literatureRecommendations: recommendations,
-                childRunIDs: [automatic.preparation.runID]
-            )
-        )
-        #expect(verified.state == .complete)
-        #expect(verified.reusedFidelityRunID == fidelityCompletion.runID)
-        let portable = try #require(
-            try await handle.research.finishedResearchRecords(noteID: nil)
-                .first { $0.id == develop.runID }
-        )
-        #expect(portable.literatureRecommendations.map(\.rawCitation) == [
-            "A. Author, Frozen Reading Lead (2025)",
-        ])
-
-        let currentTarget = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let manualReuse = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: currentTarget,
-                checks: try #require(develop.snapshot.fidelityHandoff).checks
-            )
-        )
-        #expect(manualReuse.state == .complete)
-        #expect(manualReuse.reusedCompletion?.runID == fidelityCompletion.runID)
-        #expect(manualReuse.snapshot.resolvedFidelityInvocation == .manual)
-        await runtime.shutdown()
-    }
-
-    @Test("Local Action automatic Fidelity preserves the accepted external retry digest")
-    func localActionAutomaticFidelityRetryIsIdempotent() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let action = try await handle.research.prepareAction(
-            try await actionRequest(
-                handle: handle,
-                actionID: .analyze,
-                target: actionNote(target)
-            )
-        )
-        let parent = try await handle.research.protectedFunctionRun(id: action.runID)
-        let original = try await handle.documents.load(fixture.analysisID)
-        let write = try await writePreparedResearchDocument(
-            for: parent,
-            body: original.body + "\nA source-bound claim.\n",
-            handle: handle
-        )
-        #expect(write.state == .committed)
-        let saved = try await handle.documents.load(fixture.analysisID)
-        let submittedAt = Date()
-        let awaiting = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: parent.runID,
-                confirmationToken: parent.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Added one source-bound claim.",
-                didModifyTarget: true,
-                literatureRecommendations: [],
-                submittedAt: submittedAt
-            )
-        )
-        #expect(awaiting.state == .awaitingFidelity)
-        let automatic = try await handle.research.prepareProtectedAutomaticFidelity(
-            parentRunID: parent.runID
-        )
-        let fidelitySubmittedAt = Date()
-        _ = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: automatic.preparation.runID,
-                confirmationToken: automatic.preparation.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: saved.fingerprint,
-                summary: "Checked the exact final Analysis revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passedContent],
-                submittedAt: fidelitySubmittedAt
-            )
-        )
-
-        let retry = ResearchFunctionCompletionSubmission(
-            runID: parent.runID,
-            confirmationToken: parent.snapshot.confirmationToken,
-            recordTitle: try ResearchRecordTitle("Test research result"),
-            summary: "Added one source-bound claim.",
-            didModifyTarget: true,
-            literatureRecommendations: [],
-            submittedAt: submittedAt
-        )
-        let localURL = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v10", isDirectory: true)
-            .appendingPathComponent(parent.runID.uuidString.lowercased() + ".json")
-        let recordsURL = fixture.rootURL.appendingPathComponent(
-            ".scholium/research-records/v1/records",
-            isDirectory: true
-        )
-        let originalMode = try #require(
-            (FileManager.default.attributesOfItem(atPath: recordsURL.path)[
-                .posixPermissions
-            ] as? NSNumber)?.intValue
-        )
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o500)],
-            ofItemAtPath: recordsURL.path
-        )
-        await #expect(throws: Error.self) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission: retry)
-        }
-        let interruptedDecoder = JSONDecoder()
-        interruptedDecoder.dateDecodingStrategy = .deferredToDate
-        let interrupted = try interruptedDecoder.decode(
-            LocalExecutionTestProjection.self,
-            from: Data(contentsOf: localURL)
-        )
-        #expect(interrupted.completion?.state == .complete)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: originalMode)],
-            ofItemAtPath: recordsURL.path
-        )
-
-        let completed = try await completeTestProtectedFunction(handle: handle, submission: retry)
-        #expect(completed.state == .complete)
-        #expect(completed.actuallyUsedMaterialNoteIDs == [])
-        #expect(completed.childRunIDs == [automatic.effectiveFidelityRunID])
-        #expect(try await completeTestProtectedFunction(handle: handle, submission: retry) == completed)
-        let portableURL = recordsURL.appendingPathComponent(
-            parent.runID.uuidString.lowercased() + ".json"
-        )
-        let portable = try JSONDecoder.scholium.decode(
-            PortableResearchRecord.self,
-            from: Data(contentsOf: portableURL)
-        )
-        #expect(portable.actuallyUsedMaterials.isEmpty)
-        #expect(portable.fidelityCompletion == .completed)
-        await runtime.shutdown()
-    }
-
-    @Test("Unchanged Develop and Revise runs complete without Automatic Fidelity")
-    func unchangedWritesSkipAutomaticFidelity() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-
-        let analysis = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
-        )
-
-        // Even matching completed manual evidence cannot be attached to an
-        // unchanged substantive run: there is no post-edit revision to audit.
-        let manual = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: analysis,
-                checks: try #require(develop.snapshot.fidelityHandoff).checks
-            )
-        )
-        _ = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: manual.runID,
-                confirmationToken: manual.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: analysis.fingerprint,
-                summary: "Checked the unchanged Analysis revision manually.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passedContent]
-            )
-        )
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission:
-                ResearchFunctionCompletionSubmission(
-                    runID: develop.runID,
-                    confirmationToken: develop.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    summary: "No Analysis change was needed.",
-                    didModifyTarget: false,
-                    literatureRecommendations: [],
-                    childRunIDs: [manual.runID]
-                )
-            )
-        }
-
-        let unchangedDevelop = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: develop.runID,
-                confirmationToken: develop.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "No Analysis change was needed.",
-                didModifyTarget: false,
-                literatureRecommendations: []
-            )
-        )
-        #expect(unchangedDevelop.state == .complete)
-        #expect(!unchangedDevelop.didModifyTarget)
-        #expect(unchangedDevelop.childRunIDs == nil)
-        #expect(unchangedDevelop.reusedFidelityRunID == nil)
-
-        let work = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-        let revise = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .revise, target: work)
-        )
-        let unchangedRevise = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: revise.runID,
-                confirmationToken: revise.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "No Work change was needed.",
-                didModifyTarget: false
-            )
-        )
-        #expect(unchangedRevise.state == .complete)
-        #expect(!unchangedRevise.didModifyTarget)
-        #expect(unchangedRevise.childRunIDs == nil)
-        #expect(unchangedRevise.reusedFidelityRunID == nil)
-
-        for parentRunID in [develop.runID, revise.runID] {
-            await #expect(throws: ResearchFunctionContractError.self) {
-                _ = try await handle.research.prepareProtectedAutomaticFidelity(
-                    parentRunID: parentRunID
-                )
-            }
-        }
         let records = try await handle.services.localResearchExecutionStore.listing().records
-        let automaticChildren = records.filter { record in
-            guard case .automatic(let parentRunID)? =
-                    record.snapshot.resolvedFidelityInvocation else {
-                return false
-            }
-            return parentRunID == develop.runID || parentRunID == revise.runID
-        }
-        #expect(automaticChildren.isEmpty)
-        await runtime.shutdown()
-    }
-
-    @Test("Automatic Fidelity immediately links exact completed manual evidence")
-    func automaticFidelityReusesCompletedManualEvidence() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target)
-        )
-        let original = try await handle.documents.load(fixture.analysisID)
-        _ = try await writePreparedResearchDocument(
-            for: develop,
-            body: original.body + "\nA developed claim.\n",
-            handle: handle
-        )
-        let finalTarget = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let manual = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: finalTarget,
-                checks: try #require(develop.snapshot.fidelityHandoff).checks
-            )
-        )
-        let manualCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: manual.runID,
-                confirmationToken: manual.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: finalTarget.fingerprint,
-                summary: "Checked the exact final revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passedContent]
-            )
-        )
-
-        let completed = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: develop.runID,
-                confirmationToken: develop.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Developed one bounded claim.",
-                didModifyTarget: true,
-                literatureRecommendations: []
-            )
-        )
-        #expect(completed.state == .complete)
-        #expect(completed.reusedFidelityRunID == manualCompletion.runID)
-        #expect(completed.childRunIDs == [manualCompletion.runID])
-        #expect(try await handle.services.localResearchExecutionStore.listing().records.filter {
-            $0.snapshot.resolvedFidelityInvocation == .automatic(
-                parentRunID: develop.runID
-            )
+        #expect(records.filter {
+            $0.snapshot.request.function == .fidelity
         }.isEmpty)
+
+        let record = try #require(
+            try await handle.research.finishedResearchRecords(noteID: nil)
+                .first { $0.id == analyze.runID }
+        )
+        #expect(record.fidelityCompletion == .notRequired)
         await runtime.shutdown()
     }
 
-    @Test("Develop records its exact Fidelity handoff, advances completion, deduplicates exact audits, and marks later evidence stale")
-    func fidelityHandoffDeduplicationAndStaleness() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target)
-        )
-        #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
-        #expect(develop.snapshot.fidelityHandoff?.checks == [.content])
-        #expect(develop.snapshot.fidelityHandoff?.preparedTargetFingerprint == target.fingerprint)
-        #expect(!develop.instructions.contains("## Isolated phase 2: fidelity"))
-        #expect(develop.instructions.contains("authenticated Agent CLI"))
-        #expect(develop.instructions.contains("frozen Result Contract"))
-        #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
-            $0.id == develop.runID
-        })
 
-        let preEditFidelity = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: target,
-                checks: [.content]
-            )
-        )
-        _ = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: preEditFidelity.runID,
-                confirmationToken: preEditFidelity.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: target.fingerprint,
-                summary: "Checked only the pre-edit Analysis revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passedContent]
-            )
-        )
-
-        let original = try await handle.documents.load(fixture.analysisID)
-        _ = try await writePreparedResearchDocument(
-            for: develop,
-            body: original.body + "\nA bounded developed claim.\n",
-            handle: handle
-        )
-        #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
-            $0.id == develop.runID
-        })
-        let awaitingSubmission = ResearchFunctionCompletionSubmission(
-            runID: develop.runID,
-            confirmationToken: develop.snapshot.confirmationToken,
-            recordTitle: try ResearchRecordTitle("Test research result"),
-            summary: "Developed one bounded claim.",
-            didModifyTarget: true,
-            literatureRecommendations: []
-        )
-        let awaiting = try await completeTestProtectedFunction(handle: handle, submission: awaitingSubmission)
-        #expect(awaiting.state == .awaitingFidelity)
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission:
-                ResearchFunctionCompletionSubmission(
-                    runID: develop.runID,
-                    confirmationToken: develop.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    summary: "Tried to reuse an audit of the pre-edit revision.",
-                    didModifyTarget: true,
-                    literatureRecommendations: [],
-                    childRunIDs: [preEditFidelity.runID]
-                )
-            )
-        }
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission:
-                ResearchFunctionCompletionSubmission(
-                    runID: develop.runID,
-                    confirmationToken: develop.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    summary: "Tried to attach an unprepared audit claim.",
-                    didModifyTarget: true,
-                    fidelityOutcomes: [.passedContent],
-                    literatureRecommendations: []
-                )
-            )
-        }
-
-        let finalTarget = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let finalFidelity = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: finalTarget,
-                checks: [.content]
-            )
-        )
-        let finalFidelityCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: finalFidelity.runID,
-                confirmationToken: finalFidelity.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: finalTarget.fingerprint,
-                summary: "Checked the exact post-edit Analysis revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passedContent]
-            )
-        )
-        let verified = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: develop.runID,
-                confirmationToken: develop.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Developed and checked one bounded claim.",
-                didModifyTarget: true,
-                literatureRecommendations: [],
-                childRunIDs: [finalFidelity.runID]
-            )
-        )
-        #expect(verified.state == .complete)
-        #expect(verified.fidelityEvidenceKey == finalFidelityCompletion.fidelityEvidenceKey)
-        #expect(verified.reusedFidelityRunID == finalFidelity.runID)
-
-        let directReuse = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: finalTarget,
-                checks: [.content]
-            )
-        )
-        #expect(directReuse.state == .complete)
-        #expect(directReuse.reusedCompletion?.runID == finalFidelity.runID)
-
-        let auditRequest = ResearchFunctionRequest(
-            function: .fidelity,
-            target: finalTarget,
-            checks: [.content]
-        )
-        let audit = try await handle.research.prepareProtectedFunction(auditRequest)
-        #expect(audit.state == .complete)
-        let auditCompletion = try #require(audit.reusedCompletion)
-        let reused = try await handle.research.prepareProtectedFunction(auditRequest)
-        #expect(reused.state == .complete)
-        #expect(reused.reusedCompletion?.runID == auditCompletion.runID)
-
-        let current = try await handle.documents.load(fixture.analysisID)
-        _ = try await handle.documents.save(
-            fixture.analysisID,
-            changeSet: .exactContent(current.rawContent + "\nEvidence changed after audit.\n"),
-            expectedRevision: current.fingerprint
-        )
-        let changedTarget = try await researchFunctionTarget(
-            fixture.analysisID,
-            role: .analysis,
-            handle: handle
-        )
-        let changedAudit = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: changedTarget,
-                checks: [.content]
-            )
-        )
-        #expect(changedAudit.state == .prepared)
-        #expect(changedAudit.runID != auditCompletion.runID)
-        try await handle.research.cancelProtectedFunction(runID: changedAudit.runID)
-        await runtime.shutdown()
-    }
-
-    @Test("Explicit citation style reaches Fidelity resources, instructions, snapshots, and evidence")
     func citationStyleExecutionBinding() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -804,8 +245,7 @@ extension ResearchFunctionOperationsTests {
         let develop = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .develop, target: target)
         )
-        #expect(develop.snapshot.fidelityHandoff?.checks == [.content, .citations])
-        #expect(develop.snapshot.requiredChildFunctions == [.fidelity])
+        #expect(develop.snapshot.requiredChildFunctions.isEmpty)
         #expect(!develop.instructions.contains("Citation style: apa-7"))
         try await handle.research.cancelProtectedFunction(runID: develop.runID)
         await runtime.shutdown()
@@ -960,16 +400,16 @@ extension ResearchFunctionOperationsTests {
                 + "\nAn explicit premise now supports the inference.\n",
             handle: handle
         )
-        let awaitingRevision = try await completeTestProtectedFunction(handle: handle, submission:
+        let revisionCompletion = try await completeTestProtectedFunction(handle: handle, submission:
             ResearchFunctionCompletionSubmission(
                 runID: revise.runID,
                 confirmationToken: revise.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Revised the inference; final Fidelity remains pending.",
+                summary: "Revised the inference and performed the Method self-check.",
                 didModifyTarget: true
             )
         )
-        #expect(awaitingRevision.state == .awaitingFidelity)
+        #expect(revisionCompletion.state == .complete)
         work = try await researchFunctionTarget(
             fixture.workID,
             role: .work,
@@ -979,7 +419,7 @@ extension ResearchFunctionOperationsTests {
             ResearchFunctionRequest(
                 function: .fidelity,
                 target: work,
-                checks: try #require(revise.snapshot.fidelityHandoff).checks
+                checks: [.content]
             )
         )
         _ = try await completeTestProtectedFunction(handle: handle, submission:
@@ -990,22 +430,9 @@ extension ResearchFunctionOperationsTests {
                 finalTargetFingerprint: work.fingerprint,
                 summary: "Checked the exact final Work revision.",
                 didModifyTarget: false,
-                fidelityOutcomes: try #require(revise.snapshot.fidelityHandoff).checks
-                    .sorted(by: { $0.rawValue < $1.rawValue })
-                    .map(FidelityCheckOutcome.passed)
+                fidelityOutcomes: [.passed(.content)]
             )
         )
-        let reviseCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: revise.runID,
-                confirmationToken: revise.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Revised the inference and linked final Fidelity evidence.",
-                didModifyTarget: true,
-                childRunIDs: [revisionFidelity.runID]
-            )
-        )
-        #expect(reviseCompletion.state == .complete)
         let fidelityReuse = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(
                 function: .fidelity,
@@ -1023,12 +450,12 @@ extension ResearchFunctionOperationsTests {
                 finalTargetFingerprint: work.fingerprint,
                 summary: "Coordinated the selected manuscript activities.",
                 didModifyTarget: false,
-                childRunIDs: [revise.runID]
+                childRunIDs: [revise.runID, revisionFidelity.runID]
             )
         )
         #expect(completedManuscript.state == .complete)
-        #expect(completedManuscript.childRunIDs == [revise.runID])
-        #expect(completedManuscript.reusedFidelityRunID == revise.runID)
+        #expect(completedManuscript.childRunIDs == [revise.runID, revisionFidelity.runID])
+        #expect(completedManuscript.reusedFidelityRunID == revisionFidelity.runID)
         let records = try await handle.research.finishedResearchRecords(noteID: nil)
         #expect(records.first(where: { $0.id == revise.runID })?.confirmedChanges.count == 1)
         #expect(records.first(where: { $0.id == manuscript.runID })?.confirmedChanges.isEmpty
