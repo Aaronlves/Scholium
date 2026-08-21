@@ -50,6 +50,7 @@ extension WorkspaceHandle {
     func prepareResearchAction(
         _ request: ResearchActionExecutionRequest,
         allowsResearcherProvidedSource: Bool = false,
+        expectedZoteroBinding: AnalysisZoteroBinding? = nil,
         runIDOverride: UUID? = nil
     ) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
@@ -61,6 +62,7 @@ extension WorkspaceHandle {
             requiresAgentChangeEvidence:
                 !resolved.context.authority.writableNotes.isEmpty,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource,
+            expectedZoteroBinding: expectedZoteroBinding,
             host: self
         )
         let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(

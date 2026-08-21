@@ -277,6 +277,69 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!FileManager.default.fileExists(atPath: credentialURL.path))
     }
 
+    @Test("Agent start resolves a UUID-shaped Triptych name before direct-ID fallback")
+    func agentStartUUIDShapedTriptychName() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let uuidShapedName = UUID().uuidString.lowercased()
+        let fixture = try await ActionCLIFixture.make(triptychName: uuidShapedName)
+        defer { fixture.remove() }
+        let bridgeContainer = fixture.rootURL.appendingPathComponent(
+            "uuid-name-bridge",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        let run = try #require(
+            ResearchRunLocator(rawValue: "uuidshapedtriptychname")
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "u", count: 48)
+        )
+        let request = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            target: fixture.analysisTarget.note,
+            sourceRoute: .researcherProvided
+        )
+        let receipt = try ResearchAgentStartReceipt(
+            run: run,
+            actionID: .analyze,
+            target: fixture.analysisTarget,
+            state: .prepared,
+            message: "The Agent-originated Run is active."
+        )
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { bridgeRequest in
+            guard bridgeRequest.operation == .start,
+                  bridgeRequest.triptychID == fixture.assignment.id,
+                  bridgeRequest.startRequest == request else {
+                throw LocalAgentBridgeError.permissionDenied
+            }
+            return .started(receipt: receipt, credential: credential)
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let result = try cli.run(
+            [
+                "agent", "start", "--triptych", uuidShapedName,
+                "--from", "-",
+            ],
+            stdin: try Self.encoder().encode(request),
+            environment: [
+                "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+            ]
+        )
+        #expect(String(decoding: result.stdout, as: UTF8.self)
+            .contains(run.rawValue))
+    }
+
     @Test("The real CLI pairs through stdin, hides the Session secret, and reloads authenticated context")
     func agentPairingAndContext() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
@@ -1518,7 +1581,9 @@ private struct ActionCLIFixture {
     let topicTarget: ResearchActionNoteSnapshot
     let workTarget: ResearchActionNoteSnapshot
 
-    static func make() async throws -> Self {
+    static func make(
+        triptychName: String = "Action CLI Fixture"
+    ) async throws -> Self {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -1538,6 +1603,10 @@ private struct ActionCLIFixture {
         for directory in [home, appSupport, registry, analyses, topics, works] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: home.path
+        )
         let analysisURL = analyses.appendingPathComponent("Analysis.md")
         try Data(
             "---\ntitle: Analysis\nsummary: inheritance-handoff map\nlanguage: Greek\n---\n# Analysis\n\nA synthetic analysis claim.\n\n+[[Topic]]\n".utf8
@@ -1561,7 +1630,7 @@ private struct ActionCLIFixture {
             topicKnowledgeURL: topics,
             outputURL: works,
             portableContainerURL: root,
-            triptychName: "Action CLI Fixture"
+            triptychName: triptychName
         )
         let assignment = handle.assignment
         let analysisVault = try #require(assignment.vault(for: .paperAnalysis))

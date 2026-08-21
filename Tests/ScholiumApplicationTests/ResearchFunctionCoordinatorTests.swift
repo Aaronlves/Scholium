@@ -5,6 +5,97 @@ import Testing
 
 @Suite("Research Function coordinator ownership")
 struct ResearchFunctionCoordinatorTests {
+    @Test("Exact Analysis replay preserves a newer researcher Zotero binding")
+    func agentStartBindingReplayConflict() async throws {
+        enum InjectedFailure: Error { case afterBinding }
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        await handle.setAgentStartPostBindingBarrierForTesting {
+            throw InjectedFailure.afterBinding
+        }
+        let analysisVaultID = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)?.id
+        )
+        let target = VaultQualifiedNoteID(
+            vaultID: analysisVaultID,
+            relativePath: "Agent/Binding Replay.md"
+        )
+        let request = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: ResearchAgentNewAnalysisRequest(
+                requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000458")!,
+                target: target,
+                metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+                source: ResearchAgentNewAnalysisSource(
+                    library: .user,
+                    itemKey: "ORIGINAL1"
+                )
+            )
+        )
+
+        await #expect(throws: InjectedFailure.afterBinding) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: request,
+                sessionValidity: 300
+            )
+        }
+        let identity = try #require(
+            try await handle.services.controlStore.identityRecord(
+                vaultID: target.vaultID,
+                relativePath: target.relativePath
+            )
+        )
+        let original = try #require(
+            try await handle.services.controlStore.zoteroBindings()
+                .binding(for: identity.id)
+        )
+        #expect(original.itemKey == "ORIGINAL1")
+
+        let beforeRebind = try await handle.services.controlStore.zoteroBindings()
+        let researcherBinding = try AnalysisZoteroBinding(
+            noteID: identity.id,
+            library: .group(42),
+            itemKey: "RESEARCH2"
+        )
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            researcherBinding,
+            expectedRevision: beforeRebind.revision
+        )
+        await handle.setAgentStartPostBindingBarrierForTesting(nil)
+
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: request,
+                sessionValidity: 300
+            )
+        }
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: identity.id) == researcherBinding)
+
+        let beforeClear = try await handle.services.controlStore.zoteroBindings()
+        _ = try await handle.services.controlStore.clearZoteroBinding(
+            for: identity.id,
+            expectedRevision: beforeClear.revision
+        )
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: request,
+                sessionValidity: 300
+            )
+        }
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: identity.id) == nil)
+        await runtime.shutdown()
+    }
+
     @Test("Agent Analysis creation survives a stale projection and exact retry does not duplicate source")
     func agentStartCreationProjectionRecovery() async throws {
         enum InjectedFailure: Error { case staleProjection }
@@ -234,6 +325,93 @@ struct ResearchFunctionCoordinatorTests {
             credential: retried.credential,
             run: retried.receipt.run
         )
+        await runtime.shutdown()
+    }
+
+    @Test("Completed and cancelled Analysis creation replays issue no Session")
+    func terminalAgentStartCreationReplay() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let analysisVaultID = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)?.id
+        )
+
+        func request(_ suffix: String, id: String) throws -> ResearchAgentStartRequest {
+            try ResearchAgentStartRequest(
+                actionID: .analyze,
+                newAnalysis: ResearchAgentNewAnalysisRequest(
+                    requestID: UUID(uuidString: id)!,
+                    target: VaultQualifiedNoteID(
+                        vaultID: analysisVaultID,
+                        relativePath: "Agent/Terminal \(suffix).md"
+                    ),
+                    metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
+                ),
+                sourceRoute: .researcherProvided
+            )
+        }
+
+        let completedRequest = try request(
+            "Complete",
+            id: "00000000-0000-0000-0000-000000000459"
+        )
+        let completed = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: completedRequest,
+            sessionValidity: 300
+        )
+        let completedContext = try await runtime.researchAgentContext(
+            credential: completed.credential,
+            run: completed.receipt.run
+        )
+        _ = try await runtime.submitResearchAgentResult(
+            credential: completed.credential,
+            run: completed.receipt.run,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Completed creation replay"),
+                academicResults: ResearchAcademicFieldValues(
+                    rawValues: [
+                        "source-reconstruction": .freeText("One bounded result."),
+                        "coverage": .singleChoice("specified-part-only"),
+                        "reliability": .multipleChoice(["no-material-limitations"]),
+                    ],
+                    definitions: completedContext.resultContract.academicFields
+                ),
+                literatureRecommendations: []
+            )
+        )
+        await #expect(throws: ResearchAgentConnectionError.runUnavailable) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: completedRequest,
+                sessionValidity: 300
+            )
+        }
+
+        let cancelledRequest = try request(
+            "Cancelled",
+            id: "00000000-0000-0000-0000-000000000460"
+        )
+        let cancelled = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: cancelledRequest,
+            sessionValidity: 300
+        )
+        _ = try await runtime.endResearchAgentRun(
+            credential: cancelled.credential,
+            run: cancelled.receipt.run
+        )
+        await #expect(throws: ResearchAgentConnectionError.runUnavailable) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: cancelledRequest,
+                sessionValidity: 300
+            )
+        }
         await runtime.shutdown()
     }
 

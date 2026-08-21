@@ -957,6 +957,69 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
+    @Test("Agent Analysis creation binding phases are strict and exact-request idempotent")
+    func agentAnalysisCreationBindingPhases() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let runID = UUID()
+        let noteID = UUID()
+        let target = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Agent/Bound Analysis.md"
+        )
+        let binding = try AnalysisZoteroBinding(
+            noteID: noteID,
+            library: .user,
+            itemKey: "BOUND001"
+        )
+        let record = try LocalAgentAnalysisCreationRecord(
+            triptychID: fixture.triptychID,
+            runID: runID,
+            requestFingerprint: DocumentFingerprint(content: "exact request"),
+            target: target,
+            reservedIdentityID: noteID,
+            requestedBinding: binding
+        )
+
+        #expect(try await store.createAgentAnalysisCreation(record) == record)
+        #expect(try await store.createAgentAnalysisCreation(record) == record)
+        #expect(try await store.advanceAgentAnalysisCreationBinding(
+            runID: runID,
+            to: .writing
+        ).bindingState == .writing)
+        #expect(try await store.advanceAgentAnalysisCreationBinding(
+            runID: runID,
+            to: .retryable
+        ).bindingState == .retryable)
+        _ = try await store.advanceAgentAnalysisCreationBinding(
+            runID: runID,
+            to: .writing
+        )
+        #expect(try await store.advanceAgentAnalysisCreationBinding(
+            runID: runID,
+            to: .committed
+        ).bindingState == .committed)
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.advanceAgentAnalysisCreationBinding(
+                runID: runID,
+                to: .writing
+            )
+        }
+
+        let changed = try LocalAgentAnalysisCreationRecord(
+            triptychID: fixture.triptychID,
+            runID: runID,
+            requestFingerprint: DocumentFingerprint(content: "changed request"),
+            target: target,
+            reservedIdentityID: noteID,
+            requestedBinding: binding
+        )
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.createAgentAnalysisCreation(changed)
+        }
+    }
+
     @Test("Current Local Execution rejects undeclared fields including raw keys")
     func localExecutionRejectsUnknownFields() async throws {
         let fixture = try Fixture()

@@ -429,6 +429,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         (@Sendable () async -> Void)?
     private var researchStateRepairBarrierForTesting:
         (@Sendable () async throws -> Void)?
+    var agentStartPostBindingBarrierForTesting:
+        (@Sendable () async throws -> Void)?
     private var didCompleteActivationReconciliation = false
 
     func setManagedCreationPreLeaseBarrierForTesting(
@@ -471,6 +473,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ barrier: (@Sendable () async throws -> Void)?
     ) {
         researchStateRepairBarrierForTesting = barrier
+    }
+
+    func setAgentStartPostBindingBarrierForTesting(
+        _ barrier: (@Sendable () async throws -> Void)?
+    ) {
+        agentStartPostBindingBarrierForTesting = barrier
     }
     private init(
         assignment: TriptychAssignment,

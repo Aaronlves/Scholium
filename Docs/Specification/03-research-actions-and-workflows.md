@@ -160,12 +160,13 @@ relationship or `source_route: researcher_provided`. Application uses the
 managed creator, current Settings revision, and reserved identity; reads back
 source and identity; establishes any Zotero relationship; then prepares the
 ordinary Run. It never infers a relationship from YAML, title, path, or
-similarity. The complete payload is the request identity: exact replay resumes
-the same committed Note and unfinished Run with a replacement process-bound
-Session, while changed input cannot reuse them. Source and identity commit
-before projection; a stale projection reports exact-replay recovery without
-duplicate creation. The researcher-provided route may also target an existing
-Analysis; Scholium receives no source path or bytes and records no access claim.
+similarity. The complete payload is the request identity. Replay resumes only
+the same unfinished Run while any current Zotero relationship still equals the
+request; a changed relationship or terminal Run refuses another write or
+Session. Source and identity commit before projection, whose failure reports
+exact-replay recovery without duplicate creation. The researcher-provided route
+may also target an existing Analysis; Scholium receives no source path or bytes,
+freezes no Zotero context, and records no source-access claim.
 
 Direct Agent connection is local, provider-neutral, and bound to the current
 Scholium application process. The researcher deliberately copies one complete

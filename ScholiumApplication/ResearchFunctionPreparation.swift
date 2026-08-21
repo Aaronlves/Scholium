@@ -463,6 +463,7 @@ extension ResearchFunctionCoordinator {
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         requiresAgentChangeEvidence: Bool = true,
         allowsResearcherProvidedSource: Bool = false,
+        expectedZoteroBinding: AnalysisZoteroBinding? = nil,
         suppressRefresh: Bool = false,
         host: isolated Host
     ) async throws -> ResearchFunctionPreparation {
@@ -498,12 +499,29 @@ extension ResearchFunctionCoordinator {
         )
         let request = expandedRequest
         try request.validate()
+        guard expectedZoteroBinding == nil
+                || (!allowsResearcherProvidedSource
+                    && request.function == .develop
+                    && request.target.role == .analysis
+                    && expectedZoteroBinding?.noteID == request.target.noteID)
+        else {
+            throw ResearchAgentConnectionError.newAnalysisReplayConflict
+        }
+        if let expectedZoteroBinding,
+           try await portableTargetZoteroBinding(target) != expectedZoteroBinding {
+            throw ResearchAgentConnectionError.newAnalysisReplayConflict
+        }
         let sourceAccess = try await requiredResearchSourceAccess(
             for: target,
             function: request.function,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource
         )
-        let zoteroContext = try await zoteroBibliographicContext(for: target)
+        let zoteroContext = allowsResearcherProvidedSource
+            ? nil
+            : try await zoteroBibliographicContext(
+                for: target,
+                expectedBinding: expectedZoteroBinding
+            )
         _ = try await validateResearchFunctionWriteTargets(request, host: host)
         _ = try await validateResearchFunctionFidelityTargets(request, host: host)
         let actionAuthority = try resolvedActionAuthority(
@@ -587,6 +605,10 @@ extension ResearchFunctionCoordinator {
                 throw ResearchFunctionContractError.sourceAccessUnavailable(
                     ResearchSourceAccessFailure(code: .sourceChanged)
                 )
+            }
+            if let expectedZoteroBinding,
+               try await portableTargetZoteroBinding(target) != expectedZoteroBinding {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
         } catch {
             if capturedChangeEvidence {
@@ -695,6 +717,10 @@ extension ResearchFunctionCoordinator {
                 throw ResearchFunctionContractError.sourceAccessUnavailable(
                     ResearchSourceAccessFailure(code: .sourceChanged)
                 )
+            }
+            if let expectedZoteroBinding,
+               try await portableTargetZoteroBinding(target) != expectedZoteroBinding {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
             let localDiscussion = request.function == .discuss
                     ? try localDiscussionExecution(

@@ -107,9 +107,14 @@ The Agent enters the code through CLI standard input. An Agent-originated
 protected Session directly; it does not create or consume a Pairing Code.
 For `new_analysis`, a deterministic digest of the complete current request owns
 the reserved Note and Run identities. Exact replay reopens only that identity
-and Run, while a changed payload cannot claim the committed path. The managed
-creator's source/identity readback queues the sole derived refresh; direct start
-awaits that owner rather than racing a second Workspace generation.
+and unfinished Run, while a changed payload cannot claim the committed path.
+For a requested Zotero relationship, Local Execution first persists a bounded
+request-owned creation phase, marks the mutation boundary before calling the
+portable owner, and reconciles only an exact readback. Replay never reapplies a
+committed request over a missing or different researcher-owned relationship;
+it returns a typed conflict instead. The managed creator's source/identity
+readback queues the sole derived refresh; direct start awaits that owner rather
+than racing a second Workspace generation.
 Both routes use the loopback-only framed bridge and the same authenticated
 Context, Discuss-turn, write, Result, End, conflict, and recovery owners. A
 Discuss-turn request uses the same authenticated Session and appends only to
@@ -517,7 +522,9 @@ new Run reads again. `ResearchFunctionSnapshot` freezes exactly one Analyze
 route: current Scholium source, external Zotero, or `researcher_provided`.
 Completion revalidates the first, requires the frozen context for the second,
 and accepts the third only while both source reference and Zotero context remain
-absent. Schema-11 Records retain that route without fabricating a source claim;
+absent. Selecting the third suppresses any existing Zotero snapshot and adapter
+for that Run without changing the portable relationship. Schema-11 Records
+retain that route without fabricating a source claim;
 the external Agent remains responsible for reporting the exact paper data it
 actually retrieved and every access limitation.
 
@@ -537,6 +544,8 @@ canonical Run/Context/write/result families. Secrets arrive only through
 hidden local input and never shell arguments. CLI owns no eligibility, method
 routing, parser/ranker, write set, repository transaction, Record schema, or
 shell command string. Agent-start target JSON has one versioned snake-case wire
-shape. A UUID Triptych identity needs no CLI-side registry lookup; Application
-still authorizes it through the bridge. The protected credential store creates
-and validates its current-user-only parent and session directories on first use.
+shape. A healthy CLI registry projection resolves UUID or unique-name selectors,
+including UUID-shaped names; when that projection is absent or lacks a UUID,
+the UUID passes directly to Application for authorization. The protected
+credential store creates and validates its current-user-only parent and session
+directories on first use.

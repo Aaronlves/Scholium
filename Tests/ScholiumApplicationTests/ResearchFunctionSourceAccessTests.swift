@@ -793,6 +793,77 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Researcher-provided Analyze ignores an existing Zotero binding through Record formation")
+    func researcherProvidedAnalyzeSuppressesZoteroRoute() async throws {
+        let fixture = try await ResearchFixture.make(
+            analysisZoteroKey: "BOUND001"
+        )
+        defer { fixture.remove() }
+        let script = ZoteroRequestScript(steps: [])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: ResearchAgentStartRequest(
+                actionID: .analyze,
+                target: fixture.analysisID,
+                sourceRoute: .researcherProvided
+            ),
+            sessionValidity: 300
+        )
+        let context = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(context.zoteroIntegrationAdapter == nil)
+        #expect(await script.requestCount() == 0)
+
+        let sessions = try #require((await handle.services).researchAgentSessions)
+        let authenticated = try await sessions.authenticate(
+            started.credential,
+            run: started.receipt.run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
+        let execution = try await handle.services.localResearchExecutionStore.record(
+            id: authenticated.runID
+        )
+        #expect(execution.snapshot.analysisSourceRoute == .researcherProvided)
+        #expect(execution.snapshot.zoteroBibliographicContext == nil)
+
+        let receipt = try await runtime.submitResearchAgentResult(
+            credential: started.credential,
+            run: started.receipt.run,
+            submission: ResearchAgentResultSubmission(
+                recordTitle: ResearchRecordTitle("Researcher-provided bound Analysis"),
+                academicResults: ResearchAcademicFieldValues(
+                    rawValues: [
+                        "source-reconstruction": .freeText("A bounded reconstruction."),
+                        "coverage": .singleChoice("specified-part-only"),
+                        "reliability": .multipleChoice(["no-material-limitations"]),
+                    ],
+                    definitions: context.resultContract.academicFields
+                ),
+                literatureRecommendations: []
+            )
+        )
+        #expect(receipt.state == .finalized)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: authenticated.runID
+        )
+        #expect(record.analysisSourceRoute == .researcherProvided)
+        #expect(record.zoteroBibliographicContext == nil)
+        #expect(record.sourceReference == nil)
+        #expect(await script.requestCount() == 0)
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        await runtime.shutdown()
+    }
+
     @Test("Zotero transport, missing-item, and decoding failures remain non-blocking")
     func zoteroFailuresBecomeTaskWarnings() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "meta0001")

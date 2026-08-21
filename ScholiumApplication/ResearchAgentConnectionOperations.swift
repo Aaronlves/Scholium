@@ -228,6 +228,7 @@ extension ResearchOperations {
 extension WorkspaceHandle {
     func startResearchAgentRun(
         _ request: ResearchAgentStartRequest,
+        expectedZoteroBinding: AnalysisZoteroBinding? = nil,
         runIDOverride: UUID? = nil
     ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
         try requireCompleteWorkspace()
@@ -288,6 +289,7 @@ extension WorkspaceHandle {
         let preparation = try await prepareResearchAction(
             execution,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource,
+            expectedZoteroBinding: expectedZoteroBinding,
             runIDOverride: runIDOverride
         )
         guard [ResearchActionRunState.prepared, .awaitingFidelity]
@@ -328,6 +330,14 @@ extension WorkspaceHandle {
             namespace: "agent-start-run",
             request: request
         )
+        let requestFingerprint = try Self.agentStartRequestFingerprint(request)
+        let requestedBinding = try creation.source.map {
+            try AnalysisZoteroBinding(
+                noteID: reservedIdentity,
+                library: $0.library,
+                itemKey: $0.itemKey
+            )
+        }
 
         if let existingRun = try await researchAgentConnectionDependencies
             .localResearchExecutionStore.recordIfPresent(id: runID) {
@@ -341,7 +351,54 @@ extension WorkspaceHandle {
                   let target = existingRun.snapshot.actionSnapshot?.target else {
                 throw ResearchActionExecutionContractError.staleResolution
             }
-            return (try await researchActionRun(id: runID), target)
+            if let requestedBinding {
+                try await requireCurrentAgentAnalysisBinding(
+                    runID: runID,
+                    expected: requestedBinding
+                )
+            }
+            let preparation = try await researchActionRun(id: runID)
+            guard [ResearchActionRunState.prepared, .awaitingFidelity]
+                .contains(preparation.state) else {
+                throw ResearchAgentConnectionError.runUnavailable
+            }
+            return (preparation, target)
+        }
+
+        let existingIdentity = try await researchAgentConnectionDependencies
+            .controlStore.identityRecord(
+                vaultID: creation.target.vaultID,
+                relativePath: creation.target.relativePath
+            )
+        if let existingIdentity, existingIdentity.id != reservedIdentity {
+            throw DocumentCreationError.portableIdentityAlreadyExists
+        }
+        if let requestedBinding {
+            let expectedCreation = try LocalAgentAnalysisCreationRecord(
+                triptychID: id,
+                runID: runID,
+                requestFingerprint: requestFingerprint,
+                target: creation.target,
+                reservedIdentityID: reservedIdentity,
+                requestedBinding: requestedBinding
+            )
+            if let existing = try await researchAgentConnectionDependencies
+                .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID) {
+                guard Self.matchesAgentAnalysisCreation(
+                    existing,
+                    expected: expectedCreation
+                ) else {
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                }
+            } else {
+                guard existingIdentity == nil else {
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                }
+                _ = try await researchAgentConnectionDependencies
+                    .localResearchExecutionStore.createAgentAnalysisCreation(
+                        expectedCreation
+                    )
+            }
         }
 
         let managedRequest = try ManagedNoteCreationRequest(
@@ -354,14 +411,7 @@ extension WorkspaceHandle {
             )
         )
         let commit: WorkspaceManagedNoteCommit
-        if let existingIdentity = try await researchAgentConnectionDependencies
-            .controlStore.identityRecord(
-                vaultID: creation.target.vaultID,
-                relativePath: creation.target.relativePath
-            ) {
-            guard existingIdentity.id == reservedIdentity else {
-                throw DocumentCreationError.portableIdentityAlreadyExists
-            }
+        if let existingIdentity {
             let existingDocument = try await repository(
                 vaultID: creation.target.vaultID
             ).load(relativePath: creation.target.relativePath)
@@ -393,17 +443,14 @@ extension WorkspaceHandle {
             fingerprint: commit.document.fingerprint
         )
 
-        if let source = creation.source {
-            let bindings = try await researchAgentConnectionDependencies.controlStore.zoteroBindings()
-            let binding = try AnalysisZoteroBinding(
-                noteID: reservedIdentity,
-                library: source.library,
-                itemKey: source.itemKey
+        if let requestedBinding {
+            try await establishAgentAnalysisBinding(
+                runID: runID,
+                expected: requestedBinding
             )
-            _ = try await setPortableZoteroBinding(
-                binding,
-                expectedRevision: bindings.revision
-            )
+            if let agentStartPostBindingBarrierForTesting {
+                try await agentStartPostBindingBarrierForTesting()
+            }
         }
 
         // Re-enter the existing target-based preparation path. This keeps
@@ -417,18 +464,108 @@ extension WorkspaceHandle {
         )
         return try await startResearchAgentRun(
             existingTargetRequest,
+            expectedZoteroBinding: requestedBinding,
             runIDOverride: runID
         )
+    }
+
+    private func establishAgentAnalysisBinding(
+        runID: UUID,
+        expected: AnalysisZoteroBinding
+    ) async throws {
+        let store = researchAgentConnectionDependencies.localResearchExecutionStore
+        let record = try await store.agentAnalysisCreation(id: runID)
+        guard record.requestedBinding == expected else {
+            throw ResearchAgentConnectionError.newAnalysisReplayConflict
+        }
+        let snapshot = try await researchAgentConnectionDependencies.controlStore
+            .zoteroBindings()
+        let current = snapshot.binding(for: expected.noteID)
+        switch record.bindingState {
+        case .reserved, .retryable:
+            if let current {
+                guard current == expected else {
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                }
+                _ = try await store.advanceAgentAnalysisCreationBinding(
+                    runID: runID,
+                    to: .committed
+                )
+            } else {
+                _ = try await store.advanceAgentAnalysisCreationBinding(
+                    runID: runID,
+                    to: .writing
+                )
+                do {
+                    let result = try await setPortableZoteroBinding(
+                        expected,
+                        expectedRevision: snapshot.revision
+                    )
+                    guard result.snapshot.binding(for: expected.noteID) == expected else {
+                        throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                    }
+                    _ = try await store.advanceAgentAnalysisCreationBinding(
+                        runID: runID,
+                        to: .committed
+                    )
+                } catch TriptychControlError.zoteroBindingsRevisionConflict {
+                    _ = try? await store.advanceAgentAnalysisCreationBinding(
+                        runID: runID,
+                        to: .retryable
+                    )
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                }
+            }
+        case .writing, .committed:
+            guard current == expected else {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            if record.bindingState == .writing {
+                _ = try await store.advanceAgentAnalysisCreationBinding(
+                    runID: runID,
+                    to: .committed
+                )
+            }
+        }
+        try await requireCurrentAgentAnalysisBinding(
+            runID: runID,
+            expected: expected
+        )
+    }
+
+    private func requireCurrentAgentAnalysisBinding(
+        runID: UUID,
+        expected: AnalysisZoteroBinding
+    ) async throws {
+        let record = try await researchAgentConnectionDependencies
+            .localResearchExecutionStore.agentAnalysisCreation(id: runID)
+        let current = try await researchAgentConnectionDependencies.controlStore
+            .zoteroBindings().binding(for: expected.noteID)
+        guard record.requestedBinding == expected,
+              record.bindingState == .committed,
+              current == expected else {
+            throw ResearchAgentConnectionError.newAnalysisReplayConflict
+        }
+    }
+
+    private static func matchesAgentAnalysisCreation(
+        _ existing: LocalAgentAnalysisCreationRecord,
+        expected: LocalAgentAnalysisCreationRecord
+    ) -> Bool {
+        existing.triptychID == expected.triptychID
+            && existing.runID == expected.runID
+            && existing.requestFingerprint == expected.requestFingerprint
+            && existing.target == expected.target
+            && existing.reservedIdentityID == expected.reservedIdentityID
+            && existing.requestedBinding == expected.requestedBinding
     }
 
     private static func agentStartDeterministicID(
         namespace: String,
         request: ResearchAgentStartRequest
     ) throws -> UUID {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         var material = Data((namespace + "\u{0}").utf8)
-        material.append(try encoder.encode(request))
+        material.append(try agentStartCanonicalData(request))
         let digest = DocumentFingerprint(data: material).sha256
         let value = [
             String(digest.prefix(8)),
@@ -438,6 +575,20 @@ extension WorkspaceHandle {
             String(digest.dropFirst(20).prefix(12)),
         ].joined(separator: "-")
         return UUID(uuidString: value)!
+    }
+
+    private static func agentStartRequestFingerprint(
+        _ request: ResearchAgentStartRequest
+    ) throws -> DocumentFingerprint {
+        DocumentFingerprint(data: try agentStartCanonicalData(request))
+    }
+
+    private static func agentStartCanonicalData(
+        _ request: ResearchAgentStartRequest
+    ) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(request)
     }
 
     func validateActiveResearchAgentRun(_ runID: UUID) async throws {
@@ -780,6 +931,7 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
     case secureRandomUnavailable
     case runUnavailable
     case capabilityUnavailable
+    case newAnalysisReplayConflict
 
     public var errorDescription: String? {
         switch self {
@@ -789,6 +941,8 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
             "The Research Run is unavailable, ended, or no longer matches its frozen Action."
         case .capabilityUnavailable:
             "This Research Context channel is not available for the frozen Action."
+        case .newAnalysisReplayConflict:
+            "The Analysis creation request no longer matches its current Zotero relationship. Scholium preserved the newer researcher-owned relationship and refused replay."
         }
     }
 }

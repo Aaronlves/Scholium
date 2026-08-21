@@ -51,11 +51,23 @@ extension ResearchFunctionCoordinator {
     }
 
     func zoteroBibliographicContext(
-        for target: ValidatedFunctionObject
+        for target: ValidatedFunctionObject,
+        expectedBinding: AnalysisZoteroBinding? = nil
     ) async throws -> ZoteroBibliographicContext? {
-        guard target.note.schemaProfile == .analysis,
-              let binding = try await portableTargetZoteroBinding(target) else {
+        guard target.note.schemaProfile == .analysis else {
             return nil
+        }
+        let binding: AnalysisZoteroBinding
+        if let expectedBinding {
+            guard expectedBinding.noteID == target.noteID else {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            binding = expectedBinding
+        } else {
+            guard let current = try await portableTargetZoteroBinding(target) else {
+                return nil
+            }
+            binding = current
         }
         let itemKey = binding.itemKey
         let capturedAt = researchFunctionRecordTimestamp()

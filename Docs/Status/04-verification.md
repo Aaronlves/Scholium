@@ -181,6 +181,28 @@ visual acceptance.
 
 ## Focused Agent-inheritance evidence
 
+On 2026-08-21, independent-review hardening passed 34 Core storage tests, 19
+Agent-start and portable-Record Contract tests, 104 Application/bridge tests,
+and 2 real executable CLI start lifecycles. The disposable fixtures prove that
+exact creation replay preserves a newer researcher Zotero relationship, an
+existing relationship is excluded from an explicit `researcher_provided` Run
+through Record formation, completed and cancelled creation Runs issue no new
+Session, and a UUID-shaped unique Triptych name resolves before UUID fallback.
+They also exercise the request-owned binding phase transitions and structured
+`replay_conflict` response. Documentation authority and the Debug CLI build
+passed. This is local automated evidence, not packaged clean-account or human
+acceptance, and no real research vault was used.
+
+The same tree entered the complete repository gate. Documentation, shipped
+resources, bundle checks, 439 Core tests plus 3 performance tests, 146 Contracts
+tests, 249 Application tests, 13 bridge tests, and 1 architecture measurement
+passed. The gate then stopped in the 652-test App batch on 15 pre-existing
+failures outside this change's App source/test diff: 3 static toolbar assertions
+and 12 Research Record browser fixtures rejected by current schema 11. Later
+symbol, executable-CLI, sandbox bridge, and Release stages therefore did not
+run in that attempt; the two focused executable start lifecycles above remain
+the CLI evidence for this change.
+
 On 2026-08-21, the external Analyze handoff repair passed 40 focused Contracts
 tests, 39 Core storage and Search tests, 101 Application and bridge tests, and
 2 executable standalone-CLI lifecycles with Xcode 27 beta and Swift 6.4. The

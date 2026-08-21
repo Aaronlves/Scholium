@@ -346,6 +346,9 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
     case executionAlreadyCompleted(UUID)
     case executionIdentityMismatch(UUID)
     case completionMismatch(UUID)
+    case agentAnalysisCreationAlreadyExists(UUID)
+    case agentAnalysisCreationNotFound(UUID)
+    case agentAnalysisCreationMismatch(UUID)
     case unsupportedField(String)
     case unsupportedSchemaVersion(Int)
 
@@ -363,6 +366,12 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
             "Research execution \(id.uuidString) does not match its file identity."
         case .completionMismatch(let id):
             "Action completion does not match its prepared run: \(id.uuidString)"
+        case .agentAnalysisCreationAlreadyExists(let id):
+            "Agent Analysis creation \(id.uuidString) already exists with different evidence."
+        case .agentAnalysisCreationNotFound(let id):
+            "Agent Analysis creation \(id.uuidString) was not found."
+        case .agentAnalysisCreationMismatch(let id):
+            "Agent Analysis creation \(id.uuidString) does not match its request-owned evidence."
         case .unsupportedField(let field):
             "The Local Research Execution contains unsupported field \(field)."
         case .unsupportedSchemaVersion(let version):
@@ -376,11 +385,108 @@ public struct LocalResearchExecutionListing: Sendable {
     public let issues: [LocalResearchExecutionStoreIssue]
 }
 
+public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, Sendable {
+    /// The request is durable, but no Zotero binding mutation has begun.
+    case reserved
+    /// A binding mutation crossed its invocation boundary. Replay must inspect
+    /// the authoritative binding and may never issue another write by inference.
+    case writing
+    /// The binding owner proved that the attempted mutation did not commit, so
+    /// an exact retry may begin again after re-reading current authority.
+    case retryable
+    /// The requested binding was read back exactly.
+    case committed
+}
+
+/// Machine-local idempotency evidence for the source-ahead portion of one
+/// Agent-originated Analysis creation. It is not a Run, portable relationship,
+/// or write authority; the portable binding and Note remain independently
+/// authoritative.
+public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let triptychID: UUID
+    public let runID: UUID
+    public let requestFingerprint: DocumentFingerprint
+    public let target: VaultQualifiedNoteID
+    public let reservedIdentityID: UUID
+    public let requestedBinding: AnalysisZoteroBinding
+    public var bindingState: LocalAgentAnalysisCreationBindingState
+
+    public var id: UUID { runID }
+
+    public init(
+        triptychID: UUID,
+        runID: UUID,
+        requestFingerprint: DocumentFingerprint,
+        target: VaultQualifiedNoteID,
+        reservedIdentityID: UUID,
+        requestedBinding: AnalysisZoteroBinding,
+        bindingState: LocalAgentAnalysisCreationBindingState = .reserved
+    ) throws {
+        guard requestedBinding.noteID == reservedIdentityID else {
+            throw LocalResearchExecutionStoreError.agentAnalysisCreationMismatch(runID)
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.triptychID = triptychID
+        self.runID = runID
+        self.requestFingerprint = requestFingerprint
+        self.target = target
+        self.reservedIdentityID = reservedIdentityID
+        self.requestedBinding = requestedBinding
+        self.bindingState = bindingState
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case triptychID = "triptych_id"
+        case runID = "run_id"
+        case requestFingerprint = "request_fingerprint"
+        case target
+        case reservedIdentityID = "reserved_identity_id"
+        case requestedBinding = "requested_binding"
+        case bindingState = "binding_state"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchStoreCodingValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue),
+            onUnknownField: LocalResearchExecutionStoreError.unsupportedField
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw LocalResearchExecutionStoreError.unsupportedSchemaVersion(schemaVersion)
+        }
+        try self.init(
+            triptychID: container.decode(UUID.self, forKey: .triptychID),
+            runID: container.decode(UUID.self, forKey: .runID),
+            requestFingerprint: container.decode(
+                DocumentFingerprint.self,
+                forKey: .requestFingerprint
+            ),
+            target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
+            reservedIdentityID: container.decode(UUID.self, forKey: .reservedIdentityID),
+            requestedBinding: container.decode(
+                AnalysisZoteroBinding.self,
+                forKey: .requestedBinding
+            ),
+            bindingState: container.decode(
+                LocalAgentAnalysisCreationBindingState.self,
+                forKey: .bindingState
+            )
+        )
+    }
+}
+
 
 /// Private per-run execution storage. Each run is isolated so one malformed or
 /// partially synchronized file cannot make unrelated completion state usable.
 public actor LocalResearchExecutionStore {
     private static let maximumExecutionByteCount = 16 * 1024 * 1024
+    private static let agentAnalysisCreationDirectory = "agent-analysis-creations"
 
     public nonisolated let storageURL: URL
     private let triptychID: UUID
@@ -404,7 +510,10 @@ public actor LocalResearchExecutionStore {
             fileMode: 0o600,
             maximumByteCount: Self.maximumExecutionByteCount
         )
-        try storage.ensureDirectories(["critique-handoffs"])
+        try storage.ensureDirectories([
+            "critique-handoffs",
+            Self.agentAnalysisCreationDirectory,
+        ])
         do {
             lock = try AdvisoryFileLock(
                 directory: storage,
@@ -414,7 +523,107 @@ public actor LocalResearchExecutionStore {
             throw LocalResearchExecutionStoreError.unsafeStore(error.localizedDescription)
         }
         try lock.withExclusiveLock {
-            try storage.removeAbandonedStagingFiles(in: [nil, "critique-handoffs"])
+            try storage.removeAbandonedStagingFiles(in: [
+                nil,
+                "critique-handoffs",
+                Self.agentAnalysisCreationDirectory,
+            ])
+        }
+    }
+
+    @discardableResult
+    public func createAgentAnalysisCreation(
+        _ record: LocalAgentAnalysisCreationRecord
+    ) throws -> LocalAgentAnalysisCreationRecord {
+        guard record.triptychID == triptychID else {
+            throw LocalResearchExecutionStoreError.agentAnalysisCreationMismatch(record.id)
+        }
+        return try lock.withExclusiveLock {
+            let (canonicalRecord, data) = try Self.canonicalized(record)
+            do {
+                let readback = try storage.createExclusive(
+                    data,
+                    directory: Self.agentAnalysisCreationDirectory,
+                    fileName: Self.fileName(record.id)
+                )
+                let stored = try Self.decode(
+                    LocalAgentAnalysisCreationRecord.self,
+                    from: readback
+                )
+                guard stored == canonicalRecord else {
+                    throw LocalResearchExecutionStoreError
+                        .agentAnalysisCreationMismatch(record.id)
+                }
+                return stored
+            } catch let error as SecureRecordDirectoryError {
+                if case .alreadyExists = error {
+                    let existing = try readAgentAnalysisCreation(id: record.id)
+                    if existing == canonicalRecord { return existing }
+                    throw LocalResearchExecutionStoreError
+                        .agentAnalysisCreationAlreadyExists(record.id)
+                }
+                throw LocalResearchExecutionStoreError.unsafeStore(
+                    error.localizedDescription
+                )
+            }
+        }
+    }
+
+    public func agentAnalysisCreation(
+        id: UUID
+    ) throws -> LocalAgentAnalysisCreationRecord {
+        try lock.withSharedLock { try readAgentAnalysisCreation(id: id) }
+    }
+
+    public func agentAnalysisCreationIfPresent(
+        id: UUID
+    ) throws -> LocalAgentAnalysisCreationRecord? {
+        try lock.withSharedLock {
+            do { return try readAgentAnalysisCreation(id: id) }
+            catch LocalResearchExecutionStoreError.agentAnalysisCreationNotFound {
+                return nil
+            }
+        }
+    }
+
+    @discardableResult
+    public func advanceAgentAnalysisCreationBinding(
+        runID: UUID,
+        to state: LocalAgentAnalysisCreationBindingState
+    ) throws -> LocalAgentAnalysisCreationRecord {
+        try lock.withExclusiveLock {
+            var record = try readAgentAnalysisCreation(id: runID)
+            let allowed = switch (record.bindingState, state) {
+            case (.reserved, .reserved), (.reserved, .writing),
+                 (.writing, .writing), (.writing, .retryable),
+                 (.writing, .committed),
+                 (.retryable, .retryable), (.retryable, .writing),
+                 (.committed, .committed):
+                true
+            default:
+                false
+            }
+            guard allowed else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(runID)
+            }
+            if record.bindingState == state { return record }
+            record.bindingState = state
+            let (canonicalRecord, data) = try Self.canonicalized(record)
+            let readback = try storage.replace(
+                data,
+                directory: Self.agentAnalysisCreationDirectory,
+                fileName: Self.fileName(runID)
+            )
+            let stored = try Self.decode(
+                LocalAgentAnalysisCreationRecord.self,
+                from: readback
+            )
+            guard stored == canonicalRecord else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(runID)
+            }
+            return stored
         }
     }
 
@@ -1410,6 +1619,34 @@ public actor LocalResearchExecutionStore {
                 throw LocalResearchExecutionStoreError.executionNotFound(id)
             }
             throw LocalResearchExecutionStoreError.unsafeStore(error.localizedDescription)
+        }
+    }
+
+    private func readAgentAnalysisCreation(
+        id: UUID
+    ) throws -> LocalAgentAnalysisCreationRecord {
+        do {
+            let data = try storage.read(
+                directory: Self.agentAnalysisCreationDirectory,
+                fileName: Self.fileName(id)
+            )
+            let record = try Self.decode(
+                LocalAgentAnalysisCreationRecord.self,
+                from: data
+            )
+            guard record.id == id, record.triptychID == triptychID else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(id)
+            }
+            return record
+        } catch let error as SecureRecordDirectoryError {
+            if case .notFound = error {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationNotFound(id)
+            }
+            throw LocalResearchExecutionStoreError.unsafeStore(
+                error.localizedDescription
+            )
         }
     }
 

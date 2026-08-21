@@ -408,6 +408,7 @@ public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
     case sessionExpired = "session_expired"
     case staleProjection = "stale_projection"
     case missingSourceEvidence = "missing_source_evidence"
+    case replayConflict = "replay_conflict"
     case timeout
     case outcomeUnknown = "outcome_unknown"
     case operationFailed = "operation_failed"
@@ -444,7 +445,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 15
+    public static let currentSchemaVersion = 16
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -1166,6 +1167,8 @@ enum LocalAgentBridgeWireCoding {
         case ResearchFunctionContractError.sourceAccessUnavailable(let failure)
             where failure.code == .missingBinding:
             code = .missingSourceEvidence
+        case ResearchAgentConnectionError.newAnalysisReplayConflict:
+            code = .replayConflict
         case LocalAgentBridgeError.timeout: code = .timeout
         case LocalAgentBridgeError.outcomeUnknown: code = .outcomeUnknown
         case LocalAgentBridgeError.unsupportedVersion(_): code = .unsupportedVersion
@@ -1189,6 +1192,8 @@ enum LocalAgentBridgeWireCoding {
             "Authoritative state may already be committed, but the Workspace projection is stale. Do not create or write again; reload, then retry only the exact same idempotent request when instructed."
         case .missingSourceEvidence:
             "Analyze has no valid frozen source route. Provide a current Scholium source, a bound Zotero route, or explicitly start with source_route=researcher_provided."
+        case .replayConflict:
+            "The exact creation request conflicts with the current researcher-owned Zotero relationship. Scholium did not overwrite it; inspect the Analysis and start a new request if appropriate."
         case .timeout: "The bridge operation timed out."
         case .outcomeUnknown:
             "The Agent request outcome is unknown. Query the same request ID before retrying."

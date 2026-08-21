@@ -111,10 +111,11 @@
   Pairing Code for the installed CLI. The CLI also exposes `agent start`, which
   resolves a selected Triptych and current Analysis/Action directly, stores a
   process-bound Session credential locally, and requires no Pairing Code.
-  A UUID selector goes directly to Application validation without a CLI-side
-  registry lookup. First use creates and validates the current-user-only CLI
-  home and Session directory. Both routes use the same protected Session for
-  subsequent operations.
+  A healthy CLI registry resolves UUID or unique-name selectors, including a
+  UUID-shaped name; if that projection is absent or lacks a UUID, Application
+  validates the UUID directly. First use creates and validates the current-user-
+  only CLI home and Session directory. Both routes use the same protected
+  Session for subsequent operations.
 - `agent start` additionally accepts the strict Analyze-only `new_analysis`
   shape. It supplies one exact path and typed Analysis creation metadata, with
   either an explicit Zotero library/item relationship or the
@@ -126,11 +127,14 @@
   is available when starting Analyze from an existing Analysis.
   The complete request owns deterministic reserved Note and Run identities:
   exact replay resumes the same unfinished Run with a replacement Session,
-  while changed input cannot reuse the committed path. A stale derived
-  projection preserves the source/identity commit and returns a structured
-  non-duplication recovery result.
-- Bridge failures distinguish stale projection, missing source evidence,
-  expired Session, permission refusal, timeout, and outcome unknown. App
+  while changed input, a terminal Run, or a changed researcher-owned Zotero
+  relationship cannot reuse it. A request-owned machine-local creation phase
+  makes a binding write retryable only when the portable owner proved no commit;
+  otherwise replay accepts exact readback or returns `replay_conflict` without
+  writing. A stale derived projection preserves the source/identity commit and
+  returns a structured non-duplication recovery result.
+- Bridge failures distinguish replay conflict, stale projection, missing source
+  evidence, expired Session, permission refusal, timeout, and outcome unknown. App
   restart still invalidates Session authority; Copy New Handoff re-pairs the
   unchanged unfinished Run instead of persisting a bearer credential.
 - Research Context composes current Search, exact Note reads, direct Relations,
@@ -143,6 +147,9 @@
   access. The Run freezes bounded Zotero bibliographic context and the optional
   adapter; the external Agent may retrieve the paper through its own Zotero/MCP
   capability, while Scholium does not proxy or cache paper content.
+  An explicit `researcher_provided` Run freezes no Zotero context or adapter even
+  when the Analysis retains a portable relationship; it does not alter that
+  relationship.
 - A Run owns one bounded, expandable write set. Every mutation still requires a
   nonreusable operation capability and the exact repository transaction. One
   member's conflict does not widen authority or roll back confirmed siblings.

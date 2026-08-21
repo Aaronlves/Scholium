@@ -86,6 +86,12 @@ struct LocalAgentBridgeTests {
         )
         #expect(expired.code == .sessionExpired)
         #expect(expired.message.contains("copy a new handoff"))
+
+        let replayConflict = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentConnectionError.newAnalysisReplayConflict
+        )
+        #expect(replayConflict.code == .replayConflict)
+        #expect(replayConflict.message.contains("did not overwrite"))
     }
 
     @Test("Bridge Discussion replies use the authenticated Run payload")
