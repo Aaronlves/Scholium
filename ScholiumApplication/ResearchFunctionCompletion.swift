@@ -68,10 +68,10 @@ extension ResearchFunctionCoordinator {
             )
         }
         if snapshot.actionSnapshot?.actionID == .analyze {
-            guard let recommendations = submission.literatureRecommendations,
-                  recommendations.count <= 256 else {
+            guard submission.literatureRecommendations.map({ $0.count <= 256 })
+                    ?? true else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "Analyze completion requires an explicit literatureRecommendations array with at most 256 entries."
+                    "Analyze literatureRecommendations must contain at most 256 entries when supplied."
                 )
             }
         } else if submission.literatureRecommendations != nil {
@@ -1037,13 +1037,13 @@ extension ResearchFunctionCoordinator {
         }
         let recommendationSubmissions: [ResearchLiteratureRecommendationSubmission]
         if actionSnapshot.actionID == .analyze {
-            guard let submitted = completion.literatureRecommendations,
-                  submitted.count <= 256 else {
+            guard completion.literatureRecommendations.map({ $0.count <= 256 })
+                    ?? true else {
                 throw ResearchFunctionContractError.invalidCompletion(
-                    "A completed Analyze run cannot repair a Research Record without its explicit bounded literatureRecommendations report."
+                    "Analyze literatureRecommendations must contain at most 256 entries when supplied."
                 )
             }
-            recommendationSubmissions = submitted
+            recommendationSubmissions = completion.literatureRecommendations ?? []
         } else {
             guard completion.literatureRecommendations == nil else {
                 throw ResearchFunctionContractError.invalidCompletion(

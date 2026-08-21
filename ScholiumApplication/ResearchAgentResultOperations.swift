@@ -334,8 +334,8 @@ extension WorkspaceHandle {
         requiredUnavailableChecks: Set<FidelityCheck>
     ) throws {
         if action.actionID == .analyze {
-            guard let recommendations = submission.literatureRecommendations,
-                  recommendations.count <= 256 else {
+            guard submission.literatureRecommendations.map({ $0.count <= 256 })
+                    ?? true else {
                 throw ResearchAgentResultContractError.invalidSubmission
             }
         } else if submission.literatureRecommendations != nil {

@@ -963,7 +963,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
     public let runID: UUID
     public let confirmationToken: UUID
     public let recordTitle: ResearchRecordTitle
-    /// Legacy and read-only completion evidence. A keyed Develop or Revise
+    /// Read-only completion evidence. A keyed Develop or Revise
     /// omits this value because Scholium reads every frozen target itself.
     public let finalTargetFingerprint: DocumentFingerprint?
     public let finalMaterialFingerprints: [UUID: DocumentFingerprint]

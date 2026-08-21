@@ -51,7 +51,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 switch completion.state {
                 case .awaitingFidelity, .complete, .unverified, .stale:
                     completionRecommendationShapeMatches = completion
-                        .literatureRecommendations.map { $0.count <= 256 } ?? false
+                        .literatureRecommendations.map { $0.count <= 256 } ?? true
                 case .prepared, .cancelled:
                     completionRecommendationShapeMatches = completion
                         .literatureRecommendations == nil

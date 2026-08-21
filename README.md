@@ -5,9 +5,9 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
-**Current public Beta:** [v0.1.0-beta.8](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.8) ·
-[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-v0.1.0-beta.8-macos-arm64.dmg) ·
-[Download the independent CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-CLI-macos.zip)
+**Current public Beta:** [v0.1.0-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.10) ·
+[Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg) ·
+[Download the independent CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip)
 
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,
@@ -229,19 +229,19 @@ presents Scholium beside an Applications alias so installation is one ordinary
 Finder drag.
 
 The current release is
-[v0.1.0-beta.8](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.8):
+[v0.1.0-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.10):
 
-- [Scholium App DMG for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-v0.1.0-beta.8-macos-arm64.dmg)
-  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-v0.1.0-beta.8-macos-arm64.dmg.sha256));
-- [independent Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-CLI-macos.zip)
-  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-CLI-macos.zip.sha256)); and
-- [exact tagged source](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.8).
+- [Scholium App DMG for macOS arm64](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg)
+  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg.sha256));
+- [independent Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip)
+  ([SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip.sha256)); and
+- [exact tagged source](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.10).
 
 After downloading an artifact and its adjacent checksum file into the same
 folder, verify it before opening or installing:
 
 ```bash
-shasum -a 256 -c Scholium-v0.1.0-beta.8-macos-arm64.dmg.sha256
+shasum -a 256 -c Scholium-v0.1.0-beta.10-macos-arm64.dmg.sha256
 shasum -a 256 -c Scholium-CLI-macos.zip.sha256
 ```
 

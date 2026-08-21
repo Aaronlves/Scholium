@@ -1045,7 +1045,7 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("Durable Analyze completion requires and freezes its recommendation report")
+    @Test("Durable Analyze completion freezes supplied recommendations and permits omission")
     func localAnalyzeCompletionRecommendationShapeIsFrozen() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -1131,11 +1131,10 @@ struct ResearchRecordV1StoresTests {
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()
-        #expect(listing.records.isEmpty)
-        #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.record(id: runID)
-        }
+        #expect(listing.records.count == 1)
+        #expect(listing.issues.isEmpty)
+        #expect(try await store.record(id: runID).completion?
+            .literatureRecommendations == nil)
     }
 
     @Test("Permanent-deletion cleanup removes only executions containing the Note")

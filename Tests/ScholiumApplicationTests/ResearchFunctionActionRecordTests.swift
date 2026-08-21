@@ -961,6 +961,44 @@ extension ResearchFunctionOperationsTests {
     }
 
 
+    @Test("Action Analyze may omit optional recommendations and still form one Record")
+    func actionAnalyzeWithoutRecommendationsFinalizesRecord() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .analyze,
+                target: actionNote(analysis)
+            )
+        )
+        let protectedRun = try await handle.research.protectedFunctionRun(
+            id: action.runID
+        )
+        #expect(protectedRun.instructions.contains("omit the optional field"))
+
+        let receipt = try await submitTestAgentResult(
+            for: protectedRun,
+            handle: handle
+        )
+        #expect(receipt.state == .finalized)
+        #expect(receipt.recordFormed)
+        let record = try #require(
+            try await handle.research.finishedResearchRecords(noteID: nil)
+                .first { $0.id == action.runID }
+        )
+        #expect(record.action?.actionID == .analyze)
+        #expect(record.literatureRecommendations.isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Action Analyze records structured recommendations with safe source provenance")
     func actionAnalyzePortableRecordIncludesRecommendations() async throws {
         let fixture = try await ResearchFixture.make()
@@ -991,16 +1029,6 @@ extension ResearchFunctionOperationsTests {
                 isDirectory: true
             )
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
-        let missingRecommendations = try makeTestAgentResultSubmission(
-            for: protectedRun
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await submitTestAgentResult(
-                missingRecommendations,
-                client: client,
-                handle: handle
-            )
-        }
         let privatePath = fixture.analysisSourceURL.path
         let embeddedPrivatePath = "opaque\(privatePath)"
         let leakingRecommendation = try ResearchLiteratureRecommendationSubmission(

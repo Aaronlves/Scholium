@@ -2,8 +2,8 @@
 
 Literature recommendations are optional structured reading leads produced only
 while completing Analyze. Finish all required source passes before deciding
-whether the analyzed source warrants any leads. An accurate Analyze run may
-return an empty array.
+whether the analyzed source warrants any leads. When no lead is grounded, omit
+the optional field; an explicit empty array remains valid.
 
 Recommend an item only when the exact analyzed source supplies a determinate
 reason to inspect it. Appearance in a reference list alone is not sufficient.

@@ -29,11 +29,11 @@ Read `references/method.md` and perform its three passes. Read
 `references/method-fit.md` when the source's philosophical method,
 cross-disciplinary inference, or methodological adequacy materially affects
 the reconstruction or evaluation. Read
-`references/literature-recommendations.md` before completing the required
-`literatureRecommendations` array. Reconstruct concepts and arguments before
-applying critical pressure. Critical testing is part of Analyze, not a separate
-interface mode, but it must never be presented as the source author's own
-position.
+`references/literature-recommendations.md` before deciding whether the source
+grounds any `literatureRecommendations` items. Reconstruct concepts and
+arguments before applying critical pressure. Critical testing is part of
+Analyze, not a separate interface mode, but it must never be presented as the
+source author's own position.
 
 Revise the existing Analysis in place when warranted. Preserve useful uncertainty, competing interpretations, exact locators, and unrelated researcher-authored material. Do not create a new source-centered note when the current Analysis is the designated home.
 
@@ -47,6 +47,6 @@ Report in first person:
 - access limits, uncertain reconstructions, and unresolved objections;
 - the source's operative method and success conditions when method fit was
   material, including implications or connections established by the source;
-- any source-grounded literature recommendations, including an explicit empty
-  array when there are none;
+- any source-grounded literature recommendations; omit the optional field when
+  there are none;
 - any Topic contribution worth considering in a separately authorized Synthesize run.

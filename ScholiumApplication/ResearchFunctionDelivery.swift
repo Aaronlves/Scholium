@@ -347,11 +347,6 @@ extension ResearchFunctionCoordinator {
             ]
             return sections.joined(separator: "\n")
         }
-        if action.id == .analyze {
-            sections += [
-                "For Analyze, literatureRecommendations is required even when empty. Add only literature encountered while analyzing the exact source. Each item requires rawCitation and a source-grounded reason; optional fields are title, authors, year, doi, zoteroItemKey, sourceLocators, and uncertainty. Do not invent IDs, handled state, matches, scores, or categories.",
-            ]
-        }
         sections += [
             "Use the authenticated Agent Run context for the frozen Result Contract. Submit one concise Record Title together with its academic fields and explicit source-use testimony using scholium agent submit-result --run <locator> --from <file|->. The Record Title is a one-line identity for the finished record, not a duplicate academic result or process summary. Scholium supplies current identity, revision, write, and recovery facts; do not transcribe machine identifiers or fingerprints.",
             "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
