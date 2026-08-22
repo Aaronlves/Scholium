@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import ScholiumContracts
+import ScholiumCLIUpdate
 
 extension ScholiumCLI {
     static let productVersion = ScholiumProductIdentity.marketingVersion
@@ -117,13 +118,9 @@ extension ScholiumCLI {
         }
     }
 
-    private struct BuildIdentity {
-        let marketingVersion: String
-        let releaseLabel: String
-        let buildNumber: String
-    }
+    typealias BuildIdentity = CLIReleaseIdentity
 
-    private static func currentBuildIdentity() -> BuildIdentity {
+    static func currentBuildIdentity() -> BuildIdentity {
         for candidate in buildProvenanceCandidates() {
             guard let data = try? Data(contentsOf: candidate),
                   let values = try? PropertyListSerialization.propertyList(
@@ -143,13 +140,16 @@ extension ScholiumCLI {
             return BuildIdentity(
                 marketingVersion: marketingVersion,
                 releaseLabel: releaseLabel,
-                buildNumber: buildNumber
+                buildNumber: buildNumber,
+                packageMode: values["package_mode"] as? String,
+                gitExactTag: values["git_exact_tag"] as? String
             )
         }
         return BuildIdentity(
             marketingVersion: productVersion,
             releaseLabel: "development",
-            buildNumber: "0"
+            buildNumber: "0",
+            packageMode: "development"
         )
     }
 
@@ -179,7 +179,7 @@ extension ScholiumCLI {
         return candidates
     }
 
-    private static func currentExecutableURL() -> URL {
+    static func currentExecutableURL() -> URL {
         var size: UInt32 = 0
         _ = _NSGetExecutablePath(nil, &size)
         if size > 0 {
@@ -279,11 +279,14 @@ extension ScholiumCLI {
             writeError("scholium: \(error.localizedDescription)\n")
             return
         }
+        let commandPath = arguments.first == "update"
+            ? arguments.prefix(1)
+            : arguments.prefix(2)
         let report = CLIErrorReport(
             code: errorCode(for: error),
             message: error.localizedDescription,
-            command: arguments.prefix(2).joined(separator: " "),
-            help: "scholium help " + arguments.prefix(2).joined(separator: " "),
+            command: commandPath.joined(separator: " "),
+            help: "scholium help " + commandPath.joined(separator: " "),
             diagnostic: searchDiagnostic(for: error),
             recovery: (error as? any AgentCommandErrorCodeProviding)?
                 .agentCommandRecovery
@@ -314,6 +317,7 @@ extension ScholiumCLI {
             }
         }
         if error is DecodingError { return "invalid_json" }
+        if let update = error as? CLIUpdateError { return update.code }
         return "operation_failed"
     }
 

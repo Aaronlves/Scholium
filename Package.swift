@@ -45,6 +45,11 @@ let package = Package(
             dependencies: ["ScholiumContracts"],
             path: "ScholiumResearchRecordsFeature"
         ),
+        .target(
+            name: "ScholiumCLIUpdate",
+            dependencies: ["ScholiumContracts"],
+            path: "ScholiumCLIUpdate"
+        ),
         .executableTarget(
             name: "ScholiumApp",
             dependencies: [
@@ -57,7 +62,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "ScholiumCLI",
-            dependencies: ["ScholiumContracts", "ScholiumApplication"],
+            dependencies: ["ScholiumContracts", "ScholiumApplication", "ScholiumCLIUpdate"],
             path: "ScholiumCLI"
         ),
         .testTarget(
@@ -79,6 +84,11 @@ let package = Package(
             name: "ScholiumApplicationTests",
             dependencies: ["ScholiumContracts", "ScholiumApplication"],
             path: "Tests/ScholiumApplicationTests"
+        ),
+        .testTarget(
+            name: "ScholiumCLIUpdateTests",
+            dependencies: ["ScholiumCLIUpdate", "ScholiumContracts"],
+            path: "Tests/ScholiumCLIUpdateTests"
         ),
         .testTarget(
             name: "ScholiumAppTests",

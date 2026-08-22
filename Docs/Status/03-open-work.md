@@ -35,7 +35,9 @@
 
 - Exercise the separately downloaded CLI archive and sandboxed installed App
   in a clean external account, including the copied Agent instruction,
-  user-local installation, and production bridge: pairing, restart
+  user-local installation, explicit CLI self-update from an older disposable
+  install, checksum/provenance rejection, interrupted-replacement recovery,
+  and production bridge: pairing, restart
   invalidation, re-pairing, Research Context, authenticated Discuss turns,
   bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
@@ -110,7 +112,7 @@
 - Exercise the exact mounted DMG, copied App, and expanded CLI archive in a
   clean external account through setup, read/edit/autosave/restart, Search,
   conflict/recovery, Inspector, Agent Action, independent CLI download/install,
-  unavailable integrations, and restoration.
+  CLI self-update, unavailable integrations, and restoration.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Close current packaged performance, remaining distribution-integrity, Agent

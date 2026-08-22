@@ -107,7 +107,8 @@ extension ScholiumCLI {
 
     private static func commandRuleKey(_ arguments: [String]) -> String {
         guard let command = arguments.first else { return "" }
-        if command == "search" || command == "read" || command == "doctor" {
+        if command == "search" || command == "read" || command == "doctor"
+            || command == "update" {
             return command
         }
         if command == "zotero", arguments.count >= 3, arguments[1] == "mcp",
@@ -178,6 +179,10 @@ extension ScholiumCLI {
             ),
             "agent end": .init(pathLength: 2, options: ["--run": .value]),
             "doctor": .init(pathLength: 1, options: format),
+            "update": .init(
+                pathLength: 1,
+                options: ["--check": .flag, "--format": .value]
+            ),
             "vault list": .init(pathLength: 2, options: format),
             "search": .init(
                 pathLength: 1,

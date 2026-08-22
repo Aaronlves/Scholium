@@ -308,6 +308,8 @@ For a source checkout:
 Tools/Scripts/install-cli.sh
 scholium version --format json
 scholium doctor --format json
+scholium update --check
+scholium update
 scholium help action
 scholium action prepare --help
 ```
@@ -323,6 +325,10 @@ SHA-256 returned by `scholium read --format json`.
 Its `install.sh` performs the same
 user-local installation used by the copied Agent instructions without changing
 shell or macOS security configuration.
+An installed CLI can explicitly check the official release with
+`scholium update --check` or install a newer verified release with
+`scholium update`; self-update does not run in the background or edit PATH and
+leaves the existing executable/bundle unchanged when verification fails.
 
 The installed `scholium agent` commands let an external Agent start a Run for a
 selected Triptych or pair with one researcher-created Run, obtain its typed

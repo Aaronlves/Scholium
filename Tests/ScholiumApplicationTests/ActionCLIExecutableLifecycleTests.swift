@@ -1363,6 +1363,10 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(versionObject["build_number"] as? String == "0")
         let help = try cli.run(["action", "prepare", "--help", "--format", "json"])
         #expect(String(decoding: help.stdout, as: UTF8.self).contains("action prepare"))
+        let updateHelp = try cli.run(["help", "update"])
+        #expect(String(decoding: updateHelp.stdout, as: UTF8.self).contains(
+            "scholium update [--check]"
+        ))
         let retiredCommand = ["biblio", "graphy"].joined()
         let rootHelp = try cli.run(["help"])
         let rootHelpText = String(decoding: rootHelp.stdout, as: UTF8.self)
@@ -1386,6 +1390,17 @@ struct ActionCLIExecutableLifecycleTests {
             ["workflow", "validate", "--from", "-", "--format", "json"],
             contains: "Unknown command 'workflow validate'"
         )
+        try cli.expectFailure(
+            ["update", "--format", "yaml"],
+            contains: "Update supports --format text or json"
+        )
+        let updateFailure = try cli.runExpectingFailure(["update", "--format", "json"])
+        let updateReport = try #require(
+            JSONSerialization.jsonObject(with: updateFailure.stderr) as? [String: Any]
+        )
+        #expect(updateReport["code"] as? String == "invalid_installation")
+        #expect(updateReport["command"] as? String == "update")
+        #expect(updateReport["help"] as? String == "scholium help update")
     }
 
     @Test("The real CLI fills Method-improvement revisions from authenticated context and submits one bounded target")

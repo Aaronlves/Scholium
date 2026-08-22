@@ -1,4 +1,5 @@
 import ScholiumContracts
+import ScholiumCLIUpdate
 import Darwin
 import Foundation
 
@@ -58,6 +59,8 @@ struct ScholiumCLI {
                 throw error
             }
             await context.shutdown()
+        case "update":
+            try await runUpdate(Array(arguments.dropFirst()))
         default:
             let context = try await CLIContext.make()
             do {

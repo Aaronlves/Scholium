@@ -49,6 +49,7 @@ library product and cannot be imported by either delivery target.
 ScholiumApp → ScholiumApplication → ScholiumCore → ScholiumContracts
 ScholiumApp → ScholiumResearchRecordsFeature → ScholiumContracts
 ScholiumCLI → ScholiumApplication → ScholiumCore → ScholiumContracts
+ScholiumCLI → ScholiumCLIUpdate → ScholiumContracts
 
 ApplicationBootstrapController (one app-owned storage gate)
 ├── Registry Recovery (preserve the damaged owning registry, then relink)
@@ -756,7 +757,9 @@ executes, installs, updates, or removes a CLI.
 Packaging emits a sandboxed App archive and an independent CLI archive with
 `scholium`, its Core resource bundle, and a user-local installer. Both carry
 matching provenance. The CLI has no App Sandbox or App Group entitlement. The
-App retains sandboxing, user-selected read-write access, app-scoped bookmarks,
+CLI update module owns verified, recoverable self-update and has no App
+authority. The App retains sandboxing, user-selected read-write access,
+app-scoped bookmarks,
 Zotero client access, and loopback server access. One home-relative exception
 exposes only `Library/Application Support/Scholium`; the App has no `.local`
 access or embedded CLI. The copied Agent instruction limits installation to

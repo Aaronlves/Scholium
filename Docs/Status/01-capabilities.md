@@ -297,6 +297,10 @@
   inspects, executes, updates, or removes the CLI. The external Agent may place
   only the release executable and resource bundle under `~/.local/bin`, then
   verifies the required version fields while ignoring unrelated JSON fields.
+  The installed CLI now owns explicit `scholium update --check` and
+  `scholium update` commands; they verify the official archive, checksum,
+  release provenance, architecture, and signature before a recoverable
+  user-local replacement, and never edit PATH or shell profiles.
 - The first-launch preparation prompt uses a CLI read-only Skill-source
   manifest and deterministic workspace-bootstrap candidate. The manifest
   exposes only the installed Core Protocol and enabled Triptych-managed Method

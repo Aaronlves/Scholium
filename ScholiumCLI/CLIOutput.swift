@@ -61,6 +61,7 @@ extension ScholiumCLI {
           scholium help [command [subcommand]] [--format text|json]
           scholium version [--format text|json]
           scholium doctor [--format text|json]
+          scholium update [--check] [--format text|json]
           scholium vault list
           scholium search <query> --vault <selector> [--triptych <selector>]
               [--limit 1...500] [--format text|jsonl]
@@ -410,6 +411,7 @@ private extension ScholiumCLI {
 
     static var commandHelp: [String: String] {
         [
+            "update": "Usage: scholium update [--check] [--format text|json]\n\nChecks the official release checksum, provenance, code signature, and architecture. Without --check, an explicit newer release is installed into ~/.local/bin without changing PATH or shell configuration.",
             "vault list": "Usage: scholium vault list [--format text|json]\n\nLists registered Triptychs and their three role vaults.",
             "search": searchHelp,
             "links incoming": "Usage: scholium links incoming <vault>:<path> --format json",

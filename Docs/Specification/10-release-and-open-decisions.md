@@ -207,6 +207,14 @@ applicable license texts and notices, identify verified architectures without
 overstating universal support, and contain no real vault, Application Support
 state, bookmark, credential, index, absolute private path, or research content.
 
+After installation, the standalone CLI owns the explicit `scholium update
+--check` and `scholium update` lifecycle. The updater uses only the fixed
+official archive and adjacent SHA-256 asset, requires clean exactly tagged
+release provenance, matching architecture, and a valid code signature, and
+replaces the executable and resource bundle as one recoverable transaction.
+Self-update is never background, does not edit PATH or shell profiles, and
+must leave the installed pair unchanged when verification fails.
+
 Ad-hoc signing is not Developer ID signing, notarization, publisher
 verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub
 download through **System Settings → Privacy & Security → Open Anyway** after

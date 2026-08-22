@@ -20,7 +20,7 @@ struct ArchitectureBoundaryTests {
         #expect(compact.contains(#"name:"ScholiumApplication",dependencies:["ScholiumContracts","ScholiumCore"]"#))
         #expect(compact.contains(#"name:"ScholiumResearchRecordsFeature",dependencies:["ScholiumContracts"]"#))
         #expect(compact.contains(#"name:"ScholiumApp",dependencies:["ScholiumContracts","ScholiumApplication","ScholiumResearchRecordsFeature",]"#))
-        #expect(compact.contains(#"name:"ScholiumCLI",dependencies:["ScholiumContracts","ScholiumApplication"]"#))
+        #expect(compact.contains(#"name:"ScholiumCLI",dependencies:["ScholiumContracts","ScholiumApplication","ScholiumCLIUpdate"]"#))
     }
 
     @Test("Shared machine-local storage has one Core primitive owner")

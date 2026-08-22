@@ -253,6 +253,8 @@ PATH／profile 编辑、替代下载来源和 quarantine 修改。应用不会�
 Tools/Scripts/install-cli.sh
 scholium version --format json
 scholium doctor --format json
+scholium update --check
+scholium update
 scholium help action
 scholium action prepare --help
 ```
@@ -263,6 +265,9 @@ CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关�
 
 `Tools/Scripts/package-app.sh` 会生成独立的 `Scholium-CLI-macos.zip`；其中的
 `install.sh` 执行与 Agent 说明一致的用户级安装，不修改 shell 或 macOS 安全配置。
+安装后的 CLI 可显式使用 `scholium update --check` 检查官方发行版，或使用
+`scholium update` 安装经验证的更新；自更新不在后台运行、不修改 PATH，校验失败时保留现有的
+可执行文件与 bundle。
 
 安装后的 `scholium agent` 命令让外部 Agent 通过仅限回环地址的本机桥，与一个由研究者
 创建的 Run 配对、获取结构化上下文、申请有界写入、提交一个结果、继续研究并结束

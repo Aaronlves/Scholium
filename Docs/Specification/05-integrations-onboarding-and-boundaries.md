@@ -195,6 +195,16 @@ fields, runs `doctor`, and reads `scholium help agent`. The App never embeds,
 installs, updates, removes, executes, fingerprints, or reports machine status
 for the CLI.
 
+The standalone CLI owns explicit self-update commands. `scholium update
+--check` downloads the fixed official archive and adjacent SHA-256 file,
+verifies release provenance, architecture, and code signature, and performs no
+installation write. `scholium update` performs the same checks and
+transactionally replaces only the user-local CLI executable and adjacent Core
+resource bundle when the release is newer. It never runs in the background,
+edits PATH or shell profiles, uses `sudo`, or changes the App's installation or
+sandbox boundary;
+an interrupted replacement must recover the previous verified pair.
+
 The same prompt tells the Agent to inspect applicable ancestor and root
 `AGENTS.md` and `CLAUDE.md`. When no applicable `AGENTS.md` exists, the Agent
 uses the CLI's protected workspace-bootstrap candidate and promotes it only
