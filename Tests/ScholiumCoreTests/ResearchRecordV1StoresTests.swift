@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumCore
 import Testing
 
-@Suite("Portable Research Record storage v1/schema 12 and Local Execution schema 18")
+@Suite("Portable Research Record storage and enveloped Local Execution storage")
 struct ResearchRecordV1StoresTests {
     @Test("Portable Record maps a primitive lock failure to its store error")
     func portableStoreMapsPrimitiveLockFailure() throws {
@@ -977,7 +977,7 @@ struct ResearchRecordV1StoresTests {
         }
     }
 
-    @Test("A corrupt execution file is isolated and cannot become current Run state")
+    @Test("An unwrapped execution requires explicit byte-exact archival before deletion")
     func corruptLocalExecutionFailsClosed() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -987,7 +987,8 @@ struct ResearchRecordV1StoresTests {
         let corruptID = UUID()
         let corruptURL = store.storageURL
             .appendingPathComponent(corruptID.uuidString.lowercased() + ".json")
-        try Data("{\"schema_version\":2".utf8).write(to: corruptURL)
+        let legacyBytes = Data("{\"schema_version\":16}".utf8)
+        try legacyBytes.write(to: corruptURL)
 
         let listing = try await store.listing()
         #expect(listing.records.map(\.id) == [good.id])
@@ -995,37 +996,103 @@ struct ResearchRecordV1StoresTests {
         await #expect(throws: Error.self) {
             _ = try await store.record(id: corruptID)
         }
+        let recovery: LocalResearchExecutionRecoveryPreview
+        do {
+            try await store.validateDeletionAuthority()
+            Issue.record("Expected unwrapped local execution recovery.")
+            return
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
+            recovery = preview
+        }
+        #expect(recovery.items == [LocalResearchExecutionRecoveryItem(
+            fileName: corruptURL.lastPathComponent,
+            fingerprint: DocumentFingerprint(data: legacyBytes)
+        )])
+
+        let changedBytes = Data("{\"schema_version\":15}".utf8)
+        try changedBytes.write(to: corruptURL)
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.archiveUnsupportedExecutions(recovery)
+        }
+        #expect(try Data(contentsOf: corruptURL) == changedBytes)
+        let archivedURL = store.storageURL
+            .appendingPathComponent("unsupported-executions", isDirectory: true)
+            .appendingPathComponent(corruptURL.lastPathComponent)
+        #expect(!FileManager.default.fileExists(atPath: archivedURL.path))
+
+        try legacyBytes.write(to: corruptURL)
+        let commit = try await store.archiveUnsupportedExecutions(recovery)
+        #expect(commit.archivedFileNames == [corruptURL.lastPathComponent])
+        #expect(!FileManager.default.fileExists(atPath: corruptURL.path))
+        #expect(try Data(contentsOf: archivedURL) == legacyBytes)
+        try await store.validateDeletionAuthority()
     }
 
-    @Test("Local Execution schema 18 round-trips and rejects retired schema 17")
+    @Test("Stable Local Execution envelope scopes deletion across payload revisions")
     func localExecutionSchemaCutover() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
         let stored = try await store.create(record)
-        #expect(stored.schemaVersion == 18)
+        #expect(stored == record)
 
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
         let currentBytes = try Data(contentsOf: url)
+        let envelope = try JSONDecoder().decode(
+            LocalResearchExecutionEnvelope.self,
+            from: currentBytes
+        )
+        #expect(envelope.formatIdentifier == LocalResearchExecutionEnvelope.formatIdentifier)
+        #expect(envelope.formatRevision == LocalResearchExecutionEnvelope.currentFormatRevision)
+        #expect(envelope.payloadRevision == LocalResearchExecutionEnvelope.currentPayloadRevision)
         #expect(try JSONDecoder().decode(
             LocalResearchExecutionRecord.self,
-            from: currentBytes
+            from: envelope.payload
         ) == stored)
         var object = try #require(
             JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 18)
-        object["schema_version"] = 17
+        object["payload_revision"] = LocalResearchExecutionEnvelope
+            .currentPayloadRevision + 1
         try JSONSerialization.data(withJSONObject: object).write(to: url)
 
         let listing = try await store.listing()
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
+        try await store.validateDeletionAuthority()
+        #expect(try await store.activeExecutionIDs(
+            containing: LocalResearchExecutionStore.noteIDs(in: record)
+        ) == [record.id])
         await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.record(id: record.id)
         }
+    }
+
+    @Test("Terminal envelope permits cleanup without decoding its payload revision")
+    func terminalEnvelopePermitsUnsupportedPayloadCleanup() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let noteID = UUID()
+        let record = try makeLocalExecutionRecord(runID: UUID(), noteID: noteID)
+        _ = try await store.create(record)
+        let url = store.storageURL
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        var envelope = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url))
+                as? [String: Any]
+        )
+        envelope["payload_revision"] = LocalResearchExecutionEnvelope
+            .currentPayloadRevision + 1
+        envelope["authority_state"] = "terminal"
+        try JSONSerialization.data(withJSONObject: envelope).write(to: url)
+
+        try await store.validateDeletionAuthority()
+        #expect(try await store.activeExecutionIDs(containing: [noteID]).isEmpty)
+        #expect(try await store.purgeExecutions(containing: [noteID]) == [record.id])
+        #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
     @Test("Agent Analysis creation binding phases are strict and exact-request idempotent")
@@ -1200,22 +1267,35 @@ struct ResearchRecordV1StoresTests {
         defer { fixture.remove() }
         let store = try fixture.localStore()
         let record = try makeLocalExecutionRecord(runID: UUID())
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
-        var object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(record))
-                as? [String: Any]
-        )
-        object["raw_activity_key"] = "must-never-persist"
+        _ = try await store.create(record)
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
-        try JSONSerialization.data(withJSONObject: object).write(to: url)
+        let currentBytes = try Data(contentsOf: url)
+        var envelope = try #require(
+            JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
+        )
+        let encodedPayload = try #require(envelope["payload"] as? String)
+        let payload = try #require(Data(base64Encoded: encodedPayload))
+        var object = try #require(
+            JSONSerialization.jsonObject(with: payload) as? [String: Any]
+        )
+        object["raw_activity_key"] = "must-never-persist"
+        let modifiedPayload = try JSONSerialization.data(withJSONObject: object)
+        envelope["payload"] = modifiedPayload.base64EncodedString()
+        envelope["payload_fingerprint"] = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(DocumentFingerprint(data: modifiedPayload))
+        )
+        try JSONSerialization.data(withJSONObject: envelope).write(to: url)
 
         let listing = try await store.listing()
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
+        try await store.validateDeletionAuthority()
+        #expect(try await store.activeExecutionIDs(
+            containing: LocalResearchExecutionStore.noteIDs(in: record)
+        ) == [record.id])
         await #expect(throws: LocalResearchExecutionStoreError.self) {
-            try await store.validateStoreHealth()
+            _ = try await store.record(id: record.id)
         }
     }
 
@@ -1292,17 +1372,24 @@ struct ResearchRecordV1StoresTests {
 
         let url = store.storageURL
             .appendingPathComponent(runID.uuidString.lowercased() + ".json")
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .deferredToDate
+        let currentBytes = try Data(contentsOf: url)
+        var envelope = try #require(
+            JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
+        )
+        let encodedPayload = try #require(envelope["payload"] as? String)
+        let payload = try #require(Data(base64Encoded: encodedPayload))
         var object = try #require(
-            JSONSerialization.jsonObject(with: encoder.encode(
-                try await store.record(id: runID)
-            )) as? [String: Any]
+            JSONSerialization.jsonObject(with: payload) as? [String: Any]
         )
         var completion = try #require(object["completion"] as? [String: Any])
         completion.removeValue(forKey: "literatureRecommendations")
         object["completion"] = completion
-        try JSONSerialization.data(withJSONObject: object).write(to: url)
+        let modifiedPayload = try JSONSerialization.data(withJSONObject: object)
+        envelope["payload"] = modifiedPayload.base64EncodedString()
+        envelope["payload_fingerprint"] = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(DocumentFingerprint(data: modifiedPayload))
+        )
+        try JSONSerialization.data(withJSONObject: envelope).write(to: url)
 
         let listing = try await store.listing()
         #expect(listing.records.count == 1)

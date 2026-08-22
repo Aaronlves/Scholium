@@ -129,13 +129,26 @@ extension ResearchFunctionOperationsTests {
             .appendingPathComponent("research-execution-v10", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let data = try Data(contentsOf: executionURL)
-        let payload = try JSONSerialization.jsonObject(with: data)
+        var envelope = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let encodedPayload = try #require(envelope["payload"] as? String)
+        let payloadData = try #require(Data(base64Encoded: encodedPayload))
+        let payload = try JSONSerialization.jsonObject(with: payloadData)
         let legacy = removingSourceReference(
             from: payload,
             runID: preparation.runID
         )
         #expect(legacy.didRemove)
-        try JSONSerialization.data(withJSONObject: legacy.value, options: [.sortedKeys])
+        let modifiedPayload = try JSONSerialization.data(
+            withJSONObject: legacy.value,
+            options: [.sortedKeys]
+        )
+        envelope["payload"] = modifiedPayload.base64EncodedString()
+        envelope["payload_fingerprint"] = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(DocumentFingerprint(data: modifiedPayload))
+        )
+        try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
             .write(to: executionURL, options: .atomic)
 
         runtime = fixture.runtime()

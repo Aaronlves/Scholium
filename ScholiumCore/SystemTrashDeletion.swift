@@ -803,7 +803,7 @@ public actor NoteSystemTrashDeletionCoordinator {
         if let error = await critiqueRegistry.healthError() {
             throw ResearchRecordStoreError.unreadableStore(kind: "Critique", reason: error)
         }
-        try await localExecutionStore?.validateStoreHealth()
+        try await localExecutionStore?.validateDeletionAuthority()
         let records = try await portableRecordStore.listing()
         let discussions = try await portableRecordStore.activeDiscussions()
         let issues = records.issues + discussions.issues

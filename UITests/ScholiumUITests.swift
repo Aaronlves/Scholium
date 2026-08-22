@@ -140,6 +140,11 @@ final class ScholiumUITests: XCTestCase {
         sessionID = UUID()
         try createIsolatedTriptych()
         if name.contains(
+            "testSystemTrashArchivesUnreadableLocalExecutionBeforeConfirmation"
+        ) {
+            try seedUnreadableLocalExecutionForSystemTrash()
+        }
+        if name.contains(
             "testResearchRecordActionTombstoneDeepLinkAndCrossTriptychFocus"
         ) {
             secondTriptychDirectory = try createSecondTriptychFixture()

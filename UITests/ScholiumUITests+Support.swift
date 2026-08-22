@@ -4,6 +4,38 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    var unreadableLocalExecutionFixtureBytes: Data {
+        Data("{\"schema_version\":16}".utf8)
+    }
+
+    func unreadableLocalExecutionFixtureURL() throws -> URL {
+        let triptych = try triptychID(at: triptychDirectory)
+        return homeDirectory
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(triptych.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
+            .appendingPathComponent(
+                "a58b5cb6-6db4-66e9-c160-51f70354e3e9.json"
+            )
+    }
+
+    func archivedUnreadableLocalExecutionFixtureURL() throws -> URL {
+        let source = try unreadableLocalExecutionFixtureURL()
+        return source.deletingLastPathComponent()
+            .appendingPathComponent("unsupported-executions", isDirectory: true)
+            .appendingPathComponent(source.lastPathComponent)
+    }
+
+    func seedUnreadableLocalExecutionForSystemTrash() throws {
+        let url = try unreadableLocalExecutionFixtureURL()
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try unreadableLocalExecutionFixtureBytes.write(to: url)
+    }
+
     @MainActor
     func accessibilityText(of element: XCUIElement) -> String {
         if let value = element.value as? String, !value.isEmpty {

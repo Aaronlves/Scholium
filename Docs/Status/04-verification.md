@@ -85,6 +85,21 @@ override.
   automated evidence, not Finder, multi-window, packaged, assistive-technology,
   or human acceptance.
 
+- On 2026-08-22, the Local Execution envelope and system-Trash recovery cutover
+  passed 38 Record/Local Execution store tests, 10 coordinated deletion tests,
+  and the Application archive-and-retry test. The complete gate passed
+  documentation, resources, 199 Web tests, 448 Core tests, 3 performance tests,
+  and 146 Contracts tests before one old Application fixture read the envelope
+  as the payload. After correcting only that fixture, all 255 Application tests,
+  15 bridge tests, and the architecture measurement passed. The serial App run
+  passed 645 of 646 tests before rejecting one new Chinese use of the retired
+  Trash term; the corrected 8-test localization suite and catalog validator
+  passed. Public-symbol, 10 signed CLI-lifecycle, sandboxed loopback-bridge, and
+  optimized Release-build gates then passed; Release built in 183.24 seconds.
+  The final post-cleanup Release rebuild passed in 190.37 seconds.
+  The focused XCUITest could not start because the approved static
+  `Desktop/TestVaults` fixture was absent, so alert clicking, focus, VoiceOver,
+  and human visual acceptance remain unverified. No research vault was opened.
 - On 2026-08-21, the untagged system-Trash cutover passed 7 coordinated
   deletion tests covering whole multi-Note Record cleanup, active Discussion
   discard, Work-plus-Critique receipts, plan-persistence and post-move crash

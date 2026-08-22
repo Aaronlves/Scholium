@@ -1726,6 +1726,12 @@ final class WindowModel: ObservableObject {
         let notes: [WindowDocumentLocation]
         let request: DiscoveryLibraryRequest?
     }
+
+    private enum SystemTrashRecoveryTarget {
+        case note(NoteMutationTarget)
+        case folder(FolderMutationTarget)
+    }
+
     private(set) var windowSessionID = UUID()
     let nativeWindowID: UUID
 
@@ -1736,6 +1742,8 @@ final class WindowModel: ObservableObject {
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published private(set) var isCreatingNote = false
     @Published private(set) var isMutatingFolder = false
+    private var systemTrashRecoveryTarget: SystemTrashRecoveryTarget?
+    private var systemTrashRecoveryPreviewID: UUID?
     @Published var triptychSettings = TriptychSettings()
     @Published private(set) var triptychPropertiesAreAuthoritative = false
     /// One-shot routing from Actions to one portable active Discussion. The
@@ -5488,10 +5496,18 @@ final class WindowModel: ObservableObject {
         isMutatingFolder = true
         defer { isMutatingFolder = false }
         try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let preview = try await documentController.prepareFolderSystemTrash(
-            inVault: target.vaultID,
-            relativePath: target.relativePath
-        )
+        let preview: SystemTrashDeletionPreview
+        do {
+            preview = try await documentController.prepareFolderSystemTrash(
+                inVault: target.vaultID,
+                relativePath: target.relativePath
+            )
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
+            systemTrashRecoveryTarget = .folder(target)
+            systemTrashRecoveryPreviewID = recovery.id
+            presentationRouter.alert = .localExecutionRecovery(recovery)
+            return
+        }
         presentationRouter.present(.systemTrash(preview))
     }
 
@@ -5715,8 +5731,51 @@ final class WindowModel: ObservableObject {
             stableNoteID: target.stableNoteID,
             revision: expected
         )
-        let preview = try await documentController.prepareSystemTrash(authorizedTarget)
+        let preview: SystemTrashDeletionPreview
+        do {
+            preview = try await documentController.prepareSystemTrash(authorizedTarget)
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
+            systemTrashRecoveryTarget = .note(target)
+            systemTrashRecoveryPreviewID = recovery.id
+            presentationRouter.alert = .localExecutionRecovery(recovery)
+            return
+        }
         presentationRouter.present(.systemTrash(preview))
+    }
+
+    func cancelLocalExecutionRecovery(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) {
+        guard systemTrashRecoveryPreviewID == preview.id else { return }
+        systemTrashRecoveryTarget = nil
+        systemTrashRecoveryPreviewID = nil
+        presentationRouter.alert = nil
+    }
+
+    func archiveLocalExecutionsAndRetrySystemTrash(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) async {
+        guard systemTrashRecoveryPreviewID == preview.id,
+              let retryTarget = systemTrashRecoveryTarget else { return }
+        presentationRouter.alert = nil
+        systemTrashRecoveryTarget = nil
+        systemTrashRecoveryPreviewID = nil
+        do {
+            _ = try await documentController
+                .archiveUnsupportedLocalResearchExecutions(preview)
+            switch retryTarget {
+            case .note(let target):
+                try await prepareNoteSystemTrash(target)
+            case .folder(let target):
+                try await prepareFolderSystemTrash(target)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            presentationRouter.alert = .actionFailure(
+                message: error.localizedDescription
+            )
+        }
     }
 
     func requestCurrentNoteSystemTrash() {

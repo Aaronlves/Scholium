@@ -495,11 +495,25 @@ Preparation flushes every dirty editor in the Triptych, then freezes exact
 vault-qualified paths, stable Note identities, fingerprints, complete folder
 manifests, separately located managed Critiques, affected active Discussion
 IDs, and finished Record IDs plus exact portable-byte fingerprints. A relevant
-active Agent Run, unresolved write recovery, malformed authority store,
+active Agent Run, unresolved write recovery, invalid local-execution authority
+envelope,
 identity ambiguity, source change, folder-manifest change, symlink or special
 file, or Record/Discussion participation change blocks the operation before a
 source move. The confirmation names each finished Record and warns when an
 unaffected Note participates in a Record that will nevertheless be deleted.
+
+Local execution files expose one stable, fingerprint-bound authority envelope
+containing Run, Triptych, complete Note participation, and whether authority is
+live, recovery-required, or terminal. System Trash depends on that envelope,
+not on decoding the evolving private Run payload. An unsupported payload can
+therefore block only a participating Note when its envelope retains live or
+recovery authority; it never makes unrelated Notes undeletable. If an older,
+damaged, or changed file has no valid envelope, Scholium offers one explicit
+**Archive and Continue** alert. Cancel changes nothing. Confirmation copies the
+exact fingerprinted bytes into protected machine-local unsupported-data
+storage, removes only that exact original file, disables that old Run, and
+retries preparation. It never decodes, migrates, repairs, or rewrites those
+bytes and changes no research Note or portable Research Record.
 
 A finished Record is the indivisible provenance object. If any participating
 Note is affected, the complete Record is deleted; participants are never

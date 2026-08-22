@@ -5,6 +5,45 @@ import Testing
 
 @Suite("Coordinated system Trash deletion")
 struct SystemTrashDeletionTests {
+    @Test("Unreadable legacy execution can be archived before Trash preparation retries")
+    func archivesLegacyExecutionBeforePreparingTrash() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        let fileName = UUID().uuidString.lowercased() + ".json"
+        let legacyURL = fixture.localExecutionStore.storageURL
+            .appendingPathComponent(fileName)
+        let legacyBytes = Data("{\"schema_version\":16}".utf8)
+        try legacyBytes.write(to: legacyURL)
+
+        let recovery: LocalResearchExecutionRecoveryPreview
+        do {
+            _ = try await fixture.coordinator().prepareNote(
+                noteID: fixture.firstIdentity.id,
+                vaultID: fixture.vaultID,
+                relativePath: fixture.firstPath,
+                expectedRevision: fixture.firstFingerprint
+            )
+            Issue.record("Expected local execution recovery before Trash preparation.")
+            return
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
+            recovery = preview
+        }
+
+        _ = try await fixture.localExecutionStore.archiveUnsupportedExecutions(recovery)
+        let preview = try await fixture.coordinator().prepareNote(
+            noteID: fixture.firstIdentity.id,
+            vaultID: fixture.vaultID,
+            relativePath: fixture.firstPath,
+            expectedRevision: fixture.firstFingerprint
+        )
+
+        #expect(preview.affectedNoteIDs == [fixture.firstIdentity.id])
+        let archivedURL = fixture.localExecutionStore.storageURL
+            .appendingPathComponent("unsupported-executions", isDirectory: true)
+            .appendingPathComponent(fileName)
+        #expect(try Data(contentsOf: archivedURL) == legacyBytes)
+    }
+
     @Test("One affected participant deletes the whole finished Record")
     func deletesWholeMultiNoteRecordAndDiscardsDiscussion() async throws {
         let fixture = try await Fixture()
@@ -349,6 +388,7 @@ struct SystemTrashDeletionTests {
         let repository: VaultRepository
         let recoveryStore: TriptychMutationRecoveryStore
         let portableRecordStore: PortableResearchRecordStore
+        let localExecutionStore: LocalResearchExecutionStore
         let sharedRecord: PortableResearchRecord
         let unrelatedRecord: PortableResearchRecord
         let activeDiscussion: PortableResearchDiscussion
@@ -437,6 +477,10 @@ struct SystemTrashDeletionTests {
                 applicationSupportURL: support,
                 triptychID: triptychID
             )
+            localExecutionStore = try LocalResearchExecutionStore(
+                applicationSupportURL: support,
+                triptychID: triptychID
+            )
             let firstParticipant = try Self.participant(
                 identity: firstIdentity,
                 vaultID: vaultID,
@@ -512,6 +556,7 @@ struct SystemTrashDeletionTests {
                 controlStore: control,
                 recoveryStore: recoveryStore,
                 portableRecordStore: portableRecordStore,
+                localExecutionStore: localExecutionStore,
                 faultPlan: faultPlan
             )
         }

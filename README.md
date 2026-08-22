@@ -131,10 +131,13 @@ research identity while every mutation still revalidates the current source
 revision and destination before commit.
 
 The public app, CLI, delivery contracts, and records use Action identity.
-Protected Local Execution v3 remains an internal containment, revision,
-completion, conflict, and recovery mechanism. Unsupported pre-production data
-is left byte-unchanged, invisible, unparsed, and nonauthorizing; there is no
-legacy-data product entry or compatibility command.
+Protected Local Execution remains an internal containment, completion,
+conflict, and recovery mechanism. Its stable authority envelope is independent
+of the evolving private payload, so payload changes do not make unrelated Notes
+undeletable. Unsupported payloads remain unparsed and nonauthorizing. If an old
+file lacks a valid envelope during Move to Trash, an explicit confirmation can
+archive its exact bytes inside protected local storage and disable that old Run;
+there is no legacy decoder, migration, or compatibility command.
 
 See [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for exact evidence
 and unresolved human, accessibility, performance, packaging, and release work.

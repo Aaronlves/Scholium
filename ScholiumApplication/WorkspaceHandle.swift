@@ -2278,6 +2278,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    func archiveUnsupportedLocalResearchExecutions(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) async throws -> LocalResearchExecutionArchiveCommit {
+        try requireActive()
+        guard preview.triptychID == services.manifest.id else {
+            throw LocalResearchExecutionStoreError.unsafeStore(
+                "The local execution recovery preview belongs to another Triptych."
+            )
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+        return try await services.localResearchExecutionStore
+            .archiveUnsupportedExecutions(preview)
+    }
+
     func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {

@@ -82,6 +82,9 @@ public protocol DocumentUseCases: Sendable {
     func prepareSystemTrash(
         _ target: NoteMutationTarget
     ) async throws -> SystemTrashDeletionPreview
+    func archiveUnsupportedLocalResearchExecutions(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) async throws -> LocalResearchExecutionArchiveCommit
     func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit>

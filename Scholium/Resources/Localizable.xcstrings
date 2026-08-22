@@ -736,6 +736,16 @@
         }
       }
     },
+    "%lld active Discussion(s) will be discarded without becoming Records." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将丢弃 %lld 个进行中的讨论，且不会将其转为研究记录。"
+          }
+        }
+      }
+    },
     "%lld changes need a decision" : {
       "localizations" : {
         "en" : {
@@ -838,6 +848,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已应用 %lld 个筛选条件"
+          }
+        }
+      }
+    },
+    "%lld finished Research Record(s)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个已完成的研究记录"
           }
         }
       }
@@ -3843,6 +3863,16 @@
         }
       }
     },
+    "Application State Deleted Afterward" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随后删除的应用状态"
+          }
+        }
+      }
+    },
     "Applied with a restorable snapshot." : {
       "localizations" : {
         "en" : {
@@ -3941,6 +3971,16 @@
         }
       }
     },
+    "Archive Unreadable Research Actions?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档无法读取的研究操作？"
+          }
+        }
+      }
+    },
     "Archive Unreadable Saved Searches?" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3957,6 +3997,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "归档无法读取的已存搜索…"
+          }
+        }
+      }
+    },
+    "Archive and Continue" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并继续"
           }
         }
       }
@@ -8321,12 +8371,32 @@
         }
       }
     },
+    "Continue Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续清理"
+          }
+        }
+      }
+    },
     "Continue Deletion" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "继续删除"
+          }
+        }
+      }
+    },
+    "Continue Record Cleanup?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续清理研究记录？"
           }
         }
       }
@@ -9254,22 +9324,6 @@
         }
       }
     },
-    "Create a Note to begin." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Create a Note to begin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建一则笔记以开始。"
-          }
-        }
-      }
-    },
     "Create Research Skill" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9302,6 +9356,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建新脉络"
+          }
+        }
+      }
+    },
+    "Create a Note to begin." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Create a Note to begin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建一则笔记以开始。"
           }
         }
       }
@@ -12803,6 +12873,16 @@
         }
       }
     },
+    "Files and Folders" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件与文件夹"
+          }
+        }
+      }
+    },
     "Filter and sort Library notes" : {
       "localizations" : {
         "en" : {
@@ -12943,6 +13023,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在此笔记中查找…"
+          }
+        }
+      }
+    },
+    "Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder 负责恢复文件，但无法恢复 Scholium 在文件移动成功后删除的已完成研究记录。"
           }
         }
       }
@@ -17127,22 +17217,6 @@
         }
       }
     },
-    "Modify Markdown" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Modify Markdown"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "修改 Markdown"
-          }
-        }
-      }
-    },
     "Modify Complete Source" : {
       "localizations" : {
         "en" : {
@@ -17155,6 +17229,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "修改完整源文件"
+          }
+        }
+      }
+    },
+    "Modify Markdown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Modify Markdown"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改 Markdown"
           }
         }
       }
@@ -17589,6 +17679,16 @@
         }
       }
     },
+    "Move to Trash and Delete Records" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至纸篓并删除研究记录"
+          }
+        }
+      }
+    },
     "Move to Trash…" : {
       "localizations" : {
         "en" : {
@@ -17601,6 +17701,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移至纸篓…"
+          }
+        }
+      }
+    },
+    "Move to macOS Trash?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移至 macOS 纸篓？"
           }
         }
       }
@@ -17633,6 +17743,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已移动的文件夹"
+          }
+        }
+      }
+    },
+    "Moving exact sources and applying the confirmed Record cleanup…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在移动精确来源并执行已确认的研究记录清理…"
           }
         }
       }
@@ -25970,6 +26090,26 @@
         }
       }
     },
+    "Retain Records" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留研究记录"
+          }
+        }
+      }
+    },
+    "Retain Records and Resolve?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留研究记录并解决此项恢复？"
+          }
+        }
+      }
+    },
     "Retries migration of app-owned records without changing the Markdown note." : {
       "localizations" : {
         "en" : {
@@ -27610,6 +27750,22 @@
         }
       }
     },
+    "Scholium cannot determine which Notes are covered by older or damaged local Research Action storage (file count: %lld). Archive the exact files inside Scholium and continue preparing Move to Trash? This disables those old Runs but does not change research Notes or portable Research Records." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Scholium cannot determine which Notes are covered by older or damaged local Research Action storage (file count: %lld). Archive the exact files inside Scholium and continue preparing Move to Trash? This disables those old Runs but does not change research Notes or portable Research Records."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法确定较旧或损坏的本地“研究操作”存储（文件数：%lld）涉及哪些笔记。要在 Scholium 内归档这些文件的原始字节，并继续准备“移到纸篓”吗？这会停用对应的旧运行，但不会更改研究笔记或便携式研究记录。"
+          }
+        }
+      }
+    },
     "Scholium cannot establish its Application Support storage." : {
       "localizations" : {
         "en" : {
@@ -27622,6 +27778,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 无法建立其 Application Support 存储。"
+          }
+        }
+      }
+    },
+    "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, this releases the deletion gate and retains every associated finished Research Record. It neither restores nor removes any file." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法证明原生纸篓移动是否完成。请先在 Finder 中检查所列路径；此操作随后会解除删除门控并保留所有关联的已完成研究记录。它既不会恢复文件，也不会移除文件。"
           }
         }
       }
@@ -28313,6 +28479,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 将只移除此 Mac 上的这个脉络注册，然后重新打开设置。它不会删除或更改“分析”“议题”“写作”或便携式 .scholium 文件夹。"
+          }
+        }
+      }
+    },
+    "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Associated finished Research Records are then deleted one by one with exact-fingerprint checks." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 只会继续已持久化的前向计划。已移至 macOS 纸篓的项目继续由 Finder 控制；随后将通过精确指纹核对逐一删除关联的已完成研究记录。"
           }
         }
       }
@@ -30646,6 +30822,16 @@
         }
       }
     },
+    "System Trash and Record Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统纸篓与研究记录清理"
+          }
+        }
+      }
+    },
     "TECHNICAL DETAILS" : {
       "localizations" : {
         "zh-Hans" : {
@@ -32449,6 +32635,16 @@
         }
       }
     },
+    "These steps are recoverable separately, not atomically. If Record cleanup fails after Finder accepts the files, Scholium keeps a recovery plan and resumes only that confirmed cleanup. External file deletion never triggers this cascade." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些步骤可分别恢复，但并非原子操作。若 Finder 接收文件后研究记录清理失败，Scholium 会保留恢复计划，并只继续已确认的清理。外部文件删除绝不会触发这条级联。"
+          }
+        }
+      }
+    },
     "Thesis" : {
       "localizations" : {
         "zh-Hans" : {
@@ -33461,6 +33657,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此值的源形状或角色允许列表不支持定点编辑。其精确 YAML 仍可在源文本中查看。"
+          }
+        }
+      }
+    },
+    "This whole multi-Note Record will be deleted; these participating Notes are not being moved:" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将删除整条多文档研究记录；以下参与文档不会被移动："
           }
         }
       }
@@ -36405,176 +36611,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "哲学研究的进展并不总能立即显现。概念之间的张力、反例与修订，需要在缓慢而持续的阅读中逐渐成形。"
-          }
-        }
-      }
-    },
-    "%lld active Discussion(s) will be discarded without becoming Records." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将丢弃 %lld 个进行中的讨论，且不会将其转为研究记录。"
-          }
-        }
-      }
-    },
-    "%lld finished Research Record(s)" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 个已完成的研究记录"
-          }
-        }
-      }
-    },
-    "Application State Deleted Afterward" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "随后删除的应用状态"
-          }
-        }
-      }
-    },
-    "Continue Cleanup" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "继续清理"
-          }
-        }
-      }
-    },
-    "Continue Record Cleanup?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "继续清理研究记录？"
-          }
-        }
-      }
-    },
-    "Files and Folders" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件与文件夹"
-          }
-        }
-      }
-    },
-    "Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finder 负责恢复文件，但无法恢复 Scholium 在文件移动成功后删除的已完成研究记录。"
-          }
-        }
-      }
-    },
-    "Move to macOS Trash?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移至 macOS 纸篓？"
-          }
-        }
-      }
-    },
-    "Move to Trash and Delete Records" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移至纸篓并删除研究记录"
-          }
-        }
-      }
-    },
-    "Moving exact sources and applying the confirmed Record cleanup…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在移动精确来源并执行已确认的研究记录清理…"
-          }
-        }
-      }
-    },
-    "Retain Records" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保留研究记录"
-          }
-        }
-      }
-    },
-    "Retain Records and Resolve?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保留研究记录并解决此项恢复？"
-          }
-        }
-      }
-    },
-    "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, this releases the deletion gate and retains every associated finished Research Record. It neither restores nor removes any file." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 无法证明原生纸篓移动是否完成。请先在 Finder 中检查所列路径；此操作随后会解除删除门控并保留所有关联的已完成研究记录。它既不会恢复文件，也不会移除文件。"
-          }
-        }
-      }
-    },
-    "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Associated finished Research Records are then deleted one by one with exact-fingerprint checks." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 只会继续已持久化的前向计划。已移至 macOS 纸篓的项目继续由 Finder 控制；随后将通过精确指纹核对逐一删除关联的已完成研究记录。"
-          }
-        }
-      }
-    },
-    "System Trash and Record Cleanup" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "系统纸篓与研究记录清理"
-          }
-        }
-      }
-    },
-    "These steps are recoverable separately, not atomically. If Record cleanup fails after Finder accepts the files, Scholium keeps a recovery plan and resumes only that confirmed cleanup. External file deletion never triggers this cascade." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这些步骤可分别恢复，但并非原子操作。若 Finder 接收文件后研究记录清理失败，Scholium 会保留恢复计划，并只继续已确认的清理。外部文件删除绝不会触发这条级联。"
-          }
-        }
-      }
-    },
-    "This whole multi-Note Record will be deleted; these participating Notes are not being moved:" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将删除整条多文档研究记录；以下参与文档不会被移动："
           }
         }
       }

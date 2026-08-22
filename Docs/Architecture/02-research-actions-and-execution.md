@@ -257,8 +257,10 @@ complete outer envelope before it writes a frame.
 
 Continue Result schema 3 and authenticated Run Context schema 9 carry the
 closed Material reference states `current`, `changed`, `missing`, and
-`unavailable` plus the typed Researcher State requery requirement. Local
-Execution schema 18 persists the frozen Analyze source route, active child
+`unavailable` plus the typed Researcher State requery requirement. The stable
+Local Execution envelope persists Run and Triptych identity, complete Note
+participation, authority state, payload revision, and payload fingerprint. Its
+current private payload persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
 Context schema 9 also carries optional typed Zotero Integration and Fidelity
@@ -269,9 +271,10 @@ path. The Integration contract contains the exact release-managed System Skill
 and capability contract. Application
 includes it only for an Analysis target with frozen Zotero context and a
 Zotero-capable Platform Action; the adapter contains no authority or transport.
-All prior Result, authenticated Context, and Local Execution schemas fail
-closed instead of interpreting expanded continuation or adapter semantics under
-an old version.
+All prior Result, authenticated Context, and Local Execution payload revisions
+fail closed instead of interpreting expanded continuation or adapter semantics
+under an old revision. A structurally valid Local Execution envelope remains
+readable for deletion scoping without authorizing that unsupported payload.
 
 Opaque reference resolution rechecks Session, Run, scope, current owner, and
 revision. Ending/re-pairing/revocation, Triptych change, deletion, or source
@@ -429,7 +432,7 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from schema-18 Local Execution, exact
+`noteReviewStates`, and `resultArrivals` from current Local Execution payloads, exact
 schema-12 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
@@ -531,8 +534,8 @@ or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
 
 Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution schema-18
-record. Starting **Improve Current Method...** from a Record with one current
+the one current `methodImprovementRun` in its parent Local Execution payload.
+Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
 fingerprint, registration, current primary Method, linked Practices, and every
 editable target revision. It issues a fresh short Pairing Code/Session through
@@ -550,8 +553,9 @@ the expected current revision and reads back the exact source. The writing
 state preserves enough evidence to reconcile interruption after the file
 commit without writing twice.
 
-Completion compacts the active Local Execution to one machine-local terminal
-receipt, deleting prepared instructions, the Bounded Write Set, write ledgers,
+Completion compacts the active Local Execution payload to one machine-local
+terminal receipt and recomputes its stable terminal envelope, deleting prepared
+instructions, the Bounded Write Set, write ledgers,
 extensions, and conflict rows after the portable Record exists. The receipt
 retains only state still needed for idempotency, continuation, or one Method
 improvement rather than a feedback queue or method history. It clears only a comment whose revision/text and

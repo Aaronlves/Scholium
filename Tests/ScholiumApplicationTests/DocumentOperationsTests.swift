@@ -1203,6 +1203,52 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("System Trash archives exact legacy execution bytes and retries preparation")
+    func systemTrashArchivesLegacyExecutionBeforeRetry() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let source = try await handle.documents.load(fixture.targetID)
+        let projected = try #require(
+            try await handle.snapshot().document(id: fixture.targetID)
+        )
+        let stableID = try #require(projected.stableIdentity.resolvedID)
+        let fileName = UUID().uuidString.lowercased() + ".json"
+        let executionDirectory = fixture.applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
+        let legacyURL = executionDirectory.appendingPathComponent(fileName)
+        let legacyBytes = Data("{\"schema_version\":16}".utf8)
+        try legacyBytes.write(to: legacyURL)
+        let target = NoteMutationTarget(
+            documentID: fixture.targetID,
+            stableNoteID: stableID,
+            revision: source.fingerprint
+        )
+
+        let recovery: LocalResearchExecutionRecoveryPreview
+        do {
+            _ = try await handle.documents.prepareSystemTrash(target)
+            Issue.record("Expected local execution recovery.")
+            return
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
+            recovery = preview
+        }
+        let commit = try await handle.documents
+            .archiveUnsupportedLocalResearchExecutions(recovery)
+        let trashPreview = try await handle.documents.prepareSystemTrash(target)
+
+        #expect(commit.archivedFileNames == [fileName])
+        #expect(trashPreview.affectedNoteIDs == [stableID])
+        let archivedURL = executionDirectory
+            .appendingPathComponent("unsupported-executions", isDirectory: true)
+            .appendingPathComponent(fileName)
+        #expect(try Data(contentsOf: archivedURL) == legacyBytes)
+        await runtime.shutdown()
+    }
+
     @Test("Settle stores one portable marker for the latest settled revision")
     func settleStoresLatestPortableMarker() async throws {
         let fixture = try await LifecycleFixture.make()

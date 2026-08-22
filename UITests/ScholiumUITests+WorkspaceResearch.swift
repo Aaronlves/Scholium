@@ -4,6 +4,58 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    @MainActor
+    func testSystemTrashArchivesUnreadableLocalExecutionBeforeConfirmation() throws {
+        let rowID = "scholium.noteRow.QA Autosave A.md"
+        let noteRow = app.descendants(matching: .any)[rowID]
+        XCTAssertTrue(noteRow.waitForExistence(timeout: 10))
+        let noteURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/QA Autosave A.md"
+        )
+        let sourceBefore = try Data(contentsOf: noteURL)
+        let unreadableURL = try unreadableLocalExecutionFixtureURL()
+        let archivedURL = try archivedUnreadableLocalExecutionFixtureURL()
+
+        func requestTrash() {
+            noteRow.rightClick()
+            let menu = app.menus[rowID]
+            XCTAssertTrue(menu.waitForExistence(timeout: 3))
+            let moveToTrash = menu.menuItems["Move to Trash…"]
+            XCTAssertTrue(moveToTrash.waitForExistence(timeout: 3))
+            moveToTrash.click()
+        }
+
+        requestTrash()
+        let recoveryAlert = app.alerts["Archive Unreadable Research Actions?"]
+        XCTAssertTrue(recoveryAlert.waitForExistence(timeout: 5))
+        XCTAssertTrue(recoveryAlert.buttons["Cancel"].exists)
+        XCTAssertTrue(recoveryAlert.buttons["Archive and Continue"].exists)
+        recoveryAlert.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !recoveryAlert.exists })
+        XCTAssertEqual(
+            try Data(contentsOf: unreadableURL),
+            unreadableLocalExecutionFixtureBytes
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archivedURL.path))
+
+        requestTrash()
+        XCTAssertTrue(recoveryAlert.waitForExistence(timeout: 5))
+        recoveryAlert.buttons["Archive and Continue"].click()
+        let trashSheet = app.sheets.firstMatch
+        XCTAssertTrue(trashSheet.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            trashSheet.buttons["Move to Trash and Delete Records"].exists
+        )
+        trashSheet.buttons["Cancel"].click()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: unreadableURL.path))
+        XCTAssertEqual(
+            try Data(contentsOf: archivedURL),
+            unreadableLocalExecutionFixtureBytes
+        )
+        XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
+    }
+
     /// The native divider owns width only. Visibility remains an explicit
     /// toolbar/menu action, so crossing the Inspector's minimum width must not
     /// enter AppKit's interactive collapse tracking path.

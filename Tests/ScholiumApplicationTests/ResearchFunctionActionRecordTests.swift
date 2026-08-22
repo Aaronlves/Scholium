@@ -515,7 +515,14 @@ extension ResearchFunctionOperationsTests {
         )])
         #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.discrepancies.isEmpty)
-        let localSource = String(decoding: localData, as: UTF8.self)
+        let localEnvelope = try #require(
+            JSONSerialization.jsonObject(with: localData) as? [String: Any]
+        )
+        let encodedLocalPayload = try #require(localEnvelope["payload"] as? String)
+        let localPayload = try #require(
+            Data(base64Encoded: encodedLocalPayload)
+        )
+        let localSource = String(decoding: localPayload, as: UTF8.self)
         let portableSource = String(decoding: portableData, as: UTF8.self)
         #expect(localSource.contains("prepared_instructions"))
         for forbidden in [

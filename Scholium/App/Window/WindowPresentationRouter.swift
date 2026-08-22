@@ -46,16 +46,21 @@ struct WindowOverlayRoute: OptionSet, Sendable {
 
 enum WindowAlertRoute: Identifiable, Equatable {
     case actionFailure(message: String)
+    case localExecutionRecovery(LocalResearchExecutionRecoveryPreview)
 
     var id: String {
         switch self {
         case .actionFailure: "action-failure"
+        case .localExecutionRecovery(let preview):
+            "local-execution-recovery:\(preview.id.uuidString.lowercased())"
         }
     }
 
     var message: String {
         switch self {
         case .actionFailure(let message): message
+        case .localExecutionRecovery(let preview):
+            "System Trash requires recovery for unreadable local Research Action storage (file count: \(preview.items.count))."
         }
     }
 }

@@ -88,7 +88,7 @@ cleanup.
 bounded machine-local JSON state. It owns no-follow containment, byte limits,
 atomic replacement, readback, staging/deletion recovery, and the companion
 `AdvisoryFileLock` for cooperating-process serialization. Portable Records,
-compacted local execution receipts, Agent change evidence, and the prewrite
+enveloped local execution payloads, Agent change evidence, and the prewrite
 ledger each retain their
 own schema, path, transaction, recovery, and error semantics, and translate
 primitive failures at that owner boundary. The primitive neither interprets a
@@ -101,8 +101,19 @@ source-and-Record cutover. `prepareNote` and `prepareFolder` bind exact source,
 stable identities, revisions, complete directory manifests, managed Critiques,
 active Discussions, and finished Record byte fingerprints into one immutable
 preview. `WorkspaceHandle` holds the source-mutation lease and flushes every
-Triptych editor before both preparation and execution. Relevant nonterminal
-`LocalResearchExecutionStore` entries fail preflight.
+Triptych editor before both preparation and execution. System Trash reads the
+stable Local Execution envelope rather than its private payload: relevant live
+or recovery-required entries fail preflight, terminal entries remain eligible
+for cleanup, and an unsupported payload cannot block unrelated Notes. A file
+without a valid envelope yields a fingerprint-bound recovery preview.
+
+`LocalResearchExecutionStore.archiveUnsupportedExecutions` is the sole recovery
+mutation for that preview. Under the store lock it rechecks the complete set and
+each exact fingerprint, creates or verifies a byte-identical file in the
+descriptor-contained `unsupported-executions` directory, then removes only the
+matching original. It performs no legacy decode or migration. Application owns
+the standard cancel/destructive alert and retries the original preparation only
+after archival succeeds.
 
 `TriptychMutationRecoveryStore` persists the `SystemTrashDeletionPlan` before
 the first filesystem call. Each source owns an independent receipt and a stable

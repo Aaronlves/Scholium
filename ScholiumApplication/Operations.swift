@@ -260,6 +260,13 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.prepareSystemTrash(target)
     }
 
+    public func archiveUnsupportedLocalResearchExecutions(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) async throws -> LocalResearchExecutionArchiveCommit {
+        let handle = try await reference.requireHandle()
+        return try await handle.archiveUnsupportedLocalResearchExecutions(preview)
+    }
+
     public func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {

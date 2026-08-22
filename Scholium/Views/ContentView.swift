@@ -226,13 +226,33 @@ struct ContentView: View {
             sheetContent(for: route)
         }
         .alert(item: presentedAlert) { alert in
-            Alert(
-                title: Text("Could Not Complete Action"),
-                message: Text(alert.message),
-                dismissButton: .default(Text("Dismiss")) {
-                    appState.presentationRouter.alert = nil
-                }
-            )
+            switch alert {
+            case .actionFailure(let message):
+                Alert(
+                    title: Text("Could Not Complete Action"),
+                    message: Text(message),
+                    dismissButton: .default(Text("Dismiss")) {
+                        appState.presentationRouter.alert = nil
+                    }
+                )
+            case .localExecutionRecovery(let preview):
+                Alert(
+                    title: Text("Archive Unreadable Research Actions?"),
+                    message: Text(
+                        "Scholium cannot determine which Notes are covered by older or damaged local Research Action storage (file count: \(preview.items.count)). Archive the exact files inside Scholium and continue preparing Move to Trash? This disables those old Runs but does not change research Notes or portable Research Records."
+                    ),
+                    primaryButton: .cancel(Text("Cancel")) {
+                        appState.cancelLocalExecutionRecovery(preview)
+                    },
+                    secondaryButton: .destructive(Text("Archive and Continue")) {
+                        Task { @MainActor in
+                            await appState.archiveLocalExecutionsAndRetrySystemTrash(
+                                preview
+                            )
+                        }
+                    }
+                )
+            }
         }
         .task(id: researchActionAvailabilityRefreshIdentity) {
             await appState.refreshResearchActionAvailability()

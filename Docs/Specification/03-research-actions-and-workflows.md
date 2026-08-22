@@ -652,13 +652,16 @@ unreadable source, invalid contract, and unknown write result remain accurate
 Run outcomes. Missing material narrows or blocks the scholarly result; it never
 authorizes fabrication. Manually ending a Run revokes new operations and its
 Session access but cannot destroy an in-flight transaction or recovery duty.
-If presentation invalidation abandons preparation before a complete handoff is
-delivered, a late Run has no Agent Session or mutation authority. Scholium
-attempts its cancellation in the background; cleanup failure alone creates no
-researcher-facing recovery task and never blocks another Action. A Run that
+Abandoned pre-handoff preparation grants no Agent Session or mutation
+authority; background cancellation failure does not block another Action. A Run that
 has been handed off or paired, has begun a write, or retains an unresolved
 recovery duty instead keeps its cancellation and recovery state explicit and
 retryable until authority and transaction outcomes are known.
+
+Machine-local Run persistence separates deletion authority from its evolving
+payload. Unsupported payloads authorize no resumption or projection;
+system-Trash recovery is owned by
+[§6](02-notes-and-file-operations.md#6-system-trash-deletion-and-application-cleanup).
 
 ## 9. Analyses workflow
 

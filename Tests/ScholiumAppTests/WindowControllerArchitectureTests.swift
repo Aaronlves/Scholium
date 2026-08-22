@@ -22,6 +22,11 @@ struct WindowControllerArchitectureTests {
         #expect(appSource.contains("func prepareNoteSystemTrash("))
         #expect(appSource.contains("editorFlushCoordinator.flushAllEditors"))
         #expect(appSource.contains("presentationRouter.present(.systemTrash(preview))"))
+        #expect(appSource.contains(
+            "catch SystemTrashPreparationError.localExecutionRecoveryRequired"
+        ))
+        #expect(appSource.contains("archiveLocalExecutionsAndRetrySystemTrash"))
+        #expect(appSource.contains("archiveUnsupportedLocalResearchExecutions"))
         #expect(appSource.contains("func executeSystemTrash("))
         #expect(appSource.contains("documentController.moveToSystemTrash(preview)"))
         #expect(appSource.contains("synchronizeSystemTrashPresentation(preview)"))

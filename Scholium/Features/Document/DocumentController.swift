@@ -478,6 +478,12 @@ final class DocumentController: ObservableObject {
         try await requireOperations().prepareSystemTrash(target)
     }
 
+    func archiveUnsupportedLocalResearchExecutions(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) async throws -> LocalResearchExecutionArchiveCommit {
+        try await requireOperations().archiveUnsupportedLocalResearchExecutions(preview)
+    }
+
     func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {

@@ -251,7 +251,6 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-
         #expect(driver.contains(
             "application.typeKey(\"f\", modifierFlags: [.command, .shift])"
         ))
@@ -2023,6 +2022,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let content = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
 
         #expect(confirmation.contains("Finder owns file restoration"))
         #expect(confirmation.contains("finished Research Record"))
@@ -2030,6 +2035,9 @@ struct FrontendArchitectureTests {
         #expect(sidebar.contains("requestSystemTrash"))
         #expect(sidebar.contains("requestFolderSystemTrash"))
         #expect(app.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
+        #expect(content.contains("Archive Unreadable Research Actions?"))
+        #expect(content.contains("Archive and Continue"))
+        #expect(content.contains("secondaryButton: .destructive"))
     }
 
     @Test("Attention search lives in the transient Workspace popover without custom close chrome")

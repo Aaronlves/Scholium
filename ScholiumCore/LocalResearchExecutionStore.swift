@@ -5,9 +5,6 @@ import ScholiumContracts
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 18
-
-    public let schemaVersion: Int
     public let triptychID: UUID
     public let snapshot: ResearchFunctionSnapshot
     public var preparedInstructions: String
@@ -175,7 +172,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 "The local execution does not match its frozen Action run."
             )
         }
-        schemaVersion = Self.currentSchemaVersion
         self.triptychID = triptychID
         self.snapshot = snapshot
         self.preparedInstructions = preparedInstructions
@@ -195,7 +191,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion = "schema_version"
         case triptychID = "triptych_id"
         case snapshot
         case preparedInstructions = "prepared_instructions"
@@ -221,10 +216,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
             onUnknownField: LocalResearchExecutionStoreError.unsupportedField
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == Self.currentSchemaVersion else {
-            throw LocalResearchExecutionStoreError.unsupportedSchemaVersion(schemaVersion)
-        }
         try self.init(
             triptychID: container.decode(UUID.self, forKey: .triptychID),
             snapshot: container.decode(ResearchFunctionSnapshot.self, forKey: .snapshot),
@@ -317,6 +308,79 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
     }
 }
 
+/// Stable deletion and recovery authority wrapped around the evolving private
+/// execution journal. System Trash reads only this envelope; payload revision
+/// changes therefore cannot make unrelated Notes undeletable.
+struct LocalResearchExecutionEnvelope: Codable, Hashable, Sendable {
+    static let formatIdentifier = "org.scholium.local-research-execution"
+    static let currentFormatRevision = 1
+    static let currentPayloadRevision = 1
+
+    enum AuthorityState: String, Codable, Hashable, Sendable {
+        case live
+        case recoveryRequired = "recovery_required"
+        case terminal
+
+        var blocksSystemTrash: Bool { self != .terminal }
+    }
+
+    let formatIdentifier: String
+    let formatRevision: Int
+    let payloadRevision: Int
+    let runID: UUID
+    let triptychID: UUID
+    let noteIDs: [UUID]
+    let authorityState: AuthorityState
+    let payloadFingerprint: DocumentFingerprint
+    let payload: Data
+
+    init(record: LocalResearchExecutionRecord, payload: Data) {
+        formatIdentifier = Self.formatIdentifier
+        formatRevision = Self.currentFormatRevision
+        payloadRevision = Self.currentPayloadRevision
+        runID = record.id
+        triptychID = record.triptychID
+        noteIDs = LocalResearchExecutionStore.noteIDs(in: record)
+            .sorted { $0.uuidString < $1.uuidString }
+        authorityState = LocalResearchExecutionStore.authorityState(of: record)
+        payloadFingerprint = DocumentFingerprint(data: payload)
+        self.payload = payload
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case formatIdentifier = "format_identifier"
+        case formatRevision = "format_revision"
+        case payloadRevision = "payload_revision"
+        case runID = "run_id"
+        case triptychID = "triptych_id"
+        case noteIDs = "note_ids"
+        case authorityState = "authority_state"
+        case payloadFingerprint = "payload_fingerprint"
+        case payload
+    }
+
+    init(from decoder: Decoder) throws {
+        try ResearchStoreCodingValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue),
+            onUnknownField: LocalResearchExecutionStoreError.unsupportedField
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formatIdentifier = try container.decode(String.self, forKey: .formatIdentifier)
+        formatRevision = try container.decode(Int.self, forKey: .formatRevision)
+        payloadRevision = try container.decode(Int.self, forKey: .payloadRevision)
+        runID = try container.decode(UUID.self, forKey: .runID)
+        triptychID = try container.decode(UUID.self, forKey: .triptychID)
+        noteIDs = try container.decode([UUID].self, forKey: .noteIDs)
+        authorityState = try container.decode(AuthorityState.self, forKey: .authorityState)
+        payloadFingerprint = try container.decode(
+            DocumentFingerprint.self,
+            forKey: .payloadFingerprint
+        )
+        payload = try container.decode(Data.self, forKey: .payload)
+    }
+}
+
 public struct LocalResearchExecutionStoreIssue: Hashable, Identifiable, Sendable {
     public let location: String
     public let fileName: String
@@ -343,6 +407,7 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
     case agentAnalysisCreationMismatch(UUID)
     case unsupportedField(String)
     case unsupportedSchemaVersion(Int)
+    case unsupportedPayloadRevision(Int)
 
     public var errorDescription: String? {
         switch self {
@@ -368,6 +433,8 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
             "The Local Research Execution contains unsupported field \(field)."
         case .unsupportedSchemaVersion(let version):
             "The Local Research Execution schema version \(version) is unsupported."
+        case .unsupportedPayloadRevision(let revision):
+            "The Local Research Execution payload revision \(revision) is unsupported."
         }
     }
 }
@@ -375,6 +442,23 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
 public struct LocalResearchExecutionListing: Sendable {
     public let records: [LocalResearchExecutionRecord]
     public let issues: [LocalResearchExecutionStoreIssue]
+}
+
+private struct LocalResearchExecutionAuthorityEntry: Hashable, Sendable {
+    let runID: UUID
+    let noteIDs: Set<UUID>
+    let authorityState: LocalResearchExecutionEnvelope.AuthorityState
+}
+
+private struct LocalResearchExecutionStoreSnapshot: Sendable {
+    let records: [LocalResearchExecutionRecord]
+    let authorities: [LocalResearchExecutionAuthorityEntry]
+    let issues: [LocalResearchExecutionStoreIssue]
+    let recoveryItems: [LocalResearchExecutionRecoveryItem]
+
+    var publicListing: LocalResearchExecutionListing {
+        LocalResearchExecutionListing(records: records, issues: issues)
+    }
 }
 
 public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, Sendable {
@@ -532,8 +616,16 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
 /// Private per-run execution storage. Each run is isolated so one malformed or
 /// partially synchronized file cannot make unrelated completion state usable.
 public actor LocalResearchExecutionStore {
-    private static let maximumExecutionByteCount = 16 * 1024 * 1024
+    private static let maximumPayloadByteCount = 16 * 1024 * 1024
+    /// Allows the existing payload boundary plus JSON base64 and envelope
+    /// overhead; it does not broaden the decoded Run payload limit.
+    private static let maximumStoredByteCount = 24 * 1024 * 1024
+    /// Existing physical layout epoch. Kept in one owner so record semantics
+    /// never depend on parsing a version from a directory or lock-file name.
+    private static let storageDirectoryName = "research-execution-v10"
+    private static let coordinationLockName = "execution-v10.lock"
     private static let agentAnalysisCreationDirectory = "agent-analysis-creations"
+    private static let unsupportedExecutionDirectory = "unsupported-executions"
 
     public nonisolated let storageURL: URL
     private let triptychID: UUID
@@ -545,26 +637,27 @@ public actor LocalResearchExecutionStore {
         storageURL = applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v10", isDirectory: true)
+            .appendingPathComponent(Self.storageDirectoryName, isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: applicationSupportURL,
             components: [
                 "Triptychs",
                 triptychID.uuidString,
-                "research-execution-v10",
+                Self.storageDirectoryName,
             ],
             directoryMode: 0o700,
             fileMode: 0o600,
-            maximumByteCount: Self.maximumExecutionByteCount
+            maximumByteCount: Self.maximumStoredByteCount
         )
         try storage.ensureDirectories([
             "critique-handoffs",
             Self.agentAnalysisCreationDirectory,
+            Self.unsupportedExecutionDirectory,
         ])
         do {
             lock = try AdvisoryFileLock(
                 directory: storage,
-                fileName: "execution-v10.lock"
+                fileName: Self.coordinationLockName
             )
         } catch {
             throw LocalResearchExecutionStoreError.unsafeStore(error.localizedDescription)
@@ -574,6 +667,7 @@ public actor LocalResearchExecutionStore {
                 nil,
                 "critique-handoffs",
                 Self.agentAnalysisCreationDirectory,
+                Self.unsupportedExecutionDirectory,
             ])
         }
     }
@@ -774,17 +868,18 @@ public actor LocalResearchExecutionStore {
             throw LocalResearchExecutionStoreError.executionIdentityMismatch(record.id)
         }
         return try lock.withExclusiveLock {
-            let (canonicalRecord, data) = try Self.canonicalized(record)
+            let (canonicalRecord, data) = try Self.canonicalizedExecution(record)
             do {
                 let readback = try storage.createExclusive(
                     data,
                     directory: nil,
                     fileName: Self.fileName(record.id)
                 )
-                let stored = try Self.decode(
-                    LocalResearchExecutionRecord.self,
-                    from: readback
-                )
+                let stored = try Self.decodeExecution(
+                    from: readback,
+                    fileName: Self.fileName(record.id),
+                    triptychID: triptychID
+                ).record
                 guard stored == canonicalRecord else {
                     throw LocalResearchExecutionStoreError.executionIdentityMismatch(record.id)
                 }
@@ -1380,7 +1475,7 @@ public actor LocalResearchExecutionStore {
 
     public func listing() throws -> LocalResearchExecutionListing {
         try lock.withSharedLock {
-            try readListing()
+            try readStoreSnapshot().publicListing
         }
     }
 
@@ -1502,14 +1597,77 @@ public actor LocalResearchExecutionStore {
     }
 
 
-    /// Fails closed before a destructive note transaction begins. A malformed
-    /// execution file may contain note-specific private state, so Scholium may
-    /// not claim permanent deletion while leaving it uninterpreted.
-    public func validateStoreHealth() throws {
-        let listing = try listing()
-        guard listing.issues.isEmpty else {
+    /// Verifies the stable authority envelope needed to scope System Trash.
+    /// An unsupported payload remains visible in diagnostics but does not make
+    /// unrelated Note deletion depend on its private journal revision.
+    public func validateDeletionAuthority() throws {
+        let snapshot = try lock.withSharedLock { try readStoreSnapshot() }
+        guard snapshot.recoveryItems.isEmpty else {
+            throw SystemTrashPreparationError.localExecutionRecoveryRequired(
+                LocalResearchExecutionRecoveryPreview(
+                    triptychID: triptychID,
+                    items: snapshot.recoveryItems
+                )
+            )
+        }
+    }
+
+    /// Moves exact opaque bytes into protected machine-local archival storage.
+    /// Confirmation is fingerprint-bound and stale previews fail closed.
+    public func archiveUnsupportedExecutions(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) throws -> LocalResearchExecutionArchiveCommit {
+        guard preview.triptychID == triptychID, !preview.items.isEmpty else {
             throw LocalResearchExecutionStoreError.unsafeStore(
-                listing.issues.map(\.id).joined(separator: ", ")
+                "The local execution recovery preview does not match this Triptych."
+            )
+        }
+        return try lock.withExclusiveLock {
+            let current = try readStoreSnapshot()
+            guard current.recoveryItems == preview.items else {
+                throw LocalResearchExecutionStoreError.unsafeStore(
+                    "The unreadable local execution files changed before archival."
+                )
+            }
+            var archived: [String] = []
+            for item in preview.items {
+                let bytes = try storage.read(directory: nil, fileName: item.fileName)
+                guard DocumentFingerprint(data: bytes) == item.fingerprint else {
+                    throw LocalResearchExecutionStoreError.unsafeStore(
+                        "\(item.fileName) changed before archival."
+                    )
+                }
+                if let existing = try storage.readIfPresent(
+                    directory: Self.unsupportedExecutionDirectory,
+                    fileName: item.fileName
+                ) {
+                    guard existing == bytes else {
+                        throw LocalResearchExecutionStoreError.unsafeStore(
+                            "The unsupported execution archive already contains different bytes for \(item.fileName)."
+                        )
+                    }
+                } else {
+                    let readback = try storage.createExclusive(
+                        bytes,
+                        directory: Self.unsupportedExecutionDirectory,
+                        fileName: item.fileName
+                    )
+                    guard readback == bytes else {
+                        throw LocalResearchExecutionStoreError.unsafeStore(
+                            "The archived bytes for \(item.fileName) did not match."
+                        )
+                    }
+                }
+                try storage.remove(
+                    directory: nil,
+                    fileName: item.fileName,
+                    expected: bytes
+                )
+                archived.append(item.fileName)
+            }
+            return LocalResearchExecutionArchiveCommit(
+                previewID: preview.id,
+                archivedFileNames: archived
             )
         }
     }
@@ -1518,15 +1676,11 @@ public actor LocalResearchExecutionStore {
     /// supplied Notes.
     public func executionIDs(containing noteIDs: Set<UUID>) throws -> [UUID] {
         guard !noteIDs.isEmpty else { return [] }
-        let listing = try listing()
-        guard listing.issues.isEmpty else {
-            throw LocalResearchExecutionStoreError.unsafeStore(
-                listing.issues.map(\.id).joined(separator: ", ")
-            )
-        }
-        return listing.records
-            .filter { !Self.noteIDs(in: $0).isDisjoint(with: noteIDs) }
-            .map(\.id)
+        let snapshot = try lock.withSharedLock { try readStoreSnapshot() }
+        try requireValidDeletionAuthority(snapshot)
+        return snapshot.authorities
+            .filter { !$0.noteIDs.isDisjoint(with: noteIDs) }
+            .map(\.runID)
             .sorted { $0.uuidString < $1.uuidString }
     }
 
@@ -1536,18 +1690,14 @@ public actor LocalResearchExecutionStore {
     /// hide live authority while the agent can still race the saved revision.
     public func activeExecutionIDs(containing noteIDs: Set<UUID>) throws -> [UUID] {
         guard !noteIDs.isEmpty else { return [] }
-        let listing = try listing()
-        guard listing.issues.isEmpty else {
-            throw LocalResearchExecutionStoreError.unsafeStore(
-                listing.issues.map(\.id).joined(separator: ", ")
-            )
-        }
-        return listing.records
+        let snapshot = try lock.withSharedLock { try readStoreSnapshot() }
+        try requireValidDeletionAuthority(snapshot)
+        return snapshot.authorities
             .filter {
-                !Self.noteIDs(in: $0).isDisjoint(with: noteIDs)
-                    && Self.hasLiveAuthority($0)
+                !$0.noteIDs.isDisjoint(with: noteIDs)
+                    && $0.authorityState.blocksSystemTrash
             }
-            .map(\.id)
+            .map(\.runID)
             .sorted { $0.uuidString < $1.uuidString }
     }
 
@@ -1557,15 +1707,11 @@ public actor LocalResearchExecutionStore {
     public func purgeExecutions(containing noteIDs: Set<UUID>) throws -> [UUID] {
         guard !noteIDs.isEmpty else { return [] }
         return try lock.withExclusiveLock {
-            let listing = try readListing()
-            guard listing.issues.isEmpty else {
-                throw LocalResearchExecutionStoreError.unsafeStore(
-                    listing.issues.map(\.id).joined(separator: ", ")
-                )
-            }
-            let removed = listing.records
-                .filter { !Self.noteIDs(in: $0).isDisjoint(with: noteIDs) }
-                .map(\.id)
+            let snapshot = try readStoreSnapshot()
+            try requireValidDeletionAuthority(snapshot)
+            let removed = snapshot.authorities
+                .filter { !$0.noteIDs.isDisjoint(with: noteIDs) }
+                .map(\.runID)
                 .sorted { $0.uuidString < $1.uuidString }
             for runID in removed {
                 try storage.removeIfPresent(
@@ -1577,27 +1723,38 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    private static func hasLiveAuthority(_ record: LocalResearchExecutionRecord) -> Bool {
-        guard let completion = record.completion else { return true }
-        if completion.state == .prepared { return true }
+    fileprivate static func authorityState(
+        of record: LocalResearchExecutionRecord
+    ) -> LocalResearchExecutionEnvelope.AuthorityState {
+        if record.boundedWriteSet.entries.contains(where: {
+            $0.state == .recoveryRequired
+        }) || record.documentWriteRecords.contains(where: {
+            $0.state == .recoveryRequired
+        }) || record.zoteroBindingWriteRecords.contains(where: {
+            $0.state == .recoveryRequired
+        }) {
+            return .recoveryRequired
+        }
+        guard let completion = record.completion else { return .live }
+        if completion.state == .prepared { return .live }
         if record.boundedWriteSet.entries.contains(where: {
             [.writing, .recoveryRequired].contains($0.state)
-        }) { return true }
+        }) { return .live }
         if record.documentWriteRecords.contains(where: {
             [.writing, .recoveryRequired].contains($0.state)
-        }) { return true }
+        }) { return .live }
         if record.zoteroBindingWriteRecords.contains(where: {
             [.writing, .recoveryRequired].contains($0.state)
-        }) { return true }
+        }) { return .live }
         if record.writeSetExtensionRecords.contains(where: {
             [.pending, .allowedSubset].contains($0.state)
-        }) { return true }
+        }) { return .live }
         if record.continuationRequests.contains(where: {
             [.pending, .allowed, .created].contains($0.state)
-        }) { return true }
+        }) { return .live }
         if let state = record.methodImprovementRun?.state,
-           [.prepared, .writing].contains(state) { return true }
-        return false
+           [.prepared, .writing].contains(state) { return .live }
+        return .terminal
     }
 
     /// Stages the one canonical Agent/Scholium result payload on its Run.
@@ -1786,14 +1943,11 @@ public actor LocalResearchExecutionStore {
     private func readRecord(id: UUID) throws -> LocalResearchExecutionRecord {
         do {
             let data = try storage.read(directory: nil, fileName: Self.fileName(id))
-            let record = try Self.decode(
-                LocalResearchExecutionRecord.self,
-                from: data
-            )
-            guard record.id == id, record.triptychID == triptychID else {
-                throw LocalResearchExecutionStoreError.executionIdentityMismatch(id)
-            }
-            return record
+            return try Self.decodeExecution(
+                from: data,
+                fileName: Self.fileName(id),
+                triptychID: triptychID
+            ).record
         } catch let error as SecureRecordDirectoryError {
             if case .notFound = error {
                 throw LocalResearchExecutionStoreError.executionNotFound(id)
@@ -1830,38 +1984,78 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    private func readListing() throws -> LocalResearchExecutionListing {
+    private func readStoreSnapshot() throws -> LocalResearchExecutionStoreSnapshot {
         var records: [LocalResearchExecutionRecord] = []
+        var authorities: [LocalResearchExecutionAuthorityEntry] = []
         var issues: [LocalResearchExecutionStoreIssue] = []
+        var recoveryItems: [LocalResearchExecutionRecoveryItem] = []
         for fileName in try storage.fileNames(in: nil)
             where fileName.hasSuffix(".json") {
+            let data: Data
             do {
-                let data = try storage.read(directory: nil, fileName: fileName)
-                let record = try Self.decode(
-                    LocalResearchExecutionRecord.self,
-                    from: data
+                data = try storage.read(directory: nil, fileName: fileName)
+            } catch {
+                throw LocalResearchExecutionStoreError.unsafeStore(
+                    error.localizedDescription
                 )
-                guard record.triptychID == triptychID,
-                      fileName == Self.fileName(record.id) else {
-                    throw LocalResearchExecutionStoreError.executionIdentityMismatch(record.id)
+            }
+            do {
+                let envelope = try Self.decodeEnvelope(
+                    from: data,
+                    fileName: fileName,
+                    triptychID: triptychID
+                )
+                authorities.append(LocalResearchExecutionAuthorityEntry(
+                    runID: envelope.runID,
+                    noteIDs: Set(envelope.noteIDs),
+                    authorityState: envelope.authorityState
+                ))
+                do {
+                    let decoded = try Self.decodeCurrentPayload(from: envelope)
+                    try Self.validatePayload(decoded, matches: envelope)
+                    records.append(decoded)
+                } catch LocalResearchExecutionStoreError.executionIdentityMismatch(_) {
+                    authorities.removeLast()
+                    issues.append(LocalResearchExecutionStoreIssue(
+                        location: Self.storageDirectoryName,
+                        fileName: fileName,
+                        reason: LocalResearchExecutionStoreError
+                            .executionIdentityMismatch(envelope.runID)
+                            .localizedDescription
+                    ))
+                    recoveryItems.append(LocalResearchExecutionRecoveryItem(
+                        fileName: fileName,
+                        fingerprint: DocumentFingerprint(data: data)
+                    ))
+                } catch {
+                    issues.append(LocalResearchExecutionStoreIssue(
+                        location: Self.storageDirectoryName,
+                        fileName: fileName,
+                        reason: error.localizedDescription
+                    ))
                 }
-                records.append(record)
             } catch {
                 issues.append(LocalResearchExecutionStoreIssue(
-                    location: "research-execution-v10",
+                    location: Self.storageDirectoryName,
                     fileName: fileName,
                     reason: error.localizedDescription
                 ))
+                recoveryItems.append(LocalResearchExecutionRecoveryItem(
+                    fileName: fileName,
+                    fingerprint: DocumentFingerprint(data: data)
+                ))
             }
         }
-        return LocalResearchExecutionListing(
+        return LocalResearchExecutionStoreSnapshot(
             records: records.sorted {
                 if $0.snapshot.preparedAt != $1.snapshot.preparedAt {
                     return $0.snapshot.preparedAt > $1.snapshot.preparedAt
                 }
                 return $0.id.uuidString < $1.id.uuidString
             },
-            issues: issues.sorted { $0.id < $1.id }
+            authorities: authorities.sorted { $0.runID.uuidString < $1.runID.uuidString },
+            issues: issues.sorted { $0.id < $1.id },
+            recoveryItems: recoveryItems.sorted { $0.fileName < $1.fileName }
         )
     }
 
@@ -1875,16 +2069,17 @@ public actor LocalResearchExecutionStore {
             let original = record
             try body(&record)
             if record == original { return original }
-            let (canonicalRecord, data) = try Self.canonicalized(record)
+            let (canonicalRecord, data) = try Self.canonicalizedExecution(record)
             let readback = try storage.replace(
                 data,
                 directory: nil,
                 fileName: Self.fileName(id)
             )
-            let stored = try Self.decode(
-                LocalResearchExecutionRecord.self,
-                from: readback
-            )
+            let stored = try Self.decodeExecution(
+                from: readback,
+                fileName: Self.fileName(id),
+                triptychID: triptychID
+            ).record
             guard stored == canonicalRecord else {
                 throw LocalResearchExecutionStoreError.executionIdentityMismatch(id)
             }
@@ -1936,7 +2131,7 @@ public actor LocalResearchExecutionStore {
         return Set(replacement.fidelityOutcomes.map(\.check)).isSubset(of: allowed)
     }
 
-    private nonisolated static func noteIDs(
+    nonisolated static func noteIDs(
         in record: LocalResearchExecutionRecord
     ) -> Set<UUID> {
         let request = record.snapshot.request
@@ -1979,6 +2174,108 @@ public actor LocalResearchExecutionStore {
 
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         try makeDecoder().decode(type, from: data)
+    }
+
+    private static func decodeEnvelope(
+        from data: Data,
+        fileName: String,
+        triptychID: UUID
+    ) throws -> LocalResearchExecutionEnvelope {
+        let envelope = try decode(LocalResearchExecutionEnvelope.self, from: data)
+        guard envelope.formatIdentifier == LocalResearchExecutionEnvelope.formatIdentifier,
+              envelope.formatRevision == LocalResearchExecutionEnvelope.currentFormatRevision,
+              envelope.triptychID == triptychID,
+              fileName == Self.fileName(envelope.runID),
+              !envelope.noteIDs.isEmpty,
+              envelope.noteIDs == envelope.noteIDs.sorted(by: {
+                  $0.uuidString < $1.uuidString
+              }),
+              Set(envelope.noteIDs).count == envelope.noteIDs.count,
+              envelope.payload.count <= maximumPayloadByteCount,
+              envelope.payloadFingerprint == DocumentFingerprint(data: envelope.payload) else {
+            throw LocalResearchExecutionStoreError.unsafeStore(
+                "\(fileName) has an invalid local execution authority envelope."
+            )
+        }
+        return envelope
+    }
+
+    private static func decodeCurrentPayload(
+        from envelope: LocalResearchExecutionEnvelope
+    ) throws -> LocalResearchExecutionRecord {
+        guard envelope.payloadRevision
+                == LocalResearchExecutionEnvelope.currentPayloadRevision else {
+            throw LocalResearchExecutionStoreError.unsupportedPayloadRevision(
+                envelope.payloadRevision
+            )
+        }
+        return try decode(LocalResearchExecutionRecord.self, from: envelope.payload)
+    }
+
+    private static func validatePayload(
+        _ record: LocalResearchExecutionRecord,
+        matches envelope: LocalResearchExecutionEnvelope
+    ) throws {
+        guard record.id == envelope.runID,
+              record.triptychID == envelope.triptychID,
+              noteIDs(in: record) == Set(envelope.noteIDs),
+              authorityState(of: record) == envelope.authorityState else {
+            throw LocalResearchExecutionStoreError.executionIdentityMismatch(envelope.runID)
+        }
+    }
+
+    private static func decodeExecution(
+        from data: Data,
+        fileName: String,
+        triptychID: UUID
+    ) throws -> (
+        envelope: LocalResearchExecutionEnvelope,
+        record: LocalResearchExecutionRecord
+    ) {
+        let envelope = try decodeEnvelope(
+            from: data,
+            fileName: fileName,
+            triptychID: triptychID
+        )
+        let record = try decodeCurrentPayload(from: envelope)
+        try validatePayload(record, matches: envelope)
+        return (envelope, record)
+    }
+
+    private static func canonicalizedExecution(
+        _ value: LocalResearchExecutionRecord
+    ) throws -> (LocalResearchExecutionRecord, Data) {
+        let payload = try makeEncoder().encode(value)
+        let canonicalRecord = try decode(LocalResearchExecutionRecord.self, from: payload)
+        let canonicalPayload = try makeEncoder().encode(canonicalRecord)
+        guard canonicalPayload.count <= maximumPayloadByteCount else {
+            throw LocalResearchExecutionStoreError.unsafeStore(
+                "The Local Research Execution payload exceeds its byte boundary."
+            )
+        }
+        let envelope = LocalResearchExecutionEnvelope(
+            record: canonicalRecord,
+            payload: canonicalPayload
+        )
+        let encodedEnvelope = try makeEncoder().encode(envelope)
+        let canonicalEnvelope = try decode(
+            LocalResearchExecutionEnvelope.self,
+            from: encodedEnvelope
+        )
+        return (canonicalRecord, try makeEncoder().encode(canonicalEnvelope))
+    }
+
+    private func requireValidDeletionAuthority(
+        _ snapshot: LocalResearchExecutionStoreSnapshot
+    ) throws {
+        guard snapshot.recoveryItems.isEmpty else {
+            throw SystemTrashPreparationError.localExecutionRecoveryRequired(
+                LocalResearchExecutionRecoveryPreview(
+                    triptychID: triptychID,
+                    items: snapshot.recoveryItems
+                )
+            )
+        }
     }
 
     private static func canonicalized<T: Codable>(_ value: T) throws -> (T, Data) {

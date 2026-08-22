@@ -144,3 +144,57 @@ public struct SystemTrashDeletionCommit: Hashable, Sendable {
         self.resultingTrashPaths = resultingTrashPaths.sorted()
     }
 }
+
+/// One opaque machine-local execution file that System Trash cannot safely
+/// scope because it lacks a valid stable authority envelope. The fingerprint
+/// binds explicit recovery to the exact bytes the researcher reviewed.
+public struct LocalResearchExecutionRecoveryItem: Codable, Hashable, Identifiable, Sendable {
+    public let fileName: String
+    public let fingerprint: DocumentFingerprint
+
+    public var id: String { fileName }
+
+    public init(fileName: String, fingerprint: DocumentFingerprint) {
+        self.fileName = fileName
+        self.fingerprint = fingerprint
+    }
+}
+
+/// Exact recovery preview shown before opaque local execution bytes are moved
+/// into Scholium's protected unsupported-data archive.
+public struct LocalResearchExecutionRecoveryPreview: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public let triptychID: UUID
+    public let items: [LocalResearchExecutionRecoveryItem]
+
+    public init(
+        id: UUID = UUID(),
+        triptychID: UUID,
+        items: [LocalResearchExecutionRecoveryItem]
+    ) {
+        self.id = id
+        self.triptychID = triptychID
+        self.items = items.sorted { $0.fileName < $1.fileName }
+    }
+}
+
+public struct LocalResearchExecutionArchiveCommit: Hashable, Sendable {
+    public let previewID: UUID
+    public let archivedFileNames: [String]
+
+    public init(previewID: UUID, archivedFileNames: [String]) {
+        self.previewID = previewID
+        self.archivedFileNames = archivedFileNames.sorted()
+    }
+}
+
+public enum SystemTrashPreparationError: LocalizedError, Sendable {
+    case localExecutionRecoveryRequired(LocalResearchExecutionRecoveryPreview)
+
+    public var errorDescription: String? {
+        switch self {
+        case .localExecutionRecoveryRequired(let preview):
+            "System Trash requires recovery for unreadable local Research Action storage (file count: \(preview.items.count))."
+        }
+    }
+}

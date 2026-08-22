@@ -370,9 +370,14 @@ struct ResearchContinuationOperationsTests {
             .appendingPathComponent(
                 childID.uuidString.lowercased() + ".json"
             )
-        var childObject = try #require(
+        var envelopeObject = try #require(
             JSONSerialization.jsonObject(with: Data(contentsOf: childURL))
                 as? [String: Any]
+        )
+        let encodedPayload = try #require(envelopeObject["payload"] as? String)
+        let payload = try #require(Data(base64Encoded: encodedPayload))
+        var childObject = try #require(
+            JSONSerialization.jsonObject(with: payload) as? [String: Any]
         )
         var snapshotObject = try #require(
             childObject["snapshot"] as? [String: Any]
@@ -383,8 +388,16 @@ struct ResearchContinuationOperationsTests {
         handoffObject["requires_researcher_state_requery"] = false
         snapshotObject["continuationHandoff"] = handoffObject
         childObject["snapshot"] = snapshotObject
-        try JSONSerialization.data(
+        let modifiedPayload = try JSONSerialization.data(
             withJSONObject: childObject,
+            options: [.sortedKeys]
+        )
+        envelopeObject["payload"] = modifiedPayload.base64EncodedString()
+        envelopeObject["payload_fingerprint"] = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(DocumentFingerprint(data: modifiedPayload))
+        )
+        try JSONSerialization.data(
+            withJSONObject: envelopeObject,
             options: [.sortedKeys]
         ).write(to: childURL, options: .atomic)
 
@@ -497,7 +510,7 @@ struct ResearchContinuationOperationsTests {
         let child = try await handle.services.localResearchExecutionStore.record(
             id: childID
         )
-        #expect(child.schemaVersion == 18)
+        #expect(child.id == childID)
         #expect(child.snapshot.continuationHandoff?.referenceChecks.first?.status
             == .unavailable)
 

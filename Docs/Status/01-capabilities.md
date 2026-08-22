@@ -265,10 +265,13 @@
   activities plus Note Review state and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.
-- Once a portable Record exists, schema-18 Local Execution compacts to a
-  terminal receipt and deletes its prepared instructions, Bounded Write Set,
-  extensions, write ledgers, and conflict rows. Diff and direct Undo use the
-  portable Record plus `(Run ID, Note ID)` Agent evidence instead.
+- Local Execution now stores a stable Run/Triptych/Note-participation/authority
+  envelope around its evolving private payload. System Trash can scope valid
+  envelopes without decoding an unsupported payload; a fingerprint-bound alert
+  archives exact unwrapped legacy bytes before retrying preparation. Once a
+  portable Record exists, the payload compacts to a terminal receipt and the
+  envelope becomes terminal. Diff and direct Undo use the portable Record plus
+  `(Run ID, Note ID)` Agent evidence instead.
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
