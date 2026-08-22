@@ -1843,6 +1843,16 @@
         }
       }
     },
+    "AGENT WRITE ACCESS FOR THIS TRIPTYCH" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此脉络的 AGENT 写入访问权限"
+          }
+        }
+      }
+    },
     "ATTRIBUTED RECORD" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2034,6 +2044,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作"
+          }
+        }
+      }
+    },
+    "Action Profiles" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作配置"
+          }
+        }
+      }
+    },
+    "Action Profiles shape academic inputs and results; they never grant authority or alter Session, write, revision, conflict, or recovery rules." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作配置决定学术输入与结果的形式；不会授予权限，也不会改变会话、写入、修订、冲突或恢复规则。"
           }
         }
       }
@@ -2702,6 +2732,16 @@
         }
       }
     },
+    "Advanced Appearance" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级外观"
+          }
+        }
+      }
+    },
     "Advanced CSS" : {
       "localizations" : {
         "en" : {
@@ -2740,6 +2780,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent"
+          }
+        }
+      }
+    },
+    "Agent Access" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 访问"
+          }
+        }
+      }
+    },
+    "Agent Access Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 访问不可用"
           }
         }
       }
@@ -2812,6 +2872,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "智能体设置提示词"
+          }
+        }
+      }
+    },
+    "Agent access policy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 访问策略"
           }
         }
       }
@@ -3491,6 +3561,16 @@
         }
       }
     },
+    "An Action Profile shapes academic inputs and results. It never grants Agent authority." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作配置决定学术输入与结果的形式，不会授予 Agent 权限。"
+          }
+        }
+      }
+    },
     "An Agent result is ready to review." : {
       "localizations" : {
         "en" : {
@@ -3859,6 +3939,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "适用角色"
+          }
+        }
+      }
+    },
+    "Application" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用程序"
           }
         }
       }
@@ -4898,6 +4988,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正文"
+          }
+        }
+      }
+    },
+    "Body Details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正文细节"
           }
         }
       }
@@ -6408,6 +6508,16 @@
         }
       }
     },
+    "Choose a shortcut for %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为 %@ 选择快捷键。"
+          }
+        }
+      }
+    },
     "Choose an allowed value for this field." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6706,6 +6816,16 @@
         }
       }
     },
+    "Choose when an Agent may extend a Run’s bounded write set in this Triptych." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择何时允许 Agent 扩展此脉络中一次运行的限定写入集。"
+          }
+        }
+      }
+    },
     "Choose when dismissed derived reminders return, or restore every dismissed item on this Mac." : {
       "localizations" : {
         "en" : {
@@ -6933,6 +7053,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除历史记录"
+          }
+        }
+      }
+    },
+    "Clear Hotkey" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除快捷键"
           }
         }
       }
@@ -7495,6 +7625,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "评论保留方式"
+          }
+        }
+      }
+    },
+    "Comment on Selection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评论所选内容"
           }
         }
       }
@@ -8063,6 +8203,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅配置面向研究者的学术字段。平台选择器、机器事实、权限、写入范围与恢复均不属于配置字段。"
+          }
+        }
+      }
+    },
+    "Configure the academic input and result fields presented by each Action." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配置每项操作所呈现的学术输入与结果字段。"
           }
         }
       }
@@ -9000,6 +9150,26 @@
         }
       }
     },
+    "Could Not Update Action Profiles" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新操作配置"
+          }
+        }
+      }
+    },
+    "Could Not Update Agent Access" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新 Agent 访问"
+          }
+        }
+      }
+    },
     "Could Not Update Citation Method" : {
       "localizations" : {
         "en" : {
@@ -9048,6 +9218,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法更新方法"
+          }
+        }
+      }
+    },
+    "Could Not Update Practices" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新实践"
           }
         }
       }
@@ -9825,6 +10005,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自定义"
+          }
+        }
+      }
+    },
+    "Customize frequently used Scholium commands. Standard macOS shortcuts remain unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自定义常用的 Scholium 命令。macOS 标准快捷键保持不变。"
           }
         }
       }
@@ -10688,6 +10878,16 @@
         }
       }
     },
+    "Discard Unsaved Appearance Changes?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "丢弃未保存的外观更改？"
+          }
+        }
+      }
+    },
     "Discard Unsaved Changes" : {
       "localizations" : {
         "en" : {
@@ -10700,6 +10900,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "放弃未保存的更改"
+          }
+        }
+      }
+    },
+    "Discard and Switch" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "丢弃并切换"
           }
         }
       }
@@ -12639,6 +12849,16 @@
         }
       }
     },
+    "External Tools & Citations" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外部工具与引用"
+          }
+        }
+      }
+    },
     "FILES" : {
       "localizations" : {
         "en" : {
@@ -13954,6 +14174,36 @@
         }
       }
     },
+    "Hotkey for %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的快捷键"
+          }
+        }
+      }
+    },
+    "Hotkeys" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷键"
+          }
+        }
+      }
+    },
+    "Hotkeys are stored on this Mac and update menu commands immediately." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷键存储在此 Mac 上，并会立即更新菜单命令。"
+          }
+        }
+      }
+    },
     "Human-Editable Fields" : {
       "localizations" : {
         "en" : {
@@ -14452,6 +14702,16 @@
         }
       }
     },
+    "Include the Command key in a Scholium hotkey." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 快捷键必须包含 Command 键。"
+          }
+        }
+      }
+    },
     "Include this existing note in the frozen Write authorization." : {
       "localizations" : {
         "en" : {
@@ -14464,6 +14724,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将这篇现有笔记纳入冻结的写入授权。"
+          }
+        }
+      }
+    },
+    "Include ⌘. Press Delete to clear the shortcut or Escape to stop recording." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请包含 ⌘。按 Delete 清除快捷键，或按 Escape 停止录制。"
           }
         }
       }
@@ -14748,6 +15018,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在之前插入行"
+          }
+        }
+      }
+    },
+    "Insert → Comment on Selection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入 → 评论所选内容"
           }
         }
       }
@@ -16111,6 +16391,16 @@
         }
       }
     },
+    "Loading Agent Access Policy…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入 Agent 访问策略…"
+          }
+        }
+      }
+    },
     "Loading Attention…" : {
       "localizations" : {
         "en" : {
@@ -16185,6 +16475,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载方法…"
+          }
+        }
+      }
+    },
+    "Loading Practices…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入实践…"
           }
         }
       }
@@ -16555,6 +16855,16 @@
         }
       }
     },
+    "Manage each Action’s primary Method and the exact Markdown Practices those Methods link." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理每项操作的主要方法，以及这些方法所链接的精确 Markdown 实践。"
+          }
+        }
+      }
+    },
     "Manage future New Note YAML, Agent creation requirements, and About for each Triptych role." : {
       "localizations" : {
         "zh-Hans" : {
@@ -16597,6 +16907,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理已注册的脉络及其三个由研究者掌控的文件夹。"
+          }
+        }
+      }
+    },
+    "Manage the citation style for this Triptych and external tools available on this Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "管理此脉络的引用样式，以及此 Mac 上可用的外部工具。"
           }
         }
       }
@@ -17155,6 +17475,16 @@
         }
       }
     },
+    "Methods & Practices" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法与实践"
+          }
+        }
+      }
+    },
     "Methods Unavailable" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17165,12 +17495,32 @@
         }
       }
     },
+    "Methods and Practices guide scholarly work; they never grant Agent access or alter Session, revision, conflict, or recovery rules." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法与实践用于指导学术工作；它们不会授予 Agent 访问权限，也不会改变会话、修订、冲突或恢复规则。"
+          }
+        }
+      }
+    },
     "Methods and Practices guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法和实践指导学术工作；它们从不授予权限，也不会更改会话、修订、冲突或恢复规则。"
+          }
+        }
+      }
+    },
+    "Methods and Practices section" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法与实践部分"
           }
         }
       }
@@ -18495,6 +18845,16 @@
         }
       }
     },
+    "No Matching Hotkeys" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的快捷键"
+          }
+        }
+      }
+    },
     "No Matching Materials" : {
       "localizations" : {
         "en" : {
@@ -19271,6 +19631,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有安全修订"
+          }
+        }
+      }
+    },
+    "No shortcut" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无快捷键"
           }
         }
       }
@@ -22187,6 +22557,16 @@
         }
       }
     },
+    "Press a Shortcut…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请按快捷键…"
+          }
+        }
+      }
+    },
     "Preview" : {
       "localizations" : {
         "en" : {
@@ -23448,6 +23828,26 @@
         }
       }
     },
+    "Record Hotkey" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制快捷键"
+          }
+        }
+      }
+    },
+    "Record New Hotkey…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制新快捷键…"
+          }
+        }
+      }
+    },
     "Record Response" : {
       "localizations" : {
         "en" : {
@@ -23460,6 +23860,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "记录回应"
+          }
+        }
+      }
+    },
+    "Record Shortcut" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "录制快捷键"
           }
         }
       }
@@ -25500,6 +25910,16 @@
         }
       }
     },
+    "Research → Triptych Records" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究 → 脉络记录"
+          }
+        }
+      }
+    },
     "Researcher" : {
       "localizations" : {
         "en" : {
@@ -25823,6 +26243,16 @@
         }
       }
     },
+    "Restore All Dismissed Items on This Mac" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复此 Mac 上所有已忽略项目"
+          }
+        }
+      }
+    },
     "Restore Bundled Reference" : {
       "localizations" : {
         "en" : {
@@ -25881,6 +26311,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "恢复默认值"
+          }
+        }
+      }
+    },
+    "Restore Default Appearance?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复默认外观？"
+          }
+        }
+      }
+    },
+    "Restore Default Appearance…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复默认外观…"
+          }
+        }
+      }
+    },
+    "Restore Default Hotkeys?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复默认快捷键？"
+          }
+        }
+      }
+    },
+    "Restore Default Hotkeys…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "恢复默认快捷键…"
           }
         }
       }
@@ -28700,6 +29170,16 @@
         }
       }
     },
+    "Search Research" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索研究资料"
+          }
+        }
+      }
+    },
     "Search Results" : {
       "localizations" : {
         "en" : {
@@ -28712,6 +29192,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索结果"
+          }
+        }
+      }
+    },
+    "Search Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索设置"
           }
         }
       }
@@ -29524,6 +30014,16 @@
         }
       }
     },
+    "Show Attention" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示关注"
+          }
+        }
+      }
+    },
     "Show Evidence" : {
       "localizations" : {
         "zh-Hans" : {
@@ -29598,6 +30098,16 @@
         }
       }
     },
+    "Show Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示源文本"
+          }
+        }
+      }
+    },
     "Show Spelling and Grammar" : {
       "localizations" : {
         "en" : {
@@ -29610,6 +30120,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示拼写和语法"
+          }
+        }
+      }
+    },
+    "Show Triptych Records" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示脉络记录"
           }
         }
       }
@@ -29668,6 +30188,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在操作中显示"
+          }
+        }
+      }
+    },
+    "Show or Hide Library" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示或隐藏研究文档"
+          }
+        }
+      }
+    },
+    "Show or Hide Research Inspector" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示或隐藏研究检查器"
           }
         }
       }
@@ -30776,6 +31316,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支持此笔记"
+          }
+        }
+      }
+    },
+    "Switch Review and Edit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在审阅与编辑之间切换"
           }
         }
       }
@@ -32392,6 +32942,16 @@
         }
       }
     },
+    "The selected appearance has unsaved changes. Switching configurations will discard them." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所选外观有未保存的更改。切换配置将丢弃这些更改。"
+          }
+        }
+      }
+    },
     "The selected passage changed while Scholium saved the note. The Action will open for the whole note." : {
       "localizations" : {
         "en" : {
@@ -32935,6 +33495,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此搜索字段需要一个值。"
+          }
+        }
+      }
+    },
+    "This Triptych" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此脉络"
           }
         }
       }
@@ -33499,6 +34069,16 @@
         }
       }
     },
+    "This replaces the current draft with Scholium’s built-in document appearance. Choose Save to keep it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会用 Scholium 内置文档外观替换当前草稿。选择“保存”后才会保留。"
+          }
+        }
+      }
+    },
     "This replaces the current primary Markdown with the default shipped by this Scholium build." : {
       "localizations" : {
         "zh-Hans" : {
@@ -33535,6 +34115,16 @@
         }
       }
     },
+    "This restores every customizable Scholium command on this Mac. Standard macOS shortcuts are not affected." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会恢复此 Mac 上所有可自定义 Scholium 命令的默认快捷键，不影响 macOS 标准快捷键。"
+          }
+        }
+      }
+    },
     "This result did not change a Note." : {
       "localizations" : {
         "en" : {
@@ -33563,6 +34153,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此已保存修订已暂定。"
+          }
+        }
+      }
+    },
+    "This shortcut is already assigned to %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此快捷键已分配给 %@。"
+          }
+        }
+      }
+    },
+    "This shortcut is reserved for a standard macOS command." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此快捷键保留给 macOS 标准命令。"
           }
         }
       }
@@ -34198,6 +34808,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再试一次"
+          }
+        }
+      }
+    },
+    "Try a command name or menu location." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请尝试命令名称或菜单位置。"
           }
         }
       }
@@ -35351,6 +35971,56 @@
         }
       }
     },
+    "View → Document Mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 → 文档模式"
+          }
+        }
+      }
+    },
+    "View → Document Mode → Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 → 文档模式 → 源文本"
+          }
+        }
+      }
+    },
+    "View → Research Inspector" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 → 研究检查器"
+          }
+        }
+      }
+    },
+    "View → Search" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 → 搜索"
+          }
+        }
+      }
+    },
+    "View → Sidebar" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 → 侧边栏"
+          }
+        }
+      }
+    },
     "Volume" : {
       "localizations" : {
         "zh-Hans" : {
@@ -35582,6 +36252,16 @@
         }
       }
     },
+    "Window → Attention" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "窗口 → 关注"
+          }
+        }
+      }
+    },
     "Word spacing" : {
       "localizations" : {
         "en" : {
@@ -35652,6 +36332,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "写作"
+          }
+        }
+      }
+    },
+    "Workspace" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作区"
           }
         }
       }

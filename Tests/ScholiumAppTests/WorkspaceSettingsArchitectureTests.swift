@@ -35,6 +35,7 @@ struct WorkspaceSettingsArchitectureTests {
                 "triptychs",
                 "property-profiles",
                 "appearance",
+                "hotkeys",
                 "attention",
                 "research-guidance",
             ]
@@ -57,20 +58,47 @@ struct WorkspaceSettingsArchitectureTests {
 
         #expect(!topLevel.contains("TabView("))
         #expect(topLevel.contains("HStack(spacing: 0)"))
-        #expect(topLevel.contains("ScholiumSettingsDestination.primary"))
+        #expect(topLevel.contains(
+            "geometry.size.width\n                                - ScholiumMetrics.Settings.sidebarWidth"
+        ))
+        #expect(topLevel.contains("ScholiumSettingsDestination.application"))
+        #expect(topLevel.contains("ScholiumSettingsDestination.triptych"))
         #expect(topLevel.contains("ScholiumSettingsDestination.researchGuidance"))
-        #expect(topLevel.contains("SettingsTriptychScopeFooter()"))
+        #expect(!topLevel.contains("SettingsTriptychScopePicker"))
+        #expect(topLevel.contains("ScholiumSettingsSearchField(text: $searchQuery)"))
+        #expect(!topLevel.contains("Text(\"Settings\")"))
         #expect(!topLevel.contains("ZoteroSettingsView()"))
+
+        let windowManagement = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
+        let settingsAttachmentStart = try #require(
+            windowManagement.range(of: "struct SettingsWindowAttachment")
+        )
+        let bootstrapAttachmentStart = try #require(
+            windowManagement.range(
+                of: "struct BootstrapWindowAttachment",
+                range: settingsAttachmentStart.upperBound..<windowManagement.endIndex
+            )
+        )
+        let settingsAttachment = windowManagement[
+            settingsAttachmentStart.lowerBound..<bootstrapAttachmentStart.lowerBound
+        ]
+        #expect(settingsAttachment.contains("window.titleVisibility = .hidden"))
 
         let orderedDestinations = [
             "case triptychs",
-            "case propertyProfiles",
             "case appearance",
+            "case hotkeys",
+            "case propertyProfiles",
             "case attention",
-            "case methods",
-            "case profilesPractices",
-            "case collaboration",
-            "case sources",
+            "case methodsPractices",
+            "case actionProfiles",
+            "case agentAccess",
+            "case externalToolsCitations",
         ]
         let indices = try orderedDestinations.map { destination in
             try #require(topLevel.range(of: destination)).lowerBound
@@ -106,15 +134,31 @@ struct WorkspaceSettingsArchitectureTests {
         )
 
         #expect(!source.contains("TriptychScopedSettingsView"))
-        #expect(source.contains("SettingsTriptychScopeFooter"))
-        #expect(source.contains("var usesTriptychScope: Bool"))
+        #expect(!source.contains("SettingsTriptychScopePicker"))
+        #expect(!source.contains("var usesTriptychScope: Bool"))
+        #expect(source.contains("Section(\"Application\")"))
+        #expect(source.contains("Section(\"This Triptych\")"))
         #expect(source.contains("scholium.settings.triptychScope"))
+        let triptychsStart = try #require(
+            source.range(of: "struct WorkspaceSettingsView: View")
+        )
+        let appearanceStart = try #require(
+            source.range(
+                of: "private struct AppearanceSettingsView: View",
+                range: triptychsStart.upperBound..<source.endIndex
+            )
+        )
+        let triptychsSource = source[
+            triptychsStart.lowerBound..<appearanceStart.lowerBound
+        ]
+        #expect(triptychsSource.contains("scholium.settings.triptychScope"))
         #expect(source.contains("ScholiumL10n.Settings.triptychs"))
         #expect(source.contains("ScholiumL10n.Settings.propertyProfiles"))
         #expect(source.contains("ScholiumL10n.Settings.appearance"))
         #expect(source.contains("ScholiumL10n.Settings.attention"))
         #expect(source.contains("Reminder Timing for This Triptych"))
         #expect(source.contains("Dismissed Items on This Mac"))
+        #expect(source.contains("Restore All Dismissed Items on This Mac"))
         #expect(source.contains("SCHOLIUM CLI ON THIS MAC"))
         #expect(source.contains("READ-ONLY ZOTERO ON THIS MAC"))
         #expect(source.contains("TRIPTYCH CITATION STYLE"))
@@ -692,7 +736,10 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("settingsEditorSection(\"Body\")"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Headings\")"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Callouts\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Advanced CSS\")"))
+        #expect(appearanceSource.contains("DisclosureGroup(\"Advanced CSS\""))
+        #expect(appearanceSource.contains("DisclosureGroup(\n                \"Advanced Appearance\""))
+        #expect(appearanceSource.contains("Button(\"Revert to Saved\")"))
+        #expect(appearanceSource.contains("Restore Default Appearance…"))
         #expect(appearanceSource.contains("appearanceManagementMenu"))
         #expect(appearanceSource.contains("scholium.appearance.manage"))
         #expect(appearanceSource.contains(
@@ -715,7 +762,8 @@ struct WorkspaceSettingsArchitectureTests {
         let guidanceFiles = [
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
-            "ProfilesPracticesSettingsView.swift",
+            "MethodsPracticesSettingsView.swift",
+            "ActionProfilesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
         ]
@@ -743,22 +791,22 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("NavigationSplitView {"))
         #expect(!source.contains("HSplitView"))
         for category in [
-            "Methods",
-            "Profiles & Practices",
-            "Collaboration",
-            "Sources & Integrations",
+            "Methods & Practices",
+            "Action Profiles",
+            "Agent Access",
+            "External Tools & Citations",
         ] {
             #expect(source.contains(category))
         }
         #expect(!source.contains("scholium.researchGuidance.categoryList"))
         #expect(settingsSource.contains("scholium.settings.sidebarList"))
         #expect(settingsSource.contains("ScholiumSettingsDestination.researchGuidance"))
-        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .methods)"))
-        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .sources)"))
+        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .methodsPractices)"))
+        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
         #expect(!source.contains("Prompt Templates"))
         #expect(!source.contains("card grid"))
-        #expect(rootSource.contains("ResearchMethodsSettingsView()"))
-        #expect(rootSource.contains("ProfilesPracticesSettingsView()"))
+        #expect(rootSource.contains("MethodsPracticesSettingsView()"))
+        #expect(rootSource.contains("ActionProfilesSettingsView()"))
         #expect(!rootSource.contains("private struct WorkingMethodEditorContext"))
         #expect(!rootSource.contains("private struct ResearchActionProfileEditorView"))
     }
@@ -789,7 +837,13 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let profilesSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ProfilesPracticesSettingsView.swift"
+                "Scholium/Views/ActionProfilesSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let practicesSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/MethodsPracticesSettingsView.swift"
             ),
             encoding: .utf8
         )
@@ -814,8 +868,9 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(
             profilesSource.components(
                 separatedBy: "researchSettingsCollectionRow {"
-            ).count == 3
+            ).count == 2
         )
+        #expect(practicesSource.contains("researchSettingsCollectionRow {"))
         #expect(!methodsSource.contains("HStack(alignment: .top, spacing: 14)"))
         #expect(!profilesSource.contains("HStack(alignment: .top, spacing: 14)"))
         #expect(!methodsSource.contains(".padding(.vertical, 10)"))
@@ -854,10 +909,21 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
+        let windowManagementSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
         let settingsRootSource = appSource
             .components(separatedBy: "private struct ScholiumSettingsRoot: View")
             .last?
             .components(separatedBy: "struct ScholiumSearchActions")
+            .first ?? ""
+        let settingsSceneSource = appSource
+            .components(separatedBy: "\n        Settings {")
+            .last?
+            .components(separatedBy: "\n        #if DEBUG")
             .first ?? ""
 
         #expect(componentSource.contains(".formStyle(.columns)"))
@@ -873,9 +939,26 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!settingsSource.contains(".formStyle(.grouped)"))
         #expect(!settingsSource.contains("GroupBox("))
         #expect(settingsSource.contains(
-            "ScholiumColorRole.navigationSurfaceBackground.color"
+            ".scholiumSettingsPaneSurface(.navigationSurfaceBackground)"
         ))
         #expect(settingsSource.contains("HStack(spacing: 0)"))
+        #expect(settingsSource.contains("geometry.safeAreaInsets.top"))
+        #expect(settingsSource.contains("ScholiumSettingsSearchField("))
+        #expect(componentSource.contains("struct ScholiumSettingsWindowBackground"))
+        #expect(componentSource.contains("struct ScholiumSettingsSearchField"))
+        #expect(settingsSceneSource.contains(
+            ".frame(width: 700, height: 560, alignment: .topLeading)"
+        ))
+        #expect(settingsSceneSource.contains(
+            ".containerBackground(for: .window)"
+        ))
+        #expect(settingsSceneSource.contains("ScholiumSettingsWindowBackground()"))
+        #expect(settingsSceneSource.contains("SettingsWindowAttachment()"))
+        #expect(windowManagementSource.contains("struct SettingsWindowAttachment"))
+        #expect(windowManagementSource.contains("window.animationBehavior = .none"))
+        #expect(windowManagementSource.contains(
+            "window.backgroundColor = ScholiumColorRole.surfaceBackground.nsColor"
+        ))
         #expect(!settingsSource.contains("TabView("))
         #expect(guidanceSource.contains(".scholiumSettingsPaneSurface()"))
         #expect(!settingsRootSource.isEmpty)
@@ -886,9 +969,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(settingsRootSource.contains(
             "WindowColorSchemeChoice(rawValue: storedColorScheme)"
         ))
-        #expect(settingsRootSource.contains(
-            ".frame(width: 700, height: 560, alignment: .topLeading)"
-        ))
+        #expect(!settingsRootSource.contains(".frame(width: 700, height: 560"))
     }
 
     @Test("Research Guidance Markdown sheets share one loss-protecting lifecycle")
@@ -909,9 +990,9 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let profilesSource = try String(
+        let practicesSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ProfilesPracticesSettingsView.swift"
+                "Scholium/Views/MethodsPracticesSettingsView.swift"
             ),
             encoding: .utf8
         )
@@ -927,8 +1008,8 @@ struct WorkspaceSettingsArchitectureTests {
 
         #expect(methodsSource.contains("ResearchGuidanceMarkdownEditSheet("))
         #expect(methodsSource.contains("ResearchGuidanceMarkdownCreationSheet("))
-        #expect(profilesSource.contains("ResearchGuidanceMarkdownEditSheet("))
-        #expect(profilesSource.contains("ResearchGuidanceMarkdownCreationSheet("))
+        #expect(practicesSource.contains("ResearchGuidanceMarkdownEditSheet("))
+        #expect(practicesSource.contains("ResearchGuidanceMarkdownCreationSheet("))
         for supersededOwner in [
             "ResearchMethodSourceEditor",
             "NewResearchMethodEditor",
@@ -936,7 +1017,7 @@ struct WorkspaceSettingsArchitectureTests {
             "NewResearchPracticeEditor",
         ] {
             #expect(!methodsSource.contains(supersededOwner))
-            #expect(!profilesSource.contains(supersededOwner))
+            #expect(!practicesSource.contains(supersededOwner))
         }
     }
 
@@ -971,7 +1052,8 @@ struct WorkspaceSettingsArchitectureTests {
         let source = try [
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
-            "ProfilesPracticesSettingsView.swift",
+            "MethodsPracticesSettingsView.swift",
+            "ActionProfilesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
         ].map { fileName in
@@ -991,7 +1073,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Edit Primary Markdown"))
         #expect(!source.contains("Restore Previous Edit"))
         #expect(source.contains("Restore Scholium Default"))
-        #expect(source.contains("Profiles & Practices"))
+        #expect(source.contains("Methods & Practices"))
+        #expect(source.contains("Action Profiles"))
         #expect(source.contains("New Practice…"))
         #expect(source.contains("Academic Inputs"))
         #expect(source.contains("Academic Results"))
@@ -1007,8 +1090,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("ResearchActionProfileDraftKey"))
         #expect(!source.contains("Install from Local Directory…"))
         #expect(!settingsRootSource.contains("researchGuidanceDraftStore"))
-        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .methods)"))
-        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .sources)"))
+        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .methodsPractices)"))
+        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
         #expect(source.contains("ResearchPermissionSettingsView()"))
@@ -1018,7 +1101,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("Copy Agent Configuration Prompt"))
         #expect(!source.contains("saveSkillPermissionOverride"))
         #expect(!source.contains("removeSkillPermissionOverride"))
-        #expect(source.contains("Choose when Scholium asks to extend a Run’s bounded write set"))
+        #expect(source.contains("Choose when an Agent may extend a Run’s bounded write set"))
         #expect(source.contains("nonreusable capability"))
         for forbidden in [
             ".regularMaterial",

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The shared presentation boundary for Scholium's macOS Settings window.
@@ -90,6 +91,56 @@ private struct ScholiumSettingsPaneSurface: ViewModifier {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(role.color)
+    }
+}
+
+struct ScholiumSettingsWindowBackground: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            ScholiumColorRole.navigationSurfaceBackground.color
+                .frame(width: ScholiumMetrics.Settings.sidebarWidth)
+            ScholiumColorRole.surfaceBackground.color
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+struct ScholiumSettingsSearchField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let searchField = NSSearchField()
+        searchField.placeholderString = ScholiumL10n.string("Search Settings")
+        searchField.sendsSearchStringImmediately = true
+        searchField.target = context.coordinator
+        searchField.action = #selector(Coordinator.searchChanged(_:))
+        searchField.setAccessibilityLabel(ScholiumL10n.string("Search Settings"))
+        return searchField
+    }
+
+    func updateNSView(_ searchField: NSSearchField, context: Context) {
+        context.coordinator.parent = self
+        if searchField.stringValue != text {
+            searchField.stringValue = text
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: ScholiumSettingsSearchField
+
+        init(parent: ScholiumSettingsSearchField) {
+            self.parent = parent
+        }
+
+        @objc func searchChanged(_ sender: NSSearchField) {
+            parent.text = sender.stringValue
+        }
     }
 }
 

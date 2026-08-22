@@ -10,7 +10,7 @@ The app reader remains bounded and read-only. The MCP service is
 
 ## Install and verify the CLI
 
-Open **Settings → Research Guidance → Sources & Integrations → Scholium CLI**
+Open **Settings → Research Guidance → External Tools & Citations → Scholium CLI**
 and choose **Copy CLI Installation Instructions** for the external Agent.
 The official installer places the version-matched executable and resource
 bundle under `~/.local/bin` without editing a shell profile. After installation,

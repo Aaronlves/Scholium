@@ -1,16 +1,6 @@
 import ScholiumContracts
 import SwiftUI
 
-private struct ResearchPracticeEditorContext: Identifiable {
-    let practice: ResearchPracticeSnapshot
-
-    var id: String { practice.relativePath }
-}
-
-private struct NewResearchPracticeContext: Identifiable {
-    let id = UUID()
-}
-
 private struct ResearchAcademicProfileEditorContext: Identifiable {
     let profile: ResearchAcademicActionProfile
     let document: ResearchAcademicProfileDocument
@@ -19,17 +9,13 @@ private struct ResearchAcademicProfileEditorContext: Identifiable {
     var id: ResearchActionID { profile.actionID }
 }
 
-/// Edits the academic shape of Actions and the exact Markdown Practices linked
-/// from primary Methods. Neither surface grants Agent authority or introduces a
-/// second Skill/package owner.
-struct ProfilesPracticesSettingsView: View {
+/// Edits only the academic input and result shape of Actions. Permission and
+/// Method/Practice source remain with their existing owners.
+struct ActionProfilesSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var loadedTriptychID: UUID?
     @State private var profiles: ResearchAcademicProfileSnapshot?
-    @State private var practices: [ResearchPracticeSnapshot] = []
     @State private var profileEditor: ResearchAcademicProfileEditorContext?
-    @State private var practiceEditor: ResearchPracticeEditorContext?
-    @State private var newPractice: NewResearchPracticeContext?
     @State private var isWorking = false
     @State private var errorMessage: String?
 
@@ -38,12 +24,12 @@ struct ProfilesPracticesSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 settingsTitle(
                     LocalizedStringResource(
-                        "Profiles & Practices",
+                        "Action Profiles",
                         table: "Localizable",
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Configure Action fields and the exact Markdown Practices linked from Methods.",
+                        "Configure the academic input and result fields presented by each Action.",
                         table: "Localizable",
                         bundle: .module
                     )
@@ -85,46 +71,11 @@ struct ProfilesPracticesSettingsView: View {
                 }
 
                 researchSettingsSection(LocalizedStringResource(
-                    "PHILOSOPHICAL PRACTICES",
-                    table: "Localizable",
-                    bundle: .module
-                )) {
-                    VStack(alignment: .leading, spacing: ScholiumMetrics.ResearchGuidance.summarySpacing) {
-                        HStack {
-                            Text("Methods opt into Practices only through exact Wikilinks.")
-                                .font(ScholiumTypography.interface(.body))
-                                .scholiumForeground(.secondaryText)
-                            Spacer()
-                            Button("New Practice…") {
-                                newPractice = NewResearchPracticeContext()
-                            }
-                        }
-                        if practices.isEmpty {
-                            ScholiumContentStateView(
-                                "No Practices",
-                                detail: Text("Create an exact Markdown Practice, then link it from a Method."),
-                                indicator: .symbol("doc.text"),
-                                placement: .leading,
-                                density: .compact
-                            )
-                            .frame(maxWidth: .infinity, minHeight: 150)
-                        } else {
-                            VStack(spacing: 0) {
-                                ForEach(practices) { practice in
-                                    practiceRow(practice)
-                                    if practice.id != practices.last?.id { Divider() }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                researchSettingsSection(LocalizedStringResource(
                     "BOUNDARY",
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    Text("Profiles and Practices shape academic inputs and results; they never grant authority or alter Session, write, revision, conflict, or recovery rules.")
+                    Text("Action Profiles shape academic inputs and results; they never grant authority or alter Session, write, revision, conflict, or recovery rules.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -135,7 +86,7 @@ struct ProfilesPracticesSettingsView: View {
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .scholiumSettingsPaneSurface()
-        .accessibilityIdentifier("scholium.researchGuidance.profilesPractices")
+        .accessibilityIdentifier("scholium.researchGuidance.actionProfiles")
         .disabled(
             loadedTriptychID != settingsModel.activeTriptychServicesID
                 || isWorking
@@ -155,39 +106,7 @@ struct ProfilesPracticesSettingsView: View {
                 await reload()
             }
         }
-        .sheet(item: $practiceEditor) { context in
-            ResearchGuidanceMarkdownEditSheet(
-                title: Text("Edit \(context.practice.title)"),
-                detail: Text("This is exact Markdown. Saving replaces only this Practice."),
-                sourceAccessibilityLabel: Text("Philosophical Practice Markdown"),
-                initialSource: context.practice.source,
-                save: { source in
-                    _ = try await settingsModel.savePhilosophicalPractice(
-                        relativePath: context.practice.relativePath,
-                        source: source,
-                        expectedRevision: context.practice.revision
-                    )
-                    await reload()
-                }
-            )
-        }
-        .sheet(item: $newPractice) { _ in
-            ResearchGuidanceMarkdownCreationSheet(
-                title: Text("New Philosophical Practice"),
-                detail: Text("Scholium creates one ordinary Markdown document. Link its title exactly from a primary Method to include it in Research Context."),
-                nameLabel: "Practice title",
-                sourceAccessibilityLabel: Text("Philosophical Practice Markdown"),
-                initialName: "",
-                initialSource: "# Practice\n\nState the philosophical practice here.\n"
-            ) { title, source in
-                _ = try await settingsModel.createPhilosophicalPractice(
-                    title: title,
-                    source: source
-                )
-                await reload()
-            }
-        }
-        .alert("Could Not Update Profiles & Practices", isPresented: Binding(
+        .alert("Could Not Update Action Profiles", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -261,50 +180,24 @@ struct ProfilesPracticesSettingsView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func practiceRow(_ practice: ResearchPracticeSnapshot) -> some View {
-        researchSettingsCollectionRow {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text(practice.title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(practice.relativePath)
-                    .font(ScholiumTypography.exact(.small))
-                    .scholiumForeground(.secondaryText)
-                    .textSelection(.enabled)
-            }
-        } actions: {
-            Button("Edit…") {
-                practiceEditor = ResearchPracticeEditorContext(practice: practice)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchGuidance.practice.\(practice.id)")
-    }
-
     @MainActor
     private func reload() async {
         guard let triptychID = settingsModel.activeTriptychServicesID else {
             loadedTriptychID = nil
             profiles = nil
-            practices = []
             return
         }
         isWorking = true
         defer { isWorking = false }
         do {
-            async let loadedProfiles = settingsModel.academicActionProfiles()
-            async let loadedPractices = settingsModel.philosophicalPractices()
-            let result = try await (loadedProfiles, loadedPractices)
+            let result = try await settingsModel.academicActionProfiles()
             guard triptychID == settingsModel.activeTriptychServicesID else { return }
-            profiles = result.0
-            practices = result.1.sorted {
-                $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
-            }
+            profiles = result
             loadedTriptychID = triptychID
             errorMessage = nil
         } catch {
             guard triptychID == settingsModel.activeTriptychServicesID else { return }
             profiles = nil
-            practices = []
             loadedTriptychID = triptychID
             errorMessage = error.localizedDescription
         }

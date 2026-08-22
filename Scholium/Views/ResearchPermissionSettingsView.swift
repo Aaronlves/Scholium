@@ -13,26 +13,26 @@ struct ResearchPermissionSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 settingsTitle(
                     LocalizedStringResource(
-                        "Collaboration",
+                        "Agent Access",
                         table: "Localizable",
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Choose when Scholium asks to extend a Run’s bounded write set.",
+                        "Choose when an Agent may extend a Run’s bounded write set in this Triptych.",
                         table: "Localizable",
                         bundle: .module
                     )
                 )
 
                 researchSettingsSection(LocalizedStringResource(
-                    "TRIPTYCH COLLABORATION",
+                    "AGENT WRITE ACCESS FOR THIS TRIPTYCH",
                     table: "Localizable",
                     bundle: .module
                 )) {
                     if let snapshot {
                         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
                             Picker(
-                                "Collaboration policy",
+                                "Agent access policy",
                                 selection: Binding(
                                     get: { snapshot.document.policy },
                                     set: { save($0) }
@@ -55,14 +55,14 @@ struct ResearchPermissionSettingsView: View {
                         }
                     } else if isWorking {
                         ScholiumContentStateView(
-                            "Loading Collaboration Policy…",
+                            "Loading Agent Access Policy…",
                             indicator: .progress,
                             placement: .leading,
                             density: .compact
                         )
                     } else {
                         ScholiumContentStateView(
-                            "Collaboration Unavailable",
+                            "Agent Access Unavailable",
                             detail: Text(errorMessage ?? "Open a complete Triptych."),
                             indicator: .symbol("lock.slash", role: .attention),
                             placement: .leading,
@@ -82,7 +82,8 @@ struct ResearchPermissionSettingsView: View {
                 || loadedTriptychID != settingsModel.activeTriptychServicesID
         )
         .task(id: settingsModel.activeTriptychServicesID) { await reload() }
-        .alert("Could Not Update Collaboration", isPresented: Binding(
+        .accessibilityIdentifier("scholium.researchGuidance.agentAccess")
+        .alert("Could Not Update Agent Access", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {

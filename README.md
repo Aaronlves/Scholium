@@ -298,7 +298,7 @@ Triptychs may not share the same Works-side control directory.
 ## Scholium CLI
 
 During first-launch Agent preparation, or later under **Settings → Research
-Guidance → Sources & Integrations → Scholium CLI**, choose **Copy CLI
+Guidance → External Tools & Citations → Scholium CLI**, choose **Copy CLI
 Installation Instructions** and give that prompt to the external Agent. The
 prompt authorizes only the official CLI release archive and only the executable
 and adjacent resource bundle under `~/.local/bin`; it forbids `sudo`, PATH or

@@ -267,6 +267,15 @@ retains its domain values, operations, accessibility identifiers, and state.
 The shared presentation component performs no persistence, routing, or
 authorization work and does not style native controls themselves.
 
+The Settings root uses one native sidebar List with Application, This Triptych,
+and Research Guidance sections. Its native search field filters only a static
+destination metadata catalog, while Triptych selection remains in the
+Triptychs detail and continues to route the existing Settings model. Hotkey rows use native menus, and their
+AppKit recorder is a focusable `NSButton` adapter that translates one key event
+into `ScholiumHotkeyPreferences`, the versioned UserDefaults owner shared with
+`ScholiumCommands`; it owns no command execution, and Hotkeys never enter
+portable Triptych settings.
+
 `ScholiumGrid.ResearchSheet` owns the common editorial rhythm for research-
 facing sheet content: a 4pt title/detail gap, 16pt body-section cadence, 8pt
 footer-control gap, and a bounded status inset. `ScholiumMetrics.ResearchSheet`

@@ -38,10 +38,10 @@ struct ResearchWorkflowPreviewCatalogTests {
         ]
 
         for category in [
-            "Methods",
-            "Profiles & Practices",
-            "Collaboration",
-            "Sources & Integrations",
+            "Methods & Practices",
+            "Action Profiles",
+            "Agent Access",
+            "External Tools & Citations",
         ] {
             #expect(guidanceSource.contains(category))
         }
@@ -55,8 +55,8 @@ struct ResearchWorkflowPreviewCatalogTests {
             "Ask Me Only for Works",
             "Full Triptych Access",
             "APA 7",
-            "Pairing and Session are short-lived and restart-invalidated",
-            "A Practice edit replaces only its exact current revision",
+            "Zotero Desktop local read-only API",
+            "An Action Profile shapes academic inputs and results",
         ] {
             #expect(
                 guidanceSource.contains(customization),
@@ -92,7 +92,7 @@ struct ResearchWorkflowPreviewCatalogTests {
         for field in [
             "Target",
             "Starting revision",
-            "Collaboration policy",
+            "Agent access policy",
             "Candidate write scope",
             "Conflicts",
             "Recovery",

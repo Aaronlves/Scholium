@@ -30,6 +30,11 @@
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
   error, conflict, set, rebind, confirmed-clear, and minimum-width acceptance
   for the Analysis Overview Zotero relationship sheet.
+- Complete direct keyboard, VoiceOver, Full Keyboard Access, relaunch, menu
+  update, conflict, reserved-shortcut, clear/default, Settings-search, and
+  minimum-width acceptance for the grouped Settings navigation and Hotkey
+  recorder. Complete visual acceptance for Appearance disclosures and unsaved-
+  draft profile switching in Light, Dark, Increase Contrast, and enlarged text.
 
 ## Agent collaboration and research quality
 

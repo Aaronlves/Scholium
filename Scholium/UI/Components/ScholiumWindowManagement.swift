@@ -1194,6 +1194,27 @@ struct ResearchRecordsWindowAttachment: NSViewRepresentable {
     }
 }
 
+struct SettingsWindowAttachment: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindowAttachmentView {
+        let view = WindowAttachmentView()
+        view.onWindowAttachment = configure
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
+        if let window = nsView.window { configure(window) }
+    }
+
+    private func configure(_ window: NSWindow) {
+        window.tabbingMode = .disallowed
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.backgroundColor = ScholiumColorRole.surfaceBackground.nsColor
+        window.animationBehavior = .none
+    }
+}
+
 final class WindowAttachmentView: NSView {
     var onWindowAttachment: ((NSWindow) -> Void)?
 

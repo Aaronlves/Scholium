@@ -6,54 +6,64 @@ import UniformTypeIdentifiers
 
 private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     case triptychs
-    case propertyProfiles
     case appearance
+    case hotkeys
+    case propertyProfiles
     case attention
-    case methods
-    case profilesPractices
-    case collaboration
-    case sources
+    case methodsPractices
+    case actionProfiles
+    case agentAccess
+    case externalToolsCitations
 
     var id: String { rawValue }
 
-    static let primary: [Self] = [
+    static let application: [Self] = [
         .triptychs,
-        .propertyProfiles,
         .appearance,
+        .hotkeys,
+    ]
+
+    static let triptych: [Self] = [
+        .propertyProfiles,
         .attention,
     ]
 
     static let researchGuidance: [Self] = [
-        .methods,
-        .profilesPractices,
-        .collaboration,
-        .sources,
+        .methodsPractices,
+        .actionProfiles,
+        .agentAccess,
+        .externalToolsCitations,
     ]
 
     var title: LocalizedStringResource {
         switch self {
         case .triptychs: ScholiumL10n.Settings.triptychs
-        case .propertyProfiles: ScholiumL10n.Settings.propertyProfiles
         case .appearance: ScholiumL10n.Settings.appearance
+        case .hotkeys: ScholiumL10n.Settings.hotkeys
+        case .propertyProfiles: ScholiumL10n.Settings.propertyProfiles
         case .attention: ScholiumL10n.Settings.attention
-        case .methods: ResearchGuidanceCategory.methods.localizedTitle
-        case .profilesPractices:
-            ResearchGuidanceCategory.profilesPractices.localizedTitle
-        case .collaboration: ResearchGuidanceCategory.collaboration.localizedTitle
-        case .sources: ResearchGuidanceCategory.sources.localizedTitle
+        case .methodsPractices:
+            ResearchGuidanceCategory.methodsPractices.localizedTitle
+        case .actionProfiles:
+            ResearchGuidanceCategory.actionProfiles.localizedTitle
+        case .agentAccess: ResearchGuidanceCategory.agentAccess.localizedTitle
+        case .externalToolsCitations:
+            ResearchGuidanceCategory.externalToolsCitations.localizedTitle
         }
     }
 
     var symbol: String {
         switch self {
         case .triptychs: "rectangle.3.group"
-        case .propertyProfiles: "slider.horizontal.3"
         case .appearance: "paintbrush"
+        case .hotkeys: "keyboard"
+        case .propertyProfiles: "slider.horizontal.3"
         case .attention: "exclamationmark.triangle"
-        case .methods: ResearchGuidanceCategory.methods.symbol
-        case .profilesPractices: ResearchGuidanceCategory.profilesPractices.symbol
-        case .collaboration: ResearchGuidanceCategory.collaboration.symbol
-        case .sources: ResearchGuidanceCategory.sources.symbol
+        case .methodsPractices: ResearchGuidanceCategory.methodsPractices.symbol
+        case .actionProfiles: ResearchGuidanceCategory.actionProfiles.symbol
+        case .agentAccess: ResearchGuidanceCategory.agentAccess.symbol
+        case .externalToolsCitations:
+            ResearchGuidanceCategory.externalToolsCitations.symbol
         }
     }
 
@@ -62,28 +72,55 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .triptychs: .triptychs
         case .propertyProfiles: .propertyProfiles
         case .appearance: .appearance
+        case .hotkeys: .hotkeys
         case .attention: .attention
-        case .methods, .profilesPractices, .collaboration, .sources:
+        case .methodsPractices, .actionProfiles, .agentAccess,
+             .externalToolsCitations:
             .researchGuidance
         }
     }
 
     var researchGuidanceCategory: ResearchGuidanceCategory? {
         switch self {
-        case .methods: .methods
-        case .profilesPractices: .profilesPractices
-        case .collaboration: .collaboration
-        case .sources: .sources
-        case .triptychs, .propertyProfiles, .appearance, .attention: nil
+        case .methodsPractices: .methodsPractices
+        case .actionProfiles: .actionProfiles
+        case .agentAccess: .agentAccess
+        case .externalToolsCitations: .externalToolsCitations
+        case .triptychs, .propertyProfiles, .appearance, .hotkeys,
+             .attention: nil
         }
     }
 
-    var usesTriptychScope: Bool {
+    var searchTerms: [String] {
         switch self {
-        case .triptychs, .appearance: false
-        case .propertyProfiles, .attention, .methods, .profilesPractices,
-             .collaboration, .sources: true
+        case .triptychs:
+            ["Triptychs", "folders", "locations", "registration", "workspace"]
+        case .appearance:
+            ["Appearance", "document", "typeface", "font", "line width", "headings", "callouts", "CSS"]
+        case .hotkeys:
+            ["Hotkeys", "keyboard", "shortcuts", "commands", "menu"]
+                + ScholiumHotkeyCommand.allCases.flatMap {
+                    [String(localized: $0.title), String(localized: $0.menuPath)]
+                }
+        case .propertyProfiles:
+            ["Property Profiles", "YAML", "New Note", "About", "Agent requirements"]
+        case .attention:
+            ["Attention", "reminders", "dismissed items", "timing", "This Mac"]
+        case .methodsPractices:
+            ["Methods & Practices", "Research Skills", "Markdown", "Wikilinks", "recovery"]
+        case .actionProfiles:
+            ["Action Profiles", "academic inputs", "academic results", "roles", "fields"]
+        case .agentAccess:
+            ["Agent Access", "write set", "permission", "Run", "Full Triptych Access"]
+        case .externalToolsCitations:
+            ["External Tools & Citations", "CLI", "Zotero", "citation style", "integrations"]
         }
+    }
+
+    func matches(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return searchTerms.contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
     static func restored(
@@ -94,13 +131,14 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .triptychs: .triptychs
         case .propertyProfiles: .propertyProfiles
         case .appearance: .appearance
+        case .hotkeys: .hotkeys
         case .attention: .attention
         case .researchGuidance:
             switch researchCategory {
-            case .methods: .methods
-            case .profilesPractices: .profilesPractices
-            case .collaboration: .collaboration
-            case .sources: .sources
+            case .methodsPractices: .methodsPractices
+            case .actionProfiles: .actionProfiles
+            case .agentAccess: .agentAccess
+            case .externalToolsCitations: .externalToolsCitations
             }
         }
     }
@@ -111,27 +149,48 @@ struct ScholiumSettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "triptychs"
     @AppStorage("scholium.settings.researchGuidanceCategory")
-    private var persistedResearchCategory = ResearchGuidanceCategory.methods.rawValue
+    private var persistedResearchCategory = ResearchGuidanceCategory.methodsPractices.rawValue
     @State private var destination = ScholiumSettingsDestination.triptychs
+    @State private var searchQuery = ""
 
     var body: some View {
-        HStack(spacing: 0) {
-            settingsSidebar
+        GeometryReader { geometry in
+            let topInset = max(
+                geometry.safeAreaInsets.top
+                    - ScholiumMetrics.Settings.editorContentInset,
+                0
+            )
+            HStack(spacing: 0) {
+                settingsSidebar
+                    .padding(.top, topInset)
 
-            Divider()
-
-            settingsDetail
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .topLeading
-                )
-                .scholiumSettingsPaneSurface()
-                .clipped()
+                settingsDetail
+                    .padding(.top, topInset)
+                    .frame(
+                        width: max(
+                            geometry.size.width
+                                - ScholiumMetrics.Settings.sidebarWidth,
+                            0
+                        ),
+                        alignment: .topLeading
+                    )
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
+                    .scholiumSettingsPaneSurface()
+                    .clipped()
+            }
+            .overlay(alignment: .leading) {
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(width: ScholiumMetrics.Settings.sidebarWidth)
+                    Divider()
+                    Spacer(minLength: 0)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
-        .scholiumSettingsPaneSurface()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.root")
         .overlay(alignment: .bottom) {
@@ -160,7 +219,7 @@ struct ScholiumSettingsView: View {
             let pane = WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs
             let category = ResearchGuidanceCategory(
                 rawValue: persistedResearchCategory
-            ) ?? .methods
+            ) ?? .methodsPractices
             destination = ScholiumSettingsDestination.restored(
                 pane: pane,
                 researchCategory: category
@@ -174,6 +233,11 @@ struct ScholiumSettingsView: View {
                 persistedResearchCategory = category.rawValue
             }
         }
+        .onChange(of: searchQuery) { _, query in
+            guard !destination.matches(query),
+                  let first = filteredDestinations.first else { return }
+            destination = first
+        }
     }
 
     private var sidebarSelection: Binding<ScholiumSettingsDestination?> {
@@ -185,39 +249,51 @@ struct ScholiumSettingsView: View {
 
     private var settingsSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Settings")
-                .font(ScholiumTypography.interface(.primaryTitle))
-                .scholiumForeground(.primaryText)
+            ScholiumSettingsSearchField(text: $searchQuery)
                 .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-                .padding(.top, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.top, ScholiumMetrics.Settings.editorContentInset)
                 .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
-                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("scholium.settings.search")
 
             List(selection: sidebarSelection) {
-                Section {
-                    ForEach(ScholiumSettingsDestination.primary) { item in
-                        settingsSidebarRow(item)
+                if !filteredApplicationDestinations.isEmpty {
+                    Section("Application") {
+                        ForEach(filteredApplicationDestinations) { item in
+                            settingsSidebarRow(item)
+                        }
                     }
                 }
 
-                Section {
-                    ForEach(ScholiumSettingsDestination.researchGuidance) { item in
-                        settingsSidebarRow(item)
+                if !filteredTriptychDestinations.isEmpty {
+                    Section("This Triptych") {
+                        ForEach(filteredTriptychDestinations) { item in
+                            settingsSidebarRow(item)
+                        }
                     }
-                } header: {
-                    Text(ScholiumL10n.Settings.researchGuidance)
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .scholiumForeground(.secondaryText)
-                        .textCase(nil)
+                }
+
+                if !filteredResearchGuidanceDestinations.isEmpty {
+                    Section {
+                        ForEach(filteredResearchGuidanceDestinations) { item in
+                            settingsSidebarRow(item)
+                        }
+                    } header: {
+                        Text(ScholiumL10n.Settings.researchGuidance)
+                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                            .scholiumForeground(.secondaryText)
+                            .textCase(nil)
+                    }
+                }
+
+                if filteredDestinations.isEmpty {
+                    ContentUnavailableView.search(text: searchQuery)
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("scholium.settings.search.empty")
                 }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .accessibilityIdentifier("scholium.settings.sidebarList")
-
-            if destination.usesTriptychScope {
-                SettingsTriptychScopeFooter()
-            }
         }
         .frame(
             minWidth: ScholiumMetrics.Settings.sidebarWidth,
@@ -226,9 +302,27 @@ struct ScholiumSettingsView: View {
             maxHeight: .infinity,
             alignment: .topLeading
         )
-        .background(ScholiumColorRole.navigationSurfaceBackground.color)
+        .scholiumSettingsPaneSurface(.navigationSurfaceBackground)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.sidebar")
+    }
+
+    private var filteredApplicationDestinations: [ScholiumSettingsDestination] {
+        ScholiumSettingsDestination.application.filter { $0.matches(searchQuery) }
+    }
+
+    private var filteredTriptychDestinations: [ScholiumSettingsDestination] {
+        ScholiumSettingsDestination.triptych.filter { $0.matches(searchQuery) }
+    }
+
+    private var filteredResearchGuidanceDestinations: [ScholiumSettingsDestination] {
+        ScholiumSettingsDestination.researchGuidance.filter { $0.matches(searchQuery) }
+    }
+
+    private var filteredDestinations: [ScholiumSettingsDestination] {
+        filteredApplicationDestinations
+            + filteredTriptychDestinations
+            + filteredResearchGuidanceDestinations
     }
 
     private func settingsSidebarRow(
@@ -263,72 +357,19 @@ struct ScholiumSettingsView: View {
                 )
                 .padding(ScholiumGrid.Spacing.regionContentInset)
             }
+        case .hotkeys:
+            HotkeySettingsView(searchQuery: searchQuery)
         case .attention:
             AttentionSettingsView()
-        case .methods:
-            ResearchGuidanceSettingsView(category: .methods)
-        case .profilesPractices:
-            ResearchGuidanceSettingsView(category: .profilesPractices)
-        case .collaboration:
-            ResearchGuidanceSettingsView(category: .collaboration)
-        case .sources:
-            ResearchGuidanceSettingsView(category: .sources)
+        case .methodsPractices:
+            ResearchGuidanceSettingsView(category: .methodsPractices)
+        case .actionProfiles:
+            ResearchGuidanceSettingsView(category: .actionProfiles)
+        case .agentAccess:
+            ResearchGuidanceSettingsView(category: .agentAccess)
+        case .externalToolsCitations:
+            ResearchGuidanceSettingsView(category: .externalToolsCitations)
         }
-    }
-}
-
-private struct SettingsTriptychScopeFooter: View {
-    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Divider()
-            Text("Triptych")
-                .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .scholiumForeground(.secondaryText)
-
-            if settingsModel.registeredTriptychs.isEmpty {
-                Label("No Triptych Registered", systemImage: "rectangle.3.group")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Picker("Triptych", selection: activeTriptychID) {
-                    ForEach(settingsModel.registeredTriptychs) { assignment in
-                        Text(settingsTriptychLabel(
-                            assignment,
-                            among: settingsModel.registeredTriptychs
-                        ))
-                        .tag(Optional(assignment.id))
-                    }
-                }
-                .labelsHidden()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
-                .disabled(settingsModel.isRefreshing)
-                .accessibilityIdentifier("scholium.settings.triptychScope")
-            }
-
-            if settingsModel.isRefreshing {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Changing Triptych")
-            }
-        }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
-        .background(ScholiumColorRole.apparatusSurfaceBackground.color)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var activeTriptychID: Binding<UUID?> {
-        Binding(
-            get: { settingsModel.workspaceAssignment?.id },
-            set: { value in
-                guard let value,
-                      value != settingsModel.workspaceAssignment?.id else { return }
-                Task { await settingsModel.activateRegisteredTriptych(id: value) }
-            }
-        )
     }
 }
 
@@ -386,7 +427,7 @@ private struct AttentionSettingsView: View {
                     Divider()
 
                     settingsEditorSection("Dismissed Items on This Mac") {
-                        Button("Restore All Dismissed Items") {
+                        Button("Restore All Dismissed Items on This Mac") {
                             var ledger = AttentionPreferences.decodeLedger(
                                 dismissalLedgerData
                             )
@@ -1851,6 +1892,7 @@ struct WorkspaceSettingsView: View {
         }
         .frame(maxWidth: 360)
         .disabled(settingsModel.registeredTriptychs.isEmpty)
+        .accessibilityIdentifier("scholium.settings.triptychScope")
     }
 
     @ViewBuilder
@@ -1897,6 +1939,10 @@ private struct AppearanceSettingsView: View {
     @State private var importError: String?
     @State private var showRename = false
     @State private var showDeleteConfirmation = false
+    @State private var showRestoreDefaultConfirmation = false
+    @State private var showDiscardChangesConfirmation = false
+    @State private var pendingProfileSelection: UUID?
+    @State private var showsAdvancedCSS = false
     @State private var nameDraft = ""
 
     var body: some View {
@@ -1928,7 +1974,10 @@ private struct AppearanceSettingsView: View {
 
                     Divider()
 
-                    advancedCSSSection
+                    DisclosureGroup("Advanced CSS", isExpanded: $showsAdvancedCSS) {
+                        advancedCSSContent
+                            .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+                    }
                 }
                 .padding(ScholiumGrid.Spacing.regionContentInset)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1981,6 +2030,34 @@ private struct AppearanceSettingsView: View {
         } message: {
             Text("This removes the selected configuration from this Mac. Research documents are not changed.")
         }
+        .confirmationDialog(
+            "Restore Default Appearance?",
+            isPresented: $showRestoreDefaultConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Restore Defaults", role: .destructive) {
+                draft?.settings = DocumentAppearanceSettings.defaultSettings
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces the current draft with Scholium’s built-in document appearance. Choose Save to keep it.")
+        }
+        .confirmationDialog(
+            "Discard Unsaved Appearance Changes?",
+            isPresented: $showDiscardChangesConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Discard and Switch", role: .destructive) {
+                guard let id = pendingProfileSelection else { return }
+                pendingProfileSelection = nil
+                selectProfile(id)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingProfileSelection = nil
+            }
+        } message: {
+            Text("The selected appearance has unsaved changes. Switching configurations will discard them.")
+        }
     }
 
     private var selectedProfileID: Binding<UUID?> {
@@ -1988,9 +2065,11 @@ private struct AppearanceSettingsView: View {
             get: { store.selectedAppearanceProfileID },
             set: { id in
                 guard let id else { return }
-                store.selectAppearance(id)
-                if let profile = store.appearanceProfiles.first(where: { $0.id == id }) {
-                    draft = profile
+                if hasUnsavedChanges {
+                    pendingProfileSelection = id
+                    showDiscardChangesConfirmation = true
+                } else {
+                    selectProfile(id)
                 }
             }
         )
@@ -2011,6 +2090,11 @@ private struct AppearanceSettingsView: View {
                 .disabled(!hasUnsavedChanges || !store.canModify)
                 .accessibilityLabel("Save Appearance")
 
+                Button("Revert to Saved") {
+                    loadSelectedDraft()
+                }
+                .disabled(!hasUnsavedChanges)
+
                 appearanceManagementMenu
             }
 
@@ -2027,8 +2111,8 @@ private struct AppearanceSettingsView: View {
         }
     }
 
-    private var advancedCSSSection: some View {
-        settingsEditorSection("Advanced CSS") {
+    private var advancedCSSContent: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("Optional CSS snippets are additive compatibility overrides; the selected appearance remains primary.")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
@@ -2089,6 +2173,10 @@ private struct AppearanceSettingsView: View {
             .disabled(store.selectedAppearanceProfileID == nil)
             Button("Rename Appearance…") { beginRename() }
                 .disabled(store.selectedAppearanceProfileID == nil)
+            Button("Restore Default Appearance…") {
+                showRestoreDefaultConfirmation = true
+            }
+            .disabled(store.selectedAppearanceProfileID == nil)
             Divider()
             Button("Delete Appearance…", role: .destructive) {
                 showDeleteConfirmation = true
@@ -2117,6 +2205,13 @@ private struct AppearanceSettingsView: View {
 
     private func loadSelectedDraft() {
         draft = store.selectedAppearanceProfile
+    }
+
+    private func selectProfile(_ id: UUID) {
+        store.selectAppearance(id)
+        if let profile = store.appearanceProfiles.first(where: { $0.id == id }) {
+            draft = profile
+        }
     }
 
     private func beginRename() {
@@ -2155,6 +2250,7 @@ private struct AppearanceSettingsView: View {
 
 private struct AppearanceProfileEditor: View {
     @Binding var profile: DocumentAppearanceProfile
+    @State private var showsAdvancedAppearance = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
@@ -2184,66 +2280,82 @@ private struct AppearanceProfileEditor: View {
                 }
                 AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
                 AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
-                AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
-                AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
-                AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
-                AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
-                Picker("Alignment", selection: $profile.settings.body.alignment) {
-                    ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
-                        Text(alignment.label).tag(alignment)
-                    }
-                }
-                Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
-                    ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
-                        Text(hyphenation.label).tag(hyphenation)
-                    }
-                }
-                Toggle("Kerning", isOn: $profile.settings.body.kerning)
-                Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
             }
 
             Divider()
 
-            settingsEditorSection("Headings") {
-                Picker("Typeface", selection: $profile.settings.headings.fontFamily) {
-                    ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { family in
-                        Text(family.label).tag(family)
+            DisclosureGroup(
+                "Advanced Appearance",
+                isExpanded: $showsAdvancedAppearance
+            ) {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                ) {
+                    settingsEditorSection("Body Details") {
+                        AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
+                        AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
+                        AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+                        AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
+                        Picker("Alignment", selection: $profile.settings.body.alignment) {
+                            ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
+                                Text(alignment.label).tag(alignment)
+                            }
+                        }
+                        Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
+                            ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
+                                Text(hyphenation.label).tag(hyphenation)
+                            }
+                        }
+                        Toggle("Kerning", isOn: $profile.settings.body.kerning)
+                        Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
                     }
-                }
-                Picker("Style", selection: $profile.settings.headings.style) {
-                    ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
-                        Text(style.label).tag(style)
+
+                    Divider()
+
+                    settingsEditorSection("Headings") {
+                        Picker("Typeface", selection: $profile.settings.headings.fontFamily) {
+                            ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { family in
+                                Text(family.label).tag(family)
+                            }
+                        }
+                        Picker("Style", selection: $profile.settings.headings.style) {
+                            ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
+                                Text(style.label).tag(style)
+                            }
+                        }
+                        AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
+                        AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
+                        AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+
+                        DisclosureGroup("Document title (H1)") {
+                            HeadingLevelAppearanceEditor(level: $profile.settings.headings.title)
+                        }
+                        DisclosureGroup("Section heading (H2)") {
+                            HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
+                        }
+                        DisclosureGroup("Lower headings (H3–H6)") {
+                            HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
+                        }
                     }
-                }
-                AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
-                AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
-                AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
 
-                DisclosureGroup("Document title (H1)") {
-                    HeadingLevelAppearanceEditor(level: $profile.settings.headings.title)
-                }
-                DisclosureGroup("Section heading (H2)") {
-                    HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
-                }
-                DisclosureGroup("Lower headings (H3–H6)") {
-                    HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
-                }
-            }
+                    Divider()
 
-            Divider()
-
-            settingsEditorSection("Callouts") {
-                Text("Callouts inherit Body typography; each role controls only spacing and composition.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
-                    if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
-                        DisclosureGroup(role.label) {
-                            CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
+                    settingsEditorSection("Callouts") {
+                        Text("Callouts inherit Body typography; each role controls only spacing and composition.")
+                            .font(ScholiumTypography.interface(.body))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
+                            if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
+                                DisclosureGroup(role.label) {
+                                    CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
+                                }
+                            }
                         }
                     }
                 }
+                .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
             }
         }
     }

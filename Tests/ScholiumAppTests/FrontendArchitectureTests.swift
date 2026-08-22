@@ -251,10 +251,17 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let hotkeys = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Features/Settings/HotkeyPreferences.swift"
+            ),
+            encoding: .utf8
+        )
         #expect(driver.contains(
             "application.typeKey(\"f\", modifierFlags: [.command, .shift])"
         ))
-        #expect(app.contains(".keyboardShortcut(\"f\", modifiers: [.command, .shift])"))
+        #expect(app.contains(".scholiumKeyboardShortcut(shortcut(for: .searchResearch))"))
+        #expect(hotkeys.contains("ScholiumHotkeyBinding(key: \"f\", modifiers: [.shift, .command])"))
     }
 
     @Test("Packaged editor performance actions remain reachable only in an explicit run")
@@ -1311,7 +1318,9 @@ struct FrontendArchitectureTests {
             menuStart.lowerBound..<menuEnd.lowerBound
         ]
         #expect(documentModeMenu.contains("Button(\"Source\")"))
-        #expect(documentModeMenu.contains(".keyboardShortcut(\"r\", modifiers: [.command])"))
+        #expect(documentModeMenu.contains(
+            ".scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))"
+        ))
 
         let commandObservation = try String(
             contentsOf: repository.appendingPathComponent(

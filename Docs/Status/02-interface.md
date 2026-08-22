@@ -160,6 +160,20 @@
 
 ## Appearance, adaptation, and localization
 
+- Settings now uses one searchable grouped sidebar: Application contains
+  Triptychs, Appearance, and Hotkeys; This Triptych contains Property Profiles
+  and Attention; Research Guidance contains Methods & Practices, Action
+  Profiles, Agent Access, and External Tools & Citations. Triptych selection
+  remains inside the Triptychs detail, and search uses only static Settings
+  metadata.
+- Hotkeys persists a machine-local closed command catalog, records Command-
+  based shortcuts, rejects standard reservations and active duplicates, and
+  updates the same SwiftUI menu commands that execute the actions. Per-command
+  clear/default and complete default restoration are reachable.
+- Appearance keeps the common profile and Body controls visible, moves Body
+  details, Headings, Callouts, and CSS behind explicit disclosures, adds Revert
+  to Saved and built-in-default restoration, and confirms before a profile
+  switch can discard an unsaved draft.
 - Settings → Properties uses the shared segmented role selector and the ordered New Notes,
   Agent-Created Analyses, and About sections. Exact seed
   delimiters are visible but not editable; source errors stay inline; Agent

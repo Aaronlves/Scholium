@@ -6,6 +6,7 @@ enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case triptychs
     case propertyProfiles = "property-profiles"
     case appearance
+    case hotkeys
     case attention
     case researchGuidance = "research-guidance"
 
@@ -115,7 +116,7 @@ struct WorkspaceSettingsMachineCapabilities {
     let openExternal: (URL) -> Bool
 }
 
-/// Zotero operations used by Research Guidance's Sources & Integrations pane.
+/// Zotero operations used by Research Guidance's External Tools & Citations pane.
 @MainActor
 struct WorkspaceSettingsZoteroCapabilities {
     let zoteroConnectionInfo: () async -> ZoteroLibraryInfo

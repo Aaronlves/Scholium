@@ -212,7 +212,7 @@ extension ScholiumUITests {
         }
         application.launchArguments += [
             "-scholium.settings.selectedPane", "research-guidance",
-            "-scholium.settings.researchGuidanceCategory", "Methods",
+            "-scholium.settings.researchGuidanceCategory", "Methods & Practices",
         ]
         if name.contains("testResearchWorkflowInterfaceProofs") {
             application.launchArguments += ["--scholium-research-workflow-proofs"]
@@ -773,22 +773,22 @@ extension ScholiumUITests {
         let settings = app.menuItems["Settings…"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
-        let categoryList = app.descendants(matching: .any)[
-            "scholium.researchGuidance.categoryList"
-        ]
-        XCTAssertTrue(categoryList.waitForExistence(timeout: 10))
-        let category = app.descendants(matching: .any)[
+        let destination = app.descendants(matching: .any)[
             openAdvanced
-                ? "scholium.researchGuidance.category.Sources & Integrations"
-                : "scholium.researchGuidance.category.Profiles & Practices"
+                ? "scholium.settings.destination.externalToolsCitations"
+                : "scholium.settings.destination.methodsPractices"
         ]
-        XCTAssertTrue(category.waitForExistence(timeout: 5))
-        category.click()
+        XCTAssertTrue(destination.waitForExistence(timeout: 10))
+        destination.click()
         if openAdvanced {
             XCTAssertTrue(
                 app.descendants(matching: .any)["scholium.agentCLI.section"]
                     .waitForExistence(timeout: 10)
-            )
+                )
+        } else {
+            let practices = app.descendants(matching: .any)["Practices"].firstMatch
+            XCTAssertTrue(practices.waitForExistence(timeout: 10))
+            practices.click()
         }
     }
 

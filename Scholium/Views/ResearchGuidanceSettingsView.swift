@@ -2,32 +2,32 @@ import ScholiumContracts
 import SwiftUI
 
 enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
-    case methods = "Methods"
-    case profilesPractices = "Profiles & Practices"
-    case collaboration = "Collaboration"
-    case sources = "Sources & Integrations"
+    case methodsPractices = "Methods & Practices"
+    case actionProfiles = "Action Profiles"
+    case agentAccess = "Agent Access"
+    case externalToolsCitations = "External Tools & Citations"
 
     var id: String { rawValue }
 
     var localizedTitle: LocalizedStringResource {
         switch self {
-        case .methods:
-            LocalizedStringResource("Methods", table: "Localizable", bundle: .module)
-        case .profilesPractices:
-            LocalizedStringResource("Profiles & Practices", table: "Localizable", bundle: .module)
-        case .collaboration:
-            LocalizedStringResource("Collaboration", table: "Localizable", bundle: .module)
-        case .sources:
-            LocalizedStringResource("Sources & Integrations", table: "Localizable", bundle: .module)
+        case .methodsPractices:
+            LocalizedStringResource("Methods & Practices", table: "Localizable", bundle: .module)
+        case .actionProfiles:
+            LocalizedStringResource("Action Profiles", table: "Localizable", bundle: .module)
+        case .agentAccess:
+            LocalizedStringResource("Agent Access", table: "Localizable", bundle: .module)
+        case .externalToolsCitations:
+            LocalizedStringResource("External Tools & Citations", table: "Localizable", bundle: .module)
         }
     }
 
     var symbol: String {
         switch self {
-        case .methods: "text.book.closed"
-        case .profilesPractices: "wrench.and.screwdriver"
-        case .collaboration: "lock.shield"
-        case .sources: "link"
+        case .methodsPractices: "text.book.closed"
+        case .actionProfiles: "list.bullet.rectangle"
+        case .agentAccess: "lock.shield"
+        case .externalToolsCitations: "link"
         }
     }
 }
@@ -38,13 +38,13 @@ struct ResearchGuidanceSettingsView: View {
     var body: some View {
         Group {
             switch category {
-            case .methods:
-                ResearchMethodsSettingsView()
-            case .profilesPractices:
-                ProfilesPracticesSettingsView()
-            case .collaboration:
+            case .methodsPractices:
+                MethodsPracticesSettingsView()
+            case .actionProfiles:
+                ActionProfilesSettingsView()
+            case .agentAccess:
                 ResearchPermissionSettingsView()
-            case .sources:
+            case .externalToolsCitations:
                 ResearchSourcesSettingsView()
             }
         }

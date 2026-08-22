@@ -142,6 +142,22 @@
 
 ### Properties and portable settings
 
+- Settings exposes one named search field, Application, This Triptych, and
+  Research Guidance groups, the selected destination, and current detail title
+  in one predictable keyboard order. Triptychs detail exposes the active
+  Triptych selector with its registration actions; other destinations do not
+  repeat that control.
+  Filtering retains one selected result and communicates the destination's
+  scope through its group rather than color or position alone. Empty results
+  name the failed query and keep the search field available.
+- Hotkeys exposes each command, menu location, current binding or None state,
+  and Record, Clear, Restore Default, and Restore All Defaults actions. The
+  recorder is an ordinary keyboard-focusable control: activation enters a
+  named recording state, Escape cancels recording, Delete clears the draft,
+  and a captured binding stays a draft until explicit Save. Missing Command,
+  standard macOS reservations, and conflicts name the problem and conflicting
+  command inline; invalid input never changes the menu. Menu labels and
+  shortcut accessibility values update together after Save.
 - Settings names the selected role, exact YAML editor, fixed delimiters,
   source-type picker, Agent-required checkboxes, About fields, validation
   location, dirty/save/conflict state, and separate restore or clear

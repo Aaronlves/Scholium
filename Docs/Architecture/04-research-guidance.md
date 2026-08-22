@@ -106,9 +106,11 @@ closed when a requested check has no configured style.
 
 ## Settings and configuration transactions
 
-Settings presents one Research Guidance list/detail surface for Methods,
-Profiles & Practices, Collaboration, Sources & Integrations, and Recovery &
-Technical. Each editor mutates one owner at a time through an expected-revision
+Settings presents one Research Guidance list/detail surface for Methods &
+Practices, Action Profiles, Agent Access, and External Tools & Citations. The
+Methods & Practices destination switches between the existing Method and
+Practice owners; Action Profiles edits only the academic profile document.
+Each editor mutates one owner at a time through an expected-revision
 transaction.
 
 Portable `TriptychSettings` is a separate strict owner for role Properties.
@@ -144,11 +146,12 @@ applicable/recommended/serialization order; Settings owns only selection and
 exact seed source. A later managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 
-The Profile editor can change only visible name, order, enabled state,
+The Action Profile editor can change only visible name, order, enabled state,
 role-valid placement, and bounded ordered academic fields. The Methods and
 Practices editors operate on exact Markdown and expose their one recovery
-point. Sources & Integrations owns citation selection plus Zotero and installed
-CLI controls. Method and Practice recovery stays beside the affected editor.
+point. External Tools & Citations presents citation selection before machine-
+local Zotero and CLI controls. Method and Practice recovery stays beside the
+affected editor.
 Invalid machine-local Method locators have one owner-specific,
 confirmation-gated recovery operation. It uses the shared same-directory
 exact-state preserver, archives only a typed invalid file, and resets only its

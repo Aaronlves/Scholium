@@ -361,6 +361,26 @@ numbers. The configured measure and typography remain valid at narrow widths, wi
 mixed scripts, and at 100%/200% text. Screenshots and prototype coordinates are
 evidence only and never define native/CSS unit conversion.
 
+Settings uses one opaque Navigation sidebar and one continuous detail plane.
+Its native titlebar keeps the traffic lights and drag region but hides the
+redundant window-title label. The sidebar begins with native Settings search,
+not another visible Settings heading.
+The sidebar orders Application, This Triptych, and Research Guidance as
+succinct native list sections. Triptych registration and selection remain inside the Triptychs
+detail rather than repeating as a global navigation control. Settings adds no
+toolbar of peer icons, card grid, bottom action strip, or unrelated General or
+Advanced collection. Every destination retains the shared 17pt primary title;
+scope is visible in navigation and repeated inside a mixed-scope detail only
+where a consequential action needs the explicit **This Triptych** or **This
+Mac** boundary.
+
+Document Appearance presents Configuration, Line width, Body Typeface, Font
+size, and Line spacing before one **Advanced Appearance** disclosure. Body
+details, Headings, and Callouts live inside that disclosure; Advanced CSS has
+its own disclosure. Save and **Revert to Saved** remain visible beside the
+selected profile. Switching profiles protects an unsaved draft, and restoring
+the built-in appearance changes the draft only until Save.
+
 ### 19.5 Icons and symbols
 
 #### Interface symbols

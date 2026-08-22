@@ -461,7 +461,7 @@ private struct ResearchAuthorityFacts: View {
     var body: some View {
         ResearchProofSection(title: "APP-OWNED BOUNDARY") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                LabeledContent("Collaboration policy", value: "Ask Me Every Time")
+                LabeledContent("Agent access policy", value: "Ask Me Every Time")
                 LabeledContent("Candidate write scope", value: action.candidateWriteScope)
                 LabeledContent(
                     "Recovery",
@@ -511,16 +511,16 @@ private struct ResearchSheetButtons: View {
 // MARK: - Research Guidance
 
 private enum ResearchGuidanceProofCategory: String, CaseIterable, Identifiable {
-    case methods = "Methods"
-    case profilesPractices = "Profiles & Practices"
-    case collaboration = "Collaboration"
-    case sources = "Sources & Integrations"
+    case methodsPractices = "Methods & Practices"
+    case actionProfiles = "Action Profiles"
+    case agentAccess = "Agent Access"
+    case externalToolsCitations = "External Tools & Citations"
 
     var id: String { rawValue }
 }
 
 private struct ResearchGuidanceSettingsProof: View {
-    @State private var category: ResearchGuidanceProofCategory = .methods
+    @State private var category: ResearchGuidanceProofCategory = .methodsPractices
 
     var body: some View {
         HStack(spacing: 0) {
@@ -561,7 +561,7 @@ private struct ResearchGuidanceSettingsDetail: View {
     @ViewBuilder
     private var settingsContent: some View {
         switch category {
-        case .methods:
+        case .methodsPractices:
             ResearchProofSection(title: "RESEARCH SKILLS") {
                         Text("Each Platform Action routes to one current primary Markdown Method. Exact Wikilinks select Practices; an optional local folder is ordinary Agent-readable storage, not a package.")
                     .font(ScholiumTypography.scholarly(.body))
@@ -588,23 +588,23 @@ private struct ResearchGuidanceSettingsDetail: View {
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        case .profilesPractices:
-                   ResearchSkillGroup(title: "ACADEMIC PROFILES", detail: "Flat researcher-facing fields", rows: [
-                       "Analyze: source and passage inputs; evidence Result fields",
-                       "Critique: target and standard inputs; objection Result fields",
-                   ], actionTitle: "Enable")
             ResearchSkillGroup(title: "PHILOSOPHICAL PRACTICES", detail: "Exact Markdown linked from primary Methods", rows: [
                 "Argument Mapping.md",
                 "Counterexample Testing.md",
                 "Interpretive Triangulation.md",
             ], actionTitle: "Edit")
-            Text("A Practice edit replaces only its exact current revision. It guides research but never grants authority.")
+        case .actionProfiles:
+                   ResearchSkillGroup(title: "ACADEMIC PROFILES", detail: "Flat researcher-facing fields", rows: [
+                       "Analyze: source and passage inputs; evidence Result fields",
+                       "Critique: target and standard inputs; objection Result fields",
+                   ], actionTitle: "Enable")
+            Text("An Action Profile shapes academic inputs and results. It never grants Agent authority.")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-        case .collaboration:
-            ResearchProofSection(title: "TRIPTYCH COLLABORATION") {
-                Picker("Collaboration policy", selection: $collaborationPolicy) {
+        case .agentAccess:
+            ResearchProofSection(title: "AGENT WRITE ACCESS FOR THIS TRIPTYCH") {
+                Picker("Agent access policy", selection: $collaborationPolicy) {
                     Text("Ask Me Every Time").tag("Ask Me Every Time")
                     Text("Ask Me Only for Works").tag("Ask Me Only for Works")
                     Text("Full Triptych Access").tag("Full Triptych Access")
@@ -614,17 +614,13 @@ private struct ResearchGuidanceSettingsDetail: View {
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        case .sources:
-            ResearchSkillGroup(title: "SOURCE ROUTES", detail: "Explicit source identity", rows: [
-                "Zotero local attachment route",
-                "Researcher-selected local file route",
-            ], actionTitle: nil)
+        case .externalToolsCitations:
             ResearchSkillGroup(title: "CITATION STYLE", detail: "Triptych-owned configuration", rows: [
                 "APA 7",
             ], actionTitle: "Select")
-            ResearchSkillGroup(title: "AGENT & CLI", detail: "Local authenticated handoff", rows: [
-                "Pairing and Session are short-lived and restart-invalidated",
-                "CLI uses the same Application owner as the app",
+            ResearchSkillGroup(title: "EXTERNAL TOOLS ON THIS MAC", detail: "Machine-local access", rows: [
+                "Zotero Desktop local read-only API",
+                "Scholium CLI installation instructions",
             ], actionTitle: nil)
         }
     }

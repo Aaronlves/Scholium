@@ -173,6 +173,14 @@ struct ScholiumApp: App {
             ApplicationBootstrapGate(controller: applicationBootstrap) { workspaceStore in
                 ScholiumSettingsRoot(workspaceStore: workspaceStore)
             }
+            .frame(width: 700, height: 560, alignment: .topLeading)
+            .background {
+                ScholiumSettingsWindowBackground()
+            }
+            .background(SettingsWindowAttachment())
+            .containerBackground(for: .window) {
+                ScholiumSettingsWindowBackground()
+            }
         }
 
         #if DEBUG
@@ -1110,7 +1118,6 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
-            .frame(width: 700, height: 560, alignment: .topLeading)
             .tint(ScholiumColorRole.accent.color)
             .preferredColorScheme(
                 WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
@@ -1190,6 +1197,8 @@ extension FocusedValues {
 
 private struct ScholiumCommands: Commands {
     let storageReady: Bool
+    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
+    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
     @FocusedObject private var appState: WindowModel?
     @FocusedObject private var commandObservation: WindowCommandObservation?
     @FocusedValue(\.scholiumSearchActions) private var searchActions
@@ -1425,7 +1434,7 @@ private struct ScholiumCommands: Commands {
             }
             Divider()
             Button("Comment on Selection…") { editorActions?.startComment() }
-                .keyboardShortcut("c", modifiers: [.command, .option])
+                .scholiumKeyboardShortcut(shortcut(for: .commentOnSelection))
                 .disabled(
                     editorActions?.canCommentOnSelectedPassage() != true
                         || editorActions?.isComposing == true
@@ -1449,13 +1458,13 @@ private struct ScholiumCommands: Commands {
                 guard let appState else { return }
                 workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
             }
-            .keyboardShortcut("s", modifiers: [.command, .control])
+            .scholiumKeyboardShortcut(shortcut(for: .toggleLibrary))
             .disabled(workspaceWindowActions == nil)
             Divider()
             Button("Search…") {
                 searchActions?.begin(.general)
             }
-            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
             .disabled(searchActions == nil)
             Button(
                 ScholiumL10n.dynamicString(
@@ -1469,7 +1478,7 @@ private struct ScholiumCommands: Commands {
                     !appState.researchInspectorVisible
                 )
             }
-            .keyboardShortcut("b", modifiers: [.command, .option])
+            .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
             .disabled(
                 workspaceWindowActions == nil
                     || (appState?.researchInspectorVisible != true
@@ -1479,15 +1488,16 @@ private struct ScholiumCommands: Commands {
                 if appState?.presentedDocumentMode == .read {
                     Button("Review") { appState?.requestDocumentMode(.read) }
                     Button("Edit") { appState?.requestDocumentMode(.livePreview) }
-                        .keyboardShortcut("r", modifiers: [.command])
+                        .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
                         .disabled(appState?.canEditCurrentNote != true)
                 } else {
                     Button("Review") { appState?.requestDocumentMode(.read) }
-                        .keyboardShortcut("r", modifiers: [.command])
+                        .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
                     Button("Edit") { appState?.requestDocumentMode(.livePreview) }
                         .disabled(appState?.canEditCurrentNote != true)
                 }
                 Button("Source") { appState?.requestDocumentMode(.source) }
+                    .scholiumKeyboardShortcut(shortcut(for: .showSource))
                     .disabled(appState?.canEditCurrentNote != true)
             }
             .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
@@ -1537,6 +1547,7 @@ private struct ScholiumCommands: Commands {
             Button("Attention") {
                 workspaceWindowActions?.showPreferredAttention()
             }
+            .scholiumKeyboardShortcut(shortcut(for: .showAttention))
             .disabled(workspaceWindowActions?.canShowAttention() != true)
         }
         CommandMenu("Research") {
@@ -1558,6 +1569,7 @@ private struct ScholiumCommands: Commands {
             Button("Triptych Records") {
                 workspaceWindowActions?.showTriptychResearchRecords()
             }
+            .scholiumKeyboardShortcut(shortcut(for: .showTriptychRecords))
             .disabled(
                 appState?.workspaceAssignment == nil
                     || workspaceWindowActions == nil
@@ -1590,6 +1602,15 @@ private struct ScholiumCommands: Commands {
             }
         }
         #endif
+    }
+
+    private func shortcut(
+        for command: ScholiumHotkeyCommand
+    ) -> ScholiumHotkeyBinding? {
+        ScholiumHotkeyPreferences.binding(
+            for: command,
+            data: hotkeyPreferencesData
+        )
     }
 
     #if DEBUG

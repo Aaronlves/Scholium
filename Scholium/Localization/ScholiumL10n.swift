@@ -63,6 +63,16 @@ enum ScholiumL10n {
             )
         }
 
+        static var hotkeys: LocalizedStringResource {
+            LocalizedStringResource(
+                "settings.tab.hotkeys",
+                defaultValue: "Hotkeys",
+                table: "Interface",
+                bundle: .module,
+                comment: "Settings tab for customizable Scholium keyboard shortcuts."
+            )
+        }
+
         static var propertyProfiles: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.propertyProfiles",
@@ -79,7 +89,7 @@ enum ScholiumL10n {
                 defaultValue: "Research Guidance",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for Methods, Profiles, Collaboration, Sources, and Recovery."
+                comment: "Settings group for Methods and Practices, Action Profiles, Agent Access, and External Tools and Citations."
             )
         }
 

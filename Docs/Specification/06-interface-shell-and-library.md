@@ -186,9 +186,27 @@ Menus follow researcher tasks:
   enabled only when the focused window has a visible Triptych or Inspector
   Attention anchor, and opens that anchor's transient popover.
 - **Research:** role-valid Actions and **Triptych Records**, never Attention.
-- **Settings:** Triptychs, Property profiles, Appearance, Attention, and one
-  Research Guidance surface for Methods, Profiles & Practices, Collaboration,
-  and Sources & Integrations.
+- **Settings:** one searchable native list/detail window restores its last
+  destination. The titlebar retains native traffic-light and drag geometry but
+  hides the redundant window-title label; the navigation plane starts with
+  search rather than a repeated Settings heading. Triptych registration and selection remain inside the
+  Triptychs detail; navigation exposes no global Triptych selector.
+  Static page, section, control, and command metadata supplies Settings search;
+  authored Method, Practice, YAML, profile, and document content is never
+  indexed into it. Navigation has three explicit groups: **Application** owns
+  Triptychs, Document Appearance, and Hotkeys; **This Triptych** owns Property
+  Profiles and Attention; **Research Guidance** owns Methods & Practices,
+  Action Profiles, Agent Access, and External Tools & Citations. Scoped detail
+  sections say **This Triptych** or **This Mac** where one page presents both.
+  No General or Advanced destination becomes an unrelated catch-all.
+- Hotkeys is machine-local and exposes only the closed catalog of frequent
+  Scholium-specific menu commands. Recording requires Command, rejects a
+  duplicate active binding and standard macOS reservation inline, and supports
+  explicit clear, per-command default restoration, and complete default
+  restoration. Accepted changes update the corresponding menu shortcut
+  immediately. Standard macOS commands, including Settings, window, document,
+  Edit, Find, formatting, and text-size conventions, retain their system or
+  application-defined shortcuts and never enter this remapping surface.
 
 ### 18.3 Library and Search
 

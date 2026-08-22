@@ -9,27 +9,27 @@ struct ResearchSourcesSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 settingsTitle(
                     LocalizedStringResource(
-                        "Sources & Integrations",
+                        "External Tools & Citations",
                         table: "Localizable",
                         bundle: .module
                     ),
                     detail: LocalizedStringResource(
-                        "Manage machine-local CLI and Zotero access plus the Triptych citation style.",
+                        "Manage the citation style for this Triptych and external tools available on this Mac.",
                         table: "Localizable",
                         bundle: .module
                     )
                 )
+                ResearchCitationMethodSettingsView { citationStatus = $0 }
+                Divider()
                 AgentCLISettingsView()
                 Divider()
                 ZoteroSettingsView()
-                Divider()
-                ResearchCitationMethodSettingsView { citationStatus = $0 }
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: 720, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .scholiumSettingsPaneSurface()
-        .accessibilityIdentifier("scholium.researchGuidance.sources")
+        .accessibilityIdentifier("scholium.researchGuidance.externalToolsCitations")
     }
 }

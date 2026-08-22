@@ -1055,7 +1055,8 @@ struct ArchitectureBoundaryTests {
 
         for fileName in [
             "ResearchMethodsSettingsView.swift",
-            "ProfilesPracticesSettingsView.swift",
+            "MethodsPracticesSettingsView.swift",
+            "ActionProfilesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
         ] {

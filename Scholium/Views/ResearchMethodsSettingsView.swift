@@ -17,6 +17,8 @@ private struct NewResearchMethodContext: Identifiable {
 }
 
 struct ResearchMethodsSettingsView: View {
+    let showsTitle: Bool
+
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @State private var loadedTriptychID: UUID?
@@ -30,17 +32,23 @@ struct ResearchMethodsSettingsView: View {
     @State private var canRecoverMethodLocators = false
     @State private var confirmsMethodLocatorRecovery = false
 
+    init(showsTitle: Bool = true) {
+        self.showsTitle = showsTitle
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                settingsTitle(
-                    LocalizedStringResource("Methods", table: "Localizable", bundle: .module),
-                    detail: LocalizedStringResource(
-                        "Assign one primary Markdown Method to each Action and inspect its linked Practices.",
-                        table: "Localizable",
-                        bundle: .module
+                if showsTitle {
+                    settingsTitle(
+                        LocalizedStringResource("Methods", table: "Localizable", bundle: .module),
+                        detail: LocalizedStringResource(
+                            "Assign one primary Markdown Method to each Action and inspect its linked Practices.",
+                            table: "Localizable",
+                            bundle: .module
+                        )
                     )
-                )
+                }
 
                 researchSettingsSection(LocalizedStringResource(
                     "RESEARCH SKILLS",
