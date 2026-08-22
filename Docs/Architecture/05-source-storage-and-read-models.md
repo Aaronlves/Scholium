@@ -105,11 +105,14 @@ Triptych editor before both preparation and execution. System Trash reads the
 stable Local Execution envelope rather than its private payload: relevant live
 or recovery-required entries fail preflight, terminal entries remain eligible
 for cleanup, and an unsupported payload cannot block unrelated Notes. A file
-without a valid envelope yields a fingerprint-bound recovery preview.
+without a valid envelope yields a store-wide fingerprint-bound recovery
+preview. A valid live envelope with an unreadable payload yields a preview only
+when the selected Note set intersects its stable participation set.
 
 `LocalResearchExecutionStore.archiveUnsupportedExecutions` is the sole recovery
-mutation for that preview. Under the store lock it rechecks the complete set and
-each exact fingerprint, creates or verifies a byte-identical file in the
+mutation for either preview. Under the store lock it recomputes the complete
+store-wide or Note-scoped set and rechecks each exact fingerprint, creates or
+verifies a byte-identical file in the
 descriptor-contained `unsupported-executions` directory, then removes only the
 matching original. It performs no legacy decode or migration. Application owns
 the standard cancel/destructive alert and retries the original preparation only

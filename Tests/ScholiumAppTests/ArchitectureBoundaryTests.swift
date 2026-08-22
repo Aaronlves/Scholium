@@ -502,7 +502,6 @@ struct ArchitectureBoundaryTests {
             "LocalResearchExecutionStoreIssue",
             "LocalResearchExecutionStoreError",
             "LocalResearchExecutionListing",
-            "research-execution-v10",
         ] {
             #expect(
                 !coreSource.contains(retiredLocalSymbol),
@@ -515,7 +514,7 @@ struct ArchitectureBoundaryTests {
         #expect(localStoreSource.contains("public struct LocalResearchExecutionStoreIssue"))
         #expect(localStoreSource.contains("LocalResearchExecutionStoreError"))
         #expect(localStoreSource.contains("public enum LocalResearchExecutionStoreError"))
-        #expect(localStoreSource.contains("research-execution-v10"))
+        #expect(localStoreSource.contains("private static let storageDirectoryName"))
         #expect(localStoreSource.contains("struct LocalResearchExecutionEnvelope"))
         #expect(localStoreSource.contains("payloadFingerprint"))
         #expect(localStoreSource.contains("validateDeletionAuthority"))

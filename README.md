@@ -135,9 +135,11 @@ Protected Local Execution remains an internal containment, completion,
 conflict, and recovery mechanism. Its stable authority envelope is independent
 of the evolving private payload, so payload changes do not make unrelated Notes
 undeletable. Unsupported payloads remain unparsed and nonauthorizing. If an old
-file lacks a valid envelope during Move to Trash, an explicit confirmation can
-archive its exact bytes inside protected local storage and disable that old Run;
-there is no legacy decoder, migration, or compatibility command.
+file lacks a valid envelope, or a selected Note participates in a valid envelope
+whose payload is unreadable, an explicit confirmation can archive its exact
+bytes inside protected local storage and disable that old Run. Valid envelopes
+keep this recovery Note-scoped; opaque files remain store-scoped. There is no
+legacy decoder, migration, or compatibility command.
 
 See [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for exact evidence
 and unresolved human, accessibility, performance, packaging, and release work.

@@ -507,13 +507,16 @@ containing Run, Triptych, complete Note participation, and whether authority is
 live, recovery-required, or terminal. System Trash depends on that envelope,
 not on decoding the evolving private Run payload. An unsupported payload can
 therefore block only a participating Note when its envelope retains live or
-recovery authority; it never makes unrelated Notes undeletable. If an older,
-damaged, or changed file has no valid envelope, Scholium offers one explicit
-**Archive and Continue** alert. Cancel changes nothing. Confirmation copies the
-exact fingerprinted bytes into protected machine-local unsupported-data
-storage, removes only that exact original file, disables that old Run, and
-retries preparation. It never decodes, migrates, repairs, or rewrites those
-bytes and changes no research Note or portable Research Record.
+recovery authority; it never makes unrelated Notes undeletable. If that
+participating payload cannot be decoded, the valid envelope scopes an explicit
+**Archive and Continue** alert to the selected Notes. If an older, damaged, or
+changed file has no valid envelope, the same alert covers the complete opaque
+store set because narrower participation cannot be established. Cancel changes
+nothing. Confirmation rechecks the exact scoped set, copies the fingerprinted
+bytes into protected machine-local unsupported-data storage, removes only those
+exact originals, disables those old Runs, and retries preparation. It never
+decodes, migrates, repairs, or rewrites those bytes and changes no research Note
+or portable Research Record.
 
 A finished Record is the indivisible provenance object. If any participating
 Note is affected, the complete Record is deleted; participants are never

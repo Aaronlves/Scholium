@@ -121,12 +121,11 @@ extension ResearchFunctionOperationsTests {
         let preparation = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .develop, target: analysis)
         )
+        let executionDirectory = await handle.services
+            .localResearchExecutionStore.storageURL
         await runtime.shutdown()
 
-        let executionURL = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v10", isDirectory: true)
+        let executionURL = executionDirectory
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
         let data = try Data(contentsOf: executionURL)
         var envelope = try #require(

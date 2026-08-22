@@ -268,7 +268,9 @@
 - Local Execution now stores a stable Run/Triptych/Note-participation/authority
   envelope around its evolving private payload. System Trash can scope valid
   envelopes without decoding an unsupported payload; a fingerprint-bound alert
-  archives exact unwrapped legacy bytes before retrying preparation. Once a
+  archives exact unreadable payload or unwrapped legacy bytes before retrying
+  preparation. Valid-envelope recovery is limited to selected participating
+  Notes while an unscoped opaque file still fails closed store-wide. Once a
   portable Record exists, the payload compacts to a terminal receipt and the
   envelope becomes terminal. Diff and direct Undo use the portable Record plus
   `(Run ID, Note ID)` Agent evidence instead.

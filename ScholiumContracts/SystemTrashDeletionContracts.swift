@@ -165,15 +165,23 @@ public struct LocalResearchExecutionRecoveryItem: Codable, Hashable, Identifiabl
 public struct LocalResearchExecutionRecoveryPreview: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let triptychID: UUID
+    /// `nil` means the envelope itself is unreadable, so the preview covers the
+    /// complete store-wide opaque set. A nonempty value binds recovery to the
+    /// selected Notes whose valid envelopes contain unreadable live payloads.
+    public let affectedNoteIDs: [UUID]?
     public let items: [LocalResearchExecutionRecoveryItem]
 
     public init(
         id: UUID = UUID(),
         triptychID: UUID,
+        affectedNoteIDs: Set<UUID>? = nil,
         items: [LocalResearchExecutionRecoveryItem]
     ) {
         self.id = id
         self.triptychID = triptychID
+        self.affectedNoteIDs = affectedNoteIDs?.sorted {
+            $0.uuidString < $1.uuidString
+        }
         self.items = items.sorted { $0.fileName < $1.fileName }
     }
 }

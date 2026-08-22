@@ -122,8 +122,12 @@ the stable `request_id` own the reserved Note and Run identities. A separate
 fingerprint of the logical preflight request detects changed input after the
 first portable creation phase. Agent-Analysis creation-record schema 2 first
 persists a machine-local reservation for both external-Zotero and researcher-
-provided routes; optional binding state exists only for the Zotero route. A
-reservation with no portable identity, source, or Run is explicitly pre-commit:
+provided routes; optional binding state exists only for the Zotero route. That
+schema belongs only to exact replay of the deterministic request identity. Its
+sibling directory is never scanned as Local Execution authority and cannot
+block system-Trash preparation; an unreadable record fails that request identity
+closed rather than being auto-deleted or treated as a Run. A reservation with
+no portable identity, source, or Run is explicitly pre-commit:
 preflight reports the real absent state and current Settings still apply. The
 record freezes the first consequential destination, route or binding, source
 type, supplied metadata values, and academic purpose. A refreshed preflight may
@@ -274,7 +278,11 @@ Zotero-capable Platform Action; the adapter contains no authority or transport.
 All prior Result, authenticated Context, and Local Execution payload revisions
 fail closed instead of interpreting expanded continuation or adapter semantics
 under an old revision. A structurally valid Local Execution envelope remains
-readable for deletion scoping without authorizing that unsupported payload.
+readable for deletion scoping without authorizing that unsupported payload. If
+the envelope remains live but any current or nested payload contract is
+unreadable, Local Execution exposes only its stable Note scope and exact file
+fingerprint to the system-Trash recovery owner; it does not partially decode or
+reconstruct the Run.
 
 Opaque reference resolution rechecks Session, Run, scope, current owner, and
 revision. Ending/re-pairing/revocation, Triptych change, deletion, or source

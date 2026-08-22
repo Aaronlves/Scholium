@@ -140,11 +140,6 @@ final class ScholiumUITests: XCTestCase {
         sessionID = UUID()
         try createIsolatedTriptych()
         if name.contains(
-            "testSystemTrashArchivesUnreadableLocalExecutionBeforeConfirmation"
-        ) {
-            try seedUnreadableLocalExecutionForSystemTrash()
-        }
-        if name.contains(
             "testResearchRecordActionTombstoneDeepLinkAndCrossTriptychFocus"
         ) {
             secondTriptychDirectory = try createSecondTriptychFixture()
@@ -187,6 +182,11 @@ final class ScholiumUITests: XCTestCase {
                 waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },
                 "The isolated QA window appeared without reaching a usable document surface."
             )
+        }
+        if name.contains(
+            "testSystemTrashArchivesUnreadableLocalExecutionBeforeConfirmation"
+        ) {
+            try seedUnreadableLocalExecutionForSystemTrash()
         }
     }
 

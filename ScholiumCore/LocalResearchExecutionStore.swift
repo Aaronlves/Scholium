@@ -406,7 +406,7 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
     case agentAnalysisCreationNotFound(UUID)
     case agentAnalysisCreationMismatch(UUID)
     case unsupportedField(String)
-    case unsupportedSchemaVersion(Int)
+    case unsupportedAgentAnalysisCreationSchemaVersion(Int)
     case unsupportedPayloadRevision(Int)
 
     public var errorDescription: String? {
@@ -431,8 +431,8 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
             "Agent Analysis creation \(id.uuidString) does not match its request-owned evidence."
         case .unsupportedField(let field):
             "The Local Research Execution contains unsupported field \(field)."
-        case .unsupportedSchemaVersion(let version):
-            "The Local Research Execution schema version \(version) is unsupported."
+        case .unsupportedAgentAnalysisCreationSchemaVersion(let version):
+            "The Agent Analysis creation-record schema version \(version) is unsupported."
         case .unsupportedPayloadRevision(let revision):
             "The Local Research Execution payload revision \(revision) is unsupported."
         }
@@ -450,14 +450,31 @@ private struct LocalResearchExecutionAuthorityEntry: Hashable, Sendable {
     let authorityState: LocalResearchExecutionEnvelope.AuthorityState
 }
 
+private struct LocalResearchExecutionPayloadRecoveryEntry: Hashable, Sendable {
+    let authority: LocalResearchExecutionAuthorityEntry
+    let item: LocalResearchExecutionRecoveryItem
+}
+
 private struct LocalResearchExecutionStoreSnapshot: Sendable {
     let records: [LocalResearchExecutionRecord]
     let authorities: [LocalResearchExecutionAuthorityEntry]
     let issues: [LocalResearchExecutionStoreIssue]
-    let recoveryItems: [LocalResearchExecutionRecoveryItem]
+    let unscopedRecoveryItems: [LocalResearchExecutionRecoveryItem]
+    let payloadRecoveryEntries: [LocalResearchExecutionPayloadRecoveryEntry]
 
     var publicListing: LocalResearchExecutionListing {
         LocalResearchExecutionListing(records: records, issues: issues)
+    }
+
+    func recoveryItems(affectedNoteIDs: Set<UUID>?) -> [LocalResearchExecutionRecoveryItem] {
+        guard let affectedNoteIDs else { return unscopedRecoveryItems }
+        return payloadRecoveryEntries
+            .filter {
+                $0.authority.authorityState.blocksSystemTrash
+                    && !$0.authority.noteIDs.isDisjoint(with: affectedNoteIDs)
+            }
+            .map(\.item)
+            .sorted { $0.fileName < $1.fileName }
     }
 }
 
@@ -476,8 +493,9 @@ public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, S
 
 /// Machine-local idempotency evidence for the source-ahead portion of one
 /// Agent-originated Analysis creation. It is not a Run, portable relationship,
-/// or write authority; the portable binding and Note remain independently
-/// authoritative.
+/// write authority, or system-Trash participant; the portable binding and Note
+/// remain independently authoritative. Its schema belongs only to replay of
+/// this creation request and is not nested Local Execution payload authority.
 public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable, Sendable {
     public static let currentSchemaVersion = 2
 
@@ -565,7 +583,8 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         guard schemaVersion == Self.currentSchemaVersion else {
-            throw LocalResearchExecutionStoreError.unsupportedSchemaVersion(schemaVersion)
+            throw LocalResearchExecutionStoreError
+                .unsupportedAgentAnalysisCreationSchemaVersion(schemaVersion)
         }
         try self.init(
             triptychID: container.decode(UUID.self, forKey: .triptychID),
@@ -622,8 +641,9 @@ public actor LocalResearchExecutionStore {
     private static let maximumStoredByteCount = 24 * 1024 * 1024
     /// Existing physical layout epoch. Kept in one owner so record semantics
     /// never depend on parsing a version from a directory or lock-file name.
-    private static let storageDirectoryName = "research-execution-v10"
-    private static let coordinationLockName = "execution-v10.lock"
+    private static let storageLayoutEpoch = "v10"
+    private static let storageDirectoryName = "research-execution-\(storageLayoutEpoch)"
+    private static let coordinationLockName = "execution-\(storageLayoutEpoch).lock"
     private static let agentAnalysisCreationDirectory = "agent-analysis-creations"
     private static let unsupportedExecutionDirectory = "unsupported-executions"
 
@@ -1602,11 +1622,11 @@ public actor LocalResearchExecutionStore {
     /// unrelated Note deletion depend on its private journal revision.
     public func validateDeletionAuthority() throws {
         let snapshot = try lock.withSharedLock { try readStoreSnapshot() }
-        guard snapshot.recoveryItems.isEmpty else {
+        guard snapshot.unscopedRecoveryItems.isEmpty else {
             throw SystemTrashPreparationError.localExecutionRecoveryRequired(
                 LocalResearchExecutionRecoveryPreview(
                     triptychID: triptychID,
-                    items: snapshot.recoveryItems
+                    items: snapshot.unscopedRecoveryItems
                 )
             )
         }
@@ -1624,7 +1644,10 @@ public actor LocalResearchExecutionStore {
         }
         return try lock.withExclusiveLock {
             let current = try readStoreSnapshot()
-            guard current.recoveryItems == preview.items else {
+            let affectedNoteIDs = preview.affectedNoteIDs.map(Set.init)
+            guard preview.affectedNoteIDs == nil || affectedNoteIDs?.isEmpty == false,
+                  current.recoveryItems(affectedNoteIDs: affectedNoteIDs)
+                    == preview.items else {
                 throw LocalResearchExecutionStoreError.unsafeStore(
                     "The unreadable local execution files changed before archival."
                 )
@@ -1692,6 +1715,16 @@ public actor LocalResearchExecutionStore {
         guard !noteIDs.isEmpty else { return [] }
         let snapshot = try lock.withSharedLock { try readStoreSnapshot() }
         try requireValidDeletionAuthority(snapshot)
+        let recoveryItems = snapshot.recoveryItems(affectedNoteIDs: noteIDs)
+        guard recoveryItems.isEmpty else {
+            throw SystemTrashPreparationError.localExecutionRecoveryRequired(
+                LocalResearchExecutionRecoveryPreview(
+                    triptychID: triptychID,
+                    affectedNoteIDs: noteIDs,
+                    items: recoveryItems
+                )
+            )
+        }
         return snapshot.authorities
             .filter {
                 !$0.noteIDs.isDisjoint(with: noteIDs)
@@ -1988,7 +2021,8 @@ public actor LocalResearchExecutionStore {
         var records: [LocalResearchExecutionRecord] = []
         var authorities: [LocalResearchExecutionAuthorityEntry] = []
         var issues: [LocalResearchExecutionStoreIssue] = []
-        var recoveryItems: [LocalResearchExecutionRecoveryItem] = []
+        var unscopedRecoveryItems: [LocalResearchExecutionRecoveryItem] = []
+        var payloadRecoveryEntries: [LocalResearchExecutionPayloadRecoveryEntry] = []
         for fileName in try storage.fileNames(in: nil)
             where fileName.hasSuffix(".json") {
             let data: Data
@@ -2005,11 +2039,12 @@ public actor LocalResearchExecutionStore {
                     fileName: fileName,
                     triptychID: triptychID
                 )
-                authorities.append(LocalResearchExecutionAuthorityEntry(
+                let authority = LocalResearchExecutionAuthorityEntry(
                     runID: envelope.runID,
                     noteIDs: Set(envelope.noteIDs),
                     authorityState: envelope.authorityState
-                ))
+                )
+                authorities.append(authority)
                 do {
                     let decoded = try Self.decodeCurrentPayload(from: envelope)
                     try Self.validatePayload(decoded, matches: envelope)
@@ -2023,16 +2058,26 @@ public actor LocalResearchExecutionStore {
                             .executionIdentityMismatch(envelope.runID)
                             .localizedDescription
                     ))
-                    recoveryItems.append(LocalResearchExecutionRecoveryItem(
+                    unscopedRecoveryItems.append(LocalResearchExecutionRecoveryItem(
                         fileName: fileName,
                         fingerprint: DocumentFingerprint(data: data)
                     ))
                 } catch {
+                    let item = LocalResearchExecutionRecoveryItem(
+                        fileName: fileName,
+                        fingerprint: DocumentFingerprint(data: data)
+                    )
                     issues.append(LocalResearchExecutionStoreIssue(
                         location: Self.storageDirectoryName,
                         fileName: fileName,
                         reason: error.localizedDescription
                     ))
+                    payloadRecoveryEntries.append(
+                        LocalResearchExecutionPayloadRecoveryEntry(
+                            authority: authority,
+                            item: item
+                        )
+                    )
                 }
             } catch {
                 issues.append(LocalResearchExecutionStoreIssue(
@@ -2040,7 +2085,7 @@ public actor LocalResearchExecutionStore {
                     fileName: fileName,
                     reason: error.localizedDescription
                 ))
-                recoveryItems.append(LocalResearchExecutionRecoveryItem(
+                unscopedRecoveryItems.append(LocalResearchExecutionRecoveryItem(
                     fileName: fileName,
                     fingerprint: DocumentFingerprint(data: data)
                 ))
@@ -2055,7 +2100,12 @@ public actor LocalResearchExecutionStore {
             },
             authorities: authorities.sorted { $0.runID.uuidString < $1.runID.uuidString },
             issues: issues.sorted { $0.id < $1.id },
-            recoveryItems: recoveryItems.sorted { $0.fileName < $1.fileName }
+            unscopedRecoveryItems: unscopedRecoveryItems.sorted {
+                $0.fileName < $1.fileName
+            },
+            payloadRecoveryEntries: payloadRecoveryEntries.sorted {
+                $0.item.fileName < $1.item.fileName
+            }
         )
     }
 
@@ -2268,11 +2318,11 @@ public actor LocalResearchExecutionStore {
     private func requireValidDeletionAuthority(
         _ snapshot: LocalResearchExecutionStoreSnapshot
     ) throws {
-        guard snapshot.recoveryItems.isEmpty else {
+        guard snapshot.unscopedRecoveryItems.isEmpty else {
             throw SystemTrashPreparationError.localExecutionRecoveryRequired(
                 LocalResearchExecutionRecoveryPreview(
                     triptychID: triptychID,
-                    items: snapshot.recoveryItems
+                    items: snapshot.unscopedRecoveryItems
                 )
             )
         }

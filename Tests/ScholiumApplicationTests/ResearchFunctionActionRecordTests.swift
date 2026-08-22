@@ -480,8 +480,7 @@ extension ResearchFunctionOperationsTests {
             )
         }
 
-        let localURL = triptychSupport
-            .appendingPathComponent("research-execution-v10", isDirectory: true)
+        let localURL = await handle.services.localResearchExecutionStore.storageURL
             .appendingPathComponent(action.runID.uuidString.lowercased() + ".json")
         let portableURL = fixture.rootURL
             .appendingPathComponent(".scholium/research-records/v1/records", isDirectory: true)

@@ -4,17 +4,44 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    func localResearchExecutionDirectoryURL() throws -> URL {
+        let triptych = try triptychID(at: triptychDirectory)
+        let support = homeDirectory
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(triptych.uuidString, isDirectory: true)
+        let candidates = try FileManager.default.contentsOfDirectory(
+            at: support,
+            includingPropertiesForKeys: [.isDirectoryKey]
+        ).filter { candidate in
+            let isDirectory = try? candidate.resourceValues(
+                forKeys: [.isDirectoryKey]
+            ).isDirectory
+            guard isDirectory == true else { return false }
+            return FileManager.default.fileExists(
+                atPath: candidate.appendingPathComponent(
+                    "agent-analysis-creations",
+                    isDirectory: true
+                ).path
+            ) && FileManager.default.fileExists(
+                atPath: candidate.appendingPathComponent(
+                    "unsupported-executions",
+                    isDirectory: true
+                ).path
+            )
+        }
+        return try XCTUnwrap(
+            candidates.count == 1 ? candidates.first : nil,
+            "The QA workspace must expose exactly one Local Execution store."
+        )
+    }
+
     var unreadableLocalExecutionFixtureBytes: Data {
         Data("{\"schema_version\":16}".utf8)
     }
 
     func unreadableLocalExecutionFixtureURL() throws -> URL {
-        let triptych = try triptychID(at: triptychDirectory)
-        return homeDirectory
-            .appendingPathComponent("ApplicationSupport", isDirectory: true)
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(triptych.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v10", isDirectory: true)
+        try localResearchExecutionDirectoryURL()
             .appendingPathComponent(
                 "a58b5cb6-6db4-66e9-c160-51f70354e3e9.json"
             )
@@ -1273,12 +1300,7 @@ extension ScholiumUITests {
     }
 
     func latestLocalResearchExecutionRunID() throws -> UUID {
-        let triptych = try triptychID(at: triptychDirectory)
-        let directory = homeDirectory
-            .appendingPathComponent("ApplicationSupport", isDirectory: true)
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(triptych.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v8", isDirectory: true)
+        let directory = try localResearchExecutionDirectoryURL()
         let candidates = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey]

@@ -100,6 +100,11 @@ override.
   The focused XCUITest could not start because the approved static
   `Desktop/TestVaults` fixture was absent, so alert clicking, focus, VoiceOver,
   and human visual acceptance remain unverified. No research vault was opened.
+  A focused follow-up hardened valid-envelope payload failures: four Core tests
+  proved outer and nested payload scoping, exact-byte archival, legacy recovery,
+  and creation-record isolation; the owning Application archive-and-retry test
+  and architecture-boundary test also passed. The UI helper parsed after its
+  stale storage epoch was removed, but no XCUITest journey was run.
 - On 2026-08-21, the untagged system-Trash cutover passed 7 coordinated
   deletion tests covering whole multi-Note Record cleanup, active Discussion
   discard, Work-plus-Critique receipts, plan-persistence and post-move crash

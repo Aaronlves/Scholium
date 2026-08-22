@@ -1215,10 +1215,8 @@ struct DocumentOperationsTests {
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
         let fileName = UUID().uuidString.lowercased() + ".json"
-        let executionDirectory = fixture.applicationSupportURL
-            .appendingPathComponent("Triptychs", isDirectory: true)
-            .appendingPathComponent(fixture.assignment.id.uuidString, isDirectory: true)
-            .appendingPathComponent("research-execution-v10", isDirectory: true)
+        let executionDirectory = await handle.services
+            .localResearchExecutionStore.storageURL
         let legacyURL = executionDirectory.appendingPathComponent(fileName)
         let legacyBytes = Data("{\"schema_version\":16}".utf8)
         try legacyBytes.write(to: legacyURL)

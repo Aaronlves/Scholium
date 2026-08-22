@@ -1062,12 +1062,77 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
         try await store.validateDeletionAuthority()
-        #expect(try await store.activeExecutionIDs(
-            containing: LocalResearchExecutionStore.noteIDs(in: record)
-        ) == [record.id])
+        let noteIDs = LocalResearchExecutionStore.noteIDs(in: record)
+        #expect(try await store.activeExecutionIDs(containing: [UUID()]).isEmpty)
+        do {
+            _ = try await store.activeExecutionIDs(containing: noteIDs)
+            Issue.record("Expected scoped recovery for an unsupported live payload.")
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
+            #expect(Set(preview.affectedNoteIDs ?? []) == noteIDs)
+            #expect(preview.items.map(\.fileName) == [url.lastPathComponent])
+        }
         await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.record(id: record.id)
         }
+    }
+
+    @Test("A nested payload schema failure has scoped exact-byte recovery")
+    func nestedLocalExecutionPayloadRecovery() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let noteID = UUID()
+        let record = try makeLocalExecutionRecord(runID: UUID(), noteID: noteID)
+        _ = try await store.create(record)
+        let url = store.storageURL
+            .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
+        let envelope = try JSONDecoder().decode(
+            LocalResearchExecutionEnvelope.self,
+            from: Data(contentsOf: url)
+        )
+        var payload = try #require(
+            JSONSerialization.jsonObject(with: envelope.payload) as? [String: Any]
+        )
+        var boundedWriteSet = try #require(
+            payload["bounded_write_set"] as? [String: Any]
+        )
+        boundedWriteSet["schema_version"] = ResearchBoundedWriteSet
+            .currentSchemaVersion + 1
+        payload["bounded_write_set"] = boundedWriteSet
+        let unreadablePayload = try JSONSerialization.data(
+            withJSONObject: payload,
+            options: [.sortedKeys]
+        )
+        let unreadableEnvelope = LocalExecutionEnvelopeFixture(
+            envelope: envelope,
+            payload: unreadablePayload
+        )
+        let unreadableBytes = try JSONEncoder().encode(unreadableEnvelope)
+        try unreadableBytes.write(to: url)
+
+        try await store.validateDeletionAuthority()
+        #expect(try await store.activeExecutionIDs(containing: [UUID()]).isEmpty)
+        let recovery: LocalResearchExecutionRecoveryPreview
+        do {
+            _ = try await store.activeExecutionIDs(containing: [noteID])
+            Issue.record("Expected nested-payload recovery for the participating Note.")
+            return
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
+            recovery = preview
+        }
+        #expect(recovery.affectedNoteIDs == [noteID])
+        #expect(recovery.items == [LocalResearchExecutionRecoveryItem(
+            fileName: url.lastPathComponent,
+            fingerprint: DocumentFingerprint(data: unreadableBytes)
+        )])
+
+        _ = try await store.archiveUnsupportedExecutions(recovery)
+        let archivedURL = store.storageURL
+            .appendingPathComponent("unsupported-executions", isDirectory: true)
+            .appendingPathComponent(url.lastPathComponent)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(try Data(contentsOf: archivedURL) == unreadableBytes)
+        #expect(try await store.activeExecutionIDs(containing: [noteID]).isEmpty)
     }
 
     @Test("Terminal envelope permits cleanup without decoding its payload revision")
@@ -1093,6 +1158,27 @@ struct ResearchRecordV1StoresTests {
         #expect(try await store.activeExecutionIDs(containing: [noteID]).isEmpty)
         #expect(try await store.purgeExecutions(containing: [noteID]) == [record.id])
         #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test("Agent creation schema failure is isolated from system Trash authority")
+    func agentAnalysisCreationSchemaIsNotDeletionAuthority() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.localStore()
+        let runID = UUID()
+        let url = store.storageURL
+            .appendingPathComponent("agent-analysis-creations", isDirectory: true)
+            .appendingPathComponent(runID.uuidString.lowercased() + ".json")
+        try Data("{\"schema_version\":999}".utf8).write(to: url)
+
+        try await store.validateDeletionAuthority()
+        do {
+            _ = try await store.agentAnalysisCreation(id: runID)
+            Issue.record("Expected the unsupported creation-record schema to fail closed.")
+        } catch LocalResearchExecutionStoreError
+            .unsupportedAgentAnalysisCreationSchemaVersion(let version) {
+            #expect(version == 999)
+        }
     }
 
     @Test("Agent Analysis creation binding phases are strict and exact-request idempotent")
@@ -1953,6 +2039,42 @@ struct ResearchRecordV1StoresTests {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             mode = try #require((attributes[.posixPermissions] as? NSNumber)?.intValue)
             modificationDate = try #require(attributes[.modificationDate] as? Date)
+        }
+    }
+
+    private struct LocalExecutionEnvelopeFixture: Codable {
+        let formatIdentifier: String
+        let formatRevision: Int
+        let payloadRevision: Int
+        let runID: UUID
+        let triptychID: UUID
+        let noteIDs: [UUID]
+        let authorityState: LocalResearchExecutionEnvelope.AuthorityState
+        let payloadFingerprint: DocumentFingerprint
+        let payload: Data
+
+        init(envelope: LocalResearchExecutionEnvelope, payload: Data) {
+            formatIdentifier = envelope.formatIdentifier
+            formatRevision = envelope.formatRevision
+            payloadRevision = envelope.payloadRevision
+            runID = envelope.runID
+            triptychID = envelope.triptychID
+            noteIDs = envelope.noteIDs
+            authorityState = envelope.authorityState
+            payloadFingerprint = DocumentFingerprint(data: payload)
+            self.payload = payload
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case formatIdentifier = "format_identifier"
+            case formatRevision = "format_revision"
+            case payloadRevision = "payload_revision"
+            case runID = "run_id"
+            case triptychID = "triptych_id"
+            case noteIDs = "note_ids"
+            case authorityState = "authority_state"
+            case payloadFingerprint = "payload_fingerprint"
+            case payload
         }
     }
 
