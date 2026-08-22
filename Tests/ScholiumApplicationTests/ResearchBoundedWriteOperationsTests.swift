@@ -188,9 +188,7 @@ struct ResearchBoundedWriteOperationsTests {
 
         let savedSettings = try await handle.research.settings()
         var settings = savedSettings.settings
-        settings.properties[.paperAnalysis]?.newNoteYAML =
-            "# researcher seed\nkeywords: [configured]\n"
-        settings.analysisAgentCreation.requiredFieldsBySourceType[.journalArticle] = [
+        settings.analysisAgentCreation.preferredFieldsBySourceType[.journalArticle] = [
             "authors",
         ]
         _ = try await handle.research.saveSettings(
@@ -226,15 +224,14 @@ struct ResearchBoundedWriteOperationsTests {
         let journalPlan = try #require(creationView.analysisCreationPlans.first {
             $0.sourceType == .journalArticle
         })
-        #expect(journalPlan.fields.first { $0.key == "authors" }?.isRequired == true)
+        #expect(journalPlan.fields.first { $0.key == "authors" }?.isPreferred == true)
         #expect(journalPlan.fields.allSatisfy { $0.key != "keywords" })
         let exposed = String(
             decoding: try JSONEncoder().encode(creationView),
             as: UTF8.self
         )
         for forbidden in [
-            "settings_revision", "reserved", "note_id", "researcher seed",
-            "configured",
+            "settings_revision", "reserved", "note_id",
         ] {
             #expect(!exposed.contains(forbidden))
         }
@@ -262,6 +259,10 @@ struct ResearchBoundedWriteOperationsTests {
             relativePath: "Created/Journal Analysis.md",
             operation: .createNote,
             content: "# Analysis body\n",
+            authoredYAML: try AuthoredNoteYAML(
+                summary: "A portable analysis note",
+                keywords: ["reasons"]
+            ),
             analysisMetadata: metadata
         )
         // Keep the catalog projection stale throughout create -> same-Note
@@ -297,8 +298,10 @@ struct ResearchBoundedWriteOperationsTests {
         let document = try await handle.documents.load(createdEntry.note)
         #expect(document.body == "# Analysis body\n")
         #expect(document.parsedFrontmatter["type"] == nil)
+        #expect(document.parsedFrontmatter["summary"]
+            == .string("A portable analysis note"))
         #expect(document.parsedFrontmatter["keywords"]
-            == .array([.string("configured")]))
+            == .array([.string("reasons")]))
         let createdMetadata = try #require(
             try await handle.services.controlStore.noteMetadata(
                 noteID: createdEntry.noteID
@@ -974,19 +977,14 @@ struct ResearchBoundedWriteOperationsTests {
             operation: .createNote,
             content: "# Durable creation\n"
         )
-        let settings = try await handle.research.settings()
         let source = try await handle.managedCreationSource(
             request: ManagedNoteCreationRequest(
                 vaultID: entry.note.vaultID,
                 destination: .exact(relativePath: path),
                 body: intent.content,
-                authority: .authenticatedAgent(
-                    settingsRevision: try #require(entry.settingsRevision),
-                    reservedIdentity: entry.noteID
-                )
+                authority: .authenticatedAgent(reservedIdentity: entry.noteID)
             ),
-            slot: .topicKnowledge,
-            settings: settings.settings
+            slot: .topicKnowledge
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -1024,10 +1022,7 @@ struct ResearchBoundedWriteOperationsTests {
                 vaultID: entry.note.vaultID,
                 destination: .exact(relativePath: path),
                 body: intent.content,
-                authority: .authenticatedAgent(
-                    settingsRevision: try #require(entry.settingsRevision),
-                    reservedIdentity: entry.noteID
-                )
+                authority: .authenticatedAgent(reservedIdentity: entry.noteID)
             )
         )
 

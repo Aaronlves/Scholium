@@ -79,7 +79,7 @@ enum ScholiumL10n {
                 defaultValue: "Metadata Profiles",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for minimal New Note YAML, Agent metadata requirements, and About fields."
+                comment: "Settings tab for optional Agent-managed fields and About profiles."
             )
         }
 

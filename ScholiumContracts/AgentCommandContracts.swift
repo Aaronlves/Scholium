@@ -42,7 +42,6 @@ public struct AgentOperationRecovery: Codable, Hashable, Sendable {
 
 public enum AgentRecoveryNextStep: String, Codable, Hashable, Sendable {
     case startWithReturnedTemplate = "start_with_returned_template"
-    case supplyRequiredFieldsAndPreflight = "supply_required_fields_and_preflight"
     case requestResearcherDistinctFilenameAndPreflight = "request_researcher_distinct_filename_and_preflight"
     case startExistingAnalysis = "start_existing_analysis"
     case requestResearcherRecoveryChoice = "request_researcher_recovery_choice"

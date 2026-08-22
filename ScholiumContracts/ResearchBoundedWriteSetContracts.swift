@@ -56,43 +56,33 @@ public enum ResearchWriteSetEntryState: String, Codable, Hashable, Sendable {
 
 public enum ResearchWriteSetTargetExpectation: Codable, Hashable, Sendable {
     case existing(expectedRevision: DocumentFingerprint)
-    case absent(settingsRevision: SettingsRevision)
-    case created(
-        settingsRevision: SettingsRevision,
-        committedRevision: DocumentFingerprint
-    )
+    case absent
+    case created(committedRevision: DocumentFingerprint)
 
     public var expectedRevision: DocumentFingerprint? {
         switch self {
         case .existing(let revision): revision
-        case .created(_, let revision): revision
+        case .created(let revision): revision
         case .absent: nil
-        }
-    }
-
-    public var settingsRevision: SettingsRevision? {
-        switch self {
-        case .absent(let revision), .created(let revision, _): revision
-        case .existing: nil
         }
     }
 }
 
 /// One canonical field the Agent may supply while creating an Analysis of a
-/// particular source type. This projection deliberately excludes seed bytes,
-/// Settings revisions, reserved identities, and values already supplied by
-/// the researcher-owned seed.
+/// particular source type. This projection deliberately excludes authored
+/// YAML bytes, reserved identities, and any creation authority. Preference is
+/// presentation guidance only.
 public struct ResearchAnalysisCreationFieldPlan: Codable, Hashable, Sendable {
     public let key: String
     public let valueKind: PropertyValueKind
     public let allowedValues: [String]?
-    public let isRequired: Bool
+    public let isPreferred: Bool
 
     public init(
         key: String,
         valueKind: PropertyValueKind,
         allowedValues: [String]? = nil,
-        isRequired: Bool
+        isPreferred: Bool
     ) throws {
         guard let contract = NoteMetadataContractCatalog.contract(
             for: key,
@@ -104,14 +94,14 @@ public struct ResearchAnalysisCreationFieldPlan: Codable, Hashable, Sendable {
         self.key = key
         self.valueKind = valueKind
         self.allowedValues = allowedValues
-        self.isRequired = isRequired
+        self.isPreferred = isPreferred
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case key
         case valueKind = "value_kind"
         case allowedValues = "allowed_values"
-        case isRequired = "is_required"
+        case isPreferred = "is_preferred"
     }
 
     public init(from decoder: Decoder) throws {
@@ -128,7 +118,7 @@ public struct ResearchAnalysisCreationFieldPlan: Codable, Hashable, Sendable {
                 [String].self,
                 forKey: .allowedValues
             ),
-            isRequired: container.decode(Bool.self, forKey: .isRequired)
+            isPreferred: container.decode(Bool.self, forKey: .isPreferred)
         )
     }
 }
@@ -318,7 +308,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         note: VaultQualifiedNoteID,
         role: ResearchActionTargetRole,
         title: String,
-        settingsRevision: SettingsRevision,
         analysisCreationPlans: [ResearchAnalysisCreationSourcePlan] = [],
         authorizationBasis: ResearchWriteSetAuthorizationBasis,
         authorizationPolicy: ResearchCollaborationPolicy? = nil,
@@ -351,7 +340,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.analysisCreationPlans = analysisCreationPlans.sorted {
             $0.sourceType.rawValue < $1.sourceType.rawValue
         }
-        expectation = .absent(settingsRevision: settingsRevision)
+        expectation = .absent
         self.authorizationBasis = authorizationBasis
         self.authorizationPolicy = authorizationPolicy
         self.policyRevision = policyRevision
@@ -369,7 +358,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         }
     }
 
-    public var settingsRevision: SettingsRevision? { expectation.settingsRevision }
     public var expectsAbsence: Bool {
         if case .absent = expectation { return true }
         return false
@@ -478,7 +466,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 expiresAt: expiresAt,
                 state: state
             )
-        case .absent(let settingsRevision):
+        case .absent:
             guard metadataRevision == nil, zoteroBindingsRevision == nil,
                   operations == [.createNote], metadataKeys.isEmpty,
                   metadataWritePlans.isEmpty else {
@@ -490,7 +478,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 note: note,
                 role: role,
                 title: title,
-                settingsRevision: settingsRevision,
                 analysisCreationPlans: analysisCreationPlans,
                 authorizationBasis: basis,
                 authorizationPolicy: policy,
@@ -498,7 +485,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 expiresAt: expiresAt,
                 state: state
             )
-        case .created(let settingsRevision, let committedRevision):
+        case .created(let committedRevision):
             guard metadataRevision == nil, zoteroBindingsRevision == nil,
                   operations == [.createNote], metadataKeys.isEmpty,
                   metadataWritePlans.isEmpty,
@@ -511,7 +498,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 note: note,
                 role: role,
                 title: title,
-                settingsRevision: settingsRevision,
                 analysisCreationPlans: analysisCreationPlans,
                 authorizationBasis: basis,
                 authorizationPolicy: policy,
@@ -520,7 +506,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 state: .ready
             )
             self.expectation = .created(
-                settingsRevision: settingsRevision,
                 committedRevision: committedRevision
             )
             self.state = .consumed
@@ -529,7 +514,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
 }
 
 public struct ResearchBoundedWriteSet: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
     public static let maximumEntriesPerRequest = 16
     public static let maximumEntriesPerRun = 64
     public static let maximumWritesPerRun = 256
@@ -726,7 +711,7 @@ public struct ResearchWriteSetExtensionIntent: Codable, Hashable, Sendable {
 
 public enum ResearchWriteSetCandidateExpectation: Codable, Hashable, Sendable {
     case existing(expectedRevision: DocumentFingerprint)
-    case absent(settingsRevision: SettingsRevision)
+    case absent
 }
 
 public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendable {
@@ -807,7 +792,6 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         note: VaultQualifiedNoteID,
         role: ResearchActionTargetRole,
         title: String,
-        settingsRevision: SettingsRevision,
         analysisCreationPlans: [ResearchAnalysisCreationSourcePlan] = []
     ) throws {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -830,7 +814,7 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         self.analysisCreationPlans = analysisCreationPlans.sorted {
             $0.sourceType.rawValue < $1.sourceType.rawValue
         }
-        expectation = .absent(settingsRevision: settingsRevision)
+        expectation = .absent
         metadataRevision = nil
         zoteroBindingsRevision = nil
     }
@@ -840,12 +824,10 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         return revision
     }
 
-    public var settingsRevision: SettingsRevision? {
-        guard case .absent(let revision) = expectation else { return nil }
-        return revision
+    public var expectsAbsence: Bool {
+        if case .absent = expectation { return true }
+        return false
     }
-
-    public var expectsAbsence: Bool { settingsRevision != nil }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case handle
@@ -919,7 +901,7 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
                 metadataRevision: metadataRevision,
                 zoteroBindingsRevision: zoteroBindingsRevision
             )
-        case .absent(let settingsRevision):
+        case .absent:
             guard metadataRevision == nil, zoteroBindingsRevision == nil,
                   operations == [.createNote], metadataKeys.isEmpty,
                   metadataWritePlans.isEmpty else {
@@ -931,7 +913,6 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
                 note: note,
                 role: role,
                 title: title,
-                settingsRevision: settingsRevision,
                 analysisCreationPlans: analysisCreationPlans
             )
         }
@@ -1230,7 +1211,7 @@ public struct ResearchWriteSetExtensionResult: Codable, Hashable, Sendable {
 }
 
 public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     /// One client-generated attempt identity. Retrying the same intent keeps
@@ -1240,13 +1221,15 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
     public let relativePath: String
     public let operation: ResearchDocumentWriteOperation
     /// Body text for `modify_markdown` and `create_note`. It is never complete
-    /// document source and cannot carry frontmatter authority.
+    /// document source; `create_note` carries only the separate typed
+    /// `authoredYAML` values for the fixed scaffold.
     public let content: String
     /// Complete authored Markdown source for `modify_source`. This remains
     /// separate from body content so a caller cannot accidentally turn a
     /// body-only operation into a full-source replacement.
     public let source: String?
     public let metadata: [CanonicalPropertyInput]
+    public let authoredYAML: AuthoredNoteYAML?
     public let analysisMetadata: AnalysisCreationMetadata?
 
     public init(
@@ -1257,19 +1240,21 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         content: String = "",
         source: String? = nil,
         metadata: [CanonicalPropertyInput] = [],
+        authoredYAML: AuthoredNoteYAML? = nil,
         analysisMetadata: AnalysisCreationMetadata? = nil
     ) throws {
         let shapeIsValid = switch operation {
         case .createNote:
             source == nil && metadata.isEmpty
         case .modifyMarkdown:
-            source == nil && metadata.isEmpty && analysisMetadata == nil
+            source == nil && metadata.isEmpty && authoredYAML == nil
+                && analysisMetadata == nil
         case .modifySource:
             source != nil && content.isEmpty && metadata.isEmpty
-                && analysisMetadata == nil
+                && authoredYAML == nil && analysisMetadata == nil
         case .modifyMetadata:
             source == nil && content.isEmpty && !metadata.isEmpty
-                && analysisMetadata == nil
+                && authoredYAML == nil && analysisMetadata == nil
         case .setZoteroBinding, .clearZoteroBinding:
             false
         }
@@ -1292,6 +1277,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         self.content = content
         self.source = source
         self.metadata = metadata.sorted { $0.key < $1.key }
+        self.authoredYAML = authoredYAML
         self.analysisMetadata = analysisMetadata
     }
 
@@ -1301,6 +1287,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         case role
         case relativePath = "relative_path"
         case operation, content, source, metadata
+        case authoredYAML = "authored_yaml"
         case analysisMetadata = "analysis_metadata"
     }
 
@@ -1356,6 +1343,10 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
                 [CanonicalPropertyInput].self,
                 forKey: .metadata
             ) ?? [],
+            authoredYAML: container.decodeIfPresent(
+                AuthoredNoteYAML.self,
+                forKey: .authoredYAML
+            ),
             analysisMetadata: container.decodeIfPresent(
                 AnalysisCreationMetadata.self,
                 forKey: .analysisMetadata

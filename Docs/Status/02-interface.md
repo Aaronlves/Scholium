@@ -173,15 +173,14 @@
   details, Headings, Callouts, and CSS behind explicit disclosures, adds Revert
   to Saved and built-in-default restoration, and confirms before a profile
   switch can discard an unsaved draft.
-- Settings → Metadata Profiles uses the shared segmented role selector and the ordered New Notes,
-  Agent-Created Analyses, and About sections. Exact seed
-  delimiters are visible but not editable; source errors stay inline; Agent
-  requirements remain source-type-specific; reset, clear, revert, reload after
+- Settings → Metadata Profiles uses the shared segmented role selector and the
+  ordered Agent-Created Analyses and About sections. Agent preferences remain
+  source-type-specific and explicitly optional; reset, clear, revert, reload after
   conflict, and atomic Save are separate actions. Current-schema repair keeps
   the decoded candidate and frozen exact-byte revision; unsupported or damaged
   schema states preserve their source and do not expose editable defaults.
-  Seed refusals identify their role and structured line/column; choosing the
-  diagnostic returns focus and selection to that source line.
+  Invalid preferences identify their source type and field. Fixed New Note
+  YAML is not configurable in Settings.
 - Settings Metadata Profiles and Complete Metadata disable their complete editing
   surface while a save is pending, so no post-submit keystroke can be silently
   overwritten or discarded when the acknowledged result arrives.

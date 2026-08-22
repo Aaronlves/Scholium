@@ -189,10 +189,11 @@ patches frontmatter. Authored `summary` and `keywords` are read from exact
 source for About and edited only in Source. Unknown YAML remains byte-preserved
 custom source and is never surfaced as a managed-field alias.
 
-`FrontmatterPatchPlanner` remains a source-fidelity utility for exact New Note
-YAML seed validation and other explicit source operations. It is not a
-Metadata writer. The schema-5 seed accepts only `summary` and `keywords`; no
-runtime path inserts YAML merely because a managed field is added. The body has
+`FrontmatterPatchPlanner` remains a source-fidelity utility for bounded typed
+serialization and explicit source operations. It is not a Metadata writer.
+Managed creation always emits fixed `summary` then `keywords`; omitted values
+serialize as `null` and `[]`, while a typed request may supply either value.
+No runtime path inserts YAML merely because a managed field is added. The body has
 no Scholium schema, required section, or generated research prose.
 
 Search constructs one read-only structured projection from both authorities.

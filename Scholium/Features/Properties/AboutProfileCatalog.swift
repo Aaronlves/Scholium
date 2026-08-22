@@ -12,10 +12,7 @@ enum WorkspaceAboutConfiguration {
         isAuthoritative: Bool
     ) -> VaultPropertiesConfiguration {
         guard isAuthoritative else {
-            return VaultPropertiesConfiguration(
-                newNoteYAML: nil,
-                visibleFields: []
-            )
+            return VaultPropertiesConfiguration(visibleFields: [])
         }
         return settings.properties[slot]
             ?? TriptychSettings.defaultProperties[slot]
@@ -27,7 +24,6 @@ enum PropertiesSettingsCandidateBuilder {
     static func build(
         from base: TriptychSettings,
         configurations: [WorkspaceVaultSlot: VaultPropertiesConfiguration],
-        seedDrafts: [WorkspaceVaultSlot: String],
         agentCreation: AnalysisAgentCreationConfiguration
     ) -> TriptychSettings {
         var settings = base
@@ -47,8 +43,9 @@ enum PropertiesSettingsCandidateBuilder {
             configuration.visibleFields = AboutProfileCatalog.groupedEntries(
                 for: profile,
                 visibleFields: configuration.visibleFields
-            ).flatMap(\.keys)
-            configuration.newNoteYAML = seedDrafts[slot]
+            ).flatMap(\.keys).filter {
+                AboutProfileCatalog.allowsOptionalField($0, profile: profile)
+            }
             candidates[slot] = configuration
         }
         settings.properties = candidates
@@ -64,9 +61,10 @@ enum AboutProfileCatalog {
         for profile: SchemaProfileID,
         visibleFields: [String]?
     ) -> [AboutProfileGroup] {
-        let fields = (visibleFields ?? defaultVisibleFields(for: profile)).filter {
+        let managedFields = (visibleFields ?? defaultVisibleFields(for: profile)).filter {
             allowsOptionalField($0, profile: profile)
         }
+        let fields = managedFields + fixedAuthoredFields(for: profile)
         let grouped = Dictionary(grouping: fields) { key in
             PropertyPresentationCatalog.presentation(for: key, in: profile)?.group ?? .other
         }
@@ -77,11 +75,15 @@ enum AboutProfileCatalog {
     }
 
     static func allowsOptionalField(_ key: String, profile: SchemaProfileID) -> Bool {
-        guard PropertyPresentationCatalog.presentation(
-            for: key,
-            in: profile
-        ) != nil else { return false }
-        return !(profile == .analysis && key == "title")
+        guard key != "title",
+              PropertyPresentationCatalog.presentation(for: key, in: profile) != nil else {
+            return false
+        }
+        return NoteMetadataContractCatalog.contract(for: key, profile: profile) != nil
+    }
+
+    private static func fixedAuthoredFields(for profile: SchemaProfileID) -> [String] {
+        PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
     }
 
     private static func defaultVisibleFields(for profile: SchemaProfileID) -> [String] {

@@ -113,10 +113,9 @@ Practice owners; Action Profiles edits only the academic profile document.
 Each editor mutates one owner at a time through an expected-revision
 transaction.
 
-Portable `TriptychSettings` schema 5 is a separate strict owner for role
-Metadata Profiles. It contains exact delimiter-free New Note YAML restricted
-to `summary` and `keywords`, cross-authority About order, and per-source-type
-Analysis Agent requirements over managed Metadata fields.
+Portable `TriptychSettings` schema 6 is a separate strict owner for role
+Metadata Profiles. It contains About order over optional managed fields and
+per-source-type optional Agent preferences over managed Analysis fields.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -125,8 +124,9 @@ revision. It never value-compares decoded settings, falls back to defaults for
 an existing invalid file, or ships an old-schema decoder.
 `settingsLoadState()` keeps current, repairable current-schema, missing, old,
 future, and corrupted files distinct. A repairable state retains its decoded
-candidate and exact revision for Settings, while ordinary `settings()` and
-managed creation continue to fail closed until the candidate validates.
+candidate and exact revision for Settings, while ordinary `settings()` fails
+closed until the candidate validates. Fixed managed creation does not consume
+Settings as authority.
 The Settings draft freezes both Triptych identity and exact revision. A
 confirmed commit installs its returned revision even if derived refresh fails;
 an uncertain replacement is authoritatively reread before another save can be
@@ -146,7 +146,7 @@ contracts consume those owners without a second template representation.
 `PropertyContractCatalog` owns the authored YAML allowlist;
 `NoteMetadataContractCatalog` owns managed shapes;
 `AnalysisSourceTypeProfileCatalog` owns applicable/recommended/serialization
-order. Settings owns only selection and exact seed source. A later
+order. Settings owns only optional managed-field selection and preference. A later
 managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 

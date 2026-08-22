@@ -57,14 +57,15 @@ struct WorkflowSchemaTests {
         #expect(flattened["notes"] == "Headings and frontmatter complete.")
     }
 
-    @Test("Default About fields exclude machine state and optional assessments")
+    @Test("Default optional machine fields exclude authored YAML and machine state")
     func defaultPropertyVocabulary() throws {
         let analyses = try #require(TriptychSettings.defaultProperties[.paperAnalysis])
         let topics = try #require(TriptychSettings.defaultProperties[.topicKnowledge])
         let works = try #require(TriptychSettings.defaultProperties[.output])
 
         for configuration in [analyses, topics, works] {
-            #expect(configuration.visibleFields.contains("summary"))
+            #expect(!configuration.visibleFields.contains("summary"))
+            #expect(!configuration.visibleFields.contains("keywords"))
             #expect(!configuration.visibleFields.contains("last_modified_by"))
             #expect(!configuration.visibleFields.contains("last_modified_at"))
         }

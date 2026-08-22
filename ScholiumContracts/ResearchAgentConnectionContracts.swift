@@ -173,12 +173,13 @@ public struct ResearchAgentAnalysisDestination: Codable, Hashable, Sendable {
 /// Read-only input used before a consequential Agent start. It contains one
 /// stable logical request identity but no vault ID or Settings revision.
 public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let requestID: UUID
     public let destination: ResearchAgentAnalysisDestination
     public let metadata: AnalysisCreationMetadata
+    public let authoredYAML: AuthoredNoteYAML?
     public let source: ResearchAgentNewAnalysisSource?
     public let sourceRoute: ResearchAgentSourceRoute?
 
@@ -186,6 +187,7 @@ public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, 
         requestID: UUID = UUID(),
         destination: ResearchAgentAnalysisDestination,
         metadata: AnalysisCreationMetadata,
+        authoredYAML: AuthoredNoteYAML? = nil,
         source: ResearchAgentNewAnalysisSource? = nil,
         sourceRoute: ResearchAgentSourceRoute? = nil
     ) throws {
@@ -197,6 +199,7 @@ public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, 
         self.requestID = requestID
         self.destination = destination
         self.metadata = metadata
+        self.authoredYAML = authoredYAML
         self.source = source
         self.sourceRoute = sourceRoute
     }
@@ -205,6 +208,7 @@ public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, 
         case schemaVersion = "schema_version"
         case requestID = "request_id"
         case destination, metadata, source
+        case authoredYAML = "authored_yaml"
         case sourceRoute = "source_route"
     }
 
@@ -225,6 +229,10 @@ public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, 
                 forKey: .destination
             ),
             metadata: container.decode(AnalysisCreationMetadata.self, forKey: .metadata),
+            authoredYAML: container.decodeIfPresent(
+                AuthoredNoteYAML.self,
+                forKey: .authoredYAML
+            ),
             source: container.decodeIfPresent(
                 ResearchAgentNewAnalysisSource.self,
                 forKey: .source
@@ -237,35 +245,30 @@ public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, 
     }
 }
 
-/// Consequential creation input returned by the current preflight. The
-/// Settings revision is frozen explicitly; Application resolves the Analyses
-/// vault and exact path from the nested intent again before any mutation.
+/// Consequential creation input returned by the current preflight. Application
+/// resolves the Analyses vault and exact path from the nested intent again
+/// before any mutation; optional Settings guidance grants no authority.
 public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let preflight: ResearchAgentAnalysisCreationPreflightRequest
-    public let settingsRevision: SettingsRevision
 
     public var requestID: UUID { preflight.requestID }
     public var destination: ResearchAgentAnalysisDestination { preflight.destination }
     public var metadata: AnalysisCreationMetadata { preflight.metadata }
+    public var authoredYAML: AuthoredNoteYAML? { preflight.authoredYAML }
     public var source: ResearchAgentNewAnalysisSource? { preflight.source }
     public var sourceRoute: ResearchAgentSourceRoute? { preflight.sourceRoute }
 
-    public init(
-        preflight: ResearchAgentAnalysisCreationPreflightRequest,
-        settingsRevision: SettingsRevision
-    ) {
+    public init(preflight: ResearchAgentAnalysisCreationPreflightRequest) {
         schemaVersion = Self.currentSchemaVersion
         self.preflight = preflight
-        self.settingsRevision = settingsRevision
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case preflight
-        case settingsRevision = "settings_revision"
     }
 
     public init(from decoder: Decoder) throws {
@@ -282,10 +285,6 @@ public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
             preflight: try container.decode(
                 ResearchAgentAnalysisCreationPreflightRequest.self,
                 forKey: .preflight
-            ),
-            settingsRevision: try container.decode(
-                SettingsRevision.self,
-                forKey: .settingsRevision
             )
         )
     }
@@ -296,7 +295,6 @@ public enum ResearchAgentAnalysisCreationPreflightStatus: String, Codable,
 {
     case ready
     case invalidMetadata = "invalid_metadata"
-    case missingRequiredFields = "missing_required_fields"
     case pathOccupied = "path_occupied"
     case identityOccupied = "identity_occupied"
     case identitySourceMissingOrTrashed = "identity_source_missing_or_trashed"
@@ -343,19 +341,17 @@ public struct ResearchAgentAnalysisTargetState: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let requestID: UUID
     public let analysisVaultID: UUID
-    public let settingsRevision: SettingsRevision
     public let sourceType: AnalysisSourceType
     public let applicableFields: [PropertyContract]
-    public let requiredFields: [String]
-    public let applicationOwnedFields: [String]
+    public let preferredFields: [String]
+    public let fixedYAMLFields: [String]
     public let targetState: ResearchAgentAnalysisTargetState
     public let status: ResearchAgentAnalysisCreationPreflightStatus
-    public let missingRequiredFields: [String]
     public let startNewAnalysis: ResearchAgentNewAnalysisRequest?
     public let recovery: AgentOperationRecovery
     public let message: String
@@ -363,13 +359,11 @@ public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendabl
     public init(
         request: ResearchAgentAnalysisCreationPreflightRequest,
         analysisVaultID: UUID,
-        settingsRevision: SettingsRevision,
         applicableFields: [PropertyContract],
-        requiredFields: [String],
-        applicationOwnedFields: [String],
+        preferredFields: [String],
+        fixedYAMLFields: [String],
         targetState: ResearchAgentAnalysisTargetState,
         status: ResearchAgentAnalysisCreationPreflightStatus,
-        missingRequiredFields: [String] = [],
         startNewAnalysis: ResearchAgentNewAnalysisRequest? = nil,
         recovery: AgentOperationRecovery,
         message: String
@@ -377,14 +371,12 @@ public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendabl
         schemaVersion = Self.currentSchemaVersion
         requestID = request.requestID
         self.analysisVaultID = analysisVaultID
-        self.settingsRevision = settingsRevision
         sourceType = request.metadata.sourceType
         self.applicableFields = applicableFields.sorted { $0.canonicalKey < $1.canonicalKey }
-        self.requiredFields = requiredFields.sorted()
-        self.applicationOwnedFields = applicationOwnedFields.sorted()
+        self.preferredFields = preferredFields.sorted()
+        self.fixedYAMLFields = fixedYAMLFields.sorted()
         self.targetState = targetState
         self.status = status
-        self.missingRequiredFields = missingRequiredFields.sorted()
         self.startNewAnalysis = startNewAnalysis
         self.recovery = recovery
         self.message = message
@@ -394,14 +386,12 @@ public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendabl
         case schemaVersion = "schema_version"
         case requestID = "request_id"
         case analysisVaultID = "analysis_vault_id"
-        case settingsRevision = "settings_revision"
         case sourceType = "source_type"
         case applicableFields = "applicable_fields"
-        case requiredFields = "required_fields"
-        case applicationOwnedFields = "application_owned_fields"
+        case preferredFields = "preferred_fields"
+        case fixedYAMLFields = "fixed_yaml_fields"
         case targetState = "target_state"
         case status
-        case missingRequiredFields = "missing_required_fields"
         case startNewAnalysis = "start_new_analysis"
         case recovery, message
     }
@@ -411,7 +401,7 @@ public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendabl
 /// current Note identity, Action Profile, Method, and revision after receiving
 /// this request; the request never carries a write grant or source bytes.
 public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID
@@ -1042,7 +1032,7 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 9
+    public static let currentSchemaVersion = 10
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.

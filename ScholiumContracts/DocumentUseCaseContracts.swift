@@ -143,6 +143,63 @@ public struct AnalysisCreationMetadata: Codable, Hashable, Sendable {
     }
 }
 
+/// The only authored YAML values that a managed Note creator may receive.
+/// Omission is represented in source by the fixed `summary: null` and
+/// `keywords: []` scaffold; callers never supply YAML fragments or delimiters.
+public struct AuthoredNoteYAML: Codable, Hashable, Sendable {
+    public static let maximumSummaryUTF8ByteCount = 32 * 1_024
+    public static let maximumKeywordCount = 128
+    public static let maximumKeywordUTF8ByteCount = 1_024
+
+    public let summary: String?
+    public let keywords: [String]
+
+    public init(
+        summary: String? = nil,
+        keywords: [String] = []
+    ) throws {
+        guard summary.map({ value in
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && value.utf8.count <= Self.maximumSummaryUTF8ByteCount
+                && !value.contains("\r")
+                && !value.unicodeScalars.contains(where: { scalar in
+                    scalar != "\n" && CharacterSet.controlCharacters.contains(scalar)
+                })
+        }) ?? true,
+        keywords.count <= Self.maximumKeywordCount,
+        Set(keywords).count == keywords.count,
+        keywords.allSatisfy({ value in
+            value == value.trimmingCharacters(in: .whitespacesAndNewlines)
+                && !value.isEmpty
+                && value.utf8.count <= Self.maximumKeywordUTF8ByteCount
+                && !value.unicodeScalars.contains(where: {
+                    CharacterSet.controlCharacters.contains($0)
+                })
+        }) else {
+            throw DocumentCreationError.invalidAuthoredYAML
+        }
+        self.summary = summary
+        self.keywords = keywords
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case summary, keywords
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.container(keyedBy: ManagedCreationCodingKey.self)
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
+            throw DocumentCreationError.invalidAuthoredYAML
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            summary: container.decodeIfPresent(String.self, forKey: .summary),
+            keywords: container.decodeIfPresent([String].self, forKey: .keywords) ?? []
+        )
+    }
+}
+
 public enum ManagedCreationDestination: Hashable, Sendable {
     case untitled(folderRelativePath: String?)
     case exact(relativePath: String)
@@ -150,16 +207,14 @@ public enum ManagedCreationDestination: Hashable, Sendable {
 
 public enum ManagedCreationAuthority: Hashable, Sendable {
     case researcher
-    case authenticatedAgent(
-        settingsRevision: SettingsRevision,
-        reservedIdentity: UUID
-    )
+    case authenticatedAgent(reservedIdentity: UUID)
 }
 
 public struct ManagedNoteCreationRequest: Hashable, Sendable {
     public let vaultID: UUID
     public let destination: ManagedCreationDestination
     public let body: String
+    public let authoredYAML: AuthoredNoteYAML?
     public let analysisMetadata: AnalysisCreationMetadata?
     public let authority: ManagedCreationAuthority
 
@@ -167,6 +222,7 @@ public struct ManagedNoteCreationRequest: Hashable, Sendable {
         vaultID: UUID,
         destination: ManagedCreationDestination,
         body: String = "",
+        authoredYAML: AuthoredNoteYAML? = nil,
         analysisMetadata: AnalysisCreationMetadata? = nil,
         authority: ManagedCreationAuthority = .researcher
     ) throws {
@@ -183,6 +239,7 @@ public struct ManagedNoteCreationRequest: Hashable, Sendable {
         self.vaultID = vaultID
         self.destination = destination
         self.body = body
+        self.authoredYAML = authoredYAML
         self.analysisMetadata = analysisMetadata
         self.authority = authority
     }
@@ -192,11 +249,10 @@ public enum DocumentCreationError: LocalizedError, Equatable, Sendable {
     case invalidMetadata([PropertyValidationIssue])
     case invalidPropertyKey(String)
     case invalidBody
+    case invalidAuthoredYAML
     case analysisMetadataRoleMismatch
     case missingAgentAnalysisMetadata
-    case missingRequiredAgentFields([String])
     case inapplicableAnalysisProperty(String, AnalysisSourceType)
-    case settingsRevisionChanged
     case portableIdentityAlreadyExists
     case reservedIdentityMismatch
 
@@ -210,16 +266,14 @@ public enum DocumentCreationError: LocalizedError, Equatable, Sendable {
             return "The managed creation Metadata key is invalid: \(key)"
         case .invalidBody:
             return "Managed creation accepts UTF-8 LF body text without a BOM, carriage returns, NUL bytes, or a top-level YAML envelope. Use Import for complete authored Markdown source."
+        case .invalidAuthoredYAML:
+            return "Managed creation accepts only a bounded nonempty Summary and unique nonempty Keywords; omit either value to keep its fixed empty scaffold."
         case .analysisMetadataRoleMismatch:
             return "Typed Analysis creation metadata is available only in the Analyses vault."
         case .missingAgentAnalysisMetadata:
             return "Authenticated Agent creation in Analyses requires one source type."
-        case .missingRequiredAgentFields(let keys):
-            return "Authenticated Agent creation is missing required fields: \(keys.joined(separator: ", "))."
         case .inapplicableAnalysisProperty(let key, let sourceType):
             return "The field \(key) does not apply to Analysis source type \(sourceType.rawValue)."
-        case .settingsRevisionChanged:
-            return "The Metadata settings changed after this creation was authorized. Reload the current Run before creating the Note."
         case .portableIdentityAlreadyExists:
             return "The managed creation path already belongs to a portable Note identity. Choose a new path instead of reusing that identity."
         case .reservedIdentityMismatch:

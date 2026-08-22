@@ -95,9 +95,6 @@ struct LocalAgentBridgeTests {
         #expect(unknownRecovery.safeToRetry)
         #expect(unknownRecovery.nextStep == .rerunCreationPreflight)
 
-        let revision = SettingsRevision(
-            fingerprint: DocumentFingerprint(content: "settings")
-        )
         let target = VaultQualifiedNoteID(
             vaultID: vaultID,
             relativePath: "Managed Root.md"
@@ -105,10 +102,9 @@ struct LocalAgentBridgeTests {
         let result = ResearchAgentAnalysisCreationPreflight(
             request: input,
             analysisVaultID: vaultID,
-            settingsRevision: revision,
             applicableFields: PropertyContractCatalog.contracts(for: .analysis),
-            requiredFields: [],
-            applicationOwnedFields: [],
+            preferredFields: [],
+            fixedYAMLFields: PropertyContractCatalog.authoredCanonicalKeys,
             targetState: ResearchAgentAnalysisTargetState(
                 target: target,
                 stableIdentity: nil,
@@ -116,10 +112,7 @@ struct LocalAgentBridgeTests {
                 sourceState: .absent
             ),
             status: .ready,
-            startNewAnalysis: ResearchAgentNewAnalysisRequest(
-                preflight: input,
-                settingsRevision: revision
-            ),
+            startNewAnalysis: ResearchAgentNewAnalysisRequest(preflight: input),
             recovery: AgentOperationRecovery(
                 safeToRetry: true,
                 mustReuseRequestIdentity: true,
@@ -181,11 +174,10 @@ struct LocalAgentBridgeTests {
         #expect(replayConflict.recovery.mustReuseRequestIdentity)
         #expect(replayConflict.recovery.nextStep == .inspectOriginalRequestState)
 
-        let missingFields = LocalAgentBridgeWireCoding.errorPayload(
-            DocumentCreationError.missingRequiredAgentFields(["summary"])
+        let invalidAuthored = LocalAgentBridgeWireCoding.errorPayload(
+            DocumentCreationError.invalidAuthoredYAML
         )
-        #expect(missingFields.code == .missingRequiredFields)
-        #expect(missingFields.recovery.nextStep == .supplyRequiredFieldsAndPreflight)
+        #expect(invalidAuthored.code == .invalidRequest)
 
         let pathOccupied = LocalAgentBridgeWireCoding.errorPayload(
             ResearchAgentConnectionError.analysisPathOccupied
@@ -216,12 +208,6 @@ struct LocalAgentBridgeTests {
             == .retryExactRequest)
         #expect(!identityMissing.recovery.creationBranches[1]
             .mustReuseRequestIdentity)
-
-        let settingsChanged = LocalAgentBridgeWireCoding.errorPayload(
-            ResearchAgentConnectionError.settingsChanged
-        )
-        #expect(settingsChanged.code == .settingsChanged)
-        #expect(settingsChanged.recovery.nextStep == .rerunCreationPreflight)
 
         let pairRecovery = LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(
             for: try pairRequest()

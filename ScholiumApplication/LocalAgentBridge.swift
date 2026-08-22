@@ -68,7 +68,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 16
+    public static let currentSchemaVersion = 17
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -436,12 +436,10 @@ public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
     case staleProjection = "stale_projection"
     case staleRun = "stale_run"
     case missingSourceEvidence = "missing_source_evidence"
-    case missingRequiredFields = "missing_required_fields"
     case pathOccupied = "path_occupied"
     case identityOccupied = "identity_occupied"
     case identitySourceMissingOrTrashed = "identity_source_missing_or_trashed"
     case sourceUnreadable = "source_unreadable"
-    case settingsChanged = "settings_changed"
     case replayConflict = "replay_conflict"
     case timeout
     case outcomeUnknown = "outcome_unknown"
@@ -537,12 +535,6 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
         for code: LocalAgentBridgeErrorCode
     ) -> AgentOperationRecovery {
         switch code {
-        case .missingRequiredFields:
-            AgentOperationRecovery(
-                safeToRetry: false,
-                mustReuseRequestIdentity: true,
-                nextStep: .supplyRequiredFieldsAndPreflight
-            )
         case .pathOccupied:
             AgentOperationRecovery(
                 safeToRetry: false,
@@ -578,12 +570,6 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
                 safeToRetry: false,
                 mustReuseRequestIdentity: true,
                 nextStep: .resolveSourceAccess
-            )
-        case .settingsChanged:
-            AgentOperationRecovery(
-                safeToRetry: false,
-                mustReuseRequestIdentity: true,
-                nextStep: .rerunCreationPreflight
             )
         case .staleProjection:
             AgentOperationRecovery(
@@ -634,7 +620,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 19
+    public static let currentSchemaVersion = 20
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -1410,9 +1396,6 @@ enum LocalAgentBridgeWireCoding {
         case ResearchFunctionContractError.sourceAccessUnavailable(let failure)
             where failure.code == .missingBinding:
             code = .missingSourceEvidence
-        case ResearchAgentConnectionError.missingRequiredFields,
-             DocumentCreationError.missingRequiredAgentFields:
-            code = .missingRequiredFields
         case ResearchAgentConnectionError.analysisPathOccupied,
              VaultRepositoryError.fileAlreadyExists,
              VaultRepositoryError.pathCollision:
@@ -1424,10 +1407,6 @@ enum LocalAgentBridgeWireCoding {
             code = .identitySourceMissingOrTrashed
         case ResearchAgentConnectionError.analysisSourceUnreadable:
             code = .sourceUnreadable
-        case ResearchAgentConnectionError.settingsChanged,
-             DocumentCreationError.settingsRevisionChanged,
-             TriptychControlError.settingsRevisionConflict:
-            code = .settingsChanged
         case ResearchAgentConnectionError.newAnalysisReplayConflict,
              LocalResearchExecutionStoreError.agentAnalysisCreationAlreadyExists,
              LocalResearchExecutionStoreError.agentAnalysisCreationNotFound,
@@ -1442,6 +1421,7 @@ enum LocalAgentBridgeWireCoding {
         case LocalAgentBridgeError.invalidRequest,
              ResearchAgentConnectionError.invalidAnalysisCreationMetadata,
              DocumentCreationError.invalidMetadata,
+             DocumentCreationError.invalidAuthoredYAML,
              DocumentCreationError.inapplicableAnalysisProperty,
              is DecodingError:
             code = .invalidRequest
@@ -1461,8 +1441,6 @@ enum LocalAgentBridgeWireCoding {
             "The exact Target, Material, or formal source boundary changed. This Run is stale and authorizes no further submission or write. Inspect the current Note in Scholium and start a new Action from the current revision."
         case .missingSourceEvidence:
             "Analyze has no valid frozen source route. Provide a current Scholium source, a bound Zotero route, or explicitly start with source_route=researcher_provided."
-        case .missingRequiredFields:
-            "Analysis creation is missing current Settings-required fields. Rerun creation preflight with the same request identity, supply the returned fields, and do not use placeholders."
         case .pathOccupied:
             "The resolved Analysis root filename is occupied. Scholium did not overwrite it or invent a retry filename. Ask the researcher for a distinct root filename and run preflight as a new creation request."
         case .identityOccupied:
@@ -1471,8 +1449,6 @@ enum LocalAgentBridgeWireCoding {
             "A portable Analysis identity remains but its source is missing or in the system Trash. Scholium did not recreate, overwrite, delete the identity, or invent another file."
         case .sourceUnreadable:
             "Scholium cannot verify the authoritative source state at the resolved Analysis destination. Restore access and rerun creation preflight."
-        case .settingsChanged:
-            "Triptych Settings changed after Analysis creation preflight. Rerun preflight with the same logical request identity before starting."
         case .replayConflict:
             "The request identity belongs to different or terminal creation evidence. Scholium preserved current source, identity, relationship, Run, and recovery state and made no new change."
         case .timeout: "The bridge operation timed out."

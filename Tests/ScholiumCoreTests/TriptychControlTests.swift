@@ -130,7 +130,7 @@ struct TriptychControlTests {
             "analysisAgentCreation",
             "attentionDismissalDays",
         ])
-        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 5)
+        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 6)
     }
 
     @Test("The isolated QA Settings fixture uses only the current schema")
@@ -140,7 +140,7 @@ struct TriptychControlTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
-            "Tools/Fixtures/qa-triptych-settings-v5.json"
+            "Tools/Fixtures/qa-triptych-settings-v6.json"
         ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
@@ -160,11 +160,9 @@ struct TriptychControlTests {
     @Test("Properties configuration preserves order and removes duplicate fields")
     func propertiesConfigurationOrderingAndDeduplication() {
         var configuration = VaultPropertiesConfiguration(
-            newNoteYAML: "keywords: [draft]\r\n\r\n",
             visibleFields: [" authors ", "publication_date", "authors", "", "type"]
         )
 
-        #expect(configuration.newNoteYAML == "keywords: [draft]\n\n")
         #expect(configuration.visibleFields == ["authors", "publication_date", "type"])
 
         configuration.moveVisibleField("type", to: 0)
@@ -172,24 +170,6 @@ struct TriptychControlTests {
         configuration.setVisible(false, field: "publication_date")
 
         #expect(configuration.visibleFields == ["type", "authors", "access"])
-    }
-
-    @Test("Seed normalization preserves keep-chomping trailing blank lines exactly")
-    func seedKeepChompingRoundTrip() throws {
-        let exact = "summary: |+\r\n  first line\r\n\r\n\r\n# trailing context\r\n\r\n"
-        let expected = exact.replacingOccurrences(of: "\r\n", with: "\n")
-        var settings = TriptychSettings()
-        settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
-            newNoteYAML: exact,
-            visibleFields: []
-        )
-        #expect(settings.properties[.paperAnalysis]?.newNoteYAML == expected)
-        try TriptychSettingsValidator.validate(settings)
-        let decoded = try JSONDecoder().decode(
-            TriptychSettings.self,
-            from: JSONEncoder().encode(settings)
-        )
-        #expect(decoded.properties[.paperAnalysis]?.newNoteYAML == expected)
     }
 
     @Test("Vault-wide Properties settings persist independently for all three vaults")
@@ -202,7 +182,6 @@ struct TriptychControlTests {
 
         let expected = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                newNoteYAML: "summary: Portable source summary\n",
                 visibleFields: ["authors", "publication_date", "type"]
             ),
             .topicKnowledge: VaultPropertiesConfiguration(
@@ -212,7 +191,7 @@ struct TriptychControlTests {
                 visibleFields: ["work_type", "coauthors"]
             ),
         ], analysisAgentCreation: AnalysisAgentCreationConfiguration(
-            requiredFieldsBySourceType: [.journalArticle: ["title", "authors"]]
+            preferredFieldsBySourceType: [.journalArticle: ["title", "authors"]]
         ))
 
         let initial = try await store.settings()
@@ -220,11 +199,9 @@ struct TriptychControlTests {
         let loaded = try await store.settings()
 
         #expect(loaded.settings.properties == expected.properties)
-        #expect(loaded.settings.properties[.paperAnalysis]?.newNoteYAML
-            == "summary: Portable source summary\n")
         #expect(loaded.settings.properties[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
         #expect(loaded.settings.properties[.output]?.visibleFields == ["work_type", "coauthors"])
-        #expect(loaded.settings.analysisAgentCreation.requiredFields(for: .journalArticle) == ["title", "authors"])
+        #expect(loaded.settings.analysisAgentCreation.preferredFields(for: .journalArticle) == ["title", "authors"])
     }
 
     @Test("Missing vault Properties entries receive role defaults")
@@ -264,7 +241,7 @@ struct TriptychControlTests {
         #expect(try await store.settings() == committed)
     }
 
-    @Test("Settings compiler rejects invalid seeds and Agent requirement collisions before write")
+    @Test("Settings compiler rejects authored About fields and inapplicable Agent preferences before write")
     func settingsCompilerRejectsInvalidCandidates() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
@@ -274,11 +251,10 @@ struct TriptychControlTests {
         let initial = try await store.settings()
         var invalid = initial.settings
         invalid.properties[.paperAnalysis] = VaultPropertiesConfiguration(
-            newNoteYAML: "authors:\n  - family: Scanlon\n",
-            visibleFields: invalid.properties[.paperAnalysis]?.visibleFields ?? []
+            visibleFields: ["summary"]
         )
         invalid.analysisAgentCreation = AnalysisAgentCreationConfiguration(
-            requiredFieldsBySourceType: [.journalArticle: ["authors"]]
+            preferredFieldsBySourceType: [.journalArticle: ["publisher"]]
         )
 
         do {
@@ -293,20 +269,19 @@ struct TriptychControlTests {
         #expect(try await store.settings() == initial)
     }
 
-    @Test("Settings compiler rejects every New Note YAML key outside summary and keywords")
-    func seedRoleMismatch() throws {
+    @Test("Settings profiles contain only optional managed fields")
+    func authoredFieldsAreNotSettingsSelections() throws {
         var settings = TriptychSettings()
         settings.properties[.output] = VaultPropertiesConfiguration(
-            newNoteYAML: "doi: custom-looking-but-analysis-canonical\n",
-            visibleFields: []
+            visibleFields: ["summary"]
         )
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validate(settings)
         }
 
-        settings.properties[.output] = VaultPropertiesConfiguration(
-            newNoteYAML: "researcher_method: dialectical\n",
-            visibleFields: []
+        settings.properties[.output] = TriptychSettings.defaultProperties[.output]
+        settings.analysisAgentCreation = AnalysisAgentCreationConfiguration(
+            preferredFieldsBySourceType: [.webpage: ["isbn"]]
         )
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validate(settings)
@@ -345,15 +320,16 @@ struct TriptychControlTests {
         await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
         #expect(try Data(contentsOf: url) == oldSchemaBytes)
 
-        try Data(#"{"schemaVersion":5,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        try Data(#"{"schemaVersion":6,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
-        var reviewed = TriptychSettings()
-        reviewed.properties[.paperAnalysis] = VaultPropertiesConfiguration(
-            newNoteYAML: "title: reserved\n",
-            visibleFields: []
+        var reviewedObject = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(TriptychSettings()))
+                as? [String: Any]
         )
-        try JSONEncoder().encode(reviewed).write(to: url, options: .atomic)
+        reviewedObject["attentionDismissalDays"] = 0
+        try JSONSerialization.data(withJSONObject: reviewedObject)
+            .write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsNeedsReview = $0 { true } else { false } })
     }
 
@@ -394,7 +370,7 @@ struct TriptychControlTests {
 
         try Data(#"{"schemaVersion":5,"properties":"damaged"}"#.utf8)
             .write(to: url, options: .atomic)
-        #expect(try await store.settingsLoadState() == .corrupted)
+        #expect(try await store.settingsLoadState() == .oldSchema(5))
         #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)
     }
 

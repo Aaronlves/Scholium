@@ -234,7 +234,11 @@ extension ScholiumCLI {
             "note create": .init(
                 pathLength: 2,
                 positionalCount: 1 ... 1,
-                options: ["--body-from": .value, "--analysis-from": .value]
+                options: [
+                    "--body-from": .value,
+                    "--authored-yaml-from": .value,
+                    "--analysis-from": .value,
+                ]
             ),
             "note import": .init(
                 pathLength: 2,

@@ -8,10 +8,9 @@ Scholium separates two researcher-owned authorities. Authored YAML recognizes
 only optional `summary` and `keywords`. Every other canonical structured value
 uses one identity-keyed Scholium Metadata record. The managed catalog defines
 shape and meaning; Analysis source-type profiles define applicability and
-recommendation order; About is a role setting; exact New Note YAML defines only
-authored source copied at creation; Agent-required fields apply only to typed
-Analysis creation. None materializes an absent value. Every built-in seed and
-Agent-required set is empty. App facts and integrations belong to neither
+recommendation order; About selects optional managed fields; fixed New Note
+YAML owns only authored `summary` and `keywords`; Agent-preferred fields are
+optional guidance for typed Analysis creation. App facts and integrations belong to neither
 authority.
 
 ### Shared authored YAML
@@ -21,8 +20,10 @@ authority.
 | `summary` | Nonempty multiline text | Short navigation description of the current Note. |
 | `keywords` | Nonempty text list | Researcher-defined retrieval terms. |
 
-Both keys are optional in Analysis, Topic, and Work. They remain authored
-source and are edited in Source, not in the Metadata sheet. Any other YAML is
+Both keys are optional values in Analysis, Topic, and Work. Managed creation
+always writes `summary: null` and `keywords: []`; these placeholders count as
+absent until populated. They remain authored source and are edited in Source,
+not in the Metadata sheet. Any other YAML is
 losslessly preserved custom source without canonical semantics, managed-field
 aliases, migration, or dual reads.
 
@@ -81,9 +82,10 @@ manuscript/report/preprint, conference/presentation, webpages, reviews,
 archival/correspondence, and dataset/software/audiovisual families use their
 ordinary bibliographic fields; `other` permits the complete catalog.
 Recommended is discovery order only. Settings may mark only applicable,
-shape-known managed fields Agent-required; `type` is intrinsically required and
-cannot be disabled. Requiredness never affects GUI New Note, researcher CLI
-creation, an existing Note, or later metadata editing.
+shape-known managed fields Agent-preferred. Every such field remains optional.
+The required `source_type` input is a creation-routing discriminator from which
+Scholium derives managed `type`; it is not a Settings-selectable metadata
+requirement.
 
 Default About order is Source `type`, `authors`; Publication
 `publication_date`; then Authored YAML `summary`, `keywords`. Managed `title`
@@ -126,14 +128,14 @@ distinguish groups through whitespace while retaining group names for assistive
 technology instead of visible repeated headings. About shows only selected,
 nonempty values. Authored `keywords` render as neutral content capsules.
 
-`settings.json` schema, exact seed, About profile, and Analysis Agent
-requirements share one exact-byte revision and one atomic save. Restore About
-defaults never changes seed; clearing seed never changes profiles or
-requirements. Seeds contain delimiter-free YAML mapping source, normalize only
-configuration newlines to LF, require a terminating LF, and preserve comments,
-order, quoting, scalar style, and meaningful blank lines. Only `summary` and
-`keywords` are accepted. Invalid, duplicate, reserved, unsupported, or larger
-than 64 KiB in UTF-8 source cannot be saved.
+`settings.json` stores the About profiles and Analysis Agent field preferences
+under one exact-byte revision and one atomic save. Every preference names a
+shape-known managed field applicable to its source type, but remains guidance:
+an Agent may omit it without blocking creation or creating a placeholder.
+Restore About defaults does not alter Agent preferences. The fixed authored
+YAML scaffold is Application-owned creation policy, not Settings content;
+Settings cannot add, remove, reorder, or require `summary`, `keywords`, or any
+other authored field.
 
 ## Appendix B. Bundled Critique Method requirements
 

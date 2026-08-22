@@ -51,7 +51,7 @@ extension ScholiumCLI {
         case "create":
             guard arguments.count >= 2 else {
                 throw CLIError.usage(
-                    "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--analysis-from <json-file>]"
+                    "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]"
                 )
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
@@ -65,11 +65,18 @@ extension ScholiumCLI {
                     from: Data(try sourceContent(from: $0).utf8)
                 )
             }
+            let authoredYAML = try option("--authored-yaml-from", in: arguments).map {
+                try JSONDecoder().decode(
+                    AuthoredNoteYAML.self,
+                    from: Data(try sourceContent(from: $0).utf8)
+                )
+            }
             let outcome = try await handle.documents.createManagedNote(
                 try ManagedNoteCreationRequest(
                     vaultID: vault.id,
                     destination: .exact(relativePath: path),
                     body: body,
+                    authoredYAML: authoredYAML,
                     analysisMetadata: metadata
                 )
             )

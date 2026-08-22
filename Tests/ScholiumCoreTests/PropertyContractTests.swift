@@ -1,3 +1,4 @@
+import Foundation
 import ScholiumContracts
 import Testing
 
@@ -148,33 +149,28 @@ struct PropertyContractTests {
         #expect(issues.isEmpty)
     }
 
-    @Test("Managed seed refusals carry structured source positions")
-    func seedRefusalPositions() throws {
-        let fixtures: [(String, Int)] = [
-            ("custom: &base value\nother: *base\n", 1),
-            ("duplicate: one\nduplicate: two\n", 1),
-            ("\"quoted\": value\n", 1),
-            ("root: value\n\tchild: value\n", 2),
-        ]
-
-        for (source, expectedLine) in fixtures {
-            var settings = TriptychSettings()
-            settings.properties[.paperAnalysis] = VaultPropertiesConfiguration(
-                newNoteYAML: source,
-                visibleFields: []
+    @Test("Typed authored YAML accepts only optional Summary and Keywords values")
+    func authoredYAMLValuesAreBounded() throws {
+        let values = try AuthoredNoteYAML(
+            summary: "A navigation summary",
+            keywords: ["fittingness", "value"]
+        )
+        let decoded = try JSONDecoder().decode(
+            AuthoredNoteYAML.self,
+            from: JSONEncoder().encode(values)
+        )
+        #expect(decoded == values)
+        #expect(throws: DocumentCreationError.invalidAuthoredYAML) {
+            try AuthoredNoteYAML(summary: "", keywords: [])
+        }
+        #expect(throws: DocumentCreationError.invalidAuthoredYAML) {
+            try AuthoredNoteYAML(keywords: ["value", "value"])
+        }
+        #expect(throws: DocumentCreationError.invalidAuthoredYAML) {
+            try JSONDecoder().decode(
+                AuthoredNoteYAML.self,
+                from: Data(#"{"summary":"ok","custom":true}"#.utf8)
             )
-            do {
-                try TriptychSettingsValidator.validate(settings)
-                Issue.record("Expected seed refusal for \(source)")
-            } catch let error as TriptychSettingsValidationError {
-                guard case .invalidSeed(_, _, _, let position) = error else {
-                    Issue.record("Unexpected validation error: \(error)")
-                    continue
-                }
-                let resolved = try #require(position)
-                #expect(resolved.line == expectedLine)
-                #expect(resolved.column > 0)
-            }
         }
     }
 }

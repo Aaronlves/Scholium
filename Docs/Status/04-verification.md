@@ -36,6 +36,22 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the fixed-authored-YAML and optional-machine-field cutover
+  passed 207 focused tests: authored-YAML and managed-Metadata contracts,
+  Triptych settings and persistence, Workflow profiles, Agent-start wire,
+  bounded creation and recovery, document operations, Settings architecture,
+  Local Agent bridge, and executable CLI lifecycles. Documentation authority
+  and Interface, Localizable, and WebKitInterface localization validation also
+  passed. The task's single complete `verify.sh` run passed documentation and
+  shipped-Skill guards, all 199 Web-editor tests, reproducible bundles, and
+  RDF-1. It then completed the 450-test Core target with three issues from one
+  stale Workflow-schema assertion that still expected authored `summary` in
+  Settings `visibleFields`; later targets did not run. That owner test was
+  updated without restoring Settings YAML authority, and its complete five-test
+  suite passed. Per the one-full-gate rule, the complete gate was not rerun.
+  This is local automated implementation evidence, not packaged or human
+  acceptance.
+
 - On 2026-08-23, the YAML/portable-Metadata cutover passed its focused owners:
   22 bounded-write, 8 Search-property projection/index, 40 Search/Record index,
   28 document-operation, 36 Triptych-control, 28 Settings-architecture, 10
@@ -72,8 +88,9 @@ override.
 - On 2026-08-22, the direct Analysis-creation recovery integration passed 3
   Agent-start Contract tests, 37 Core persistence tests, 50 Application owner,
   Session, Result, and bridge tests, and 10 signed standalone-CLI lifecycles
-  under Xcode 27 beta and Swift 6.4. Disposable fixtures cover Settings-required
-  fields before start; root-only Agent creation and rejection of Agent-claimed
+  under Xcode 27 beta and Swift 6.4. Under the then-current, now-superseded
+  creation contract, disposable fixtures covered Settings-required fields
+  before start; they also covered root-only Agent creation and rejection of Agent-claimed
   subfolders;
   pre-commit reservation recovery without fabricated identity or mutable
   source type, existing metadata, or academic purpose; occupied

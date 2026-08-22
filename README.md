@@ -103,7 +103,8 @@ Record, and continue through a separate Run. One Triptych collaboration policy,
 process-bound Sessions, nonreusable write capabilities, exact conflicts and
 recovery, and one Record-owned Researcher Evaluation preserve researcher
 control. For a new Analysis, the standalone CLI first asks Scholium for the
-current Analyses vault, Settings-required fields, root-managed destination,
+current Analyses vault, applicable managed fields, optional Settings
+preferences, the fixed `summary`/`keywords` scaffold, root-managed destination,
 and path/identity/source recovery state; only
 a ready preflight can start consequential creation. Analyze Records may carry
 Literature Recommendations. Selected local or Zotero source material remains a

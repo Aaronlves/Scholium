@@ -146,20 +146,13 @@ struct ActionCLIExecutableLifecycleTests {
             metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
             sourceRoute: .researcherProvided
         )
-        let settingsRevision = SettingsRevision(
-            fingerprint: DocumentFingerprint(content: "standalone-settings")
-        )
-        let newAnalysis = ResearchAgentNewAnalysisRequest(
-            preflight: preflightInput,
-            settingsRevision: settingsRevision
-        )
+        let newAnalysis = ResearchAgentNewAnalysisRequest(preflight: preflightInput)
         let creationPreflight = ResearchAgentAnalysisCreationPreflight(
             request: preflightInput,
             analysisVaultID: fixture.analysisTarget.note.vaultID,
-            settingsRevision: settingsRevision,
             applicableFields: PropertyContractCatalog.contracts(for: .analysis),
-            requiredFields: [],
-            applicationOwnedFields: [],
+            preferredFields: [],
+            fixedYAMLFields: PropertyContractCatalog.authoredCanonicalKeys,
             targetState: ResearchAgentAnalysisTargetState(
                 target: fixture.analysisTarget.note,
                 stableIdentity: nil,

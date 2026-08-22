@@ -202,8 +202,7 @@ The portable directory beside Works contains only:
 
 - manifest and stable identity mappings;
 - Triptych Guide and Triptych-local settings or folder preferences;
-- per-vault Metadata profiles, exact minimal New Note YAML, and Analysis Agent
-  creation requirements;
+- per-vault Metadata profiles and optional Analysis Agent field preferences;
 - researcher-owned Note metadata under `.scholium/note-metadata/v1/`, one
   schema-checked JSON record per stable Note identity;
 - typed Analysis-to-Zotero bindings keyed by stable Note identity;

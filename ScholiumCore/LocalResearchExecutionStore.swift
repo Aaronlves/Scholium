@@ -497,7 +497,7 @@ public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, S
 /// remain independently authoritative. Its schema belongs only to replay of
 /// this creation request and is not nested Local Execution payload authority.
 public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let triptychID: UUID
@@ -509,10 +509,10 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
     public let reservedIdentityID: UUID
     public let requestedBinding: AnalysisZoteroBinding?
     public let sourceRoute: ResearchAgentSourceRoute?
-    /// The intent supplied at the first consequential start. Settings refresh
-    /// may add newly required properties but never replace this source type or
-    /// any property value already chosen by the researcher/Agent task.
+    /// The exact authored and managed values supplied at the first
+    /// consequential start. Later replay may not replace either authority.
     public let initialMetadata: AnalysisCreationMetadata
+    public let initialAuthoredYAML: AuthoredNoteYAML?
     public let academicPurpose: String?
     public var committedSourceFingerprint: DocumentFingerprint?
     public var bindingState: LocalAgentAnalysisCreationBindingState?
@@ -530,6 +530,7 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
         requestedBinding: AnalysisZoteroBinding?,
         sourceRoute: ResearchAgentSourceRoute?,
         initialMetadata: AnalysisCreationMetadata,
+        initialAuthoredYAML: AuthoredNoteYAML?,
         academicPurpose: String?,
         committedSourceFingerprint: DocumentFingerprint? = nil,
         bindingState: LocalAgentAnalysisCreationBindingState? = nil
@@ -552,6 +553,7 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
         self.requestedBinding = requestedBinding
         self.sourceRoute = sourceRoute
         self.initialMetadata = initialMetadata
+        self.initialAuthoredYAML = initialAuthoredYAML
         self.academicPurpose = academicPurpose
         self.committedSourceFingerprint = committedSourceFingerprint
         self.bindingState = requestedBinding == nil ? nil : (bindingState ?? .reserved)
@@ -569,6 +571,7 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
         case requestedBinding = "requested_binding"
         case sourceRoute = "source_route"
         case initialMetadata = "initial_metadata"
+        case initialAuthoredYAML = "initial_authored_yaml"
         case academicPurpose = "academic_purpose"
         case committedSourceFingerprint = "committed_source_fingerprint"
         case bindingState = "binding_state"
@@ -614,6 +617,10 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
             initialMetadata: container.decode(
                 AnalysisCreationMetadata.self,
                 forKey: .initialMetadata
+            ),
+            initialAuthoredYAML: container.decodeIfPresent(
+                AuthoredNoteYAML.self,
+                forKey: .initialAuthoredYAML
             ),
             academicPurpose: container.decodeIfPresent(
                 String.self,
@@ -1307,12 +1314,11 @@ public actor LocalResearchExecutionStore {
                 if write.operation == .createNote {
                     guard state == .committed,
                           let observedRevision,
-                          case .absent(let settingsRevision) = current
+                          case .absent = current
                             .boundedWriteSet.entries[entryIndex].expectation else {
                         throw ResearchBoundedWriteSetError.invalidWriteRecord
                     }
                     current.boundedWriteSet.entries[entryIndex].expectation = .created(
-                        settingsRevision: settingsRevision,
                         committedRevision: observedRevision
                     )
                     current.boundedWriteSet.entries[entryIndex].state = .consumed
@@ -1480,12 +1486,11 @@ public actor LocalResearchExecutionStore {
                     throw ResearchBoundedWriteSetError.invalidWriteRecord
                 }
                 if write.operation == .createNote {
-                    guard case .absent(let settingsRevision) = current
+                    guard case .absent = current
                         .boundedWriteSet.entries[entryIndex].expectation else {
                         throw ResearchBoundedWriteSetError.invalidWriteRecord
                     }
                     current.boundedWriteSet.entries[entryIndex].expectation = .created(
-                        settingsRevision: settingsRevision,
                         committedRevision: observedRevision
                     )
                     current.boundedWriteSet.entries[entryIndex].state = .consumed

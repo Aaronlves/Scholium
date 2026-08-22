@@ -282,7 +282,8 @@ struct DocumentOperationsTests {
                 body: "# Optional\n"
             )
         ).committedValue.document
-        #expect(optional.rawContent == "# Optional\n")
+        #expect(optional.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n# Optional\n")
         #expect(!optional.rawContent.contains("research_unit"))
         _ = try await handle.refresh()
 
@@ -316,7 +317,8 @@ struct DocumentOperationsTests {
                 body: "# Analysis\n"
             )
         ).committedValue.document
-        #expect(created.rawContent == "# Analysis\n")
+        #expect(created.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n# Analysis\n")
 
         let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
         let untitledWork = try await handle.documents.createManagedNote(
@@ -325,7 +327,8 @@ struct DocumentOperationsTests {
                 destination: .exact(relativePath: "Untitled.md")
             )
         ).committedValue.document
-        #expect(untitledWork.rawContent.isEmpty)
+        #expect(untitledWork.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n")
         await runtime.shutdown()
     }
 
@@ -353,7 +356,8 @@ struct DocumentOperationsTests {
         ).committedValue
 
         #expect(created.document.relativePath == "Sources/Untitled 3.md")
-        #expect(created.document.rawContent.isEmpty)
+        #expect(created.document.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n")
         #expect(created.sourceAheadSnapshot.derivedProjectionState == .sourceAhead)
         let publication = try #require(await iterator.next())
         guard case .sourceCommitted(let event) = publication else {
@@ -432,33 +436,15 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Managed creation copies exactly one role seed and leaves the body empty")
-    func managedCreationUsesExactRoleSeed() async throws {
+    @Test("Managed creation writes the same fixed YAML scaffold for every role")
+    func managedCreationUsesFixedYAMLScaffold() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
-        let saved = try await handle.research.settings()
-        var settings = saved.settings
-        settings.properties[.paperAnalysis]?.newNoteYAML =
-            "keywords: [draft]\nsummary: |+\n  exact\n  ---\n  after\n\n"
-        settings.properties[.topicKnowledge]?.newNoteYAML = "summary: Map\n"
-        settings.properties[.output]?.newNoteYAML = "keywords: [chapter]\n"
-        _ = try await handle.research.saveSettings(
-            settings,
-            expectedRevision: saved.revision
-        )
-
-        let cases: [(WorkspaceVaultSlot, String)] = [
-            (
-                .paperAnalysis,
-                "---\nkeywords: [draft]\nsummary: |+\n  exact\n  ---\n  after\n\n---\n"
-            ),
-            (.topicKnowledge, "---\nsummary: Map\n---\n"),
-            (.output, "---\nkeywords: [chapter]\n---\n"),
-        ]
-        for (slot, expectedSource) in cases {
+        let expectedSource = "---\nsummary: null\nkeywords: []\n---\n"
+        for slot in WorkspaceVaultSlot.allCases {
             let registeredVault = try #require(fixture.assignment.vault(for: slot))
             let vaultID = registeredVault.id
             let created = try await handle.documents.createUntitledNote(
@@ -481,7 +467,7 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Typed managed creation shares the seed while Agent policy freezes requirements and identity")
+    @Test("Typed creation accepts authored YAML and keeps every managed field optional")
     func typedManagedCreationUsesOneCreator() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
@@ -491,9 +477,7 @@ struct DocumentOperationsTests {
 
         let saved = try await handle.research.settings()
         var settings = saved.settings
-        settings.properties[.paperAnalysis]?.newNoteYAML =
-            "# researcher seed\nkeywords: [configured]\n"
-        settings.analysisAgentCreation.requiredFieldsBySourceType[.journalArticle] = [
+        settings.analysisAgentCreation.preferredFieldsBySourceType[.journalArticle] = [
             "authors",
         ]
         let configured = try await handle.research.saveSettings(
@@ -522,17 +506,20 @@ struct DocumentOperationsTests {
                 vaultID: analyses.id,
                 destination: .exact(relativePath: "Agent/Created.md"),
                 body: "# Working body\n",
+                authoredYAML: try AuthoredNoteYAML(
+                    summary: "A focused analysis",
+                    keywords: ["reasons", "persons"]
+                ),
                 analysisMetadata: metadata,
-                authority: .authenticatedAgent(
-                    settingsRevision: configured.revision,
-                    reservedIdentity: reservedIdentity
-                )
+                authority: .authenticatedAgent(reservedIdentity: reservedIdentity)
             )
         ).committedValue
 
         #expect(created.stableIdentity.resolvedID == reservedIdentity)
+        #expect(created.document.parsedFrontmatter["summary"]
+            == .string("A focused analysis"))
         #expect(created.document.parsedFrontmatter["keywords"]
-            == .array([.string("configured")]))
+            == .array([.string("reasons"), .string("persons")]))
         #expect(created.document.parsedFrontmatter["type"] == nil)
         #expect(created.document.parsedFrontmatter["title"] == nil)
         #expect(created.document.parsedFrontmatter["authors"] == nil)
@@ -540,34 +527,23 @@ struct DocumentOperationsTests {
         #expect(created.metadata?.record.fields["title"] == .string("Reasons and Persons"))
         #expect(created.metadata?.record.fields["authors"] == authors.value)
         #expect(created.document.body == "# Working body\n")
-        let source = created.document.rawContent
-        let seedRange = try #require(source.range(of: "# researcher seed"))
-        let keywordRange = try #require(source.range(of: "keywords: [configured]"))
-        #expect(seedRange.lowerBound < keywordRange.lowerBound)
-
-        await #expect(throws: DocumentCreationError.missingRequiredAgentFields(["authors"])) {
-            _ = try await handle.documents.createManagedNote(
-                try ManagedNoteCreationRequest(
-                    vaultID: analyses.id,
-                    destination: .exact(relativePath: "Agent/Missing.md"),
-                    analysisMetadata: try AnalysisCreationMetadata(
-                        sourceType: .journalArticle,
-                        fields: [title]
-                    ),
-                    authority: .authenticatedAgent(
-                        settingsRevision: configured.revision,
-                        reservedIdentity: UUID()
-                    )
-                )
+        let optional = try await handle.documents.createManagedNote(
+            try ManagedNoteCreationRequest(
+                vaultID: analyses.id,
+                destination: .exact(relativePath: "Agent/Optional.md"),
+                analysisMetadata: try AnalysisCreationMetadata(
+                    sourceType: .journalArticle
+                ),
+                authority: .authenticatedAgent(reservedIdentity: UUID())
             )
-        }
-        #expect(!FileManager.default.fileExists(
-            atPath: URL(fileURLWithPath: analyses.canonicalPath)
-                .appendingPathComponent("Agent/Missing.md").path
-        ))
+        ).committedValue
+        #expect(optional.document.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n")
+        #expect(optional.metadata?.record.fields == [
+            "type": .string("journal_article"),
+        ])
 
-        // The same typed request through researcher CLI policy is not subject
-        // to Agent-only requiredness.
+        // Researcher and Agent creation share the same optional managed shape.
         let researcher = try await handle.documents.createManagedNote(
             try ManagedNoteCreationRequest(
                 vaultID: analyses.id,
@@ -583,6 +559,9 @@ struct DocumentOperationsTests {
             == .string("Reasons and Persons"))
         #expect(researcher.metadata?.record.fields["authors"] == nil)
 
+        #expect(configured.settings.analysisAgentCreation.preferredFields(
+            for: .journalArticle
+        ) == ["authors"])
         await runtime.shutdown()
     }
 
@@ -664,8 +643,8 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Managed creation refuses settings that need review before claiming source")
-    func managedCreationFailsBeforeWriteForInvalidSettings() async throws {
+    @Test("Fixed managed creation does not use invalid optional Settings as authority")
+    func managedCreationIgnoresInvalidOptionalSettings() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -675,8 +654,7 @@ struct DocumentOperationsTests {
             .deletingLastPathComponent()
             .appendingPathComponent(".scholium/settings.json")
         var invalidSettings = try await handle.research.settings().settings
-        invalidSettings.properties[.paperAnalysis]?.newNoteYAML =
-            "title: forbidden\n"
+        invalidSettings.attentionDismissalDays = 0
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(invalidSettings).write(
@@ -687,18 +665,12 @@ struct DocumentOperationsTests {
         let analysesVault = try #require(
             fixture.assignment.vault(for: .paperAnalysis)
         )
-        await #expect(throws: (any Error).self) {
-            _ = try await handle.documents.createUntitledNote(
-                inVault: analysesVault.id,
-                folderRelativePath: nil
-            )
-        }
-        #expect(
-            !FileManager.default.fileExists(
-                atPath: URL(fileURLWithPath: analysesVault.canonicalPath)
-                    .appendingPathComponent("Untitled.md").path
-            )
-        )
+        let created = try await handle.documents.createUntitledNote(
+            inVault: analysesVault.id,
+            folderRelativePath: nil
+        ).committedValue
+        #expect(created.document.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n")
         await runtime.shutdown()
     }
 
@@ -734,8 +706,8 @@ struct DocumentOperationsTests {
         ).body.hasPrefix("# Body"))
     }
 
-    @Test("Agent managed creation revalidates Settings after a concurrent save")
-    func managedCreationRejectsChangedSettingsBeforeClaim() async throws {
+    @Test("Optional Settings changes cannot invalidate Agent creation")
+    func managedCreationSurvivesChangedSettingsBeforeClaim() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -747,10 +719,7 @@ struct DocumentOperationsTests {
             vaultID: topic.id,
             destination: .exact(relativePath: "Stale Settings.md"),
             body: "# Must not commit\n",
-            authority: .authenticatedAgent(
-                settingsRevision: saved.revision,
-                reservedIdentity: reservedID
-            )
+            authority: .authenticatedAgent(reservedIdentity: reservedID)
         )
         let gate = ManagedCreationTestGate()
         await handle.setManagedCreationPreLeaseBarrierForTesting {
@@ -762,23 +731,19 @@ struct DocumentOperationsTests {
         #expect(await gate.waitUntilArrived())
 
         var changed = saved.settings
-        changed.properties[.topicKnowledge]?.newNoteYAML = "summary: newer\n"
+        changed.properties[.topicKnowledge]?.visibleFields = []
         _ = try await handle.research.saveSettings(
             changed,
             expectedRevision: saved.revision
         )
         await gate.release()
-        await #expect(throws: DocumentCreationError.settingsRevisionChanged) {
-            _ = try await creation.value
-        }
+        let committed = try await creation.value.committedValue
         await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
-        #expect(!FileManager.default.fileExists(
-            atPath: URL(fileURLWithPath: topic.canonicalPath)
-                .appendingPathComponent("Stale Settings.md").path
-        ))
+        #expect(committed.document.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n# Must not commit\n")
         #expect(try await handle.services.controlStore.identityRecord(
             id: reservedID
-        ) == nil)
+        )?.relativePath == "Stale Settings.md")
         await runtime.shutdown()
     }
 
@@ -1044,7 +1009,8 @@ struct DocumentOperationsTests {
             vaultID: vaultID,
             relativePath: "Second Classification/Untitled.md"
         ))
-        #expect(moved.rawContent.isEmpty)
+        #expect(moved.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n")
         await runtime.shutdown()
     }
 

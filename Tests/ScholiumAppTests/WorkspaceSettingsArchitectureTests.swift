@@ -471,31 +471,25 @@ struct WorkspaceSettingsArchitectureTests {
 
     @Test("A normalized Needs Review candidate is dirty and directly saveable")
     func repairableCandidateDiffersFromRawSettings() throws {
-        let raw = Data(#"{"newNoteYAML":"keywords: [draft]\r\n","visibleFields":[" keywords ","keywords"]}"#.utf8)
+        let raw = Data(#"{"visibleFields":[" authors ","authors"]}"#.utf8)
         let decoded = try JSONDecoder().decode(
             VaultPropertiesConfiguration.self,
             from: raw
         )
         var saved = TriptychSettings()
         saved.properties[.paperAnalysis] = decoded
-        let seeds = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
-            ($0, saved.properties[$0]?.newNoteYAML ?? "")
-        })
-
         let candidate = PropertiesSettingsCandidateBuilder.build(
             from: saved,
             configurations: saved.properties,
-            seedDrafts: seeds,
             agentCreation: saved.analysisAgentCreation
         )
 
         #expect(candidate != saved)
-        #expect(candidate.properties[.paperAnalysis]?.newNoteYAML == "keywords: [draft]\n")
-        #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["keywords"])
+        #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["authors"])
         try TriptychSettingsValidator.validate(candidate)
     }
 
-    @Test("Metadata Profiles keeps seed, Agent, and About contracts separate")
+    @Test("Metadata Profiles exposes only optional machine fields and About order")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -514,29 +508,27 @@ struct WorkspaceSettingsArchitectureTests {
         ))
         let properties = String(source[start.lowerBound..<end.lowerBound])
 
-        for section in [
-            "YAML Added to New Notes",
-            "Agent-Created Analyses",
-            "settingsSectionTitle(\"About\")",
-        ] {
+        for section in ["Agent-Created Analyses", "settingsSectionTitle(\"About\")"] {
             #expect(properties.contains(section))
         }
+        #expect(properties.contains("Every field is optional"))
+        #expect(properties.contains("preferredFieldsBySourceType"))
         #expect(properties.contains("Restore About Defaults"))
         #expect(!properties.contains("Structured Editing"))
         #expect(!properties.contains("editableFields"))
-        #expect(properties.contains("Clear New Note YAML"))
+        #expect(!properties.contains("YAML Added to New Notes"))
+        #expect(!properties.contains("Clear New Note YAML"))
         #expect(properties.contains("TriptychSettingsValidator.validate(candidateSettings)"))
         #expect(properties.contains("settingsRevisionConflict"))
         #expect(properties.contains("hasWritableTriptychSettings"))
         #expect(properties.contains("Retry Metadata Settings"))
         #expect(properties.contains("savedSettingsRevision"))
-        #expect(properties.contains("currentSeedDiagnostic"))
         #expect(properties.contains("currentAgentDiagnostic"))
         #expect(properties.contains("ViewThatFits(in: .horizontal)"))
         #expect(properties.contains(".disabled(isSaving)"))
         #expect(properties.contains("candidateSettings != savedTriptychSettings"))
         #expect(properties.contains("savedTriptychID"))
-        #expect(properties.contains("TextEditor(text: selectedSeed, selection: $seedSelection)"))
+        #expect(!properties.contains("TextEditor(text: selectedSeed"))
         #expect(!properties.contains("reason: error.localizedDescription"))
     }
 

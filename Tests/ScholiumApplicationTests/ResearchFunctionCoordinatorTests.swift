@@ -45,7 +45,7 @@ struct ResearchFunctionCoordinatorTests {
         )
     }
 
-    @Test("Analysis creation preflight exposes Settings-required fields and rejects stale Settings")
+    @Test("Analysis creation preflight exposes optional preferences without Settings authority")
     func analysisCreationPreflightSettingsBoundary() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
@@ -57,54 +57,32 @@ struct ResearchFunctionCoordinatorTests {
         let original = try await handle.services.controlStore.settings()
         var settings = original.settings
         settings.analysisAgentCreation = AnalysisAgentCreationConfiguration(
-            requiredFieldsBySourceType: [.journalArticle: ["summary"]]
+            preferredFieldsBySourceType: [.journalArticle: ["authors"]]
         )
-        let requiredSnapshot = try await handle.services.controlStore.saveSettings(
+        let preferredSnapshot = try await handle.services.controlStore.saveSettings(
             settings,
             expectedRevision: original.revision
         )
         let requestID = UUID(
             uuidString: "00000000-0000-0000-0000-000000000461"
         )!
-        let incomplete = try ResearchAgentAnalysisCreationPreflightRequest(
+        let input = try ResearchAgentAnalysisCreationPreflightRequest(
             requestID: requestID,
             destination: ResearchAgentAnalysisDestination(
-                managedDefaultFilename: "Required Fields.md"
+                managedDefaultFilename: "Optional Fields.md"
             ),
             metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
             sourceRoute: .researcherProvided
         )
-        let missing = try await runtime.preflightResearchAgentAnalysisCreation(
-            triptychID: fixture.assignment.id,
-            request: incomplete
-        )
-        #expect(missing.status == .missingRequiredFields)
-        #expect(missing.requiredFields == ["summary"])
-        #expect(missing.missingRequiredFields == ["summary"])
-        #expect(missing.applicableFields.contains { $0.canonicalKey == "summary" })
-        #expect(missing.startNewAnalysis == nil)
-        #expect(missing.recovery.safeToRetry == false)
-        #expect(missing.recovery.mustReuseRequestIdentity)
-        #expect(missing.recovery.nextStep == .supplyRequiredFieldsAndPreflight)
-
-        let complete = try ResearchAgentAnalysisCreationPreflightRequest(
-            requestID: requestID,
-            destination: incomplete.destination,
-            metadata: AnalysisCreationMetadata(
-                sourceType: .journalArticle,
-                fields: [try CanonicalPropertyInput(
-                    key: "summary",
-                    value: .string("A source-faithful bounded summary.")
-                )]
-            ),
-            sourceRoute: .researcherProvided
-        )
         let ready = try await runtime.preflightResearchAgentAnalysisCreation(
             triptychID: fixture.assignment.id,
-            request: complete
+            request: input
         )
         #expect(ready.status == .ready)
-        let staleStart = try ResearchAgentStartRequest(
+        #expect(ready.preferredFields == ["authors"])
+        #expect(Set(ready.fixedYAMLFields) == ["summary", "keywords"])
+        #expect(ready.applicableFields.contains { $0.canonicalKey == "authors" })
+        let start = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: #require(ready.startNewAnalysis)
         )
@@ -112,26 +90,22 @@ struct ResearchFunctionCoordinatorTests {
         settings.attentionDismissalDays += 1
         _ = try await handle.services.controlStore.saveSettings(
             settings,
-            expectedRevision: requiredSnapshot.revision
+            expectedRevision: preferredSnapshot.revision
         )
-        await #expect(throws: ResearchAgentConnectionError.settingsChanged) {
-            _ = try await runtime.startResearchAgentRun(
-                triptychID: fixture.assignment.id,
-                request: staleStart,
-                sessionValidity: 300
-            )
-        }
-        let refreshed = try await runtime.preflightResearchAgentAnalysisCreation(
+        let started = try await runtime.startResearchAgentRun(
             triptychID: fixture.assignment.id,
-            request: complete
+            request: start,
+            sessionValidity: 300
         )
-        #expect(refreshed.status == .ready)
-        #expect(refreshed.settingsRevision != ready.settingsRevision)
-        #expect(refreshed.requestID == requestID)
+        #expect(started.receipt.target.note == ready.targetState.target)
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
         await runtime.shutdown()
     }
 
-    @Test("A pre-commit reservation neither fabricates an identity nor bypasses current Settings")
+    @Test("A pre-commit reservation freezes authored and managed values, not Settings preferences")
     func analysisCreationReservationRecoveryBoundary() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
@@ -154,6 +128,10 @@ struct ResearchFunctionCoordinatorTests {
                     key: "title",
                     value: .string("Frozen initial title")
                 )]
+            ),
+            authoredYAML: try AuthoredNoteYAML(
+                summary: "Frozen authored summary",
+                keywords: ["reservation"]
             ),
             sourceRoute: .researcherProvided
         )
@@ -183,32 +161,16 @@ struct ResearchFunctionCoordinatorTests {
         let original = try await handle.services.controlStore.settings()
         var changed = original.settings
         changed.analysisAgentCreation = AnalysisAgentCreationConfiguration(
-            requiredFieldsBySourceType: [.journalArticle: ["summary"]]
+            preferredFieldsBySourceType: [.journalArticle: ["authors"]]
         )
         _ = try await handle.services.controlStore.saveSettings(
             changed,
             expectedRevision: original.revision
         )
         await gate.release()
-        await #expect(throws: DocumentCreationError.settingsRevisionChanged) {
-            _ = try await starting.value
-        }
+        let started = try await starting.value
         await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
-
-        let missing = try await runtime.preflightResearchAgentAnalysisCreation(
-            triptychID: fixture.assignment.id,
-            request: initialInput
-        )
-        #expect(missing.status == .missingRequiredFields)
-        #expect(missing.targetState.stableIdentity == nil)
-        #expect(missing.targetState.sourceState == .absent)
-        await #expect(throws: ResearchAgentConnectionError.settingsChanged) {
-            _ = try await runtime.startResearchAgentRun(
-                triptychID: fixture.assignment.id,
-                request: initialStart,
-                sessionValidity: 300
-            )
-        }
+        #expect(started.receipt.target.note == initialPreflight.targetState.target)
 
         let changedSourceType = try ResearchAgentAnalysisCreationPreflightRequest(
             requestID: requestID,
@@ -220,6 +182,7 @@ struct ResearchFunctionCoordinatorTests {
                     value: .string("Frozen initial title")
                 )]
             ),
+            authoredYAML: initialInput.authoredYAML,
             sourceRoute: .researcherProvided
         )
         #expect(try await runtime.preflightResearchAgentAnalysisCreation(
@@ -237,12 +200,9 @@ struct ResearchFunctionCoordinatorTests {
                         key: "title",
                         value: .string("Rewritten title")
                     ),
-                    try CanonicalPropertyInput(
-                        key: "summary",
-                        value: .string("The required field cannot mask a rewrite.")
-                    ),
                 ]
             ),
+            authoredYAML: initialInput.authoredYAML,
             sourceRoute: .researcherProvided
         )
         #expect(try await runtime.preflightResearchAgentAnalysisCreation(
@@ -250,51 +210,20 @@ struct ResearchFunctionCoordinatorTests {
             request: changedExistingValue
         ).status == .replayConflict)
 
-        let correctedInput = try ResearchAgentAnalysisCreationPreflightRequest(
+        let changedAuthored = try ResearchAgentAnalysisCreationPreflightRequest(
             requestID: requestID,
             destination: initialInput.destination,
-            metadata: AnalysisCreationMetadata(
-                sourceType: .journalArticle,
-                fields: [
-                    try CanonicalPropertyInput(
-                        key: "title",
-                        value: .string("Frozen initial title")
-                    ),
-                    try CanonicalPropertyInput(
-                        key: "summary",
-                        value: .string("Current Settings are satisfied before source commit.")
-                    ),
-                ]
+            metadata: initialInput.metadata,
+            authoredYAML: try AuthoredNoteYAML(
+                summary: "Changed authored summary",
+                keywords: ["reservation"]
             ),
             sourceRoute: .researcherProvided
         )
-        let corrected = try await runtime.preflightResearchAgentAnalysisCreation(
+        #expect(try await runtime.preflightResearchAgentAnalysisCreation(
             triptychID: fixture.assignment.id,
-            request: correctedInput
-        )
-        #expect(corrected.status == .ready)
-        #expect(corrected.requestID == requestID)
-        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
-            _ = try await runtime.startResearchAgentRun(
-                triptychID: fixture.assignment.id,
-                request: ResearchAgentStartRequest(
-                    actionID: .analyze,
-                    newAnalysis: #require(corrected.startNewAnalysis),
-                    academicPurpose: "Changed purpose hidden by required metadata"
-                ),
-                sessionValidity: 300
-            )
-        }
-        let started = try await runtime.startResearchAgentRun(
-            triptychID: fixture.assignment.id,
-            request: ResearchAgentStartRequest(
-                actionID: .analyze,
-                newAnalysis: #require(corrected.startNewAnalysis),
-                academicPurpose: initialStart.academicPurpose
-            ),
-            sessionValidity: 300
-        )
-        #expect(started.receipt.target.note == corrected.targetState.target)
+            request: changedAuthored
+        ).status == .replayConflict)
         _ = try await runtime.endResearchAgentRun(
             credential: started.credential,
             run: started.receipt.run
@@ -740,9 +669,16 @@ struct ResearchFunctionCoordinatorTests {
         )
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let document = try await handle.documents.load(createdID)
-        #expect(document.parsedFrontmatter["type"]?.scalarString
+        #expect(document.rawContent
+            == "---\nsummary: null\nkeywords: []\n---\n")
+        let createdMetadata = try #require(
+            try await handle.services.controlStore.noteMetadata(
+                noteID: started.receipt.target.noteID
+            )
+        )
+        #expect(createdMetadata.record.fields["type"]?.scalarString
             == AnalysisSourceType.journalArticle.rawValue)
-        #expect(document.parsedFrontmatter["title"]?.scalarString
+        #expect(createdMetadata.record.fields["title"]?.scalarString
             == "Agent-created Analysis")
 
         let note = try #require(try await handle.snapshot().document(id: createdID))
@@ -779,8 +715,7 @@ struct ResearchFunctionCoordinatorTests {
         )
         #expect(changedPreflight.status == .replayConflict)
         let changedCreation = ResearchAgentNewAnalysisRequest(
-            preflight: changedPreflightInput,
-            settingsRevision: creation.settingsRevision
+            preflight: changedPreflightInput
         )
         let changedRequest = try ResearchAgentStartRequest(
             actionID: .analyze,
@@ -806,24 +741,6 @@ struct ResearchFunctionCoordinatorTests {
                 sessionValidity: 300
             )
         }
-        let changedRevision = ResearchAgentNewAnalysisRequest(
-            preflight: creation.preflight,
-            settingsRevision: SettingsRevision(
-                fingerprint: DocumentFingerprint(content: "substituted settings")
-            )
-        )
-        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
-            _ = try await runtime.startResearchAgentRun(
-                triptychID: fixture.assignment.id,
-                request: ResearchAgentStartRequest(
-                    actionID: .analyze,
-                    newAnalysis: changedRevision,
-                    academicPurpose: request.academicPurpose
-                ),
-                sessionValidity: 300
-            )
-        }
-
         let retried = try await runtime.startResearchAgentRun(
             triptychID: fixture.assignment.id,
             request: request,

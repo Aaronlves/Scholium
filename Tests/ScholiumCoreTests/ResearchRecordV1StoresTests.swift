@@ -1210,6 +1210,7 @@ struct ResearchRecordV1StoresTests {
             initialMetadata: try AnalysisCreationMetadata(
                 sourceType: .journalArticle
             ),
+            initialAuthoredYAML: nil,
             academicPurpose: "Exact purpose"
         )
 
@@ -1226,6 +1227,7 @@ struct ResearchRecordV1StoresTests {
             requestedBinding: binding,
             sourceRoute: nil,
             initialMetadata: record.initialMetadata,
+            initialAuthoredYAML: record.initialAuthoredYAML,
             academicPurpose: "Exact purpose"
         )
         #expect(try await store.reviseAgentAnalysisCreationReservation(
@@ -1281,6 +1283,7 @@ struct ResearchRecordV1StoresTests {
             requestedBinding: binding,
             sourceRoute: nil,
             initialMetadata: record.initialMetadata,
+            initialAuthoredYAML: record.initialAuthoredYAML,
             academicPurpose: "Exact purpose",
             committedSourceFingerprint: committedSource,
             bindingState: .committed
@@ -1309,6 +1312,7 @@ struct ResearchRecordV1StoresTests {
             requestedBinding: binding,
             sourceRoute: nil,
             initialMetadata: record.initialMetadata,
+            initialAuthoredYAML: record.initialAuthoredYAML,
             academicPurpose: "Changed purpose"
         )
         await #expect(throws: LocalResearchExecutionStoreError.self) {
@@ -1331,6 +1335,7 @@ struct ResearchRecordV1StoresTests {
             initialMetadata: try AnalysisCreationMetadata(
                 sourceType: .journalArticle
             ),
+            initialAuthoredYAML: nil,
             academicPurpose: nil
         )
         let storedResearcher = try await store.createAgentAnalysisCreation(

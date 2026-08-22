@@ -21,17 +21,16 @@ struct ResearchAgentStartContractsTests {
                 managedDefaultFilename: "A bounded article.md"
             ),
             metadata: metadata,
+            authoredYAML: try AuthoredNoteYAML(
+                summary: "A bounded article analysis",
+                keywords: ["reasons"]
+            ),
             source: try ResearchAgentNewAnalysisSource(
                 library: .user,
                 itemKey: "AbCd1234"
             )
         )
-        let creation = ResearchAgentNewAnalysisRequest(
-            preflight: preflight,
-            settingsRevision: SettingsRevision(
-                fingerprint: DocumentFingerprint(content: "settings-v1")
-            )
-        )
+        let creation = ResearchAgentNewAnalysisRequest(preflight: preflight)
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: creation,
@@ -57,7 +56,8 @@ struct ResearchAgentStartContractsTests {
         #expect(json.contains("\"fields\""))
         #expect(!json.contains("\"properties\""))
         #expect(json.contains("managed_default_filename"))
-        #expect(json.contains("settings_revision"))
+        #expect(json.contains("authored_yaml"))
+        #expect(!json.contains("settings_revision"))
         #expect(!json.contains("vault_id"))
         #expect(!json.contains("relative_path"))
         #expect(throws: Error.self) {
@@ -77,12 +77,7 @@ struct ResearchAgentStartContractsTests {
             metadata: try AnalysisCreationMetadata(sourceType: .book),
             sourceRoute: .researcherProvided
         )
-        let creation = ResearchAgentNewAnalysisRequest(
-            preflight: preflight,
-            settingsRevision: SettingsRevision(
-                fingerprint: DocumentFingerprint(content: "settings-v1")
-            )
-        )
+        let creation = ResearchAgentNewAnalysisRequest(preflight: preflight)
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: creation
@@ -146,12 +141,7 @@ struct ResearchAgentStartContractsTests {
                 itemKey: "ABCD1234"
             )
         )
-        let creation = ResearchAgentNewAnalysisRequest(
-            preflight: preflight,
-            settingsRevision: SettingsRevision(
-                fingerprint: DocumentFingerprint(content: "settings-v1")
-            )
-        )
+        let creation = ResearchAgentNewAnalysisRequest(preflight: preflight)
         let existingTarget = VaultQualifiedNoteID(
             vaultID: UUID(),
             relativePath: "Analysis.md"

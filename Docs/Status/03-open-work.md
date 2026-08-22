@@ -25,7 +25,7 @@
   and Action/Discussion cancellation and recovery.
 - Complete direct keyboard, VoiceOver, English and Simplified Chinese,
   ordinary/minimum-width, and conflict acceptance for the Metadata Profiles
-  seed editor, per-type Agent requirements, Complete Metadata chooser,
+  per-type optional Agent preferences, Complete Metadata chooser,
   CreatorList editor, first-record creation, removal/Undo, and Source routes for
   authored `summary` and `keywords`.
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
@@ -48,8 +48,8 @@
   bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
   and credential cleanup.
-- In that clean external-Agent pass, exercise `preflight-analysis` with local
-  Settings-required fields, managed-root and explicit researcher-selected
+- In that clean external-Agent pass, exercise `preflight-analysis` with omitted
+  and populated authored YAML, optional Settings-preferred fields, managed-root and explicit researcher-selected
   existing-Analysis destinations, occupied path/identity, a Finder-restored Analysis, an emptied
   system Trash, App update/restart after confirmed source commit, stale
   projection, replay conflict, expired Session, and outcome-unknown transport.

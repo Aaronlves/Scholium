@@ -28,28 +28,18 @@ public struct TriptychManifest: Codable, Hashable, Sendable {
 }
 
 public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
-    /// Exact delimiter-free YAML copied into future managed notes for this
-    /// role. `nil` means managed creation remains YAML-free unless typed
-    /// creation metadata supplies properties.
-    public var newNoteYAML: String? {
-        didSet { newNoteYAML = Self.normalizedNewNoteYAML(newNoteYAML) }
-    }
-
-    /// Fields shown by the collapsed Properties projection, in display order.
+    /// Optional Scholium-managed fields shown by About, in display order.
+    /// Authored `summary` and `keywords` have a fixed presentation contract
+    /// and are deliberately not configurable here.
     public var visibleFields: [String] {
         didSet { visibleFields = Self.unique(visibleFields) }
     }
 
-    public init(
-        newNoteYAML: String? = nil,
-        visibleFields: [String] = []
-    ) {
-        self.newNoteYAML = Self.normalizedNewNoteYAML(newNoteYAML)
+    public init(visibleFields: [String] = []) {
         self.visibleFields = Self.unique(visibleFields)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case newNoteYAML
         case visibleFields
     }
 
@@ -58,13 +48,11 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
     /// Codable or property observers, decides whether they need review.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        newNoteYAML = try container.decodeIfPresent(String.self, forKey: .newNoteYAML)
         visibleFields = try container.decode([String].self, forKey: .visibleFields)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(newNoteYAML, forKey: .newNoteYAML)
         try container.encode(visibleFields, forKey: .visibleFields)
     }
 
@@ -102,47 +90,39 @@ public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
         return normalized.isEmpty ? nil : normalized
     }
 
-    private static func normalizedNewNoteYAML(_ source: String?) -> String? {
-        guard var source else { return nil }
-        source = source
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        if !source.hasSuffix("\n") { source += "\n" }
-        return source
-    }
 }
 
 public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
-    public var requiredFieldsBySourceType: [AnalysisSourceType: [String]] {
-        didSet { requiredFieldsBySourceType = Self.normalized(requiredFieldsBySourceType) }
+    /// Optional Scholium-managed fields highlighted to an Agent for each
+    /// source type. This is guidance only and never authorizes or blocks Note
+    /// creation when a value is omitted.
+    public var preferredFieldsBySourceType: [AnalysisSourceType: [String]] {
+        didSet { preferredFieldsBySourceType = Self.normalized(preferredFieldsBySourceType) }
     }
 
-    public init(requiredFieldsBySourceType: [AnalysisSourceType: [String]] = [:]) {
-        self.requiredFieldsBySourceType = Self.normalized(requiredFieldsBySourceType)
+    public init(preferredFieldsBySourceType: [AnalysisSourceType: [String]] = [:]) {
+        self.preferredFieldsBySourceType = Self.normalized(preferredFieldsBySourceType)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case requiredFieldsBySourceType
+        case preferredFieldsBySourceType
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        requiredFieldsBySourceType = try container.decode(
+        preferredFieldsBySourceType = try container.decode(
             [AnalysisSourceType: [String]].self,
-            forKey: .requiredFieldsBySourceType
+            forKey: .preferredFieldsBySourceType
         )
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(requiredFieldsBySourceType, forKey: .requiredFieldsBySourceType)
+        try container.encode(preferredFieldsBySourceType, forKey: .preferredFieldsBySourceType)
     }
 
-    public func requiredFields(for sourceType: AnalysisSourceType) -> [String] {
-        requiredFieldsBySourceType[sourceType] ?? []
+    public func preferredFields(for sourceType: AnalysisSourceType) -> [String] {
+        preferredFieldsBySourceType[sourceType] ?? []
     }
 
     private static func normalized(
@@ -161,7 +141,7 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
 
     public let schemaVersion: Int
     public var properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
@@ -232,14 +212,14 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public static let defaultProperties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
-                "type", "authors", "publication_date", "summary", "keywords",
+                "type", "authors", "publication_date",
             ]
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["aliases", "summary", "keywords"]
+            visibleFields: ["aliases"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["work_type", "coauthors", "summary", "keywords"]
+            visibleFields: ["work_type", "coauthors"]
         ),
     ]
 

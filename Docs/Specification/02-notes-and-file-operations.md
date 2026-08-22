@@ -283,9 +283,12 @@ top clearance belongs to the scrolling document.
 
 The authored YAML vocabulary is deliberately small. Across Analysis, Topic,
 and Work, Scholium assigns canonical meaning to exactly two optional top-level
-keys: multiline text `summary` and a nonempty text list `keywords`. Neither is
-required, and Scholium never adds either outside an explicit New Note seed or
-an authorized exact-source edit. Every other existing YAML key is retired or
+keys: multiline text `summary` and a nonempty text list `keywords`. Every
+managed new Note receives them in fixed order as `summary: null` and
+`keywords: []`; these explicit unfilled values are semantically absent, not
+required content or the literal string `null`. A typed creator may replace
+either placeholder with a valid value in the same creation request. Every
+other existing YAML key is retired or
 custom source: its exact bytes, comments, order, quoting, multiline style,
 newlines, and delimiters remain preserved, but it grants no title, About,
 Search-field, linking, Agent, or creation semantics. There is no alias, dual
@@ -320,7 +323,7 @@ filename. Topic and Work resolve first H1, then filename. YAML `title` never
 resolves identity. Rename never synchronizes managed title or H1. One resolver
 supplies Workspace, Search, Link Graph, and Research Actions.
 
-Supported, applicable, recommended, Agent-required, present, and About-visible
+Supported, applicable, recommended, Agent-preferred, present, and About-visible
 are separate states. Their owners are the managed catalog, Analysis source-type
 profile, that profile's recommendation order, Triptych Agent-creation settings,
 the identity-keyed record, and the About profile. New Note YAML and Zotero
@@ -328,11 +331,11 @@ binding are separate contracts and are never inferred from managed metadata.
 Identity, fingerprints, provenance, bindings, timestamps, permissions, and app
 facts are not researcher-managed fields.
 
-Each Triptych role stores an independent About order and exact delimiter-free
-`newNoteYAML`; that seed may contain only `summary` and `keywords`. Analysis
-additionally stores per-source-type managed fields an Agent must supply. The
-three built-in seeds and all built-in required sets are empty. About defaults
-never materialize values. Settings uses one explicit schema envelope and
+Each Triptych role stores an independent About order over optional managed
+fields. Authored `summary` and `keywords` have fixed About placement and are not
+Settings choices. Analysis additionally stores per-source-type managed fields
+to highlight to an Agent; every highlighted field remains optional and omission
+never blocks creation. Settings uses one explicit schema envelope and
 exact-byte `SettingsRevision`; save is an expected-revision atomic transaction
 with readback. Old, future, damaged, conflicting, and
 current-schema-needs-review states remain distinct and never fall back to
@@ -442,29 +445,28 @@ sheet, popover, naming form, or required-metadata step; naming and Metadata
 remain later explicit edits.
 
 GUI, researcher CLI, and authenticated Agent creation share one
-Application-owned managed creator. It snapshots one valid Settings revision,
-selects the role seed, composes the complete source candidate once, atomically
+Application-owned managed creator. It composes the fixed authored-YAML scaffold
+and complete source candidate once, atomically
 claims the path, commits source, stable identity, and any typed managed metadata,
 and jointly reads them back before publishing.
 Import, Duplicate, Restore, external discovery, and managed Critique creation
-retain their own complete-source contracts and do not inject the seed.
+retain their own complete-source contracts and do not inject the scaffold.
 
-GUI New Note copies only the role seed. With no seed, the body begins at byte
-zero. With a seed, source is `---\n`, exact LF-normalized delimiter-free seed,
-`---\n`, then body with no inserted blank line. It opens directly in Edit,
+GUI New Note writes exactly `---\nsummary: null\nkeywords: []\n---\n`, then the
+body with no inserted blank line. It opens directly in Edit,
 places the caret at the exact body start, and gives the editor focus after mode
 acknowledgement. `Untitled` is only the claimed path; no H1 or YAML title is
 generated. A header-only note has an exact empty body even though source is
 nonempty; later Review uses the body boundary, never raw byte count, for Empty
 Note and does not start an empty renderer. Malformed frontmatter is never empty.
 
-Typed Agent Analysis creation requires an `AnalysisSourceType` plus valid
-applicable managed values. Application writes those values only to the new
-identity-keyed metadata record and writes only the exact role seed to YAML.
-The Agent must satisfy that type's Settings-required fields. It cannot invent
-placeholders, receive seed values, govern the body, or use create authority
-after the new identity exists. Researcher CLI creation uses the same creator
-and seed but has no Agent-required-field policy.
+Typed Agent Analysis creation carries an `AnalysisSourceType` routing
+discriminator plus zero or more valid applicable managed values. Application
+derives managed `type` from that discriminator and writes managed values only
+to the new identity-keyed metadata record. The Agent may also supply typed
+`summary` and `keywords` values; omission retains the fixed unfilled scaffold.
+No managed field is Agent-required. The Agent cannot send YAML fragments,
+govern the body, or use create authority after the new identity exists.
 
 Only after the source commit and latest authoritative Library projection are
 available, successful creation clears active Library filters, expands only the

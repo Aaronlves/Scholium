@@ -110,9 +110,10 @@ protected Session directly; it does not create or consume a Pairing Code.
 `agent preflight-analysis` calls
 `WorkspaceRuntime.preflightResearchAgentAnalysisCreation` without issuing a
 Session. `WorkspaceHandle` resolves the assigned Analyses vault, uses the
-managed-default root filename, reads the current `TriptychSettingsSnapshot`, filters canonical Metadata
-contracts through the selected `AnalysisSourceTypeProfile`, and reports only
-seed keys rather than seed values. It inspects the exact repository path,
+managed-default root filename, reads current Settings only for optional field
+preferences, filters canonical Metadata contracts through the selected
+`AnalysisSourceTypeProfile`, and reports the fixed authored-YAML keys without
+inventing values. It inspects the exact repository path,
 portable identity owner, and pending system-Trash recovery evidence before
 returning one status and one retry contract. The CLI never supplies the
 Analyses vault ID for creation.
@@ -122,7 +123,7 @@ workflow only as a researcher-created existing Analysis target.
 For consequential `new_analysis`, deterministic digests of Triptych ID plus
 the stable `request_id` own the reserved Note and Run identities. A separate
 fingerprint of the logical preflight request detects changed input after the
-first portable creation phase. Agent-Analysis creation-record schema 2 first
+first portable creation phase. Agent-Analysis creation-record schema 4 first
 persists a machine-local reservation for both external-Zotero and researcher-
 provided routes; optional binding state exists only for the Zotero route. That
 schema belongs only to exact replay of the deterministic request identity. Its
@@ -130,13 +131,12 @@ sibling directory is never scanned as Local Execution authority and cannot
 block system-Trash preparation; an unreadable record fails that request identity
 closed rather than being auto-deleted or treated as a Run. A reservation with
 no portable identity, source, or Run is explicitly pre-commit:
-preflight reports the real absent state and current Settings still apply. The
-record freezes the first consequential destination, route or binding, source
-type, supplied metadata values, and academic purpose. A refreshed preflight may
-preserve that intent and add only fields now required by current Settings; it
-cannot replace a value, source type, route, or purpose. One atomic CAS then
+preflight reports the real absent state. The record freezes the first
+consequential destination, route or binding, authored YAML values, source type,
+supplied managed values, and academic purpose. A refreshed preflight cannot
+replace any of them; optional Settings preferences grant no authority. One atomic CAS then
 advances the logical-request, returned-creation, and complete-start fingerprint
-tuple together, including the returned Settings revision. The record freezes
+tuple together. The record freezes
 the committed source fingerprint before projection or relationship work. Once
 matching source and identity exist, the owner resumes
 only those exact inputs without reconsidering later Settings. Concurrent starts
@@ -158,8 +158,8 @@ two researcher-controlled branches. Each branch separately states identity
 reuse and its next step: request-owned Restore resumes exact identity, Restore
 of another existing Analysis starts that target, and distinct creation uses a
 new identity. Bridge mapping owns the closed
-`missing_required_fields`, `path_occupied`, `identity_occupied`,
-`identity_source_missing_or_trashed`, `source_unreadable`, `settings_changed`,
+`path_occupied`, `identity_occupied`,
+`identity_source_missing_or_trashed`, `source_unreadable`,
 `stale_projection`, `replay_conflict`, `session_expired`, and
 `outcome_unknown` results. These owner errors do not fall through to
 `operation_failed`.
@@ -333,7 +333,7 @@ resolves current roles/lifecycle/containment and the Triptych policy before
 presenting one optional subset sheet or binding a Full Access set. Researcher
 approval remains an exact Run-local fact until expiry/revocation/end.
 
-Schema 4 members may independently authorize `modify_metadata` for an existing
+Schema 5 members may independently authorize `modify_metadata` for an existing
 Note and freeze its portable Metadata revision, including proven absence for a
 first record. `set_zotero_binding` and `clear_zotero_binding` apply only to an
 existing Analysis and freeze the global portable binding revision in addition

@@ -176,6 +176,7 @@ extension ScholiumCLI {
                 content: draft.content,
                 source: draft.source,
                 metadata: draft.metadata,
+                authoredYAML: draft.authoredYAML,
                 analysisMetadata: draft.analysisMetadata
             )
             let credential = try credentialStore.load(for: run)
@@ -546,12 +547,14 @@ private struct AgentDocumentWriteDraft: Codable {
     let content: String
     let source: String?
     let metadata: [CanonicalPropertyInput]
+    let authoredYAML: AuthoredNoteYAML?
     let analysisMetadata: AnalysisCreationMetadata?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case role
         case relativePath = "relative_path"
         case operation, content, source, metadata
+        case authoredYAML = "authored_yaml"
         case analysisMetadata = "analysis_metadata"
     }
 
@@ -603,6 +606,10 @@ private struct AgentDocumentWriteDraft: Codable {
             [CanonicalPropertyInput].self,
             forKey: .metadata
         )?.sorted { $0.key < $1.key } ?? []
+        authoredYAML = try container.decodeIfPresent(
+            AuthoredNoteYAML.self,
+            forKey: .authoredYAML
+        )
         analysisMetadata = try container.decodeIfPresent(
             AnalysisCreationMetadata.self,
             forKey: .analysisMetadata
@@ -614,6 +621,7 @@ private struct AgentDocumentWriteDraft: Codable {
             content: content,
             source: source,
             metadata: metadata,
+            authoredYAML: authoredYAML,
             analysisMetadata: analysisMetadata
         )
     }

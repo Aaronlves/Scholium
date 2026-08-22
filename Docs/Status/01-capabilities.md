@@ -35,16 +35,16 @@
   failed mutation.
 - Frontmatter edits are bounded to a uniquely proven range and preserve all
   unrelated bytes. Unsupported source shapes remain editable in Source.
-- Managed New Note copies the selected role's exact validated Settings seed in
-  the same source claim. The seed accepts only optional `summary` and
-  `keywords`; adding Metadata never inserts a YAML envelope.
-- Portable Metadata Profile settings independently own each role's exact New
-  Note YAML and About order plus per-source-type Analysis
-  Agent requirements. One strict candidate validation and exact settings
+- Managed New Note always writes `summary: null` then `keywords: []` in one
+  fixed authored-YAML scaffold. Typed GUI/CLI/Agent creation may populate those
+  values; adding Metadata never changes the YAML envelope.
+- Portable Metadata Profile settings own each role's optional managed About
+  fields plus per-source-type Analysis Agent preferences. Every selected field
+  remains optional. One strict candidate validation and exact settings
   target identity plus revision guard the atomic save; uncertain or
   committed-with-refresh-warning outcomes are authoritatively reconciled.
-  Unavailable or invalid settings remain nonauthorizing for managed creation,
-  Agent requirements, and About rather than exposing defaults.
+  Unavailable or invalid settings remain nonauthorizing for preferences and
+  About, but fixed managed creation does not consume them as authority.
 - Complete Metadata reads and compare-and-swap edits one identity-keyed
   `.scholium/note-metadata/v1/<uuid>.json` record, offers only role-valid
   managed fields, supports structured CreatorLists and date text, and leaves
@@ -135,9 +135,9 @@
   evidence. Check Fidelity remains a separate read-only Action prepared only
   when the researcher explicitly requests an audit for an exact revision.
 - `agent preflight-analysis` now resolves Analyze-only creation before the
-  first consequential start. It returns the current Analyses vault and Settings
-  revision, applicable and Agent-required Metadata fields, application-owned
-  seed keys, exact destination, and path/identity/source/Trash state. Managed
+  first consequential start. It returns the current Analyses vault, applicable
+  managed fields, optional Settings-preferred fields, fixed YAML fields, exact
+  destination, and path/identity/source/Trash state. Managed
   default places one strict filename at the Analyses root; the Agent wire has
   no subfolder selector. Researcher-selected placement uses an existing
   researcher-created Analysis. Only `ready` returns the exact
@@ -148,20 +148,19 @@
   Triptych plus `request_id` owns deterministic reserved Note and Run identities,
   while a separate logical-payload fingerprint rejects changed input after the
   portable creation phase. A machine-local reservation with no identity,
-  source, or Run does not fabricate a Trash state or freeze old Settings; after
-  current preflight, its request/creation/start fingerprint tuple can advance
-  by exact CAS only while destination, route/binding, source type, existing
-  metadata values, and academic purpose remain frozen; only newly required
-  fields may be added. That reservation exists for both Zotero and researcher-
+  source, or Run does not fabricate a Trash state; after current preflight, its
+  request/creation/start fingerprint tuple can advance by exact CAS only while
+  destination, route/binding, authored YAML, source type, managed values, and
+  academic purpose remain frozen. Settings preference changes grant no
+  authority. That reservation exists for both Zotero and researcher-
   provided creation. Exact
   replay resumes the frozen confirmed source/identity revision and same Run;
-  it also requires the complete frozen start payload, including Settings
-  revision and academic purpose. Concurrent identical starts coalesce, while
+  it also requires the complete frozen start payload, including academic
+  purpose. Concurrent identical starts coalesce, while
   changed committed input, terminal state, changed Zotero relationship, or
   missing source cannot reuse it as a new write.
-- Bridge and preflight results distinguish `missing_required_fields`, path and
-  identity occupation, identity with missing/system-Trash source,
-  `settings_changed`, replay conflict, true `stale_run`, stale projection,
+- Bridge and preflight results distinguish path and identity occupation,
+  identity with missing/system-Trash source, replay conflict, true `stale_run`, stale projection,
   missing source evidence, expired Session, permission refusal, timeout, and
   outcome unknown. Each structured result carries retry safety, request-
   identity reuse, and one next step; missing/trashed source exposes only the
@@ -199,8 +198,8 @@
 - A Run owns one bounded, expandable write set. Every mutation still requires a
   nonreusable operation capability and the exact repository transaction. One
   member's conflict does not widen authority or roll back confirmed siblings.
-- Authenticated `create_note` freezes proven absence, Settings revision,
-  reserved identity, and a seed-free Analysis field/shape/required plan.
+- Authenticated `create_note` freezes proven absence, reserved identity, the
+  fixed YAML scaffold, and an optional Analysis field/shape/preference plan.
   `modify_markdown` changes body only; `modify_source` accepts the complete
   authored Markdown source; `modify_metadata` changes only exact approved
   managed fields at the portable record revision and does not change source.

@@ -1334,7 +1334,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     /// The sole managed creator for GUI, researcher CLI, and authenticated
-    /// Agent delivery. It snapshots one valid Settings revision, composes one
+    /// Agent delivery. It composes one fixed authored-YAML scaffold and one
     /// complete candidate, atomically claims the path, and then commits the
     /// portable stable identity before publishing a source-ahead result.
     func createManagedNote(
@@ -1349,34 +1349,25 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if let barrier = managedCreationPreLeaseBarrierForTesting {
             await barrier()
         }
-        // Settings mutation and source creation share this lease. Reading the
-        // revision after acquisition closes the reentrant gap between the
-        // frozen Agent authorization and the no-replace filesystem claim.
         let mutationLease = try await beginSourceMutation()
         var ownsMutation = true
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
-        let settingsSnapshot = try await services.controlStore.settings()
         let reservedIdentity: UUID
         switch request.authority {
         case .researcher:
             reservedIdentity = UUID()
-        case .authenticatedAgent(let expectedRevision, let identity):
-            guard expectedRevision == settingsSnapshot.revision else {
-                throw DocumentCreationError.settingsRevisionChanged
-            }
+        case .authenticatedAgent(let identity):
             reservedIdentity = identity
         }
         let initialSource = try managedCreationSource(
             request: request,
-            slot: slot,
-            settings: settingsSnapshot.settings
+            slot: slot
         )
         let initialMetadataFields = try managedCreationMetadataFields(
             request: request,
-            slot: slot,
-            settings: settingsSnapshot.settings
+            slot: slot
         )
         let repository = try repository(vaultID: request.vaultID)
         let registeredVault = try vault(id: request.vaultID)
@@ -1578,20 +1569,30 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func managedCreationSource(
         request: ManagedNoteCreationRequest,
-        slot: WorkspaceVaultSlot,
-        settings: TriptychSettings
+        slot: WorkspaceVaultSlot
     ) throws -> String {
-        let seed = settings.properties[slot]?.newNoteYAML
-        _ = try TriptychSettingsValidator.seedKeys(in: seed, role: slot)
         _ = try managedCreationMetadataFields(
             request: request,
-            slot: slot,
-            settings: settings
+            slot: slot
         )
-        let frontmatter = seed ?? ""
-        let source = frontmatter.isEmpty
-            ? request.body
-            : "---\n" + frontmatter + "---\n" + request.body
+        let authored: AuthoredNoteYAML
+        if let supplied = request.authoredYAML {
+            authored = supplied
+        } else {
+            authored = try AuthoredNoteYAML()
+        }
+        let summarySource: String
+        if let summary = authored.summary {
+            summarySource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
+                (key: "summary", value: .string(summary)),
+            ])
+        } else {
+            summarySource = "summary: null\n"
+        }
+        let keywordsSource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
+            (key: "keywords", value: .array(authored.keywords)),
+        ])
+        let source = "---\n" + summarySource + keywordsSource + "---\n" + request.body
         let document = NoteDocument(relativePath: "Managed Creation.md", rawContent: source)
         guard document.frontmatterState != .malformed else {
             throw DocumentCreationError.invalidMetadata(
@@ -1601,8 +1602,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 )
             )
         }
+        let nonemptyAuthoredValues = document.parsedFrontmatter.filter { _, value in
+            switch value {
+            case .null: false
+            case .array(let values): !values.isEmpty
+            case .string(let value): !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            case .object(let values): !values.isEmpty
+            case .integer, .double, .boolean: true
+            }
+        }
         let issues = PropertyContractCatalog.validate(
-            document,
+            frontmatter: nonemptyAuthoredValues,
             profile: Self.schemaProfile(for: slot)
         )
         guard issues.isEmpty else {
@@ -1613,8 +1623,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func managedCreationMetadataFields(
         request: ManagedNoteCreationRequest,
-        slot: WorkspaceVaultSlot,
-        settings: TriptychSettings
+        slot: WorkspaceVaultSlot
     ) throws -> [String: YAMLValue]? {
         if let metadata = request.analysisMetadata {
             guard slot == .paperAnalysis else {
@@ -1649,18 +1658,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                       Self.isNonemptyManagedValue($0.value)
                   }) else {
                 throw DocumentCreationError.invalidMetadata(issues)
-            }
-            if case .authenticatedAgent = request.authority {
-                let required = Set(
-                    settings.analysisAgentCreation.requiredFields(
-                        for: metadata.sourceType
-                    )
-                )
-                let supplied = Set(metadata.fields.map(\.key))
-                let missing = required.subtracting(supplied).sorted()
-                guard missing.isEmpty else {
-                    throw DocumentCreationError.missingRequiredAgentFields(missing)
-                }
             }
             return values
         } else {

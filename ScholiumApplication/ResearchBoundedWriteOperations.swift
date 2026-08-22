@@ -1250,28 +1250,20 @@ extension WorkspaceHandle {
         operationID: UUID
     ) async throws -> ResearchDocumentWriteResult {
         guard entry.allowedOperations == [.createNote],
-              entry.expectsAbsence,
-              let settingsRevision = entry.settingsRevision else {
+              entry.expectsAbsence else {
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
         let request = try ManagedNoteCreationRequest(
             vaultID: entry.note.vaultID,
             destination: .exact(relativePath: entry.note.relativePath),
             body: intent.content,
+            authoredYAML: intent.authoredYAML,
             analysisMetadata: intent.analysisMetadata,
-            authority: .authenticatedAgent(
-                settingsRevision: settingsRevision,
-                reservedIdentity: entry.noteID
-            )
+            authority: .authenticatedAgent(reservedIdentity: entry.noteID)
         )
-        let currentSettings = try await researchBoundedWriteDependencies.controlStore.settings()
-        guard currentSettings.revision == settingsRevision else {
-            throw ResearchBoundedWriteSetError.staleAuthorization
-        }
         let candidate = try managedCreationSource(
             request: request,
-            slot: try requiredVaultSlot(for: entry.role),
-            settings: currentSettings.settings
+            slot: try requiredVaultSlot(for: entry.role)
         )
         let intendedRevision = DocumentFingerprint(content: candidate)
         let expectedMetadataFields = Self.metadataFields(
@@ -1829,7 +1821,6 @@ extension WorkspaceHandle {
                         "create-note",
                         selector.role.rawValue,
                         selector.relativePath,
-                        settings.revision.fingerprint.sha256,
                     ].joined(separator: ":")
                 )
                 let note = VaultQualifiedNoteID(
@@ -1849,7 +1840,6 @@ extension WorkspaceHandle {
                     role: selector.role,
                     title: URL(fileURLWithPath: selector.relativePath)
                         .deletingPathExtension().lastPathComponent,
-                    settingsRevision: settings.revision,
                     analysisCreationPlans: analysisCreationPlans
                 ))
                 continue
@@ -2010,11 +2000,7 @@ extension WorkspaceHandle {
             var entries: [ResearchBoundedWriteSetEntry] = []
             for candidate in request.candidates where allowed.contains(candidate.handle) {
                 switch candidate.expectation {
-                case .absent(let settingsRevision):
-                    let currentSettings = try await researchBoundedWriteDependencies.controlStore.settings()
-                    guard currentSettings.revision == settingsRevision else {
-                        throw ResearchBoundedWriteSetError.staleAuthorization
-                    }
+                case .absent:
                     try await proveManagedCreationAbsence(
                         vaultID: candidate.note.vaultID,
                         relativePath: candidate.note.relativePath
@@ -2025,7 +2011,6 @@ extension WorkspaceHandle {
                         note: candidate.note,
                         role: candidate.role,
                         title: candidate.title,
-                        settingsRevision: settingsRevision,
                         analysisCreationPlans: candidate.analysisCreationPlans,
                         authorizationBasis: basis,
                         authorizationPolicy: basis == .collaborationPolicy
@@ -2380,19 +2365,14 @@ extension WorkspaceHandle {
     private static func analysisCreationPlans(
         settings: TriptychSettings
     ) throws -> [ResearchAnalysisCreationSourcePlan] {
-        let seed = settings.properties[.paperAnalysis]?.newNoteYAML
-        let seedKeys = try TriptychSettingsValidator.seedKeys(
-            in: seed,
-            role: .paperAnalysis
-        )
         return try AnalysisSourceType.allCases.map { sourceType in
             let profile = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
-            let required = Set(
-                settings.analysisAgentCreation.requiredFields(for: sourceType)
+            let preferred = Set(
+                settings.analysisAgentCreation.preferredFields(for: sourceType)
             )
             let fields = try profile.serializationFieldOrder.compactMap {
                 key -> ResearchAnalysisCreationFieldPlan? in
-                guard key != "type", !seedKeys.contains(key),
+                guard key != "type",
                       let contract = NoteMetadataContractCatalog.contract(
                         for: key,
                         profile: .analysis
@@ -2401,7 +2381,7 @@ extension WorkspaceHandle {
                     key: key,
                     valueKind: contract.valueKind,
                     allowedValues: contract.allowedValues,
-                    isRequired: required.contains(key)
+                    isPreferred: preferred.contains(key)
                 )
             }
             return try ResearchAnalysisCreationSourcePlan(

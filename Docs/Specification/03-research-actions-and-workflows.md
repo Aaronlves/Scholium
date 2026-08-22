@@ -148,20 +148,20 @@ For Discuss, Session exposes frozen `DialogueResponseContract` and
 fails closed. The key grants no Note/Metadata mutation, Finish, Result,
 evaluation, Undo, recovery, new Run, or filesystem access.
 
-Analyze-only `new_analysis` preflight returns the Analyses vault, Settings
-revision, applicable/required/seed fields, root destination, and target
+Analyze-only `new_analysis` preflight returns the Analyses vault, applicable
+managed fields, optional Settings preferences, fixed authored-YAML fields,
+root destination, and target
 recovery state. Agent folders, placeholders, retries, and fallback names are
 invalid; researcher placement requires an existing Analysis. Only `ready`
 returns a start payload. Application re-resolves both. Request ID reserves identity;
-the first consequential start freezes destination, route/binding, source type,
-metadata values, and academic purpose. Before source commit, Settings
-may add only newly required fields and atomically advance the
-request/creation/start fingerprint tuple. Other changes conflict; identical
-starts coalesce.
+the first consequential start freezes destination, route/binding, authored
+YAML values, source type, managed metadata values, and academic purpose.
+Settings changes do not alter that request or creation authority. Other input
+changes conflict; identical starts coalesce.
 `researcher_provided` grants no source/Zotero claim.
 
-Results encode retry safety, identity reuse, and one next step for required
-fields, occupation, Settings drift, stale projection, replay, Session expiry,
+Results encode retry safety, identity reuse, and one next step for occupation,
+stale projection, replay, Session expiry,
 and operation-specific unknown outcome. Unknown End is not retryable because
 Session may be revoked. Retained identity with missing/trashed
 source permits Restore or distinct creation—never recreation, overwrite,
@@ -338,8 +338,8 @@ including YAML, and never reconstructs it from a projection. `modify_metadata`
 changes only granted keys in the portable Metadata record and never changes
 Markdown.
 `create_note` binds a proven-absent path, one authorized new identity, the
-current Settings revision, and for Analysis an allowed source type plus typed
-initial fields. It is idempotent only for the same hidden creation operation;
+fixed authored-YAML scaffold, and for Analysis an allowed source type plus
+optional typed initial fields. It is idempotent only for the same hidden creation operation;
 after creation the identity is no longer new. Body authority cannot rewrite
 frontmatter, Metadata authority is limited to exact granted managed keys, and
 either source authority is insufficient for integration binding. Binding authority
@@ -347,10 +347,10 @@ is insufficient for Markdown. A `modify_source` member is still limited to
 its one existing Note identity, expected revision, Run, and operation
 capability; its complete candidate must be valid UTF-8 and have valid or absent
 frontmatter before the repository transaction begins. Agent Analysis creation
-must satisfy the source-type applicability and Settings-required-field plan
-without receiving
-exact seed bytes or values; unsupported or unavailable required data fails
-closed instead of producing placeholders.
+must satisfy source-type applicability for every value it does provide.
+Settings-preferred fields are guidance only; omission never blocks creation or
+produces placeholders. Typed authored values replace only the fixed `summary`
+or `keywords` placeholder in the same creation request.
 
 One authorization may bind several exact documents, but every actual mutation
 uses a nonreusable short-lived capability bound to the current unique writable
@@ -363,7 +363,7 @@ writable Note receives one exact Run-bound starting revision used only for
 Agent diff and direct Undo. Existing-note source writes build and validate the
 bounded body, complete source, or property candidate, atomically replace, read
 back, and advance that evidence's exact ending revision. Creation
-instead re-proves absence and the frozen Settings revision, claims the exact
+instead re-proves absence, claims the exact
 path without fallback naming, and must jointly read back both source and its
 reserved stable identity. It has no fabricated empty-source revision or
 change preimage. A confirmed Scholium write advances only that member's expected

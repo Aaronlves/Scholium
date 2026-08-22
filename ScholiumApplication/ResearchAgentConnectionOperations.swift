@@ -327,15 +327,10 @@ extension WorkspaceHandle {
         let applicable = profile.applicableFields.compactMap {
             NoteMetadataContractCatalog.contract(for: $0, profile: .analysis)
         }
-        let required = settings.settings.analysisAgentCreation.requiredFields(
+        let preferred = settings.settings.analysisAgentCreation.preferredFields(
             for: request.metadata.sourceType
         )
-        let seedFields = try TriptychSettingsValidator.seedKeys(
-            in: settings.settings.properties[.paperAnalysis]?.newNoteYAML,
-            role: .paperAnalysis
-        ).sorted()
-        let supplied = Set(request.metadata.fields.map(\.key))
-        let missingRequired = required.filter { !supplied.contains($0) }
+        let fixedYAMLFields = PropertyContractCatalog.authoredCanonicalKeys
         let runID = Self.agentStartDeterministicID(
             namespace: "agent-start-run",
             triptychID: id,
@@ -364,13 +359,11 @@ extension WorkspaceHandle {
             return try await makeAgentAnalysisPreflight(
                 request: request,
                 analysisVaultID: analysisVaultID,
-                settings: settings,
                 applicable: applicable,
-                required: required,
-                seedFields: seedFields,
+                preferred: preferred,
+                fixedYAMLFields: fixedYAMLFields,
                 target: target,
                 status: .replayConflict,
-                missingRequired: missingRequired,
                 recovery: AgentOperationRecovery(
                     safeToRetry: false,
                     mustReuseRequestIdentity: true,
@@ -380,27 +373,22 @@ extension WorkspaceHandle {
             )
         }
         if let storedCreation,
-           !Self.isPermittedAgentCreationSettingsRefresh(
-               initialMetadata: storedCreation.initialMetadata,
-               refreshedMetadata: request.metadata,
-               currentRequiredFields: required
-           ) {
+           (storedCreation.initialMetadata != request.metadata
+                || storedCreation.initialAuthoredYAML != request.authoredYAML) {
             return try await makeAgentAnalysisPreflight(
                 request: request,
                 analysisVaultID: analysisVaultID,
-                settings: settings,
                 applicable: applicable,
-                required: required,
-                seedFields: seedFields,
+                preferred: preferred,
+                fixedYAMLFields: fixedYAMLFields,
                 target: target,
                 status: .replayConflict,
-                missingRequired: missingRequired,
                 recovery: AgentOperationRecovery(
                     safeToRetry: false,
                     mustReuseRequestIdentity: true,
                     nextStep: .inspectOriginalRequestState
                 ),
-                message: "This request identity cannot change its original source type or metadata values. A Settings refresh may add only fields that are currently required. Scholium made no new change."
+                message: "This request identity cannot change its original authored YAML, source type, or managed metadata values. Scholium made no new change."
             )
         }
         if let storedCreation,
@@ -417,14 +405,12 @@ extension WorkspaceHandle {
                 return try await makeAgentAnalysisPreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: reservedState,
                     status: .replayConflict,
-                    missingRequired: missingRequired,
                     recovery: AgentOperationRecovery(
                         safeToRetry: false,
                         mustReuseRequestIdentity: true,
@@ -433,10 +419,9 @@ extension WorkspaceHandle {
                     message: "Changed input conflicts with committed creation evidence. Scholium made no new change."
                 )
             }
-            // A Settings-dependent request fingerprint may change only while
-            // this is still a machine-local reservation with no source,
-            // identity, or Run, and only under the immutable-intent check
-            // above.
+            // A request fingerprint may change only while this is still a
+            // machine-local reservation with no source, identity, or Run, and
+            // only under the immutable-intent check above.
         }
 
         let observed = await inspectAgentAnalysisCreationTarget(
@@ -449,14 +434,12 @@ extension WorkspaceHandle {
                 return try await makeAgentAnalysisPreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
                     status: .identityOccupied,
-                    missingRequired: missingRequired,
                     recovery: AgentOperationRecovery(
                         safeToRetry: false,
                         mustReuseRequestIdentity: false,
@@ -470,14 +453,12 @@ extension WorkspaceHandle {
                 return try await makeAgentAnalysisPreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
                     status: .pathOccupied,
-                    missingRequired: missingRequired,
                     recovery: AgentOperationRecovery(
                         safeToRetry: false,
                         mustReuseRequestIdentity: false,
@@ -492,13 +473,11 @@ extension WorkspaceHandle {
                 return try await missingAgentAnalysisSourcePreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
-                    missingRequired: missingRequired,
                     creationOwned: true
                 )
             }
@@ -506,14 +485,12 @@ extension WorkspaceHandle {
                 return try await makeAgentAnalysisPreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
                     status: .sourceUnreadable,
-                    missingRequired: missingRequired,
                     recovery: AgentOperationRecovery(
                         safeToRetry: false,
                         mustReuseRequestIdentity: true,
@@ -529,14 +506,12 @@ extension WorkspaceHandle {
                     return try await makeAgentAnalysisPreflight(
                         request: request,
                         analysisVaultID: analysisVaultID,
-                        settings: settings,
                         applicable: applicable,
-                        required: required,
-                        seedFields: seedFields,
+                        preferred: preferred,
+                        fixedYAMLFields: fixedYAMLFields,
                         target: target,
                         observed: observed,
                         status: .replayConflict,
-                        missingRequired: missingRequired,
                         recovery: AgentOperationRecovery(
                             safeToRetry: false,
                             mustReuseRequestIdentity: true,
@@ -550,14 +525,12 @@ extension WorkspaceHandle {
                     return try await makeAgentAnalysisPreflight(
                         request: request,
                         analysisVaultID: analysisVaultID,
-                        settings: settings,
                         applicable: applicable,
-                        required: required,
-                        seedFields: seedFields,
+                        preferred: preferred,
+                        fixedYAMLFields: fixedYAMLFields,
                         target: target,
                         observed: observed,
                         status: .runStale,
-                        missingRequired: missingRequired,
                         recovery: AgentOperationRecovery(
                             safeToRetry: false,
                             mustReuseRequestIdentity: false,
@@ -571,14 +544,12 @@ extension WorkspaceHandle {
                 return try await makeAgentAnalysisPreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
                     status: status,
-                    missingRequired: missingRequired,
                     recovery: AgentOperationRecovery(
                         safeToRetry: execution.completion == nil,
                         mustReuseRequestIdentity: true,
@@ -598,14 +569,12 @@ extension WorkspaceHandle {
                     return try await makeAgentAnalysisPreflight(
                         request: request,
                         analysisVaultID: analysisVaultID,
-                        settings: settings,
                         applicable: applicable,
-                        required: required,
-                        seedFields: seedFields,
+                        preferred: preferred,
+                        fixedYAMLFields: fixedYAMLFields,
                         target: target,
                         observed: observed,
                         status: .replayConflict,
-                        missingRequired: missingRequired,
                         recovery: AgentOperationRecovery(
                             safeToRetry: false,
                             mustReuseRequestIdentity: true,
@@ -617,14 +586,12 @@ extension WorkspaceHandle {
                 return try await makeAgentAnalysisPreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
                     status: .sourceCommittedProjectionPending,
-                    missingRequired: missingRequired,
                     recovery: AgentOperationRecovery(
                         safeToRetry: true,
                         mustReuseRequestIdentity: true,
@@ -642,31 +609,24 @@ extension WorkspaceHandle {
             let validationRequest = try ManagedNoteCreationRequest(
                 vaultID: analysisVaultID,
                 destination: .exact(relativePath: target.relativePath),
+                authoredYAML: request.authoredYAML,
                 analysisMetadata: request.metadata,
-                authority: .authenticatedAgent(
-                    settingsRevision: settings.revision,
-                    reservedIdentity: reservedIdentity
-                )
+                authority: .authenticatedAgent(reservedIdentity: reservedIdentity)
             )
             _ = try managedCreationSource(
                 request: validationRequest,
-                slot: .paperAnalysis,
-                settings: settings.settings
+                slot: .paperAnalysis
             )
-        } catch DocumentCreationError.missingRequiredAgentFields {
-            // Missing fields have their own complete preflight result below.
         } catch let error as DocumentCreationError {
             return try await makeAgentAnalysisPreflight(
                 request: request,
                 analysisVaultID: analysisVaultID,
-                settings: settings,
                 applicable: applicable,
-                required: required,
-                seedFields: seedFields,
+                preferred: preferred,
+                fixedYAMLFields: fixedYAMLFields,
                 target: target,
                 observed: observed,
                 status: .invalidMetadata,
-                missingRequired: missingRequired,
                 recovery: AgentOperationRecovery(
                     safeToRetry: false,
                     mustReuseRequestIdentity: true,
@@ -682,27 +642,23 @@ extension WorkspaceHandle {
                 return try await missingAgentAnalysisSourcePreflight(
                     request: request,
                     analysisVaultID: analysisVaultID,
-                    settings: settings,
                     applicable: applicable,
-                    required: required,
-                    seedFields: seedFields,
+                    preferred: preferred,
+                    fixedYAMLFields: fixedYAMLFields,
                     target: target,
                     observed: observed,
-                    missingRequired: missingRequired,
                     creationOwned: false
                 )
             }
             return try await makeAgentAnalysisPreflight(
                 request: request,
                 analysisVaultID: analysisVaultID,
-                settings: settings,
                 applicable: applicable,
-                required: required,
-                seedFields: seedFields,
+                preferred: preferred,
+                fixedYAMLFields: fixedYAMLFields,
                 target: target,
                 observed: observed,
                 status: .identityOccupied,
-                missingRequired: missingRequired,
                 recovery: AgentOperationRecovery(
                     safeToRetry: false,
                     mustReuseRequestIdentity: false,
@@ -715,14 +671,12 @@ extension WorkspaceHandle {
             return try await makeAgentAnalysisPreflight(
                 request: request,
                 analysisVaultID: analysisVaultID,
-                settings: settings,
                 applicable: applicable,
-                required: required,
-                seedFields: seedFields,
+                preferred: preferred,
+                fixedYAMLFields: fixedYAMLFields,
                 target: target,
                 observed: observed,
                 status: .pathOccupied,
-                missingRequired: missingRequired,
                 recovery: AgentOperationRecovery(
                     safeToRetry: false,
                     mustReuseRequestIdentity: false,
@@ -735,14 +689,12 @@ extension WorkspaceHandle {
             return try await makeAgentAnalysisPreflight(
                 request: request,
                 analysisVaultID: analysisVaultID,
-                settings: settings,
                 applicable: applicable,
-                required: required,
-                seedFields: seedFields,
+                preferred: preferred,
+                fixedYAMLFields: fixedYAMLFields,
                 target: target,
                 observed: observed,
                 status: .sourceUnreadable,
-                missingRequired: missingRequired,
                 recovery: AgentOperationRecovery(
                     safeToRetry: false,
                     mustReuseRequestIdentity: true,
@@ -751,37 +703,13 @@ extension WorkspaceHandle {
                 message: "Scholium cannot verify whether the exact destination is absent. Restore access and rerun this preflight."
             )
         }
-        if !missingRequired.isEmpty {
-            return try await makeAgentAnalysisPreflight(
-                request: request,
-                analysisVaultID: analysisVaultID,
-                settings: settings,
-                applicable: applicable,
-                required: required,
-                seedFields: seedFields,
-                target: target,
-                observed: observed,
-                status: .missingRequiredFields,
-                missingRequired: missingRequired,
-                recovery: AgentOperationRecovery(
-                    safeToRetry: false,
-                    mustReuseRequestIdentity: true,
-                    nextStep: .supplyRequiredFieldsAndPreflight
-                ),
-                message: "Supply every current Settings-required field and rerun preflight with the same logical request identity. Do not use placeholders."
-            )
-        }
-        let start = ResearchAgentNewAnalysisRequest(
-            preflight: request,
-            settingsRevision: settings.revision
-        )
+        let start = ResearchAgentNewAnalysisRequest(preflight: request)
         return ResearchAgentAnalysisCreationPreflight(
             request: request,
             analysisVaultID: analysisVaultID,
-            settingsRevision: settings.revision,
             applicableFields: applicable,
-            requiredFields: required,
-            applicationOwnedFields: seedFields,
+            preferredFields: preferred,
+            fixedYAMLFields: fixedYAMLFields,
             targetState: observed,
             status: .ready,
             startNewAnalysis: start,
@@ -795,9 +723,8 @@ extension WorkspaceHandle {
     }
 
     /// Starts Analyze only from the exact current preflight contract. A
-    /// committed creation record resumes before Settings are reconsidered, so
-    /// later Settings or App-process changes cannot invalidate confirmed
-    /// source/identity work.
+    /// committed creation record resumes without consulting optional Settings
+    /// guidance, so a preference change cannot invalidate source authority.
     func startNewAnalysisResearchAgentRun(
         _ request: ResearchAgentStartRequest
     ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
@@ -952,6 +879,7 @@ extension WorkspaceHandle {
             requestedBinding: requestedBinding,
             sourceRoute: creation.sourceRoute,
             initialMetadata: creation.metadata,
+            initialAuthoredYAML: creation.authoredYAML,
             academicPurpose: request.academicPurpose
         )
         var storedCreation = try await researchAgentConnectionDependencies
@@ -1007,11 +935,6 @@ extension WorkspaceHandle {
             }
         }
         if storedCreation == nil || !hasCommittedSourceAndIdentity {
-            let currentSettings = try await researchAgentConnectionDependencies
-                .controlStore.settings()
-            guard currentSettings.revision == creation.settingsRevision else {
-                throw ResearchAgentConnectionError.settingsChanged
-            }
             let preflight = try await preflightResearchAgentAnalysisCreation(
                 creation.preflight
             )
@@ -1020,11 +943,9 @@ extension WorkspaceHandle {
                 throw Self.creationPreflightError(preflight.status)
             }
             if let currentReservation = storedCreation,
-               !Self.isPermittedAgentCreationSettingsRefresh(
-                   initialMetadata: currentReservation.initialMetadata,
-                   refreshedMetadata: creation.metadata,
-                   currentRequiredFields: preflight.requiredFields
-               ) {
+               (currentReservation.initialMetadata != creation.metadata
+                    || currentReservation.initialAuthoredYAML
+                        != creation.authoredYAML) {
                 throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
             if storedCreation == nil {
@@ -1057,6 +978,7 @@ extension WorkspaceHandle {
                     requestedBinding: expectedCreation.requestedBinding,
                     sourceRoute: expectedCreation.sourceRoute,
                     initialMetadata: currentReservation.initialMetadata,
+                    initialAuthoredYAML: currentReservation.initialAuthoredYAML,
                     academicPurpose: expectedCreation.academicPurpose
                 )
                 do {
@@ -1083,11 +1005,9 @@ extension WorkspaceHandle {
         let managedRequest = try ManagedNoteCreationRequest(
             vaultID: target.vaultID,
             destination: .exact(relativePath: target.relativePath),
+            authoredYAML: creation.authoredYAML,
             analysisMetadata: creation.metadata,
-            authority: .authenticatedAgent(
-                settingsRevision: creation.settingsRevision,
-                reservedIdentity: reservedIdentity
-            )
+            authority: .authenticatedAgent(reservedIdentity: reservedIdentity)
         )
         let commit: WorkspaceManagedNoteCommit
         if let existingIdentity {
@@ -1236,14 +1156,12 @@ extension WorkspaceHandle {
     private func makeAgentAnalysisPreflight(
         request: ResearchAgentAnalysisCreationPreflightRequest,
         analysisVaultID: UUID,
-        settings: TriptychSettingsSnapshot,
         applicable: [PropertyContract],
-        required: [String],
-        seedFields: [String],
+        preferred: [String],
+        fixedYAMLFields: [String],
         target: VaultQualifiedNoteID,
         observed: ResearchAgentAnalysisTargetState? = nil,
         status: ResearchAgentAnalysisCreationPreflightStatus,
-        missingRequired: [String],
         recovery: AgentOperationRecovery,
         message: String
     ) async throws -> ResearchAgentAnalysisCreationPreflight {
@@ -1255,13 +1173,11 @@ extension WorkspaceHandle {
         return ResearchAgentAnalysisCreationPreflight(
             request: request,
             analysisVaultID: analysisVaultID,
-            settingsRevision: settings.revision,
             applicableFields: applicable,
-            requiredFields: required,
-            applicationOwnedFields: seedFields,
+            preferredFields: preferred,
+            fixedYAMLFields: fixedYAMLFields,
             targetState: targetState,
             status: status,
-            missingRequiredFields: missingRequired,
             recovery: recovery,
             message: message
         )
@@ -1270,26 +1186,22 @@ extension WorkspaceHandle {
     private func missingAgentAnalysisSourcePreflight(
         request: ResearchAgentAnalysisCreationPreflightRequest,
         analysisVaultID: UUID,
-        settings: TriptychSettingsSnapshot,
         applicable: [PropertyContract],
-        required: [String],
-        seedFields: [String],
+        preferred: [String],
+        fixedYAMLFields: [String],
         target: VaultQualifiedNoteID,
         observed: ResearchAgentAnalysisTargetState,
-        missingRequired: [String],
         creationOwned: Bool
     ) async throws -> ResearchAgentAnalysisCreationPreflight {
         try await makeAgentAnalysisPreflight(
             request: request,
             analysisVaultID: analysisVaultID,
-            settings: settings,
             applicable: applicable,
-            required: required,
-            seedFields: seedFields,
+            preferred: preferred,
+            fixedYAMLFields: fixedYAMLFields,
             target: target,
             observed: observed,
             status: .identitySourceMissingOrTrashed,
-            missingRequired: missingRequired,
             recovery: AgentOperationRecovery(
                 safeToRetry: false,
                 mustReuseRequestIdentity: false,
@@ -1320,7 +1232,6 @@ extension WorkspaceHandle {
     ) -> ResearchAgentConnectionError {
         switch status {
         case .invalidMetadata: .invalidAnalysisCreationMetadata
-        case .missingRequiredFields: .missingRequiredFields
         case .pathOccupied: .analysisPathOccupied
         case .identityOccupied: .analysisIdentityOccupied
         case .identitySourceMissingOrTrashed:
@@ -1425,32 +1336,9 @@ extension WorkspaceHandle {
             && existing.reservedIdentityID == expected.reservedIdentityID
             && existing.requestedBinding == expected.requestedBinding
             && existing.sourceRoute == expected.sourceRoute
+            && existing.initialMetadata == expected.initialMetadata
+            && existing.initialAuthoredYAML == expected.initialAuthoredYAML
             && existing.academicPurpose == expected.academicPurpose
-    }
-
-    /// A Settings refresh cannot rewrite the first consequential creation
-    /// intent. It may preserve that metadata exactly, or add only fields that
-    /// the current Settings now require. Existing values and source type are
-    /// frozen even before the source commit.
-    private static func isPermittedAgentCreationSettingsRefresh(
-        initialMetadata: AnalysisCreationMetadata,
-        refreshedMetadata: AnalysisCreationMetadata,
-        currentRequiredFields: [String]
-    ) -> Bool {
-        guard initialMetadata.sourceType == refreshedMetadata.sourceType else {
-            return false
-        }
-        let initial = Dictionary(
-            uniqueKeysWithValues: initialMetadata.fields.map { ($0.key, $0.value) }
-        )
-        let refreshed = Dictionary(
-            uniqueKeysWithValues: refreshedMetadata.fields.map { ($0.key, $0.value) }
-        )
-        guard initial.allSatisfy({ refreshed[$0.key] == $0.value }) else {
-            return false
-        }
-        let required = Set(currentRequiredFields)
-        return refreshed.keys.allSatisfy { initial[$0] != nil || required.contains($0) }
     }
 
     private static func agentStartDeterministicID(
@@ -2107,12 +1995,10 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
     case runUnavailable
     case capabilityUnavailable
     case invalidAnalysisCreationMetadata
-    case missingRequiredFields
     case analysisPathOccupied
     case analysisIdentityOccupied
     case analysisIdentitySourceMissingOrTrashed
     case analysisSourceUnreadable
-    case settingsChanged
     case newAnalysisReplayConflict
     case runStale(ResearchAgentRunStaleReason)
 
@@ -2125,9 +2011,7 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
         case .capabilityUnavailable:
             "This Research Context channel is not available for the frozen Action."
         case .invalidAnalysisCreationMetadata:
-            "The Analysis creation metadata does not match the current source-type, Metadata, or application-owned seed contract. Rerun preflight with corrected fields."
-        case .missingRequiredFields:
-            "The Analysis creation is missing current Settings-required fields. Rerun creation preflight and supply the returned fields without placeholders."
+            "The Analysis creation values do not match the source-type, managed Metadata, or fixed authored-YAML contract. Rerun preflight with corrected values."
         case .analysisPathOccupied:
             "The resolved Analysis destination is occupied. Scholium did not overwrite it or invent another filename."
         case .analysisIdentityOccupied:
@@ -2136,8 +2020,6 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
             "A portable Analysis identity remains but its source is missing or in the system Trash. Scholium did not recreate, overwrite, delete the identity, or create a retry file."
         case .analysisSourceUnreadable:
             "Scholium cannot verify the authoritative source state at the resolved Analysis destination."
-        case .settingsChanged:
-            "The Triptych Settings changed after Analysis creation preflight. Rerun preflight with the same logical request identity before starting."
         case .newAnalysisReplayConflict:
             "The Analysis creation request identity already belongs to different or terminal creation evidence. Scholium preserved the authoritative source, identity, relationship, Run, and recovery state and refused replay."
         case .runStale(let reason):
