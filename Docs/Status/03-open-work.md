@@ -40,6 +40,13 @@
   bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
   and credential cleanup.
+- In that clean external-Agent pass, exercise `preflight-analysis` with local
+  Settings-required fields, managed-root and explicit researcher-selected
+  existing-Analysis destinations, occupied path/identity, a Finder-restored Analysis, an emptied
+  system Trash, App update/restart after confirmed source commit, stale
+  projection, replay conflict, expired Session, and outcome-unknown transport.
+  Automated disposable fixtures do not establish that the recovery wording or
+  researcher branch choice is usable.
 - Conduct sustained real research use and an independent source-fidelity and
   philosophical-quality review of bundled Methods. Contract conformance does
   not establish academic adequacy.

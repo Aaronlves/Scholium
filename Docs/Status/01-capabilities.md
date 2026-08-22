@@ -133,26 +133,45 @@
   its Result; this does not create a Check Fidelity child or formal Fidelity
   evidence. Check Fidelity remains a separate read-only Action prepared only
   when the researcher explicitly requests an audit for an exact revision.
-- `agent start` additionally accepts the strict Analyze-only `new_analysis`
-  shape. It supplies one exact path and typed Analysis creation metadata, with
-  either an explicit Zotero library/item relationship or the
-  `researcher_provided` source route. The Application uses the common managed
-  creator, reads back source plus stable identity, establishes the Zotero
-  relationship when present, and then enters the ordinary target-based Analyze
-  Run. The researcher-provided route carries no local-file path or source bytes
-  through Scholium and performs no title/keyword merge; the same explicit route
-  is available when starting Analyze from an existing Analysis.
-  The complete request owns deterministic reserved Note and Run identities:
-  exact replay resumes the same unfinished Run with a replacement Session,
-  while changed input, a terminal Run, or a changed researcher-owned Zotero
-  relationship cannot reuse it. A request-owned machine-local creation phase
-  makes a binding write retryable only when the portable owner proved no commit;
-  otherwise replay accepts exact readback or returns `replay_conflict` without
-  writing. A stale derived projection preserves the source/identity commit and
-  returns a structured non-duplication recovery result.
-- Bridge failures distinguish replay conflict, true `stale_run`, stale
-  projection, missing source evidence, expired Session, permission refusal,
-  timeout, and outcome unknown. Authenticated reload revalidates exact Target,
+- `agent preflight-analysis` now resolves Analyze-only creation before the
+  first consequential start. It returns the current Analyses vault and Settings
+  revision, applicable and Agent-required Property fields, application-owned
+  seed keys, exact destination, and path/identity/source/Trash state. Managed
+  default places one strict filename at the Analyses root; the Agent wire has
+  no subfolder selector. Researcher-selected placement uses an existing
+  researcher-created Analysis. Only `ready` returns the exact
+  `new_analysis` payload consumed by `agent start`; the CLI supplies no creation
+  vault ID and creates no fallback name. The researcher-provided route carries
+  no local-file path or source bytes and performs no title/keyword merge; the
+  same route remains available when starting Analyze from an existing Analysis.
+  Triptych plus `request_id` owns deterministic reserved Note and Run identities,
+  while a separate logical-payload fingerprint rejects changed input after the
+  portable creation phase. A machine-local reservation with no identity,
+  source, or Run does not fabricate a Trash state or freeze old Settings; after
+  current preflight, its request/creation/start fingerprint tuple can advance
+  by exact CAS only while destination, route/binding, source type, existing
+  metadata values, and academic purpose remain frozen; only newly required
+  fields may be added. That reservation exists for both Zotero and researcher-
+  provided creation. Exact
+  replay resumes the frozen confirmed source/identity revision and same Run;
+  it also requires the complete frozen start payload, including Settings
+  revision and academic purpose. Concurrent identical starts coalesce, while
+  changed committed input, terminal state, changed Zotero relationship, or
+  missing source cannot reuse it as a new write.
+- Bridge and preflight results distinguish `missing_required_fields`, path and
+  identity occupation, identity with missing/system-Trash source,
+  `settings_changed`, replay conflict, true `stale_run`, stale projection,
+  missing source evidence, expired Session, permission refusal, timeout, and
+  outcome unknown. Each structured result carries retry safety, request-
+  identity reuse, and one next step; missing/trashed source exposes only the
+  researcher-controlled Restore or explicitly distinct-new-destination
+  branches, each with its own identity-reuse and next-step contract. These
+  owner states no longer fall through to `operation_failed`.
+  Outcome-unknown recovery is operation-specific and executable; it no longer
+  points to a nonexistent generic request-status command. End response loss is
+  non-retryable because the acknowledged Session may already be revoked; the
+  Agent stops and reports for researcher inspection.
+  Authenticated reload revalidates exact Target,
   Materials, and formal source state instead of returning a false-current
   packet. App
   restart still invalidates Session authority; Copy New Handoff re-pairs the
@@ -191,13 +210,13 @@
   the exact reserved identity; any other identity at the path, a binding on an
   identity that would be removed, or moved, changed, or unreadable state stops
   for separate researcher resolution.
-- The `agent start` `new_analysis` route is a bounded creation preflight before
-  the ordinary Analyze Run rather than a second parallel Run lifecycle. An
-  unrelated or changed request is rejected once the path has a portable
-  identity; exact request replay resumes that identity and Run. The
-  route does not claim a Run-bound `create_note` Record mutation for that
-  preflight. External packaged-Agent, restart, conflict/recovery, and source-
-  fidelity trials remain open.
+- The `agent start` `new_analysis` route remains a bounded managed creation
+  before the ordinary Analyze Run rather than a second lifecycle, while the
+  new public preflight itself is read-only and claims no Run-bound
+  `create_note` Record mutation. A portable identity with absent source is not
+  silently rebuilt, overwritten, removed, or routed to a retry file. External
+  packaged-Agent, full Finder Restore, and human conflict/recovery trials remain
+  open.
   Linked reconciliation coordinates source mutation, performs a final joint
   readback, and treats an already-settled write as cleanup-only. Unlinked
   records never claim Agent reconciliation.

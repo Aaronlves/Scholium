@@ -135,6 +135,18 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 try Task.checkCancellation()
                 guard let self else { throw LocalAgentBridgeError.unavailable }
                 switch request.operation {
+                case .preflightAnalysisCreation:
+                    guard let triptychID = request.triptychID,
+                          let preflightRequest =
+                            request.analysisCreationPreflightRequest else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .analysisCreationPreflight(
+                        try await runtime.preflightResearchAgentAnalysisCreation(
+                            triptychID: triptychID,
+                            request: preflightRequest
+                        )
+                    )
                 case .start:
                     guard let triptychID = request.triptychID,
                           let startRequest = request.startRequest else {

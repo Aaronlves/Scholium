@@ -125,6 +125,10 @@ extension ScholiumCLI {
             "--format": .value,
         ]
         var rules: [String: CLICommandRule] = [
+            "agent preflight-analysis": .init(
+                pathLength: 2,
+                options: ["--triptych": .value, "--from": .value]
+            ),
             "agent start": .init(
                 pathLength: 2,
                 options: ["--triptych": .value, "--from": .value]

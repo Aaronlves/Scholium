@@ -179,6 +179,7 @@ private struct AgentCLICommandHelp: Encodable {
 
 private extension ScholiumCLI {
     static let agentCommandOrder = [
+        "agent preflight-analysis",
         "agent start",
         "agent pair",
         "agent context",
@@ -219,12 +220,24 @@ private extension ScholiumCLI {
             .joined(separator: ", ")
 
         return [
+            "agent preflight-analysis": AgentCLICommandHelp(
+                usage: "scholium agent preflight-analysis --triptych <selector> --from <json|->",
+                inputContract: "ResearchAgentAnalysisCreationPreflightRequest schema \(ResearchAgentAnalysisCreationPreflightRequest.currentSchemaVersion)",
+                input: "Strict JSON fields: schema_version, request_id, destination {schema_version, managed_default_filename}, metadata {source_type, properties}, and exactly one of source {library, item_key} or source_route=researcher_provided. Direct Agent creation always resolves one Markdown filename at the Analyses-vault root. A researcher-selected subfolder requires a researcher-created existing Analysis target; the Agent wire has no subfolder assertion.",
+                output: "The current Analyses vault identity, Settings revision, source-type applicable fields, Agent-required fields, application-owned seed keys, exact destination and stable/source/Trash state, one status, retry contract, and—only when ready—the exact start_new_analysis payload.",
+                nextSteps: [
+                    "Use start_new_analysis unchanged inside agent start only when status is ready",
+                    "For every other status, follow recovery.next_step; never add (retry), silently recreate a missing identity, or substitute placeholders",
+                    "For missing/trashed source, each researcher-controlled creation_branches item separately states must_reuse_request_identity and next_step",
+                ]
+            ),
             "agent start": AgentCLICommandHelp(
                 usage: "scholium agent start --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, action_id, exactly one of target {vault_id, relative_path} or new_analysis {schema_version, request_id, target {vault_id, relative_path}, metadata {source_type, properties}, optional source {library, item_key}}, optional source_route=researcher_provided, and optional academic_purpose. new_analysis is Analyze-only: Scholium uses the managed creator, binds an explicitly declared Zotero route when present, or accepts a researcher-provided source without a path, then resolves the ordinary Action Profile, Method, revision, and Bounded Write Set.",
+                input: "Strict JSON fields: schema_version, action_id, exactly one of existing target {vault_id, relative_path} or the unchanged new_analysis payload returned by agent preflight-analysis, optional source_route=researcher_provided only for an existing Analysis, and optional academic_purpose. New Analysis start revalidates current Settings before mutation; committed replay requires the exact complete start payload, including academic_purpose and returned Settings revision.",
                 output: "ResearchAgentStartReceipt with the new Run locator, Action, target revision, state, and a non-secret message. The Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
+                    "Run agent preflight-analysis first for every new Analysis",
                     "scholium agent context --run <locator>",
                     "Continue with the returned current Bounded Write Set and Result Contract; no Pairing Code is required",
                 ]
@@ -366,6 +379,7 @@ private extension ScholiumCLI {
                 output: "ResearchRunEndReceipt with retained-recovery truth and a message; the acknowledged local Session credential is then removed.",
                 nextSteps: [
                     "Stop using this Run locator; new Agent access requires a new researcher-provided handoff",
+                    "If outcome_unknown is returned, do not retry End with the revoked credential; stop and report so the researcher can inspect Scholium's Run and recovery state",
                 ]
             ),
         ]

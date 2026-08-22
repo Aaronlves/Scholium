@@ -5,6 +5,528 @@ import Testing
 
 @Suite("Research Function coordinator ownership")
 struct ResearchFunctionCoordinatorTests {
+    private func preflightStart(
+        runtime: WorkspaceRuntime,
+        triptychID: UUID,
+        requestID: UUID,
+        relativePath: String,
+        metadata: AnalysisCreationMetadata,
+        source: ResearchAgentNewAnalysisSource? = nil,
+        academicPurpose: String? = nil
+    ) async throws -> (
+        request: ResearchAgentStartRequest,
+        preflight: ResearchAgentAnalysisCreationPreflight,
+        target: VaultQualifiedNoteID
+    ) {
+        let destination = try ResearchAgentAnalysisDestination(
+            managedDefaultFilename: relativePath
+        )
+        let input = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: destination,
+            metadata: metadata,
+            source: source,
+            sourceRoute: source == nil ? .researcherProvided : nil
+        )
+        let preflight = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: triptychID,
+            request: input
+        )
+        #expect(preflight.status == .ready)
+        let creation = try #require(preflight.startNewAnalysis)
+        return (
+            try ResearchAgentStartRequest(
+                actionID: .analyze,
+                newAnalysis: creation,
+                academicPurpose: academicPurpose
+            ),
+            preflight,
+            preflight.targetState.target
+        )
+    }
+
+    @Test("Analysis creation preflight exposes Settings-required fields and rejects stale Settings")
+    func analysisCreationPreflightSettingsBoundary() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let original = try await handle.services.controlStore.settings()
+        var settings = original.settings
+        settings.analysisAgentCreation = AnalysisAgentCreationConfiguration(
+            requiredFieldsBySourceType: [.journalArticle: ["summary"]]
+        )
+        let requiredSnapshot = try await handle.services.controlStore.saveSettings(
+            settings,
+            expectedRevision: original.revision
+        )
+        let requestID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000461"
+        )!
+        let incomplete = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Required Fields.md"
+            ),
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            sourceRoute: .researcherProvided
+        )
+        let missing = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: incomplete
+        )
+        #expect(missing.status == .missingRequiredFields)
+        #expect(missing.requiredFields == ["summary"])
+        #expect(missing.missingRequiredFields == ["summary"])
+        #expect(missing.applicableFields.contains { $0.canonicalKey == "summary" })
+        #expect(missing.startNewAnalysis == nil)
+        #expect(missing.recovery.safeToRetry == false)
+        #expect(missing.recovery.mustReuseRequestIdentity)
+        #expect(missing.recovery.nextStep == .supplyRequiredFieldsAndPreflight)
+
+        let complete = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: incomplete.destination,
+            metadata: AnalysisCreationMetadata(
+                sourceType: .journalArticle,
+                properties: [try CanonicalPropertyInput(
+                    key: "summary",
+                    value: .string("A source-faithful bounded summary.")
+                )]
+            ),
+            sourceRoute: .researcherProvided
+        )
+        let ready = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: complete
+        )
+        #expect(ready.status == .ready)
+        let staleStart = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: #require(ready.startNewAnalysis)
+        )
+
+        settings.attentionDismissalDays += 1
+        _ = try await handle.services.controlStore.saveSettings(
+            settings,
+            expectedRevision: requiredSnapshot.revision
+        )
+        await #expect(throws: ResearchAgentConnectionError.settingsChanged) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: staleStart,
+                sessionValidity: 300
+            )
+        }
+        let refreshed = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: complete
+        )
+        #expect(refreshed.status == .ready)
+        #expect(refreshed.settingsRevision != ready.settingsRevision)
+        #expect(refreshed.requestID == requestID)
+        await runtime.shutdown()
+    }
+
+    @Test("A pre-commit reservation neither fabricates an identity nor bypasses current Settings")
+    func analysisCreationReservationRecoveryBoundary() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let requestID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000462"
+        )!
+        let initialInput = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Reserved Before Source.md"
+            ),
+            metadata: AnalysisCreationMetadata(
+                sourceType: .journalArticle,
+                properties: [try CanonicalPropertyInput(
+                    key: "title",
+                    value: .string("Frozen initial title")
+                )]
+            ),
+            sourceRoute: .researcherProvided
+        )
+        let initialPreflight = try await runtime
+            .preflightResearchAgentAnalysisCreation(
+                triptychID: fixture.assignment.id,
+                request: initialInput
+            )
+        let initialStart = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: #require(initialPreflight.startNewAnalysis),
+            academicPurpose: "Frozen initial purpose"
+        )
+
+        let gate = AgentCreationReservationGate()
+        await handle.setManagedCreationPreLeaseBarrierForTesting {
+            await gate.wait()
+        }
+        let starting = Task {
+            try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: initialStart,
+                sessionValidity: 300
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        let original = try await handle.services.controlStore.settings()
+        var changed = original.settings
+        changed.analysisAgentCreation = AnalysisAgentCreationConfiguration(
+            requiredFieldsBySourceType: [.journalArticle: ["summary"]]
+        )
+        _ = try await handle.services.controlStore.saveSettings(
+            changed,
+            expectedRevision: original.revision
+        )
+        await gate.release()
+        await #expect(throws: DocumentCreationError.settingsRevisionChanged) {
+            _ = try await starting.value
+        }
+        await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
+
+        let missing = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: initialInput
+        )
+        #expect(missing.status == .missingRequiredFields)
+        #expect(missing.targetState.stableIdentity == nil)
+        #expect(missing.targetState.sourceState == .absent)
+        await #expect(throws: ResearchAgentConnectionError.settingsChanged) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: initialStart,
+                sessionValidity: 300
+            )
+        }
+
+        let changedSourceType = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: initialInput.destination,
+            metadata: AnalysisCreationMetadata(
+                sourceType: .book,
+                properties: [try CanonicalPropertyInput(
+                    key: "title",
+                    value: .string("Frozen initial title")
+                )]
+            ),
+            sourceRoute: .researcherProvided
+        )
+        #expect(try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: changedSourceType
+        ).status == .replayConflict)
+
+        let changedExistingValue = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: initialInput.destination,
+            metadata: AnalysisCreationMetadata(
+                sourceType: .journalArticle,
+                properties: [
+                    try CanonicalPropertyInput(
+                        key: "title",
+                        value: .string("Rewritten title")
+                    ),
+                    try CanonicalPropertyInput(
+                        key: "summary",
+                        value: .string("The required field cannot mask a rewrite.")
+                    ),
+                ]
+            ),
+            sourceRoute: .researcherProvided
+        )
+        #expect(try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: changedExistingValue
+        ).status == .replayConflict)
+
+        let correctedInput = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: requestID,
+            destination: initialInput.destination,
+            metadata: AnalysisCreationMetadata(
+                sourceType: .journalArticle,
+                properties: [
+                    try CanonicalPropertyInput(
+                        key: "title",
+                        value: .string("Frozen initial title")
+                    ),
+                    try CanonicalPropertyInput(
+                        key: "summary",
+                        value: .string("Current Settings are satisfied before source commit.")
+                    ),
+                ]
+            ),
+            sourceRoute: .researcherProvided
+        )
+        let corrected = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: correctedInput
+        )
+        #expect(corrected.status == .ready)
+        #expect(corrected.requestID == requestID)
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: ResearchAgentStartRequest(
+                    actionID: .analyze,
+                    newAnalysis: #require(corrected.startNewAnalysis),
+                    academicPurpose: "Changed purpose hidden by required metadata"
+                ),
+                sessionValidity: 300
+            )
+        }
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: ResearchAgentStartRequest(
+                actionID: .analyze,
+                newAnalysis: #require(corrected.startNewAnalysis),
+                academicPurpose: initialStart.academicPurpose
+            ),
+            sessionValidity: 300
+        )
+        #expect(started.receipt.target.note == corrected.targetState.target)
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        await runtime.shutdown()
+    }
+
+    @Test("Concurrent exact starts coalesce while changed payload conflicts")
+    func concurrentAnalysisCreationStarts() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let prepared = try await preflightStart(
+            runtime: runtime,
+            triptychID: fixture.assignment.id,
+            requestID: UUID(
+                uuidString: "00000000-0000-0000-0000-000000000464"
+            )!,
+            relativePath: "Concurrent Creation.md",
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            academicPurpose: "One frozen purpose."
+        )
+        let gate = AgentCreationReservationGate()
+        await handle.setManagedCreationPreLeaseBarrierForTesting {
+            await gate.wait()
+        }
+        let first = Task {
+            try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: prepared.request,
+                sessionValidity: 300
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        let same = Task {
+            try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: prepared.request,
+                sessionValidity: 300
+            )
+        }
+        let changed = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: #require(prepared.request.newAnalysis),
+            academicPurpose: "A concurrent changed purpose."
+        )
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: changed,
+                sessionValidity: 300
+            )
+        }
+        await gate.release()
+        let firstStarted = try await first.value
+        let sameStarted = try await same.value
+        #expect(firstStarted.receipt.run != sameStarted.receipt.run)
+        #expect(firstStarted.receipt.target.noteID
+            == sameStarted.receipt.target.noteID)
+        let executions = try await handle.services.localResearchExecutionStore
+            .listing().records.filter {
+                $0.snapshot.actionSnapshot?.target.note == prepared.target
+            }
+        #expect(executions.count == 1)
+        let source = try await handle.documents.load(prepared.target)
+        #expect(source.fingerprint == firstStarted.receipt.target.fingerprint)
+        let services = await handle.services
+        let sessions = try #require(services.researchAgentSessions)
+        let firstAuthentication = try? await sessions.authenticate(
+            firstStarted.credential,
+            run: firstStarted.receipt.run,
+            requiresWrite: true,
+            claimCoreProtocol: false
+        )
+        let sameAuthentication = try? await sessions.authenticate(
+            sameStarted.credential,
+            run: sameStarted.receipt.run,
+            requiresWrite: true,
+            claimCoreProtocol: false
+        )
+        #expect((firstAuthentication == nil) != (sameAuthentication == nil))
+        await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
+        await runtime.shutdown()
+    }
+
+    @Test("Analysis creation preflight distinguishes occupied paths and missing portable sources")
+    func analysisCreationPreflightRecoveryStates() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        _ = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        let occupiedURL = fixture.analysesURL.appendingPathComponent("Occupied.md")
+        try Data("# Occupied\n".utf8).write(to: occupiedURL)
+        let occupiedRequest = try ResearchAgentAnalysisCreationPreflightRequest(
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Occupied.md"
+            ),
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            sourceRoute: .researcherProvided
+        )
+        let occupied = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: occupiedRequest
+        )
+        #expect(occupied.status == .pathOccupied)
+        #expect(occupied.targetState.sourceState == .present)
+        #expect(occupied.targetState.stableIdentity == nil)
+        #expect(occupied.recovery.nextStep
+            == .requestResearcherDistinctFilenameAndPreflight)
+        #expect(!occupied.recovery.mustReuseRequestIdentity)
+
+        let existingRequest = try ResearchAgentAnalysisCreationPreflightRequest(
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Agency.md"
+            ),
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            sourceRoute: .researcherProvided
+        )
+        let existing = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: existingRequest
+        )
+        #expect(existing.status == .identityOccupied)
+        #expect(existing.targetState.stableIdentity != nil)
+        #expect(existing.recovery.nextStep == .startExistingAnalysis)
+
+        try FileManager.default.removeItem(
+            at: fixture.analysesURL.appendingPathComponent("Agency.md")
+        )
+        let missing = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: existingRequest
+        )
+        #expect(missing.status == .identitySourceMissingOrTrashed)
+        #expect(missing.targetState.sourceState == .missingOrInSystemTrash)
+        #expect(missing.targetState.stableIdentity == existing.targetState.stableIdentity)
+        #expect(missing.recovery.nextStep == .requestResearcherRecoveryChoice)
+        #expect(!missing.recovery.mustReuseRequestIdentity)
+        #expect(missing.recovery.creationBranches.map(\.kind) == [
+            .restoreOriginalSource,
+            .explicitlyCreateAtDistinctDestination,
+        ])
+        #expect(!missing.recovery.creationBranches[0].mustReuseRequestIdentity)
+        #expect(missing.recovery.creationBranches[0].nextStep
+            == .startExistingAnalysis)
+        #expect(!missing.recovery.creationBranches[1].mustReuseRequestIdentity)
+        #expect(missing.startNewAnalysis == nil)
+        await runtime.shutdown()
+    }
+
+    @Test("Exact start refuses a replacement Session after the created source is missing")
+    func analysisCreationRunSourceLossRecovery() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let prepared = try await preflightStart(
+            runtime: runtime,
+            triptychID: fixture.assignment.id,
+            requestID: UUID(
+                uuidString: "00000000-0000-0000-0000-000000000463"
+            )!,
+            relativePath: "Created Then Missing.md",
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
+        )
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: prepared.request,
+            sessionValidity: 300
+        )
+        try FileManager.default.removeItem(
+            at: fixture.analysesURL.appendingPathComponent(
+                prepared.target.relativePath
+            )
+        )
+
+        let recovery = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: #require(prepared.request.newAnalysis).preflight
+        )
+        #expect(recovery.status == .identitySourceMissingOrTrashed)
+        #expect(recovery.targetState.stableIdentity == started.receipt.target.noteID)
+        #expect(recovery.recovery.creationBranches[0].kind == .restoreOriginalSource)
+        #expect(recovery.recovery.creationBranches[0].mustReuseRequestIdentity)
+        #expect(recovery.recovery.creationBranches[0].nextStep == .retryExactRequest)
+        #expect(!recovery.recovery.creationBranches[1].mustReuseRequestIdentity)
+        await #expect(
+            throws: ResearchAgentConnectionError
+                .analysisIdentitySourceMissingOrTrashed
+        ) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: prepared.request,
+                sessionValidity: 300
+            )
+        }
+        try Data("# Restored with a different revision\n".utf8).write(
+            to: fixture.analysesURL.appendingPathComponent(
+                prepared.target.relativePath
+            ),
+            options: .atomic
+        )
+        let stale = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: #require(prepared.request.newAnalysis).preflight
+        )
+        #expect(stale.status == .runStale)
+        #expect(stale.recovery.nextStep == .startNewActionFromCurrentRevision)
+        await #expect(throws: ResearchAgentConnectionError.runStale(.targetChanged)) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: prepared.request,
+                sessionValidity: 300
+            )
+        }
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        await runtime.shutdown()
+    }
+
     @Test("Exact Analysis replay preserves a newer researcher Zotero binding")
     func agentStartBindingReplayConflict() async throws {
         enum InjectedFailure: Error { case afterBinding }
@@ -18,25 +540,19 @@ struct ResearchFunctionCoordinatorTests {
         await handle.setAgentStartPostBindingBarrierForTesting {
             throw InjectedFailure.afterBinding
         }
-        let analysisVaultID = try #require(
-            fixture.assignment.vault(for: .paperAnalysis)?.id
-        )
-        let target = VaultQualifiedNoteID(
-            vaultID: analysisVaultID,
-            relativePath: "Agent/Binding Replay.md"
-        )
-        let request = try ResearchAgentStartRequest(
-            actionID: .analyze,
-            newAnalysis: ResearchAgentNewAnalysisRequest(
-                requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000458")!,
-                target: target,
-                metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
-                source: ResearchAgentNewAnalysisSource(
-                    library: .user,
-                    itemKey: "ORIGINAL1"
-                )
+        let prepared = try await preflightStart(
+            runtime: runtime,
+            triptychID: fixture.assignment.id,
+            requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000458")!,
+            relativePath: "Binding Replay.md",
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            source: ResearchAgentNewAnalysisSource(
+                library: .user,
+                itemKey: "ORIGINAL1"
             )
         )
+        let target = prepared.target
+        let request = prepared.request
 
         await #expect(throws: InjectedFailure.afterBinding) {
             _ = try await runtime.startResearchAgentRun(
@@ -109,22 +625,15 @@ struct ResearchFunctionCoordinatorTests {
         await handle.setResearchStateRepairBarrierForTesting {
             throw InjectedFailure.staleProjection
         }
-        let analysisVaultID = try #require(
-            fixture.assignment.vault(for: .paperAnalysis)?.id
+        let prepared = try await preflightStart(
+            runtime: runtime,
+            triptychID: fixture.assignment.id,
+            requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000457")!,
+            relativePath: "Projection Recovery.md",
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
         )
-        let target = VaultQualifiedNoteID(
-            vaultID: analysisVaultID,
-            relativePath: "Agent/Projection Recovery.md"
-        )
-        let request = try ResearchAgentStartRequest(
-            actionID: .analyze,
-            newAnalysis: ResearchAgentNewAnalysisRequest(
-                requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000457")!,
-                target: target,
-                metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
-            ),
-            sourceRoute: .researcherProvided
-        )
+        let target = prepared.target
+        let request = prepared.request
 
         do {
             _ = try await runtime.startResearchAgentRun(
@@ -147,6 +656,32 @@ struct ResearchFunctionCoordinatorTests {
             )
         )
         #expect(identity.fingerprint == committed.fingerprint)
+
+        let targetURL = fixture.analysesURL.appendingPathComponent(
+            target.relativePath
+        )
+        try Data("# Changed during projection recovery\n".utf8).write(
+            to: targetURL,
+            options: .atomic
+        )
+        let changed = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: #require(request.newAnalysis).preflight
+        )
+        #expect(changed.status == .replayConflict)
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: request,
+                sessionValidity: 300
+            )
+        }
+        try committed.sourceBytes.write(to: targetURL, options: .atomic)
+        let resumable = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: #require(request.newAnalysis).preflight
+        )
+        #expect(resumable.status == .sourceCommittedProjectionPending)
 
         await handle.setResearchStateRepairBarrierForTesting(nil)
         let started = try await runtime.startResearchAgentRun(
@@ -171,32 +706,32 @@ struct ResearchFunctionCoordinatorTests {
             applicationSupportURL: fixture.applicationSupportURL,
             assignments: [fixture.assignment]
         )))
-        let analysisVaultID = try #require(
-            fixture.assignment.vault(for: .paperAnalysis)?.id
+        let requestID = UUID(
+            uuidString: "00000000-0000-0000-0000-000000000456"
+        )!
+        let metadata = try AnalysisCreationMetadata(
+            sourceType: .journalArticle,
+            properties: [
+                try CanonicalPropertyInput(
+                    key: "title",
+                    value: .string("Agent-created Analysis")
+                ),
+            ]
         )
-        let createdID = VaultQualifiedNoteID(
-            vaultID: analysisVaultID,
-            relativePath: "Agent/Created Analysis.md"
+        let prepared = try await preflightStart(
+            runtime: runtime,
+            triptychID: fixture.assignment.id,
+            requestID: requestID,
+            relativePath: "Created Analysis.md",
+            metadata: metadata,
+            academicPurpose: "Reconstruct the source argument with bounded evidence."
         )
-        let creation = try ResearchAgentNewAnalysisRequest(
-            requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000456")!,
-            target: createdID,
-            metadata: try AnalysisCreationMetadata(
-                sourceType: .journalArticle,
-                properties: [
-                    try CanonicalPropertyInput(
-                        key: "title",
-                        value: .string("Agent-created Analysis")
-                    ),
-                ]
-            )
-        )
-        let request = try ResearchAgentStartRequest(
-            actionID: .analyze,
-            newAnalysis: creation,
-            academicPurpose: "Reconstruct the source argument with bounded evidence.",
-            sourceRoute: .researcherProvided
-        )
+        let createdID = prepared.target
+        let creation = try #require(prepared.request.newAnalysis)
+        let request = prepared.request
+        #expect(prepared.preflight.analysisVaultID == createdID.vaultID)
+        #expect(createdID.relativePath == "Created Analysis.md")
+        #expect(prepared.preflight.recovery.nextStep == .startWithReturnedTemplate)
 
         let started = try await runtime.startResearchAgentRun(
             triptychID: fixture.assignment.id,
@@ -224,27 +759,67 @@ struct ResearchFunctionCoordinatorTests {
             claimCoreProtocol: false
         )
 
-        let changedCreation = try ResearchAgentNewAnalysisRequest(
+        let changedPreflightInput = try ResearchAgentAnalysisCreationPreflightRequest(
             requestID: creation.requestID,
-            target: creation.target,
+            destination: creation.destination,
             metadata: try AnalysisCreationMetadata(
                 sourceType: .journalArticle,
-                properties: [try CanonicalPropertyInput(
-                    key: "title",
-                    value: .string("A different payload must not reuse the committed Note")
-                )]
-            )
+                properties: [
+                    try CanonicalPropertyInput(
+                        key: "title",
+                        value: .string("A different payload must not reuse the committed Note")
+                    ),
+                ]
+            ),
+            sourceRoute: .researcherProvided
+        )
+        let changedPreflight = try await runtime.preflightResearchAgentAnalysisCreation(
+            triptychID: fixture.assignment.id,
+            request: changedPreflightInput
+        )
+        #expect(changedPreflight.status == .replayConflict)
+        let changedCreation = ResearchAgentNewAnalysisRequest(
+            preflight: changedPreflightInput,
+            settingsRevision: creation.settingsRevision
         )
         let changedRequest = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: changedCreation,
-            academicPurpose: request.academicPurpose,
-            sourceRoute: .researcherProvided
+            academicPurpose: request.academicPurpose
         )
-        await #expect(throws: DocumentCreationError.portableIdentityAlreadyExists) {
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
             _ = try await runtime.startResearchAgentRun(
                 triptychID: fixture.assignment.id,
                 request: changedRequest,
+                sessionValidity: 300
+            )
+        }
+        let changedPurpose = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            newAnalysis: creation,
+            academicPurpose: "A changed purpose must not receive the existing Run."
+        )
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: changedPurpose,
+                sessionValidity: 300
+            )
+        }
+        let changedRevision = ResearchAgentNewAnalysisRequest(
+            preflight: creation.preflight,
+            settingsRevision: SettingsRevision(
+                fingerprint: DocumentFingerprint(content: "substituted settings")
+            )
+        )
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: ResearchAgentStartRequest(
+                    actionID: .analyze,
+                    newAnalysis: changedRevision,
+                    academicPurpose: request.academicPurpose
+                ),
                 sessionValidity: 300
             )
         }
@@ -336,26 +911,18 @@ struct ResearchFunctionCoordinatorTests {
             applicationSupportURL: fixture.applicationSupportURL,
             assignments: [fixture.assignment]
         )))
-        let analysisVaultID = try #require(
-            fixture.assignment.vault(for: .paperAnalysis)?.id
-        )
-
-        func request(_ suffix: String, id: String) throws -> ResearchAgentStartRequest {
-            try ResearchAgentStartRequest(
-                actionID: .analyze,
-                newAnalysis: ResearchAgentNewAnalysisRequest(
-                    requestID: UUID(uuidString: id)!,
-                    target: VaultQualifiedNoteID(
-                        vaultID: analysisVaultID,
-                        relativePath: "Agent/Terminal \(suffix).md"
-                    ),
-                    metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
-                ),
-                sourceRoute: .researcherProvided
-            )
+        func request(_ suffix: String, id: String) async throws
+            -> ResearchAgentStartRequest {
+            try await preflightStart(
+                runtime: runtime,
+                triptychID: fixture.assignment.id,
+                requestID: UUID(uuidString: id)!,
+                relativePath: "Terminal \(suffix).md",
+                metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
+            ).request
         }
 
-        let completedRequest = try request(
+        let completedRequest = try await request(
             "Complete",
             id: "00000000-0000-0000-0000-000000000459"
         )
@@ -384,7 +951,7 @@ struct ResearchFunctionCoordinatorTests {
                 literatureRecommendations: []
             )
         )
-        await #expect(throws: ResearchAgentConnectionError.runUnavailable) {
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
             _ = try await runtime.startResearchAgentRun(
                 triptychID: fixture.assignment.id,
                 request: completedRequest,
@@ -392,7 +959,7 @@ struct ResearchFunctionCoordinatorTests {
             )
         }
 
-        let cancelledRequest = try request(
+        let cancelledRequest = try await request(
             "Cancelled",
             id: "00000000-0000-0000-0000-000000000460"
         )
@@ -405,7 +972,7 @@ struct ResearchFunctionCoordinatorTests {
             credential: cancelled.credential,
             run: cancelled.receipt.run
         )
-        await #expect(throws: ResearchAgentConnectionError.runUnavailable) {
+        await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
             _ = try await runtime.startResearchAgentRun(
                 triptychID: fixture.assignment.id,
                 request: cancelledRequest,
@@ -565,5 +1132,29 @@ struct ResearchFunctionCoordinatorTests {
                 host: handle
             )
         }
+    }
+}
+
+private actor AgentCreationReservationGate {
+    private var arrived = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var arrivalContinuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        arrived = true
+        arrivalContinuation?.resume()
+        arrivalContinuation = nil
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func waitUntilArrived() async -> Bool {
+        if arrived { return true }
+        await withCheckedContinuation { arrivalContinuation = $0 }
+        return true
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
     }
 }

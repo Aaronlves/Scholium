@@ -17,7 +17,7 @@ struct ActionCLIExecutableLifecycleTests {
         ).appendingPathComponent(".build/agent-help", isDirectory: true)
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
-            "start", "pair", "context", "reload", "query", "discuss-reply",
+            "preflight-analysis", "start", "pair", "context", "reload", "query", "discuss-reply",
             "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
             "submit-result", "continue",
@@ -66,7 +66,7 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!pairHelp.contains("pairing-code.txt"))
     }
 
-    @Test("The real CLI can start a Run without pairing and continue through end")
+    @Test("The real CLI preflights direct Analysis creation, starts without pairing, writes, and ends")
     func agentStartContextWriteAndEnd() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
@@ -138,9 +138,46 @@ struct ActionCLIExecutableLifecycleTests {
             ),
             boundedWriteSet: []
         )
+        let preflightInput = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000813")!,
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: fixture.analysisTarget.note.relativePath
+            ),
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            sourceRoute: .researcherProvided
+        )
+        let settingsRevision = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "standalone-settings")
+        )
+        let newAnalysis = ResearchAgentNewAnalysisRequest(
+            preflight: preflightInput,
+            settingsRevision: settingsRevision
+        )
+        let creationPreflight = ResearchAgentAnalysisCreationPreflight(
+            request: preflightInput,
+            analysisVaultID: fixture.analysisTarget.note.vaultID,
+            settingsRevision: settingsRevision,
+            applicableFields: PropertyContractCatalog.contracts(for: .analysis),
+            requiredFields: [],
+            applicationOwnedFields: [],
+            targetState: ResearchAgentAnalysisTargetState(
+                target: fixture.analysisTarget.note,
+                stableIdentity: nil,
+                fingerprint: nil,
+                sourceState: .absent
+            ),
+            status: .ready,
+            startNewAnalysis: newAnalysis,
+            recovery: AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .startWithReturnedTemplate
+            ),
+            message: "The managed root Analysis destination is ready."
+        )
         let startRequest = try ResearchAgentStartRequest(
             actionID: .analyze,
-            target: fixture.analysisTarget.note,
+            newAnalysis: newAnalysis,
             academicPurpose: "Analyze the Zotero paper."
         )
         let startReceipt = try ResearchAgentStartReceipt(
@@ -171,10 +208,24 @@ struct ActionCLIExecutableLifecycleTests {
             recoveryRetained: false,
             message: "The Run ended and refuses new Agent operations."
         )
+        let preflightAttempts = LockedCounter()
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
         ) { request in
             switch request.operation {
+            case .preflightAnalysisCreation:
+                guard request.triptychID == fixture.assignment.id,
+                      request.analysisCreationPreflightRequest == preflightInput else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                if preflightAttempts.increment() == 1 {
+                    throw LocalAgentBridgeError.outcomeUnknown(
+                        LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(
+                            for: request
+                        )
+                    )
+                }
+                return .analysisCreationPreflight(creationPreflight)
             case .start:
                 guard request.triptychID == fixture.assignment.id,
                       request.startRequest == startRequest,
@@ -224,6 +275,41 @@ struct ActionCLIExecutableLifecycleTests {
         let environment = [
             "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
         ]
+        let unknown = try cli.runExpectingFailure(
+            [
+                "agent", "preflight-analysis", "--triptych",
+                fixture.assignment.id.uuidString,
+                "--from", "-",
+            ],
+            stdin: try Self.encoder().encode(preflightInput),
+            environment: environment
+        )
+        let unknownObject = try #require(
+            JSONSerialization.jsonObject(with: unknown.stderr) as? [String: Any]
+        )
+        #expect(unknownObject["code"] as? String == "outcome_unknown")
+        #expect((unknownObject["recovery"] as? [String: Any])?["next_step"]
+            as? String == "rerun_creation_preflight")
+
+        // Execute the returned operation-specific next step with the same
+        // request identity; the second standalone invocation must converge.
+        let preflighted = try cli.run(
+            [
+                "agent", "preflight-analysis", "--triptych",
+                fixture.assignment.id.uuidString,
+                "--from", "-",
+            ],
+            stdin: try Self.encoder().encode(preflightInput),
+            environment: environment
+        )
+        let preflightObject = try #require(
+            JSONSerialization.jsonObject(with: preflighted.stdout)
+                as? [String: Any]
+        )
+        #expect(preflightObject["status"] as? String == "ready")
+        #expect(preflightObject["start_new_analysis"] != nil)
+        #expect((preflightObject["recovery"] as? [String: Any])?["next_step"]
+            as? String == "start_with_returned_template")
         let started = try cli.run(
             [
                 "agent", "start", "--triptych", fixture.assignment.id.uuidString,
@@ -441,7 +527,7 @@ struct ActionCLIExecutableLifecycleTests {
             applicationSupportURL: bridgeContainer
         ) { request in
             switch request.operation {
-            case .start:
+            case .preflightAnalysisCreation, .start:
                 throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.run == run, request.pairingCode == code else {
@@ -615,7 +701,7 @@ struct ActionCLIExecutableLifecycleTests {
                 throw LocalAgentBridgeError.permissionDenied
             }
             switch request.operation {
-            case .start:
+            case .preflightAnalysisCreation, .start:
                 throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.pairingCode == code else {
@@ -1097,7 +1183,7 @@ struct ActionCLIExecutableLifecycleTests {
                 throw LocalAgentBridgeError.permissionDenied
             }
             switch request.operation {
-            case .start:
+            case .preflightAnalysisCreation, .start:
                 throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.pairingCode == code else {
@@ -1243,10 +1329,16 @@ struct ActionCLIExecutableLifecycleTests {
             JSONSerialization.jsonObject(with: failure.stderr) as? [String: Any]
         )
         #expect(report["code"] as? String == "stale_run")
+        #expect(report["schema_version"] as? Int == 2)
         #expect((report["message"] as? String)?.contains(
             "start a new Action"
         ) == true)
         #expect(report["command"] as? String == "agent reload")
+        let recovery = try #require(report["recovery"] as? [String: Any])
+        #expect(recovery["safe_to_retry"] as? Bool == false)
+        #expect(recovery["must_reuse_request_identity"] as? Bool == false)
+        #expect(recovery["next_step"] as? String
+            == "start_new_action_from_current_revision")
     }
 
 
@@ -1375,7 +1467,7 @@ struct ActionCLIExecutableLifecycleTests {
                 throw LocalAgentBridgeError.permissionDenied
             }
             switch request.operation {
-            case .start:
+            case .preflightAnalysisCreation, .start:
                 throw LocalAgentBridgeError.invalidRequest
             case .pair:
                 guard request.pairingCode == code else {
@@ -1569,6 +1661,18 @@ private final class LockedMethodImprovementSubmission: @unchecked Sendable {
 
     func capture(_ submission: ResearchMethodImprovementSubmission) {
         lock.withLock { stored = submission }
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func increment() -> Int {
+        lock.withLock {
+            value += 1
+            return value
+        }
     }
 }
 

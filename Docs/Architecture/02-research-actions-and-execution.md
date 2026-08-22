@@ -105,16 +105,63 @@ a replacement, and copies it while retaining the same Run and recovery state.
 The Agent enters the code through CLI standard input. An Agent-originated
 `agent start` request uses the same Application preparation path and returns a
 protected Session directly; it does not create or consume a Pairing Code.
-For `new_analysis`, a deterministic digest of the complete current request owns
-the reserved Note and Run identities. Exact replay reopens only that identity
-and unfinished Run, while a changed payload cannot claim the committed path.
-For a requested Zotero relationship, Local Execution first persists a bounded
-request-owned creation phase, marks the mutation boundary before calling the
-portable owner, and reconciles only an exact readback. Replay never reapplies a
-committed request over a missing or different researcher-owned relationship;
-it returns a typed conflict instead. The managed creator's source/identity
-readback queues the sole derived refresh; direct start awaits that owner rather
-than racing a second Workspace generation.
+`agent preflight-analysis` calls
+`WorkspaceRuntime.preflightResearchAgentAnalysisCreation` without issuing a
+Session. `WorkspaceHandle` resolves the assigned Analyses vault, uses the
+managed-default root filename, reads the current `TriptychSettingsSnapshot`, filters canonical Property
+contracts through the selected `AnalysisSourceTypeProfile`, and reports only
+seed keys rather than seed values. It inspects the exact repository path,
+portable identity owner, and pending system-Trash recovery evidence before
+returning one status and one retry contract. The CLI never supplies the
+Analyses vault ID for creation.
+It also cannot assert a subfolder: researcher-selected placement enters this
+workflow only as a researcher-created existing Analysis target.
+
+For consequential `new_analysis`, deterministic digests of Triptych ID plus
+the stable `request_id` own the reserved Note and Run identities. A separate
+fingerprint of the logical preflight request detects changed input after the
+first portable creation phase. Agent-Analysis creation-record schema 2 first
+persists a machine-local reservation for both external-Zotero and researcher-
+provided routes; optional binding state exists only for the Zotero route. A
+reservation with no portable identity, source, or Run is explicitly pre-commit:
+preflight reports the real absent state and current Settings still apply. The
+record freezes the first consequential destination, route or binding, source
+type, supplied metadata values, and academic purpose. A refreshed preflight may
+preserve that intent and add only fields now required by current Settings; it
+cannot replace a value, source type, route, or purpose. One atomic CAS then
+advances the logical-request, returned-creation, and complete-start fingerprint
+tuple together, including the returned Settings revision. The record freezes
+the committed source fingerprint before projection or relationship work. Once
+matching source and identity exist, the owner resumes
+only those exact inputs without reconsidering later Settings. Concurrent starts
+for the same deterministic Run are coalesced by complete start fingerprint;
+changed payload conflicts before another creator can run. For a
+requested Zotero relationship, it marks the mutation boundary before calling
+the portable owner and reconciles only an exact readback. Replay never reapplies
+a committed request over a changed source/relationship, missing source,
+system-Trash responsibility, or terminal Run. The managed creator's
+source/identity readback queues the sole derived refresh; direct start awaits
+that owner rather than racing a second Workspace generation. A committed-source
+projection failure is therefore exact-retryable without duplicate creation
+even if later Settings or App-process state changed.
+
+`LocalAgentBridgeErrorPayload` and CLI error schema 2 carry one
+`AgentOperationRecovery`: retry safety, whether the original request identity
+must be retained, one next-step token, and only for missing/trashed source the
+two researcher-controlled branches. Each branch separately states identity
+reuse and its next step: request-owned Restore resumes exact identity, Restore
+of another existing Analysis starts that target, and distinct creation uses a
+new identity. Bridge mapping owns the closed
+`missing_required_fields`, `path_occupied`, `identity_occupied`,
+`identity_source_missing_or_trashed`, `source_unreadable`, `settings_changed`,
+`stale_projection`, `replay_conflict`, `session_expired`, and
+`outcome_unknown` results. These owner errors do not fall through to
+`operation_failed`.
+Unknown outcomes carry an operation-specific executable step: creation reruns
+its same-ID preflight, idempotent reads/writes retry exactly, pairing obtains a
+new handoff, and non-idempotent existing-target start stops and reports. End is
+also non-retryable: it may already have revoked the Session, so response loss
+requires stop-and-report rather than another credential use.
 Both routes use the loopback-only framed bridge and the same authenticated
 Context, Discuss-turn, write, Result, End, conflict, and recovery owners. A
 Discuss-turn request uses the same authenticated Session and appends only to

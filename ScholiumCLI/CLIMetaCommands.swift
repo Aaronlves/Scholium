@@ -284,7 +284,9 @@ extension ScholiumCLI {
             message: error.localizedDescription,
             command: arguments.prefix(2).joined(separator: " "),
             help: "scholium help " + arguments.prefix(2).joined(separator: " "),
-            diagnostic: searchDiagnostic(for: error)
+            diagnostic: searchDiagnostic(for: error),
+            recovery: (error as? any AgentCommandErrorCodeProviding)?
+                .agentCommandRecovery
         )
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -353,16 +355,17 @@ private struct CLIDoctorTriptych: Encodable {
 }
 
 private struct CLIErrorReport: Encodable {
-    let schemaVersion = 1
+    let schemaVersion = 2
     let error = true
     let code: String
     let message: String
     let command: String
     let help: String
     let diagnostic: SearchQueryDiagnostic?
+    let recovery: AgentOperationRecovery?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
-        case error, code, message, command, help, diagnostic
+        case error, code, message, command, help, diagnostic, recovery
     }
 }

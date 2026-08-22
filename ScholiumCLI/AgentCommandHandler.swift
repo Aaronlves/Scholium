@@ -11,6 +11,24 @@ extension ScholiumCLI {
         operations: any AgentBridgeUseCases,
         credentialStore: AgentSessionCredentialStore
     ) async throws {
+        if arguments.first == "preflight-analysis" {
+            guard let triptychID,
+                  let input = option("--from", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium agent preflight-analysis --triptych <selector> --from <json|->"
+                )
+            }
+            let request = try JSONDecoder().decode(
+                ResearchAgentAnalysisCreationPreflightRequest.self,
+                from: agentInput(input)
+            )
+            let preflight = try await operations.preflightAnalysisCreation(
+                triptychID: triptychID,
+                request: request
+            )
+            try writeAgentJSON(preflight)
+            return
+        }
         if arguments.first == "start" {
             guard let triptychID,
                   let input = option("--from", in: arguments) else {
@@ -360,7 +378,7 @@ extension ScholiumCLI {
             return
         }
         throw CLIError.usage(
-            "Usage: scholium agent pair|context|reload|query|discuss-reply|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
+            "Usage: scholium agent preflight-analysis|start|pair|context|reload|query|discuss-reply|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
         )
     }
 

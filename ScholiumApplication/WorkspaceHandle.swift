@@ -354,6 +354,15 @@ func sourceAuthorizedFolderNoteMoves(
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.
+struct AgentAnalysisStartInFlight: Sendable {
+    let token: UUID
+    let startRequestFingerprint: DocumentFingerprint
+    let task: Task<(
+        preparation: ResearchActionPreparation,
+        target: ResearchActionNoteSnapshot
+    ), Error>
+}
+
 public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private nonisolated static let refreshLogger = Logger(
         subsystem: "com.scholium.app",
@@ -415,6 +424,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     var sourceOperationGate = WorkspaceSourceOperationGate()
+    var agentAnalysisStartsInFlight: [UUID: AgentAnalysisStartInFlight] = [:]
     private var managedCreationPreLeaseBarrierForTesting:
         (@Sendable () async -> Void)?
     private var managedCreationPostSourceBarrierForTesting:
@@ -911,6 +921,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
+        let agentAnalysisStarts = agentAnalysisStartsInFlight.values.map(\.task)
+        agentAnalysisStartsInFlight.removeAll()
+        agentAnalysisStarts.forEach { $0.cancel() }
         let sourceCommitRefresh = sourceCommitRefreshTask
         sourceCommitRefreshTask = nil
         pendingSourceCommitRefreshes.removeAll()
@@ -932,6 +945,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
+        for task in agentAnalysisStarts { _ = await task.result }
         await events.finish(finalSnapshot: currentSnapshot)
         for lease in leases.reversed() where lease.started {
             lease.url.stopAccessingSecurityScopedResource()

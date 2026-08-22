@@ -4,12 +4,8 @@ import Testing
 
 @Suite("Agent-start creation contracts")
 struct ResearchAgentStartContractsTests {
-    @Test("New Analysis start is strict, typed, and distinct from an existing target")
+    @Test("New Analysis start consumes a strict managed-root preflight payload")
     func newAnalysisRoundTrips() throws {
-        let target = VaultQualifiedNoteID(
-            vaultID: UUID(),
-            relativePath: "New/Analysis.md"
-        )
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
             properties: [
@@ -19,15 +15,22 @@ struct ResearchAgentStartContractsTests {
                 ),
             ]
         )
-        let source = try ResearchAgentNewAnalysisSource(
-            library: .user,
-            itemKey: "AbCd1234"
-        )
-        let creation = try ResearchAgentNewAnalysisRequest(
+        let preflight = try ResearchAgentAnalysisCreationPreflightRequest(
             requestID: UUID(uuidString: "00000000-0000-0000-0000-000000000123")!,
-            target: target,
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "A bounded article.md"
+            ),
             metadata: metadata,
-            source: source
+            source: try ResearchAgentNewAnalysisSource(
+                library: .user,
+                itemKey: "AbCd1234"
+            )
+        )
+        let creation = ResearchAgentNewAnalysisRequest(
+            preflight: preflight,
+            settingsRevision: SettingsRevision(
+                fingerprint: DocumentFingerprint(content: "settings-v1")
+            )
         )
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
@@ -46,29 +49,35 @@ struct ResearchAgentStartContractsTests {
         #expect(decoded.target == nil)
         #expect(decoded.newAnalysis == creation)
         #expect(decoded.newAnalysis?.source?.itemKey == "ABCD1234")
+        #expect(decoded.newAnalysis?.destination.resolvedRelativePath
+            == "A bounded article.md")
         #expect(decoded.sourceRoute == nil)
         let json = String(decoding: data, as: UTF8.self)
         #expect(json.contains("new_analysis"))
-        #expect(json.contains("vault_id"))
-        #expect(json.contains("relative_path"))
-        #expect(!json.contains("vaultID"))
-        #expect(!json.contains("relativePath"))
+        #expect(json.contains("managed_default_filename"))
+        #expect(json.contains("settings_revision"))
+        #expect(!json.contains("vault_id"))
+        #expect(!json.contains("relative_path"))
     }
 
-    @Test("New Analysis can declare a researcher-provided source without a path")
+    @Test("Researcher-provided direct creation stays at the managed root")
     func researcherProvidedSourceRoundTrips() throws {
-        let creation = try ResearchAgentNewAnalysisRequest(
-            target: VaultQualifiedNoteID(
-                vaultID: UUID(),
-                relativePath: "Researcher/Local Source Analysis.md"
+        let preflight = try ResearchAgentAnalysisCreationPreflightRequest(
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Local Source Analysis.md"
             ),
             metadata: try AnalysisCreationMetadata(sourceType: .book),
-            source: nil
+            sourceRoute: .researcherProvided
+        )
+        let creation = ResearchAgentNewAnalysisRequest(
+            preflight: preflight,
+            settingsRevision: SettingsRevision(
+                fingerprint: DocumentFingerprint(content: "settings-v1")
+            )
         )
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
-            newAnalysis: creation,
-            sourceRoute: .researcherProvided
+            newAnalysis: creation
         )
         let data = try JSONEncoder().encode(request)
         let decoded = try JSONDecoder().decode(
@@ -77,27 +86,71 @@ struct ResearchAgentStartContractsTests {
         )
         #expect(decoded == request)
         #expect(decoded.newAnalysis?.source == nil)
-        #expect(decoded.sourceRoute == .researcherProvided)
+        #expect(decoded.newAnalysis?.sourceRoute == .researcherProvided)
+        #expect(decoded.sourceRoute == nil)
         let json = String(decoding: data, as: UTF8.self)
+        #expect(json.contains("managed_default_filename"))
+        #expect(!json.contains("researcher_selected_relative_path"))
         #expect(!json.contains("machine_local_path"))
     }
 
-    @Test("Agent start rejects ambiguous target selection and non-Analyze creation")
+    @Test("Creation destination and start reject free classification and ambiguous routes")
     func rejectsAmbiguousStart() throws {
-        let creation = try ResearchAgentNewAnalysisRequest(
-            target: VaultQualifiedNoteID(
-                vaultID: UUID(),
-                relativePath: "Analysis.md"
+        #expect(throws: ResearchAgentStartContractError.self) {
+            _ = try ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Agent/Analysis.md"
+            )
+        }
+        var claimedSelection: [String: Any] = [
+            "schema_version": ResearchAgentAnalysisDestination.currentSchemaVersion,
+            "managed_default_filename": "Analysis.md",
+            "researcher_selected_relative_path": "Agent/Analysis.md",
+        ]
+        #expect(throws: ResearchAgentStartContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchAgentAnalysisDestination.self,
+                from: JSONSerialization.data(withJSONObject: claimedSelection)
+            )
+        }
+        claimedSelection.removeValue(forKey: "managed_default_filename")
+        #expect(throws: ResearchAgentStartContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchAgentAnalysisDestination.self,
+                from: JSONSerialization.data(withJSONObject: claimedSelection)
+            )
+        }
+        #expect(throws: ResearchAgentStartContractError.self) {
+            _ = try ResearchAgentAnalysisCreationPreflightRequest(
+                destination: ResearchAgentAnalysisDestination(
+                    managedDefaultFilename: "Analysis.md"
+                ),
+                metadata: AnalysisCreationMetadata(sourceType: .journalArticle)
+            )
+        }
+
+        let preflight = try ResearchAgentAnalysisCreationPreflightRequest(
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Analysis.md"
             ),
-            metadata: try AnalysisCreationMetadata(sourceType: .journalArticle),
-            source: try ResearchAgentNewAnalysisSource(
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            source: ResearchAgentNewAnalysisSource(
                 library: .user,
                 itemKey: "ABCD1234"
             )
         )
+        let creation = ResearchAgentNewAnalysisRequest(
+            preflight: preflight,
+            settingsRevision: SettingsRevision(
+                fingerprint: DocumentFingerprint(content: "settings-v1")
+            )
+        )
+        let existingTarget = VaultQualifiedNoteID(
+            vaultID: UUID(),
+            relativePath: "Analysis.md"
+        )
         let existing = try ResearchAgentStartRequest(
             actionID: .analyze,
-            target: creation.target
+            target: existingTarget
         )
         var object = try #require(
             JSONSerialization.jsonObject(
@@ -119,14 +172,11 @@ struct ResearchAgentStartContractsTests {
                 newAnalysis: creation
             )
         }
-        let withoutRoute = try ResearchAgentNewAnalysisRequest(
-            target: creation.target,
-            metadata: creation.metadata
-        )
         #expect(throws: ResearchAgentStartContractError.self) {
             try ResearchAgentStartRequest(
                 actionID: .analyze,
-                newAnalysis: withoutRoute
+                newAnalysis: creation,
+                sourceRoute: .researcherProvided
             )
         }
 
@@ -136,8 +186,8 @@ struct ResearchAgentStartContractsTests {
             ) as? [String: Any]
         )
         camelCaseTarget["target"] = [
-            "vaultID": creation.target.vaultID.uuidString,
-            "relativePath": creation.target.relativePath,
+            "vaultID": existingTarget.vaultID.uuidString,
+            "relativePath": existingTarget.relativePath,
         ]
         #expect(throws: ResearchAgentStartContractError.self) {
             _ = try JSONDecoder().decode(

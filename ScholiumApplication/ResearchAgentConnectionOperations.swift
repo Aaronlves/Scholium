@@ -7,6 +7,7 @@ struct WorkspaceResearchAgentConnectionDependencies: Sendable {
     let localResearchExecutionStore: LocalResearchExecutionStore
     let researchAgentSessions: ResearchAgentSessionAuthority?
     let controlStore: TriptychControlStore
+    let transactionRecoveryStore: TriptychMutationRecoveryStore
 }
 
 extension WorkspaceServices {
@@ -15,12 +16,21 @@ extension WorkspaceServices {
         WorkspaceResearchAgentConnectionDependencies(
             localResearchExecutionStore: localResearchExecutionStore,
             researchAgentSessions: researchAgentSessions,
-            controlStore: controlStore
+            controlStore: controlStore,
+            transactionRecoveryStore: transactionRecoveryStore
         )
     }
 }
 
 extension WorkspaceRuntime {
+    public func preflightResearchAgentAnalysisCreation(
+        triptychID: UUID,
+        request: ResearchAgentAnalysisCreationPreflightRequest
+    ) async throws -> ResearchAgentAnalysisCreationPreflight {
+        let handle = try await openWorkspace(id: triptychID)
+        return try await handle.preflightResearchAgentAnalysisCreation(request)
+    }
+
     public func startResearchAgentRun(
         triptychID: UUID,
         request: ResearchAgentStartRequest,
@@ -296,35 +306,573 @@ extension WorkspaceHandle {
         return (preparation, target)
     }
 
-    /// Starts Analyze from an absent Analysis path. Creation is intentionally
-    /// a preflight of the existing Run preparation: the managed creator still
-    /// owns the exact Settings revision, reserved identity, source/identity
-    /// readback, and no-replace path claim, while the resulting Run keeps the
-    /// ordinary target fingerprint and write authority. The optional Zotero
-    /// relationship is portable metadata only; when it is absent, the
-    /// researcher-provided source route is carried outside Scholium.
+    /// Resolves one classification-bounded Analysis destination and current
+    /// Settings plan without creating a Note, identity, Run, or Session.
+    func preflightResearchAgentAnalysisCreation(
+        _ request: ResearchAgentAnalysisCreationPreflightRequest
+    ) async throws -> ResearchAgentAnalysisCreationPreflight {
+        try requireCompleteWorkspace()
+        guard let analysisVaultID = assignment.vault(for: .paperAnalysis)?.id else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let settings = try await researchAgentConnectionDependencies.controlStore.settings()
+        let relativePath = request.destination.resolvedRelativePath
+        let target = VaultQualifiedNoteID(
+            vaultID: analysisVaultID,
+            relativePath: relativePath
+        )
+        let profile = AnalysisSourceTypeProfileCatalog.profile(
+            for: request.metadata.sourceType
+        )
+        let applicable = profile.applicableFields.compactMap {
+            PropertyContractCatalog.contract(for: $0, profile: .analysis)
+        }
+        let required = settings.settings.analysisAgentCreation.requiredFields(
+            for: request.metadata.sourceType
+        )
+        let seedFields = try TriptychSettingsValidator.seedKeys(
+            in: settings.settings.properties[.paperAnalysis]?.newNoteYAML,
+            role: .paperAnalysis
+        ).sorted()
+        let supplied = Set(request.metadata.properties.map(\.key))
+        let missingRequired = required.filter { !supplied.contains($0) }
+        let runID = Self.agentStartDeterministicID(
+            namespace: "agent-start-run",
+            triptychID: id,
+            requestID: request.requestID
+        )
+        let reservedIdentity = Self.agentStartDeterministicID(
+            namespace: "agent-start-new-analysis",
+            triptychID: id,
+            requestID: request.requestID
+        )
+        let requestedBinding = try request.source.map {
+            try AnalysisZoteroBinding(
+                noteID: reservedIdentity,
+                library: $0.library,
+                itemKey: $0.itemKey
+            )
+        }
+        let fingerprint = try Self.agentAnalysisCreationRequestFingerprint(request)
+        let storedCreation = try await researchAgentConnectionDependencies
+            .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID)
+        if let storedCreation,
+           storedCreation.target != target
+                || storedCreation.reservedIdentityID != reservedIdentity
+                || storedCreation.requestedBinding != requestedBinding
+                || storedCreation.sourceRoute != request.sourceRoute {
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                status: .replayConflict,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: true,
+                    nextStep: .inspectOriginalRequestState
+                ),
+                message: "This request identity already belongs to different Analysis creation evidence. Scholium made no new change."
+            )
+        }
+        if let storedCreation,
+           !Self.isPermittedAgentCreationSettingsRefresh(
+               initialMetadata: storedCreation.initialMetadata,
+               refreshedMetadata: request.metadata,
+               currentRequiredFields: required
+           ) {
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                status: .replayConflict,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: true,
+                    nextStep: .inspectOriginalRequestState
+                ),
+                message: "This request identity cannot change its original source type or metadata values. A Settings refresh may add only fields that are currently required. Scholium made no new change."
+            )
+        }
+        if let storedCreation,
+           storedCreation.requestFingerprint != fingerprint {
+            let reservedState = await inspectAgentAnalysisCreationTarget(
+                storedCreation.target,
+                expectedIdentity: reservedIdentity
+            )
+            let existingExecution = try await researchAgentConnectionDependencies
+                .localResearchExecutionStore.recordIfPresent(id: runID)
+            guard existingExecution == nil,
+                  reservedState.stableIdentity == nil,
+                  reservedState.sourceState == .absent else {
+                return try await makeAgentAnalysisPreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: reservedState,
+                    status: .replayConflict,
+                    missingRequired: missingRequired,
+                    recovery: AgentOperationRecovery(
+                        safeToRetry: false,
+                        mustReuseRequestIdentity: true,
+                        nextStep: .inspectOriginalRequestState
+                    ),
+                    message: "Changed input conflicts with committed creation evidence. Scholium made no new change."
+                )
+            }
+            // A Settings-dependent request fingerprint may change only while
+            // this is still a machine-local reservation with no source,
+            // identity, or Run, and only under the immutable-intent check
+            // above.
+        }
+
+        let observed = await inspectAgentAnalysisCreationTarget(
+            target,
+            expectedIdentity: storedCreation == nil ? nil : reservedIdentity
+        )
+        if storedCreation != nil {
+            if let observedIdentity = observed.stableIdentity,
+               observedIdentity != reservedIdentity {
+                return try await makeAgentAnalysisPreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    status: .identityOccupied,
+                    missingRequired: missingRequired,
+                    recovery: AgentOperationRecovery(
+                        safeToRetry: false,
+                        mustReuseRequestIdentity: false,
+                        nextStep: .startExistingAnalysis
+                    ),
+                    message: "The reserved destination now belongs to another portable Analysis identity. Scholium preserved both identities and made no new change."
+                )
+            }
+            if observed.sourceState == .present,
+               observed.stableIdentity == nil {
+                return try await makeAgentAnalysisPreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    status: .pathOccupied,
+                    missingRequired: missingRequired,
+                    recovery: AgentOperationRecovery(
+                        safeToRetry: false,
+                        mustReuseRequestIdentity: false,
+                        nextStep: .requestResearcherDistinctFilenameAndPreflight
+                    ),
+                    message: "The reserved destination is now occupied by source without the reserved identity. Scholium did not overwrite it or invent another filename."
+                )
+            }
+            if [.missing, .inSystemTrash, .missingOrInSystemTrash]
+                .contains(observed.sourceState),
+               observed.stableIdentity == reservedIdentity {
+                return try await missingAgentAnalysisSourcePreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    missingRequired: missingRequired,
+                    creationOwned: true
+                )
+            }
+            if observed.sourceState == .unreadable {
+                return try await makeAgentAnalysisPreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    status: .sourceUnreadable,
+                    missingRequired: missingRequired,
+                    recovery: AgentOperationRecovery(
+                        safeToRetry: false,
+                        mustReuseRequestIdentity: true,
+                        nextStep: .resolveSourceAccess
+                    ),
+                    message: "Scholium cannot verify the reserved Analysis source. Restore access and rerun preflight without changing the request identity."
+                )
+            }
+            if let execution = try await researchAgentConnectionDependencies
+                .localResearchExecutionStore.recordIfPresent(id: runID) {
+                guard observed.stableIdentity == reservedIdentity,
+                      observed.sourceState == .present else {
+                    return try await makeAgentAnalysisPreflight(
+                        request: request,
+                        analysisVaultID: analysisVaultID,
+                        settings: settings,
+                        applicable: applicable,
+                        required: required,
+                        seedFields: seedFields,
+                        target: target,
+                        observed: observed,
+                        status: .replayConflict,
+                        missingRequired: missingRequired,
+                        recovery: AgentOperationRecovery(
+                            safeToRetry: false,
+                            mustReuseRequestIdentity: true,
+                            nextStep: .inspectOriginalRequestState
+                        ),
+                        message: "The stored Run has no matching committed Analysis source and identity. Scholium made no new change."
+                    )
+                }
+                if observed.fingerprint
+                    != execution.snapshot.actionSnapshot?.target.fingerprint {
+                    return try await makeAgentAnalysisPreflight(
+                        request: request,
+                        analysisVaultID: analysisVaultID,
+                        settings: settings,
+                        applicable: applicable,
+                        required: required,
+                        seedFields: seedFields,
+                        target: target,
+                        observed: observed,
+                        status: .runStale,
+                        missingRequired: missingRequired,
+                        recovery: AgentOperationRecovery(
+                            safeToRetry: false,
+                            mustReuseRequestIdentity: false,
+                            nextStep: .startNewActionFromCurrentRevision
+                        ),
+                        message: "The restored Analysis source does not match the frozen Run revision. Inspect it and start a new Analyze Action from the current revision."
+                    )
+                }
+                let status: ResearchAgentAnalysisCreationPreflightStatus =
+                    execution.completion == nil ? .runPrepared : .replayConflict
+                return try await makeAgentAnalysisPreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    status: status,
+                    missingRequired: missingRequired,
+                    recovery: AgentOperationRecovery(
+                        safeToRetry: execution.completion == nil,
+                        mustReuseRequestIdentity: true,
+                        nextStep: execution.completion == nil
+                            ? .retryExactRequest
+                            : .inspectOriginalRequestState
+                    ),
+                    message: execution.completion == nil
+                        ? "The same Analysis Run is already prepared. Retry only the exact start request to receive a replacement Session."
+                        : "This creation request already reached terminal Run state and cannot start another Run."
+                )
+            }
+            if observed.stableIdentity == reservedIdentity,
+               observed.sourceState == .present {
+                if let committed = storedCreation?.committedSourceFingerprint,
+                   committed != observed.fingerprint {
+                    return try await makeAgentAnalysisPreflight(
+                        request: request,
+                        analysisVaultID: analysisVaultID,
+                        settings: settings,
+                        applicable: applicable,
+                        required: required,
+                        seedFields: seedFields,
+                        target: target,
+                        observed: observed,
+                        status: .replayConflict,
+                        missingRequired: missingRequired,
+                        recovery: AgentOperationRecovery(
+                            safeToRetry: false,
+                            mustReuseRequestIdentity: true,
+                            nextStep: .inspectOriginalRequestState
+                        ),
+                        message: "The committed Analysis source revision changed before Run preparation. Scholium refused exact replay."
+                    )
+                }
+                return try await makeAgentAnalysisPreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    status: .sourceCommittedProjectionPending,
+                    missingRequired: missingRequired,
+                    recovery: AgentOperationRecovery(
+                        safeToRetry: true,
+                        mustReuseRequestIdentity: true,
+                        nextStep: .retryExactRequest
+                    ),
+                    message: "The authoritative Analysis source and reserved identity are committed. Retry only the exact start request so Scholium can finish projection and Run preparation."
+                )
+            }
+            // A matching local reservation with no portable identity or source
+            // is pre-commit state. Continue through current Settings and
+            // metadata validation; do not manufacture a missing identity.
+        }
+
+        do {
+            let validationRequest = try ManagedNoteCreationRequest(
+                vaultID: analysisVaultID,
+                destination: .exact(relativePath: target.relativePath),
+                analysisMetadata: request.metadata,
+                authority: .authenticatedAgent(
+                    settingsRevision: settings.revision,
+                    reservedIdentity: reservedIdentity
+                )
+            )
+            _ = try managedCreationSource(
+                request: validationRequest,
+                slot: .paperAnalysis,
+                settings: settings.settings
+            )
+        } catch DocumentCreationError.missingRequiredAgentFields {
+            // Missing fields have their own complete preflight result below.
+        } catch let error as DocumentCreationError {
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                observed: observed,
+                status: .invalidMetadata,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: true,
+                    nextStep: .correctRequest
+                ),
+                message: error.localizedDescription
+            )
+        }
+
+        if observed.stableIdentity != nil {
+            if [.missing, .inSystemTrash, .missingOrInSystemTrash]
+                .contains(observed.sourceState) {
+                return try await missingAgentAnalysisSourcePreflight(
+                    request: request,
+                    analysisVaultID: analysisVaultID,
+                    settings: settings,
+                    applicable: applicable,
+                    required: required,
+                    seedFields: seedFields,
+                    target: target,
+                    observed: observed,
+                    missingRequired: missingRequired,
+                    creationOwned: false
+                )
+            }
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                observed: observed,
+                status: .identityOccupied,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: false,
+                    nextStep: .startExistingAnalysis
+                ),
+                message: "The root destination already belongs to an existing Analysis identity. Start that existing target or ask the researcher for a distinct root filename."
+            )
+        }
+        if observed.sourceState == .present {
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                observed: observed,
+                status: .pathOccupied,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: false,
+                    nextStep: .requestResearcherDistinctFilenameAndPreflight
+                ),
+                message: "The exact destination is occupied by source without the requested new identity. Scholium will not overwrite or invent a retry name."
+            )
+        }
+        if observed.sourceState == .unreadable {
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                observed: observed,
+                status: .sourceUnreadable,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: true,
+                    nextStep: .resolveSourceAccess
+                ),
+                message: "Scholium cannot verify whether the exact destination is absent. Restore access and rerun this preflight."
+            )
+        }
+        if !missingRequired.isEmpty {
+            return try await makeAgentAnalysisPreflight(
+                request: request,
+                analysisVaultID: analysisVaultID,
+                settings: settings,
+                applicable: applicable,
+                required: required,
+                seedFields: seedFields,
+                target: target,
+                observed: observed,
+                status: .missingRequiredFields,
+                missingRequired: missingRequired,
+                recovery: AgentOperationRecovery(
+                    safeToRetry: false,
+                    mustReuseRequestIdentity: true,
+                    nextStep: .supplyRequiredFieldsAndPreflight
+                ),
+                message: "Supply every current Settings-required field and rerun preflight with the same logical request identity. Do not use placeholders."
+            )
+        }
+        let start = ResearchAgentNewAnalysisRequest(
+            preflight: request,
+            settingsRevision: settings.revision
+        )
+        return ResearchAgentAnalysisCreationPreflight(
+            request: request,
+            analysisVaultID: analysisVaultID,
+            settingsRevision: settings.revision,
+            applicableFields: applicable,
+            requiredFields: required,
+            applicationOwnedFields: seedFields,
+            targetState: observed,
+            status: .ready,
+            startNewAnalysis: start,
+            recovery: AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .startWithReturnedTemplate
+            ),
+            message: "The managed default resolves this Analysis at the Analyses-vault root. A researcher-selected subfolder requires a researcher-created existing Analysis target."
+        )
+    }
+
+    /// Starts Analyze only from the exact current preflight contract. A
+    /// committed creation record resumes before Settings are reconsidered, so
+    /// later Settings or App-process changes cannot invalidate confirmed
+    /// source/identity work.
     func startNewAnalysisResearchAgentRun(
+        _ request: ResearchAgentStartRequest
+    ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
+        guard let creation = request.newAnalysis else {
+            throw ResearchActionExecutionContractError.staleResolution
+        }
+        let runID = Self.agentStartDeterministicID(
+            namespace: "agent-start-run",
+            triptychID: id,
+            requestID: creation.requestID
+        )
+        let fingerprint = try Self.agentAnalysisStartRequestFingerprint(request)
+        if let inFlight = agentAnalysisStartsInFlight[runID] {
+            guard inFlight.startRequestFingerprint == fingerprint else {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            return try await inFlight.task.value
+        }
+        let token = UUID()
+        let task = Task {
+            try await self.performNewAnalysisResearchAgentRun(request)
+        }
+        agentAnalysisStartsInFlight[runID] = AgentAnalysisStartInFlight(
+            token: token,
+            startRequestFingerprint: fingerprint,
+            task: task
+        )
+        do {
+            let result = try await task.value
+            if agentAnalysisStartsInFlight[runID]?.token == token {
+                agentAnalysisStartsInFlight[runID] = nil
+            }
+            return result
+        } catch {
+            if agentAnalysisStartsInFlight[runID]?.token == token {
+                agentAnalysisStartsInFlight[runID] = nil
+            }
+            throw error
+        }
+    }
+
+    private func performNewAnalysisResearchAgentRun(
         _ request: ResearchAgentStartRequest
     ) async throws -> (preparation: ResearchActionPreparation, target: ResearchActionNoteSnapshot) {
         try requireCompleteWorkspace()
         guard request.actionID == .analyze,
               let creation = request.newAnalysis,
               request.target == nil,
-              let analysisVaultID = self.assignment.vault(for: .paperAnalysis)?.id,
-              creation.target.vaultID == analysisVaultID else {
+              request.sourceRoute == nil,
+              let analysisVaultID = self.assignment.vault(for: .paperAnalysis)?.id else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-
-        let settings = try await researchAgentConnectionDependencies.controlStore.settings()
-        let reservedIdentity = try Self.agentStartDeterministicID(
+        let target = VaultQualifiedNoteID(
+            vaultID: analysisVaultID,
+            relativePath: creation.destination.resolvedRelativePath
+        )
+        let reservedIdentity = Self.agentStartDeterministicID(
             namespace: "agent-start-new-analysis",
-            request: request
+            triptychID: id,
+            requestID: creation.requestID
         )
-        let runID = try Self.agentStartDeterministicID(
+        let runID = Self.agentStartDeterministicID(
             namespace: "agent-start-run",
-            request: request
+            triptychID: id,
+            requestID: creation.requestID
         )
-        let requestFingerprint = try Self.agentStartRequestFingerprint(request)
+        let requestFingerprint = try Self.agentAnalysisCreationRequestFingerprint(
+            creation.preflight
+        )
+        let creationPayloadFingerprint = try Self.agentAnalysisCreationPayloadFingerprint(
+            creation
+        )
+        let startRequestFingerprint = try Self.agentAnalysisStartRequestFingerprint(
+            request
+        )
         let requestedBinding = try creation.source.map {
             try AnalysisZoteroBinding(
                 noteID: reservedIdentity,
@@ -338,12 +886,48 @@ extension WorkspaceHandle {
             let expectedRoute: ResearchAnalysisSourceRoute = creation.source == nil
                 ? .researcherProvided
                 : .externalZotero
+            guard let storedCreation = try await researchAgentConnectionDependencies
+                .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID),
+                  storedCreation.requestFingerprint == requestFingerprint,
+                  storedCreation.creationPayloadFingerprint
+                    == creationPayloadFingerprint,
+                  storedCreation.startRequestFingerprint == startRequestFingerprint,
+                  storedCreation.target == target,
+                  storedCreation.reservedIdentityID == reservedIdentity else {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
             guard existingRun.snapshot.runID == runID,
                   existingRun.snapshot.actionSnapshot?.actionID == .analyze,
-                  existingRun.snapshot.request.target.note == creation.target,
+                  existingRun.snapshot.request.target.note == target,
                   existingRun.snapshot.analysisSourceRoute == expectedRoute,
-                  let target = existingRun.snapshot.actionSnapshot?.target else {
-                throw ResearchActionExecutionContractError.staleResolution
+                  let snapshotTarget = existingRun.snapshot.actionSnapshot?.target else {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            let observed = await inspectAgentAnalysisCreationTarget(
+                target,
+                expectedIdentity: reservedIdentity
+            )
+            guard observed.stableIdentity == reservedIdentity else {
+                if observed.stableIdentity != nil {
+                    throw ResearchAgentConnectionError.analysisIdentityOccupied
+                }
+                if observed.sourceState == .present {
+                    throw ResearchAgentConnectionError.analysisPathOccupied
+                }
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            switch observed.sourceState {
+            case .present:
+                guard observed.fingerprint == snapshotTarget.fingerprint else {
+                    throw ResearchAgentConnectionError.runStale(.targetChanged)
+                }
+            case .missing, .inSystemTrash, .missingOrInSystemTrash:
+                throw ResearchAgentConnectionError
+                    .analysisIdentitySourceMissingOrTrashed
+            case .unreadable:
+                throw ResearchAgentConnectionError.analysisSourceUnreadable
+            case .absent:
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
             if let requestedBinding {
                 try await requireCurrentAgentAnalysisBinding(
@@ -353,66 +937,174 @@ extension WorkspaceHandle {
             }
             let preparation = try await researchActionRun(id: runID)
             guard preparation.state == .prepared else {
-                throw ResearchAgentConnectionError.runUnavailable
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
-            return (preparation, target)
+            return (preparation, snapshotTarget)
         }
-
+        let expectedCreation = try LocalAgentAnalysisCreationRecord(
+            triptychID: id,
+            runID: runID,
+            requestFingerprint: requestFingerprint,
+            creationPayloadFingerprint: creationPayloadFingerprint,
+            startRequestFingerprint: startRequestFingerprint,
+            target: target,
+            reservedIdentityID: reservedIdentity,
+            requestedBinding: requestedBinding,
+            sourceRoute: creation.sourceRoute,
+            initialMetadata: creation.metadata,
+            academicPurpose: request.academicPurpose
+        )
+        var storedCreation = try await researchAgentConnectionDependencies
+            .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID)
+        var hasCommittedSourceAndIdentity = false
+        if let storedCreation {
+            guard Self.matchesAgentAnalysisCreationReservation(
+                storedCreation,
+                expected: expectedCreation
+            ) else {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            let observed = await inspectAgentAnalysisCreationTarget(
+                target,
+                expectedIdentity: reservedIdentity
+            )
+            if let observedIdentity = observed.stableIdentity,
+               observedIdentity != reservedIdentity {
+                throw ResearchAgentConnectionError.analysisIdentityOccupied
+            }
+            if observed.sourceState == .present,
+               observed.stableIdentity == nil {
+                throw ResearchAgentConnectionError.analysisPathOccupied
+            }
+            if [.missing, .inSystemTrash, .missingOrInSystemTrash]
+                .contains(observed.sourceState),
+               observed.stableIdentity == reservedIdentity {
+                throw ResearchAgentConnectionError
+                    .analysisIdentitySourceMissingOrTrashed
+            }
+            if observed.sourceState == .unreadable {
+                throw ResearchAgentConnectionError.analysisSourceUnreadable
+            }
+            hasCommittedSourceAndIdentity = observed.stableIdentity == reservedIdentity
+                && observed.sourceState == .present
+            if storedCreation.requestFingerprint != requestFingerprint,
+               hasCommittedSourceAndIdentity {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            if storedCreation.startRequestFingerprint != startRequestFingerprint,
+               hasCommittedSourceAndIdentity {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            if storedCreation.startRequestFingerprint != startRequestFingerprint,
+               storedCreation.creationPayloadFingerprint
+                == creationPayloadFingerprint {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            if let committed = storedCreation.committedSourceFingerprint,
+               hasCommittedSourceAndIdentity,
+               committed != observed.fingerprint {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+        }
+        if storedCreation == nil || !hasCommittedSourceAndIdentity {
+            let currentSettings = try await researchAgentConnectionDependencies
+                .controlStore.settings()
+            guard currentSettings.revision == creation.settingsRevision else {
+                throw ResearchAgentConnectionError.settingsChanged
+            }
+            let preflight = try await preflightResearchAgentAnalysisCreation(
+                creation.preflight
+            )
+            guard preflight.status == .ready,
+                  preflight.startNewAnalysis == creation else {
+                throw Self.creationPreflightError(preflight.status)
+            }
+            if let currentReservation = storedCreation,
+               !Self.isPermittedAgentCreationSettingsRefresh(
+                   initialMetadata: currentReservation.initialMetadata,
+                   refreshedMetadata: creation.metadata,
+                   currentRequiredFields: preflight.requiredFields
+               ) {
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
+            }
+            if storedCreation == nil {
+                do {
+                    storedCreation = try await researchAgentConnectionDependencies
+                        .localResearchExecutionStore.createAgentAnalysisCreation(
+                            expectedCreation
+                        )
+                } catch LocalResearchExecutionStoreError
+                    .agentAnalysisCreationAlreadyExists {
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                } catch LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch {
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                }
+            } else if let currentReservation = storedCreation,
+                      currentReservation.requestFingerprint != requestFingerprint
+                        || currentReservation.creationPayloadFingerprint
+                            != creationPayloadFingerprint
+                        || currentReservation.startRequestFingerprint
+                            != startRequestFingerprint {
+                let replacement = try LocalAgentAnalysisCreationRecord(
+                    triptychID: expectedCreation.triptychID,
+                    runID: expectedCreation.runID,
+                    requestFingerprint: expectedCreation.requestFingerprint,
+                    creationPayloadFingerprint: expectedCreation.creationPayloadFingerprint,
+                    startRequestFingerprint: expectedCreation.startRequestFingerprint,
+                    target: expectedCreation.target,
+                    reservedIdentityID: expectedCreation.reservedIdentityID,
+                    requestedBinding: expectedCreation.requestedBinding,
+                    sourceRoute: expectedCreation.sourceRoute,
+                    initialMetadata: currentReservation.initialMetadata,
+                    academicPurpose: expectedCreation.academicPurpose
+                )
+                do {
+                    storedCreation = try await researchAgentConnectionDependencies
+                        .localResearchExecutionStore.reviseAgentAnalysisCreationReservation(
+                            expected: currentReservation,
+                            replacement: replacement
+                        )
+                } catch LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch {
+                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
+                }
+            }
+        }
         let existingIdentity = try await researchAgentConnectionDependencies
             .controlStore.identityRecord(
-                vaultID: creation.target.vaultID,
-                relativePath: creation.target.relativePath
+                vaultID: target.vaultID,
+                relativePath: target.relativePath
             )
         if let existingIdentity, existingIdentity.id != reservedIdentity {
-            throw DocumentCreationError.portableIdentityAlreadyExists
-        }
-        if let requestedBinding {
-            let expectedCreation = try LocalAgentAnalysisCreationRecord(
-                triptychID: id,
-                runID: runID,
-                requestFingerprint: requestFingerprint,
-                target: creation.target,
-                reservedIdentityID: reservedIdentity,
-                requestedBinding: requestedBinding
-            )
-            if let existing = try await researchAgentConnectionDependencies
-                .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID) {
-                guard Self.matchesAgentAnalysisCreation(
-                    existing,
-                    expected: expectedCreation
-                ) else {
-                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
-                }
-            } else {
-                guard existingIdentity == nil else {
-                    throw ResearchAgentConnectionError.newAnalysisReplayConflict
-                }
-                _ = try await researchAgentConnectionDependencies
-                    .localResearchExecutionStore.createAgentAnalysisCreation(
-                        expectedCreation
-                    )
-            }
+            throw ResearchAgentConnectionError.analysisIdentityOccupied
         }
 
         let managedRequest = try ManagedNoteCreationRequest(
-            vaultID: creation.target.vaultID,
-            destination: .exact(relativePath: creation.target.relativePath),
+            vaultID: target.vaultID,
+            destination: .exact(relativePath: target.relativePath),
             analysisMetadata: creation.metadata,
             authority: .authenticatedAgent(
-                settingsRevision: settings.revision,
+                settingsRevision: creation.settingsRevision,
                 reservedIdentity: reservedIdentity
             )
         )
         let commit: WorkspaceManagedNoteCommit
         if let existingIdentity {
-            let existingDocument = try await repository(
-                vaultID: creation.target.vaultID
-            ).load(relativePath: creation.target.relativePath)
+            let existingDocument: NoteDocument
+            do {
+                existingDocument = try await repository(
+                    vaultID: target.vaultID
+                ).load(relativePath: target.relativePath)
+            } catch VaultRepositoryError.fileDoesNotExist {
+                throw ResearchAgentConnectionError
+                    .analysisIdentitySourceMissingOrTrashed
+            }
             guard existingIdentity.fingerprint == existingDocument.fingerprint else {
-                throw ResearchActionExecutionContractError.staleResolution
+                throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
             commit = WorkspaceManagedNoteCommit(
-                id: creation.target,
+                id: target,
                 vaultRole: .sourceCorpus,
                 stableIdentity: .resolved(reservedIdentity),
                 document: existingDocument
@@ -420,10 +1112,15 @@ extension WorkspaceHandle {
         } else {
             commit = try await createManagedNote(managedRequest).committedValue
         }
-        guard commit.id == creation.target,
+        guard commit.id == target,
               commit.stableIdentity.resolvedID == reservedIdentity else {
             throw ResearchActionExecutionContractError.staleResolution
         }
+        _ = try await researchAgentConnectionDependencies.localResearchExecutionStore
+            .confirmAgentAnalysisCreationSource(
+                runID: runID,
+                fingerprint: commit.document.fingerprint
+            )
 
         // Creation already queued the one Workspace-owned refresh. Await that
         // owner instead of racing it with another generation. A failed
@@ -431,7 +1128,7 @@ extension WorkspaceHandle {
         // resumes from the deterministic identity above without creating a
         // duplicate Note.
         _ = try await awaitCommittedSourceProjection(
-            id: creation.target,
+            id: target,
             stableIdentity: reservedIdentity,
             fingerprint: commit.document.fingerprint
         )
@@ -451,15 +1148,189 @@ extension WorkspaceHandle {
         // single-owned instead of introducing a parallel Analyze lifecycle.
         let existingTargetRequest = try ResearchAgentStartRequest(
             actionID: request.actionID,
-            target: creation.target,
+            target: target,
             academicPurpose: request.academicPurpose,
-            sourceRoute: creation.source == nil ? .researcherProvided : nil
+            sourceRoute: creation.sourceRoute
         )
         return try await startResearchAgentRun(
             existingTargetRequest,
             expectedZoteroBinding: requestedBinding,
             runIDOverride: runID
         )
+    }
+
+    private func inspectAgentAnalysisCreationTarget(
+        _ target: VaultQualifiedNoteID,
+        expectedIdentity: UUID?
+    ) async -> ResearchAgentAnalysisTargetState {
+        let identity: NoteIdentityRecord?
+        do {
+            identity = try await researchAgentConnectionDependencies.controlStore
+                .identityRecord(
+                    vaultID: target.vaultID,
+                    relativePath: target.relativePath
+                )
+        } catch {
+            return ResearchAgentAnalysisTargetState(
+                target: target,
+                stableIdentity: nil,
+                fingerprint: nil,
+                sourceState: .unreadable
+            )
+        }
+        if let expectedIdentity,
+           let identity,
+           identity.id != expectedIdentity {
+            return ResearchAgentAnalysisTargetState(
+                target: target,
+                stableIdentity: identity.id,
+                fingerprint: identity.fingerprint,
+                sourceState: .unreadable
+            )
+        }
+        do {
+            let document = try await repository(vaultID: target.vaultID)
+                .load(relativePath: target.relativePath)
+            return ResearchAgentAnalysisTargetState(
+                target: target,
+                stableIdentity: identity?.id,
+                fingerprint: document.fingerprint,
+                sourceState: .present
+            )
+        } catch VaultRepositoryError.fileDoesNotExist {
+            guard identity != nil else {
+                return ResearchAgentAnalysisTargetState(
+                    target: target,
+                    stableIdentity: nil,
+                    fingerprint: nil,
+                    sourceState: .absent
+                )
+            }
+            let pendingTrash = (try? await researchAgentConnectionDependencies
+                .transactionRecoveryStore.pending())?
+                .contains(where: { record in
+                    record.files.contains(where: {
+                        $0.vaultID == target.vaultID
+                            && $0.path == target.relativePath
+                            && $0.role == .trashedNote
+                    })
+                }) == true
+            return ResearchAgentAnalysisTargetState(
+                target: target,
+                stableIdentity: identity?.id,
+                fingerprint: identity?.fingerprint,
+                sourceState: pendingTrash
+                    ? .inSystemTrash
+                    : .missingOrInSystemTrash
+            )
+        } catch {
+            return ResearchAgentAnalysisTargetState(
+                target: target,
+                stableIdentity: identity?.id,
+                fingerprint: identity?.fingerprint,
+                sourceState: .unreadable
+            )
+        }
+    }
+
+    private func makeAgentAnalysisPreflight(
+        request: ResearchAgentAnalysisCreationPreflightRequest,
+        analysisVaultID: UUID,
+        settings: TriptychSettingsSnapshot,
+        applicable: [PropertyContract],
+        required: [String],
+        seedFields: [String],
+        target: VaultQualifiedNoteID,
+        observed: ResearchAgentAnalysisTargetState? = nil,
+        status: ResearchAgentAnalysisCreationPreflightStatus,
+        missingRequired: [String],
+        recovery: AgentOperationRecovery,
+        message: String
+    ) async throws -> ResearchAgentAnalysisCreationPreflight {
+        let targetState = if let observed {
+            observed
+        } else {
+            await inspectAgentAnalysisCreationTarget(target, expectedIdentity: nil)
+        }
+        return ResearchAgentAnalysisCreationPreflight(
+            request: request,
+            analysisVaultID: analysisVaultID,
+            settingsRevision: settings.revision,
+            applicableFields: applicable,
+            requiredFields: required,
+            applicationOwnedFields: seedFields,
+            targetState: targetState,
+            status: status,
+            missingRequiredFields: missingRequired,
+            recovery: recovery,
+            message: message
+        )
+    }
+
+    private func missingAgentAnalysisSourcePreflight(
+        request: ResearchAgentAnalysisCreationPreflightRequest,
+        analysisVaultID: UUID,
+        settings: TriptychSettingsSnapshot,
+        applicable: [PropertyContract],
+        required: [String],
+        seedFields: [String],
+        target: VaultQualifiedNoteID,
+        observed: ResearchAgentAnalysisTargetState,
+        missingRequired: [String],
+        creationOwned: Bool
+    ) async throws -> ResearchAgentAnalysisCreationPreflight {
+        try await makeAgentAnalysisPreflight(
+            request: request,
+            analysisVaultID: analysisVaultID,
+            settings: settings,
+            applicable: applicable,
+            required: required,
+            seedFields: seedFields,
+            target: target,
+            observed: observed,
+            status: .identitySourceMissingOrTrashed,
+            missingRequired: missingRequired,
+            recovery: AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .requestResearcherRecoveryChoice,
+                creationBranches: [
+                    AgentCreationRecoveryBranch(
+                        kind: .restoreOriginalSource,
+                        mustReuseRequestIdentity: creationOwned,
+                        nextStep: creationOwned
+                            ? .retryExactRequest
+                            : .startExistingAnalysis
+                    ),
+                    AgentCreationRecoveryBranch(
+                        kind: .explicitlyCreateAtDistinctDestination,
+                        mustReuseRequestIdentity: false,
+                        nextStep: .requestResearcherDistinctFilenameAndPreflight
+                    ),
+                ]
+            ),
+            message: creationOwned
+                ? "A request-owned portable Analysis identity remains but its source is missing or in the system Trash. Restore resumes only the original request identity; distinct creation requires a new identity. Scholium made no source change."
+                : "An existing portable Analysis identity remains but its source is missing or in the system Trash. Restore returns to the existing Analysis; distinct creation requires a new identity. Scholium made no source change."
+        )
+    }
+
+    private static func creationPreflightError(
+        _ status: ResearchAgentAnalysisCreationPreflightStatus
+    ) -> ResearchAgentConnectionError {
+        switch status {
+        case .invalidMetadata: .invalidAnalysisCreationMetadata
+        case .missingRequiredFields: .missingRequiredFields
+        case .pathOccupied: .analysisPathOccupied
+        case .identityOccupied: .analysisIdentityOccupied
+        case .identitySourceMissingOrTrashed:
+            .analysisIdentitySourceMissingOrTrashed
+        case .sourceUnreadable: .analysisSourceUnreadable
+        case .replayConflict, .sourceCommittedProjectionPending, .runPrepared:
+            .newAnalysisReplayConflict
+        case .runStale: .runStale(.targetChanged)
+        case .ready: .newAnalysisReplayConflict
+        }
     }
 
     private func establishAgentAnalysisBinding(
@@ -474,7 +1345,10 @@ extension WorkspaceHandle {
         let snapshot = try await researchAgentConnectionDependencies.controlStore
             .zoteroBindings()
         let current = snapshot.binding(for: expected.noteID)
-        switch record.bindingState {
+        guard let bindingState = record.bindingState else {
+            throw ResearchAgentConnectionError.newAnalysisReplayConflict
+        }
+        switch bindingState {
         case .reserved, .retryable:
             if let current {
                 guard current == expected else {
@@ -513,7 +1387,7 @@ extension WorkspaceHandle {
             guard current == expected else {
                 throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
-            if record.bindingState == .writing {
+            if bindingState == .writing {
                 _ = try await store.advanceAgentAnalysisCreationBinding(
                     runID: runID,
                     to: .committed
@@ -541,24 +1415,53 @@ extension WorkspaceHandle {
         }
     }
 
-    private static func matchesAgentAnalysisCreation(
+    private static func matchesAgentAnalysisCreationReservation(
         _ existing: LocalAgentAnalysisCreationRecord,
         expected: LocalAgentAnalysisCreationRecord
     ) -> Bool {
         existing.triptychID == expected.triptychID
             && existing.runID == expected.runID
-            && existing.requestFingerprint == expected.requestFingerprint
             && existing.target == expected.target
             && existing.reservedIdentityID == expected.reservedIdentityID
             && existing.requestedBinding == expected.requestedBinding
+            && existing.sourceRoute == expected.sourceRoute
+            && existing.academicPurpose == expected.academicPurpose
+    }
+
+    /// A Settings refresh cannot rewrite the first consequential creation
+    /// intent. It may preserve that metadata exactly, or add only fields that
+    /// the current Settings now require. Existing values and source type are
+    /// frozen even before the source commit.
+    private static func isPermittedAgentCreationSettingsRefresh(
+        initialMetadata: AnalysisCreationMetadata,
+        refreshedMetadata: AnalysisCreationMetadata,
+        currentRequiredFields: [String]
+    ) -> Bool {
+        guard initialMetadata.sourceType == refreshedMetadata.sourceType else {
+            return false
+        }
+        let initial = Dictionary(
+            uniqueKeysWithValues: initialMetadata.properties.map { ($0.key, $0.value) }
+        )
+        let refreshed = Dictionary(
+            uniqueKeysWithValues: refreshedMetadata.properties.map { ($0.key, $0.value) }
+        )
+        guard initial.allSatisfy({ refreshed[$0.key] == $0.value }) else {
+            return false
+        }
+        let required = Set(currentRequiredFields)
+        return refreshed.keys.allSatisfy { initial[$0] != nil || required.contains($0) }
     }
 
     private static func agentStartDeterministicID(
         namespace: String,
-        request: ResearchAgentStartRequest
-    ) throws -> UUID {
-        var material = Data((namespace + "\u{0}").utf8)
-        material.append(try agentStartCanonicalData(request))
+        triptychID: UUID,
+        requestID: UUID
+    ) -> UUID {
+        let material = Data(
+            (namespace + "\u{0}" + triptychID.uuidString.lowercased()
+                + "\u{0}" + requestID.uuidString.lowercased()).utf8
+        )
         let digest = DocumentFingerprint(data: material).sha256
         let value = [
             String(digest.prefix(8)),
@@ -570,18 +1473,28 @@ extension WorkspaceHandle {
         return UUID(uuidString: value)!
     }
 
-    private static func agentStartRequestFingerprint(
-        _ request: ResearchAgentStartRequest
+    private static func agentAnalysisCreationRequestFingerprint(
+        _ request: ResearchAgentAnalysisCreationPreflightRequest
     ) throws -> DocumentFingerprint {
-        DocumentFingerprint(data: try agentStartCanonicalData(request))
-    }
-
-    private static func agentStartCanonicalData(
-        _ request: ResearchAgentStartRequest
-    ) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return try encoder.encode(request)
+        return DocumentFingerprint(data: try encoder.encode(request))
+    }
+
+    private static func agentAnalysisStartRequestFingerprint(
+        _ request: ResearchAgentStartRequest
+    ) throws -> DocumentFingerprint {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return DocumentFingerprint(data: try encoder.encode(request))
+    }
+
+    private static func agentAnalysisCreationPayloadFingerprint(
+        _ request: ResearchAgentNewAnalysisRequest
+    ) throws -> DocumentFingerprint {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return DocumentFingerprint(data: try encoder.encode(request))
     }
 
     func validateActiveResearchAgentRun(_ runID: UUID) async throws {
@@ -1193,6 +2106,13 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
     case secureRandomUnavailable
     case runUnavailable
     case capabilityUnavailable
+    case invalidAnalysisCreationMetadata
+    case missingRequiredFields
+    case analysisPathOccupied
+    case analysisIdentityOccupied
+    case analysisIdentitySourceMissingOrTrashed
+    case analysisSourceUnreadable
+    case settingsChanged
     case newAnalysisReplayConflict
     case runStale(ResearchAgentRunStaleReason)
 
@@ -1204,8 +2124,22 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
             "The Research Run is unavailable, ended, or no longer matches its frozen Action."
         case .capabilityUnavailable:
             "This Research Context channel is not available for the frozen Action."
+        case .invalidAnalysisCreationMetadata:
+            "The Analysis creation metadata does not match the current source-type, Property, or application-owned seed contract. Rerun preflight with corrected fields."
+        case .missingRequiredFields:
+            "The Analysis creation is missing current Settings-required fields. Rerun creation preflight and supply the returned fields without placeholders."
+        case .analysisPathOccupied:
+            "The resolved Analysis destination is occupied. Scholium did not overwrite it or invent another filename."
+        case .analysisIdentityOccupied:
+            "The resolved Analysis destination already belongs to a portable Note identity. Use that existing Analysis or ask the researcher for a distinct root filename."
+        case .analysisIdentitySourceMissingOrTrashed:
+            "A portable Analysis identity remains but its source is missing or in the system Trash. Scholium did not recreate, overwrite, delete the identity, or create a retry file."
+        case .analysisSourceUnreadable:
+            "Scholium cannot verify the authoritative source state at the resolved Analysis destination."
+        case .settingsChanged:
+            "The Triptych Settings changed after Analysis creation preflight. Rerun preflight with the same logical request identity before starting."
         case .newAnalysisReplayConflict:
-            "The Analysis creation request no longer matches its current Zotero relationship. Scholium preserved the newer researcher-owned relationship and refused replay."
+            "The Analysis creation request identity already belongs to different or terminal creation evidence. Scholium preserved the authoritative source, identity, relationship, Run, and recovery state and refused replay."
         case .runStale(let reason):
             "This exact Research Run is stale because \(reason.description). Do not submit or write against it. Inspect the current Note in Scholium and start a new Action from the current revision."
         }

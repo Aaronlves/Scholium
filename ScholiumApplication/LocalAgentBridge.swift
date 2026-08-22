@@ -1,8 +1,10 @@
 import Darwin
 import Foundation
 import ScholiumContracts
+import ScholiumCore
 
 public enum LocalAgentBridgeOperation: String, Codable, Sendable {
+    case preflightAnalysisCreation = "preflight_analysis_creation"
     case start
     case pair
     case context
@@ -66,13 +68,15 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 15
+    public static let currentSchemaVersion = 16
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let operation: LocalAgentBridgeOperation
     public let triptychID: UUID?
     public let run: ResearchRunLocator?
+    public let analysisCreationPreflightRequest:
+        ResearchAgentAnalysisCreationPreflightRequest?
     public let startRequest: ResearchAgentStartRequest?
     public let pairingCode: ResearchPairingCode?
     public let credential: ResearchConnectionCredential?
@@ -91,6 +95,8 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         operation: LocalAgentBridgeOperation,
         triptychID: UUID? = nil,
         run: ResearchRunLocator? = nil,
+        analysisCreationPreflightRequest:
+            ResearchAgentAnalysisCreationPreflightRequest? = nil,
         startRequest: ResearchAgentStartRequest? = nil,
         pairingCode: ResearchPairingCode? = nil,
         credential: ResearchConnectionCredential? = nil,
@@ -105,6 +111,14 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         methodImprovementSubmission: ResearchMethodImprovementSubmission? = nil
     ) throws {
         let shapeIsValid = switch operation {
+        case .preflightAnalysisCreation:
+            triptychID != nil && analysisCreationPreflightRequest != nil
+                && run == nil && startRequest == nil && pairingCode == nil
+                && credential == nil && contextRequest == nil
+                && discussionReplyRequest == nil && writeSetIntent == nil
+                && documentWriteIntent == nil && zoteroBindingWriteIntent == nil
+                && conflictResolutionIntent == nil && resultSubmission == nil
+                && continuationRequest == nil && methodImprovementSubmission == nil
         case .start:
             triptychID != nil && startRequest != nil && run == nil
                 && pairingCode == nil && credential == nil
@@ -232,6 +246,9 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && methodImprovementSubmission == nil
         }
         guard shapeIsValid,
+              (operation == .preflightAnalysisCreation
+                  ? analysisCreationPreflightRequest != nil
+                  : analysisCreationPreflightRequest == nil),
               (operation == .discussionReply
                   ? discussionReplyRequest != nil
                   : discussionReplyRequest == nil) else {
@@ -242,6 +259,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         self.operation = operation
         self.triptychID = triptychID
         self.run = run
+        self.analysisCreationPreflightRequest = analysisCreationPreflightRequest
         self.startRequest = startRequest
         self.pairingCode = pairingCode
         self.credential = credential
@@ -262,6 +280,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         case operation
         case triptychID = "triptych_id"
         case run
+        case analysisCreationPreflightRequest = "analysis_creation_preflight_request"
         case startRequest = "start_request"
         case pairingCode = "pairing_code"
         case credential
@@ -283,6 +302,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         try container.encode(operation, forKey: .operation)
         try container.encodeIfPresent(triptychID, forKey: .triptychID)
         try container.encodeIfPresent(run, forKey: .run)
+        try container.encodeIfPresent(
+            analysisCreationPreflightRequest,
+            forKey: .analysisCreationPreflightRequest
+        )
         try container.encodeIfPresent(startRequest, forKey: .startRequest)
         try container.encodeIfPresent(pairingCode?.rawValue, forKey: .pairingCode)
         try container.encodeIfPresent(
@@ -347,6 +370,10 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             operation: container.decode(LocalAgentBridgeOperation.self, forKey: .operation),
             triptychID: container.decodeIfPresent(UUID.self, forKey: .triptychID),
             run: container.decodeIfPresent(ResearchRunLocator.self, forKey: .run),
+            analysisCreationPreflightRequest: container.decodeIfPresent(
+                ResearchAgentAnalysisCreationPreflightRequest.self,
+                forKey: .analysisCreationPreflightRequest
+            ),
             startRequest: container.decodeIfPresent(
                 ResearchAgentStartRequest.self,
                 forKey: .startRequest
@@ -409,6 +436,12 @@ public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
     case staleProjection = "stale_projection"
     case staleRun = "stale_run"
     case missingSourceEvidence = "missing_source_evidence"
+    case missingRequiredFields = "missing_required_fields"
+    case pathOccupied = "path_occupied"
+    case identityOccupied = "identity_occupied"
+    case identitySourceMissingOrTrashed = "identity_source_missing_or_trashed"
+    case sourceUnreadable = "source_unreadable"
+    case settingsChanged = "settings_changed"
     case replayConflict = "replay_conflict"
     case timeout
     case outcomeUnknown = "outcome_unknown"
@@ -418,14 +451,20 @@ public enum LocalAgentBridgeErrorCode: String, Codable, Sendable {
 public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
     public let code: LocalAgentBridgeErrorCode
     public let message: String
+    public let recovery: AgentOperationRecovery
 
-    public init(code: LocalAgentBridgeErrorCode, message: String) {
+    public init(
+        code: LocalAgentBridgeErrorCode,
+        message: String,
+        recovery: AgentOperationRecovery? = nil
+    ) {
         self.code = code
         self.message = message
+        self.recovery = recovery ?? Self.defaultRecovery(for: code)
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case code, message
+        case code, message, recovery
     }
 
     public init(from decoder: Decoder) throws {
@@ -440,16 +479,166 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
         }
         code = try container.decode(LocalAgentBridgeErrorCode.self, forKey: .code)
         self.message = message
+        recovery = try container.decode(AgentOperationRecovery.self, forKey: .recovery)
+    }
+
+    static func outcomeUnknownRecovery(
+        for request: LocalAgentBridgeRequest
+    ) -> AgentOperationRecovery {
+        switch request.operation {
+        case .preflightAnalysisCreation:
+            AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .rerunCreationPreflight
+            )
+        case .start where request.startRequest?.newAnalysis != nil:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .rerunCreationPreflight
+            )
+        case .context, .query, .methodImprovementContext:
+            AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .retryExactRequest
+            )
+        case .discussionReply, .extendWriteSet, .writeDocument,
+             .writeZoteroBinding, .resolveWriteConflict, .submitResult,
+             .continueResearch, .submitMethodImprovement:
+            AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .retryExactRequest
+            )
+        case .end:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .stopAndReport
+            )
+        case .pair:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .copyNewHandoffAndPairSameRun
+            )
+        case .start:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .stopAndReport
+            )
+        }
+    }
+
+    static func defaultRecovery(
+        for code: LocalAgentBridgeErrorCode
+    ) -> AgentOperationRecovery {
+        switch code {
+        case .missingRequiredFields:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .supplyRequiredFieldsAndPreflight
+            )
+        case .pathOccupied:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .requestResearcherDistinctFilenameAndPreflight
+            )
+        case .identityOccupied:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .startExistingAnalysis
+            )
+        case .identitySourceMissingOrTrashed:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .requestResearcherRecoveryChoice,
+                creationBranches: [
+                    AgentCreationRecoveryBranch(
+                        kind: .restoreOriginalSource,
+                        mustReuseRequestIdentity: true,
+                        nextStep: .retryExactRequest
+                    ),
+                    AgentCreationRecoveryBranch(
+                        kind: .explicitlyCreateAtDistinctDestination,
+                        mustReuseRequestIdentity: false,
+                        nextStep: .requestResearcherDistinctFilenameAndPreflight
+                    ),
+                ]
+            )
+        case .sourceUnreadable:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .resolveSourceAccess
+            )
+        case .settingsChanged:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .rerunCreationPreflight
+            )
+        case .staleProjection:
+            AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .retryExactRequest
+            )
+        case .replayConflict:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .inspectOriginalRequestState
+            )
+        case .sessionExpired:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .copyNewHandoffAndPairSameRun
+            )
+        case .outcomeUnknown, .timeout:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .stopAndReport
+            )
+        case .staleRun:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .startNewActionFromCurrentRevision
+            )
+        case .invalidFrame, .invalidRequest, .unsupportedVersion:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .correctRequest
+            )
+        case .unavailable, .permissionDenied, .missingSourceEvidence, .operationFailed:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .stopAndReport
+            )
+        }
     }
 }
 
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 18
+    public static let currentSchemaVersion = 19
 
     public let schemaVersion: Int
     public let correlationID: UUID
+    public let analysisCreationPreflight: ResearchAgentAnalysisCreationPreflight?
     public let credential: ResearchConnectionCredential?
     public let startReceipt: ResearchAgentStartReceipt?
     public let context: ResearchAuthenticatedRunContext?
@@ -468,6 +657,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
 
     public init(
         correlationID: UUID,
+        analysisCreationPreflight: ResearchAgentAnalysisCreationPreflight? = nil,
         credential: ResearchConnectionCredential? = nil,
         startReceipt: ResearchAgentStartReceipt? = nil,
         context: ResearchAuthenticatedRunContext? = nil,
@@ -485,6 +675,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         error: LocalAgentBridgeErrorPayload? = nil
     ) throws {
         let payloadCount = [
+            analysisCreationPreflight != nil,
             credential != nil && startReceipt == nil,
             startReceipt != nil,
             context != nil,
@@ -510,6 +701,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         }
         schemaVersion = Self.currentSchemaVersion
         self.correlationID = correlationID
+        self.analysisCreationPreflight = analysisCreationPreflight
         self.credential = credential
         self.startReceipt = startReceipt
         self.context = context
@@ -535,6 +727,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case correlationID = "correlation_id"
+        case analysisCreationPreflight = "analysis_creation_preflight"
         case credential, startReceipt = "start_receipt", context
         case researchContext = "research_context"
         case discussionReplyReceipt = "discussion_reply_receipt"
@@ -554,6 +747,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(correlationID, forKey: .correlationID)
+        try container.encodeIfPresent(
+            analysisCreationPreflight,
+            forKey: .analysisCreationPreflight
+        )
         try container.encodeIfPresent(
             credential.map(LocalAgentBridgeWireCredential.init),
             forKey: .credential
@@ -601,6 +798,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         }
         try self.init(
             correlationID: container.decode(UUID.self, forKey: .correlationID),
+            analysisCreationPreflight: container.decodeIfPresent(
+                ResearchAgentAnalysisCreationPreflight.self,
+                forKey: .analysisCreationPreflight
+            ),
             credential: container.decodeIfPresent(
                 LocalAgentBridgeWireCredential.self,
                 forKey: .credential
@@ -681,7 +882,7 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable,
     case unsupportedVersion(Int)
     case permissionDenied
     case timeout
-    case outcomeUnknown
+    case outcomeUnknown(AgentOperationRecovery)
     case frameTooLarge
     case alreadyRunning
     case systemCall(String, Int32)
@@ -698,8 +899,8 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable,
             "Local Agent bridge schema version \(version) is unsupported."
         case .permissionDenied: "The local Agent bridge rejected the peer identity."
         case .timeout: "The local Agent bridge operation timed out."
-        case .outcomeUnknown:
-            "The Agent request outcome is unknown. Query the same request ID before retrying."
+        case .outcomeUnknown(let recovery):
+            "The Agent request outcome is unknown. Follow \(recovery.nextStep.rawValue); do not invent a new operation identity."
         case .frameTooLarge: "The local Agent bridge frame exceeded its size limit."
         case .alreadyRunning: "Another Scholium Agent bridge already owns this location."
         case .systemCall(let operation, let code):
@@ -709,10 +910,26 @@ public enum LocalAgentBridgeError: LocalizedError, Hashable, Sendable,
     }
 
     public var agentCommandErrorCode: String {
-        if case .remote(let payload) = self {
-            return payload.code.rawValue
+        structuredCode.rawValue
+    }
+
+    private var structuredCode: LocalAgentBridgeErrorCode {
+        switch self {
+        case .remote(let payload): payload.code
+        case .unavailable, .alreadyRunning, .systemCall: .unavailable
+        case .invalidFrame, .invalidResponse, .frameTooLarge: .invalidFrame
+        case .invalidRequest: .invalidRequest
+        case .unsupportedVersion: .unsupportedVersion
+        case .permissionDenied: .permissionDenied
+        case .timeout: .timeout
+        case .outcomeUnknown: .outcomeUnknown
         }
-        return LocalAgentBridgeErrorCode.operationFailed.rawValue
+    }
+
+    public var agentCommandRecovery: AgentOperationRecovery? {
+        if case .remote(let payload) = self { return payload.recovery }
+        if case .outcomeUnknown(let recovery) = self { return recovery }
+        return LocalAgentBridgeErrorPayload.defaultRecovery(for: structuredCode)
     }
 }
 
@@ -779,7 +996,9 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
             // Once connected, a send/read deadline cannot establish whether
             // the server durably handled the request. Preserve idempotent
             // convergence semantics instead of inviting a new request ID.
-            throw LocalAgentBridgeError.outcomeUnknown
+            throw LocalAgentBridgeError.outcomeUnknown(
+                LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(for: request)
+            )
         }
         let response = try LocalAgentBridgeWireCoding.decode(
             LocalAgentBridgeResponse.self,
@@ -796,6 +1015,7 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
 }
 
 public enum LocalAgentBridgeHandlerResult: Sendable {
+    case analysisCreationPreflight(ResearchAgentAnalysisCreationPreflight)
     case started(
         receipt: ResearchAgentStartReceipt,
         credential: ResearchConnectionCredential
@@ -1006,12 +1226,19 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 clearCurrentHandler(id: handlerID)
             }
             guard finishedInTime else {
-                throw LocalAgentBridgeError.outcomeUnknown
+                throw LocalAgentBridgeError.outcomeUnknown(
+                    LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(for: request)
+                )
             }
             let outcome = try result.value?.get() ?? {
                 throw LocalAgentBridgeError.invalidResponse
             }()
             let response: LocalAgentBridgeResponse = switch outcome {
+            case .analysisCreationPreflight(let preflight):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    analysisCreationPreflight: preflight
+                )
             case .started(let receipt, let credential):
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,
@@ -1183,7 +1410,28 @@ enum LocalAgentBridgeWireCoding {
         case ResearchFunctionContractError.sourceAccessUnavailable(let failure)
             where failure.code == .missingBinding:
             code = .missingSourceEvidence
-        case ResearchAgentConnectionError.newAnalysisReplayConflict:
+        case ResearchAgentConnectionError.missingRequiredFields,
+             DocumentCreationError.missingRequiredAgentFields:
+            code = .missingRequiredFields
+        case ResearchAgentConnectionError.analysisPathOccupied,
+             VaultRepositoryError.fileAlreadyExists,
+             VaultRepositoryError.pathCollision:
+            code = .pathOccupied
+        case ResearchAgentConnectionError.analysisIdentityOccupied,
+             DocumentCreationError.portableIdentityAlreadyExists:
+            code = .identityOccupied
+        case ResearchAgentConnectionError.analysisIdentitySourceMissingOrTrashed:
+            code = .identitySourceMissingOrTrashed
+        case ResearchAgentConnectionError.analysisSourceUnreadable:
+            code = .sourceUnreadable
+        case ResearchAgentConnectionError.settingsChanged,
+             DocumentCreationError.settingsRevisionChanged,
+             TriptychControlError.settingsRevisionConflict:
+            code = .settingsChanged
+        case ResearchAgentConnectionError.newAnalysisReplayConflict,
+             LocalResearchExecutionStoreError.agentAnalysisCreationAlreadyExists,
+             LocalResearchExecutionStoreError.agentAnalysisCreationNotFound,
+             LocalResearchExecutionStoreError.agentAnalysisCreationMismatch:
             code = .replayConflict
         case LocalAgentBridgeError.timeout: code = .timeout
         case LocalAgentBridgeError.outcomeUnknown: code = .outcomeUnknown
@@ -1192,6 +1440,10 @@ enum LocalAgentBridgeWireCoding {
              LocalAgentBridgeError.frameTooLarge:
             code = .invalidFrame
         case LocalAgentBridgeError.invalidRequest,
+             ResearchAgentConnectionError.invalidAnalysisCreationMetadata,
+             DocumentCreationError.invalidMetadata,
+             DocumentCreationError.inapplicableAnalysisProperty,
+             DocumentCreationError.analysisSeedCollision,
              is DecodingError:
             code = .invalidRequest
         default: code = .operationFailed
@@ -1210,14 +1462,31 @@ enum LocalAgentBridgeWireCoding {
             "The exact Target, Material, or formal source boundary changed. This Run is stale and authorizes no further submission or write. Inspect the current Note in Scholium and start a new Action from the current revision."
         case .missingSourceEvidence:
             "Analyze has no valid frozen source route. Provide a current Scholium source, a bound Zotero route, or explicitly start with source_route=researcher_provided."
+        case .missingRequiredFields:
+            "Analysis creation is missing current Settings-required fields. Rerun creation preflight with the same request identity, supply the returned fields, and do not use placeholders."
+        case .pathOccupied:
+            "The resolved Analysis root filename is occupied. Scholium did not overwrite it or invent a retry filename. Ask the researcher for a distinct root filename and run preflight as a new creation request."
+        case .identityOccupied:
+            "The resolved path already belongs to a portable Analysis identity. Start the existing Note or ask the researcher for a distinct root filename."
+        case .identitySourceMissingOrTrashed:
+            "A portable Analysis identity remains but its source is missing or in the system Trash. Scholium did not recreate, overwrite, delete the identity, or invent another file."
+        case .sourceUnreadable:
+            "Scholium cannot verify the authoritative source state at the resolved Analysis destination. Restore access and rerun creation preflight."
+        case .settingsChanged:
+            "Triptych Settings changed after Analysis creation preflight. Rerun preflight with the same logical request identity before starting."
         case .replayConflict:
-            "The exact creation request conflicts with the current researcher-owned Zotero relationship. Scholium did not overwrite it; inspect the Analysis and start a new request if appropriate."
+            "The request identity belongs to different or terminal creation evidence. Scholium preserved current source, identity, relationship, Run, and recovery state and made no new change."
         case .timeout: "The bridge operation timed out."
         case .outcomeUnknown:
-            "The Agent request outcome is unknown. Query the same request ID before retrying."
+            "The Agent request outcome is unknown. Follow the attached operation-specific recovery.next_step without changing any required identity."
         case .operationFailed: "Scholium could not complete the bridge operation."
         }
-        return LocalAgentBridgeErrorPayload(code: code, message: message)
+        return LocalAgentBridgeErrorPayload(
+            code: code,
+            message: message,
+            recovery: (error as? any AgentCommandErrorCodeProviding)?
+                .agentCommandRecovery
+        )
     }
 
     private struct AnyCodingKey: CodingKey {

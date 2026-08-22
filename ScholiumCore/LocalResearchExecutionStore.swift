@@ -395,16 +395,25 @@ public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, S
 /// or write authority; the portable binding and Note remain independently
 /// authoritative.
 public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let triptychID: UUID
     public let runID: UUID
     public let requestFingerprint: DocumentFingerprint
+    public let creationPayloadFingerprint: DocumentFingerprint
+    public let startRequestFingerprint: DocumentFingerprint
     public let target: VaultQualifiedNoteID
     public let reservedIdentityID: UUID
-    public let requestedBinding: AnalysisZoteroBinding
-    public var bindingState: LocalAgentAnalysisCreationBindingState
+    public let requestedBinding: AnalysisZoteroBinding?
+    public let sourceRoute: ResearchAgentSourceRoute?
+    /// The intent supplied at the first consequential start. Settings refresh
+    /// may add newly required properties but never replace this source type or
+    /// any property value already chosen by the researcher/Agent task.
+    public let initialMetadata: AnalysisCreationMetadata
+    public let academicPurpose: String?
+    public var committedSourceFingerprint: DocumentFingerprint?
+    public var bindingState: LocalAgentAnalysisCreationBindingState?
 
     public var id: UUID { runID }
 
@@ -412,22 +421,38 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
         triptychID: UUID,
         runID: UUID,
         requestFingerprint: DocumentFingerprint,
+        creationPayloadFingerprint: DocumentFingerprint,
+        startRequestFingerprint: DocumentFingerprint,
         target: VaultQualifiedNoteID,
         reservedIdentityID: UUID,
-        requestedBinding: AnalysisZoteroBinding,
-        bindingState: LocalAgentAnalysisCreationBindingState = .reserved
+        requestedBinding: AnalysisZoteroBinding?,
+        sourceRoute: ResearchAgentSourceRoute?,
+        initialMetadata: AnalysisCreationMetadata,
+        academicPurpose: String?,
+        committedSourceFingerprint: DocumentFingerprint? = nil,
+        bindingState: LocalAgentAnalysisCreationBindingState? = nil
     ) throws {
-        guard requestedBinding.noteID == reservedIdentityID else {
+        guard (requestedBinding == nil) != (sourceRoute == nil),
+              requestedBinding?.noteID == reservedIdentityID || requestedBinding == nil,
+              requestedBinding != nil
+                ? sourceRoute == nil
+                : (sourceRoute == .researcherProvided && bindingState == nil) else {
             throw LocalResearchExecutionStoreError.agentAnalysisCreationMismatch(runID)
         }
         schemaVersion = Self.currentSchemaVersion
         self.triptychID = triptychID
         self.runID = runID
         self.requestFingerprint = requestFingerprint
+        self.creationPayloadFingerprint = creationPayloadFingerprint
+        self.startRequestFingerprint = startRequestFingerprint
         self.target = target
         self.reservedIdentityID = reservedIdentityID
         self.requestedBinding = requestedBinding
-        self.bindingState = bindingState
+        self.sourceRoute = sourceRoute
+        self.initialMetadata = initialMetadata
+        self.academicPurpose = academicPurpose
+        self.committedSourceFingerprint = committedSourceFingerprint
+        self.bindingState = requestedBinding == nil ? nil : (bindingState ?? .reserved)
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -435,9 +460,15 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
         case triptychID = "triptych_id"
         case runID = "run_id"
         case requestFingerprint = "request_fingerprint"
+        case creationPayloadFingerprint = "creation_payload_fingerprint"
+        case startRequestFingerprint = "start_request_fingerprint"
         case target
         case reservedIdentityID = "reserved_identity_id"
         case requestedBinding = "requested_binding"
+        case sourceRoute = "source_route"
+        case initialMetadata = "initial_metadata"
+        case academicPurpose = "academic_purpose"
+        case committedSourceFingerprint = "committed_source_fingerprint"
         case bindingState = "binding_state"
     }
 
@@ -459,13 +490,37 @@ public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable,
                 DocumentFingerprint.self,
                 forKey: .requestFingerprint
             ),
+            creationPayloadFingerprint: container.decode(
+                DocumentFingerprint.self,
+                forKey: .creationPayloadFingerprint
+            ),
+            startRequestFingerprint: container.decode(
+                DocumentFingerprint.self,
+                forKey: .startRequestFingerprint
+            ),
             target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
             reservedIdentityID: container.decode(UUID.self, forKey: .reservedIdentityID),
-            requestedBinding: container.decode(
+            requestedBinding: container.decodeIfPresent(
                 AnalysisZoteroBinding.self,
                 forKey: .requestedBinding
             ),
-            bindingState: container.decode(
+            sourceRoute: container.decodeIfPresent(
+                ResearchAgentSourceRoute.self,
+                forKey: .sourceRoute
+            ),
+            initialMetadata: container.decode(
+                AnalysisCreationMetadata.self,
+                forKey: .initialMetadata
+            ),
+            academicPurpose: container.decodeIfPresent(
+                String.self,
+                forKey: .academicPurpose
+            ),
+            committedSourceFingerprint: container.decodeIfPresent(
+                DocumentFingerprint.self,
+                forKey: .committedSourceFingerprint
+            ),
+            bindingState: container.decodeIfPresent(
                 LocalAgentAnalysisCreationBindingState.self,
                 forKey: .bindingState
             )
@@ -578,6 +633,91 @@ public actor LocalResearchExecutionStore {
         }
     }
 
+    /// Replaces only the Settings-dependent request fingerprints of a creation
+    /// reservation after Application has proved that no portable identity,
+    /// source, or Run exists. Immutable purpose and routing fields must still
+    /// match. This is not a recovery path for committed work.
+    @discardableResult
+    public func reviseAgentAnalysisCreationReservation(
+        expected: LocalAgentAnalysisCreationRecord,
+        replacement: LocalAgentAnalysisCreationRecord
+    ) throws -> LocalAgentAnalysisCreationRecord {
+        guard expected.triptychID == triptychID,
+              replacement.triptychID == triptychID,
+              expected.runID == replacement.runID,
+              expected.target == replacement.target,
+              expected.reservedIdentityID == replacement.reservedIdentityID,
+              expected.requestedBinding == replacement.requestedBinding,
+              expected.sourceRoute == replacement.sourceRoute,
+              expected.initialMetadata == replacement.initialMetadata,
+              expected.academicPurpose == replacement.academicPurpose,
+              expected.committedSourceFingerprint == nil,
+              replacement.committedSourceFingerprint == nil,
+              expected.bindingState == replacement.bindingState,
+              expected.bindingState == nil || expected.bindingState == .reserved else {
+            throw LocalResearchExecutionStoreError
+                .agentAnalysisCreationMismatch(expected.runID)
+        }
+        return try lock.withExclusiveLock {
+            let current = try readAgentAnalysisCreation(id: expected.runID)
+            guard current == expected else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(expected.runID)
+            }
+            let (canonicalRecord, data) = try Self.canonicalized(replacement)
+            let readback = try storage.replace(
+                data,
+                directory: Self.agentAnalysisCreationDirectory,
+                fileName: Self.fileName(expected.runID)
+            )
+            let stored = try Self.decode(
+                LocalAgentAnalysisCreationRecord.self,
+                from: readback
+            )
+            guard stored == canonicalRecord else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(expected.runID)
+            }
+            return stored
+        }
+    }
+
+    /// Freezes the authoritative source revision before derived projection or
+    /// optional relationship work. Exact replay may confirm the same revision;
+    /// a different revision is a conflict.
+    @discardableResult
+    public func confirmAgentAnalysisCreationSource(
+        runID: UUID,
+        fingerprint: DocumentFingerprint
+    ) throws -> LocalAgentAnalysisCreationRecord {
+        try lock.withExclusiveLock {
+            var record = try readAgentAnalysisCreation(id: runID)
+            if let committed = record.committedSourceFingerprint {
+                guard committed == fingerprint else {
+                    throw LocalResearchExecutionStoreError
+                        .agentAnalysisCreationMismatch(runID)
+                }
+                return record
+            }
+            record.committedSourceFingerprint = fingerprint
+            let (canonicalRecord, data) = try Self.canonicalized(record)
+            let readback = try storage.replace(
+                data,
+                directory: Self.agentAnalysisCreationDirectory,
+                fileName: Self.fileName(runID)
+            )
+            let stored = try Self.decode(
+                LocalAgentAnalysisCreationRecord.self,
+                from: readback
+            )
+            guard stored == canonicalRecord else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(runID)
+            }
+            return stored
+        }
+    }
+
     @discardableResult
     public func advanceAgentAnalysisCreationBinding(
         runID: UUID,
@@ -585,7 +725,14 @@ public actor LocalResearchExecutionStore {
     ) throws -> LocalAgentAnalysisCreationRecord {
         try lock.withExclusiveLock {
             var record = try readAgentAnalysisCreation(id: runID)
-            let allowed = switch (record.bindingState, state) {
+            guard record.requestedBinding != nil,
+                  record.sourceRoute == nil,
+                  record.committedSourceFingerprint != nil,
+                  let currentState = record.bindingState else {
+                throw LocalResearchExecutionStoreError
+                    .agentAnalysisCreationMismatch(runID)
+            }
+            let allowed = switch (currentState, state) {
             case (.reserved, .reserved), (.reserved, .writing),
                  (.writing, .writing), (.writing, .retryable),
                  (.writing, .committed),
@@ -599,7 +746,7 @@ public actor LocalResearchExecutionStore {
                 throw LocalResearchExecutionStoreError
                     .agentAnalysisCreationMismatch(runID)
             }
-            if record.bindingState == state { return record }
+            if currentState == state { return record }
             record.bindingState = state
             let (canonicalRecord, data) = try Self.canonicalized(record)
             let readback = try storage.replace(

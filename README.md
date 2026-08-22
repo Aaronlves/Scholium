@@ -102,9 +102,14 @@ revision-checked direct edits, submit one result, leave a portable Research
 Record, and continue through a separate Run. One Triptych collaboration policy,
 process-bound Sessions, nonreusable write capabilities, exact conflicts and
 recovery, and one Record-owned Researcher Evaluation preserve researcher
-control. Analyze Records may carry Literature Recommendations. Selected local
-or Zotero source material remains a separately validated evidence channel, and
-the optional first-party Zotero MCP transport remains available.
+control. For a new Analysis, the standalone CLI first asks Scholium for the
+current Analyses vault, Settings-required fields, root-managed destination,
+and path/identity/source recovery state; only
+a ready preflight can start consequential creation. Analyze Records may carry
+Literature Recommendations. Selected local or Zotero source material remains a
+separately validated evidence channel, and the optional first-party Zotero MCP
+transport remains available. Researcher-selected subfolders use a researcher-
+created existing Analysis target rather than an Agent path assertion.
 
 These paths establish current engineering reachability, not that long-term
 Agent inheritance or philosophical research quality has already been accepted.

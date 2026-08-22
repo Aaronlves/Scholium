@@ -398,6 +398,10 @@ public protocol ZoteroBindingUseCases: Sendable {
 /// bridge. The CLI owns stdio framing; Application owns bridge discovery,
 /// authentication, and request execution.
 public protocol AgentBridgeUseCases: Sendable {
+    func preflightAnalysisCreation(
+        triptychID: UUID,
+        request: ResearchAgentAnalysisCreationPreflightRequest
+    ) async throws -> ResearchAgentAnalysisCreationPreflight
     func start(
         triptychID: UUID,
         request: ResearchAgentStartRequest

@@ -75,11 +75,10 @@ public struct ResearchAgentNewAnalysisSource: Codable, Hashable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: CodingKeys.self)
-        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
-        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
-            throw ResearchAgentStartContractError.invalidRequest
-        }
+        try ResearchAgentStartCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.self
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
             library: container.decode(ZoteroLibraryIdentity.self, forKey: .library),
@@ -95,85 +94,69 @@ public enum ResearchAgentSourceRoute: String, Codable, Hashable, Sendable {
     case researcherProvided = "researcher_provided"
 }
 
-/// Explicit creation input for an Agent-originated Analyze Run. The path and
-/// typed Analysis fields are supplied once; an optional external Zotero
-/// relationship is supplied when that route is wanted. The Application owns
-/// the new stable identity, Settings revision, seed composition, and the
-/// subsequent Analyze preparation.
-public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+/// A classification-bounded Agent destination request. Direct Agent creation
+/// accepts one filename and always resolves it at the Analyses-vault root.
+/// Researcher-selected subfolders remain available through a researcher-created
+/// existing Analysis target, never through an Agent assertion.
+public struct ResearchAgentAnalysisDestination: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
 
     public let schemaVersion: Int
-    /// Retried delivery of one start request must retain this UUID. It is
-    /// used only to derive the reserved stable identity; it is not an
-    /// identity chosen for the Note itself.
-    public let requestID: UUID
-    public let target: VaultQualifiedNoteID
-    public let metadata: AnalysisCreationMetadata
-    /// Optional explicit Zotero relationship. When absent, the enclosing
-    /// start request must declare `researcher_provided` instead; no local file
-    /// locator or source bytes enter this contract.
-    public let source: ResearchAgentNewAnalysisSource?
+    public let managedDefaultFilename: String
 
-    public init(
-        requestID: UUID = UUID(),
-        target: VaultQualifiedNoteID,
-        metadata: AnalysisCreationMetadata,
-        source: ResearchAgentNewAnalysisSource? = nil
-    ) throws {
-        guard Self.validRelativePath(target.relativePath) else {
+    public init(managedDefaultFilename: String) throws {
+        guard Self.validFilename(managedDefaultFilename) else {
             throw ResearchAgentStartContractError.invalidRequest
         }
         schemaVersion = Self.currentSchemaVersion
-        self.requestID = requestID
-        self.target = target
-        self.metadata = metadata
-        self.source = source
+        self.managedDefaultFilename = managedDefaultFilename
+    }
+
+    public var resolvedRelativePath: String {
+        managedDefaultFilename
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
-        case requestID = "request_id"
-        case target, metadata, source
+        case managedDefaultFilename = "managed_default_filename"
     }
 
     public init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: CodingKeys.self)
-        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
-        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
-            throw ResearchAgentStartContractError.invalidRequest
-        }
+        try ResearchAgentStartCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.self
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard try container.decode(Int.self, forKey: .schemaVersion)
                 == Self.currentSchemaVersion else {
             throw ResearchAgentStartContractError.unsupportedSchemaVersion
         }
-        try self.init(
-            requestID: container.decode(UUID.self, forKey: .requestID),
-            target: container.decode(
-                ResearchAgentStartWireNoteID.self,
-                forKey: .target
-            ).value,
-            metadata: container.decode(AnalysisCreationMetadata.self, forKey: .metadata),
-            source: container.decodeIfPresent(
-                ResearchAgentNewAnalysisSource.self,
-                forKey: .source
-            )
-        )
+        guard let managed = try container.decodeIfPresent(
+            String.self,
+            forKey: .managedDefaultFilename
+        ) else { throw ResearchAgentStartContractError.invalidRequest }
+        try self.init(managedDefaultFilename: managed)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
-        try container.encode(requestID, forKey: .requestID)
-        try container.encode(ResearchAgentStartWireNoteID(target), forKey: .target)
-        try container.encode(metadata, forKey: .metadata)
-        try container.encodeIfPresent(source, forKey: .source)
+        try container.encode(
+            managedDefaultFilename,
+            forKey: .managedDefaultFilename
+        )
+    }
+
+    private static func validFilename(_ value: String) -> Bool {
+        validRelativePath(value)
+            && !value.contains("/")
+            && !value.hasPrefix(".")
     }
 
     private static func validRelativePath(_ value: String) -> Bool {
         guard !value.isEmpty,
               value.utf8.count <= 4_096,
+              value.lowercased().hasSuffix(".md"),
               !value.hasPrefix("/"),
               !value.hasSuffix("/"),
               !value.contains("\\"),
@@ -187,11 +170,248 @@ public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
     }
 }
 
+/// Read-only input used before a consequential Agent start. It contains one
+/// stable logical request identity but no vault ID or Settings revision.
+public struct ResearchAgentAnalysisCreationPreflightRequest: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let requestID: UUID
+    public let destination: ResearchAgentAnalysisDestination
+    public let metadata: AnalysisCreationMetadata
+    public let source: ResearchAgentNewAnalysisSource?
+    public let sourceRoute: ResearchAgentSourceRoute?
+
+    public init(
+        requestID: UUID = UUID(),
+        destination: ResearchAgentAnalysisDestination,
+        metadata: AnalysisCreationMetadata,
+        source: ResearchAgentNewAnalysisSource? = nil,
+        sourceRoute: ResearchAgentSourceRoute? = nil
+    ) throws {
+        guard (source == nil) != (sourceRoute == nil),
+              sourceRoute == nil || sourceRoute == .researcherProvided else {
+            throw ResearchAgentStartContractError.invalidRequest
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.requestID = requestID
+        self.destination = destination
+        self.metadata = metadata
+        self.source = source
+        self.sourceRoute = sourceRoute
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case requestID = "request_id"
+        case destination, metadata, source
+        case sourceRoute = "source_route"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentStartCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentStartContractError.unsupportedSchemaVersion
+        }
+        try self.init(
+            requestID: container.decode(UUID.self, forKey: .requestID),
+            destination: container.decode(
+                ResearchAgentAnalysisDestination.self,
+                forKey: .destination
+            ),
+            metadata: container.decode(AnalysisCreationMetadata.self, forKey: .metadata),
+            source: container.decodeIfPresent(
+                ResearchAgentNewAnalysisSource.self,
+                forKey: .source
+            ),
+            sourceRoute: container.decodeIfPresent(
+                ResearchAgentSourceRoute.self,
+                forKey: .sourceRoute
+            )
+        )
+    }
+}
+
+/// Consequential creation input returned by the current preflight. The
+/// Settings revision is frozen explicitly; Application resolves the Analyses
+/// vault and exact path from the nested intent again before any mutation.
+public struct ResearchAgentNewAnalysisRequest: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 3
+
+    public let schemaVersion: Int
+    public let preflight: ResearchAgentAnalysisCreationPreflightRequest
+    public let settingsRevision: SettingsRevision
+
+    public var requestID: UUID { preflight.requestID }
+    public var destination: ResearchAgentAnalysisDestination { preflight.destination }
+    public var metadata: AnalysisCreationMetadata { preflight.metadata }
+    public var source: ResearchAgentNewAnalysisSource? { preflight.source }
+    public var sourceRoute: ResearchAgentSourceRoute? { preflight.sourceRoute }
+
+    public init(
+        preflight: ResearchAgentAnalysisCreationPreflightRequest,
+        settingsRevision: SettingsRevision
+    ) {
+        schemaVersion = Self.currentSchemaVersion
+        self.preflight = preflight
+        self.settingsRevision = settingsRevision
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case preflight
+        case settingsRevision = "settings_revision"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentStartCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentStartContractError.unsupportedSchemaVersion
+        }
+        self.init(
+            preflight: try container.decode(
+                ResearchAgentAnalysisCreationPreflightRequest.self,
+                forKey: .preflight
+            ),
+            settingsRevision: try container.decode(
+                SettingsRevision.self,
+                forKey: .settingsRevision
+            )
+        )
+    }
+}
+
+public enum ResearchAgentAnalysisCreationPreflightStatus: String, Codable,
+    Hashable, Sendable
+{
+    case ready
+    case invalidMetadata = "invalid_metadata"
+    case missingRequiredFields = "missing_required_fields"
+    case pathOccupied = "path_occupied"
+    case identityOccupied = "identity_occupied"
+    case identitySourceMissingOrTrashed = "identity_source_missing_or_trashed"
+    case sourceUnreadable = "source_unreadable"
+    case sourceCommittedProjectionPending = "source_committed_projection_pending"
+    case runPrepared = "run_prepared"
+    case runStale = "run_stale"
+    case replayConflict = "replay_conflict"
+}
+
+public enum ResearchAgentAnalysisSourceState: String, Codable, Hashable, Sendable {
+    case absent
+    case present
+    case missing
+    case inSystemTrash = "in_system_trash"
+    case missingOrInSystemTrash = "missing_or_in_system_trash"
+    case unreadable
+}
+
+public struct ResearchAgentAnalysisTargetState: Codable, Hashable, Sendable {
+    public let target: VaultQualifiedNoteID
+    public let stableIdentity: UUID?
+    public let fingerprint: DocumentFingerprint?
+    public let sourceState: ResearchAgentAnalysisSourceState
+
+    public init(
+        target: VaultQualifiedNoteID,
+        stableIdentity: UUID?,
+        fingerprint: DocumentFingerprint?,
+        sourceState: ResearchAgentAnalysisSourceState
+    ) {
+        self.target = target
+        self.stableIdentity = stableIdentity
+        self.fingerprint = fingerprint
+        self.sourceState = sourceState
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case target
+        case stableIdentity = "stable_identity"
+        case fingerprint
+        case sourceState = "source_state"
+    }
+}
+
+public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let requestID: UUID
+    public let analysisVaultID: UUID
+    public let settingsRevision: SettingsRevision
+    public let sourceType: AnalysisSourceType
+    public let applicableFields: [PropertyContract]
+    public let requiredFields: [String]
+    public let applicationOwnedFields: [String]
+    public let targetState: ResearchAgentAnalysisTargetState
+    public let status: ResearchAgentAnalysisCreationPreflightStatus
+    public let missingRequiredFields: [String]
+    public let startNewAnalysis: ResearchAgentNewAnalysisRequest?
+    public let recovery: AgentOperationRecovery
+    public let message: String
+
+    public init(
+        request: ResearchAgentAnalysisCreationPreflightRequest,
+        analysisVaultID: UUID,
+        settingsRevision: SettingsRevision,
+        applicableFields: [PropertyContract],
+        requiredFields: [String],
+        applicationOwnedFields: [String],
+        targetState: ResearchAgentAnalysisTargetState,
+        status: ResearchAgentAnalysisCreationPreflightStatus,
+        missingRequiredFields: [String] = [],
+        startNewAnalysis: ResearchAgentNewAnalysisRequest? = nil,
+        recovery: AgentOperationRecovery,
+        message: String
+    ) {
+        schemaVersion = Self.currentSchemaVersion
+        requestID = request.requestID
+        self.analysisVaultID = analysisVaultID
+        self.settingsRevision = settingsRevision
+        sourceType = request.metadata.sourceType
+        self.applicableFields = applicableFields.sorted { $0.canonicalKey < $1.canonicalKey }
+        self.requiredFields = requiredFields.sorted()
+        self.applicationOwnedFields = applicationOwnedFields.sorted()
+        self.targetState = targetState
+        self.status = status
+        self.missingRequiredFields = missingRequiredFields.sorted()
+        self.startNewAnalysis = startNewAnalysis
+        self.recovery = recovery
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case requestID = "request_id"
+        case analysisVaultID = "analysis_vault_id"
+        case settingsRevision = "settings_revision"
+        case sourceType = "source_type"
+        case applicableFields = "applicable_fields"
+        case requiredFields = "required_fields"
+        case applicationOwnedFields = "application_owned_fields"
+        case targetState = "target_state"
+        case status
+        case missingRequiredFields = "missing_required_fields"
+        case startNewAnalysis = "start_new_analysis"
+        case recovery, message
+    }
+}
+
 /// Delivery-neutral request for an Agent-originated Run. Scholium resolves the
 /// current Note identity, Action Profile, Method, and revision after receiving
 /// this request; the request never carries a write grant or source bytes.
 public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID
@@ -200,8 +420,9 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
     /// managed creator before preparing Analyze.
     public let target: VaultQualifiedNoteID?
     public let newAnalysis: ResearchAgentNewAnalysisRequest?
-    /// Analyze-only declaration that the researcher will provide a local
-    /// source directly to the external Agent. This never carries a path.
+    /// Existing-Analysis-only declaration that the researcher will provide a
+    /// local source directly to the external Agent. New creation carries the
+    /// same declaration inside its preflight-owned request.
     public let sourceRoute: ResearchAgentSourceRoute?
     public let academicPurpose: String?
 
@@ -250,17 +471,8 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
               (target == nil) != (newAnalysis == nil),
               newAnalysis == nil || actionID == .analyze,
               sourceRoute == nil || actionID == .analyze,
-              sourceRoute == nil
-                  || (newAnalysis == nil && target != nil)
-                  || newAnalysis?.source == nil else {
+              sourceRoute == nil || (newAnalysis == nil && target != nil) else {
             throw ResearchAgentStartContractError.invalidRequest
-        }
-        if let newAnalysis {
-            guard newAnalysis.source != nil
-                    || sourceRoute == .researcherProvided,
-                  !(newAnalysis.source != nil && sourceRoute != nil) else {
-                throw ResearchAgentStartContractError.invalidRequest
-            }
         }
         schemaVersion = Self.currentSchemaVersion
         self.actionID = actionID
@@ -280,11 +492,10 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: CodingKeys.self)
-        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
-        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
-            throw ResearchAgentStartContractError.invalidRequest
-        }
+        try ResearchAgentStartCoding.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.self
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard try container.decode(Int.self, forKey: .schemaVersion)
                 == Self.currentSchemaVersion else {

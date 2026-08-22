@@ -142,26 +142,30 @@ prepared only when the researcher explicitly initiates that Action for an exact
 revision. Raw UUIDs authorize nothing, and no Result completion invents a
 second Run or child lineage.
 
-For a Discuss Run, the authenticated Session also exposes the frozen
-`DialogueResponseContract` and `agent discuss-reply`. That command accepts one
-researcher-visible attribution, text, and Agent-supplied `statement_id`, then
-appends only an Agent turn to the active portable Discussion. Repeating the
-same ID with identical content returns `already_recorded`; different content
-for an existing ID fails closed. The key does not grant Note or Property
-mutation, Finish, Result acceptance, evaluation, Undo, recovery, another Run,
-or arbitrary filesystem access.
+For Discuss, Session exposes frozen `DialogueResponseContract` and
+`agent discuss-reply`, appending one attributed Agent turn keyed by
+`statement_id`. Exact repeat returns `already_recorded`; changed content
+fails closed. The key grants no Note/Property mutation, Finish, Result,
+evaluation, Undo, recovery, new Run, or filesystem access.
 
-The Analyze-only direct `new_analysis` shape carries one exact path, typed
-fields, and either a stable Zotero relationship or
-`source_route: researcher_provided`. Application uses the managed creator,
-current Settings revision, reserved identity, exact readback, and ordinary Run
-preparation; it infers no relationship from document content. The complete
-payload is the replay identity. Only its unfinished Run with the same current
-Zotero relationship may resume; changed or terminal state refuses a new write
-or Session. Source/identity commit precedes projection, so projection failure
-reports exact recovery without duplicate creation. The researcher-provided
-route may also target an existing Analysis but delivers Scholium no source
-path/bytes, Zotero context, or source-access claim.
+Analyze-only `new_analysis` preflight returns the Analyses vault, Settings
+revision, applicable/required/seed fields, root destination, and target
+recovery state. Agent folders, placeholders, retries, and fallback names are
+invalid; researcher placement requires an existing Analysis. Only `ready`
+returns a start payload. Application re-resolves both. Request ID reserves identity;
+the first consequential start freezes destination, route/binding, source type,
+metadata values, and academic purpose. Before source commit, Settings
+may add only newly required fields and atomically advance the
+request/creation/start fingerprint tuple. Other changes conflict; identical
+starts coalesce.
+`researcher_provided` grants no source/Zotero claim.
+
+Results encode retry safety, identity reuse, and one next step for required
+fields, occupation, Settings drift, stale projection, replay, Session expiry,
+and operation-specific unknown outcome. Unknown End is not retryable because
+Session may be revoked. Retained identity with missing/trashed
+source permits Restore or distinct creation—never recreation, overwrite,
+deletion, or retry rename.
 
 Direct Agent connection is local, provider-neutral, and bound to the current
 Scholium application process. The researcher deliberately copies one complete

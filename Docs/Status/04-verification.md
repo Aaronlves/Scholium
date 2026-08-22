@@ -36,6 +36,38 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-22, the task's single complete `verify.sh` run passed
+  documentation/Skill guards, all 199 Web-editor tests, reproducibility and
+  RDF-1 checks, 446 Core tests, 3 Core performance tests, 146 Contract tests,
+  254 Application tests, 15 bridge tests, and the Application architecture
+  measurement. It then stopped in the 646-test App target because the new
+  Analysis Trash inspection borrowed `WorkspaceHandle.services` directly;
+  later stages did not run. The implementation was corrected to receive
+  `TriptychMutationRecoveryStore` through the owned Research-Agent dependency
+  boundary, and the exact failing modular-monolith architecture test passed.
+  Per the one-full-gate constraint, the complete gate was not rerun; its failed
+  log remains the authoritative full-run evidence.
+
+- On 2026-08-22, the direct Analysis-creation recovery integration passed 3
+  Agent-start Contract tests, 37 Core persistence tests, 50 Application owner,
+  Session, Result, and bridge tests, and 10 signed standalone-CLI lifecycles
+  under Xcode 27 beta and Swift 6.4. Disposable fixtures cover Settings-required
+  fields before start; root-only Agent creation and rejection of Agent-claimed
+  subfolders;
+  pre-commit reservation recovery without fabricated identity or mutable
+  source type, existing metadata, or academic purpose; occupied
+  path/identity and missing/trashed source; exact replay, replay conflict,
+  frozen-source projection recovery, concurrent exact/changed starts, complete
+  start-payload replay, and local/remote operation-specific unknown outcomes
+  including non-retryable committed End response loss,
+  Session replacement, and researcher-provided Record formation without a
+  fabricated Source Reference; Analyze also completes without an automatic
+  Fidelity child. Documentation authority and the
+  external philosophy-workflow source-package validator passed. This is local
+  automated evidence, not real-vault, packaged, or human acceptance. The
+  standalone lifecycle executes the returned same-ID preflight recovery step
+  after an injected `outcome_unknown` response.
+
 - On 2026-08-22, the post-cutover cleanup passed 71 focused Core tests across
   vault mutation, coordinated system Trash, portable Record, and Local
   Execution owners; 14 Research Function contract tests; and 8 preparation

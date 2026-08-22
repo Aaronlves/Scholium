@@ -1048,13 +1048,58 @@ struct ResearchRecordV1StoresTests {
             triptychID: fixture.triptychID,
             runID: runID,
             requestFingerprint: DocumentFingerprint(content: "exact request"),
+            creationPayloadFingerprint: DocumentFingerprint(content: "exact creation"),
+            startRequestFingerprint: DocumentFingerprint(content: "exact start"),
             target: target,
             reservedIdentityID: noteID,
-            requestedBinding: binding
+            requestedBinding: binding,
+            sourceRoute: nil,
+            initialMetadata: try AnalysisCreationMetadata(
+                sourceType: .journalArticle
+            ),
+            academicPurpose: "Exact purpose"
         )
 
         #expect(try await store.createAgentAnalysisCreation(record) == record)
         #expect(try await store.createAgentAnalysisCreation(record) == record)
+        let revisedReservation = try LocalAgentAnalysisCreationRecord(
+            triptychID: fixture.triptychID,
+            runID: runID,
+            requestFingerprint: DocumentFingerprint(content: "current Settings request"),
+            creationPayloadFingerprint: DocumentFingerprint(content: "current Settings creation"),
+            startRequestFingerprint: DocumentFingerprint(content: "current Settings start"),
+            target: target,
+            reservedIdentityID: noteID,
+            requestedBinding: binding,
+            sourceRoute: nil,
+            initialMetadata: record.initialMetadata,
+            academicPurpose: "Exact purpose"
+        )
+        #expect(try await store.reviseAgentAnalysisCreationReservation(
+            expected: record,
+            replacement: revisedReservation
+        ) == revisedReservation)
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.reviseAgentAnalysisCreationReservation(
+                expected: record,
+                replacement: revisedReservation
+            )
+        }
+        let committedSource = DocumentFingerprint(content: "committed source")
+        #expect(try await store.confirmAgentAnalysisCreationSource(
+            runID: runID,
+            fingerprint: committedSource
+        ).committedSourceFingerprint == committedSource)
+        #expect(try await store.confirmAgentAnalysisCreationSource(
+            runID: runID,
+            fingerprint: committedSource
+        ).committedSourceFingerprint == committedSource)
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.confirmAgentAnalysisCreationSource(
+                runID: runID,
+                fingerprint: DocumentFingerprint(content: "different source")
+            )
+        }
         #expect(try await store.advanceAgentAnalysisCreationBinding(
             runID: runID,
             to: .writing
@@ -1071,6 +1116,28 @@ struct ResearchRecordV1StoresTests {
             runID: runID,
             to: .committed
         ).bindingState == .committed)
+        let committed = try await store.agentAnalysisCreation(id: runID)
+        let forbiddenRevision = try LocalAgentAnalysisCreationRecord(
+            triptychID: fixture.triptychID,
+            runID: runID,
+            requestFingerprint: DocumentFingerprint(content: "too late"),
+            creationPayloadFingerprint: DocumentFingerprint(content: "too late creation"),
+            startRequestFingerprint: DocumentFingerprint(content: "too late start"),
+            target: target,
+            reservedIdentityID: noteID,
+            requestedBinding: binding,
+            sourceRoute: nil,
+            initialMetadata: record.initialMetadata,
+            academicPurpose: "Exact purpose",
+            committedSourceFingerprint: committedSource,
+            bindingState: .committed
+        )
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.reviseAgentAnalysisCreationReservation(
+                expected: committed,
+                replacement: forbiddenRevision
+            )
+        }
         await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.advanceAgentAnalysisCreationBinding(
                 runID: runID,
@@ -1082,12 +1149,48 @@ struct ResearchRecordV1StoresTests {
             triptychID: fixture.triptychID,
             runID: runID,
             requestFingerprint: DocumentFingerprint(content: "changed request"),
+            creationPayloadFingerprint: DocumentFingerprint(content: "changed creation"),
+            startRequestFingerprint: DocumentFingerprint(content: "changed start"),
             target: target,
             reservedIdentityID: noteID,
-            requestedBinding: binding
+            requestedBinding: binding,
+            sourceRoute: nil,
+            initialMetadata: record.initialMetadata,
+            academicPurpose: "Changed purpose"
         )
         await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.createAgentAnalysisCreation(changed)
+        }
+
+        let researcherProvided = try LocalAgentAnalysisCreationRecord(
+            triptychID: fixture.triptychID,
+            runID: UUID(),
+            requestFingerprint: DocumentFingerprint(content: "researcher request"),
+            creationPayloadFingerprint: DocumentFingerprint(content: "researcher creation"),
+            startRequestFingerprint: DocumentFingerprint(content: "researcher start"),
+            target: VaultQualifiedNoteID(
+                vaultID: target.vaultID,
+                relativePath: "Researcher Provided.md"
+            ),
+            reservedIdentityID: UUID(),
+            requestedBinding: nil,
+            sourceRoute: .researcherProvided,
+            initialMetadata: try AnalysisCreationMetadata(
+                sourceType: .journalArticle
+            ),
+            academicPurpose: nil
+        )
+        let storedResearcher = try await store.createAgentAnalysisCreation(
+            researcherProvided
+        )
+        #expect(storedResearcher == researcherProvided)
+        #expect(storedResearcher.schemaVersion == 2)
+        #expect(storedResearcher.bindingState == nil)
+        await #expect(throws: LocalResearchExecutionStoreError.self) {
+            _ = try await store.advanceAgentAnalysisCreationBinding(
+                runID: researcherProvided.runID,
+                to: .writing
+            )
         }
     }
 

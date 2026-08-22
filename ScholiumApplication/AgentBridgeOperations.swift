@@ -12,6 +12,21 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         )
     }
 
+    public func preflightAnalysisCreation(
+        triptychID: UUID,
+        request: ResearchAgentAnalysisCreationPreflightRequest
+    ) throws -> ResearchAgentAnalysisCreationPreflight {
+        let response = try client.send(try LocalAgentBridgeRequest(
+            operation: .preflightAnalysisCreation,
+            triptychID: triptychID,
+            analysisCreationPreflightRequest: request
+        ))
+        guard let preflight = response.analysisCreationPreflight else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return preflight
+    }
+
     public func start(
         triptychID: UUID,
         request: ResearchAgentStartRequest

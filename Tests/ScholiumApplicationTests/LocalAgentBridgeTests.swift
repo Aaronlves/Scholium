@@ -62,8 +62,85 @@ struct LocalAgentBridgeTests {
         #expect(!String(reflecting: response).contains(credential.secret))
     }
 
+    @Test("Bridge carries read-only Analysis creation preflight without a Session")
+    func analysisCreationPreflightShape() throws {
+        let triptychID = UUID()
+        let vaultID = UUID()
+        let input = try ResearchAgentAnalysisCreationPreflightRequest(
+            requestID: UUID(uuidString: "00000000-0000-4000-8000-000000000812")!,
+            destination: ResearchAgentAnalysisDestination(
+                managedDefaultFilename: "Managed Root.md"
+            ),
+            metadata: AnalysisCreationMetadata(sourceType: .journalArticle),
+            sourceRoute: .researcherProvided
+        )
+        let request = try LocalAgentBridgeRequest(
+            operation: .preflightAnalysisCreation,
+            triptychID: triptychID,
+            analysisCreationPreflightRequest: input
+        )
+        let encoded = try LocalAgentBridgeWireCoding.encode(request)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        #expect(object["operation"] as? String == "preflight_analysis_creation")
+        #expect(object["analysis_creation_preflight_request"] != nil)
+        #expect(object["credential"] == nil)
+        #expect(try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: encoded
+        ).analysisCreationPreflightRequest == input)
+        let unknownRecovery = LocalAgentBridgeErrorPayload
+            .outcomeUnknownRecovery(for: request)
+        #expect(unknownRecovery.safeToRetry)
+        #expect(unknownRecovery.nextStep == .rerunCreationPreflight)
+
+        let revision = SettingsRevision(
+            fingerprint: DocumentFingerprint(content: "settings")
+        )
+        let target = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Managed Root.md"
+        )
+        let result = ResearchAgentAnalysisCreationPreflight(
+            request: input,
+            analysisVaultID: vaultID,
+            settingsRevision: revision,
+            applicableFields: PropertyContractCatalog.contracts(for: .analysis),
+            requiredFields: [],
+            applicationOwnedFields: [],
+            targetState: ResearchAgentAnalysisTargetState(
+                target: target,
+                stableIdentity: nil,
+                fingerprint: nil,
+                sourceState: .absent
+            ),
+            status: .ready,
+            startNewAnalysis: ResearchAgentNewAnalysisRequest(
+                preflight: input,
+                settingsRevision: revision
+            ),
+            recovery: AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .startWithReturnedTemplate
+            ),
+            message: "The managed root destination is ready."
+        )
+        let response = try LocalAgentBridgeResponse(
+            correlationID: request.correlationID,
+            analysisCreationPreflight: result
+        )
+        let decoded = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(response)
+        )
+        #expect(decoded.analysisCreationPreflight?.status == .ready)
+        #expect(decoded.analysisCreationPreflight?.targetState.target == target)
+    }
+
     @Test("Bridge errors distinguish stale Run, stale projection, missing source evidence, and expired Session")
-    func structuredRecoveryErrors() {
+    func structuredRecoveryErrors() throws {
         let stale = LocalAgentBridgeWireCoding.errorPayload(
             ScholiumApplicationError.operationCommittedButRefreshFailed(
                 operation: "Agent Analysis creation",
@@ -100,7 +177,79 @@ struct LocalAgentBridgeTests {
             ResearchAgentConnectionError.newAnalysisReplayConflict
         )
         #expect(replayConflict.code == .replayConflict)
-        #expect(replayConflict.message.contains("did not overwrite"))
+        #expect(replayConflict.recovery.safeToRetry == false)
+        #expect(replayConflict.recovery.mustReuseRequestIdentity)
+        #expect(replayConflict.recovery.nextStep == .inspectOriginalRequestState)
+
+        let missingFields = LocalAgentBridgeWireCoding.errorPayload(
+            DocumentCreationError.missingRequiredAgentFields(["summary"])
+        )
+        #expect(missingFields.code == .missingRequiredFields)
+        #expect(missingFields.recovery.nextStep == .supplyRequiredFieldsAndPreflight)
+
+        let pathOccupied = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentConnectionError.analysisPathOccupied
+        )
+        #expect(pathOccupied.code == .pathOccupied)
+        #expect(!pathOccupied.recovery.mustReuseRequestIdentity)
+        #expect(pathOccupied.recovery.nextStep
+            == .requestResearcherDistinctFilenameAndPreflight)
+
+        let identityOccupied = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentConnectionError.analysisIdentityOccupied
+        )
+        #expect(identityOccupied.code == .identityOccupied)
+        #expect(identityOccupied.recovery.nextStep == .startExistingAnalysis)
+
+        let identityMissing = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentConnectionError.analysisIdentitySourceMissingOrTrashed
+        )
+        #expect(identityMissing.code == .identitySourceMissingOrTrashed)
+        #expect(!identityMissing.recovery.mustReuseRequestIdentity)
+        #expect(identityMissing.recovery.creationBranches.map(\.kind) == [
+            .restoreOriginalSource,
+            .explicitlyCreateAtDistinctDestination,
+        ])
+        #expect(identityMissing.recovery.creationBranches[0]
+            .mustReuseRequestIdentity)
+        #expect(identityMissing.recovery.creationBranches[0].nextStep
+            == .retryExactRequest)
+        #expect(!identityMissing.recovery.creationBranches[1]
+            .mustReuseRequestIdentity)
+
+        let settingsChanged = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentConnectionError.settingsChanged
+        )
+        #expect(settingsChanged.code == .settingsChanged)
+        #expect(settingsChanged.recovery.nextStep == .rerunCreationPreflight)
+
+        let pairRecovery = LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(
+            for: try pairRequest()
+        )
+        let localUnknown = LocalAgentBridgeError.outcomeUnknown(pairRecovery)
+        let unknown = LocalAgentBridgeWireCoding.errorPayload(localUnknown)
+        #expect(unknown.code == .outcomeUnknown)
+        #expect(unknown.recovery.safeToRetry == false)
+        #expect(unknown.recovery.mustReuseRequestIdentity)
+        #expect(unknown.recovery.nextStep == .copyNewHandoffAndPairSameRun)
+
+        let endRecovery = LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(
+            for: try endRequest()
+        )
+        #expect(!endRecovery.safeToRetry)
+        #expect(!endRecovery.mustReuseRequestIdentity)
+        #expect(endRecovery.nextStep == .stopAndReport)
+
+        #expect(localUnknown.agentCommandErrorCode == "outcome_unknown")
+        #expect(
+            localUnknown.agentCommandRecovery?.nextStep
+                == .copyNewHandoffAndPairSameRun
+        )
+        #expect(LocalAgentBridgeError.permissionDenied.agentCommandErrorCode == "permission_denied")
+        #expect(
+            LocalAgentBridgeError.permissionDenied.agentCommandRecovery?.nextStep
+                == .stopAndReport
+        )
     }
 
     @Test("Bridge Discussion replies use the authenticated Run payload")
@@ -403,6 +552,7 @@ struct LocalAgentBridgeTests {
                 return
             }
             #expect(payload.code == .outcomeUnknown)
+            #expect(payload.recovery.nextStep == .copyNewHandoffAndPairSameRun)
         }
         #expect(await server.stopAndWait())
         // Under contention cancellation can win before the unstructured
@@ -411,6 +561,48 @@ struct LocalAgentBridgeTests {
         // released.
         #expect(!entered.value || cancellationObserved.value)
         #expect(!committed.value)
+    }
+
+    @Test("A committed End with a lost response forbids credential retry")
+    func committedEndOutcomeUnknown() async throws {
+        let fixture = try BridgeFixture()
+        defer { fixture.remove() }
+        let committed = LockedFlag()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: fixture.support,
+            timeout: 0.1
+        ) { request in
+            let run = try #require(request.run)
+            #expect(request.operation == .end)
+            committed.set()
+            do { try await Task.sleep(for: .seconds(30)) }
+            catch { /* The terminal mutation already happened. */ }
+            return .endReceipt(try ResearchRunEndReceipt(
+                run: run,
+                recoveryRetained: true,
+                message: "The Session was revoked and durable recovery remains."
+            ))
+        }
+        defer { server.stop() }
+        let client = try LocalAgentBridgeClient(
+            applicationSupportURL: fixture.support,
+            timeout: 1
+        )
+        do {
+            _ = try client.send(try endRequest())
+            Issue.record("Expected an unknown End outcome.")
+        } catch let error as LocalAgentBridgeError {
+            guard case .remote(let payload) = error else {
+                Issue.record("Unexpected bridge error: \(error)")
+                return
+            }
+            #expect(payload.code == .outcomeUnknown)
+            #expect(!payload.recovery.safeToRetry)
+            #expect(!payload.recovery.mustReuseRequestIdentity)
+            #expect(payload.recovery.nextStep == .stopAndReport)
+        }
+        #expect(committed.value)
+        #expect(await server.stopAndWait())
     }
 
     @Test("Shutdown awaits the active handler before releasing ownership")
@@ -698,6 +890,14 @@ private func pairRequest() throws -> LocalAgentBridgeRequest {
         operation: .pair,
         run: ResearchRunLocator(rawValue: "abcdefghijklmnopqrstuvwx")!,
         pairingCode: ResearchPairingCode(rawValue: "23456789ABCDEFGHJKLMNPQR")!
+    )
+}
+
+private func endRequest() throws -> LocalAgentBridgeRequest {
+    try LocalAgentBridgeRequest(
+        operation: .end,
+        run: ResearchRunLocator(rawValue: "abcdefghijklmnopqrstuvwx")!,
+        credential: testCredential()
     )
 }
 
