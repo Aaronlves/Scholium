@@ -103,7 +103,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }
         case .propertyProfiles:
-            ["Property Profiles", "YAML", "New Note", "About", "Agent requirements"]
+            ["Metadata Profiles", "YAML", "New Note", "About", "Agent requirements"]
         case .attention:
             ["Attention", "reminders", "dismissed items", "timing", "This Mac"]
         case .methodsPractices:
@@ -343,7 +343,7 @@ struct ScholiumSettingsView: View {
         case .triptychs:
             WorkspaceSettingsView()
         case .propertyProfiles:
-            PropertiesSettingsView()
+            MetadataProfilesSettingsView()
         case .appearance:
             if let store = settingsModel.cssSnippetStore {
                 AppearanceSettingsView(store: store)
@@ -523,7 +523,7 @@ private struct AttentionSettingsView: View {
     }
 }
 
-private struct PropertiesSettingsView: View {
+private struct MetadataProfilesSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var selectedSlot: WorkspaceVaultSlot = .paperAnalysis
     @State private var configurations = TriptychSettings.defaultProperties
@@ -536,8 +536,6 @@ private struct PropertiesSettingsView: View {
     @State private var savedSettingsRevision: SettingsRevision?
     @State private var savedTriptychID: UUID?
     @State private var selectedSourceType: AnalysisSourceType = .journalArticle
-    @State private var customField = ""
-    @State private var customFieldMessage: String?
     @State private var isSaving = false
     @State private var hasLoaded = false
     @State private var revisionConflict = false
@@ -559,11 +557,9 @@ private struct PropertiesSettingsView: View {
 
     private var availableKeys: [String] {
         let configuration = selectedConfiguration
-        let present = settingsModel.propertyKeys(for: selectedSlot)
         return Array(Set(
             configuration.visibleFields
                 + recommendedKeys
-                + present
         ))
             .sorted { displayName(for: $0).localizedStandardCompare(displayName(for: $1)) == .orderedAscending }
     }
@@ -648,8 +644,8 @@ private struct PropertiesSettingsView: View {
                 key: nil,
                 line: nil,
                 column: nil,
-                reason: String(localized: "The complete Properties candidate could not be validated.", table: "Localizable", bundle: .module),
-                repair: String(localized: "Review the complete Properties candidate before saving.", table: "Localizable", bundle: .module)
+                reason: String(localized: "The complete metadata profile candidate could not be validated.", table: "Localizable", bundle: .module),
+                repair: String(localized: "Review the complete metadata profile candidate before saving.", table: "Localizable", bundle: .module)
             )
         }
     }
@@ -691,8 +687,6 @@ private struct PropertiesSettingsView: View {
         }
         .task { loadSavedSettingsIfNeeded() }
         .onChange(of: selectedSlot) { _, _ in
-            customField = ""
-            customFieldMessage = nil
             seedSelection = nil
         }
         .onChange(of: settingsModel.snapshot) { _, snapshot in
@@ -713,7 +707,7 @@ private struct PropertiesSettingsView: View {
             settingsTitle(
                 ScholiumL10n.Settings.propertyProfiles,
                 detail: LocalizedStringResource(
-                    "Configure New Note YAML, Agent requirements, and About fields by role.",
+                    "Configure minimal New Note YAML, Agent metadata requirements, and About fields by role.",
                     table: "Localizable",
                     bundle: .module
                 )
@@ -752,8 +746,8 @@ private struct PropertiesSettingsView: View {
                         title: String(localized: "Work")
                     ),
                 ],
-                label: String(localized: "Properties role"),
-                accessibilityIdentifier: "scholium.properties.role"
+                label: String(localized: "Metadata role"),
+                accessibilityIdentifier: "scholium.metadataProfiles.role"
             )
 
             ScrollView {
@@ -770,22 +764,6 @@ private struct PropertiesSettingsView: View {
                     displayOrderColumn
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    customFieldInput
-                    customFieldButtons
-                }
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    customFieldInput
-                    customFieldButtons
-                }
-            }
-            if let customFieldMessage {
-                Text(customFieldMessage)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
             }
 
             if let diagnostic = validationDiagnostic {
@@ -815,7 +793,7 @@ private struct PropertiesSettingsView: View {
                 ?? Text(unavailableSettingsDetail),
             indicator: .symbol("slider.horizontal.3", role: .attention)
         ) {
-            Button("Retry Properties Settings") {
+            Button("Retry Metadata Settings") {
                 Task { await settingsModel.refresh() }
             }
             .disabled(settingsModel.isRefreshing)
@@ -826,19 +804,19 @@ private struct PropertiesSettingsView: View {
 
     private var unavailableSettingsTitle: LocalizedStringResource {
         switch settingsModel.portableSettingsState {
-        case .unavailable: "Properties Require a Complete Triptych"
-        case .missing: "Portable Properties Settings Are Missing"
-        case .oldSchema: "Properties Settings Use an Older Schema"
-        case .futureSchema: "Properties Settings Use a Newer Schema"
-        case .corrupted: "Properties Settings Are Damaged"
-        case .current, .needsReview: "Properties Settings Need Attention"
+        case .unavailable: "Metadata Profiles Require a Complete Triptych"
+        case .missing: "Portable Metadata Settings Are Missing"
+        case .oldSchema: "Metadata Settings Use an Older Schema"
+        case .futureSchema: "Metadata Settings Use a Newer Schema"
+        case .corrupted: "Metadata Settings Are Damaged"
+        case .current, .needsReview: "Metadata Settings Need Attention"
         }
     }
 
     private var unavailableSettingsDetail: LocalizedStringResource {
         switch settingsModel.portableSettingsState {
         case .unavailable:
-            "Open or configure a complete Triptych before changing portable Properties settings."
+            "Open or configure a complete Triptych before changing portable metadata settings."
         case .missing:
             "The settings file is missing. Existing research notes remain unchanged, and managed creation stays unavailable until the file is restored."
         case .oldSchema(let version):
@@ -856,7 +834,7 @@ private struct PropertiesSettingsView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("YAML Added to New Notes")
                 .font(ScholiumTypography.interface(.sectionTitle))
-            Text("Every key here is written to every future \(roleName) note. Empty values remain present properties.")
+            Text("Only Summary and Keywords are accepted here. Every listed key is written to each future \(roleName) note; all other structured fields stay in Scholium Metadata.")
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
 
@@ -906,11 +884,11 @@ private struct PropertiesSettingsView: View {
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("scholium.propertiesSettings.validation")
+                    .accessibilityIdentifier("scholium.metadataProfiles.validation")
             }
             if revisionConflict {
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("The saved Properties settings changed after this draft was loaded. The saved version and this draft were both preserved.")
+                    Text("The saved metadata settings changed after this draft was loaded. The saved version and this draft were both preserved.")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                     Button("Reload Saved Settings") {
@@ -996,7 +974,6 @@ private struct PropertiesSettingsView: View {
 
     private func agentRequirementRow(_ field: PropertyPresentation) -> some View {
         let required = agentCreation.requiredFields(for: selectedSourceType).contains(field.key)
-        let seedCollision = analysisSeedKeys.contains(field.key)
         return Toggle(isOn: Binding(
             get: { required },
             set: { enabled in
@@ -1023,11 +1000,7 @@ private struct PropertiesSettingsView: View {
                 Text(field.key)
                     .font(ScholiumTypography.exact(.small))
                     .scholiumForeground(.mutedText)
-                if seedCollision {
-                    Text("Already supplied by the Analysis New Note YAML; remove one requirement before saving.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.destructive)
-                } else if let help = field.help {
+                if let help = field.help {
                     Text(help)
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
@@ -1037,14 +1010,6 @@ private struct PropertiesSettingsView: View {
         .toggleStyle(.checkbox)
         .accessibilityLabel("\(selectedSourceType.propertyDisplayName), \(field.label), \(field.key), required from Agent")
         .accessibilityValue(required ? "Required" : "Not required")
-    }
-
-    private var analysisSeedKeys: Set<String> {
-        let source = candidateSettings.properties[.paperAnalysis]?.newNoteYAML
-        return (try? TriptychSettingsValidator.seedKeys(
-            in: source,
-            role: .paperAnalysis
-        )) ?? []
     }
 
     private var displayOrderColumn: some View {
@@ -1135,19 +1100,6 @@ private struct PropertiesSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var customFieldInput: some View {
-        TextField("Custom top-level YAML field for About", text: $customField)
-            .textFieldStyle(.roundedBorder)
-            .onSubmit { addCustomFieldToDisplay() }
-    }
-
-    private var customFieldButtons: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Add to About") { addCustomFieldToDisplay() }
-                .disabled(normalizedCustomField == nil)
-        }
-    }
-
     private var restoreAndClearActions: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Button("Restore About Defaults") {
@@ -1157,7 +1109,6 @@ private struct PropertiesSettingsView: View {
                 var configuration = selectedConfiguration
                 configuration.visibleFields = defaults.visibleFields
                 configurations[selectedSlot] = configuration
-                customFieldMessage = nil
             }
             Button("Clear New Note YAML") {
                 seedDrafts[selectedSlot] = ""
@@ -1169,7 +1120,7 @@ private struct PropertiesSettingsView: View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Button("Revert to Saved") { revertToSaved() }
                 .disabled(!isDirty)
-            Button("Save Properties") { save() }
+            Button("Save Metadata Settings") { save() }
                 .buttonStyle(.borderedProminent)
                     .disabled(
                         isSaving || !isDirty || validationMessage != nil
@@ -1189,7 +1140,7 @@ private struct PropertiesSettingsView: View {
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.destructive)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("scholium.propertiesSettings.validation")
+                .accessibilityIdentifier("scholium.metadataProfiles.validation")
             if diagnostic.role != nil || diagnostic.sourceType != nil {
                 Button("Review Invalid Setting") {
                     reveal(diagnostic)
@@ -1216,12 +1167,6 @@ private struct PropertiesSettingsView: View {
         )
     }
 
-    private var normalizedCustomField: String? {
-        let value = customField.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return nil }
-        return value
-    }
-
     private func updateSelectedConfiguration(
         _ update: (inout VaultPropertiesConfiguration) -> Void
     ) {
@@ -1241,17 +1186,6 @@ private struct PropertiesSettingsView: View {
             else { return }
             configuration.visibleFields.swapAt(sourceIndex, destinationIndex)
         }
-    }
-
-    private func addCustomFieldToDisplay() {
-        guard let field = normalizedCustomField,
-              AboutProfileCatalog.allowsOptionalField(field, profile: selectedProfile) else {
-            customFieldMessage = "Enter a visible, non-machine YAML field name."
-            return
-        }
-        updateSelectedConfiguration { $0.setVisible(true, field: field) }
-        customField = ""
-        customFieldMessage = "\(displayName(for: field)) was added at the end of the display order."
     }
 
     private func displayName(for key: String) -> String {
@@ -1293,9 +1227,9 @@ private struct PropertiesSettingsView: View {
                     errorMessage = result.warning
                 }
                 let message = if result.warning == nil {
-                    String(localized: "Properties configuration saved", table: "Localizable", bundle: .module)
+                    String(localized: "Metadata configuration saved", table: "Localizable", bundle: .module)
                 } else {
-                    result.warning ?? String(localized: "Properties configuration saved", table: "Localizable", bundle: .module)
+                    result.warning ?? String(localized: "Metadata configuration saved", table: "Localizable", bundle: .module)
                 }
                 settingsModel.showToast(message)
             } catch TriptychControlError.settingsRevisionConflict {
@@ -1374,7 +1308,7 @@ private struct PropertiesSettingsView: View {
         case .incompleteRoleConfiguration:
             role = nil; sourceType = nil; key = nil
             section = .configuration
-            diagnosticReason = String(localized: "The Properties candidate is missing a Triptych role.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(localized: "The metadata profile candidate is missing a Triptych role.", table: "Localizable", bundle: .module)
             repair = String(localized: "Restore the missing role configuration.", table: "Localizable", bundle: .module)
             explicitPosition = nil
         case .noncanonicalConfigurationField(let value, let field):
@@ -1401,11 +1335,11 @@ private struct PropertiesSettingsView: View {
             diagnosticReason = String(localized: "This key is reserved for a portable or machine-owned identity.", table: "Localizable", bundle: .module)
             repair = String(localized: "Remove this reserved key from the New Note YAML.", table: "Localizable", bundle: .module)
             explicitPosition = nil
-        case .canonicalSeedRoleMismatch(let value, let field):
+        case .unsupportedSeedKey(let value, let field):
             role = value; sourceType = nil; key = field
             section = .newNoteYAML
-            diagnosticReason = String(localized: "This canonical key belongs to another Triptych role.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Remove the key or edit the role where it is canonical.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(localized: "New Note YAML supports only Summary and Keywords.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Remove this key and manage the structured value in Scholium Metadata instead.", table: "Localizable", bundle: .module)
             explicitPosition = nil
         case .invalidRequiredField(let type, let field):
             role = .paperAnalysis; sourceType = type; key = field
@@ -1419,17 +1353,11 @@ private struct PropertiesSettingsView: View {
             diagnosticReason = String(localized: "This required field does not apply to the selected Source Type.", table: "Localizable", bundle: .module)
             repair = String(localized: "Clear it or choose a source type where it applies.", table: "Localizable", bundle: .module)
             explicitPosition = nil
-        case .requiredFieldCollidesWithSeed(let type, let field):
-            role = .paperAnalysis; sourceType = type; key = field
-            section = .agentRequirements
-            diagnosticReason = String(localized: "This field is supplied both by New Note YAML and as an Agent requirement.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Remove it from the seed or clear the Agent requirement.", table: "Localizable", bundle: .module)
-            explicitPosition = nil
         case .invalidAttentionDismissalDays:
             role = nil; sourceType = nil; key = nil
             section = .other
             diagnosticReason = String(localized: "Attention dismissal days must be positive.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Repair Attention settings before saving Properties.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Repair Attention settings before saving metadata profiles.", table: "Localizable", bundle: .module)
             explicitPosition = nil
         }
         let position = explicitPosition.map { (line: $0.line, column: $0.column) }
@@ -1461,11 +1389,11 @@ private struct PropertiesSettingsView: View {
             case .nonBlockMappingRoot:
                 String(localized: "The seed must be a top-level YAML block mapping.", table: "Localizable", bundle: .module)
             case .ambiguousStructure:
-                String(localized: "The YAML uses a structure that cannot be edited safely as Properties.", table: "Localizable", bundle: .module)
+                String(localized: "The YAML uses a structure that cannot be edited safely.", table: "Localizable", bundle: .module)
             case .unsupportedExistingValue:
-                String(localized: "An existing YAML value cannot be bounded for a safe Properties edit.", table: "Localizable", bundle: .module)
+                String(localized: "An existing YAML value cannot be bounded for a safe edit.", table: "Localizable", bundle: .module)
             case .semanticMismatch:
-                String(localized: "The encoded YAML did not preserve the requested Property value.", table: "Localizable", bundle: .module)
+                String(localized: "The encoded YAML did not preserve the requested authored value.", table: "Localizable", bundle: .module)
             }
         case .topLevelMappingRequired:
             String(localized: "The seed must contain at least one top-level mapping entry.", table: "Localizable", bundle: .module)
@@ -1474,9 +1402,9 @@ private struct PropertiesSettingsView: View {
             case .malformedFrontmatter:
                 String(localized: "The YAML frontmatter is malformed.", table: "Localizable", bundle: .module)
             case .invalidValueKind:
-                String(localized: "A canonical property has the wrong value shape.", table: "Localizable", bundle: .module)
+                String(localized: "A canonical field has the wrong value shape.", table: "Localizable", bundle: .module)
             case .valueNotAllowed:
-                String(localized: "A canonical property contains a value that is not allowed.", table: "Localizable", bundle: .module)
+                String(localized: "A canonical field contains a value that is not allowed.", table: "Localizable", bundle: .module)
             case .invalidCreator:
                 String(localized: "A creator entry is incomplete or malformed.", table: "Localizable", bundle: .module)
             }

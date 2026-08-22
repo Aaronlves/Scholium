@@ -210,7 +210,7 @@ struct ResearchAgentSessionAuthorityTests {
             run: handoff.run,
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
-                    kind: .inspectProperties,
+                    kind: .inspectMetadata,
                     query: "property:aliases",
                     useEligibility: .referenceOnly
                 )]

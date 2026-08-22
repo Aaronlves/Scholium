@@ -97,8 +97,9 @@ occurrence without saving it. Vault and Triptych return one row per present Note
 
 The shared finite grammar is space-as-AND, escaped exact phrases, trailing
 prefix `*`, clause exclusion, Note lexical fields `title`, `alias`, `heading`,
-`summary`, `body`, `author`, `publication_date`, `tag`, `footnote`, and `path`, Note structured fields
-`callout` and `has:broken-link`, and the clauses below. Structured filter-only
+`summary`, `body`, `author`, `publication_date`, `keyword`, `footnote`, and
+`path`, Note structured fields `callout` and `has:broken-link`, and the clauses
+below. `keyword` addresses authored `keywords`. Structured filter-only
 queries are valid. A query containing only excluded free text is invalid.
 `status` remains unsupported. Unknown fields or canonical values, `vault`,
 `role`, or `metadata`, malformed escapes, CJK prefix `*`, structured clause
@@ -109,17 +110,18 @@ provider execution; exceeding either bound returns an editable diagnostic.
 
 The Note provider adds only these structured clauses:
 
-- `property:<key>` matches explicit presence of one literal top-level YAML key;
-  `property:<key>=<value>` matches an entire source-bounded plain or quoted
-  string scalar, or one entire source-bounded string sequence member, after
-  versioned canonical Unicode, case, and whitespace normalization while
-  preserving diacritic distinctions. Key identity is
-  canonical-Unicode normalized and case-sensitive. Presence includes empty or
-  nonstring values but explains that condition; equality excludes numbers,
-  booleans, dates, nulls, mappings, nested keys, and mixed sequences without
-  coercion. Literal addressability of an unknown YAML key grants it no
-  canonical Property semantics, validation, philosophical meaning, or
-  researcher judgment.
+- `property:<key>` is the stable query spelling for one canonical structured
+  field. It matches a Scholium Metadata field for the Note's role or one of the
+  authored YAML fields `summary` and `keywords`; unknown or retired YAML keys
+  are never query candidates. `property:<key>=<value>` matches an entire
+  normalized string value or one complete string-sequence member. Authored
+  YAML matches retain exact key and value source ranges. Managed Metadata
+  matches name their portable record revision and never claim a Markdown
+  source range. Key identity is canonical-Unicode normalized and
+  case-sensitive. Presence includes an empty or nonstring canonical value but
+  explains that condition; equality excludes nulls, mappings, nested values,
+  and mixed sequences without coercion. The query spelling grants no
+  philosophical meaning or researcher judgment.
 - A direct relation query contains exactly one `from-note:<anchor>` or
   `to-note:<anchor>` plus exactly one
   `relation:supports|opposes|neutral|incompatible`. `supports` and `opposes`
@@ -128,7 +130,7 @@ The Note provider adds only these structured clauses:
   uses the ordinary stable identity/title/alias/path rules and reports
   ambiguity rather than guessing. Relation queries do not expand transitively.
 
-Property and relation clauses apply only to the Note provider in **This Vault**
+Structured-field and relation clauses apply only to the Note provider in **This Vault**
 or **Triptych**. A relation clause is ANDed with any lexical clauses over the
 direct-neighbor set. If the current Graph cannot answer it, the complete query
 fails closed rather than returning a broader lexical substitute. Relation
@@ -146,7 +148,7 @@ matches only the exact retained Method display name; `participant` requires an
 attributed statement from that speaker.
 Unfielded terms search the frozen Record Title, Action, Skill, participant Note titles,
 attributed statements, and Application-validated actually-used Material
-titles. Note-only fields, Property, and relation clauses fail with a provider-
+titles. Note-only fields, Metadata, and relation clauses fail with a provider-
 mismatch diagnostic.
 
 One result row always represents one provider object. Record results are one
@@ -194,7 +196,7 @@ completion, **Explain Query**, and CLI help. Baseline completion exposes only
 fields and canonical values supported by the current contract; after an
 explicit provider clause, it exposes only that provider's legal capabilities.
 Completion edits only visible query text and creates no hidden token or chip.
-Scope-first Property-key and Note-identity candidates are optional, not a
+Scope-first Metadata-key and Note-identity candidates are optional, not a
 Foundation requirement. The Application may provide them only from the
 currently authorized provider, scope, and authority after representative use
 shows that the static capability description is insufficient for query
@@ -230,7 +232,7 @@ locator or source range, fingerprint, and freshness. Presentation wording may
 differ, but adapters cannot change the result set or order, relation direction,
 attribution, diagnostic meaning, or availability.
 
-The optional canonical YAML `summary` is an independently explainable Note
+The optional authored YAML `summary` is an independently explainable Note
 field in this same projection, parser, ranking, source-range, freshness,
 completion, Saved Search, App, CLI, incremental-update, and clean-rebuild
 contract. Unfielded Note Search includes it; `summary:<text>` restricts lexical
@@ -239,12 +241,14 @@ summary scalar range and opens the current Note, never a summary-only object.
 It is a discovery lead that requires current-body/source inspection before a
 substantive claim. Missing or source-unbounded summary values do not block the
 Note or acquire a machine-generated fallback. Search never writes or
-reconstructs the YAML field.
+reconstructs the YAML field. Search contract v9 adds managed Metadata values
+with nullable Markdown source ranges; old disposable index schemas are rebuilt
+instead of entering a compatibility path.
 
 Future fields or providers require a versioned typed clause, discriminated
 result identity, provider capability-table entry, source/freshness contract,
 and App/CLI parity. This is an extension boundary, not a plugin framework.
-Property contains/ranges/nested paths, Record arbitrary ranges, `section:`,
+Structured-field contains/ranges/nested paths, Record arbitrary ranges, `section:`,
 OR, vector search, embeddings, AI query interpretation or ranking,
 automatic relation extraction, multi-hop expansion, context assembly, and
 chat-style Search remain deferred. **Vector-Link** means only the explicit
@@ -252,9 +256,9 @@ researcher-visible relation markers in §12.
 
 Research Context reuses this Search owner under the scope and provenance rules
 in [§8.2](03-research-actions-and-workflows.md#82-agent-entry-local-pairing-layered-delivery-and-research-context).
-It retains Search's typed Property ranges and direct-relation predicate,
+It retains Search's typed Metadata provenance and direct-relation predicate,
 direction, anchor, target, and Markdown occurrences. It creates no second
-parser, ranker, Property/Relation resolver, persistent response, hidden Agent
+parser, ranker, Metadata/Relation resolver, persistent response, hidden Agent
 index, confidence score, or writable source.
 
 Attention is one Triptych-owned queue. Presentation may open the complete

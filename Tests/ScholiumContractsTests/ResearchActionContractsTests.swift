@@ -103,7 +103,7 @@ struct ResearchActionContractsTests {
                     readableNotes: [topic],
                     writableNotes: [],
                     writeOperations: [],
-                    editablePropertyKeys: []
+                    editableMetadataKeys: []
                 )
             )
         }
@@ -125,7 +125,7 @@ struct ResearchActionContractsTests {
                     readableNotes: [valid.target],
                     writableNotes: [valid.target],
                     writeOperations: [.modifyMarkdown],
-                    editablePropertyKeys: []
+                    editableMetadataKeys: []
                 )
             )
         }
@@ -200,7 +200,7 @@ struct ResearchActionContractsTests {
                 readableNotes: [target],
                 writableNotes: writes ? [target] : [],
                 writeOperations: writes ? [.modifyMarkdown] : [],
-                editablePropertyKeys: []
+                editableMetadataKeys: []
             )
         )
     }

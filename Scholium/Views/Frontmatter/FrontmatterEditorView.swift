@@ -1,7 +1,7 @@
 import ScholiumContracts
 import SwiftUI
 
-// MARK: - Properties Editor
+// MARK: - Metadata Editor
 
 private struct CreatorDraft: Identifiable, Hashable {
     enum Kind: String, CaseIterable, Hashable {
@@ -78,20 +78,19 @@ private struct CreatorDraft: Identifiable, Hashable {
     }
 }
 
-/// Schema-aware sheet for editing a note's frontmatter.
-struct FrontmatterEditorView: View {
+/// Schema-aware sheet for editing one portable Scholium metadata record.
+struct MetadataEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     let initialExpectedRevision: DocumentFingerprint?
     let onClose: (@MainActor () -> Void)?
-    let onOpenSource: (@MainActor () -> Void)?
     let reload: (@MainActor () async throws -> (
         note: WindowDocumentLocation,
-        revision: DocumentFingerprint
+        revision: DocumentFingerprint?
     ))?
     let save: @MainActor (
         [String: YAMLValue],
-        DocumentFingerprint
+        DocumentFingerprint?
     ) async throws -> Void
 
     @State private var note: WindowDocumentLocation
@@ -105,14 +104,12 @@ struct FrontmatterEditorView: View {
     @State private var showAvailableProperties = false
     @State private var selectedNewFieldKeys: Set<String> = []
     @State private var removedFieldKeys: Set<String> = []
-    @State private var yamlFreeInsertionEnabled = false
     @State private var creatorValues: [String: [CreatorDraft]] = [:]
     @State private var originalCreatorValues: [String: [CreatorDraft]] = [:]
     @State private var listValues: [String: [String]] = [:]
     @State private var originalListValues: [String: [String]] = [:]
     @State private var pendingChooserFieldFocus: String?
     @State private var hoveredFieldKey: String?
-    @State private var confirmsDiscardForSource = false
     @State private var revisionConflict = false
     @State private var isReloading = false
     @FocusState private var focusedFieldKey: String?
@@ -122,21 +119,19 @@ struct FrontmatterEditorView: View {
         note: WindowDocumentLocation,
         expectedRevision: DocumentFingerprint? = nil,
         onClose: (@MainActor () -> Void)? = nil,
-        onOpenSource: (@MainActor () -> Void)? = nil,
         reload: (@MainActor () async throws -> (
             note: WindowDocumentLocation,
-            revision: DocumentFingerprint
+            revision: DocumentFingerprint?
         ))? = nil,
         save: @escaping @MainActor (
             [String: YAMLValue],
-            DocumentFingerprint
+            DocumentFingerprint?
         ) async throws -> Void
     ) {
         self.note = note
         _note = State(initialValue: note)
         self.initialExpectedRevision = expectedRevision
         self.onClose = onClose
-        self.onOpenSource = onOpenSource
         self.reload = reload
         self.save = save
     }
@@ -172,16 +167,12 @@ struct FrontmatterEditorView: View {
         }
     }
 
-    private var frontmatterState: NoteFrontmatterState {
-        NoteDocument(relativePath: note.relativePath, rawContent: note.rawContent).frontmatterState
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
-                    Text("Properties")
+                    Text("Metadata")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     Text(note.title ?? note.displayName)
                         .font(ScholiumTypography.interface(.small))
@@ -220,7 +211,7 @@ struct FrontmatterEditorView: View {
             if revisionConflict {
                 Divider()
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text("This note changed on disk. The Properties draft was preserved and cannot be saved against the older revision.")
+                    Text("This Note's metadata changed through another participant. Your draft was preserved and cannot replace the newer revision.")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.attention)
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -228,9 +219,6 @@ struct FrontmatterEditorView: View {
                             reloadCurrentNote()
                         }
                         .disabled(isReloading || reload == nil)
-                        Button("Review Current Note in Source") {
-                            openSource()
-                        }
                     }
                 }
                 .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
@@ -256,7 +244,7 @@ struct FrontmatterEditorView: View {
         }
         .scholiumSurface(.boundedPanel)
         .disabled(isSaving)
-        .accessibilityIdentifier("scholium.propertiesEditor")
+        .accessibilityIdentifier("scholium.metadataEditor")
         .task {
             installDraft(note: note, revision: initialExpectedRevision)
         }
@@ -276,109 +264,59 @@ struct FrontmatterEditorView: View {
             Text(saveError ?? "")
         }
         .interactiveDismissDisabled(hasDraftChanges || isSaving)
-        .confirmationDialog(
-            "Discard Properties Draft?",
-            isPresented: $confirmsDiscardForSource
-        ) {
-            Button("Discard Draft and Open Source", role: .destructive) {
-                performOpenSource()
-            }
-            Button("Keep Editing", role: .cancel) {}
-        } message: {
-            Text("Opening Source closes Complete Properties. The unsaved structured draft will be discarded; the note on disk will not change.")
-        }
     }
 
     @ViewBuilder
     private var propertiesContent: some View {
-        switch frontmatterState {
-        case .malformed:
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                ScholiumContentStateView(
-                    "YAML Properties Need Source",
-                    detail: Text("This note's frontmatter is incomplete or malformed. Its exact source was left unchanged."),
-                    indicator: .symbol("exclamationmark.triangle", role: .attention)
-                )
-                Button("Edit in Source", action: openSource)
-            }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        case .absent where !yamlFreeInsertionEnabled:
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Text("This note has no YAML properties.")
-                    .font(ScholiumTypography.interface(.sectionTitle))
-                if availableFields.isEmpty {
-                    Text("This note has no supported fields that can be added here. Keep it without YAML or edit the exact source.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        Button("Keep Without YAML") { closeEditor() }
-                        Button("Edit in Source", action: openSource)
-                    }
-                } else {
-                    Text("Adding the first property will insert a YAML frontmatter block and preserve the note body exactly.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        Button("Add YAML Properties…") {
-                            yamlFreeInsertionEnabled = true
-                            showAvailableProperties = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        Button("Keep Without YAML") { closeEditor() }
-                    }
-                }
-            }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .accessibilityIdentifier("scholium.propertiesEditor.yamlFree")
-        case .absent, .valid:
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if allFields.isEmpty {
-                        Text("No properties yet.")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if allFields.isEmpty {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        Text("No managed metadata yet.")
                             .font(ScholiumTypography.interface(.body))
+                        Text("Add only the fields useful for this Note. Markdown and YAML remain unchanged.")
+                            .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.secondaryText)
                     }
+                }
 
-                    ForEach(Array(groupedPresentFields.enumerated()), id: \.element.group) { index, group in
-                        ScholiumPropertyGroup(
-                            label: group.group.label,
-                            separatesFromPrevious: index > 0
+                ForEach(Array(groupedPresentFields.enumerated()), id: \.element.group) { index, group in
+                    ScholiumPropertyGroup(
+                        label: group.group.label,
+                        separatesFromPrevious: index > 0
+                    ) {
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumMetrics.Properties.fieldBlockSeparation
                         ) {
-                            VStack(
-                                alignment: .leading,
-                                spacing: ScholiumMetrics.Properties.fieldBlockSeparation
-                            ) {
-                                ForEach(group.fields) { field in
-                                    fieldEditor(for: field)
-                                }
+                            ForEach(group.fields) { field in
+                                fieldEditor(for: field)
                             }
                         }
                     }
-
-                    if !availableFields.isEmpty {
-                        Button("Add a Property…") {
-                            showAvailableProperties = true
-                        }
-                        .focused($addPropertyButtonIsFocused)
-                        .accessibilityIdentifier("scholium.propertiesEditor.addProperty")
-                        .accessibilityHint("Chooses a supported field without changing the note until Save succeeds")
-                        .padding(
-                            .top,
-                            allFields.isEmpty
-                                ? ScholiumGrid.Spacing.inlineControlGap
-                                : ScholiumMetrics.Properties.semanticGroupSeparation
-                        )
-                    }
                 }
-                .padding(ScholiumGrid.Spacing.regionContentInset)
+
+                if !availableFields.isEmpty {
+                    Button("Add a Field…") {
+                        showAvailableProperties = true
+                    }
+                    .focused($addPropertyButtonIsFocused)
+                    .accessibilityIdentifier("scholium.metadataEditor.addField")
+                    .accessibilityHint("Chooses a managed field without changing Markdown or YAML")
+                    .padding(
+                        .top,
+                        allFields.isEmpty
+                            ? ScholiumGrid.Spacing.inlineControlGap
+                            : ScholiumMetrics.Properties.semanticGroupSeparation
+                    )
+                }
             }
+            .padding(ScholiumGrid.Spacing.regionContentInset)
         }
     }
 
     private struct DraftCandidate {
-        let frontmatter: [String: YAMLValue]
+        let fields: [String: YAMLValue]
         let changedKeys: Set<String>
     }
 
@@ -388,7 +326,7 @@ struct FrontmatterEditorView: View {
     }
 
     private var draftCandidate: DraftCandidate {
-        var proposed = note.frontmatter
+        var proposed = note.managedMetadataFields
         var changedKeys = removedFieldKeys
         for key in removedFieldKeys { proposed.removeValue(forKey: key) }
 
@@ -410,7 +348,7 @@ struct FrontmatterEditorView: View {
                 proposed = editorModel.updating(proposed, field: field, text: text)
             }
         }
-        return DraftCandidate(frontmatter: proposed, changedKeys: changedKeys)
+        return DraftCandidate(fields: proposed, changedKeys: changedKeys)
     }
 
     private var liveFieldErrors: [String: String] {
@@ -425,7 +363,7 @@ struct FrontmatterEditorView: View {
         }
         let candidate = draftCandidate
         for issue in editorModel.validationIssues(
-            proposedFrontmatter: candidate.frontmatter,
+            proposedFields: candidate.fields,
             changedKeys: candidate.changedKeys
         ) {
             if let key = issue.propertyKey {
@@ -440,7 +378,7 @@ struct FrontmatterEditorView: View {
     ) -> String {
         switch issue.code {
         case .malformedFrontmatter:
-            String(localized: "The note's YAML frontmatter is malformed. Edit it in Source.", table: "Localizable", bundle: .module)
+            String(localized: "The stored metadata record is unavailable.", table: "Localizable", bundle: .module)
         case .invalidValueKind:
             String(localized: "This value does not match the field's required shape.", table: "Localizable", bundle: .module)
         case .valueNotAllowed:
@@ -456,7 +394,6 @@ struct FrontmatterEditorView: View {
 
     private var canSaveDraft: Bool {
         hasDraftChanges
-            && expectedRevision != nil
             && !revisionConflict
             && displayedFieldErrors.isEmpty
     }
@@ -498,7 +435,6 @@ struct FrontmatterEditorView: View {
     }
 
     private func removeField(_ field: PropertyEditorField) {
-        guard !field.isReadOnly else { return }
         if hoveredFieldKey == field.key {
             hoveredFieldKey = nil
         }
@@ -512,22 +448,6 @@ struct FrontmatterEditorView: View {
             removedFieldKeys.insert(field.key)
         }
         focusedFieldKey = nil
-    }
-
-    private func openSource() {
-        if hasDraftChanges {
-            confirmsDiscardForSource = true
-            return
-        }
-        performOpenSource()
-    }
-
-    private func performOpenSource() {
-        if let onOpenSource {
-            onOpenSource()
-        } else {
-            closeEditor()
-        }
     }
 
     // MARK: - Field Editors
@@ -594,7 +514,7 @@ struct FrontmatterEditorView: View {
                 Text("Pending Removal")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
-                    .help("This property will be removed when Save succeeds.")
+                    .help("This metadata field will be removed when Save succeeds.")
             } else if !field.isTypicalForSourceType,
                       let sourceType = editorModel.analysisSourceType {
                 Text("Not typical")
@@ -603,7 +523,7 @@ struct FrontmatterEditorView: View {
                     .help(notTypicalHelp(for: field, sourceType: sourceType))
             }
             if field.isReadOnly, !isRemoved {
-                Text("Source only")
+                Text("Unsupported shape")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
             }
@@ -614,8 +534,10 @@ struct FrontmatterEditorView: View {
                 }
                 .buttonStyle(.borderless)
             } else if field.isReadOnly {
-                Button("Edit in Source", action: openSource)
-                    .buttonStyle(.borderless)
+                Button("Remove Field", role: .destructive) {
+                    removeField(field)
+                }
+                .buttonStyle(.borderless)
             } else {
                 ScholiumEditorialIconControl(
                     systemImage: "ellipsis",
@@ -625,8 +547,8 @@ struct FrontmatterEditorView: View {
                     Menu {
                         Button(
                             selectedNewFieldKeys.contains(field.key)
-                                ? "Discard Added Property"
-                                : "Remove Property",
+                                ? "Discard Added Field"
+                                : "Remove Field",
                             role: .destructive
                         ) {
                             removeField(field)
@@ -635,8 +557,8 @@ struct FrontmatterEditorView: View {
                         label
                     }
                 }
-                .help("Property Actions")
-                .accessibilityLabel("Property Actions")
+                .help("Field Actions")
+                .accessibilityLabel("Field Actions")
                 .accessibilityValue(Text(verbatim: field.label))
             }
         }
@@ -1136,19 +1058,14 @@ struct FrontmatterEditorView: View {
         guard canSaveDraft else { return }
         let candidate = draftCandidate
 
-        guard let revision = expectedRevision else {
-            saveError = "The editing revision is unavailable. Close and reopen the editor."
-            return
-        }
-
         isSaving = true
         Task {
             do {
-                try await save(candidate.frontmatter, revision)
+                try await save(candidate.fields, expectedRevision)
                 isSaving = false
                 closeEditor()
-            } catch let error as VaultRepositoryError {
-                if case .conflict = error {
+            } catch let error as NoteMetadataError {
+                if case .revisionConflict = error {
                     revisionConflict = true
                     saveError = nil
                 } else {
@@ -1191,32 +1108,17 @@ struct FrontmatterEditorView: View {
         originalListValues = [:]
         selectedNewFieldKeys = []
         removedFieldKeys = []
-        yamlFreeInsertionEnabled = false
         revisionConflict = false
         saveError = nil
 
-        for (key, value) in refreshedNote.frontmatter {
-            let stringValue = frontmatterToString(value)
+        for (key, value) in refreshedNote.managedMetadataFields {
+            let stringValue = metadataValueToString(value)
             fieldValues[key] = stringValue
             originalFieldValues[key] = stringValue
         }
         let model = PropertyEditorModel(note: refreshedNote)
-        for field in model.presentFields {
-            switch field.valueKind {
-            case .text, .multilineText, .date, .choice:
-                break
-            case .number, .boolean, .textList, .tags, .mapping, .creatorList:
-                continue
-            }
-            guard let token = refreshedNote.authoredTopLevelScalarToken(named: field.key),
-                  FrontmatterPatchPlanner.isTimestampScalarToken(token) else {
-                continue
-            }
-            fieldValues[field.key] = token
-            originalFieldValues[field.key] = token
-        }
         for field in model.presentFields where field.valueKind == .creatorList {
-            guard case .array(let values)? = refreshedNote.topLevelProperty(named: field.key) else {
+            guard case .array(let values)? = refreshedNote.managedMetadataValue(named: field.key) else {
                 continue
             }
             let drafts = values.compactMap(CreatorDraft.init(value:))
@@ -1225,7 +1127,7 @@ struct FrontmatterEditorView: View {
         }
         for field in model.presentFields where field.valueKind == .textList
             || field.valueKind == .tags {
-            guard case .array(let values)? = refreshedNote.topLevelProperty(named: field.key) else {
+            guard case .array(let values)? = refreshedNote.managedMetadataValue(named: field.key) else {
                 continue
             }
             let items = values.compactMap { value -> String? in
@@ -1248,7 +1150,7 @@ struct FrontmatterEditorView: View {
 
     // MARK: - Helpers
 
-    private func frontmatterToString(_ value: YAMLValue) -> String {
+    private func metadataValueToString(_ value: YAMLValue) -> String {
         switch value {
         case .string(let s): return s
         case .integer(let i): return "\(i)"
@@ -1298,7 +1200,7 @@ private struct PropertyChooserView: View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             HStack {
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
-                    Text("Add a Property")
+                    Text("Add a Field")
                         .font(ScholiumTypography.interface(.primaryTitle))
                     if model.profile == .analysis {
                         Text(model.analysisSourceType.map {
@@ -1316,7 +1218,7 @@ private struct PropertyChooserView: View {
             TextField("Search fields", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchIsFocused)
-                .accessibilityIdentifier("scholium.propertyChooser.search")
+                .accessibilityIdentifier("scholium.metadataChooser.search")
                 .onKeyPress(.downArrow) {
                     guard let first = fields.first else { return .ignored }
                     selectionKey = first.key
@@ -1327,8 +1229,8 @@ private struct PropertyChooserView: View {
 
             if groups.isEmpty {
                 ScholiumContentStateView(
-                    "No Matching Properties",
-                    detail: Text("Try a field label or exact YAML key."),
+                    "No Matching Fields",
+                            detail: Text("Try a field label or exact Metadata key."),
                     indicator: .symbol("magnifyingglass", role: .secondaryText)
                 )
             } else {
@@ -1364,12 +1266,12 @@ private struct PropertyChooserView: View {
                     }
                 }
                 .focused($listIsFocused)
-                .accessibilityIdentifier("scholium.propertyChooser.list")
+                .accessibilityIdentifier("scholium.metadataChooser.list")
             }
 
             HStack {
                 Spacer()
-                Button("Add Selected Property") { addSelectedField() }
+                Button("Add Selected Field") { addSelectedField() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(selectedField == nil)
@@ -1391,11 +1293,11 @@ private struct PropertyChooserView: View {
 }
 
 private func propertyHelpText(for field: PropertyEditorField) -> Text {
-    let yamlKey = "YAML: \(field.key)"
-    guard let help = field.help, !help.isEmpty else {
-        return Text(verbatim: yamlKey)
-    }
-    return Text(verbatim: "\(help)\n\(yamlKey)")
+        let metadataKey = "Metadata: \(field.key)"
+        guard let help = field.help, !help.isEmpty else {
+            return Text(verbatim: metadataKey)
+        }
+        return Text(verbatim: "\(help)\n\(metadataKey)")
 }
 
 // MARK: - Flow Layout (for tags)
@@ -1476,18 +1378,18 @@ struct FlowLayout: Layout {
 // MARK: - Preview
 
 #Preview {
-    FrontmatterEditorView(note: .syntheticPreview(
+    MetadataEditorView(note: .syntheticPreview(
         relativePath: "papers/smith2023.md",
-        rawContent: """
-        ---
-        title: Attention Is All You Need
-        authors:
-          - family: Smith
-          - family: Jones
-        publication_date: "2023"
-        tags: [attention, nlp]
-        ---
-        """,
-        vaultRole: .sourceCorpus
+            rawContent: "# Attention Is All You Need\n",
+            vaultRole: .sourceCorpus,
+            managedMetadata: [
+                "type": .string("journal_article"),
+                "title": .string("Attention Is All You Need"),
+                "authors": .array([
+                    .object(["family": .string("Smith")]),
+                    .object(["family": .string("Jones")]),
+                ]),
+                "publication_date": .string("2023"),
+            ]
     )) { _, _ in }
 }

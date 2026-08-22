@@ -165,13 +165,13 @@ struct ResearchActionPanelRoute: Hashable, Sendable {
     }
 }
 
-/// Typed Properties presentation.
-struct FrontmatterPanelRoute: Hashable, Sendable {
+/// Typed Scholium Metadata presentation.
+struct MetadataPanelRoute: Hashable, Sendable {
     let presentationID: UUID
     let path: String
 
     var id: String {
-        "frontmatter:\(presentationID.uuidString.lowercased())"
+        "metadata:\(presentationID.uuidString.lowercased())"
     }
 
     init(

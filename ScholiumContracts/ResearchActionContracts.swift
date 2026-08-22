@@ -226,7 +226,7 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
             readableNotes: authority.readableNotes,
             writableNotes: authority.writableNotes,
             writeOperations: authority.writeOperations,
-            editablePropertyKeys: authority.editablePropertyKeys
+            editableMetadataKeys: authority.editableMetadataKeys
         )
         let canWriteInitial = platform.operations.contains(.modifyInitialNote)
         guard resolvedProfile.profile.actionID == definition.id,

@@ -21,13 +21,13 @@ computer to communicate with Zotero** in Zotero's Advanced settings.
 
 An `AnalysisZoteroBinding` in portable `.scholium/` relates one stable Analysis
 Note UUID to one exact Zotero user or group library identity and normalized
-item key. It is not YAML, a Property, bibliographic metadata, or researcher
+item key. It is not YAML, a Metadata field, bibliographic metadata, or researcher
 source. A `zotero_item_key` found in Markdown is ordinary custom source and
 grants no integration behavior or authority. Scholium never infers a binding
 from YAML, path, filename, title, authors, identifier, date, or similarity.
 
 Only dedicated set/clear Zotero-binding operations may change it;
-`modify_markdown`, `modify_source`, and `modify_properties` cannot. Rename,
+`modify_markdown`, `modify_source`, and `modify_metadata` cannot. Rename,
 Move, and system-Trash source deletion retain it by stable identity so Finder
 restoration can reconcile the Analysis. Duplicate Analysis explicitly copies
 the relationship. The Zotero
@@ -76,9 +76,10 @@ paper data. Scholium never caches, proxies, or automatically transfers that
 external content into the vault or a Record. Built-in integration never changes
 Zotero data, files, or live SQLite. Binding never creates a bibliographic
 snapshot: connection, binding, opening, and Action preparation never write,
-refresh, reconcile, or override Analysis Properties. A future fill operation
-requires a separate explicit, field-bounded, current-fingerprint source
-transaction.
+refresh, reconcile, or override Analysis Metadata. A future fill operation
+requires a separate explicit, field-bounded Metadata transaction at the
+current portable-record revision. It never derives writable source from
+fetched bibliographic data.
 
 ### 15.3 Literature Recommendations and the Zotero boundary
 

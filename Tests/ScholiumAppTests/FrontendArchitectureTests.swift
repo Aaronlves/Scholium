@@ -831,16 +831,16 @@ struct FrontendArchitectureTests {
         router.present(.transactionRecovery)
         #expect(router.sheet?.id == "transaction-recovery")
 
-        router.presentFrontmatter(path: "Topics/Agency.md")
-        guard case .frontmatter(let frontmatterRoute) = router.sheet else {
-            Issue.record("Expected Properties to replace the transaction recovery route")
+        router.presentMetadata(path: "Topics/Agency.md")
+        guard case .metadata(let metadataRoute) = router.sheet else {
+            Issue.record("Expected Metadata to replace the transaction recovery route")
             return
         }
-        #expect(frontmatterRoute.path == "Topics/Agency.md")
+        #expect(metadataRoute.path == "Topics/Agency.md")
         router.dismissSheet(if: "transaction-recovery")
-        #expect(router.sheet?.id == frontmatterRoute.id)
+        #expect(router.sheet?.id == metadataRoute.id)
 
-        router.dismissSheet(if: frontmatterRoute.id)
+        router.dismissSheet(if: metadataRoute.id)
         #expect(router.sheet == nil)
 
         router.fileImport = .markdown
@@ -1971,7 +1971,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
-        for section in ["Integrity", "Metadata", "Properties", "Order", "Actions"] {
+        for section in ["Integrity", "Metadata", "Order", "Actions"] {
             #expect(filterMenuSource.contains("Section(\"\(section)\")"))
         }
         #expect(!sidebarSource.contains("Section(\"Integrity\")"))
@@ -2443,7 +2443,7 @@ struct FrontendArchitectureTests {
         #expect(researchSource.contains("AboutProfileCatalog.groupedEntries"))
         #expect(researchSource.contains("AboutTagsView"))
         #expect(researchSource.contains("ScholiumApparatusSectionHeaderButton("))
-        #expect(researchSource.contains("actionLabel: \"Edit Properties\""))
+        #expect(researchSource.contains("actionLabel: \"Edit Metadata\""))
         #expect(researchSource.contains("accessibilityIdentifier: \"scholium.about.edit\""))
         #expect(researchSource.contains(".accessibilityIdentifier(\"scholium.about\")"))
         #expect(researchSource.contains("title: Text(\"Open in Zotero\")"))

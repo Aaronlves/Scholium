@@ -39,6 +39,13 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.loadDocument(id)
     }
 
+    public func metadata(
+        _ id: VaultQualifiedNoteID
+    ) async throws -> NoteMetadataSnapshot? {
+        let handle = try await reference.requireHandle()
+        return try await handle.noteMetadata(id)
+    }
+
     public func documentPreviewCatalog(
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,
@@ -225,6 +232,19 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.saveDocument(
             id,
             changeSet: changeSet,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    public func saveMetadata(
+        _ id: VaultQualifiedNoteID,
+        fields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
+        let handle = try await reference.requireHandle()
+        return try await handle.saveNoteMetadata(
+            id,
+            fields: fields,
             expectedRevision: expectedRevision
         )
     }

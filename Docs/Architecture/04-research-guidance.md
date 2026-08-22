@@ -84,7 +84,7 @@ single-choice, and multiple-choice input or result fields; their order,
 necessity, visible name, role-valid placement, and enabled state. A Run's
 `ResultContract` freezes those academic result fields together with
 Application-provided machine fields. Neither type can represent readable or
-writable roles, operations, Property boundaries, source capability, recovery
+writable roles, operations, Metadata boundaries, source capability, recovery
 behavior, or permission.
 
 ## Collaboration and citation configuration
@@ -113,9 +113,10 @@ Practice owners; Action Profiles edits only the academic profile document.
 Each editor mutates one owner at a time through an expected-revision
 transaction.
 
-Portable `TriptychSettings` is a separate strict owner for role Properties.
-Its current schema contains exact delimiter-free New Note YAML, About order,
-and per-source-type Analysis Agent requirements.
+Portable `TriptychSettings` schema 5 is a separate strict owner for role
+Metadata Profiles. It contains exact delimiter-free New Note YAML restricted
+to `summary` and `keywords`, cross-authority About order, and per-source-type
+Analysis Agent requirements over managed Metadata fields.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -134,16 +135,19 @@ that began in one Triptych remains truthfully attributed there if the active
 Triptych changes while it is in flight; its snapshot is never installed into
 the new target. Only a validated current state authorizes About; every other
 state supplies an explicit empty display profile, never default authority.
-Current-note structured editing instead depends only on the exact Note source
-and targeted patch contract.
+Current-note Metadata editing instead depends on the exact portable metadata
+revision and role catalog. Authored YAML editing remains an explicit Source
+operation.
 Portable Triptych Settings does not store prompt bodies or active prompt
 selection. Exact Markdown Methods and Practices remain the sole persisted
 owners of Research Guidance intellectual configuration; runtime action
 contracts consume those owners without a second template representation.
 
-`PropertyContractCatalog` owns shapes; `AnalysisSourceTypeProfileCatalog` owns
-applicable/recommended/serialization order; Settings owns only selection and
-exact seed source. A later managed-creation projection may compile those values
+`PropertyContractCatalog` owns the authored YAML allowlist;
+`NoteMetadataContractCatalog` owns managed shapes;
+`AnalysisSourceTypeProfileCatalog` owns applicable/recommended/serialization
+order. Settings owns only selection and exact seed source. A later
+managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 
 The Action Profile editor can change only visible name, order, enabled state,

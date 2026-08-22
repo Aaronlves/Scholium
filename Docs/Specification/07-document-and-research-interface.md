@@ -3,7 +3,7 @@
 [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.4–18.7. Shared
 state presentation belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
 
-## 18.4 Document modes, context, and Properties
+## 18.4 Document modes, context, and Metadata
 
 Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Their
 chooser retains exactly one current selection for each live Triptych workspace
@@ -156,17 +156,18 @@ report Review, Edit, or Source. Activation switches Review/Edit and returns
 Source to Review.
 Source remains selectable only under **View > Document Mode**; `Command-R`
 performs the same switch. Controls remain borderless.
-No second identity row, Document Properties, or More; complete
-Properties remains in Research. Compact identity stays secondary and static;
+No second identity row, Document Metadata, or More; complete
+Metadata remains in Research. Compact identity stays secondary and static;
 H1 stays primary without handoff or scroll animation.
 Document Text Size is per-window and source-neutral.
 
-Properties uses the shared sheet. Labels and values remain; definitions use
-Help. Its action slot reveals on hover/focus without reflow and stays
-accessible. Whitespace groups fields. Contributors
-retain numbered subfields and the shared neutral segmented kind selector. Save stays emphasized.
-It edits values, groups custom fields, routes shapes to Source, and inserts
-YAML. About reuses order.
+The shared sheet edits role-valid Metadata at the record revision.
+Labels and values remain; definitions use Help. Its action slot reveals on
+hover/focus without reflow and stays accessible. Whitespace groups fields.
+Contributors retain numbered subfields and the neutral segmented kind selector.
+Save stays emphasized. The sheet never changes YAML; authored `summary` and
+`keywords` route to Source, and unknown YAML is not a managed field. About
+reuses the configured cross-authority order without merging ownership.
 
 ## 18.5 Contextual research and Actions
 
@@ -395,12 +396,12 @@ Overview presents only compact current-note projections, in this order:
    **Needs Review · N Agent activities** as one full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
 3. **About:** nonempty fields use spacing-only groups with accessible names.
-   Research fields use reading blocks and Tags use neutral capsules. Its **Edit
-   Properties** heading opens the shared sheet; values remain static and
+   Research fields use reading blocks and Keywords use neutral capsules. Its **Edit
+   Metadata** heading opens the shared sheet; values remain static and
    selectable. Analysis adds **Link Zotero
    Item…** or **Manage Zotero Link…**; a bound Analysis also adds **Open in
    Zotero**. The sheet owns selection, Rebind, and confirmed
-   Clear without exposing identity or metadata in Inspector. Research Status, Key Properties,
+   Clear without exposing identity or metadata in Inspector. Research Status, Key Metadata,
    Provenance, Derived State, and a Zotero section remain absent.
 
 A pending activity set automatically presents a once-announced, focus-neutral
@@ -415,7 +416,7 @@ notification substitutes.
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and
 offers Retry where applicable; it never claims reading, truth, or evidence.
-In Overview it follows the About projection and its Edit Properties route; it
+In Overview it follows the About projection and its Edit Metadata route; it
 is not promoted to a separate section or card.
 
 Connect begins with the shared two-segment single-choice control labelled

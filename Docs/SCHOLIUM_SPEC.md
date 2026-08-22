@@ -42,7 +42,7 @@ copying the same rule into a new summary.
 | [Scholium Design](../Design.md) | Section 19: Scholarly Editorialism, visual language, design Variables, component and pattern presentation, layout, icon, motion, and interface writing. |
 | [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | Section 20: cross-cutting accessibility and adaptation requirements. |
 | [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | Sections 21–22: release requirements, acceptance, and unresolved target decisions. |
-| [Property Profiles and Critique](Specification/11-property-profiles-and-critique.md) | Appendices A–B: default property profiles and bundled Critique requirements. |
+| [Metadata Profiles and Critique](Specification/11-property-profiles-and-critique.md) | Appendices A–B: authored YAML allowlist, managed metadata profiles, and bundled Critique requirements. |
 
 ## Reading routes
 

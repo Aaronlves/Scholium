@@ -5,9 +5,9 @@ import Testing
 @testable import ScholiumCore
 
 /// The original 17 lexical baselines are retained here, but execute against
-/// the only user-reachable Search v7 engine. They are regression evidence, not a
+/// the only user-reachable Search v9 engine. They are regression evidence, not a
 /// second implementation contract.
-@Suite("Search v7 retained lexical baselines")
+@Suite("Search v9 retained lexical baselines")
 struct SearchIndexTests {
     @Test("Phrases, prefixes, fields, CJK, and retrieval classification share one contract")
     func queryContract() async throws {
@@ -16,12 +16,7 @@ struct SearchIndexTests {
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "Papers/Reasons.md", """
             ---
-            title: Normative Reasons
-            authors:
-              - family: Scanlon
-                given: T.
-            publication_date: "1998"
-            tags: [reasons, normativity]
+            keywords: [reasons, normativity]
             status: reviewed
             ---
             # Deliberative Control
@@ -32,14 +27,22 @@ struct SearchIndexTests {
 
             A claim.[^note]
             [^note]: A source-sensitive footnote.
-            """),
+            """, metadataFields: [
+                "type": .string("journal_article"),
+                "title": .string("Normative Reasons"),
+                "authors": .array([.object([
+                    "family": .string("Scanlon"),
+                    "given": .string("T."),
+                ])]),
+                "publication_date": .string("1998"),
+            ]),
             fixture.item(fixture.analyses, "Papers/Other.md", "---\ntitle: Other Work\n---\nA reason appears without deliberative control."),
         ])
 
         let phrase = try await index.testSearch(fixture.request("\"deliberative control\" author:Scanlon"))
         #expect(phrase.noteResults.map(\.relativePath) == ["Papers/Reasons.md"])
         #expect(phrase.noteResults.first?.classification == .retrievalLead)
-        #expect(try await index.testSearch(fixture.request("delib* tag:reasons")).noteResults.first?.relativePath == "Papers/Reasons.md")
+        #expect(try await index.testSearch(fixture.request("delib* keyword:reasons")).noteResults.first?.relativePath == "Papers/Reasons.md")
         #expect(try await index.testSearch(fixture.request("control -other")).noteResults.map(\.relativePath) == ["Papers/Reasons.md"])
         #expect(try await index.testSearch(fixture.request("哲")).noteResults.first?.relativePath == "Papers/Reasons.md")
         #expect(try await index.testSearch(fixture.request("哲学")).noteResults.first?.relativePath == "Papers/Reasons.md")
@@ -61,9 +64,17 @@ struct SearchIndexTests {
     func diacriticInsensitiveLexicalVerification() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
-        let source = "---\ntitle: Café Ethics\n---\nA naïve argument."
+        let source = "A naïve argument."
         _ = try await index.synchronize([
-            fixture.item(fixture.analyses, "Papers/Café.md", source),
+            fixture.item(
+                fixture.analyses,
+                "Papers/Café.md",
+                source,
+                metadataFields: [
+                    "type": .string("journal_article"),
+                    "title": .string("Café Ethics"),
+                ]
+            ),
         ])
 
         let foldedTitle = try #require(
@@ -71,13 +82,7 @@ struct SearchIndexTests {
         )
         #expect(foldedTitle.rankReason == .lexicalRelevance)
         #expect(foldedTitle.matchedField == .title)
-        let titleRange = try #require(foldedTitle.sourceRange)
-        #expect((source as NSString).substring(
-            with: NSRange(
-                location: titleRange.utf16LowerBound,
-                length: titleRange.utf16UpperBound - titleRange.utf16LowerBound
-            )
-        ) == "Café Ethics")
+        #expect(foldedTitle.sourceRange == nil)
 
         let exactTitle = try #require(
             await index.testSearch(fixture.request("\"Café Ethics\"")).noteResults.first
@@ -147,17 +152,25 @@ struct SearchIndexTests {
         let index = try fixture.index()
         _ = try await index.synchronize([
             fixture.item(fixture.analyses, "Papers/Reasons.md", """
-            ---
-            title: Normative Reasons
-            authors:
-              - family: Scanlon
-                given: T.
-            tags: [reasons, normativity]
-            ---
             # Deliberative Control
             A reason can guide **deliberation**.
-            """),
-            fixture.item(fixture.analyses, "Papers/CJK.md", "---\ntitle: 价值理论\n---\n中文正文保持清晰。"),
+            """, metadataFields: [
+                "type": .string("journal_article"),
+                "title": .string("Normative Reasons"),
+                "authors": .array([.object([
+                    "family": .string("Scanlon"),
+                    "given": .string("T."),
+                ])]),
+            ]),
+            fixture.item(
+                fixture.analyses,
+                "Papers/CJK.md",
+                "中文正文保持清晰。",
+                metadataFields: [
+                    "type": .string("journal_article"),
+                    "title": .string("价值理论"),
+                ]
+            ),
         ])
         let title = try #require(await index.testSearch(fixture.request("title:\"Normative Reasons\"")).noteResults.first)
         #expect(title.matchedField == .title)
@@ -192,7 +205,7 @@ struct SearchIndexTests {
         #expect(response.noteResults.map(\.relativePath) == ["A.md"])
     }
 
-    @Test("A 512-note fixture ranks exact title, alias, heading, then body")
+    @Test("A 512-note fixture ranks H1 and managed titles, then alias and body")
     func explainableScholarlyRanking() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
@@ -200,15 +213,21 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Background/Note-\(number).md", "---\ntitle: Background \(number)\n---\nA bounded note about evidence and inference.")
         }
         documents += [
-            fixture.item(fixture.analyses, "Title.md", "---\ntitle: Deliberative Autonomy\n---\nA concise account."),
-            fixture.item(fixture.topics, "Alias.md", "---\naliases: [Deliberative Autonomy]\n---\n# Agency Structure\nA concise account."),
+            fixture.item(fixture.analyses, "Title.md", "A concise account.", metadataFields: [
+                "type": .string("journal_article"),
+                "title": .string("Deliberative Autonomy"),
+            ]),
+            fixture.item(fixture.topics, "Alias.md", "# Agency Structure\nA concise account.", metadataFields: [
+                "aliases": .array([.string("Deliberative Autonomy")]),
+            ]),
             fixture.item(fixture.analyses, "Heading.md", "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account."),
             fixture.item(fixture.analyses, "Body.md", "---\ntitle: Practical Reason\n---\nThis develops deliberative autonomy."),
         ]
         _ = try await index.synchronize(documents)
         let hits = try await index.testSearch(fixture.request("\"deliberative autonomy\"", limit: 10))
-        #expect(hits.noteResults.map(\.relativePath) == ["Title.md", "Alias.md", "Heading.md", "Body.md"])
-        #expect(hits.noteResults.map(\.matchedField) == [.title, .alias, .heading, .body])
+        #expect(hits.noteResults.map(\.relativePath)
+            == ["Heading.md", "Title.md", "Alias.md", "Body.md"])
+        #expect(hits.noteResults.map(\.matchedField) == [.title, .title, .alias, .body])
     }
 
     @Test("Large collisions preserve deterministic field precedence")
@@ -216,10 +235,10 @@ struct SearchIndexTests {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
         let leading = [
-            fixture.item(fixture.analyses, "00-title.md", "---\ntitle: Practical Identity\n---\nShort."),
-            fixture.item(fixture.analyses, "01-title.md", "---\ntitle: Practical Identity\n---\nShort."),
-            fixture.item(fixture.topics, "10-alias.md", "---\naliases: [Practical Identity]\n---\n# Alpha\nShort."),
-            fixture.item(fixture.topics, "11-alias.md", "---\naliases: [Practical Identity]\n---\n# Beta\nShort."),
+            fixture.item(fixture.analyses, "00-title.md", "Short.", metadataFields: ["type": .string("journal_article"), "title": .string("Practical Identity")]),
+            fixture.item(fixture.analyses, "01-title.md", "Short.", metadataFields: ["type": .string("journal_article"), "title": .string("Practical Identity")]),
+            fixture.item(fixture.topics, "10-alias.md", "# Alpha\nShort.", metadataFields: ["aliases": .array([.string("Practical Identity")])]),
+            fixture.item(fixture.topics, "11-alias.md", "# Beta\nShort.", metadataFields: ["aliases": .array([.string("Practical Identity")])]),
             fixture.item(fixture.analyses, "20-heading.md", "---\ntitle: Gamma\n---\n# Practical Identity\nShort."),
             fixture.item(fixture.analyses, "21-heading.md", "---\ntitle: Delta\n---\n# Practical Identity\nShort."),
         ]
@@ -229,8 +248,8 @@ struct SearchIndexTests {
         _ = try await index.synchronize(leading + background)
         let first = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
         #expect(first.noteResults.prefix(6).map(\.relativePath) == [
-            "00-title.md", "01-title.md", "10-alias.md", "11-alias.md",
-            "21-heading.md", "20-heading.md",
+            "20-heading.md", "21-heading.md", "00-title.md", "01-title.md",
+            "10-alias.md", "11-alias.md",
         ])
         let repeated = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
         #expect(repeated.noteResults.map(\.relativePath) == first.noteResults.map(\.relativePath))
@@ -270,9 +289,10 @@ struct SearchIndexTests {
     func synchronizationTracksDerivedState() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
-        let source = NoteDocument(relativePath: "A.md", rawContent: "---\ntitle: Alpha\n---\n[[Missing]]")
-        let broken = fixture.item(fixture.analyses, document: source, hasBrokenLink: true)
-        let repaired = fixture.item(fixture.analyses, document: source)
+        let source = NoteDocument(relativePath: "A.md", rawContent: "[[Missing]]")
+        let metadata: [String: YAMLValue] = ["type": .string("journal_article"), "title": .string("Alpha")]
+        let broken = fixture.item(fixture.analyses, document: source, metadataFields: metadata, hasBrokenLink: true)
+        let repaired = fixture.item(fixture.analyses, document: source, metadataFields: metadata)
         let first = try await index.synchronize([broken])
         #expect(try await index.testSearch(fixture.request("Alpha has:broken-link")).noteResults.map(\.relativePath) == ["A.md"])
         let brokenOnly = try await index.testSearch(fixture.request("has:broken-link"))
@@ -361,30 +381,48 @@ struct SearchIndexTests {
                 fileURLWithPath: FileManager.default.currentDirectoryPath,
                 isDirectory: true
             )
-                .appendingPathComponent(".build/search-v7-retained-tests", isDirectory: true)
+                .appendingPathComponent(".build/search-v9-retained-tests", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v7.sqlite")
+            databaseURL = root.appendingPathComponent("search-v9.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {
             try TriptychSearchIndex(databaseURL: url ?? databaseURL, triptychID: triptychID)
         }
 
-        func item(_ vault: RegisteredVault, _ path: String, _ source: String) -> SearchIndexDocument {
-            item(vault, document: NoteDocument(relativePath: path, rawContent: source))
+        func item(
+            _ vault: RegisteredVault,
+            _ path: String,
+            _ source: String,
+            metadataFields: [String: YAMLValue]? = nil
+        ) -> SearchIndexDocument {
+            item(
+                vault,
+                document: NoteDocument(relativePath: path, rawContent: source),
+                metadataFields: metadataFields
+            )
         }
 
         func item(
             _ vault: RegisteredVault,
             document: NoteDocument,
+            metadataFields: [String: YAMLValue]? = nil,
             hasBrokenLink: Bool = false
         ) -> SearchIndexDocument {
-            SearchIndexDocument(
+            let noteID = UUID()
+            return SearchIndexDocument(
                 vaultID: vault.id,
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 document: document,
+                stableNoteID: noteID.uuidString.lowercased(),
+                metadata: metadataFields.map {
+                    NoteMetadataSnapshot(
+                        record: NoteMetadataRecord(noteID: noteID, fields: $0),
+                        revision: DocumentFingerprint(content: String(describing: $0))
+                    )
+                },
                 hasBrokenLink: hasBrokenLink
             )
         }

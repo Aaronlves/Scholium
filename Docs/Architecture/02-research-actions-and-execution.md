@@ -35,7 +35,7 @@ delivery, extension, submission, finalization, cancellation, manual-end,
 continuation, and recovery coordinator. It is one Application component under
 the owning `WorkspaceHandle`, not another runtime or mutable Workspace
 snapshot. Its purpose-specific dependencies contain only the registration,
-Practice, Profile, collaboration, source, Search/read/Graph/Property/Record,
+Practice, Profile, collaboration, source, Search/read/Graph/Metadata/Record,
 repository, recovery, and local connection authorities required by those
 transactions.
 
@@ -62,9 +62,11 @@ Triptych collaboration policy, and repository/recovery readiness. It creates
 one Run and inserts the displayed initial object into its Bounded Write Set.
 For every existing writable Note, `AgentChangeEvidenceStore` captures one exact
 Run- and Note-bound starting revision before Agent access. Confirmed writes
-advance its ending revision. Body-only, complete-source, and targeted-property
-intents remain distinct typed operations; Application maps them to the
-corresponding `NoteChangeSet` and the same repository transaction. This
+advance its ending revision. Body-only and complete-source intents map to the
+corresponding `NoteChangeSet` and repository transaction. Targeted Metadata is
+a distinct typed operation with its own portable-record revision, capability,
+compare-and-swap transaction, and readback; it never creates source change
+evidence. This
 machine-local evidence serves only Record diff and direct Undo; ordinary
 repository transactions continue to own interrupted-save recovery.
 
@@ -108,7 +110,7 @@ protected Session directly; it does not create or consume a Pairing Code.
 `agent preflight-analysis` calls
 `WorkspaceRuntime.preflightResearchAgentAnalysisCreation` without issuing a
 Session. `WorkspaceHandle` resolves the assigned Analyses vault, uses the
-managed-default root filename, reads the current `TriptychSettingsSnapshot`, filters canonical Property
+managed-default root filename, reads the current `TriptychSettingsSnapshot`, filters canonical Metadata
 contracts through the selected `AnalysisSourceTypeProfile`, and reports only
 seed keys rather than seed values. It inspects the exact repository path,
 portable identity owner, and pending system-Trash recovery evidence before
@@ -209,7 +211,7 @@ cannot alter the other two layers, Session, write set, tools, or next Action.
 `ResearchContextUseCases` authenticates Session/Run, resolves authorized
 Triptych scope, and snapshots current generation before any provider call. Its
 production provider composes the existing Application Search use case, exact
-Note/section reader, same-snapshot explicit Graph relations, Property
+Note/section reader, same-snapshot explicit Graph relations, Metadata
 projection, Application Record provider, Settle/Discussion/Evaluation owner
 reads, and the authenticated Run's already-frozen `ResearchSourceReference`
 plus Zotero bibliographic snapshot when explicitly inspected. Material
@@ -226,7 +228,8 @@ recovery pin.
 
 Search remains the only parser/ranker and keeps Note and Record identities
 discriminated. Direct Relations remain same-manifest explicit Markdown
-occurrences. Properties remain document declarations. Record queries retain
+occurrences. Metadata retains its typed portable owner; authored `summary` and
+`keywords` remain document declarations. Record queries retain
 strict source fingerprint, actor, Action, and deletion semantics. A provider
 adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
@@ -244,9 +247,10 @@ other outcomes or masquerade as an empty current channel.
 
 Response schema 4 also copies the Note result's closed `NoteSearchMatchReason`
 values from that same Search response. The Application adapter does not
-reconstruct them: Property provenance retains exact source ranges and
+reconstruct them: authored YAML provenance retains exact source ranges,
+managed Metadata explicitly has none, and
 direct-relation provenance retains relation, direction, anchor, target, and
-explicit Markdown occurrences. A coarse direct-relation or Property retrieval
+explicit Markdown occurrences. A coarse direct-relation or Metadata retrieval
 reason without the corresponding typed match is rejected.
 
 Exact Note/section reads use a lossless UTF-8 page with a source-range locator.
@@ -329,12 +333,14 @@ resolves current roles/lifecycle/containment and the Triptych policy before
 presenting one optional subset sheet or binding a Full Access set. Researcher
 approval remains an exact Run-local fact until expiry/revocation/end.
 
-Schema 3 members may independently authorize `set_zotero_binding` or
-`clear_zotero_binding` only for an existing Analysis. Such a member freezes the
-global portable binding revision in addition to the Analysis source revision.
+Schema 4 members may independently authorize `modify_metadata` for an existing
+Note and freeze its portable Metadata revision, including proven absence for a
+first record. `set_zotero_binding` and `clear_zotero_binding` apply only to an
+existing Analysis and freeze the global portable binding revision in addition
+to the Analysis source revision.
 The separate `ResearchZoteroBindingWriteIntent`, Local Execution binding-write
 ledger, bridge payload, and `agent write-zotero-binding` command contain no
-Markdown or Property payload and never call a Zotero write. Core set/clear is
+Markdown or Metadata payload and never call a Zotero write. Core set/clear is
 the sole portable mutation owner; stable Analysis identity, operation, one-use
 capability, and current binding revision are rechecked before commit.
 
@@ -352,9 +358,12 @@ capability checks inside the final source-operation lease. Completion likewise
 uses a coordinated identity/source observation with identity readback after
 the source read. The sole repository then retains
 displaced bytes, validates complete candidate Markdown/YAML, atomically
-replaces, and reads back. Result truth is written into the same Run operation
-entry before the response. An I/O timeout after delivery returns outcome
-unknown and subsequent calls query the same operation ID.
+replaces, and reads back. A `modify_metadata` call instead validates the exact
+granted keys and role catalog, replaces the canonical identity-keyed JSON at
+its expected Metadata revision, and reads it back without entering the source
+repository. Result truth is written into the same Run operation entry before
+the response. An I/O timeout after delivery returns outcome unknown and
+subsequent calls query the same operation ID.
 
 Member transactions are independent. Confirmed source or binding changes stay committed when a
 sibling conflicts or fails. Only Scholium-confirmed success advances that
@@ -489,7 +498,7 @@ Comments retain stable Note/fingerprint and inclusive line range without a
 passage copy. Each attributed researcher/Agent turn updates only the active
 exchange. The authenticated Agent `discuss-reply` route validates the frozen
 Discuss Run and response contract, uses a stable statement ID for outcome-
-unknown retry, and writes no Note or Property. Finish validates current
+unknown retry, and writes no Note or Metadata. Finish validates current
 participants and forms one Record; closing
 the sheet performs no storage action. Discussion does not use Bounded Write
 Set unless it explicitly continues into a separate write Action.

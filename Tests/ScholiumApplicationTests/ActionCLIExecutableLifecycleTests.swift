@@ -122,7 +122,7 @@ struct ActionCLIExecutableLifecycleTests {
                     search: true,
                     read: true,
                     relations: true,
-                    properties: true,
+                    metadata: true,
                     records: true,
                     researchState: true,
                     zotero: true,
@@ -487,7 +487,7 @@ struct ActionCLIExecutableLifecycleTests {
                     search: true,
                     read: true,
                     relations: true,
-                    properties: true,
+                    metadata: true,
                     records: true,
                     researchState: true,
                     zotero: true,
@@ -813,21 +813,21 @@ struct ActionCLIExecutableLifecycleTests {
         )
         #expect(String(decoding: emptyBody.stdout, as: UTF8.self).contains("committed"))
 
-        let propertyJSON = try JSONSerialization.data(withJSONObject: [
+        let metadataJSON = try JSONSerialization.data(withJSONObject: [
             "role": "topic",
             "relative_path": "Agency.md",
-            "operation": "modify_properties",
-            "properties": [[
-                "key": "summary",
-                "value": "Ordinary JSON value",
+            "operation": "modify_metadata",
+            "metadata": [[
+                "key": "aliases",
+                "value": ["Ordinary JSON value"],
             ]],
         ])
-        let propertyWrite = try cli.run(
+        let metadataWrite = try cli.run(
             ["agent", "write", "--run", run.rawValue, "--from", "-"],
-            stdin: propertyJSON,
+            stdin: metadataJSON,
             environment: environment
         )
-        #expect(String(decoding: propertyWrite.stdout, as: UTF8.self)
+        #expect(String(decoding: metadataWrite.stdout, as: UTF8.self)
             .contains("committed"))
 
         let sourceWrite = try cli.run(
@@ -898,7 +898,7 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(Set(observedBindingIDs.values).count == 1)
     }
 
-    @Test("The real CLI exposes the provider-discriminated Search v7 text and JSONL contracts")
+    @Test("The real CLI exposes the provider-discriminated Search v9 text and JSONL contracts")
     func searchV7Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"

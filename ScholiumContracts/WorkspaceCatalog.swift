@@ -320,6 +320,7 @@ public enum WorkspaceCatalogBuilder {
         graph: GraphSnapshot? = nil,
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
         stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:],
+        noteMetadataByID: [UUID: NoteMetadataSnapshot] = [:],
         zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding] = [:]
     ) -> WorkspaceCatalogSnapshot {
         build(
@@ -331,6 +332,7 @@ public enum WorkspaceCatalogBuilder {
             graph: graph,
             identityAmbiguitiesByVault: identityAmbiguitiesByVault,
             stableNoteIDs: stableNoteIDs,
+            noteMetadataByID: noteMetadataByID,
             zoteroBindingsByNoteID: zoteroBindingsByNoteID
         )
     }
@@ -344,6 +346,7 @@ public enum WorkspaceCatalogBuilder {
         graph: GraphSnapshot? = nil,
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
         stableNoteIDs: [VaultQualifiedNoteID: UUID] = [:],
+        noteMetadataByID: [UUID: NoteMetadataSnapshot] = [:],
         zoteroBindingsByNoteID: [UUID: AnalysisZoteroBinding] = [:]
     ) -> WorkspaceCatalogSnapshot {
         let vaultsByID = Dictionary(uniqueKeysWithValues: vaults.map { ($0.id, $0) })
@@ -373,6 +376,7 @@ public enum WorkspaceCatalogBuilder {
                     relativePath: document.relativePath
                 )
                 let stableNoteID = stableNoteIDs[qualifiedID]
+                let metadata = stableNoteID.flatMap { noteMetadataByID[$0] }
                 let reference = VaultNoteReference(
                     vaultID: vault.id,
                     vaultName: vault.name,
@@ -387,6 +391,7 @@ public enum WorkspaceCatalogBuilder {
                     title: ResearchNoteTitleResolver.resolve(
                         document: document,
                         vaultRole: vault.role,
+                        metadata: metadata,
                         semantic: resolvedSemanticDocuments[
                             VaultQualifiedNoteID(
                                 vaultID: vault.id,
@@ -395,17 +400,17 @@ public enum WorkspaceCatalogBuilder {
                         ]
                     ).title,
                     aliases: (vault.role == .topicKnowledge
-                        ? document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
+                        ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
                         : [])
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty },
                     authors: vault.role == .sourceCorpus
-                        ? document.parsedFrontmatter["authors"]
+                        ? metadata?.record.fields["authors"]
                             .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
                             .map(\.displayName) ?? []
                         : [],
                     publicationDate: vault.role == .sourceCorpus
-                        ? document.parsedFrontmatter["publication_date"]?.canonicalSearchText
+                        ? metadata?.record.fields["publication_date"]?.canonicalSearchText
                         : nil,
                     zoteroBinding: vault.role == .sourceCorpus
                         ? stableNoteID.flatMap { zoteroBindingsByNoteID[$0] }
@@ -447,6 +452,7 @@ public enum WorkspaceCatalogBuilder {
                             frontmatter: document.parsedFrontmatter,
                             relativePath: document.relativePath
                         ),
+                        metadata: stableNoteIDs[id].flatMap { noteMetadataByID[$0] },
                         semantic: resolvedSemanticDocuments[id]
                     )
                 }

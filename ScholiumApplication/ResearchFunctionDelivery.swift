@@ -58,9 +58,9 @@ extension ResearchFunctionCoordinator {
             writeOperations: writable.isEmpty
                 ? []
                 : context.authority.writeOperations,
-            editablePropertyKeys: writable.isEmpty
+            editableMetadataKeys: writable.isEmpty
                 ? []
-                : context.authority.editablePropertyKeys
+                : context.authority.editableMetadataKeys
         )
     }
 
@@ -319,7 +319,7 @@ extension ResearchFunctionCoordinator {
         if request.function == .discuss {
             sections += [
                 "Use scholium agent discuss-reply --run <locator> --from <json|-> for each attributed Agent turn. The strict JSON fields are statement_id, attribution, and text; generate one stable statement_id per turn and reuse the same ID and content after an outcome-unknown response.",
-                "The authenticated key appends only to this Run's active portable Discussion. It does not finish the Discussion, accept a Result, edit Notes or Properties, or authorize another Run. The researcher owns Finish and any later Action.",
+                "The authenticated key appends only to this Run's active portable Discussion. It does not finish the Discussion, accept a Result, edit Notes or Metadata, or authorize another Run. The researcher owns Finish and any later Action.",
                 "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
                 "Cancel this prepared run with: scholium action cancel \(runID.uuidString.lowercased()) --triptych \(workspaceID.uuidString.lowercased())",
             ]

@@ -1311,7 +1311,7 @@ private struct ScholiumCommands: Commands {
                 editorActions?.announceDocumentStatistics()
             }
             .disabled(editorActions == nil || appState?.currentNote == nil)
-            Button("Edit Properties…") { appState?.showFrontmatterEditor = true }
+            Button("Edit Metadata…") { appState?.showMetadataEditor = true }
                 .disabled(appState?.canEditCurrentNote != true)
         }
         CommandGroup(after: .textFormatting) {
@@ -2145,24 +2145,24 @@ final class WindowModel: ObservableObject {
 
     var editingNotePath: String? {
         get {
-            guard case .frontmatter(let route) = presentationRouter.sheet else { return nil }
+            guard case .metadata(let route) = presentationRouter.sheet else { return nil }
             return route.path
         }
         set {
             if let newValue {
-                presentationRouter.presentFrontmatter(path: newValue)
-            } else if case .frontmatter = presentationRouter.sheet {
+                presentationRouter.presentMetadata(path: newValue)
+            } else if case .metadata = presentationRouter.sheet {
                 presentationRouter.dismissSheet()
             }
         }
     }
 
-    var showFrontmatterEditor: Bool {
+    var showMetadataEditor: Bool {
         get { editingNotePath != nil }
         set {
             if newValue, let path = editingNotePath ?? currentNote?.relativePath {
-                presentationRouter.presentFrontmatter(path: path)
-            } else if !newValue, case .frontmatter = presentationRouter.sheet {
+                presentationRouter.presentMetadata(path: path)
+            } else if !newValue, case .metadata = presentationRouter.sheet {
                 presentationRouter.dismissSheet()
             }
         }
@@ -6117,7 +6117,8 @@ final class WindowModel: ObservableObject {
             stableNoteID: note.workspaceSnapshot?.stableIdentity.resolvedID,
             editorSessionID: sessionID,
             source: source,
-            editorRevision: UInt64(max(0, session.editorSession.generation))
+            editorRevision: UInt64(max(0, session.editorSession.generation)),
+            metadata: note.workspaceSnapshot?.metadata
         )
     }
 
@@ -6780,58 +6781,39 @@ final class WindowModel: ObservableObject {
     }
 
     @discardableResult
-    func saveProperties(
+    func saveMetadata(
         for note: WindowDocumentLocation,
-        proposedFrontmatter: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint
+        proposedFields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?
     ) async throws -> WindowDocumentLocation {
         guard let context = activeDocumentContext(for: note.relativePath) else {
             throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
         }
         let original = context.note
-
-        let edits = PropertyEditorModel.frontmatterEdits(
-            from: original.frontmatter,
-            to: proposedFrontmatter
-        )
-        let sourceDocument = NoteDocument(
-            relativePath: original.relativePath,
-            rawContent: original.rawContent
-        )
-        let changeSet: NoteChangeSet = switch sourceDocument.frontmatterState {
-        case .valid:
-            .frontmatter(edits)
-        case .absent:
-            .insertFrontmatter(edits)
-        case .malformed:
-            throw VaultRepositoryError.invalidFrontmatter(
-                "This note's YAML frontmatter is incomplete or malformed. Open Source to repair it."
-            )
+        guard let originalSnapshot = original.workspaceSnapshot else {
+            throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
         }
         do {
-            let outcome = try await documentController.save(
+            let outcome = try await documentController.saveMetadata(
                 VaultQualifiedNoteID(vaultID: context.vaultID, relativePath: note.relativePath),
-                changeSet: changeSet,
+                fields: proposedFields,
                 expectedRevision: expectedRevision
             )
-            let result = outcome.committedValue
-            let saved = await replaceSavedDocument(result.document)
-            let presentationWarning = saved == nil
-                ? WindowNavigationError.noteUnavailable(note.relativePath).localizedDescription
-                : nil
-            let didWarn = reportCommittedMutationWarnings(
-                outcome,
-                presentationWarning: presentationWarning
+            let savedSnapshot = originalSnapshot.applyingCommittedMetadata(
+                outcome.committedValue
             )
+            replaceCachedWorkspaceNote(savedSnapshot)
+            let saved = WindowDocumentLocation.workspace(savedSnapshot)
+            let didWarn = reportCommittedMutationWarnings(outcome)
             if !didWarn {
                 showToast(String(
-                    localized: "Frontmatter saved",
+                    localized: "Metadata saved",
                     table: "Localizable",
                     bundle: .module
                 ))
             }
             lastSaveError = nil
-            return saved ?? original
+            return saved
         } catch {
             lastSaveError = error.localizedDescription
             throw error
@@ -6847,14 +6829,24 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func reloadProperties(
+    func reloadMetadata(
         for path: String
-    ) async throws -> (note: WindowDocumentLocation, revision: DocumentFingerprint) {
-        let document = try await diskDocument(for: path)
-        guard let refreshed = await replaceSavedDocument(document) else {
+    ) async throws -> (note: WindowDocumentLocation, revision: DocumentFingerprint?) {
+        guard let current = notes.first(where: { $0.relativePath == path })
+                ?? (currentNote?.relativePath == path ? currentNote : nil),
+              let snapshot = current.workspaceSnapshot else {
             throw VaultRepositoryError.fileDoesNotExist(path)
         }
-        return (refreshed, document.fingerprint)
+        let metadata = try await documentController.metadata(snapshot.id)
+        let refreshed: WindowDocumentLocation
+        if let metadata {
+            let updated = snapshot.applyingCommittedMetadata(metadata)
+            replaceCachedWorkspaceNote(updated)
+            refreshed = .workspace(updated)
+        } else {
+            refreshed = current
+        }
+        return (refreshed, metadata?.revision)
     }
 
     func showToast(_ message: String, kind: WindowToast.Kind = .success) {
@@ -6872,6 +6864,7 @@ final class WindowModel: ObservableObject {
         reportCommittedMutationWarnings(
             derivedRefreshWarnings: outcome.derivedRefreshWarning.map { [$0] } ?? [],
             identityRecoveryWarnings: outcome.identityRecoveryWarning.map { [$0] } ?? [],
+            portableMetadataRecoveryWarnings: outcome.portableMetadataRecoveryWarning.map { [$0] } ?? [],
             presentationWarning: presentationWarning
         )
     }
@@ -6880,6 +6873,7 @@ final class WindowModel: ObservableObject {
     private func reportCommittedMutationWarnings(
         derivedRefreshWarnings: [String],
         identityRecoveryWarnings: [String],
+        portableMetadataRecoveryWarnings: [String] = [],
         presentationWarning: String? = nil
     ) -> Bool {
         var messages: [String] = []
@@ -6898,6 +6892,14 @@ final class WindowModel: ObservableObject {
                 bundle: .module
             ))
             messages.append(identityRecoveryWarnings.joined(separator: " "))
+        }
+        if !portableMetadataRecoveryWarnings.isEmpty {
+            messages.append(String(
+                localized: "The file operation completed, but portable Note metadata recovery is incomplete. Inspect Metadata before continuing.",
+                table: "Localizable",
+                bundle: .module
+            ))
+            messages.append(portableMetadataRecoveryWarnings.joined(separator: " "))
         }
         if let presentationWarning {
             messages.append(String(
@@ -7222,12 +7224,14 @@ final class WindowModel: ObservableObject {
                 document: document,
                 fileMetadata: metadata,
                 graphCounts: graphCounts,
+                metadata: previous?.metadata,
                 headings: semantic.headings,
                 derivedProjectionState: .sourceAhead,
                 cachedSemanticDocument: semantic,
                 cachedTitleProjection: WorkspaceNoteTitleProjection(
                     document: document,
                     vaultRole: context.vaultRole,
+                    metadata: previous?.metadata,
                     semantic: semantic
                 )
             )

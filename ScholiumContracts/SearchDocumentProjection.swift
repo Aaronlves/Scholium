@@ -65,13 +65,13 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
 /// Disposable semantic text derived from exact Markdown. It deliberately has
 /// no raw-source field and is never a writable representation of a note.
 public struct SearchDocumentProjection: Codable, Hashable, Sendable {
-    public let title: String
-    public let titleUsesFilenameFallback: Bool
-    public let aliases: [String]
+    public private(set) var title: String
+    public private(set) var titleUsesFilenameFallback: Bool
+    public private(set) var aliases: [String]
     public let headings: [String]
     public let summary: String?
-    public let authors: [String]
-    public let publicationDate: String?
+    public private(set) var authors: [String]
+    public private(set) var publicationDate: String?
     public let tags: [String]
     public let body: String
     public let callouts: String
@@ -80,7 +80,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public let path: String
     public private(set) var hasBrokenLink: Bool
     public let sourceLineStartsUTF16: [Int]
-    public let segments: [SearchTextSegment]
+    public private(set) var segments: [SearchTextSegment]
     public private(set) var projectionHash: String
 
     public init(
@@ -98,11 +98,12 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let titleValue = titleResolution.title
         title = titleValue
         titleUsesFilenameFallback = titleResolution.source == .filename
-        aliases = PropertyContractCatalog.contract(for: "aliases", profile: profile) == nil
-            ? []
-            : document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
+        aliases = []
         headings = semantic.headings.map(\.text)
-        let propertyProjection = SearchPropertyProjection(document: document)
+        let propertyProjection = SearchPropertyProjection(
+            document: document,
+            profile: profile
+        )
         let summaryMember = PropertyContractCatalog.contract(
             for: "summary",
             profile: profile
@@ -113,19 +114,11 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                     : nil
             }
         summary = summaryMember?.value
-        let creatorNames = PropertyContractCatalog.contract(
-            for: "authors",
-            profile: profile
-        ) == nil ? [] : document.parsedFrontmatter["authors"]
-            .flatMap { PropertyContractCatalog.creatorNames(from: $0) } ?? []
-        authors = creatorNames.map(\.displayName)
-        publicationDate = PropertyContractCatalog.contract(
-            for: "publication_date",
-            profile: profile
-        ) == nil ? nil : document.parsedFrontmatter["publication_date"]?.canonicalSearchText
-        tags = PropertyContractCatalog.contract(for: "tags", profile: profile) == nil
+        authors = []
+        publicationDate = nil
+        tags = PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
             ? []
-            : document.parsedFrontmatter["tags"]?.canonicalStringList ?? []
+            : document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
@@ -154,9 +147,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let frontmatterRange = document.frontmatterByteRange.flatMap {
             sourceLocator.utf16Range(forUTF8Range: $0)
         }
-        if titleResolution.source == .analysisProperty {
-            appendMetadata([title], field: .title, preferredRange: frontmatterRange)
-        } else if titleResolution.source == .firstLevelOneHeading,
+        if titleResolution.source == .firstLevelOneHeading,
                   let heading = semantic.headings.first(where: { $0.level == 1 }) {
             let range = heading.span.utf16Range
             builtSegments.append(SearchProjectionBuilder.segment(
@@ -181,53 +172,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 source: document.rawContent,
                 sourceLocator: sourceLocator
             ))
-        }
-        appendMetadata(aliases, field: .alias, preferredRange: frontmatterRange)
-        for creator in creatorNames {
-            var textCursor = 0
-            var fragments: [SearchVisibleFragment] = []
-            for (index, component) in creator.searchableComponents.enumerated() {
-                if index > 0 {
-                    fragments.append(SearchVisibleFragment(
-                        textRange: textCursor..<(textCursor + 1),
-                        sourceRange: nil,
-                        exact: false
-                    ))
-                    textCursor += 1
-                }
-                let textRange = textCursor..<(textCursor + component.utf16.count)
-                if let sourceRange = sourceLocator.uniqueRange(
-                    of: component,
-                    within: frontmatterRange
-                ) {
-                    fragments.append(SearchVisibleFragment(
-                        textRange: textRange,
-                        sourceRange: sourceRange,
-                        exact: true
-                    ))
-                }
-                textCursor = textRange.upperBound
-            }
-            let sourceRanges = fragments.compactMap(\.sourceRange)
-            let coveringRange = sourceRanges.isEmpty ? nil
-                : sourceRanges.map(\.lowerBound).min()!
-                    ..< sourceRanges.map(\.upperBound).max()!
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .author,
-                ordinal: builtSegments.count,
-                text: creator.displayName,
-                sourceRange: coveringRange,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: fragments
-            ))
-        }
-        if let publicationDate {
-            appendMetadata(
-                [publicationDate],
-                field: .publicationDate,
-                preferredRange: frontmatterRange
-            )
         }
         appendMetadata(tags, field: .tag, preferredRange: frontmatterRange)
         builtSegments.append(SearchProjectionBuilder.segment(
@@ -255,8 +199,13 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 )
             ))
         }
-        if let summaryMember {
-            let range: Range<Int> = summaryMember.sourceRange.utf16LowerBound..<summaryMember.sourceRange.utf16UpperBound
+        if let summaryMember, let summarySourceRange = summaryMember.sourceRange {
+            let range = Range(
+                uncheckedBounds: (
+                    summarySourceRange.utf16LowerBound,
+                    summarySourceRange.utf16UpperBound
+                )
+            )
             builtSegments.append(SearchProjectionBuilder.segment(
                 field: .summary,
                 ordinal: builtSegments.count,
@@ -356,6 +305,84 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         updated.projectionHash = Self.hash(
             segments: updated.segments,
             hasBrokenLink: hasBrokenLink
+        )
+        return updated
+    }
+
+    /// Joins portable managed fields into the disposable Search projection.
+    /// Managed values have no Markdown source range and therefore never claim
+    /// source-located navigation or become writable source reconstruction.
+    public func applyingNoteMetadata(
+        _ metadata: NoteMetadataSnapshot?,
+        profile: SchemaProfileID,
+        source: String
+    ) -> SearchDocumentProjection {
+        guard let metadata else { return self }
+        var updated = self
+        let fields = metadata.record.fields
+        let managedTitle: String? = if profile == .analysis,
+                                      case .string(let value)? = fields["title"] {
+            value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : value
+        } else {
+            nil
+        }
+        let aliases = profile == .topicMarkdown
+            ? fields["aliases"]?.canonicalStringList ?? []
+            : []
+        let creators = profile == .analysis
+            ? fields["authors"].flatMap(PropertyContractCatalog.creatorNames(from:)) ?? []
+            : []
+        let publicationDate = profile == .analysis
+            ? fields["publication_date"]?.canonicalSearchText
+            : nil
+
+        if let managedTitle {
+            updated.title = managedTitle
+            updated.titleUsesFilenameFallback = false
+        }
+        updated.aliases = aliases
+        updated.authors = creators.map(\.displayName)
+        updated.publicationDate = publicationDate
+
+        var segments = updated.segments.filter { segment in
+            switch segment.field {
+            case .title: managedTitle == nil
+            case .alias, .author, .publicationDate: false
+            default: true
+            }
+        }
+        let locator = SearchSourceLocator(source: source)
+        func append(_ values: [String], field: SearchMatchedField) {
+            for value in values where !value.isEmpty {
+                segments.append(SearchProjectionBuilder.segment(
+                    field: field,
+                    ordinal: segments.count,
+                    text: value,
+                    sourceRange: nil,
+                    source: source,
+                    sourceLocator: locator
+                ))
+            }
+        }
+        if let managedTitle { append([managedTitle], field: .title) }
+        append(aliases, field: .alias)
+        append(updated.authors, field: .author)
+        if let publicationDate { append([publicationDate], field: .publicationDate) }
+        updated.segments = segments.enumerated().map { ordinal, segment in
+            SearchTextSegment(
+                field: segment.field,
+                ordinal: ordinal,
+                text: segment.text,
+                normalizedText: segment.normalizedText,
+                sourceRange: segment.sourceRange,
+                offsetMap: segment.offsetMap
+            )
+        }
+        updated.projectionHash = Self.hash(
+            segments: updated.segments,
+            hasBrokenLink: updated.hasBrokenLink
         )
         return updated
     }

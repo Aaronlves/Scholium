@@ -28,6 +28,7 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         vaultID: UUID,
         document: NoteDocument,
         profile: SchemaProfileID = .genericMarkdown,
+        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument? = nil
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
@@ -35,11 +36,12 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         title = ResearchNoteTitleResolver.resolve(
             document: document,
             profile: profile,
+            metadata: metadata,
             semantic: semantic
         ).title
-        aliases = PropertyContractCatalog.contract(for: "aliases", profile: profile) == nil
+        aliases = NoteMetadataContractCatalog.contract(for: "aliases", profile: profile) == nil
             ? []
-            : document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
+            : metadata?.record.fields["aliases"]?.canonicalStringList ?? []
         noteType = document.parsedFrontmatter["note_type"]?.nonemptyString
         headings = semantic.headings
         blockAnchors = Self.blockAnchors(in: document, blocks: semantic.blocks)

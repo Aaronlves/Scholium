@@ -159,88 +159,64 @@ graph counts. The app does not maintain a second mutable `Note` or YAML value
 model; the app wrapper carries only the Application-owned workspace snapshot
 without copying its exact source.
 
-Contracts' `PropertyContract` catalog is the sole canonical vocabulary and
-shape authority. It defines clean-sheet role keys, value kinds, allowed values,
-CreatorList structure, and shape/source-safety validation. It contains no
-creation-requiredness or machine ownership. `AnalysisSourceTypeProfileCatalog`
-separately owns applicable, recommended, and deterministic serialization order.
-`ResearchNoteTitleResolver` supplies one role-aware identity fallback to
-Workspace, Search, Link Graph, and Research Actions. App's independent
-`AboutProfileCatalog` owns researcher-configured display choices and order;
-`PropertyPresentation` adds label, help, one group, and control style only.
-The app's Properties feature composes those owners without creating another
-schema: Settings edits exact role seeds, per-source-type Agent requirements,
-and About order as one revision-bound candidate. One shared Analysis/Topic/Work
-Note sheet lists every present safe top-level value and offers only applicable
-canonical missing keys. Editability is derived from the current exact source
-and targeted planner, never Settings. Unsupported shapes remain read-only with
-a Source route. Creator controls produce the canonical ordered mapping sequence.
-Quoted strings remain structured-editable. Any YAML scalar resolved as a
-timestamp, whether implicit or explicitly tagged and regardless of its field,
-is shown as its exact authored token and remains Source-only, so no text value
-is parsed and then silently normalized by the Properties surface.
-Custom top-level keys, including Unicode and dotted spellings, use an exact
-top-level accessor in Properties and About; dots are never reinterpreted as a
-nested path at that boundary.
-Property edits are validated through Contracts and applied by Application as targeted
-`NoteDocument` changes. `FrontmatterPatchPlanner` first validates complete YAML
-with Yams, then proves a unique bounded plain key. Ordinary scalar edits replace
-only the value token; list and creator edits use bounded sequence/member
-replacements; and a missing key is appended only at a proven top-level or child
-block-mapping boundary. Flow roots, quoted/duplicate or complex keys,
-merge/anchor/alias involvement, block scalars, structured scalar continuations,
-and ambiguous indentation return a typed refusal that directs the researcher
-to Source. Refusal leaves every Markdown byte unchanged; successful patches
-preserve BOM, newline/final-newline style, comments, unknown YAML, formatting,
-and all bytes outside the proven range.
-String edits use YAML-safe scalar encoding for literal quotes, leading
-indicators, controls, Unicode, and surrounding whitespace. The planner reparses
-the complete candidate and compares every requested edit with its semantic
-readback; any mismatch refuses the whole replacement.
+Contracts split structured values by authority. `PropertyContractCatalog`
+contains only authored YAML `summary` and `keywords` for all three roles.
+`NoteMetadataContractCatalog` is the sole canonical vocabulary and shape
+authority for Scholium Metadata. It defines role-valid fields, value kinds,
+allowed values, and CreatorList structure without owning researcher values.
+`AnalysisSourceTypeProfileCatalog` separately owns Analysis applicability,
+recommendation, and deterministic presentation order.
 
-YAML-free Notes have a distinct explicit `insertFrontmatter` change set. It
-requires at least one concrete Property edit, preserves a leading BOM and the
-existing body/final-newline bytes, uses the observed newline style for the new
-envelope, and remains expected-revision bound through the ordinary repository
-transaction. Ordinary `frontmatter` edits still refuse a YAML-free Note, so a
-Properties caller cannot create empty delimiters or silently opt into YAML.
+`TriptychControlStore` owns one portable metadata file per stable Note UUID at
+`.scholium/note-metadata/v1/<uuid>.json`. `NoteMetadataRecord` schema 1 stores
+only that UUID and a field mapping in canonical sorted JSON. Reads validate the
+record schema, UUID/path identity agreement, and role catalog before publishing
+any value; one invalid file fails the complete Metadata projection closed and
+preserves its exact bytes. Creates and edits use a metadata-revision
+compare-and-swap, atomic replacement, canonical readback, and an explicit
+uncertain-commit outcome. The researcher owns every field value; Scholium owns
+the schema, location, validation, and transaction. No metadata file is a
+writable projection of Markdown or YAML.
 
-`summary` is one optional string contract in the Analysis, Topic, and Work
-profiles. The same `FrontmatterPatchPlanner` and repository transaction own
-researcher and authorized Agent changes; there is no summary writer, sidecar,
-approval copy, backfill task, or freshness database. Attribution remains an
-operation/Record fact rather than a second YAML value. Missing or source-shape-
-unsupported summary stays absent/readable and never triggers normalization.
-Research Context receives only the current Note revision, so its Note and
-`summary` envelopes use actor `unknown`. A prior authorized mutation or Record
-retains its own actor without becoming a per-field or current-revision writer
-registry. Authorization, most recent Run, path, vault, and local user are not
-writer evidence; no hidden history store fills that absence.
+`WorkspaceNoteSnapshot` carries the optional validated metadata snapshot next
+to exact source. `ResearchNoteTitleResolver` uses managed Analysis `title`,
+then first H1, then filename; Topic and Work use first H1, then filename. YAML
+`title` has no identity semantics. App's independent `AboutProfileCatalog`
+owns researcher-configured display choices and order; presentation adds label,
+help, group, and control style only. The shared Metadata sheet reads and edits
+only managed fields, offers only role-valid missing keys, and never creates or
+patches frontmatter. Authored `summary` and `keywords` are read from exact
+source for About and edited only in Source. Unknown YAML remains byte-preserved
+custom source and is never surfaced as a managed-field alias.
 
-Search constructs a separate read-only top-level YAML projection from each
-exact `NoteDocument`. It records literal key presence and the exact source
-range of the key, plus exact scalar or sequence-member ranges only when the
-value is an eligible YAML string. It never recursively flattens mappings,
-coerces scalar types, patches source, or reconstructs Markdown. Malformed,
-duplicate, complex, or range-ambiguous keys are ineligible rather than guessed.
-The projection may address an unknown literal key for retrieval, but
-`PropertyContract` remains the sole owner of canonical meaning, role validity,
-editing, and scholarly presentation. Its derived entries publish and rebuild
-with the same authorized Note manifest as lexical Search.
+`FrontmatterPatchPlanner` remains a source-fidelity utility for exact New Note
+YAML seed validation and other explicit source operations. It is not a
+Metadata writer. The schema-5 seed accepts only `summary` and `keywords`; no
+runtime path inserts YAML merely because a managed field is added. The body has
+no Scholium schema, required section, or generated research prose.
+
+Search constructs one read-only structured projection from both authorities.
+For authored `summary` and `keywords`, it proves exact top-level key and
+string/member source ranges and rejects malformed, duplicate, complex, or
+ambiguous source rather than guessing. For managed Metadata, it projects the
+validated record value and revision with no Markdown range. Unknown YAML is
+not indexed. The v9 disposable index stores nullable structured-field ranges;
+incremental publication and clean rebuild consume the same authorized Note and
+Metadata manifest.
 
 `SearchDocumentProjection` additionally emits a `.summary` lexical segment
 only from the canonical top-level string and the exact scalar range already
 proved by the source projection. The segment is independently searchable and
 explainable but belongs to the same Note/index generation and cannot write the
-Property. Quoted source ranges may include their delimiters; a block or
-otherwise unbounded scalar retains Property presence but is excluded from
+authored field. Quoted source ranges may include their delimiters; a block or
+otherwise unbounded scalar retains canonical field presence but is excluded from
 summary lexical projection until an exact range is provable.
 
-The lexical projection uses string `publication_date`; there is no numeric
-`year` field or derived year guess. The FTS schema version changes with that
-column and query grammar, so an old disposable database is rebuilt rather than
-adapted. Literal `property:year` may still find authored custom source, but it
-does not restore field semantics, filters, ranking, or aliases.
+The lexical projection uses managed string `publication_date`; there is no
+numeric `year` field or derived year guess. The FTS schema version changes with
+that column and query grammar, so an old disposable database is rebuilt rather
+than adapted. `property:year` cannot match unknown authored YAML and does not
+restore retired field semantics, filters, ranking, or aliases.
 
 `TriptychControlStore` owns `analysis-zotero-bindings.json`, a strict portable
 envelope of one typed user/group-library + item-key relationship per stable

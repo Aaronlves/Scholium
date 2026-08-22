@@ -81,9 +81,16 @@ private enum ResearchCreationIdentityObservation: Sendable {
     case unavailable(String)
 }
 
+private enum ResearchCreationMetadataObservation: Sendable {
+    case missing
+    case present(NoteMetadataSnapshot)
+    case unavailable(String)
+}
+
 private struct ResearchCreationObservation: Sendable {
     let source: ResearchCreationSourceObservation
     let identity: ResearchCreationIdentityObservation
+    let metadata: ResearchCreationMetadataObservation
 
     var observedRevision: DocumentFingerprint? {
         guard case .present(let document) = source else { return nil }
@@ -501,12 +508,15 @@ extension WorkspaceHandle {
         let baseOperationID = Self.stableOperationID(
             material: "\(authenticated.runID.uuidString.lowercased()):write:\(intent.requestID.uuidString.lowercased())"
         )
+        let currentWriteRevision = intent.operation == .modifyMetadata
+            ? entry.metadataRevision
+            : entry.expectedRevision
         if let existing = execution.documentWriteRecords.first(where: {
             $0.id == baseOperationID
         }) {
             if existing.state != .conflict
                 || intent.operation == .createNote
-                || entry.expectedRevision == existing.expectedRevision {
+                || currentWriteRevision == existing.expectedRevision {
                 return try await reconcileOrReturn(
                     existing,
                     execution: execution,
@@ -548,6 +558,21 @@ extension WorkspaceHandle {
         }
 
         let current = try await exactCurrentDocument(for: entry)
+        if intent.operation == .modifyMetadata {
+            guard current.fingerprint == expectedRevision else {
+                throw ResearchBoundedWriteSetError.staleAuthorization
+            }
+            return try await writeResearchMetadata(
+                credential: credential,
+                run: run,
+                authenticated: authenticated,
+                execution: execution,
+                entry: entry,
+                intent: intent,
+                requestFingerprint: requestFingerprint,
+                baseOperationID: baseOperationID
+            )
+        }
         let changeSet: NoteChangeSet
         switch intent.operation {
         case .modifyMarkdown:
@@ -560,31 +585,7 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.invalidWrite
             }
             changeSet = .source(source)
-        case .modifyProperties:
-            let suppliedKeys = Set(intent.properties.map(\.key))
-            guard suppliedKeys.isSubset(of: Set(entry.allowedPropertyKeys)) else {
-                throw ResearchBoundedWriteSetError.operationNotAuthorized
-            }
-            let plans = Dictionary(
-                uniqueKeysWithValues: entry.propertyWritePlans.map { ($0.key, $0) }
-            )
-            guard intent.properties.allSatisfy({ input in
-                guard let plan = plans[input.key],
-                      PropertyContractCatalog.supportsTargetedStructuredEditing(
-                        input.value,
-                        as: plan.valueKind
-                      ) else { return false }
-                guard let allowedValues = plan.allowedValues else { return true }
-                guard case .string(let value) = input.value else { return false }
-                return allowedValues.contains(value)
-            }) else {
-                throw ResearchBoundedWriteSetError.invalidWrite
-            }
-            let edits = try Dictionary(uniqueKeysWithValues: intent.properties.map {
-                ($0.key, try Self.frontmatterEditValue($0.value))
-            })
-            changeSet = .frontmatter(edits)
-        case .createNote, .setZoteroBinding, .clearZoteroBinding:
+        case .modifyMetadata, .createNote, .setZoteroBinding, .clearZoteroBinding:
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         let candidate = try current.applying(changeSet, timestampKey: nil)
@@ -595,18 +596,6 @@ extension WorkspaceHandle {
             )
             guard candidateDocument.frontmatterState == current.frontmatterState else {
                 throw ResearchBoundedWriteSetError.operationNotAuthorized
-            }
-        }
-        if intent.operation == .modifyProperties {
-            let issues = PropertyContractCatalog.validate(
-                NoteDocument(
-                    relativePath: entry.note.relativePath,
-                    rawContent: candidate
-                ),
-                profile: Self.schemaProfile(for: entry.role)
-            )
-            guard issues.isEmpty else {
-                throw ResearchBoundedWriteSetError.invalidWrite
             }
         }
         let intendedRevision = DocumentFingerprint(content: candidate)
@@ -854,7 +843,7 @@ extension WorkspaceHandle {
             )
         case .clearZoteroBinding:
             nil
-        case .createNote, .modifyMarkdown, .modifySource, .modifyProperties:
+        case .createNote, .modifyMarkdown, .modifySource, .modifyMetadata:
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         let requestFingerprint = try Self.fingerprint(intent)
@@ -964,6 +953,225 @@ extension WorkspaceHandle {
         return zoteroBindingWriteResult(completed, entry: entry)
     }
 
+    private func writeResearchMetadata(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator,
+        authenticated: ResearchAuthenticatedRun,
+        execution initialExecution: LocalResearchExecutionRecord,
+        entry: ResearchBoundedWriteSetEntry,
+        intent: ResearchDocumentWriteIntent,
+        requestFingerprint: DocumentFingerprint,
+        baseOperationID: UUID
+    ) async throws -> ResearchDocumentWriteResult {
+        let suppliedKeys = Set(intent.metadata.map(\.key))
+        guard suppliedKeys.isSubset(of: Set(entry.allowedMetadataKeys)) else {
+            throw ResearchBoundedWriteSetError.operationNotAuthorized
+        }
+        let plans = Dictionary(
+            uniqueKeysWithValues: entry.metadataWritePlans.map { ($0.key, $0) }
+        )
+        guard intent.metadata.allSatisfy({ input in
+            guard let plan = plans[input.key],
+                  PropertyContractCatalog.supportsTargetedStructuredEditing(
+                    input.value,
+                    as: plan.valueKind
+                  ) else { return false }
+            guard let allowedValues = plan.allowedValues else { return true }
+            guard case .string(let value) = input.value else { return false }
+            return allowedValues.contains(value)
+        }) else {
+            throw ResearchBoundedWriteSetError.invalidWrite
+        }
+
+        let currentMetadata = try await researchBoundedWriteDependencies.controlStore
+            .noteMetadata(noteID: entry.noteID)
+        var candidateFields = currentMetadata?.record.fields ?? [:]
+        for input in intent.metadata { candidateFields[input.key] = input.value }
+        guard NoteMetadataContractCatalog.validate(
+            fields: candidateFields,
+            profile: Self.schemaProfile(for: entry.role)
+        ).isEmpty else {
+            throw ResearchBoundedWriteSetError.invalidWrite
+        }
+        let intendedRecord = NoteMetadataRecord(
+            noteID: entry.noteID,
+            fields: candidateFields
+        )
+        let intendedRevision = DocumentFingerprint(
+            data: try intendedRecord.encodedPortableData()
+        )
+        let expectedMetadataRevision = entry.metadataRevision
+        let retryRevision = expectedMetadataRevision?.sha256 ?? "absent"
+        let operationID: UUID
+        if let baseWrite = initialExecution.documentWriteRecords.first(where: {
+            $0.id == baseOperationID
+        }), baseWrite.state == .conflict,
+           entry.state == .ready,
+           expectedMetadataRevision != baseWrite.expectedRevision {
+            operationID = Self.stableOperationID(
+                material: "\(baseOperationID.uuidString.lowercased()):retry:\(retryRevision)"
+            )
+        } else {
+            operationID = baseOperationID
+        }
+        if let existing = initialExecution.documentWriteRecords.first(where: {
+            $0.id == operationID
+        }) {
+            return try await reconcileOrReturn(
+                existing,
+                execution: initialExecution,
+                entry: entry,
+                intent: intent
+            )
+        }
+
+        guard currentMetadata?.revision == expectedMetadataRevision else {
+            let conflict = try ResearchDocumentWriteRecord(
+                id: operationID,
+                runID: authenticated.runID,
+                target: entry.handle,
+                actor: .agent,
+                operation: .modifyMetadata,
+                requestFingerprint: requestFingerprint,
+                expectedRevision: expectedMetadataRevision,
+                intendedRevision: intendedRevision,
+                observedRevision: currentMetadata?.revision,
+                state: .conflict,
+                startedAt: Date(),
+                finishedAt: Date(),
+                warning: "The portable metadata changed outside this Run before the write began."
+            )
+            let execution = try await researchBoundedWriteDependencies
+                .localResearchExecutionStore.recordDocumentWriteOutcome(
+                    conflict,
+                    entryState: .conflict
+                )
+            return writeResult(
+                conflict,
+                entry: try requiredEntry(entry.handle, in: execution)
+            )
+        }
+        if currentMetadata?.revision == intendedRevision {
+            let unchanged = try ResearchDocumentWriteRecord(
+                id: operationID,
+                runID: authenticated.runID,
+                target: entry.handle,
+                actor: .agent,
+                operation: .modifyMetadata,
+                requestFingerprint: requestFingerprint,
+                expectedRevision: expectedMetadataRevision,
+                intendedRevision: intendedRevision,
+                observedRevision: currentMetadata?.revision,
+                state: .unchanged,
+                startedAt: Date(),
+                finishedAt: Date()
+            )
+            let execution = try await researchBoundedWriteDependencies
+                .localResearchExecutionStore.recordDocumentWriteOutcome(
+                    unchanged,
+                    entryState: .ready
+                )
+            return writeResult(
+                unchanged,
+                entry: try requiredEntry(entry.handle, in: execution)
+            )
+        }
+
+        guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let writeSetRevision = try initialExecution.boundedWriteSet
+            .authorizationRevision()
+        let capability = try await sessions.issueWriteCapability(
+            credential: credential,
+            run: run,
+            writeSetRevision: writeSetRevision,
+            target: entry.handle,
+            expectedRevision: expectedMetadataRevision,
+            operationID: operationID
+        )
+        try await sessions.consumeWriteCapability(
+            capability,
+            credential: credential,
+            run: run,
+            writeSetRevision: writeSetRevision,
+            target: entry.handle,
+            expectedRevision: expectedMetadataRevision,
+            operationID: operationID
+        )
+        let writing = try ResearchDocumentWriteRecord(
+            id: operationID,
+            runID: authenticated.runID,
+            target: entry.handle,
+            actor: .agent,
+            operation: .modifyMetadata,
+            requestFingerprint: requestFingerprint,
+            expectedRevision: expectedMetadataRevision,
+            intendedRevision: intendedRevision,
+            state: .writing,
+            startedAt: Date()
+        )
+        _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
+            .beginDocumentWrite(writing)
+
+        let state: ResearchDocumentWriteState
+        let observedRevision: DocumentFingerprint?
+        var warning: String?
+        do {
+            let outcome = try await saveNoteMetadata(
+                entry.note,
+                fields: candidateFields,
+                expectedRevision: expectedMetadataRevision
+            )
+            observedRevision = outcome.committedValue.revision
+            state = .committed
+            warning = boundedResearchDocumentWriteWarning([
+                outcome.derivedRefreshWarning,
+                outcome.portableMetadataRecoveryWarning,
+            ])
+        } catch {
+            do {
+                let observed = try await researchBoundedWriteDependencies.controlStore
+                    .noteMetadata(noteID: entry.noteID)
+                observedRevision = observed?.revision
+                if observed?.record.fields == candidateFields,
+                   observed?.revision == intendedRevision {
+                    state = .committed
+                } else if observed?.revision == expectedMetadataRevision {
+                    state = .abandoned
+                } else if error is NoteMetadataError {
+                    state = .conflict
+                } else {
+                    state = .recoveryRequired
+                }
+                warning = error.localizedDescription
+            } catch {
+                observedRevision = nil
+                state = .recoveryRequired
+                warning = error.localizedDescription
+            }
+        }
+        let execution = try await researchBoundedWriteDependencies.localResearchExecutionStore
+            .finishDocumentWrite(
+                runID: authenticated.runID,
+                operationID: operationID,
+                state: state,
+                observedRevision: observedRevision,
+                warning: warning,
+                recoveryRecordID: nil,
+                finishedAt: Date()
+            )
+        guard let completed = execution.documentWriteRecords.first(where: {
+            $0.id == operationID
+        }) else {
+            throw ResearchBoundedWriteSetError.invalidWriteRecord
+        }
+        return writeResult(
+            completed,
+            entry: try requiredEntry(entry.handle, in: execution)
+        )
+    }
+
     private func reconcileOrReturnZoteroBindingWrite(
         _ write: ResearchZoteroBindingWriteRecord,
         execution: LocalResearchExecutionRecord,
@@ -1066,6 +1274,9 @@ extension WorkspaceHandle {
             settings: currentSettings.settings
         )
         let intendedRevision = DocumentFingerprint(content: candidate)
+        let expectedMetadataFields = Self.metadataFields(
+            intent.analysisMetadata
+        )
         try await proveManagedCreationAbsence(
             vaultID: entry.note.vaultID,
             relativePath: entry.note.relativePath
@@ -1127,7 +1338,8 @@ extension WorkspaceHandle {
                 let classified = classifyResearchCreation(
                     observation,
                     intendedRevision: intendedRevision,
-                    reservedIdentity: entry.noteID
+                    reservedIdentity: entry.noteID,
+                    expectedMetadataFields: expectedMetadataFields
                 )
                 state = classified.state
                 observedRevision = classified.observedRevision
@@ -1140,6 +1352,7 @@ extension WorkspaceHandle {
                         write: writing,
                         entry: entry,
                         observation: observation,
+                        expectedMetadataFields: expectedMetadataFields,
                         failure: warning ?? "The created source and reserved identity require recovery."
                     ).id
                 }
@@ -1156,7 +1369,8 @@ extension WorkspaceHandle {
                 let classified = classifyResearchCreation(
                     observation,
                     intendedRevision: intendedRevision,
-                    reservedIdentity: entry.noteID
+                    reservedIdentity: entry.noteID,
+                    expectedMetadataFields: expectedMetadataFields
                 )
                 state = classified.state
                 observedRevision = classified.observedRevision
@@ -1166,6 +1380,7 @@ extension WorkspaceHandle {
                         write: writing,
                         entry: entry,
                         observation: observation,
+                        expectedMetadataFields: expectedMetadataFields,
                         failure: warning!
                     ).id
                 }
@@ -1181,7 +1396,8 @@ extension WorkspaceHandle {
             let classified = classifyResearchCreation(
                 observation,
                 intendedRevision: intendedRevision,
-                reservedIdentity: entry.noteID
+                reservedIdentity: entry.noteID,
+                expectedMetadataFields: expectedMetadataFields
             )
             state = classified.state
             observedRevision = classified.observedRevision
@@ -1191,6 +1407,7 @@ extension WorkspaceHandle {
                     write: writing,
                     entry: entry,
                     observation: observation,
+                    expectedMetadataFields: expectedMetadataFields,
                     failure: warning!
                 ).id
             }
@@ -1242,23 +1459,47 @@ extension WorkspaceHandle {
         } catch {
             identity = .unavailable(error.localizedDescription)
         }
-        return ResearchCreationObservation(source: source, identity: identity)
+        let metadata: ResearchCreationMetadataObservation
+        do {
+            if let snapshot = try await researchBoundedWriteDependencies.controlStore
+                .noteMetadata(noteID: entry.noteID) {
+                metadata = .present(snapshot)
+            } else {
+                metadata = .missing
+            }
+        } catch {
+            metadata = .unavailable(error.localizedDescription)
+        }
+        return ResearchCreationObservation(
+            source: source,
+            identity: identity,
+            metadata: metadata
+        )
     }
 
     private func classifyResearchCreation(
         _ observation: ResearchCreationObservation,
         intendedRevision: DocumentFingerprint,
-        reservedIdentity: UUID
+        reservedIdentity: UUID,
+        expectedMetadataFields: [String: YAMLValue]?
     ) -> (state: ResearchDocumentWriteState, observedRevision: DocumentFingerprint?) {
+        let metadataMatches: Bool = switch (expectedMetadataFields, observation.metadata) {
+        case (.none, .missing): true
+        case (.some(let expected), .present(let actual)):
+            actual.record.fields == expected
+        default: false
+        }
         if case .present(let document) = observation.source,
            document.fingerprint == intendedRevision,
            case .present(let identity) = observation.identity,
            identity.id == reservedIdentity,
-           identity.fingerprint == intendedRevision {
+           identity.fingerprint == intendedRevision,
+           metadataMatches {
             return (.committed, document.fingerprint)
         }
         if case .missing = observation.source,
-           case .missing = observation.identity {
+           case .missing = observation.identity,
+           case .missing = observation.metadata {
             return (.abandoned, nil)
         }
         return (.recoveryRequired, observation.observedRevision)
@@ -1268,6 +1509,7 @@ extension WorkspaceHandle {
         write: ResearchDocumentWriteRecord,
         entry: ResearchBoundedWriteSetEntry,
         observation: ResearchCreationObservation,
+        expectedMetadataFields: [String: YAMLValue]?,
         failure: String
     ) async throws -> TriptychMutationRecoveryRecord {
         let sourceState: TriptychMutationRecoveryState
@@ -1293,6 +1535,14 @@ extension WorkspaceHandle {
         case .unavailable(let reason):
             "Portable identity state could not be read: \(reason)"
         }
+        let metadataDetail: String = switch observation.metadata {
+        case .missing:
+            "The portable metadata record is absent."
+        case .present(let snapshot):
+            "Portable metadata remains at revision \(snapshot.revision.sha256)."
+        case .unavailable(let reason):
+            "Portable metadata could not be read: \(reason)"
+        }
         let recoveryID = Self.stableOperationID(
             material: "\(write.id.uuidString.lowercased()):note-creation-recovery"
         )
@@ -1309,12 +1559,13 @@ extension WorkspaceHandle {
                 intendedRevision: write.intendedRevision,
                 observedRevision: observation.observedRevision,
                 state: sourceState,
-                detail: sourceDetail + " " + identityDetail
+                detail: sourceDetail + " " + identityDetail + " " + metadataDetail
             )],
             researchWrite: ResearchWriteRecoveryReference(
                 runID: write.runID,
                 operationID: write.id,
-                target: write.target
+                target: write.target,
+                metadataFields: expectedMetadataFields
             )
         )
         do {
@@ -1360,7 +1611,7 @@ extension WorkspaceHandle {
         }
         guard !entry.expectsAbsence,
               !entry.wasCreated,
-              let priorExpectedRevision = entry.expectedRevision else {
+              entry.expectedRevision != nil else {
             throw ResearchBoundedWriteSetError.invalidConflictResolution
         }
         let requestFingerprint = try Self.fingerprint(intent)
@@ -1386,6 +1637,7 @@ extension WorkspaceHandle {
         guard entry.expiresAt > Date(), let latestConflict else {
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
+        let priorExpectedRevision = latestConflict.expectedRevision
         if let existing = matchingResolutions.first(where: {
             $0.conflictOperationID == latestConflict.id
         }) {
@@ -1417,13 +1669,23 @@ extension WorkspaceHandle {
                 }
             )
             let current = try await exactCurrentDocument(for: entry)
-            _ = try await researchBoundedWriteDependencies.agentChangeEvidenceStore
-                .replaceStartingRevision(
-                    runID: authenticated.runID,
-                    noteID: entry.noteID,
-                    data: current.sourceBytes,
-                    expectedRevision: current.fingerprint
-                )
+            let refreshedMetadataRevision: DocumentFingerprint?
+            let observedRevision: DocumentFingerprint?
+            if latestConflict.operation == .modifyMetadata {
+                refreshedMetadataRevision = try await researchBoundedWriteDependencies
+                    .controlStore.noteMetadata(noteID: entry.noteID)?.revision
+                observedRevision = refreshedMetadataRevision
+            } else {
+                _ = try await researchBoundedWriteDependencies.agentChangeEvidenceStore
+                    .replaceStartingRevision(
+                        runID: authenticated.runID,
+                        noteID: entry.noteID,
+                        data: current.sourceBytes,
+                        expectedRevision: current.fingerprint
+                    )
+                refreshedMetadataRevision = entry.metadataRevision
+                observedRevision = current.fingerprint
+            }
             do {
                 let refreshed = try ResearchBoundedWriteSetEntry(
                     handle: entry.handle,
@@ -1433,8 +1695,10 @@ extension WorkspaceHandle {
                     title: entry.title,
                     allowedOperations: entry.allowedOperations,
                     expectedRevision: current.fingerprint,
-                    allowedPropertyKeys: entry.allowedPropertyKeys,
-                    propertyWritePlans: entry.propertyWritePlans,
+                    allowedMetadataKeys: entry.allowedMetadataKeys,
+                    metadataWritePlans: entry.metadataWritePlans,
+                    metadataRevision: refreshedMetadataRevision,
+                    zoteroBindingsRevision: entry.zoteroBindingsRevision,
                     authorizationBasis: entry.authorizationBasis,
                     authorizationPolicy: entry.authorizationPolicy,
                     policyRevision: entry.policyRevision,
@@ -1450,7 +1714,7 @@ extension WorkspaceHandle {
                     action: intent.action,
                     requestFingerprint: requestFingerprint,
                     priorExpectedRevision: priorExpectedRevision,
-                    observedRevision: current.fingerprint,
+                    observedRevision: observedRevision,
                     state: .readyToRetry,
                     resolvedAt: now
                 )
@@ -1462,7 +1726,7 @@ extension WorkspaceHandle {
                 throw error
             }
         case .abandonWrite:
-            let observed = latestConflict.observedRevision ?? priorExpectedRevision
+            let observed = latestConflict.observedRevision
             entry.state = .abandoned
             let resolution = try ResearchWriteConflictResolutionRecord(
                 id: operationID,
@@ -1622,19 +1886,23 @@ extension WorkspaceHandle {
                 let mergedOperations = priorOperations
                     .union(selector.operations)
                     .sorted { $0.rawValue < $1.rawValue }
-                let mergedKeys = Set(existingEntry.allowedPropertyKeys)
-                    .union(selector.propertyKeys)
+                let mergedKeys = Set(existingEntry.allowedMetadataKeys)
+                    .union(selector.metadataKeys)
                     .sorted()
-                let propertyWritePlans = try Self.propertyWritePlans(
+                let metadataWritePlans = try Self.metadataWritePlans(
                     mergedKeys,
-                    role: selector.role,
-                    document: document
+                    role: selector.role
                 )
+                let metadataRevision = mergedOperations.contains(.modifyMetadata)
+                    ? try await researchBoundedWriteDependencies.controlStore
+                        .noteMetadata(noteID: existingEntry.noteID)?.revision
+                    : nil
                 let bindingsRevision = mergedOperations.contains(
                     where: \.isZoteroBindingOperation
                 ) ? zoteroBindings?.revision : nil
                 if Set(mergedOperations) == priorOperations,
-                   Set(mergedKeys) == Set(existingEntry.allowedPropertyKeys),
+                   Set(mergedKeys) == Set(existingEntry.allowedMetadataKeys),
+                   metadataRevision == existingEntry.metadataRevision,
                    bindingsRevision == existingEntry.zoteroBindingsRevision {
                     continue
                 }
@@ -1646,8 +1914,9 @@ extension WorkspaceHandle {
                     title: existingEntry.title,
                     operations: mergedOperations,
                     expectedRevision: document.fingerprint,
-                    propertyKeys: mergedKeys,
-                    propertyWritePlans: propertyWritePlans,
+                    metadataKeys: mergedKeys,
+                    metadataWritePlans: metadataWritePlans,
+                    metadataRevision: metadataRevision,
                     zoteroBindingsRevision: bindingsRevision
                 ))
                 continue
@@ -1662,11 +1931,14 @@ extension WorkspaceHandle {
                     || note.document.frontmatterState != .malformed else {
                 throw ResearchBoundedWriteSetError.operationNotAuthorized
             }
-            let propertyWritePlans = try Self.propertyWritePlans(
-                selector.propertyKeys,
-                role: selector.role,
-                document: note.document
+            let metadataWritePlans = try Self.metadataWritePlans(
+                selector.metadataKeys,
+                role: selector.role
             )
+            let metadataRevision = selector.operations.contains(.modifyMetadata)
+                ? try await researchBoundedWriteDependencies.controlStore
+                    .noteMetadata(noteID: noteID)?.revision
+                : nil
             let bindingsRevision = selector.operations.contains(
                 where: \.isZoteroBindingOperation
             ) ? zoteroBindings?.revision : nil
@@ -1677,12 +1949,14 @@ extension WorkspaceHandle {
                 role: selector.role,
                 title: ResearchNoteTitleResolver.resolve(
                     document: note.document,
-                    profile: note.schemaProfile
+                    profile: note.schemaProfile,
+                    metadata: note.metadata
                 ).title,
                 operations: selector.operations,
                 expectedRevision: note.fingerprint,
-                propertyKeys: selector.propertyKeys,
-                propertyWritePlans: propertyWritePlans,
+                metadataKeys: selector.metadataKeys,
+                metadataWritePlans: metadataWritePlans,
+                metadataRevision: metadataRevision,
                 zoteroBindingsRevision: bindingsRevision
             ))
         }
@@ -1773,6 +2047,13 @@ extension WorkspaceHandle {
                             throw ResearchBoundedWriteSetError.staleAuthorization
                         }
                     }
+                    if candidate.operations.contains(.modifyMetadata) {
+                        guard try await researchBoundedWriteDependencies.controlStore
+                            .noteMetadata(noteID: candidate.noteID)?.revision
+                                == candidate.metadataRevision else {
+                            throw ResearchBoundedWriteSetError.staleAuthorization
+                        }
+                    }
                     _ = try await researchBoundedWriteDependencies.agentChangeEvidenceStore
                         .captureStartingRevision(
                             runID: request.runID,
@@ -1789,8 +2070,9 @@ extension WorkspaceHandle {
                         title: candidate.title,
                         allowedOperations: candidate.operations,
                         expectedRevision: expectedRevision,
-                        allowedPropertyKeys: candidate.propertyKeys,
-                        propertyWritePlans: candidate.propertyWritePlans,
+                        allowedMetadataKeys: candidate.metadataKeys,
+                        metadataWritePlans: candidate.metadataWritePlans,
+                        metadataRevision: candidate.metadataRevision,
                         zoteroBindingsRevision: candidate.zoteroBindingsRevision,
                         authorizationBasis: basis,
                         authorizationPolicy: basis == .collaborationPolicy
@@ -1903,11 +2185,15 @@ extension WorkspaceHandle {
             let state: ResearchDocumentWriteState
             var recoveryRecordID: UUID?
             if write.operation == .createNote {
+                let expectedMetadataFields = Self.metadataFields(
+                    intent.analysisMetadata
+                )
                 let observation = await observeResearchCreation(entry)
                 let classified = classifyResearchCreation(
                     observation,
                     intendedRevision: write.intendedRevision,
-                    reservedIdentity: entry.noteID
+                    reservedIdentity: entry.noteID,
+                    expectedMetadataFields: expectedMetadataFields
                 )
                 observedRevision = classified.observedRevision
                 state = classified.state
@@ -1916,8 +2202,25 @@ extension WorkspaceHandle {
                         write: write,
                         entry: entry,
                         observation: observation,
+                        expectedMetadataFields: expectedMetadataFields,
                         failure: "The current source and reserved identity do not jointly prove the authorized creation outcome."
                     ).id
+                }
+            } else if write.operation == .modifyMetadata {
+                do {
+                    let current = try await researchBoundedWriteDependencies.controlStore
+                        .noteMetadata(noteID: entry.noteID)
+                    observedRevision = current?.revision
+                    if current?.revision == write.intendedRevision {
+                        state = .committed
+                    } else if current?.revision == write.expectedRevision {
+                        state = .abandoned
+                    } else {
+                        state = .recoveryRequired
+                    }
+                } catch {
+                    observedRevision = nil
+                    state = .recoveryRequired
                 }
             } else {
                 let current = try await exactCurrentDocument(for: entry)
@@ -1943,7 +2246,9 @@ extension WorkspaceHandle {
                     state: state,
                     observedRevision: observedRevision,
                     warning: state == .recoveryRequired
-                        ? "The current source and identity do not match the authorized expected or intended state."
+                        ? (write.operation == .modifyMetadata
+                            ? "The current portable metadata matches neither the authorized expected nor intended state."
+                            : "The current source and identity do not match the authorized expected or intended state.")
                         : nil,
                     recoveryRecordID: recoveryRecordID,
                     finishedAt: Date()
@@ -2048,7 +2353,7 @@ extension WorkspaceHandle {
     ) throws -> ResearchWriteConflictResolutionResult {
         let message = switch record.state {
         case .readyToRetry:
-            "Fresh authority is bound to this document. Reread its current Markdown, then retry the intended body or exact property edits."
+            "Fresh authority is bound to this document. Reread its current Markdown or Metadata, then retry the intended exact edit."
         case .abandoned:
             "This conflicted write was explicitly abandoned; the document was not changed by that attempt."
         }
@@ -2088,7 +2393,7 @@ extension WorkspaceHandle {
             let fields = try profile.serializationFieldOrder.compactMap {
                 key -> ResearchAnalysisCreationFieldPlan? in
                 guard key != "type", !seedKeys.contains(key),
-                      let contract = PropertyContractCatalog.contract(
+                      let contract = NoteMetadataContractCatalog.contract(
                         for: key,
                         profile: .analysis
                       ) else { return nil }
@@ -2106,60 +2411,24 @@ extension WorkspaceHandle {
         }
     }
 
-    private static func propertyWritePlans(
+    private static func metadataWritePlans(
         _ keys: [String],
-        role: ResearchActionTargetRole,
-        document: NoteDocument
-    ) throws -> [ResearchPropertyWriteFieldPlan] {
+        role: ResearchActionTargetRole
+    ) throws -> [ResearchMetadataWriteFieldPlan] {
         guard !keys.isEmpty else { return [] }
-        guard document.frontmatterState == .valid else {
-            throw ResearchBoundedWriteSetError.operationNotAuthorized
-        }
         let profile = schemaProfile(for: role)
-        let otherProfiles = SchemaProfileID.allCases.filter { $0 != profile }
         return try keys.sorted().map { key in
-            if let contract = PropertyContractCatalog.contract(
+            guard let contract = NoteMetadataContractCatalog.contract(
                 for: key,
                 profile: profile
-            ) {
-                return try ResearchPropertyWriteFieldPlan(
-                    key: key,
-                    valueKind: contract.valueKind,
-                    allowedValues: contract.allowedValues
-                )
-            }
-            let isCanonicalElsewhere = otherProfiles.contains { candidate in
-                PropertyContractCatalog.contract(for: key, profile: candidate) != nil
-            }
-            guard !isCanonicalElsewhere,
-                  let value = document.parsedFrontmatter[key],
-                  let valueKind = observedCustomPropertyKind(value) else {
+            ) else {
                 throw ResearchBoundedWriteSetError.operationNotAuthorized
             }
-            return try ResearchPropertyWriteFieldPlan(
+            return try ResearchMetadataWriteFieldPlan(
                 key: key,
-                valueKind: valueKind
+                valueKind: contract.valueKind,
+                allowedValues: contract.allowedValues
             )
-        }
-    }
-
-    private static func observedCustomPropertyKind(
-        _ value: YAMLValue
-    ) -> PropertyValueKind? {
-        switch value {
-        case .string(let text):
-            text.contains("\n") ? .multilineText : .text
-        case .integer, .double:
-            .number
-        case .boolean:
-            .boolean
-        case .array(let values) where values.allSatisfy({
-            if case .string = $0 { return true }
-            return false
-        }):
-            .textList
-        case .array, .object, .null:
-            nil
         }
     }
 
@@ -2179,6 +2448,17 @@ extension WorkspaceHandle {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return DocumentFingerprint(data: try encoder.encode(value))
+    }
+
+    private static func metadataFields(
+        _ metadata: AnalysisCreationMetadata?
+    ) -> [String: YAMLValue]? {
+        guard let metadata else { return nil }
+        var fields = Dictionary(
+            uniqueKeysWithValues: metadata.fields.map { ($0.key, $0.value) }
+        )
+        fields["type"] = .string(metadata.sourceType.rawValue)
+        return fields
     }
 
     private static func stableOperationID(material: String) -> UUID {

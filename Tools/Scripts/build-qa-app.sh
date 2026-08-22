@@ -8,7 +8,7 @@ QA_ROOT="${ROOT}/.build/qa-runtime"
 APP="${QA_ROOT}/Scholium-QA.app"
 FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${HOME}/Desktop/TestVaults}"
 FIXTURE_COPY="${QA_ROOT}/fixtures"
-SETTINGS_FIXTURE="${ROOT}/Tools/Fixtures/qa-triptych-settings-v4.json"
+SETTINGS_FIXTURE="${ROOT}/Tools/Fixtures/qa-triptych-settings-v5.json"
 QA_HOME="${QA_ROOT}/home"
 
 [[ -d "${FIXTURE_SOURCE}" ]] || { print -u2 "Missing fixture vault root: ${FIXTURE_SOURCE}"; exit 1; }

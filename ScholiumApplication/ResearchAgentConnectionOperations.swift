@@ -325,7 +325,7 @@ extension WorkspaceHandle {
             for: request.metadata.sourceType
         )
         let applicable = profile.applicableFields.compactMap {
-            PropertyContractCatalog.contract(for: $0, profile: .analysis)
+            NoteMetadataContractCatalog.contract(for: $0, profile: .analysis)
         }
         let required = settings.settings.analysisAgentCreation.requiredFields(
             for: request.metadata.sourceType
@@ -334,7 +334,7 @@ extension WorkspaceHandle {
             in: settings.settings.properties[.paperAnalysis]?.newNoteYAML,
             role: .paperAnalysis
         ).sorted()
-        let supplied = Set(request.metadata.properties.map(\.key))
+        let supplied = Set(request.metadata.fields.map(\.key))
         let missingRequired = required.filter { !supplied.contains($0) }
         let runID = Self.agentStartDeterministicID(
             namespace: "agent-start-run",
@@ -1441,10 +1441,10 @@ extension WorkspaceHandle {
             return false
         }
         let initial = Dictionary(
-            uniqueKeysWithValues: initialMetadata.properties.map { ($0.key, $0.value) }
+            uniqueKeysWithValues: initialMetadata.fields.map { ($0.key, $0.value) }
         )
         let refreshed = Dictionary(
-            uniqueKeysWithValues: refreshedMetadata.properties.map { ($0.key, $0.value) }
+            uniqueKeysWithValues: refreshedMetadata.fields.map { ($0.key, $0.value) }
         )
         guard initial.allSatisfy({ refreshed[$0.key] == $0.value }) else {
             return false
@@ -2068,7 +2068,7 @@ extension WorkspaceHandle {
             search: operations.contains(.search),
             read: operations.contains(.read),
             relations: operations.contains(.inspectRelations),
-            properties: operations.contains(.inspectProperties),
+            metadata: operations.contains(.inspectMetadata),
             records: operations.contains(.queryRecords),
             researchState: operations.contains(.queryRecords),
             zotero: operations.contains(.useZotero),
@@ -2089,7 +2089,7 @@ extension WorkspaceHandle {
             case .discoverNote: operations.contains(.search)
             case .readNote: operations.contains(.read)
             case .inspectRelations: operations.contains(.inspectRelations)
-            case .inspectProperties: operations.contains(.inspectProperties)
+            case .inspectMetadata: operations.contains(.inspectMetadata)
             case .inspectMaterials: operations.contains(.read)
             case .inspectRecords, .inspectResearcherState:
                 operations.contains(.queryRecords)
@@ -2125,7 +2125,7 @@ public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
         case .capabilityUnavailable:
             "This Research Context channel is not available for the frozen Action."
         case .invalidAnalysisCreationMetadata:
-            "The Analysis creation metadata does not match the current source-type, Property, or application-owned seed contract. Rerun preflight with corrected fields."
+            "The Analysis creation metadata does not match the current source-type, Metadata, or application-owned seed contract. Rerun preflight with corrected fields."
         case .missingRequiredFields:
             "The Analysis creation is missing current Settings-required fields. Rerun creation preflight and supply the returned fields without placeholders."
         case .analysisPathOccupied:

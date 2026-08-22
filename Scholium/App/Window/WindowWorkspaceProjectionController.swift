@@ -389,6 +389,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
                     modificationDate: source.fileMetadata.modificationDate
                 ),
                 graphCounts: source.graphCounts,
+                metadata: source.metadata,
                 headings: source.headings,
                 derivedProjectionState: .sourceAhead,
                 cachedSemanticDocument: source.cachedSemanticDocument,
@@ -486,6 +487,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             document: relocatedDocument,
             fileMetadata: source.fileMetadata,
             graphCounts: source.graphCounts,
+            metadata: source.metadata,
             headings: source.headings,
             derivedProjectionState: .sourceAhead,
             cachedSemanticDocument: source.cachedSemanticDocument,

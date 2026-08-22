@@ -91,9 +91,9 @@ The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, note/folder file operations, external-edit
 conflicts, transaction-only interrupted-save recovery, Settle, unified Discussion,
 Critique, and Research Actions with editable current Methods, academic
-Profiles, and Philosophical Practices. Search v7 gives the app, CLI, Research
+Profiles, and Philosophical Practices. Search v9 gives the app, CLI, Research
 Records, and authenticated Research Context one typed retrieval owner for
-lexical, Property, explicit direct-relation, canonical-summary, and Record
+lexical, canonical structured Metadata, explicit direct-relation, authored-summary, and Record
 queries without turning the index into research authority.
 
 An invited external Agent can pair locally with one researcher-created Run,

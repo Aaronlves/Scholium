@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ResearchNoteTitleSource: String, Codable, Hashable, Sendable {
-    case analysisProperty = "analysis_property"
+    case managedMetadata = "managed_metadata"
     case firstLevelOneHeading = "first_level_one_heading"
     case filename
 }
@@ -16,21 +16,22 @@ public struct ResearchNoteTitleResolution: Codable, Hashable, Sendable {
     }
 }
 
-/// Resolves the one human and agent-facing note title used by Workspace,
-/// Search, Link Graph, and Research Functions. Only Analysis treats YAML
-/// `title` as semantic; Topic and Work are titled by their first H1.
+/// Resolves the one human and agent-facing Note title. A managed Analysis
+/// title is preferred when supplied explicitly; authored YAML `title` is
+/// never interpreted. Otherwise the first H1 and then filename are used.
 public enum ResearchNoteTitleResolver {
     public static func resolve(
         document: NoteDocument,
         profile: SchemaProfileID,
+        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument? = nil
     ) -> ResearchNoteTitleResolution {
         if profile == .analysis,
-           case .string(let value)? = document.parsedFrontmatter["title"],
+           case .string(let value)? = metadata?.record.fields["title"],
            let title = nonempty(value) {
             return ResearchNoteTitleResolution(
                 title: title,
-                source: .analysisProperty
+                source: .managedMetadata
             )
         }
 
@@ -56,6 +57,7 @@ public enum ResearchNoteTitleResolver {
     public static func resolve(
         document: NoteDocument,
         vaultRole: VaultRole,
+        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument? = nil
     ) -> ResearchNoteTitleResolution {
         resolve(
@@ -65,6 +67,7 @@ public enum ResearchNoteTitleResolver {
                 frontmatter: document.parsedFrontmatter,
                 relativePath: document.relativePath
             ),
+            metadata: metadata,
             semantic: semantic
         )
     }

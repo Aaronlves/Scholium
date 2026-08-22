@@ -175,7 +175,7 @@ extension ScholiumCLI {
                 operation: draft.operation,
                 content: draft.content,
                 source: draft.source,
-                properties: draft.properties,
+                metadata: draft.metadata,
                 analysisMetadata: draft.analysisMetadata
             )
             let credential = try credentialStore.load(for: run)
@@ -545,13 +545,13 @@ private struct AgentDocumentWriteDraft: Codable {
     let operation: ResearchDocumentWriteOperation
     let content: String
     let source: String?
-    let properties: [CanonicalPropertyInput]
+    let metadata: [CanonicalPropertyInput]
     let analysisMetadata: AnalysisCreationMetadata?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case role
         case relativePath = "relative_path"
-        case operation, content, source, properties
+        case operation, content, source, metadata
         case analysisMetadata = "analysis_metadata"
     }
 
@@ -588,7 +588,7 @@ private struct AgentDocumentWriteDraft: Codable {
                 String.self,
                 forKey: .content
             ) ?? ""
-        case .createNote, .modifyProperties:
+        case .createNote, .modifyMetadata:
             content = try container.decodeIfPresent(
                 String.self,
                 forKey: .content
@@ -599,9 +599,9 @@ private struct AgentDocumentWriteDraft: Codable {
                 "Use agent write-zotero-binding for portable Zotero relationship mutations."
             )
         }
-        properties = try container.decodeIfPresent(
+        metadata = try container.decodeIfPresent(
             [CanonicalPropertyInput].self,
-            forKey: .properties
+            forKey: .metadata
         )?.sorted { $0.key < $1.key } ?? []
         analysisMetadata = try container.decodeIfPresent(
             AnalysisCreationMetadata.self,
@@ -613,7 +613,7 @@ private struct AgentDocumentWriteDraft: Codable {
             operation: operation,
             content: content,
             source: source,
-            properties: properties,
+            metadata: metadata,
             analysisMetadata: analysisMetadata
         )
     }

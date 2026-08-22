@@ -520,7 +520,7 @@ extension WorkspaceHandle {
             readableNotes: [target] + additionalReads,
             writableNotes: writes ? [target] : [],
             writeOperations: writes ? [.modifyMarkdown, .modifySource] : [],
-            editablePropertyKeys: []
+            editableMetadataKeys: []
         )
     }
 

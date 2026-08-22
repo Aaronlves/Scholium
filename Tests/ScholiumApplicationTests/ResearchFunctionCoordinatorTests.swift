@@ -92,7 +92,7 @@ struct ResearchFunctionCoordinatorTests {
             destination: incomplete.destination,
             metadata: AnalysisCreationMetadata(
                 sourceType: .journalArticle,
-                properties: [try CanonicalPropertyInput(
+                fields: [try CanonicalPropertyInput(
                     key: "summary",
                     value: .string("A source-faithful bounded summary.")
                 )]
@@ -150,7 +150,7 @@ struct ResearchFunctionCoordinatorTests {
             ),
             metadata: AnalysisCreationMetadata(
                 sourceType: .journalArticle,
-                properties: [try CanonicalPropertyInput(
+                fields: [try CanonicalPropertyInput(
                     key: "title",
                     value: .string("Frozen initial title")
                 )]
@@ -215,7 +215,7 @@ struct ResearchFunctionCoordinatorTests {
             destination: initialInput.destination,
             metadata: AnalysisCreationMetadata(
                 sourceType: .book,
-                properties: [try CanonicalPropertyInput(
+                fields: [try CanonicalPropertyInput(
                     key: "title",
                     value: .string("Frozen initial title")
                 )]
@@ -232,7 +232,7 @@ struct ResearchFunctionCoordinatorTests {
             destination: initialInput.destination,
             metadata: AnalysisCreationMetadata(
                 sourceType: .journalArticle,
-                properties: [
+                fields: [
                     try CanonicalPropertyInput(
                         key: "title",
                         value: .string("Rewritten title")
@@ -255,7 +255,7 @@ struct ResearchFunctionCoordinatorTests {
             destination: initialInput.destination,
             metadata: AnalysisCreationMetadata(
                 sourceType: .journalArticle,
-                properties: [
+                fields: [
                     try CanonicalPropertyInput(
                         key: "title",
                         value: .string("Frozen initial title")
@@ -711,7 +711,7 @@ struct ResearchFunctionCoordinatorTests {
         )!
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
-            properties: [
+            fields: [
                 try CanonicalPropertyInput(
                     key: "title",
                     value: .string("Agent-created Analysis")
@@ -764,7 +764,7 @@ struct ResearchFunctionCoordinatorTests {
             destination: creation.destination,
             metadata: try AnalysisCreationMetadata(
                 sourceType: .journalArticle,
-                properties: [
+                fields: [
                     try CanonicalPropertyInput(
                         key: "title",
                         value: .string("A different payload must not reuse the committed Note")

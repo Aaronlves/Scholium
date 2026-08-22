@@ -8,7 +8,7 @@ public enum ResearchDocumentWriteOperation: String, Codable, CaseIterable,
     case createNote = "create_note"
     case modifyMarkdown = "modify_markdown"
     case modifySource = "modify_source"
-    case modifyProperties = "modify_properties"
+    case modifyMetadata = "modify_metadata"
     case setZoteroBinding = "set_zotero_binding"
     case clearZoteroBinding = "clear_zotero_binding"
 
@@ -94,7 +94,7 @@ public struct ResearchAnalysisCreationFieldPlan: Codable, Hashable, Sendable {
         allowedValues: [String]? = nil,
         isRequired: Bool
     ) throws {
-        guard let contract = PropertyContractCatalog.contract(
+        guard let contract = NoteMetadataContractCatalog.contract(
             for: key,
             profile: .analysis
         ), contract.valueKind == valueKind,
@@ -144,7 +144,7 @@ public struct ResearchAnalysisCreationSourcePlan: Codable, Hashable, Sendable {
         let applicable = Set(
             AnalysisSourceTypeProfileCatalog.profile(for: sourceType).applicableFields
         )
-        guard fields.count <= PropertyContractCatalog.analysisCanonicalKeys.count,
+        guard fields.count <= NoteMetadataContractCatalog.analysisCanonicalKeys.count,
               Set(fields.map(\.key)).count == fields.count,
               fields.allSatisfy({ $0.key != "type" && applicable.contains($0.key) }) else {
             throw ResearchBoundedWriteSetError.invalidEntry
@@ -175,7 +175,7 @@ public struct ResearchAnalysisCreationSourcePlan: Codable, Hashable, Sendable {
     }
 }
 
-public struct ResearchPropertyWriteFieldPlan: Codable, Hashable, Sendable {
+public struct ResearchMetadataWriteFieldPlan: Codable, Hashable, Sendable {
     public let key: String
     public let valueKind: PropertyValueKind
     public let allowedValues: [String]?
@@ -185,7 +185,7 @@ public struct ResearchPropertyWriteFieldPlan: Codable, Hashable, Sendable {
         valueKind: PropertyValueKind,
         allowedValues: [String]? = nil
     ) throws {
-        guard ResearchBoundedWriteValidation.validPropertyKey(key),
+        guard ResearchBoundedWriteValidation.validMetadataKey(key),
               allowedValues.map({ values in
                   !values.isEmpty && Set(values).count == values.count
                       && values.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 256 })
@@ -232,8 +232,8 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
     public let role: ResearchActionTargetRole
     public let title: String
     public let allowedOperations: [ResearchDocumentWriteOperation]
-    public let allowedPropertyKeys: [String]
-    public let propertyWritePlans: [ResearchPropertyWriteFieldPlan]
+    public let allowedMetadataKeys: [String]
+    public let metadataWritePlans: [ResearchMetadataWriteFieldPlan]
     public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
     public var expectation: ResearchWriteSetTargetExpectation
     public let authorizationBasis: ResearchWriteSetAuthorizationBasis
@@ -241,6 +241,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
     public let policyRevision: DocumentFingerprint?
     public let expiresAt: Date
     public var state: ResearchWriteSetEntryState
+    public var metadataRevision: DocumentFingerprint?
     public var zoteroBindingsRevision: DocumentFingerprint?
 
     public init(
@@ -251,8 +252,9 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         title: String,
         allowedOperations: [ResearchDocumentWriteOperation],
         expectedRevision: DocumentFingerprint,
-        allowedPropertyKeys: [String] = [],
-        propertyWritePlans: [ResearchPropertyWriteFieldPlan] = [],
+        allowedMetadataKeys: [String] = [],
+        metadataWritePlans: [ResearchMetadataWriteFieldPlan] = [],
+        metadataRevision: DocumentFingerprint? = nil,
         zoteroBindingsRevision: DocumentFingerprint? = nil,
         authorizationBasis: ResearchWriteSetAuthorizationBasis,
         authorizationPolicy: ResearchCollaborationPolicy? = nil,
@@ -263,14 +265,18 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         let operations = Array(Set(allowedOperations)).sorted {
             $0.rawValue < $1.rawValue
         }
-        let propertyKeys = Array(Set(allowedPropertyKeys)).sorted()
-        let propertyPlans = propertyWritePlans.sorted { $0.key < $1.key }
+        let metadataKeys = Array(Set(allowedMetadataKeys)).sorted()
+        let metadataPlans = metadataWritePlans.sorted { $0.key < $1.key }
         let includesZoteroBinding = operations.contains(where: \.isZoteroBindingOperation)
         guard !operations.isEmpty,
               operations.count == allowedOperations.count,
               operations.contains(.createNote) == false,
-              operations.contains(.modifyProperties) == !propertyKeys.isEmpty,
-              propertyKeys == propertyPlans.map(\.key),
+              operations.contains(.modifyMetadata) == !metadataKeys.isEmpty,
+              metadataKeys == metadataPlans.map(\.key),
+              operations.contains(.modifyMetadata) || metadataRevision == nil,
+              metadataRevision.map(
+                ResearchBoundedWriteValidation.validFingerprint
+              ) ?? true,
               includesZoteroBinding == (zoteroBindingsRevision != nil),
               !includesZoteroBinding || role == .analysis,
               zoteroBindingsRevision.map(
@@ -293,8 +299,8 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.role = role
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.allowedOperations = operations
-        self.allowedPropertyKeys = propertyKeys
-        self.propertyWritePlans = propertyPlans
+        self.allowedMetadataKeys = metadataKeys
+        self.metadataWritePlans = metadataPlans
         analysisCreationPlans = []
         expectation = .existing(expectedRevision: expectedRevision)
         self.authorizationBasis = authorizationBasis
@@ -302,6 +308,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.policyRevision = policyRevision
         self.expiresAt = expiresAt
         self.state = state
+        self.metadataRevision = metadataRevision
         self.zoteroBindingsRevision = zoteroBindingsRevision
     }
 
@@ -339,8 +346,8 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.role = role
         self.title = title
         allowedOperations = [.createNote]
-        allowedPropertyKeys = []
-        propertyWritePlans = []
+        allowedMetadataKeys = []
+        metadataWritePlans = []
         self.analysisCreationPlans = analysisCreationPlans.sorted {
             $0.sourceType.rawValue < $1.sourceType.rawValue
         }
@@ -350,6 +357,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.policyRevision = policyRevision
         self.expiresAt = expiresAt
         self.state = state
+        metadataRevision = nil
         zoteroBindingsRevision = nil
     }
 
@@ -377,8 +385,8 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         case noteID = "note_id"
         case note, role, title
         case allowedOperations = "allowed_operations"
-        case allowedPropertyKeys = "allowed_property_keys"
-        case propertyWritePlans = "property_write_plans"
+        case allowedMetadataKeys = "allowed_metadata_keys"
+        case metadataWritePlans = "metadata_write_plans"
         case analysisCreationPlans = "analysis_creation_plans"
         case expectation
         case authorizationBasis = "authorization_basis"
@@ -386,6 +394,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         case policyRevision = "policy_revision"
         case expiresAt = "expires_at"
         case state
+        case metadataRevision = "metadata_revision"
         case zoteroBindingsRevision = "zotero_bindings_revision"
     }
 
@@ -408,13 +417,13 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             [ResearchDocumentWriteOperation].self,
             forKey: .allowedOperations
         )
-        let propertyKeys = try container.decode(
+        let metadataKeys = try container.decode(
             [String].self,
-            forKey: .allowedPropertyKeys
+            forKey: .allowedMetadataKeys
         )
-        let propertyWritePlans = try container.decode(
-            [ResearchPropertyWriteFieldPlan].self,
-            forKey: .propertyWritePlans
+        let metadataWritePlans = try container.decode(
+            [ResearchMetadataWriteFieldPlan].self,
+            forKey: .metadataWritePlans
         )
         let analysisCreationPlans = try container.decode(
             [ResearchAnalysisCreationSourcePlan].self,
@@ -438,6 +447,10 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             )
         let expiresAt = try container.decode(Date.self, forKey: .expiresAt)
         let state = try container.decode(ResearchWriteSetEntryState.self, forKey: .state)
+        let metadataRevision = try container.decodeIfPresent(
+            DocumentFingerprint.self,
+            forKey: .metadataRevision
+        )
         let zoteroBindingsRevision = try container.decodeIfPresent(
             DocumentFingerprint.self,
             forKey: .zoteroBindingsRevision
@@ -455,8 +468,9 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 title: title,
                 allowedOperations: operations,
                 expectedRevision: revision,
-                allowedPropertyKeys: propertyKeys,
-                propertyWritePlans: propertyWritePlans,
+                allowedMetadataKeys: metadataKeys,
+                metadataWritePlans: metadataWritePlans,
+                metadataRevision: metadataRevision,
                 zoteroBindingsRevision: zoteroBindingsRevision,
                 authorizationBasis: basis,
                 authorizationPolicy: policy,
@@ -465,9 +479,9 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 state: state
             )
         case .absent(let settingsRevision):
-            guard zoteroBindingsRevision == nil,
-                  operations == [.createNote], propertyKeys.isEmpty,
-                  propertyWritePlans.isEmpty else {
+            guard metadataRevision == nil, zoteroBindingsRevision == nil,
+                  operations == [.createNote], metadataKeys.isEmpty,
+                  metadataWritePlans.isEmpty else {
                 throw ResearchBoundedWriteSetError.invalidEntry
             }
             try self.init(
@@ -485,9 +499,9 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 state: state
             )
         case .created(let settingsRevision, let committedRevision):
-            guard zoteroBindingsRevision == nil,
-                  operations == [.createNote], propertyKeys.isEmpty,
-                  propertyWritePlans.isEmpty,
+            guard metadataRevision == nil, zoteroBindingsRevision == nil,
+                  operations == [.createNote], metadataKeys.isEmpty,
+                  metadataWritePlans.isEmpty,
                   state == .consumed else {
                 throw ResearchBoundedWriteSetError.invalidEntry
             }
@@ -515,7 +529,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
 }
 
 public struct ResearchBoundedWriteSet: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
     public static let maximumEntriesPerRequest = 16
     public static let maximumEntriesPerRun = 64
     public static let maximumWritesPerRun = 256
@@ -590,40 +604,40 @@ public struct ResearchWriteSetTargetSelector: Codable, Hashable, Sendable {
     public let role: ResearchActionTargetRole
     public let relativePath: String
     public let operations: [ResearchDocumentWriteOperation]
-    public let propertyKeys: [String]
+    public let metadataKeys: [String]
 
     public init(
         role: ResearchActionTargetRole,
         relativePath: String,
         operations: [ResearchDocumentWriteOperation],
-        propertyKeys: [String] = []
+        metadataKeys: [String] = []
     ) throws {
         let providedCount = operations.count
         let operations = Array(Set(operations)).sorted { $0.rawValue < $1.rawValue }
-        let keys = Array(Set(propertyKeys)).sorted()
+        let keys = Array(Set(metadataKeys)).sorted()
         guard ResearchBoundedWriteValidation.validPath(relativePath),
               !operations.isEmpty,
               operations.count == providedCount,
               operations.contains(.createNote) == (operations == [.createNote]),
-              operations.contains(.modifyProperties) == !keys.isEmpty,
+              operations.contains(.modifyMetadata) == !keys.isEmpty,
               !operations.contains(where: \.isZoteroBindingOperation)
                 || role == .analysis,
-              keys.count == propertyKeys.count,
-              keys.count <= ResearchAuthorityEnvelope.maximumEditablePropertyKeyCount,
-              keys.allSatisfy(ResearchBoundedWriteValidation.validPropertyKey) else {
+              keys.count == metadataKeys.count,
+              keys.count <= ResearchAuthorityEnvelope.maximumEditableMetadataKeyCount,
+              keys.allSatisfy(ResearchBoundedWriteValidation.validMetadataKey) else {
             throw ResearchBoundedWriteSetError.invalidIntent
         }
         self.role = role
         self.relativePath = relativePath
         self.operations = operations
-        self.propertyKeys = keys
+        self.metadataKeys = keys
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case role
         case relativePath = "relative_path"
         case operations
-        case propertyKeys = "property_keys"
+        case metadataKeys = "metadata_keys"
     }
 
     public init(from decoder: Decoder) throws {
@@ -640,16 +654,16 @@ public struct ResearchWriteSetTargetSelector: Codable, Hashable, Sendable {
                 [ResearchDocumentWriteOperation].self,
                 forKey: .operations
             ),
-            propertyKeys: container.decodeIfPresent(
+            metadataKeys: container.decodeIfPresent(
                 [String].self,
-                forKey: .propertyKeys
+                forKey: .metadataKeys
             ) ?? []
         )
     }
 }
 
 public struct ResearchWriteSetExtensionIntent: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let targets: [ResearchWriteSetTargetSelector]
@@ -724,10 +738,11 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
     public let role: ResearchActionTargetRole
     public let title: String
     public let operations: [ResearchDocumentWriteOperation]
-    public let propertyKeys: [String]
-    public let propertyWritePlans: [ResearchPropertyWriteFieldPlan]
+    public let metadataKeys: [String]
+    public let metadataWritePlans: [ResearchMetadataWriteFieldPlan]
     public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
     public let expectation: ResearchWriteSetCandidateExpectation
+    public let metadataRevision: DocumentFingerprint?
     public let zoteroBindingsRevision: DocumentFingerprint?
 
     public init(
@@ -738,16 +753,17 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         title: String,
         operations: [ResearchDocumentWriteOperation],
         expectedRevision: DocumentFingerprint,
-        propertyKeys: [String] = [],
-        propertyWritePlans: [ResearchPropertyWriteFieldPlan] = [],
+        metadataKeys: [String] = [],
+        metadataWritePlans: [ResearchMetadataWriteFieldPlan] = [],
+        metadataRevision: DocumentFingerprint? = nil,
         zoteroBindingsRevision: DocumentFingerprint? = nil
     ) throws {
         let canonicalOperations = Array(Set(operations)).sorted {
             $0.rawValue < $1.rawValue
         }
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let propertyKeys = Array(Set(propertyKeys)).sorted()
-        let propertyPlans = propertyWritePlans.sorted { $0.key < $1.key }
+        let metadataKeys = Array(Set(metadataKeys)).sorted()
+        let metadataPlans = metadataWritePlans.sorted { $0.key < $1.key }
         let includesZoteroBinding = canonicalOperations.contains(
             where: \.isZoteroBindingOperation
         )
@@ -756,8 +772,12 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
               !canonicalOperations.isEmpty,
               canonicalOperations.count == operations.count,
               !canonicalOperations.contains(.createNote),
-              canonicalOperations.contains(.modifyProperties) == !propertyKeys.isEmpty,
-              propertyKeys == propertyPlans.map(\.key),
+              canonicalOperations.contains(.modifyMetadata) == !metadataKeys.isEmpty,
+              metadataKeys == metadataPlans.map(\.key),
+              canonicalOperations.contains(.modifyMetadata) || metadataRevision == nil,
+              metadataRevision.map(
+                ResearchBoundedWriteValidation.validFingerprint
+              ) ?? true,
               includesZoteroBinding == (zoteroBindingsRevision != nil),
               !includesZoteroBinding || role == .analysis,
               zoteroBindingsRevision.map(
@@ -773,10 +793,11 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         self.role = role
         self.title = title
         self.operations = canonicalOperations
-        self.propertyKeys = propertyKeys
-        self.propertyWritePlans = propertyPlans
+        self.metadataKeys = metadataKeys
+        self.metadataWritePlans = metadataPlans
         analysisCreationPlans = []
         expectation = .existing(expectedRevision: expectedRevision)
+        self.metadataRevision = metadataRevision
         self.zoteroBindingsRevision = zoteroBindingsRevision
     }
 
@@ -804,12 +825,13 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         self.role = role
         self.title = title
         operations = [.createNote]
-        propertyKeys = []
-        propertyWritePlans = []
+        metadataKeys = []
+        metadataWritePlans = []
         self.analysisCreationPlans = analysisCreationPlans.sorted {
             $0.sourceType.rawValue < $1.sourceType.rawValue
         }
         expectation = .absent(settingsRevision: settingsRevision)
+        metadataRevision = nil
         zoteroBindingsRevision = nil
     }
 
@@ -829,10 +851,11 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
         case handle
         case noteID = "note_id"
         case note, role, title, operations
-        case propertyKeys = "property_keys"
-        case propertyWritePlans = "property_write_plans"
+        case metadataKeys = "metadata_keys"
+        case metadataWritePlans = "metadata_write_plans"
         case analysisCreationPlans = "analysis_creation_plans"
         case expectation
+        case metadataRevision = "metadata_revision"
         case zoteroBindingsRevision = "zotero_bindings_revision"
     }
 
@@ -855,17 +878,21 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
             [ResearchDocumentWriteOperation].self,
             forKey: .operations
         )
-        let propertyKeys = try container.decode(
+        let metadataKeys = try container.decode(
             [String].self,
-            forKey: .propertyKeys
+            forKey: .metadataKeys
         )
-        let propertyWritePlans = try container.decode(
-            [ResearchPropertyWriteFieldPlan].self,
-            forKey: .propertyWritePlans
+        let metadataWritePlans = try container.decode(
+            [ResearchMetadataWriteFieldPlan].self,
+            forKey: .metadataWritePlans
         )
         let analysisCreationPlans = try container.decode(
             [ResearchAnalysisCreationSourcePlan].self,
             forKey: .analysisCreationPlans
+        )
+        let metadataRevision = try container.decodeIfPresent(
+            DocumentFingerprint.self,
+            forKey: .metadataRevision
         )
         let zoteroBindingsRevision = try container.decodeIfPresent(
             DocumentFingerprint.self,
@@ -887,14 +914,15 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
                 title: title,
                 operations: operations,
                 expectedRevision: revision,
-                propertyKeys: propertyKeys,
-                propertyWritePlans: propertyWritePlans,
+                metadataKeys: metadataKeys,
+                metadataWritePlans: metadataWritePlans,
+                metadataRevision: metadataRevision,
                 zoteroBindingsRevision: zoteroBindingsRevision
             )
         case .absent(let settingsRevision):
-            guard zoteroBindingsRevision == nil,
-                  operations == [.createNote], propertyKeys.isEmpty,
-                  propertyWritePlans.isEmpty else {
+            guard metadataRevision == nil, zoteroBindingsRevision == nil,
+                  operations == [.createNote], metadataKeys.isEmpty,
+                  metadataWritePlans.isEmpty else {
                 throw ResearchBoundedWriteSetError.invalidEntry
             }
             try self.init(
@@ -1050,8 +1078,8 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
     public let relativePath: String
     public let role: ResearchActionTargetRole
     public let operations: [ResearchDocumentWriteOperation]
-    public let propertyKeys: [String]
-    public let propertyWritePlans: [ResearchPropertyWriteFieldPlan]
+    public let metadataKeys: [String]
+    public let metadataWritePlans: [ResearchMetadataWriteFieldPlan]
     public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
     public let state: ResearchWriteSetEntryState
     public let expectsAbsence: Bool
@@ -1061,8 +1089,8 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
         relativePath = entry.note.relativePath
         role = entry.role
         operations = entry.allowedOperations
-        propertyKeys = entry.allowedPropertyKeys
-        propertyWritePlans = entry.propertyWritePlans
+        metadataKeys = entry.allowedMetadataKeys
+        metadataWritePlans = entry.metadataWritePlans
         analysisCreationPlans = entry.analysisCreationPlans
         state = entry.state
         expectsAbsence = entry.expectsAbsence
@@ -1073,23 +1101,23 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
         relativePath: String,
         role: ResearchActionTargetRole,
         operations: [ResearchDocumentWriteOperation],
-        propertyKeys: [String],
-        propertyWritePlans: [ResearchPropertyWriteFieldPlan],
+        metadataKeys: [String],
+        metadataWritePlans: [ResearchMetadataWriteFieldPlan],
         analysisCreationPlans: [ResearchAnalysisCreationSourcePlan],
         state: ResearchWriteSetEntryState,
         expectsAbsence: Bool
     ) throws {
         let canonical = Array(Set(operations)).sorted { $0.rawValue < $1.rawValue }
-        let keys = Array(Set(propertyKeys)).sorted()
-        let propertyPlans = propertyWritePlans.sorted { $0.key < $1.key }
+        let keys = Array(Set(metadataKeys)).sorted()
+        let metadataPlans = metadataWritePlans.sorted { $0.key < $1.key }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.utf8.count <= 1_024,
               ResearchBoundedWriteValidation.validPath(relativePath),
               !canonical.isEmpty,
               canonical.count == operations.count,
-              keys.count == propertyKeys.count,
-              canonical.contains(.modifyProperties) == !keys.isEmpty,
-              keys == propertyPlans.map(\.key),
+              keys.count == metadataKeys.count,
+              canonical.contains(.modifyMetadata) == !keys.isEmpty,
+              keys == metadataPlans.map(\.key),
               (role == .analysis && canonical == [.createNote])
                 == (Set(analysisCreationPlans.map(\.sourceType))
                     == Set(AnalysisSourceType.allCases)),
@@ -1100,8 +1128,8 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
         self.relativePath = relativePath
         self.role = role
         self.operations = canonical
-        self.propertyKeys = keys
-        self.propertyWritePlans = propertyPlans
+        self.metadataKeys = keys
+        self.metadataWritePlans = metadataPlans
         self.analysisCreationPlans = analysisCreationPlans
         self.state = state
         self.expectsAbsence = expectsAbsence
@@ -1111,8 +1139,8 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
         case title
         case relativePath = "relative_path"
         case role, operations
-        case propertyKeys = "property_keys"
-        case propertyWritePlans = "property_write_plans"
+        case metadataKeys = "metadata_keys"
+        case metadataWritePlans = "metadata_write_plans"
         case analysisCreationPlans = "analysis_creation_plans"
         case state
         case expectsAbsence = "expects_absence"
@@ -1133,10 +1161,10 @@ public struct ResearchBoundedWriteSetViewEntry: Codable, Hashable, Identifiable,
                 [ResearchDocumentWriteOperation].self,
                 forKey: .operations
             ),
-            propertyKeys: container.decode([String].self, forKey: .propertyKeys),
-            propertyWritePlans: container.decode(
-                [ResearchPropertyWriteFieldPlan].self,
-                forKey: .propertyWritePlans
+            metadataKeys: container.decode([String].self, forKey: .metadataKeys),
+            metadataWritePlans: container.decode(
+                [ResearchMetadataWriteFieldPlan].self,
+                forKey: .metadataWritePlans
             ),
             analysisCreationPlans: container.decode(
                 [ResearchAnalysisCreationSourcePlan].self,
@@ -1202,7 +1230,7 @@ public struct ResearchWriteSetExtensionResult: Codable, Hashable, Sendable {
 }
 
 public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     /// One client-generated attempt identity. Retrying the same intent keeps
@@ -1218,7 +1246,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
     /// separate from body content so a caller cannot accidentally turn a
     /// body-only operation into a full-source replacement.
     public let source: String?
-    public let properties: [CanonicalPropertyInput]
+    public let metadata: [CanonicalPropertyInput]
     public let analysisMetadata: AnalysisCreationMetadata?
 
     public init(
@@ -1228,19 +1256,19 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         operation: ResearchDocumentWriteOperation = .modifyMarkdown,
         content: String = "",
         source: String? = nil,
-        properties: [CanonicalPropertyInput] = [],
+        metadata: [CanonicalPropertyInput] = [],
         analysisMetadata: AnalysisCreationMetadata? = nil
     ) throws {
         let shapeIsValid = switch operation {
         case .createNote:
-            source == nil && properties.isEmpty
+            source == nil && metadata.isEmpty
         case .modifyMarkdown:
-            source == nil && properties.isEmpty && analysisMetadata == nil
+            source == nil && metadata.isEmpty && analysisMetadata == nil
         case .modifySource:
-            source != nil && content.isEmpty && properties.isEmpty
+            source != nil && content.isEmpty && metadata.isEmpty
                 && analysisMetadata == nil
-        case .modifyProperties:
-            source == nil && content.isEmpty && !properties.isEmpty
+        case .modifyMetadata:
+            source == nil && content.isEmpty && !metadata.isEmpty
                 && analysisMetadata == nil
         case .setZoteroBinding, .clearZoteroBinding:
             false
@@ -1253,7 +1281,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
               source?.unicodeScalars.contains(where: { $0.value == 0 }) != true,
               source.map(\.utf8.count) ?? 0 <= ResearchBoundedWriteSet
                 .maximumDocumentUTF8ByteCount,
-              Set(properties.map(\.key)).count == properties.count else {
+              Set(metadata.map(\.key)).count == metadata.count else {
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         schemaVersion = Self.currentSchemaVersion
@@ -1263,7 +1291,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         self.operation = operation
         self.content = content
         self.source = source
-        self.properties = properties.sorted { $0.key < $1.key }
+        self.metadata = metadata.sorted { $0.key < $1.key }
         self.analysisMetadata = analysisMetadata
     }
 
@@ -1272,7 +1300,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
         case requestID = "request_id"
         case role
         case relativePath = "relative_path"
-        case operation, content, source, properties
+        case operation, content, source, metadata
         case analysisMetadata = "analysis_metadata"
     }
 
@@ -1309,7 +1337,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
                 String.self,
                 forKey: .content
             ) ?? ""
-        case .createNote, .modifyProperties,
+        case .createNote, .modifyMetadata,
              .setZoteroBinding, .clearZoteroBinding:
             content = try container.decodeIfPresent(
                 String.self,
@@ -1324,9 +1352,9 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
             operation: operation,
             content: content,
             source: source,
-            properties: container.decodeIfPresent(
+            metadata: container.decodeIfPresent(
                 [CanonicalPropertyInput].self,
-                forKey: .properties
+                forKey: .metadata
             ) ?? [],
             analysisMetadata: container.decodeIfPresent(
                 AnalysisCreationMetadata.self,
@@ -1338,7 +1366,7 @@ public struct ResearchDocumentWriteIntent: Codable, Hashable, Sendable {
 
 /// A portable Zotero relationship mutation is authorized by one Analysis
 /// member, but it is not a Markdown document write. Its payload therefore has
-/// no source content, Property values, or document revision.
+/// no source content, managed metadata values, or document revision.
 public struct ResearchZoteroBindingWriteIntent: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 1
 
@@ -1374,7 +1402,7 @@ public struct ResearchZoteroBindingWriteIntent: Codable, Hashable, Sendable {
                 throw ResearchBoundedWriteSetError.invalidWrite
             }
             normalizedKey = nil
-        case .createNote, .modifyMarkdown, .modifySource, .modifyProperties:
+        case .createNote, .modifyMarkdown, .modifySource, .modifyMetadata:
             throw ResearchBoundedWriteSetError.invalidWrite
         }
         guard role == .analysis,
@@ -1657,8 +1685,10 @@ public struct ResearchDocumentWriteRecord: Codable, Hashable, Identifiable, Send
         switch operation {
         case .createNote:
             expectationShapeIsValid = expectedRevision == nil
-        case .modifyMarkdown, .modifySource, .modifyProperties:
+        case .modifyMarkdown, .modifySource:
             expectationShapeIsValid = expectedRevision != nil
+        case .modifyMetadata:
+            expectationShapeIsValid = true
         case .setZoteroBinding, .clearZoteroBinding:
             expectationShapeIsValid = false
         }
@@ -1915,8 +1945,8 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
     public let conflictOperationID: UUID
     public let action: ResearchWriteConflictResolutionAction
     public let requestFingerprint: DocumentFingerprint
-    public let priorExpectedRevision: DocumentFingerprint
-    public let observedRevision: DocumentFingerprint
+    public let priorExpectedRevision: DocumentFingerprint?
+    public let observedRevision: DocumentFingerprint?
     public let state: ResearchWriteConflictResolutionState
     public let resolvedAt: Date
 
@@ -1928,8 +1958,8 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
         conflictOperationID: UUID,
         action: ResearchWriteConflictResolutionAction,
         requestFingerprint: DocumentFingerprint,
-        priorExpectedRevision: DocumentFingerprint,
-        observedRevision: DocumentFingerprint,
+        priorExpectedRevision: DocumentFingerprint?,
+        observedRevision: DocumentFingerprint?,
         state: ResearchWriteConflictResolutionState,
         resolvedAt: Date
     ) throws {
@@ -1941,8 +1971,13 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
             false
         }
         guard ResearchBoundedWriteValidation.validFingerprint(requestFingerprint),
-              ResearchBoundedWriteValidation.validFingerprint(priorExpectedRevision),
-              ResearchBoundedWriteValidation.validFingerprint(observedRevision),
+              priorExpectedRevision.map(
+                ResearchBoundedWriteValidation.validFingerprint
+              ) ?? true,
+              observedRevision.map(
+                ResearchBoundedWriteValidation.validFingerprint
+              ) ?? true,
+              priorExpectedRevision != observedRevision,
               resolvedAt.timeIntervalSinceReferenceDate.isFinite,
               shapeIsValid else {
             throw ResearchBoundedWriteSetError.invalidConflictResolution
@@ -2001,11 +2036,11 @@ public struct ResearchWriteConflictResolutionRecord: Codable, Hashable,
                 DocumentFingerprint.self,
                 forKey: .requestFingerprint
             ),
-            priorExpectedRevision: container.decode(
+            priorExpectedRevision: container.decodeIfPresent(
                 DocumentFingerprint.self,
                 forKey: .priorExpectedRevision
             ),
-            observedRevision: container.decode(
+            observedRevision: container.decodeIfPresent(
                 DocumentFingerprint.self,
                 forKey: .observedRevision
             ),
@@ -2126,10 +2161,10 @@ private enum ResearchBoundedWriteValidation {
         }
     }
 
-    static func validPropertyKey(_ value: String) -> Bool {
+    static func validMetadataKey(_ value: String) -> Bool {
         !value.isEmpty
             && value.utf8.count
-                <= ResearchAuthorityEnvelope.maximumPropertyKeyUTF8ByteCount
+                <= ResearchAuthorityEnvelope.maximumMetadataKeyUTF8ByteCount
             && !value.unicodeScalars.contains(where: {
                 CharacterSet.controlCharacters.contains($0)
             })

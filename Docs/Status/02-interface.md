@@ -77,14 +77,13 @@
   paste converge on the same editor transaction. The lower status reports
   body/selection statistics, while missing indexed absolute paths produce a
   nonauthorizing reminder.
-- Complete Properties is one Analysis/Topic/Work Note sheet with direct
-  source-safe controls, a searchable source-type-aware Add a Property chooser,
-  reversible pending removal, and an Edit in Source route for unsupported or
-  malformed source. Semantic groups use shared whitespace rather than repeated
-  visible headings; labels carry concise Help, and the reserved field-action
-  slot reveals on hover or focus without reflow. Custom fields remain together. A YAML-free Note first
-  presents Add YAML Properties… and Keep Without YAML; choosing insertion opens
-  only a draft and Save remains unavailable until one canonical value is valid.
+- Complete Metadata is one Analysis/Topic/Work Note sheet with typed controls,
+  a searchable source-type-aware Add a Field chooser, and reversible pending
+  removal. Semantic groups use shared whitespace rather than repeated visible
+  headings; labels carry concise Help, and the reserved field-action slot
+  reveals on hover or focus without reflow. It edits only identity-keyed
+  Scholium Metadata and never inserts or changes YAML. Authored `summary` and
+  `keywords` remain visible through About and editable in Source.
 - Inspector presents Overview, Connect, and Actions through the shared
   segmented control. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
@@ -161,7 +160,7 @@
 ## Appearance, adaptation, and localization
 
 - Settings now uses one searchable grouped sidebar: Application contains
-  Triptychs, Appearance, and Hotkeys; This Triptych contains Property Profiles
+  Triptychs, Appearance, and Hotkeys; This Triptych contains Metadata Profiles
   and Attention; Research Guidance contains Methods & Practices, Action
   Profiles, Agent Access, and External Tools & Citations. Triptych selection
   remains inside the Triptychs detail, and search uses only static Settings
@@ -174,7 +173,7 @@
   details, Headings, Callouts, and CSS behind explicit disclosures, adds Revert
   to Saved and built-in-default restoration, and confirms before a profile
   switch can discard an unsaved draft.
-- Settings → Properties uses the shared segmented role selector and the ordered New Notes,
+- Settings → Metadata Profiles uses the shared segmented role selector and the ordered New Notes,
   Agent-Created Analyses, and About sections. Exact seed
   delimiters are visible but not editable; source errors stay inline; Agent
   requirements remain source-type-specific; reset, clear, revert, reload after
@@ -183,13 +182,13 @@
   schema states preserve their source and do not expose editable defaults.
   Seed refusals identify their role and structured line/column; choosing the
   diagnostic returns focus and selection to that source line.
-- Settings Properties and Complete Properties disable their complete editing
+- Settings Metadata Profiles and Complete Metadata disable their complete editing
   surface while a save is pending, so no post-submit keystroke can be silently
   overwritten or discarded when the acknowledged result arrives.
 - System, Light, and Dark use one semantic resolver across native and document surfaces. Accent and
   Paper are the only configurable color inputs; Interface, Scholarly, and Exact
   are the native text families.
-- Inspector Mode, Connect direction, Search scope, Properties role and creator
+- Inspector Mode, Connect direction, Search scope, Metadata role and creator
   kind, and Records View now share one equal-segment control with an adaptive
   neutral track and selection plate, continuous corners, Left/Right traversal,
   and no Accent-filled selection.

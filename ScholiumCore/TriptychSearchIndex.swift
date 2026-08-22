@@ -95,7 +95,7 @@ public actor TriptychSearchIndex {
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptychID.uuidString.lowercased(), isDirectory: true)
             .appendingPathComponent("indexes", isDirectory: true)
-            .appendingPathComponent("search-v7.sqlite", isDirectory: false)
+            .appendingPathComponent("search-v9.sqlite", isDirectory: false)
     }
 
     /// Replaces only a disposable generated database. The v1 files and all
@@ -121,7 +121,7 @@ public actor TriptychSearchIndex {
                 withIntermediateDirectories: true
             )
             let stagingURL = databaseURL.deletingLastPathComponent()
-                .appendingPathComponent(".search-v7-staging-\(UUID().uuidString).sqlite")
+                .appendingPathComponent(".search-v9-staging-\(UUID().uuidString).sqlite")
             do {
                 do {
                     let staged = try SearchSQLiteDatabase(path: stagingURL.path)
@@ -132,7 +132,7 @@ public actor TriptychSearchIndex {
                 }
                 guard Darwin.rename(stagingURL.path, databaseURL.path) == 0 else {
                     throw SearchIndexError.sqlite(
-                        "could not atomically publish a rebuilt Search v7 database"
+                        "could not atomically publish a rebuilt Search v9 database"
                     )
                 }
                 for suffix in ["-wal", "-shm"] {
@@ -465,7 +465,7 @@ public actor TriptychSearchIndex {
             try Task.checkCancellation()
         }
         guard let published = try readGeneration(in: database, triptychID: triptychID) else {
-            throw SearchIndexError.invalidDocuments("Search v7 did not publish a generation")
+            throw SearchIndexError.invalidDocuments("Search v9 did not publish a generation")
         }
         let disposition: SearchIndexSyncDisposition
         if recoveredGeneratedDatabase {
@@ -713,14 +713,19 @@ public actor TriptychSearchIndex {
         )
         let exactIndexedRevision = indexed?.fingerprint == note.fingerprint
         let role = descriptor?.role ?? .other
+        let profile = WorkflowProfileResolver.resolve(
+            vaultRole: role,
+            frontmatter: note.parsedFrontmatter,
+            relativePath: note.relativePath
+        )
         let projection = SearchDocumentProjection(
             document: note,
-            profile: WorkflowProfileResolver.resolve(
-                vaultRole: role,
-                frontmatter: note.parsedFrontmatter,
-                relativePath: note.relativePath
-            ),
+            profile: profile,
             hasBrokenLink: exactIndexedRevision ? (indexed?.hasBrokenLink ?? false) : false
+        ).applyingNoteMetadata(
+            source.metadata,
+            profile: profile,
+            source: note.rawContent
         )
         let document = StoredSearchDocument(
             rowID: indexed?.rowID ?? -1,
@@ -746,7 +751,11 @@ public actor TriptychSearchIndex {
             roleOrder: Self.roleOrder(role),
             sourceLineStarts: projection.sourceLineStartsUTF16,
             segments: projection.segments,
-            properties: SearchPropertyProjection(document: note).entries
+            properties: SearchPropertyProjection(
+                document: note,
+                profile: profile,
+                metadata: source.metadata
+            ).entries
         )
         guard SearchMatcher.satisfies(
             ast,
@@ -1063,7 +1072,7 @@ public actor TriptychSearchIndex {
     ) throws -> [SearchPropertyProjection.Entry] {
         struct Accumulator {
             let key: String
-            let keyRange: SearchSourceRange
+            let keyRange: SearchSourceRange?
             let valueKind: SearchPropertyProjection.ValueKind
             let isEmpty: Bool
             var members: [SearchPropertyProjection.StringMember]
@@ -1085,7 +1094,7 @@ public actor TriptychSearchIndex {
                   let kindText = row.text(at: 1),
                   let kind = SearchPropertyProjection.ValueKind(rawValue: kindText)
             else { return }
-            let keyRange = SearchSourceRange(
+            let keyRange = row.isNull(at: 6) ? nil : SearchSourceRange(
                 utf16LowerBound: row.int(at: 6),
                 utf16UpperBound: row.int(at: 7),
                 line: row.int(at: 8),
@@ -1101,12 +1110,11 @@ public actor TriptychSearchIndex {
                 members: []
             )
             if let rawValue = row.text(at: 4),
-               let normalizedValue = row.text(at: 5),
-               !row.isNull(at: 12) {
+               let normalizedValue = row.text(at: 5) {
                 accumulator.members.append(SearchPropertyProjection.StringMember(
                     value: rawValue,
                     normalizedValue: normalizedValue,
-                    sourceRange: SearchSourceRange(
+                    sourceRange: row.isNull(at: 12) ? nil : SearchSourceRange(
                         utf16LowerBound: row.int(at: 12),
                         utf16UpperBound: row.int(at: 13),
                         line: row.int(at: 14),
@@ -1333,18 +1341,18 @@ public actor TriptychSearchIndex {
                         .int(ordinal),
                         .optionalText(member?.value),
                         .optionalText(member?.normalizedValue),
-                        .int(property.keySourceRange.utf16LowerBound),
-                        .int(property.keySourceRange.utf16UpperBound),
-                        .int(property.keySourceRange.line),
-                        .int(property.keySourceRange.column),
-                        .int(property.keySourceRange.endLine),
-                        .int(property.keySourceRange.endColumn),
-                        .optionalInt(member?.sourceRange.utf16LowerBound),
-                        .optionalInt(member?.sourceRange.utf16UpperBound),
-                        .optionalInt(member?.sourceRange.line),
-                        .optionalInt(member?.sourceRange.column),
-                        .optionalInt(member?.sourceRange.endLine),
-                        .optionalInt(member?.sourceRange.endColumn),
+                        .optionalInt(property.keySourceRange?.utf16LowerBound),
+                        .optionalInt(property.keySourceRange?.utf16UpperBound),
+                        .optionalInt(property.keySourceRange?.line),
+                        .optionalInt(property.keySourceRange?.column),
+                        .optionalInt(property.keySourceRange?.endLine),
+                        .optionalInt(property.keySourceRange?.endColumn),
+                        .optionalInt(member?.sourceRange?.utf16LowerBound),
+                        .optionalInt(member?.sourceRange?.utf16UpperBound),
+                        .optionalInt(member?.sourceRange?.line),
+                        .optionalInt(member?.sourceRange?.column),
+                        .optionalInt(member?.sourceRange?.endLine),
+                        .optionalInt(member?.sourceRange?.endColumn),
                     ]
                 )
             }
@@ -1458,12 +1466,12 @@ public actor TriptychSearchIndex {
             ordinal INTEGER NOT NULL,
             raw_value TEXT,
             normalized_value TEXT,
-            key_lower INTEGER NOT NULL,
-            key_upper INTEGER NOT NULL,
-            key_line INTEGER NOT NULL,
-            key_column INTEGER NOT NULL,
-            key_end_line INTEGER NOT NULL,
-            key_end_column INTEGER NOT NULL,
+            key_lower INTEGER,
+            key_upper INTEGER,
+            key_line INTEGER,
+            key_column INTEGER,
+            key_end_line INTEGER,
+            key_end_column INTEGER,
             value_lower INTEGER,
             value_upper INTEGER,
             value_line INTEGER,
@@ -1736,10 +1744,11 @@ private enum SearchMatcher {
                 keySourceRange: entry.keySourceRange
             )
         }
-        let ranges = entry.stringMembers.filter {
+        let matchingMembers = entry.stringMembers.filter {
             $0.normalizedValue == value
-        }.map(\.sourceRange)
-        guard !ranges.isEmpty else { return nil }
+        }
+        guard !matchingMembers.isEmpty else { return nil }
+        let ranges = matchingMembers.compactMap(\.sourceRange)
         return SearchPropertyMatch(
             key: entry.key,
             mode: .exactStringValue,
@@ -1944,7 +1953,7 @@ private enum NoteSearchResultBuilder {
         } else if let property,
                   let entry = document.properties.first(where: { $0.key == property.key }) {
             let value = entry.stringMembers.first(where: {
-                property.valueSourceRanges.contains($0.sourceRange)
+                $0.normalizedValue == property.normalizedValue
             })?.value
             presentation = (value.map { "\(entry.key): \($0)" } ?? entry.key, [])
         } else {
@@ -2238,7 +2247,7 @@ private enum NoteSearchResultBuilder {
         case .summary: "Summary"
         case .author: "Author"
         case .publicationDate: "Publication Date"
-        case .tag: "Tag"
+        case .tag: "Keyword"
         case .body: "Body"
         case .callout: "Callout"
         case .footnote: "Footnote"
@@ -2274,7 +2283,7 @@ private final class SearchSQLiteDatabase: @unchecked Sendable {
             nil
         ) != SQLITE_OK {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) }
-                ?? "could not open Search v7 database"
+                ?? "could not open Search v9 database"
             let code = handle.map { sqlite3_extended_errcode($0) }
             if let handle { sqlite3_close(handle) }
             if code.map({ ($0 & 0xFF) == SQLITE_CORRUPT || ($0 & 0xFF) == SQLITE_NOTADB }) == true {
@@ -2416,7 +2425,7 @@ private struct SearchSQLiteStatement {
                 }
             }
             guard result == SQLITE_OK else {
-                throw SearchIndexError.sqlite("could not bind a Search v7 parameter")
+                throw SearchIndexError.sqlite("could not bind a Search v9 parameter")
             }
         }
     }

@@ -11,7 +11,7 @@ struct LinkGraphTests {
         let topicVault = UUID()
         let analysis = NoteDocument(
             relativePath: "Papers/Foot.md",
-            rawContent: "---\ntitle: The Problem of Abortion\n---\nAnalysis"
+            rawContent: "# The Problem of Abortion\n\nAnalysis"
         )
         let topic = NoteDocument(
             relativePath: "Abortion.md",
@@ -82,7 +82,7 @@ struct LinkGraphTests {
         let worksVault = UUID()
         let analysis = NoteDocument(
             relativePath: "Shared.md",
-            rawContent: "---\ntitle: Analysis Target\n---\n# Analysis"
+            rawContent: "# Analysis Target"
         )
         let work = NoteDocument(
             relativePath: "Shared.md",
@@ -639,16 +639,15 @@ struct LinkGraphTests {
     func vectorDestinations() throws {
         let source = document("Output/Draft.md", "+[[Guidance Control#Argument|short]] and -[[Topics/Control#^core]].")
         let target = document("Topics/Control.md", """
-        ---
-        title: Control
-        aliases: [Guidance Control]
-        ---
         # Argument
 
         The central claim. ^core
         """)
         let documents = [source, target]
         let semantics = Dictionary(uniqueKeysWithValues: documents.map { (id($0.relativePath), MarkdownSemanticDocument(parsing: $0)) })
+        let targetMetadata = metadata(fields: [
+            "aliases": .array([.string("Guidance Control")]),
+        ])
         let snapshot = LinkGraphBuilder.build(
             generation: 1,
             catalog: documents.map {
@@ -656,6 +655,7 @@ struct LinkGraphTests {
                     vaultID: vaultID,
                     document: $0,
                     profile: $0.relativePath.hasPrefix("Topics/") ? .topicMarkdown : .draftProject,
+                    metadata: $0.relativePath.hasPrefix("Topics/") ? targetMetadata : nil,
                     semantic: semantics[id($0.relativePath)]!
                 )
             },
@@ -667,10 +667,10 @@ struct LinkGraphTests {
         #expect(outgoing[0].occurrence.alias == "short")
         #expect(outgoing[0].occurrence.vectorKind == .supports)
         #expect(outgoing[0].destination?.kind == .heading)
-        #expect(outgoing[0].destination?.span?.start.line == 5)
+        #expect(outgoing[0].destination?.span?.start.line == 1)
         #expect(outgoing[1].occurrence.vectorKind == .opposes)
         #expect(outgoing[1].destination?.kind == .block)
-        #expect(outgoing[1].destination?.span?.start.line == 7)
+        #expect(outgoing[1].destination?.span?.start.line == 3)
     }
 
     @Test("Broken and ambiguous vectors remain unresolved and source located")
@@ -735,5 +735,13 @@ struct LinkGraphTests {
 
     private func document(_ path: String, _ source: String) -> NoteDocument {
         NoteDocument(relativePath: path, rawContent: source)
+    }
+
+    private func metadata(fields: [String: YAMLValue]) -> NoteMetadataSnapshot {
+        let record = NoteMetadataRecord(noteID: UUID(), fields: fields)
+        return NoteMetadataSnapshot(
+            record: record,
+            revision: DocumentFingerprint(content: String(describing: fields))
+        )
     }
 }

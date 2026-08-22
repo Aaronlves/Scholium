@@ -24,9 +24,10 @@
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.
 - Complete direct keyboard, VoiceOver, English and Simplified Chinese,
-  ordinary/minimum-width, and source-conflict acceptance for the Properties Settings seed editor,
-  per-type Agent requirements, Complete Properties chooser, CreatorList editor,
-  YAML-free first insertion, removal/Undo, and Source recovery routes.
+  ordinary/minimum-width, and conflict acceptance for the Metadata Profiles
+  seed editor, per-type Agent requirements, Complete Metadata chooser,
+  CreatorList editor, first-record creation, removal/Undo, and Source routes for
+  authored `summary` and `keywords`.
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
   error, conflict, set, rebind, confirmed-clear, and minimum-width acceptance
   for the Analysis Overview Zotero relationship sheet.
@@ -77,16 +78,18 @@
   the exact clean tagged packaged artifact. Focused scenario measurements remain
   in Verification and do not satisfy G7. Extend shared source-range fixtures
   before changing parser or syntax rules.
-- The disposable Debug QA journey now proves direct Edit presentation, exact
-  body focus, first-keystroke persistence, and source fidelity with and without
-  a role YAML seed. Still measure command dispatch to acknowledged selection
-  with product instrumentation and complete human-visible acceptance before
-  describing this path as zero latency.
+- Repeat the direct-to-Edit QA journey with and without a `summary`/`keywords`
+  seed after the isolated fixture reaches a usable document surface. The
+  2026-08-23 attempt remained in bootstrap and therefore provides no current
+  interaction evidence for body focus, first-keystroke persistence, Metadata,
+  or source fidelity. Then measure command dispatch to acknowledged selection
+  and complete human-visible acceptance before describing the path as zero
+  latency.
 
 ## Search and performance
 
 - Review the [Search Case Pack](04-verification.md#search-case-pack) with the
-  researcher before deciding whether dynamic Property-key or Note-identity
+  researcher before deciding whether dynamic Metadata-key or Note-identity
   completion is needed. Keep Explain Query compact only if its complete fields
   remain keyboard and VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,

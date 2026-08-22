@@ -11,7 +11,7 @@ public enum PlatformActionOperation: String, Codable, CaseIterable, Hashable, Se
     case search
     case read
     case inspectRelations = "inspect_relations"
-    case inspectProperties = "inspect_properties"
+    case inspectMetadata = "inspect_metadata"
     case queryRecords = "query_records"
     case useZotero = "use_zotero"
     case discuss
@@ -39,7 +39,7 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
         guard operations.contains(.modifyInitialNote),
               operations.contains(.extendWriteSet) else { return [] }
         var operations: [ResearchDocumentWriteOperation] = [
-            .createNote, .modifyMarkdown, .modifySource, .modifyProperties,
+            .createNote, .modifyMarkdown, .modifySource, .modifyMetadata,
         ]
         if self.operations.contains(.useZotero) {
             operations.append(contentsOf: [
@@ -117,7 +117,7 @@ public enum PlatformActionCatalog {
             executionKind: .discussion,
             allowedTargetRoles: ResearchActionTargetRole.allCases,
             optionalSelectors: [.focalNotes, .passage],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .discuss, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .discuss, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .analyze,
@@ -125,42 +125,42 @@ public enum PlatformActionCatalog {
             allowedTargetRoles: [.analysis],
             requiredSelectors: [.source],
             optionalSelectors: [.focalNotes],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .synthesize,
             executionKind: .synthesis,
             allowedTargetRoles: [.topic],
             optionalSelectors: [.focalNotes, .passage],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .write,
             executionKind: .writing,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes, .passage],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .critique,
             executionKind: .critique,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes, .passage],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .checkFidelity,
             executionKind: .checkFidelity,
             allowedTargetRoles: ResearchActionTargetRole.allCases,
             optionalSelectors: [.focalNotes, .passage, .fidelityChecks],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .manuscript,
             executionKind: .manuscript,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes],
-            operations: [.search, .read, .inspectRelations, .inspectProperties, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
         ),
     ]
 

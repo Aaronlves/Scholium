@@ -608,7 +608,7 @@ struct ResearchFunctionContractsTests {
                 readableNotes: [actionTarget],
                 writableNotes: [],
                 writeOperations: [],
-                editablePropertyKeys: []
+                editableMetadataKeys: []
             )
         )
         return ResearchFunctionSnapshot(

@@ -268,7 +268,7 @@ struct ResearchOverviewView: View {
         VStack(alignment: .leading, spacing: 0) {
             ScholiumApparatusSectionHeaderButton(
                 aboutTitle,
-                actionLabel: "Edit Properties",
+                actionLabel: "Edit Metadata",
                 systemImage: "slider.horizontal.3",
                 accessibilityIdentifier: "scholium.about.edit",
                 action: context.openProperties
@@ -372,10 +372,11 @@ struct ResearchOverviewView: View {
             visibleFields: context.propertiesConfiguration?.visibleFields
         ).compactMap { configured in
             let facts = configured.keys.compactMap { key in
-                isLongResearchField(key) || key == "tags" ? nil : propertyFact(for: key)
+                isLongResearchField(key) || key == "keywords" ? nil : propertyFact(for: key)
             }
             let blocks = configured.keys.flatMap(readingBlocks(for:))
-            let tags = configured.group == .tags ? note.tags : []
+            let tags = configured.group == .authoredYAML
+                && configured.keys.contains("keywords") ? note.tags : []
             guard !facts.isEmpty || !blocks.isEmpty || !tags.isEmpty else { return nil }
             return AboutGroupContent(
                 group: configured.group,
@@ -387,9 +388,16 @@ struct ResearchOverviewView: View {
     }
 
     private func propertyFact(for key: String) -> ScholiumApparatusFact? {
-        guard let raw = note.topLevelProperty(named: key) else { return nil }
+        let isManaged = NoteMetadataContractCatalog.contract(
+            for: key,
+            profile: note.schemaProfile
+        ) != nil
+        guard let raw = isManaged
+            ? note.managedMetadataValue(named: key)
+            : note.topLevelProperty(named: key) else { return nil }
         let value: String
-        if case .string = raw,
+        if !isManaged,
+           case .string = raw,
            let token = note.authoredTopLevelScalarToken(named: key),
            FrontmatterPatchPlanner.isTimestampScalarToken(token) {
             value = token
@@ -429,7 +437,7 @@ struct ResearchOverviewView: View {
     }
 
     private func isLongResearchField(_ key: String) -> Bool {
-        ["summary", "source_basis", "limitations"].contains(key)
+        key == "summary"
     }
 
     private func propertyDisplayValue(_ value: YAMLValue, key: String) -> String? {

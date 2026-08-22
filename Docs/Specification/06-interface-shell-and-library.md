@@ -9,7 +9,7 @@ native presentation and state ownership without restating each workflow.
 
 ### 18.1 Interface principles
 
-- Keep Document the largest, most stable region; navigation, Properties,
+- Keep Document the largest, most stable region; navigation, Metadata,
   research context, diagnostics, and agent assistance remain subordinate.
 - Prefer native macOS windows, split views, inspectors, toolbars, menus, sheets,
   alerts, file panels, controls, selection, and focus. Custom presentation must
@@ -17,9 +17,10 @@ native presentation and state ownership without restating each workflow.
 - Give every mutable fact one owner. Route commands to the focused window or
   document; identities, repositories, indexes, watchers, and registries are
   shared workspace services, not view state.
-- Derive Review, Edit, Source, Properties, Search, and research views
-  reversibly from authoritative Markdown; projections never reconstruct
-  writable source.
+- Derive Review, Edit, Source, Search, and research views reversibly from
+  authoritative Markdown. Metadata is a distinct portable authority keyed by
+  stable Note identity; neither source nor metadata projections reconstruct
+  the other writable owner.
 - Distinguish source, researcher prose, agent content, Discussion turns,
   Action output, Settle, Critique, Connect, and diagnostics by text and
   structure, not color alone.
@@ -179,7 +180,7 @@ Menus follow researcher tasks:
 
 - **File:** Triptych/window create/open; direct **New Note** at the focused
   vault root; Import; Duplicate; Rename; Move; Reveal.
-- **Edit:** editing and **Edit Properties…**.
+- **Edit:** editing and **Edit Metadata…**.
 - **View:** Back/Forward, Search, document mode/text size, Sidebar, Research
   Inspector.
 - **Window:** standard window navigation plus **Attention**. The command is
@@ -194,7 +195,7 @@ Menus follow researcher tasks:
   Static page, section, control, and command metadata supplies Settings search;
   authored Method, Practice, YAML, profile, and document content is never
   indexed into it. Navigation has three explicit groups: **Application** owns
-  Triptychs, Document Appearance, and Hotkeys; **This Triptych** owns Property
+  Triptychs, Document Appearance, and Hotkeys; **This Triptych** owns Metadata
   Profiles and Attention; **Research Guidance** owns Methods & Practices,
   Action Profiles, Agent Access, and External Tools & Citations. Scoped detail
   sections say **This Triptych** or **This Mac** where one page presents both.
@@ -241,7 +242,7 @@ Menus follow researcher tasks:
   atomically supplies all three Vaults and those cross-Vault projections without
   replacing, clearing, or moving focus from the usable Library. Snapshot and CLI
   delivery continue to wait for a complete Triptych projection.
-- One native **Filter** menu groups Integrity, Metadata, Properties, Order, and
+- One native **Filter** menu groups Integrity, Metadata, Order, and
   Actions with at most one submenu level. Its icon-only entry hides the
   redundant outer menu indicator; native submenu chevrons remain. Current
   Library rows and filters have no Review, Unreviewed, Qualified, or

@@ -3,6 +3,7 @@ import Foundation
 public protocol DocumentUseCases: Sendable {
     func snapshot() async throws -> [WorkspaceVaultSnapshot]
     func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
+    func metadata(_ id: VaultQualifiedNoteID) async throws -> NoteMetadataSnapshot?
     func importMarkdown(
         at sourceURL: URL,
         intoVault vaultID: UUID
@@ -70,6 +71,13 @@ public protocol DocumentUseCases: Sendable {
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<SaveResult>
+    /// Compare-and-swap saves researcher-owned portable Note metadata without
+    /// changing Markdown or YAML source bytes.
+    func saveMetadata(
+        _ id: VaultQualifiedNoteID,
+        fields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot>
     func move(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,

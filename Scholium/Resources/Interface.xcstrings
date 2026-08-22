@@ -56,19 +56,19 @@
       }
     },
     "settings.tab.propertyProfiles" : {
-      "comment" : "Settings tab for New Note YAML, Agent requirements, and About fields.",
+      "comment" : "Settings tab for minimal New Note YAML, Agent metadata requirements, and About fields.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Property Profiles"
+            "value" : "Metadata Profiles"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "属性配置"
+            "value" : "元数据配置"
           }
         }
       }

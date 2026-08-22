@@ -497,7 +497,7 @@ public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, S
 /// remain independently authoritative. Its schema belongs only to replay of
 /// this creation request and is not nested Local Execution payload authority.
 public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let triptychID: UUID
@@ -1064,8 +1064,8 @@ public actor LocalResearchExecutionStore {
                           !entry.allowedOperations.contains(.createNote),
                           Set(entry.allowedOperations)
                             .isSuperset(of: priorOperations),
-                          Set(entry.allowedPropertyKeys)
-                            .isSuperset(of: Set(existing.allowedPropertyKeys)),
+                          Set(entry.allowedMetadataKeys)
+                            .isSuperset(of: Set(existing.allowedMetadataKeys)),
                           existing.state == .ready
                             || (existing.state == .consumed
                                 && existing.wasCreated),
@@ -1166,17 +1166,23 @@ public actor LocalResearchExecutionStore {
                 guard let refreshedEntry,
                       resolution.state == .readyToRetry,
                       resolution.observedRevision
-                        == refreshedEntry.expectedRevision,
+                        == (conflict.operation == .modifyMetadata
+                            ? refreshedEntry.metadataRevision
+                            : refreshedEntry.expectedRevision),
                       refreshedEntry.handle == entry.handle,
                       refreshedEntry.noteID == entry.noteID,
                       refreshedEntry.note == entry.note,
                       refreshedEntry.role == entry.role,
                       refreshedEntry.title == entry.title,
                       refreshedEntry.allowedOperations == entry.allowedOperations,
-                      refreshedEntry.allowedPropertyKeys
-                        == entry.allowedPropertyKeys,
-                      refreshedEntry.propertyWritePlans
-                        == entry.propertyWritePlans,
+                      refreshedEntry.allowedMetadataKeys
+                        == entry.allowedMetadataKeys,
+                      refreshedEntry.metadataWritePlans
+                        == entry.metadataWritePlans,
+                      (conflict.operation == .modifyMetadata
+                        || refreshedEntry.metadataRevision == entry.metadataRevision),
+                      refreshedEntry.zoteroBindingsRevision
+                        == entry.zoteroBindingsRevision,
                       refreshedEntry.authorizationBasis == entry.authorizationBasis,
                       refreshedEntry.authorizationPolicy == entry.authorizationPolicy,
                       refreshedEntry.policyRevision == entry.policyRevision,
@@ -1220,7 +1226,9 @@ public actor LocalResearchExecutionStore {
                       $0.handle == write.target
                   }),
                   current.boundedWriteSet.entries[entryIndex].state == .ready,
-                  current.boundedWriteSet.entries[entryIndex].expectedRevision
+                  (write.operation == .modifyMetadata
+                    ? current.boundedWriteSet.entries[entryIndex].metadataRevision
+                    : current.boundedWriteSet.entries[entryIndex].expectedRevision)
                     == write.expectedRevision else {
                 throw ResearchBoundedWriteSetError.staleAuthorization
             }
@@ -1309,7 +1317,10 @@ public actor LocalResearchExecutionStore {
                     )
                     current.boundedWriteSet.entries[entryIndex].state = .consumed
                 } else {
-                    if let observedRevision {
+                    if write.operation == .modifyMetadata {
+                        current.boundedWriteSet.entries[entryIndex].metadataRevision
+                            = observedRevision
+                    } else if let observedRevision {
                         current.boundedWriteSet.entries[entryIndex].expectedRevision
                             = observedRevision
                     }

@@ -231,7 +231,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(model.triptychSettings.attentionDismissalDays == 14)
     }
 
-    @Test("A Properties draft cannot cross into another Triptych with identical bytes")
+    @Test("A Metadata draft cannot cross into another Triptych with identical bytes")
     func saveTargetIncludesTriptychIdentity() async {
         let firstID = UUID()
         let secondID = UUID()
@@ -471,7 +471,7 @@ struct WorkspaceSettingsArchitectureTests {
 
     @Test("A normalized Needs Review candidate is dirty and directly saveable")
     func repairableCandidateDiffersFromRawSettings() throws {
-        let raw = Data(#"{"newNoteYAML":"tags: [draft]\r\n","visibleFields":[" tags ","tags"]}"#.utf8)
+        let raw = Data(#"{"newNoteYAML":"keywords: [draft]\r\n","visibleFields":[" keywords ","keywords"]}"#.utf8)
         let decoded = try JSONDecoder().decode(
             VaultPropertiesConfiguration.self,
             from: raw
@@ -490,12 +490,12 @@ struct WorkspaceSettingsArchitectureTests {
         )
 
         #expect(candidate != saved)
-        #expect(candidate.properties[.paperAnalysis]?.newNoteYAML == "tags: [draft]\n")
-        #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["tags"])
+        #expect(candidate.properties[.paperAnalysis]?.newNoteYAML == "keywords: [draft]\n")
+        #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["keywords"])
         try TriptychSettingsValidator.validate(candidate)
     }
 
-    @Test("Properties Settings keeps seed, Agent, and About contracts separate")
+    @Test("Metadata Profiles keeps seed, Agent, and About contracts separate")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -507,7 +507,7 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let start = try #require(source.range(of: "private struct PropertiesSettingsView"))
+        let start = try #require(source.range(of: "private struct MetadataProfilesSettingsView"))
         let end = try #require(source.range(
             of: "struct AgentCLISettingsView",
             range: start.upperBound..<source.endIndex
@@ -528,7 +528,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(properties.contains("TriptychSettingsValidator.validate(candidateSettings)"))
         #expect(properties.contains("settingsRevisionConflict"))
         #expect(properties.contains("hasWritableTriptychSettings"))
-        #expect(properties.contains("Retry Properties Settings"))
+        #expect(properties.contains("Retry Metadata Settings"))
         #expect(properties.contains("savedSettingsRevision"))
         #expect(properties.contains("currentSeedDiagnostic"))
         #expect(properties.contains("currentAgentDiagnostic"))
@@ -540,7 +540,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!properties.contains("reason: error.localizedDescription"))
     }
 
-    @Test("Complete Properties exposes explicit insertion, chooser, deletion, and Source recovery")
+    @Test("Metadata editor exposes chooser and deletion without YAML authority")
     func completePropertiesSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -554,26 +554,25 @@ struct WorkspaceSettingsArchitectureTests {
         )
 
         for action in [
-            "Add YAML Properties…",
-            "Keep Without YAML",
-            "Add a Property…",
-            "Remove Property",
+            "Add a Field…",
+            "Remove Field",
             "Undo Removal",
-            "Edit in Source",
         ] {
             #expect(source.contains(action))
         }
         #expect(source.contains("PropertyChooserView"))
         #expect(source.contains("creatorListEditor"))
         #expect(source.contains("readOnlyFieldValue(for: field)"))
-        #expect(source.contains("Text(\"Source only\")"))
+        #expect(source.contains("Text(\"Unsupported shape\")"))
         #expect(source.contains("ScholiumEditorialIconControl("))
         #expect(source.contains("systemImage: \"ellipsis\""))
         #expect(source.contains("isVisuallyRevealed: hoveredFieldKey == field.key"))
         #expect(source.contains("|| focusedFieldKey == field.key"))
         #expect(source.contains("@State private var hoveredFieldKey: String?"))
         #expect(source.contains(".scholiumHoverState { isHovering in"))
-        #expect(source.contains(".accessibilityLabel(\"Property Actions\")"))
+        #expect(source.contains(".accessibilityLabel(\"Field Actions\")"))
+        #expect(!source.contains("Add YAML Properties…"))
+        #expect(!source.contains("Keep Without YAML"))
         #expect(source.contains(".accessibilityValue(Text(verbatim: field.label))"))
         #expect(source.contains("ScholiumPropertyGroup("))
         #expect(source.contains("separatesFromPrevious: index > 0"))
@@ -610,14 +609,16 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!fieldEditorSource.contains("Not typical for"))
         #expect(source.contains("Text(\"Pending Removal\")"))
         #expect(source.contains("Text(\"Not typical\")"))
-        #expect(source.components(separatedBy: ".buttonStyle(.borderedProminent)").count == 4)
+        #expect(source.components(separatedBy: ".buttonStyle(.borderedProminent)").count == 3)
         #expect(source.components(
             separatedBy: ".tint(ScholiumColorRole.accent.color)"
         ).count == 2)
         #expect(!source.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(source.contains("removedFieldKeys"))
         #expect(source.contains("List(selection: $selectionKey)"))
-        #expect(source.contains("Discard Properties Draft?"))
+        #expect(!source.contains("onOpenSource"))
+        #expect(!source.contains("Edit in Source"))
+        #expect(!source.contains("YAML: "))
         #expect(source.contains("reloadCurrentNote()"))
         #expect(source.contains("displayedFieldErrors.isEmpty"))
         #expect(source.components(

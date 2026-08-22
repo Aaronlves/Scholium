@@ -15,7 +15,7 @@ public enum TriptychSeedValidationReason: Equatable, Sendable {
         case .topLevelMappingRequired:
             "the seed must contain at least one top-level mapping entry"
         case .propertyIssue(let code):
-            "a canonical property has an invalid \(code.rawValue) value"
+            "a canonical field has an invalid \(code.rawValue) value"
         }
     }
 }
@@ -31,32 +31,29 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
         position: FrontmatterSourcePosition?
     )
     case reservedSeedKey(WorkspaceVaultSlot, String)
-    case canonicalSeedRoleMismatch(WorkspaceVaultSlot, String)
+    case unsupportedSeedKey(WorkspaceVaultSlot, String)
     case invalidRequiredField(AnalysisSourceType, String)
     case requiredFieldNotApplicable(AnalysisSourceType, String)
-    case requiredFieldCollidesWithSeed(AnalysisSourceType, String)
     case invalidAttentionDismissalDays
 
     public var errorDescription: String? {
         switch self {
         case .incompleteRoleConfiguration:
-            "Properties settings must contain exactly the Analysis, Topic, and Work roles."
+            "Metadata Profile settings must contain exactly the Analysis, Topic, and Work roles."
         case .noncanonicalConfigurationField(let role, let field):
-            "The \(role.rawValue) Properties configuration contains a blank, duplicate, or unnormalized field: \(field)."
+            "The \(role.rawValue) Metadata Profile contains a blank, duplicate, or unnormalized field: \(field)."
         case .seedTooLarge(let role, let count):
             "The \(role.rawValue) New Note YAML is \(count) bytes; the maximum is \(TriptychSettingsValidator.maximumSeedUTF8Bytes)."
         case .invalidSeed(let role, _, let reason, _):
             "The \(role.rawValue) New Note YAML is invalid: \(reason.description)"
         case .reservedSeedKey(let role, let key):
             "The \(role.rawValue) New Note YAML cannot contain the reserved key \(key)."
-        case .canonicalSeedRoleMismatch(let role, let key):
-            "\(key) is a canonical Property for another role and cannot be used in the \(role.rawValue) New Note YAML."
+        case .unsupportedSeedKey(let role, let key):
+            "The \(role.rawValue) New Note YAML may contain only summary and keywords; \(key) is not allowed."
         case .invalidRequiredField(let type, let key):
             "\(key) is not a shape-known Agent-creatable field for \(type.rawValue)."
         case .requiredFieldNotApplicable(let type, let key):
             "\(key) does not apply to \(type.rawValue)."
-        case .requiredFieldCollidesWithSeed(let type, let key):
-            "\(key) is both Agent-required for \(type.rawValue) and present in the Analysis New Note YAML."
         case .invalidAttentionDismissalDays:
             "Attention dismissal days must be positive."
         }
@@ -81,20 +78,17 @@ public enum TriptychSettingsValidator {
             throw TriptychSettingsValidationError.invalidAttentionDismissalDays
         }
 
-        var seedKeysByRole: [WorkspaceVaultSlot: Set<String>] = [:]
         for role in WorkspaceVaultSlot.allCases {
             let configuration = settings.properties[role]!
             try validateConfiguredFields(configuration.visibleFields, role: role)
-            seedKeysByRole[role] = try validateSeed(configuration.newNoteYAML, role: role)
+            _ = try validateSeed(configuration.newNoteYAML, role: role)
         }
 
-        let analysisSeedKeys = seedKeysByRole[.paperAnalysis] ?? []
         for sourceType in AnalysisSourceType.allCases {
             let required = settings.analysisAgentCreation.requiredFields(for: sourceType)
             try validateRequiredFields(
                 required,
-                sourceType: sourceType,
-                analysisSeedKeys: analysisSeedKeys
+                sourceType: sourceType
             )
         }
     }
@@ -111,11 +105,17 @@ public enum TriptychSettingsValidator {
         role: WorkspaceVaultSlot
     ) throws {
         var seen: Set<String> = []
+        let profile = profile(for: role)
+        let supported = Set(
+            PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
+                + NoteMetadataContractCatalog.contracts(for: profile).map(\.canonicalKey)
+        )
         for field in fields {
             let normalized = field.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !normalized.isEmpty,
                   normalized == field,
-                  seen.insert(field).inserted else {
+                  seen.insert(field).inserted,
+                  supported.contains(field) else {
                 throw TriptychSettingsValidationError.noncanonicalConfigurationField(
                     role,
                     field
@@ -188,10 +188,7 @@ public enum TriptychSettingsValidator {
         let profile = profile(for: role)
         for (key, value) in document.parsedFrontmatter {
             guard PropertyContractCatalog.contract(for: key, profile: profile) != nil else {
-                if isCanonicalInAnotherRole(key, excluding: profile) {
-                    throw TriptychSettingsValidationError.canonicalSeedRoleMismatch(role, key)
-                }
-                continue
+                throw TriptychSettingsValidationError.unsupportedSeedKey(role, key)
             }
             guard !isExplicitEmpty(value) else { continue }
             if let issue = PropertyContractCatalog.validate(
@@ -211,8 +208,7 @@ public enum TriptychSettingsValidator {
 
     private static func validateRequiredFields(
         _ fields: [String],
-        sourceType: AnalysisSourceType,
-        analysisSeedKeys: Set<String>
+        sourceType: AnalysisSourceType
     ) throws {
         var seen: Set<String> = []
         let applicable = Set(
@@ -224,17 +220,11 @@ public enum TriptychSettingsValidator {
                   !key.isEmpty,
                   key != "type",
                   seen.insert(key).inserted,
-                  PropertyContractCatalog.contract(for: key, profile: .analysis) != nil else {
+                  NoteMetadataContractCatalog.contract(for: key, profile: .analysis) != nil else {
                 throw TriptychSettingsValidationError.invalidRequiredField(sourceType, key)
             }
             guard applicable.contains(key) else {
                 throw TriptychSettingsValidationError.requiredFieldNotApplicable(sourceType, key)
-            }
-            guard !analysisSeedKeys.contains(key) else {
-                throw TriptychSettingsValidationError.requiredFieldCollidesWithSeed(
-                    sourceType,
-                    key
-                )
             }
         }
     }
@@ -252,16 +242,6 @@ public enum TriptychSettingsValidator {
         case .paperAnalysis: .analysis
         case .topicKnowledge: .topicMarkdown
         case .output: .draftProject
-        }
-    }
-
-    private static func isCanonicalInAnotherRole(
-        _ key: String,
-        excluding profile: SchemaProfileID
-    ) -> Bool {
-        [SchemaProfileID.analysis, .topicMarkdown, .draftProject].contains { candidate in
-            candidate != profile
-                && PropertyContractCatalog.contract(for: key, profile: candidate) != nil
         }
     }
 

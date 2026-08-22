@@ -155,7 +155,7 @@ struct PhaseOneOwnershipContractsTests {
         )
         for forbidden in [
             "capabilities", "sourceRequirement", "writeOperations",
-            "editablePropertyKeys", "permission", "package",
+            "editableMetadataKeys", "permission", "package",
         ] {
             #expect(!profileJSON.localizedCaseInsensitiveContains(forbidden))
         }

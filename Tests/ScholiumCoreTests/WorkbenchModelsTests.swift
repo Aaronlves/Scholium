@@ -5,7 +5,7 @@ import ScholiumContracts
 
 @Suite("Workbench completion models")
 struct WorkbenchModelsTests {
-    @Test("Saved Search persists only its Search v7 definition")
+    @Test("Saved Search persists only its Search v9 definition")
     func stateRoundTrip() throws {
         let saved = SavedSearch(
             name: "Open objections",

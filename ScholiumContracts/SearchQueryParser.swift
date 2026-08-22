@@ -13,7 +13,7 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
     case body
     case author
     case publicationDate = "publication_date"
-    case tag
+    case tag = "keyword"
     case footnote
     case path
 }
@@ -938,7 +938,7 @@ public enum SearchQueryParser {
         guard !excluded else {
             return .failure(diagnostic(
                 .unsupportedSyntax,
-                "Property clauses cannot be excluded.",
+                "Structured Metadata clauses cannot be excluded.",
                 token
             ))
         }
@@ -947,7 +947,7 @@ public enum SearchQueryParser {
         guard isUnambiguousPropertyKey(rawKey) else {
             return .failure(diagnostic(
                 .unsupportedSyntax,
-                "Property keys use an unquoted top-level identifier containing letters, numbers, _ or -.",
+                "Metadata keys use an unquoted identifier containing letters, numbers, _ or -.",
                 token
             ))
         }
@@ -964,7 +964,7 @@ public enum SearchQueryParser {
         guard !rawEqualityValue.isEmpty else {
             return .failure(diagnostic(
                 .missingFieldValue,
-                "Property equality requires a string value.",
+                "Metadata equality requires a string value.",
                 token
             ))
         }
@@ -976,13 +976,13 @@ public enum SearchQueryParser {
         guard !decoded.hadTrailingAsterisk else {
             return .failure(diagnostic(
                 .unsupportedSyntax,
-                "Property equality is exact and does not support prefixes.",
+                "Metadata equality is exact and does not support prefixes.",
                 token
             ))
         }
         let normalized = SearchTextNormalization.normalize(decoded.text)
         guard !normalized.isEmpty else {
-            return .failure(diagnostic(.emptyClause, "A property value cannot be empty.", token))
+            return .failure(diagnostic(.emptyClause, "A Metadata value cannot be empty.", token))
         }
         return .success(SearchPropertyClause(
             key: key,

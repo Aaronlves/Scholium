@@ -765,7 +765,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
     public let search: Bool
     public let read: Bool
     public let relations: Bool
-    public let properties: Bool
+    public let metadata: Bool
     public let records: Bool
     public let researchState: Bool
     public let zotero: Bool
@@ -778,7 +778,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         search: Bool,
         read: Bool,
         relations: Bool,
-        properties: Bool,
+        metadata: Bool,
         records: Bool,
         researchState: Bool,
         zotero: Bool,
@@ -790,7 +790,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         self.search = search
         self.read = read
         self.relations = relations
-        self.properties = properties
+        self.metadata = metadata
         self.records = records
         self.researchState = researchState
         self.zotero = zotero

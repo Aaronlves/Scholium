@@ -929,8 +929,8 @@ struct SpotlightSearchPanelView: View {
         case .structured(let field, let value, let excluded):
             return (excluded ? "not " : "") + "\(field.rawValue) is \(value)"
         case .property(let key, let value):
-            return value.map { "Property \(key) equals ‘\($0)’" }
-                ?? "Property \(key) is present"
+            return value.map { "Metadata \(key) equals ‘\($0)’" }
+                ?? "Metadata \(key) is present"
         case .relation(let direction, let identity, let relation, let symmetric):
             if symmetric {
                 return "has a direct undirected \(relation.rawValue) connection with ‘\(identity)’"
@@ -1053,7 +1053,7 @@ struct SpotlightSearchPanelView: View {
         case .cjkCharacterAndOverlappingBigramProjection:
             "CJK character and overlapping-bigram projection with substring verification"
         case .caseSensitiveTopLevelPropertyKey:
-            "case-sensitive top-level Property keys"
+            "case-sensitive Metadata keys"
         }
     }
 
@@ -1130,7 +1130,7 @@ struct SpotlightSearchPanelView: View {
         case .summary: String(localized: "summary")
         case .author: String(localized: "author")
         case .publicationDate: String(localized: "publication date")
-        case .tag: String(localized: "tag")
+        case .tag: String(localized: "keyword")
         case .path: String(localized: "path")
         case .callout: String(localized: "callout")
         case .footnote: String(localized: "footnote")
@@ -1266,7 +1266,7 @@ private struct NoteSearchResultRow: View {
         case .summary: String(localized: "summary")
         case .author: String(localized: "author")
         case .publicationDate: String(localized: "publication date")
-        case .tag: String(localized: "tag")
+        case .tag: String(localized: "keyword")
         case .body: String(localized: "body")
         case .callout: String(localized: "callout")
         case .footnote: String(localized: "footnote")

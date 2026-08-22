@@ -36,6 +36,27 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the YAML/portable-Metadata cutover passed its focused owners:
+  22 bounded-write, 8 Search-property projection/index, 40 Search/Record index,
+  28 document-operation, 36 Triptych-control, 28 Settings-architecture, 10
+  Property-contract, 10 presentation, 98 frontend-architecture, 10 Agent
+  start/result, 15 bridge, and 10 executable-CLI lifecycle tests. A following
+  complete `verify.sh` attempt passed documentation and shipped-resource
+  guards, all 199 Web-editor tests, reproducible bundles, and RDF-1, then
+  stopped at 451 Core tests with 12 issues caused by fixtures still assigning
+  title, aliases, authors, and publication date to retired YAML semantics or
+  expecting the preceding execution schema. Those owning fixtures were cut
+  over without restoring YAML reads; all 75 affected Record, catalog, and link
+  graph tests then passed. Per the one-complete-gate rule, later stages and the
+  complete gate were not rerun. Documentation authority and Interface,
+  Localizable, and WebKitInterface localization validation passed. The focused
+  Metadata XCUITest built and launched a disposable repository-local fixture,
+  but the QA app remained in
+  two disabled bootstrap windows for 90 seconds and never reached a document
+  surface, so it exercised no Metadata control. This is automated local
+  implementation evidence; keyboard, first-record, conflict, accessibility,
+  visual, and researcher acceptance remain open.
+
 - On 2026-08-22, the task's single complete `verify.sh` run passed
   documentation/Skill guards, all 199 Web-editor tests, reproducibility and
   RDF-1 checks, 446 Core tests, 3 Core performance tests, 146 Contract tests,
@@ -227,14 +248,10 @@ override.
   assertion for the new opening-Vault parameter, App passed 604/604. This is a
   recovered complete gate, not evidence that the Xcode beta parallel runner's
   scheduling stall is resolved.
-- On 2026-08-11, one isolated Debug QA journey created an Analysis first with
-  no role seed and then with `tags: [seeded]`. Both commands bypassed a naming
-  or Properties sheet, presented Edit, exposed keyboard focus at the exact body
-  insertion point, persisted the first typed marker in the body, and preserved
-  the expected source bytes. The seeded Note also exposed the `seeded` Tags
-  capsule in Overview while the journey remained in Edit. XCUITest timing
-  includes its own menu and polling overhead, so this is behavioral evidence
-  rather than a visible-latency measurement or researcher acceptance.
+- The 2026-08-11 seeded-`tags` QA journey exercised the superseded YAML
+  Properties design and is not acceptance evidence for schema-5 Metadata
+  Profiles. Current keyboard, first-record, conflict, and researcher acceptance
+  remain open below.
 - The Research Action, Reading Lead note, and Researcher Evaluation sheet
   journey passed in 63.273 seconds on disposable fixtures and retained one
   screenshot per sheet.
@@ -482,12 +499,12 @@ open.
 These cases are the current researcher-review set for deciding whether static
 query completion is sufficient. They do not define a second Search contract.
 
-### Case A: Property provenance and discovery
+### Case A: Metadata provenance and discovery
 
-Given a Topic with an explicit top-level `summary` and an unknown custom YAML
-key, verify that Search can explain presence and exact string-value matches
-without granting the custom key canonical Property semantics or treating the
-summary as evidence.
+Given a Topic with authored YAML `summary`, managed `aliases`, and an unknown
+custom YAML key, verify that Search reports exact source provenance only for
+`summary`, reports no Markdown range for `aliases`, excludes the unknown key,
+and treats neither retrieval reason as evidence.
 
 ### Case B: Direct relation direction
 
@@ -555,11 +572,18 @@ span, and the final-tail medians grew 0.236%. Under the corrected bounded,
 decelerating convergence rule this is a pass. These diagnostics validate the
 repair paths but do not replace the cooled, clean, exact-tagged packaged rerun.
 
-The latest isolated Search v7 regression report recorded a cold rebuild of
+The prior isolated Search v7 regression report recorded a cold rebuild of
 778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
 21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
-144,310,272 bytes on the deterministic 800-Note fixture. These are regression
-measurements, not the packaged G7 gate or approved release limits.
+144,310,272 bytes on the deterministic 800-Note fixture. The schema-v9
+Metadata projection supersedes that report; those measurements are not current
+v9 evidence, the packaged G7 gate, or approved release limits.
+
+On 2026-08-23 the focused Search v9 microbenchmark passed on the deterministic
+2,056-Note mixed-script fixture after the Metadata cutover: cold rebuild
+545.373 ms, warm-query p95 0.102 ms, incremental-publication p95 17.603 ms,
+36,442,080 database bytes, and 129,187,840 process peak RSS bytes. This is
+local regression evidence, not packaged G7 or researcher acceptance.
 
 ## Upgrade and distribution evidence
 

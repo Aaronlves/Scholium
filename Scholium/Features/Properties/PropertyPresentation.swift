@@ -8,9 +8,8 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
     case accessAndIdentifiers
     case topicDescription
     case workDescription
-    case research
+    case authoredYAML
     case other
-    case tags
 
     var label: String {
         switch self {
@@ -19,9 +18,8 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
         case .accessAndIdentifiers: ScholiumL10n.dynamicString("Access & Identifiers")
         case .topicDescription: ScholiumL10n.dynamicString("Topic Description")
         case .workDescription: ScholiumL10n.dynamicString("Work Description")
-        case .research: ScholiumL10n.dynamicString("Research")
-        case .other: ScholiumL10n.dynamicString("Other Properties")
-        case .tags: ScholiumL10n.dynamicString("Tags")
+        case .authoredYAML: ScholiumL10n.dynamicString("Authored YAML")
+        case .other: ScholiumL10n.dynamicString("Other Metadata")
         }
     }
 
@@ -30,9 +28,8 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
         case .source, .topicDescription, .workDescription: 0
         case .publication: 1
         case .accessAndIdentifiers: 2
-        case .research: 3
+        case .authoredYAML: 3
         case .other: 4
-        case .tags: 5
         }
     }
 }
@@ -66,7 +63,8 @@ enum PropertyPresentationCatalog {
     ]
 
     static func presentations(for profile: SchemaProfileID) -> [PropertyPresentation] {
-        let contracts = PropertyContractCatalog.contracts(for: profile)
+        let contracts = NoteMetadataContractCatalog.contracts(for: profile)
+            + PropertyContractCatalog.contracts(for: profile)
         return contracts.enumerated().map { index, contract in
             PropertyPresentation(
                 key: contract.canonicalKey,
@@ -81,11 +79,21 @@ enum PropertyPresentationCatalog {
         }
     }
 
+    static func managedPresentations(for profile: SchemaProfileID) -> [PropertyPresentation] {
+        let managedKeys = Set(
+            NoteMetadataContractCatalog.contracts(for: profile).map(\.canonicalKey)
+        )
+        return presentations(for: profile).filter { managedKeys.contains($0.key) }
+    }
+
     static func contract(
         for presentation: PropertyPresentation,
         in profile: SchemaProfileID
     ) -> PropertyContract? {
-        guard let contract = PropertyContractCatalog.contract(
+        guard let contract = NoteMetadataContractCatalog.contract(
+            for: presentation.key,
+            profile: profile
+        ) ?? PropertyContractCatalog.contract(
             for: presentation.key,
             profile: profile
         ), contract.canonicalKey == presentation.key else { return nil }
@@ -102,11 +110,11 @@ enum PropertyPresentationCatalog {
     static func orderedGroups(for profile: SchemaProfileID) -> [PropertyPresentationGroup] {
         switch profile {
         case .analysis:
-            [.source, .publication, .accessAndIdentifiers, .research, .other, .tags]
+            [.source, .publication, .accessAndIdentifiers, .authoredYAML, .other]
         case .topicMarkdown:
-            [.topicDescription, .research, .other, .tags]
+            [.topicDescription, .authoredYAML, .other]
         case .draftProject:
-            [.workDescription, .research, .other, .tags]
+            [.workDescription, .authoredYAML, .other]
         case .genericMarkdown:
             [.other]
         }
@@ -141,18 +149,16 @@ enum PropertyPresentationCatalog {
         for key: String,
         profile: SchemaProfileID
     ) -> PropertyPresentationGroup {
-        if key == "tags" { return .tags }
-        if key == "limitations" || key == "source_basis" { return .research }
+        if key == "summary" || key == "keywords" { return .authoredYAML }
         switch profile {
         case .analysis:
-            if key == "summary" { return .research }
             if analysisSourceKeys.contains(key) { return .source }
             if analysisAccessKeys.contains(key) { return .accessAndIdentifiers }
             return .publication
         case .topicMarkdown:
-            return key == "limitations" ? .research : .topicDescription
+            return .topicDescription
         case .draftProject:
-            return key == "limitations" ? .research : .workDescription
+            return .workDescription
         case .genericMarkdown:
             return .other
         }
@@ -197,8 +203,7 @@ enum PropertyPresentationCatalog {
             "url": "URL", "pmid": "PMID", "pmcid": "PMCID", "arxiv_id": "arXiv ID",
             "archive": "Archive", "archive_collection": "Archive Collection",
             "archive_location": "Archive Location", "archive_place": "Archive Place",
-            "call_number": "Call Number", "source_basis": "Source Basis",
-            "limitations": "Limitations", "tags": "Tags", "summary": "Note Summary",
+            "call_number": "Call Number", "keywords": "Keywords", "summary": "Note Summary",
             "aliases": "Aliases", "work_type": "Work Type", "coauthors": "Co-authors",
         ]
         return ScholiumL10n.dynamicString(
@@ -214,10 +219,8 @@ enum PropertyPresentationCatalog {
         case "publication_status": "Publication state such as forthcoming, in press, retracted, or withdrawn."
         case "authors": "Ordered structured names of the analyzed source's authors."
         case "summary": "Short navigation description of this Note; open the current Note and sources before relying on it."
-        case "source_basis": "Consulted material, version, range, or locator conditions."
-        case "limitations": "Material boundaries of this Note."
         case "aliases": "Alternative names used for finding and linking this Topic."
-        case "tags": "Short researcher-defined retrieval terms."
+        case "keywords": "Short researcher-defined retrieval terms stored in authored YAML."
         default: nil
         }
         return text.map(ScholiumL10n.dynamicString)

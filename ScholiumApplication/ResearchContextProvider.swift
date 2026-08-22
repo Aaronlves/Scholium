@@ -130,7 +130,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             do {
                 let outcome: ProviderOutcome
                 switch clause.kind {
-                case .discoverNote, .inspectRelations, .inspectProperties, .readNote:
+                case .discoverNote, .inspectRelations, .inspectMetadata, .readNote:
                     outcome = try await noteItems(
                         query: query,
                         clause: clause,
@@ -259,7 +259,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 throw ResearchContextContractError.invalidResponse
             }
             let matchReasons = requiredMatchReasons(note.matchReasons, for: clause.kind)
-            if (clause.kind == .inspectRelations || clause.kind == .inspectProperties)
+            if (clause.kind == .inspectRelations || clause.kind == .inspectMetadata)
                 && matchReasons.isEmpty {
                 continue
             }
@@ -314,7 +314,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 noteMatchReasons: matchReasons
             ))
         }
-        if (clause.kind == .inspectRelations || clause.kind == .inspectProperties)
+        if (clause.kind == .inspectRelations || clause.kind == .inspectMetadata)
             && !response.results.isEmpty && items.isEmpty {
             return ProviderOutcome(
                 availability: .invalidQuery,
@@ -512,8 +512,11 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             items: [try ResearchContextResponseItem(
                 clauseID: clause.id,
                 sourceReference: envelope,
-                title: snapshot.document.parsedFrontmatter["title"]?.scalarString
-                    ?? note.relativePath,
+                title: ResearchNoteTitleResolver.resolve(
+                    document: snapshot.document,
+                    profile: snapshot.schemaProfile,
+                    metadata: snapshot.metadata
+                ).title,
                 contentKind: clause.sectionHeading == nil ? .noteDocument : .noteSection,
                 exactSource: exactSource,
                 contextUseEligibility: clause.useEligibility == .contextUse && currentness == .current
@@ -1052,7 +1055,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
     ) -> ResearchContextRetrievalReason {
         switch clause.kind {
         case .inspectRelations: .directRelation
-        case .inspectProperties: .propertyPresence
+        case .inspectMetadata: .propertyPresence
         case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
                 .inspectResearcherState:
             retrievalReason(result)
@@ -1066,7 +1069,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let isRequired: (NoteSearchMatchReason) -> Bool = switch kind {
         case .inspectRelations:
             { if case .relationship = $0 { return true }; return false }
-        case .inspectProperties:
+        case .inspectMetadata:
             { if case .property = $0 { return true }; return false }
         case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
                 .inspectResearcherState:

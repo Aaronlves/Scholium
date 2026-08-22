@@ -124,8 +124,10 @@ extension WindowDocumentLocation {
   static func syntheticPreview(
     relativePath: String,
     rawContent: String,
-    vaultRole: VaultRole = .other
+    vaultRole: VaultRole = .other,
+    managedMetadata: [String: YAMLValue] = [:]
   ) -> Self {
+    let noteID = UUID()
     let document = NoteDocument(
       relativePath: relativePath,
       rawContent: rawContent
@@ -136,7 +138,7 @@ extension WindowDocumentLocation {
         relativePath: relativePath
       ),
       vaultRole: vaultRole,
-      stableIdentity: .resolved(UUID()),
+      stableIdentity: .resolved(noteID),
       document: document,
       fileMetadata: WorkspaceFileMetadata(
         byteCount: document.sourceBytes.count,
@@ -148,6 +150,10 @@ extension WindowDocumentLocation {
         outgoing: 0,
         broken: 0,
         ambiguous: 0
+      ),
+      metadata: managedMetadata.isEmpty ? nil : NoteMetadataSnapshot(
+        record: NoteMetadataRecord(noteID: noteID, fields: managedMetadata),
+        revision: DocumentFingerprint(content: "preview-metadata")
       )
     ))
   }
@@ -167,7 +173,8 @@ extension WindowDocumentLocation {
     }
     return ResearchNoteTitleResolver.resolve(
       document: document,
-      profile: schemaProfile
+      profile: schemaProfile,
+      metadata: workspaceSnapshot?.metadata
     ).title
   }
   var vaultRole: VaultRole { workspaceSnapshot?.vaultRole ?? .other }
@@ -188,11 +195,11 @@ extension WindowDocumentLocation {
 
   var title: String? { displayName }
   var aliases: [String] {
-    frontmatter["aliases"]?.canonicalStringList ?? []
+    managedMetadataFields["aliases"]?.canonicalStringList ?? []
   }
-  var tags: [String] { frontmatter["tags"]?.canonicalStringList ?? [] }
+  var tags: [String] { frontmatter["keywords"]?.canonicalStringList ?? [] }
   var authors: [String] {
-    frontmatter["authors"]
+    managedMetadataFields["authors"]
       .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
       .map(\.displayName) ?? []
   }
@@ -203,6 +210,14 @@ extension WindowDocumentLocation {
   /// and About must not reinterpret their authored spelling as a key path.
   func topLevelProperty(named key: String) -> YAMLValue? {
     frontmatter[key]
+  }
+
+  var managedMetadataFields: [String: YAMLValue] {
+    workspaceSnapshot?.metadata?.record.fields ?? [:]
+  }
+
+  func managedMetadataValue(named key: String) -> YAMLValue? {
+    managedMetadataFields[key]
   }
 
   func authoredTopLevelScalarToken(named key: String) -> String? {
@@ -264,6 +279,15 @@ extension WindowDocumentLocation {
       inactiveAnalysisKeys = []
     }
     for (key, value) in frontmatter where !inactiveAnalysisKeys.contains(key) {
+      if case .object(let nested) = value {
+        for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
+          result["\(key).\(path)"] = [nestedValue]
+        }
+      } else {
+        result[key] = value.appFilterValues
+      }
+    }
+    for (key, value) in managedMetadataFields {
       if case .object(let nested) = value {
         for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
           result["\(key).\(path)"] = [nestedValue]

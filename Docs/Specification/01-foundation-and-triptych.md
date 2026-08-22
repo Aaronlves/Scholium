@@ -44,8 +44,10 @@
 - **Connect** is the Inspector surface for source-located neutral, support,
   opposition, or incompatibility relations. **Attention** contains derived, recoverable
   warnings; it makes no philosophical judgment.
-- **Properties** is the human-facing projection of frontmatter. About presents
-  selected nonempty source properties without creating another status model.
+- **Metadata** is the human-facing editor for researcher-owned structured
+  values stored by Scholium. About composes selected nonempty managed values
+  with authored YAML `summary` and `keywords` without creating another status
+  model or rewriting Markdown.
 - A **Run** is one Action's working object. A hidden **Connection Session**
   authenticates a locally paired Agent to allowed Runs only for the current
   Scholium process. A **Bounded Write Set** is one Run's hidden, short-lived,
@@ -129,7 +131,7 @@ does not disappear after Finish, Settle, incorporation, or later editing.
 
 Visible labels stay sparse. Vault placement communicates Analysis, Topic, Work, and
 Critique roles; do not compose badges such as **Agent — Analysis**. Put useful
-provenance and modification detail in Properties or Research Record and show
+provenance and modification detail in About or Research Record and show
 warnings only when relevant.
 
 ## 3. The Scholium Triptych
@@ -200,8 +202,10 @@ The portable directory beside Works contains only:
 
 - manifest and stable identity mappings;
 - Triptych Guide and Triptych-local settings or folder preferences;
-- per-vault Properties profiles, exact New Note YAML, and Analysis Agent
+- per-vault Metadata profiles, exact minimal New Note YAML, and Analysis Agent
   creation requirements;
+- researcher-owned Note metadata under `.scholium/note-metadata/v1/`, one
+  schema-checked JSON record per stable Note identity;
 - typed Analysis-to-Zotero bindings keyed by stable Note identity;
 - the portable attachment catalog under `.scholium/attachments/v1/`, relating
   stable attachment identities to an explicit imported vault-relative path or
@@ -235,7 +239,7 @@ state required to continue interpreting the same Triptych. Application Support
 contains machine-local access, execution, derived, window, temporary, and
 recovery state. Attachment bytes remain ordinary Finder-authoritative files
 inside their owning vault; the portable catalog records identity and relative
-location only. A portable binding or attachment entry is not a Property or a
+location only. A portable binding or attachment entry is not Note Metadata or a
 general machine-field bag; an absolute path, bookmark, secret, Session, index,
 or live editor state is never portable control state.
 

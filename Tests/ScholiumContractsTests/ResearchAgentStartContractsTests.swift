@@ -8,7 +8,7 @@ struct ResearchAgentStartContractsTests {
     func newAnalysisRoundTrips() throws {
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
-            properties: [
+            fields: [
                 try CanonicalPropertyInput(
                     key: "title",
                     value: .string("A bounded article")
@@ -54,10 +54,18 @@ struct ResearchAgentStartContractsTests {
         #expect(decoded.sourceRoute == nil)
         let json = String(decoding: data, as: UTF8.self)
         #expect(json.contains("new_analysis"))
+        #expect(json.contains("\"fields\""))
+        #expect(!json.contains("\"properties\""))
         #expect(json.contains("managed_default_filename"))
         #expect(json.contains("settings_revision"))
         #expect(!json.contains("vault_id"))
         #expect(!json.contains("relative_path"))
+        #expect(throws: Error.self) {
+            _ = try JSONDecoder().decode(
+                AnalysisCreationMetadata.self,
+                from: Data(#"{"source_type":"journal_article","properties":[]}"#.utf8)
+            )
+        }
     }
 
     @Test("Researcher-provided direct creation stays at the managed root")

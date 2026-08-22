@@ -239,7 +239,8 @@ extension ResearchFunctionCoordinator {
     func researchFunctionTitle(for note: WorkspaceNoteSnapshot) -> String {
         ResearchNoteTitleResolver.resolve(
             document: note.document,
-            profile: note.schemaProfile
+            profile: note.schemaProfile,
+            metadata: note.metadata
         ).title
     }
 }

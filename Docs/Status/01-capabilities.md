@@ -36,20 +36,21 @@
 - Frontmatter edits are bounded to a uniquely proven range and preserve all
   unrelated bytes. Unsupported source shapes remain editable in Source.
 - Managed New Note copies the selected role's exact validated Settings seed in
-  the same source claim. YAML-free first-Property insertion is a separate
-  explicit expected-revision transaction and never writes empty delimiters.
-- Portable Properties settings independently own each role's exact New Note
-  YAML and About order plus per-source-type Analysis
+  the same source claim. The seed accepts only optional `summary` and
+  `keywords`; adding Metadata never inserts a YAML envelope.
+- Portable Metadata Profile settings independently own each role's exact New
+  Note YAML and About order plus per-source-type Analysis
   Agent requirements. One strict candidate validation and exact settings
   target identity plus revision guard the atomic save; uncertain or
   committed-with-refresh-warning outcomes are authoritatively reconciled.
   Unavailable or invalid settings remain nonauthorizing for managed creation,
   Agent requirements, and About rather than exposing defaults.
-- Complete Properties retains every safely bounded present top-level value,
-  derives direct editability from exact source rather than Settings, marks
-  unsupported shapes read-only, recommends only applicable missing canonical
-  keys, supports structured CreatorLists and authored date text, and
-  removes a property only through the same targeted expected-revision write.
+- Complete Metadata reads and compare-and-swap edits one identity-keyed
+  `.scholium/note-metadata/v1/<uuid>.json` record, offers only role-valid
+  managed fields, supports structured CreatorLists and date text, and leaves
+  every Markdown byte unchanged. Record identity, role catalog, canonical
+  readback, conflict, and uncertain commit are checked. Authored `summary` and
+  `keywords` remain Source-owned; unknown YAML is preserved but nonsemantic.
 
 ## Notes, documents, and file operations
 
@@ -92,7 +93,7 @@
 
 - One Search capability serves the app, CLI, Research Records, and authenticated
   Research Context. It supports This Note, This Vault, and Triptych scope;
-  Note and Record providers; lexical, Property, and direct-relation clauses;
+  Note and Record providers; lexical, structured-field, and direct-relation clauses;
   typed match reasons; Saved Searches; completion; and Explain Query.
 - An undecodable Saved Search file can be explicitly archived byte-exactly and
   reset without changing a valid concurrent replacement or any vault.
@@ -135,7 +136,7 @@
   when the researcher explicitly requests an audit for an exact revision.
 - `agent preflight-analysis` now resolves Analyze-only creation before the
   first consequential start. It returns the current Analyses vault and Settings
-  revision, applicable and Agent-required Property fields, application-owned
+  revision, applicable and Agent-required Metadata fields, application-owned
   seed keys, exact destination, and path/identity/source/Trash state. Managed
   default places one strict filename at the Analyses root; the Agent wire has
   no subfolder selector. Researcher-selected placement uses an existing
@@ -183,7 +184,7 @@
   fails stale, while ordinary Agent continuation remains available within the
   authenticated Run lifecycle.
 - Research Context composes current Search, exact Note reads, direct Relations,
-  Properties, Records, the current Run's explicitly selected path-free source
+  Metadata, Records, the current Run's explicitly selected path-free source
   Material and frozen Zotero bibliographic snapshot, and explicitly proven
   researcher state. It does not search Materials or copy source bytes. Each
   returned item preserves owner, revision, locator, scope, currentness,
@@ -201,8 +202,9 @@
 - Authenticated `create_note` freezes proven absence, Settings revision,
   reserved identity, and a seed-free Analysis field/shape/required plan.
   `modify_markdown` changes body only; `modify_source` accepts the complete
-  authored Markdown source; `modify_properties` changes only exact approved
-  top-level keys. GUI, researcher CLI, and Agent creation use the same managed
+  authored Markdown source; `modify_metadata` changes only exact approved
+  managed fields at the portable record revision and does not change source.
+  GUI, researcher CLI, and Agent creation use the same managed
   creator. Run-bound Agent `create_note` remains idempotent for one request and forms a
   preimage-free `created` Record mutation only after source and identity
   jointly read back; partial or unreadable outcomes retain a durable creation
@@ -237,7 +239,7 @@
 - Authenticated Discuss Runs expose their frozen Dialogue Response Contract and
   the `agent discuss-reply` command. A stable Agent statement ID makes an
   outcome-unknown retry idempotent; the route appends only an attributed Agent
-  turn to the active portable Discussion and grants no Note/Property mutation,
+  turn to the active portable Discussion and grants no Note/Metadata mutation,
   Finish, evaluation, Undo, recovery, cross-Run, or arbitrary filesystem
   authority.
 - Closing an Action presentation leaves unfinished work active. End cancels a
@@ -291,7 +293,7 @@
   or write authority. Separately authorized Agent
   `set_zotero_binding`/`clear_zotero_binding` use their own strict intent,
   bridge/CLI route, one-use capability, binding-revision check, and Local
-  Execution ledger; they cannot write Markdown, Properties, or Zotero. The optional Zotero MCP is a separate Agent transport;
+  Execution ledger; they cannot write Markdown, Metadata, or Zotero. The optional Zotero MCP is a separate Agent transport;
   guarded imports require an exact request, dry run, confirmation, unchanged
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot

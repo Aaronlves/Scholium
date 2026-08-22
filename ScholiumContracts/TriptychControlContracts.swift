@@ -161,7 +161,7 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
 
     public let schemaVersion: Int
     public var properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
@@ -206,7 +206,7 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
             throw DecodingError.dataCorruptedError(
                 forKey: .properties,
                 in: container,
-                debugDescription: "Properties settings must contain exactly all Triptych roles."
+                debugDescription: "Metadata Profile settings must contain exactly all Triptych roles."
             )
         }
         self.schemaVersion = schemaVersion
@@ -232,14 +232,14 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public static let defaultProperties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [
         .paperAnalysis: VaultPropertiesConfiguration(
             visibleFields: [
-                "type", "publication_date", "limitations", "summary", "source_basis", "tags",
+                "type", "authors", "publication_date", "summary", "keywords",
             ]
         ),
         .topicKnowledge: VaultPropertiesConfiguration(
-            visibleFields: ["summary", "aliases", "limitations", "tags"]
+            visibleFields: ["aliases", "summary", "keywords"]
         ),
         .output: VaultPropertiesConfiguration(
-            visibleFields: ["work_type", "coauthors", "summary", "limitations", "tags"]
+            visibleFields: ["work_type", "coauthors", "summary", "keywords"]
         ),
     ]
 

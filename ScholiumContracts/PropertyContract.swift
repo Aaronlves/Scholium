@@ -71,9 +71,10 @@ public struct CreatorNameProjection: Codable, Hashable, Sendable {
     }
 }
 
-/// Canonical metadata contracts selected by the already-resolved schema
-/// profile. Registered vault role and profile resolution remain owned by
-/// `WorkflowProfileResolver`; this catalog never guesses from a path.
+/// The deliberately small authored-YAML contract selected by an already
+/// resolved schema profile. Only `summary` and `keywords` receive Scholium
+/// semantics in research-note frontmatter. Every other YAML key remains exact
+/// researcher-authored custom source and is never promoted by this catalog.
 public enum PropertyContractCatalog {
     public static func contracts(for profile: SchemaProfileID) -> [PropertyContract] {
         cachedProfile(for: profile).contracts
@@ -198,9 +199,16 @@ public enum PropertyContractCatalog {
         frontmatter: [String: YAMLValue],
         profile: SchemaProfileID
     ) -> [PropertyValidationIssue] {
+        validate(values: frontmatter, against: contracts(for: profile))
+    }
+
+    fileprivate static func validate(
+        values: [String: YAMLValue],
+        against contracts: [PropertyContract]
+    ) -> [PropertyValidationIssue] {
         var issues: [PropertyValidationIssue] = []
-        for contract in contracts(for: profile) {
-            guard let value = frontmatter[contract.canonicalKey] else { continue }
+        for contract in contracts {
+            guard let value = values[contract.canonicalKey] else { continue }
             if contract.valueKind == .creatorList {
                 if let creatorIssue = validateCreatorList(value, key: contract.canonicalKey) {
                     issues.append(creatorIssue)
@@ -262,82 +270,21 @@ public enum PropertyContractCatalog {
         }
     }
 
-    public static let analysisCanonicalKeys: [String] = analysisContracts.map(\.canonicalKey)
+    public static let authoredCanonicalKeys: [String] = analysisContracts.map(\.canonicalKey)
 
     private static let analysisContracts: [PropertyContract] = [
-        property("type", .choice, allowed: AnalysisSourceType.allCases.map(\.rawValue)),
-        property("title", .text),
-        property("short_title", .text),
-        property("original_title", .text),
-        property("reviewed_title", .text),
-        property("genre", .text),
-        property("medium", .text),
-        property("version", .text),
-        property("language", .text),
-        property("authors", .creatorList),
-        property("editors", .creatorList),
-        property("translators", .creatorList),
-        property("collection_editors", .creatorList),
-        property("container_authors", .creatorList),
-        property("original_authors", .creatorList),
-        property("reviewed_authors", .creatorList),
-        property("publication_date", .date),
-        property("publication_status", .text),
-        property("original_publication_date", .date),
-        property("accessed_date", .date),
-        property("event_date", .date),
-        property("container_title", .text),
-        property("container_title_short", .text),
-        property("series_title", .text),
-        property("series_number", .text),
-        property("volume", .text),
-        property("volume_title", .text),
-        property("issue", .text),
-        property("pages", .text),
-        property("chapter_number", .text),
-        property("edition", .text),
-        property("number_of_volumes", .text),
-        property("publisher", .text),
-        property("publisher_place", .text),
-        property("original_publisher", .text),
-        property("original_publisher_place", .text),
-        property("institution", .text),
-        property("report_number", .text),
-        property("event_title", .text),
-        property("event_place", .text),
-        property("doi", .text),
-        property("isbn", .text),
-        property("issn", .text),
-        property("url", .text),
-        property("pmid", .text),
-        property("pmcid", .text),
-        property("arxiv_id", .text),
-        property("archive", .text),
-        property("archive_collection", .text),
-        property("archive_location", .text),
-        property("archive_place", .text),
-        property("call_number", .text),
-        property("source_basis", .textList),
-        property("limitations", .textList),
-        property("tags", .tags),
         property("summary", .multilineText),
+        property("keywords", .tags),
     ]
 
     private static let topicContracts: [PropertyContract] = [
-        property("aliases", .textList),
         property("summary", .multilineText),
-        property("limitations", .textList),
-        property("tags", .tags),
+        property("keywords", .tags),
     ]
 
     private static let workContracts: [PropertyContract] = [
-        property("work_type", .choice, allowed: [
-            "paper", "chapter", "book", "talk", "review", "teaching", "other",
-        ]),
-        property("coauthors", .textList),
         property("summary", .multilineText),
-        property("limitations", .textList),
-        property("tags", .tags),
+        property("keywords", .tags),
     ]
 
     private static func property(
@@ -454,5 +401,143 @@ public enum PropertyContractCatalog {
         case .mapping: "a mapping"
         case .creatorList: "a nonempty list of creator mappings"
         }
+    }
+}
+
+/// Researcher-owned structured values stored by Scholium beside the
+/// Triptych, keyed by portable Note identity. These contracts never authorize
+/// reading or rewriting same-named YAML keys.
+public enum NoteMetadataContractCatalog {
+    public static func contracts(for profile: SchemaProfileID) -> [PropertyContract] {
+        cachedProfile(for: profile).contracts
+    }
+
+    public static func contract(
+        for key: String,
+        profile: SchemaProfileID
+    ) -> PropertyContract? {
+        cachedProfile(for: profile).canonicalByKey[key]
+    }
+
+    public static func validate(
+        fields: [String: YAMLValue],
+        profile: SchemaProfileID
+    ) -> [PropertyValidationIssue] {
+        let recognized = Set(contracts(for: profile).map(\.canonicalKey))
+        var issues = fields.keys.filter { !recognized.contains($0) }.sorted().map {
+            PropertyValidationIssue(
+                propertyKey: $0,
+                code: .invalidValueKind,
+                message: "\($0) is not a managed field for this Note role."
+            )
+        }
+        issues.append(contentsOf: PropertyContractCatalog.validate(
+            values: fields,
+            against: contracts(for: profile)
+        ))
+        return issues
+    }
+
+    public static let analysisCanonicalKeys: [String] = analysisContracts.map(\.canonicalKey)
+
+    private struct CachedProfile: Sendable {
+        let contracts: [PropertyContract]
+        let canonicalByKey: [String: PropertyContract]
+
+        init(contracts: [PropertyContract]) {
+            self.contracts = contracts
+            canonicalByKey = Dictionary(
+                contracts.map { ($0.canonicalKey, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+    }
+
+    private static let analysisProfile = CachedProfile(contracts: analysisContracts)
+    private static let topicProfile = CachedProfile(contracts: topicContracts)
+    private static let workProfile = CachedProfile(contracts: workContracts)
+    private static let genericProfile = CachedProfile(contracts: [])
+
+    private static func cachedProfile(for profile: SchemaProfileID) -> CachedProfile {
+        switch profile {
+        case .analysis: analysisProfile
+        case .topicMarkdown: topicProfile
+        case .draftProject: workProfile
+        case .genericMarkdown: genericProfile
+        }
+    }
+
+    private static let analysisContracts: [PropertyContract] = [
+        property("type", .choice, allowed: AnalysisSourceType.allCases.map(\.rawValue)),
+        property("title", .text),
+        property("short_title", .text),
+        property("original_title", .text),
+        property("reviewed_title", .text),
+        property("genre", .text),
+        property("medium", .text),
+        property("version", .text),
+        property("language", .text),
+        property("authors", .creatorList),
+        property("editors", .creatorList),
+        property("translators", .creatorList),
+        property("collection_editors", .creatorList),
+        property("container_authors", .creatorList),
+        property("original_authors", .creatorList),
+        property("reviewed_authors", .creatorList),
+        property("publication_date", .date),
+        property("publication_status", .text),
+        property("original_publication_date", .date),
+        property("accessed_date", .date),
+        property("event_date", .date),
+        property("container_title", .text),
+        property("container_title_short", .text),
+        property("series_title", .text),
+        property("series_number", .text),
+        property("volume", .text),
+        property("volume_title", .text),
+        property("issue", .text),
+        property("pages", .text),
+        property("chapter_number", .text),
+        property("edition", .text),
+        property("number_of_volumes", .text),
+        property("publisher", .text),
+        property("publisher_place", .text),
+        property("original_publisher", .text),
+        property("original_publisher_place", .text),
+        property("institution", .text),
+        property("report_number", .text),
+        property("event_title", .text),
+        property("event_place", .text),
+        property("doi", .text),
+        property("isbn", .text),
+        property("issn", .text),
+        property("url", .text),
+        property("pmid", .text),
+        property("pmcid", .text),
+        property("arxiv_id", .text),
+        property("archive", .text),
+        property("archive_collection", .text),
+        property("archive_location", .text),
+        property("archive_place", .text),
+        property("call_number", .text),
+    ]
+
+    private static let topicContracts: [PropertyContract] = [
+        property("aliases", .textList),
+    ]
+
+    private static let workContracts: [PropertyContract] = [
+        property("work_type", .choice, allowed: [
+            "paper", "chapter", "book", "talk", "review", "teaching", "other",
+        ]),
+        property("coauthors", .textList),
+    ]
+
+    private static func property(
+        _ key: String,
+        _ kind: PropertyValueKind,
+        allowed: [String]? = nil
+    ) -> PropertyContract {
+        PropertyContract(canonicalKey: key, valueKind: kind, allowedValues: allowed)
     }
 }

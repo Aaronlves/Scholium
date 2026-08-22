@@ -1,7 +1,8 @@
 import Foundation
 
 public enum SearchMatchedField: String, Codable, Hashable, Sendable {
-    case title, alias, heading, summary, author, tag, body, callout, footnote, path
+    case title, alias, heading, summary, author, body, callout, footnote, path
+    case tag = "keyword"
     case publicationDate = "publication_date"
     case brokenLink = "broken_link"
 }
@@ -32,7 +33,7 @@ public struct SearchPropertyMatch: Codable, Hashable, Sendable {
     public let normalizedValue: String?
     public let valueKind: SearchPropertyProjection.ValueKind
     public let isEmpty: Bool
-    public let keySourceRange: SearchSourceRange
+    public let keySourceRange: SearchSourceRange?
     public let valueSourceRanges: [SearchSourceRange]
 
     public init(
@@ -41,7 +42,7 @@ public struct SearchPropertyMatch: Codable, Hashable, Sendable {
         normalizedValue: String?,
         valueKind: SearchPropertyProjection.ValueKind,
         isEmpty: Bool,
-        keySourceRange: SearchSourceRange,
+        keySourceRange: SearchSourceRange?,
         valueSourceRanges: [SearchSourceRange] = []
     ) {
         self.key = key
@@ -302,6 +303,7 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         stableNoteID: String? = nil,
+        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument? = nil,
         hasBrokenLink: Bool = false
     ) {
@@ -311,6 +313,7 @@ public struct SearchIndexDocument: Sendable {
             vaultRole: vaultRole,
             document: document,
             stableNoteID: stableNoteID,
+            metadata: metadata,
             resolvedSemantic: semantic ?? MarkdownSemanticDocument(
                 parsing: document
             ),
@@ -325,6 +328,7 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         stableNoteID: String? = nil,
+        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument,
         cachedSourceProjection: SearchDocumentProjection,
         hasBrokenLink: Bool = false
@@ -335,6 +339,7 @@ public struct SearchIndexDocument: Sendable {
             vaultRole: vaultRole,
             document: document,
             stableNoteID: stableNoteID,
+            metadata: metadata,
             resolvedSemantic: semantic,
             sourceProjection: cachedSourceProjection,
             hasBrokenLink: hasBrokenLink
@@ -347,6 +352,7 @@ public struct SearchIndexDocument: Sendable {
         vaultRole: VaultRole,
         document: NoteDocument,
         stableNoteID: String?,
+        metadata: NoteMetadataSnapshot?,
         resolvedSemantic: MarkdownSemanticDocument,
         sourceProjection cachedSourceProjection: SearchDocumentProjection?,
         hasBrokenLink: Bool
@@ -366,33 +372,42 @@ public struct SearchIndexDocument: Sendable {
         title = ResearchNoteTitleResolver.resolve(
             document: document,
             vaultRole: vaultRole,
+            metadata: metadata,
             semantic: self.semantic
         ).title
-        aliases = PropertyContractCatalog.contract(for: "aliases", profile: profile) == nil
+        aliases = NoteMetadataContractCatalog.contract(for: "aliases", profile: profile) == nil
             ? []
-            : document.parsedFrontmatter["aliases"]?.canonicalStringList ?? []
-        authors = PropertyContractCatalog.contract(for: "authors", profile: profile) == nil
+            : metadata?.record.fields["aliases"]?.canonicalStringList ?? []
+        authors = NoteMetadataContractCatalog.contract(for: "authors", profile: profile) == nil
             ? []
-            : document.parsedFrontmatter["authors"]
+            : metadata?.record.fields["authors"]
                 .flatMap(PropertyContractCatalog.creatorNames(from:))?
                 .map(\.displayName) ?? []
-        publicationDate = PropertyContractCatalog.contract(
+        publicationDate = NoteMetadataContractCatalog.contract(
             for: "publication_date",
             profile: profile
-        ) == nil ? nil : document.parsedFrontmatter["publication_date"]?.canonicalSearchText
-        tags = PropertyContractCatalog.contract(for: "tags", profile: profile) == nil
+        ) == nil ? nil : metadata?.record.fields["publication_date"]?.canonicalSearchText
+        tags = PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
             ? []
-            : document.parsedFrontmatter["tags"]?.canonicalStringList ?? []
+            : document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
         self.hasBrokenLink = hasBrokenLink
-        let sourceProjection = cachedSourceProjection ?? SearchDocumentProjection(
+        let sourceProjection = (cachedSourceProjection ?? SearchDocumentProjection(
             document: document,
             profile: profile,
             semantic: self.semantic
+        )).applyingNoteMetadata(
+            metadata,
+            profile: profile,
+            source: document.rawContent
         )
         projection = sourceProjection.applyingDynamicState(
             hasBrokenLink: hasBrokenLink
         )
-        propertyProjection = SearchPropertyProjection(document: document)
+        propertyProjection = SearchPropertyProjection(
+            document: document,
+            profile: profile,
+            metadata: metadata
+        )
         evidentialLayer = switch vaultRole {
         case .sourceCorpus: .paperAnalysis
         case .topicKnowledge: .topicNote

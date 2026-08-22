@@ -94,21 +94,21 @@ public struct ResearchActionPlatformInputs: Codable, Hashable, Sendable {
 /// Associated values are encoded explicitly so unknown future kinds fail
 /// closed instead of being interpreted as text.
 public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
-    public static let maximumEditablePropertyKeyCount = 64
-    public static let maximumPropertyKeyUTF8ByteCount = 128
+    public static let currentSchemaVersion = 2
+    public static let maximumEditableMetadataKeyCount = 64
+    public static let maximumMetadataKeyUTF8ByteCount = 128
 
     public let schemaVersion: Int
     public let readableNotes: [ResearchActionNoteSnapshot]
     public let writableNotes: [ResearchActionNoteSnapshot]
     public let writeOperations: [ResearchDocumentWriteOperation]
-    public let editablePropertyKeys: [String]
+    public let editableMetadataKeys: [String]
 
     public init(
         readableNotes: [ResearchActionNoteSnapshot],
         writableNotes: [ResearchActionNoteSnapshot],
         writeOperations: [ResearchDocumentWriteOperation],
-        editablePropertyKeys: [String]
+        editableMetadataKeys: [String]
     ) throws {
         let reads = Self.canonicalNotes(readableNotes)
         let writes = Self.canonicalNotes(writableNotes)
@@ -126,11 +126,11 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
             )
         }
         let operations = Array(Set(writeOperations)).sorted { $0.rawValue < $1.rawValue }
-        let propertyKeys = Array(Set(editablePropertyKeys)).sorted()
+        let metadataKeys = Array(Set(editableMetadataKeys)).sorted()
         if writes.isEmpty {
-            guard operations.isEmpty, propertyKeys.isEmpty else {
+            guard operations.isEmpty, metadataKeys.isEmpty else {
                 throw ResearchActionExecutionContractError.invalidAuthority(
-                    "Read-only authority cannot contain write operations or property keys."
+                    "Read-only authority cannot contain write operations or metadata keys."
                 )
             }
         } else {
@@ -140,9 +140,9 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
                 )
             }
         }
-        guard operations.contains(.modifyProperties) == !propertyKeys.isEmpty else {
+        guard operations.contains(.modifyMetadata) == !metadataKeys.isEmpty else {
             throw ResearchActionExecutionContractError.invalidAuthority(
-                "Property keys and the modify-properties operation must be frozen together."
+                "Metadata keys and the modify-metadata operation must be frozen together."
             )
         }
         guard !operations.contains(where: \.isZoteroBindingOperation) else {
@@ -150,24 +150,24 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
                 "Zotero binding authority is granted only through a later bounded write-set extension."
             )
         }
-        guard propertyKeys.count <= Self.maximumEditablePropertyKeyCount,
-              propertyKeys.allSatisfy({ key in
+        guard metadataKeys.count <= Self.maximumEditableMetadataKeyCount,
+              metadataKeys.allSatisfy({ key in
                   !key.isEmpty
                       && key.utf8.count
-                          <= Self.maximumPropertyKeyUTF8ByteCount
+                          <= Self.maximumMetadataKeyUTF8ByteCount
                       && !key.unicodeScalars.contains(where: {
                           CharacterSet.controlCharacters.contains($0)
                       })
               }) else {
             throw ResearchActionExecutionContractError.invalidAuthority(
-                "Editable property keys exceed their bounded contract."
+                "Editable metadata keys exceed their bounded contract."
             )
         }
         schemaVersion = Self.currentSchemaVersion
         self.readableNotes = reads
         self.writableNotes = writes
         self.writeOperations = operations
-        self.editablePropertyKeys = propertyKeys
+        self.editableMetadataKeys = metadataKeys
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -175,7 +175,7 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
         case readableNotes = "readable_notes"
         case writableNotes = "writable_notes"
         case writeOperations = "write_operations"
-        case editablePropertyKeys = "editable_property_keys"
+        case editableMetadataKeys = "editable_metadata_keys"
     }
 
     public init(from decoder: Decoder) throws {
@@ -203,9 +203,9 @@ public struct ResearchAuthorityEnvelope: Codable, Hashable, Sendable {
                 [ResearchDocumentWriteOperation].self,
                 forKey: .writeOperations
             ),
-            editablePropertyKeys: container.decode(
+            editableMetadataKeys: container.decode(
                 [String].self,
-                forKey: .editablePropertyKeys
+                forKey: .editableMetadataKeys
             )
         )
     }

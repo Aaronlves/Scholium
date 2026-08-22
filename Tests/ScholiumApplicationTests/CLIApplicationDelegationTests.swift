@@ -135,7 +135,7 @@ struct CLIApplicationDelegationTests {
         ) == submission)
     }
 
-    @Test("Search v7, catalog, read, and operation output schemas remain stable")
+    @Test("Search v9, catalog, read, and operation output schemas remain stable")
     func serializedOutputContractsRemainStable() throws {
         let sources = try CLISources.load()
 

@@ -320,8 +320,8 @@ struct ResearchAgentResultContractsTests {
         }
     }
 
-    @Test("Public Property inputs use ordinary JSON values and non-Property selectors may omit property_keys")
-    func publicPropertyJSONIsStable() throws {
+    @Test("Public Metadata inputs use ordinary JSON values and other selectors may omit metadata_keys")
+    func publicMetadataJSONIsStable() throws {
         let input = try JSONDecoder().decode(
             CanonicalPropertyInput.self,
             from: Data(#"{"key":"authors","value":[{"family":"Scanlon","given":"T. M."}]}"#.utf8)
@@ -341,14 +341,14 @@ struct ResearchAgentResultContractsTests {
             ResearchWriteSetTargetSelector.self,
             from: Data(#"{"role":"topic","relative_path":"Agency.md","operations":["modify_markdown"]}"#.utf8)
         )
-        #expect(selector.propertyKeys.isEmpty)
+        #expect(selector.metadataKeys.isEmpty)
         #expect(selector.operations == [.modifyMarkdown])
 
         func intentObject(
             operation: String,
             content: String? = nil,
             source: String? = nil,
-            properties: [[String: Any]]? = nil
+            metadata: [[String: Any]]? = nil
         ) -> [String: Any] {
             var object: [String: Any] = [
                 "schema_version": ResearchDocumentWriteIntent.currentSchemaVersion,
@@ -359,7 +359,7 @@ struct ResearchAgentResultContractsTests {
             ]
             if let content { object["content"] = content }
             if let source { object["source"] = source }
-            if let properties { object["properties"] = properties }
+            if let metadata { object["metadata"] = metadata }
             return object
         }
         let createIntent = try JSONDecoder().decode(
@@ -369,16 +369,16 @@ struct ResearchAgentResultContractsTests {
             ))
         )
         #expect(createIntent.content.isEmpty)
-        #expect(createIntent.properties.isEmpty)
-        let propertyIntent = try JSONDecoder().decode(
+        #expect(createIntent.metadata.isEmpty)
+        let metadataIntent = try JSONDecoder().decode(
             ResearchDocumentWriteIntent.self,
             from: JSONSerialization.data(withJSONObject: intentObject(
-                operation: "modify_properties",
-                properties: [["key": "summary", "value": "Exact"]]
+                operation: "modify_metadata",
+                metadata: [["key": "aliases", "value": ["Exact"]]]
             ))
         )
-        #expect(propertyIntent.content.isEmpty)
-        #expect(propertyIntent.properties.map(\.key) == ["summary"])
+        #expect(metadataIntent.content.isEmpty)
+        #expect(metadataIntent.metadata.map(\.key) == ["aliases"])
         let completeSource = "\u{FEFF}---\r\ntitle: Exact\r\n---\r\n# Exact\r\n"
         let sourceIntent = try JSONDecoder().decode(
             ResearchDocumentWriteIntent.self,
@@ -389,7 +389,7 @@ struct ResearchAgentResultContractsTests {
         )
         #expect(sourceIntent.source == completeSource)
         #expect(sourceIntent.content.isEmpty)
-        #expect(sourceIntent.properties.isEmpty)
+        #expect(sourceIntent.metadata.isEmpty)
         #expect(throws: ResearchBoundedWriteSetError.self) {
             _ = try JSONDecoder().decode(
                 ResearchDocumentWriteIntent.self,

@@ -34,13 +34,13 @@ public enum FrontmatterPatchRefusal: Error, LocalizedError, Equatable, Sendable 
         case .invalidYAML(let message, _):
             "The complete YAML frontmatter is invalid: \(message)"
         case .nonBlockMappingRoot:
-            "Properties can only patch a YAML block mapping. Open Source to edit this frontmatter."
+            "This YAML operation requires a block mapping. Open Source to edit this frontmatter."
         case .ambiguousStructure(let message, _):
-            "Properties refused an ambiguous YAML edit: \(message) Open Source to edit it directly."
+            "Scholium refused an ambiguous YAML edit: \(message) Open Source to edit it directly."
         case .unsupportedExistingValue(let key):
-            "Properties can only replace or remove a uniquely bounded ordinary value for ‘\(key)’. Open Source to edit this value."
+            "Scholium can only replace or remove a uniquely bounded ordinary YAML value for ‘\(key)’. Open Source to edit this value."
         case .semanticMismatch(let key):
-            "Properties could not prove that the encoded YAML preserves the requested value for ‘\(key)’. No replacement source was accepted."
+            "Scholium could not prove that the encoded YAML preserves the requested value for ‘\(key)’. No replacement source was accepted."
         }
     }
 }
@@ -167,7 +167,7 @@ public enum FrontmatterPatchPlanner {
                       })
               }) else {
             throw FrontmatterPatchRefusal.ambiguousStructure(
-                "Managed creation requires unique plain top-level property keys."
+                "Managed creation requires unique plain top-level YAML keys."
             )
         }
         let source = entries.flatMap {
@@ -870,9 +870,7 @@ public enum FrontmatterPatchPlanner {
     private static func orderedMappingKeys(
         _ values: [String: FrontmatterEditValue]
     ) -> [String] {
-        let preferred = ["scope", "limitations"]
-        return preferred.filter { values[$0] != nil }
-            + values.keys.filter { !preferred.contains($0) }.sorted()
+        values.keys.sorted()
     }
 
     private static func serializeSequenceItem(

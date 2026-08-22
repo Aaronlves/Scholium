@@ -167,7 +167,7 @@ and await that task. Snapshot/CLI opens and live callers without a selected
 opening Vault retain the complete one-shot path.
 
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
-`Triptychs/<triptych-id>/indexes/search-v7.sqlite`; pooled vault runtimes own
+`Triptychs/<triptych-id>/indexes/search-v9.sqlite`; pooled vault runtimes own
 repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
 index. The catalog retains exact `NoteDocument`, descriptor-observed file
 metadata, `SourceVersion`, cached `MarkdownSemanticDocument`, and the
@@ -264,14 +264,14 @@ same generation's reconciled portable-identity state for Critique association;
 only `.resolved` identities participate, so ambiguous, pending, unresolved, or
 failed recovery remains closed without one storage lookup per Work.
 
-`ScholiumContracts` owns contract-v5 parsing and typed clauses, the closed
+`ScholiumContracts` owns contract-v9 parsing and typed clauses, the closed
 Note/Record provider and capability tables, provider-mismatch diagnostics,
 completion and Explain Query descriptions, discriminated results, visible
 semantic `SearchDocumentProjection`, exact source mappings, CJK query
 projection, requests, responses, availability, and generation/freshness
-identities. Literal top-level YAML query projection remains distinct from the
-canonical `PropertyContract`: it can report key/value source ranges without
-granting an unknown key semantic or judgment authority. Core owns the Note
+identities. Structured projection joins validated Metadata with authored YAML
+`summary` and `keywords`: YAML matches retain ranges, managed values have none,
+and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
 matcher. The portable Record store supplies exact decoded schema-12 Records,

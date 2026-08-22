@@ -1039,7 +1039,7 @@ struct ResearchActionControllerTests {
             readableNotes: [target],
             writableNotes: [],
             writeOperations: [],
-            editablePropertyKeys: []
+            editableMetadataKeys: []
         )
         let snapshot = try ResearchActionSnapshot(
             definition: action.definition,

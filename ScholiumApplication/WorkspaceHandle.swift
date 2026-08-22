@@ -1373,6 +1373,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             slot: slot,
             settings: settingsSnapshot.settings
         )
+        let initialMetadataFields = try managedCreationMetadataFields(
+            request: request,
+            slot: slot,
+            settings: settingsSnapshot.settings
+        )
         let repository = try repository(vaultID: request.vaultID)
         let registeredVault = try vault(id: request.vaultID)
 
@@ -1420,6 +1425,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 var committedDocument = document
                 var stableIdentity = WorkspaceNoteIdentityState.unresolved
                 var createdIdentityRecord: NoteIdentityRecord?
+                var metadataSnapshot: NoteMetadataSnapshot?
                 var identityRecoveryWarning: String?
                 do {
                     guard let identity = try await services.controlStore.identity(
@@ -1476,6 +1482,30 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     }
                 }
 
+                if let initialMetadataFields {
+                    do {
+                        metadataSnapshot = try await services.controlStore.saveNoteMetadata(
+                            noteID: reservedIdentity,
+                            fields: initialMetadataFields,
+                            expectedRevision: nil
+                        )
+                    } catch {
+                        if case .researcher = request.authority {
+                            let record = try await recordManagedCreationRecovery(
+                                vaultID: request.vaultID,
+                                relativePath: relativePath,
+                                reservedIdentityID: reservedIdentity,
+                                metadataFields: initialMetadataFields,
+                                intendedRevision: document.fingerprint,
+                                repository: repository,
+                                failure: error.localizedDescription
+                            )
+                            throw TriptychTransactionError.recoveryRequired(record)
+                        }
+                        throw error
+                    }
+                }
+
                 if identityRecoveryWarning == nil {
                     do {
                         let finalDocument = try await repository.load(
@@ -1488,7 +1518,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                             )
                         guard finalDocument.fingerprint == document.fingerprint,
                               finalIdentity?.id == reservedIdentity,
-                              finalIdentity?.fingerprint == document.fingerprint else {
+                              finalIdentity?.fingerprint == document.fingerprint,
+                              try await services.controlStore.noteMetadata(
+                                noteID: reservedIdentity
+                              )?.record.fields == initialMetadataFields else {
                             throw ManagedCreationFinalVerificationError
                                 .sourceAndIdentityNotJointlyProven(relativePath)
                         }
@@ -1503,6 +1536,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                                 vaultID: request.vaultID,
                                 relativePath: relativePath,
                                 reservedIdentityID: reservedIdentity,
+                                metadataFields: initialMetadataFields,
                                 intendedRevision: document.fingerprint,
                                 repository: repository,
                                 failure: verification.localizedDescription
@@ -1525,7 +1559,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         id: id,
                         vaultRole: registeredVault.role,
                         stableIdentity: stableIdentity,
-                        document: committedDocument
+                        document: committedDocument,
+                        metadata: metadataSnapshot
                     ),
                     identityRecoveryWarning: identityRecoveryWarning
                 )
@@ -1547,77 +1582,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         settings: TriptychSettings
     ) throws -> String {
         let seed = settings.properties[slot]?.newNoteYAML
-        let seedKeys = try TriptychSettingsValidator.seedKeys(in: seed, role: slot)
-        let dynamic: String
-        if let metadata = request.analysisMetadata {
-            guard slot == .paperAnalysis else {
-                throw DocumentCreationError.analysisMetadataRoleMismatch
-            }
-            let profile = AnalysisSourceTypeProfileCatalog.profile(
-                for: metadata.sourceType
-            )
-            let applicable = Set(profile.applicableFields)
-            var values: [String: YAMLValue] = [
-                "type": .string(metadata.sourceType.rawValue),
-            ]
-            for input in metadata.properties {
-                guard applicable.contains(input.key),
-                      PropertyContractCatalog.contract(
-                        for: input.key,
-                        profile: .analysis
-                      ) != nil else {
-                    throw DocumentCreationError.inapplicableAnalysisProperty(
-                        input.key,
-                        metadata.sourceType
-                    )
-                }
-                guard !seedKeys.contains(input.key) else {
-                    throw DocumentCreationError.analysisSeedCollision(input.key)
-                }
-                values[input.key] = input.value
-            }
-            let issues = PropertyContractCatalog.validate(
-                frontmatter: values,
-                profile: .analysis
-            )
-            guard issues.isEmpty,
-                  metadata.properties.allSatisfy({
-                      Self.isNonemptyManagedValue($0.value)
-                  }) else {
-                throw DocumentCreationError.invalidMetadata(issues)
-            }
-            if case .authenticatedAgent = request.authority {
-                let required = Set(
-                    settings.analysisAgentCreation.requiredFields(
-                        for: metadata.sourceType
-                    )
-                )
-                let supplied = Set(metadata.properties.map(\.key))
-                let missing = required.subtracting(supplied).sorted()
-                guard missing.isEmpty else {
-                    throw DocumentCreationError.missingRequiredAgentFields(missing)
-                }
-            }
-            let order = ["type"] + profile.serializationFieldOrder.filter {
-                values[$0] != nil && $0 != "type"
-            }
-            dynamic = try FrontmatterPatchPlanner.serializeTopLevelMapping(
-                try order.map { key in
-                    guard let value = values[key] else {
-                        throw DocumentCreationError.invalidMetadata([])
-                    }
-                    return (key, try Self.frontmatterEditValue(value))
-                }
-            )
-        } else {
-            if slot == .paperAnalysis,
-               case .authenticatedAgent = request.authority {
-                throw DocumentCreationError.missingAgentAnalysisMetadata
-            }
-            dynamic = ""
-        }
-
-        let frontmatter = dynamic + (seed ?? "")
+        _ = try TriptychSettingsValidator.seedKeys(in: seed, role: slot)
+        _ = try managedCreationMetadataFields(
+            request: request,
+            slot: slot,
+            settings: settings
+        )
+        let frontmatter = seed ?? ""
         let source = frontmatter.isEmpty
             ? request.body
             : "---\n" + frontmatter + "---\n" + request.body
@@ -1640,10 +1611,72 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return source
     }
 
+    func managedCreationMetadataFields(
+        request: ManagedNoteCreationRequest,
+        slot: WorkspaceVaultSlot,
+        settings: TriptychSettings
+    ) throws -> [String: YAMLValue]? {
+        if let metadata = request.analysisMetadata {
+            guard slot == .paperAnalysis else {
+                throw DocumentCreationError.analysisMetadataRoleMismatch
+            }
+            let profile = AnalysisSourceTypeProfileCatalog.profile(
+                for: metadata.sourceType
+            )
+            let applicable = Set(profile.applicableFields)
+            var values: [String: YAMLValue] = [
+                "type": .string(metadata.sourceType.rawValue),
+            ]
+            for input in metadata.fields {
+                guard applicable.contains(input.key),
+                      NoteMetadataContractCatalog.contract(
+                        for: input.key,
+                        profile: .analysis
+                      ) != nil else {
+                    throw DocumentCreationError.inapplicableAnalysisProperty(
+                        input.key,
+                        metadata.sourceType
+                    )
+                }
+                values[input.key] = input.value
+            }
+            let issues = NoteMetadataContractCatalog.validate(
+                fields: values,
+                profile: .analysis
+            )
+            guard issues.isEmpty,
+                  metadata.fields.allSatisfy({
+                      Self.isNonemptyManagedValue($0.value)
+                  }) else {
+                throw DocumentCreationError.invalidMetadata(issues)
+            }
+            if case .authenticatedAgent = request.authority {
+                let required = Set(
+                    settings.analysisAgentCreation.requiredFields(
+                        for: metadata.sourceType
+                    )
+                )
+                let supplied = Set(metadata.fields.map(\.key))
+                let missing = required.subtracting(supplied).sorted()
+                guard missing.isEmpty else {
+                    throw DocumentCreationError.missingRequiredAgentFields(missing)
+                }
+            }
+            return values
+        } else {
+            if slot == .paperAnalysis,
+               case .authenticatedAgent = request.authority {
+                throw DocumentCreationError.missingAgentAnalysisMetadata
+            }
+            return nil
+        }
+    }
+
     private func recordManagedCreationRecovery(
         vaultID: UUID,
         relativePath: String,
         reservedIdentityID: UUID,
+        metadataFields: [String: YAMLValue]? = nil,
         intendedRevision: DocumentFingerprint,
         repository: VaultRepository,
         failure: String
@@ -1699,7 +1732,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     vaultID: vaultID,
                     relativePath: relativePath
                 ),
-                reservedIdentityID: reservedIdentityID
+                reservedIdentityID: reservedIdentityID,
+                metadataFields: metadataFields
             )
         )
         do {
@@ -1873,6 +1907,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             resolved: identity.id,
             relativePath: id.relativePath
         )
+        let sourceMetadata = try await services.controlStore.noteMetadata(
+            noteID: identity.id
+        )
         let document = try await repository.duplicate(
             relativePath: id.relativePath,
             to: destinationRelativePath,
@@ -1880,12 +1917,24 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
         var committedDocument = document
         var identityRecoveryWarning: String?
+        var portableMetadataRecoveryWarning: String?
         do {
-            _ = try await services.controlStore.duplicateIdentity(
+            let duplicateIdentity = try await services.controlStore.duplicateIdentity(
                 from: identity.id,
                 to: destinationRelativePath,
                 fingerprint: document.fingerprint
             )
+            if let sourceMetadata {
+                do {
+                    _ = try await services.controlStore.saveNoteMetadata(
+                        noteID: duplicateIdentity.id,
+                        fields: sourceMetadata.record.fields,
+                        expectedRevision: nil
+                    )
+                } catch {
+                    portableMetadataRecoveryWarning = "The duplicated source and stable identity are committed, but Scholium could not prove that its portable metadata was copied. Inspect Metadata before continuing: \(error.localizedDescription)"
+                }
+            }
         } catch let identityError {
             guard let retained = try await retainedCreatedDocumentAfterIdentityFailure(
                 repository: repository,
@@ -1905,7 +1954,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 relativePath: destinationRelativePath
             ),
             document: committedDocument,
-            identityRecoveryWarning: identityRecoveryWarning
+            identityRecoveryWarning: identityRecoveryWarning,
+            portableMetadataRecoveryWarning: portableMetadataRecoveryWarning
         )
     }
 
@@ -1960,7 +2010,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private func finishCreatedDocumentMutation(
         id: VaultQualifiedNoteID,
         document: NoteDocument,
-        identityRecoveryWarning: String?
+        identityRecoveryWarning: String?,
+        portableMetadataRecoveryWarning: String? = nil
     ) async -> WorkspaceMutationOutcome<NoteDocument> {
         var identityRecoveryWarning = identityRecoveryWarning
         let derivedRefreshWarning: String?
@@ -1986,7 +2037,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return WorkspaceMutationOutcome(
             committedValue: document,
             derivedRefreshWarning: derivedRefreshWarning,
-            identityRecoveryWarning: identityRecoveryWarning
+            identityRecoveryWarning: identityRecoveryWarning,
+            portableMetadataRecoveryWarning: portableMetadataRecoveryWarning
         )
     }
 
@@ -2009,6 +2061,67 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         case .recoveryRequired(let record):
             throw TriptychTransactionError.recoveryRequired(record)
         }
+    }
+
+    func saveNoteMetadata(
+        _ id: VaultQualifiedNoteID,
+        fields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
+        try requireActive()
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationLease) }
+        }
+        let registeredVault = try vault(id: id.vaultID)
+        let document = try await repository(vaultID: id.vaultID).load(
+            relativePath: id.relativePath
+        )
+        let profile = WorkflowProfileResolver.resolve(
+            vaultRole: registeredVault.role,
+            frontmatter: document.parsedFrontmatter,
+            relativePath: document.relativePath
+        )
+        let issues = NoteMetadataContractCatalog.validate(
+            fields: fields,
+            profile: profile
+        )
+        guard issues.isEmpty else {
+            throw DocumentCreationError.invalidMetadata(issues)
+        }
+        guard let identity = try await services.controlStore.identityRecord(
+            vaultID: id.vaultID,
+            relativePath: id.relativePath
+        ), identity.fingerprint == document.fingerprint else {
+            throw NoteMetadataError.identityUnavailableAtPath(id.relativePath)
+        }
+        let snapshot = try await services.controlStore.saveNoteMetadata(
+            noteID: identity.id,
+            fields: fields,
+            expectedRevision: expectedRevision
+        )
+        scheduleCommittedMutationRefresh(WorkspaceRefreshPayload(
+            publication: .explicit,
+            failureDisposition: .staleAfterCommittedMutation(
+                affectedVaultIDs: [id.vaultID]
+            ),
+            sourceCatalogPreparation: .none
+        ))
+        endSourceMutation(mutationLease)
+        ownsMutation = false
+        return WorkspaceMutationOutcome(committedValue: snapshot)
+    }
+
+    func noteMetadata(
+        _ id: VaultQualifiedNoteID
+    ) async throws -> NoteMetadataSnapshot? {
+        try requireActive()
+        guard let identity = try await services.controlStore.identityRecord(
+            vaultID: id.vaultID,
+            relativePath: id.relativePath
+        ) else { return nil }
+        return try await services.controlStore.noteMetadata(noteID: identity.id)
     }
 
     func commitDocument(
@@ -3377,7 +3490,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         ast: ast,
                         diagnostics: [SearchQueryDiagnostic(
                             code: .notApplicable,
-                            message: "Property and direct relation clauses are not applicable to This Note occurrence Search.",
+                            message: "Metadata and direct relation clauses are not applicable to This Note occurrence Search.",
                             utf16LowerBound: 0,
                             utf16UpperBound: request.query.utf16.count
                         )]

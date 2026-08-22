@@ -14,7 +14,7 @@ Analysis, Topic, and ordinary Work notes support:
   coordination;
 - source-located Connect relations, passage Comments inside Discussion, and
   authoritative Markdown annotation including semantic Callouts;
-- role-aware Properties and the closed Platform Research Actions with
+- role-aware Metadata and the closed Platform Research Actions with
   researcher-configured academic Profiles;
 - Search in **This Note**, **This Vault**, or **Triptych**, plus Attention;
 - lightweight Document Find in every mode, with Replace in Edit and Source; and
@@ -276,83 +276,88 @@ the mode menu. It may alter protected or machine-facing YAML; the researcher
 accepts responsibility, while Scholium still performs targeted, byte-preserving
 validation and never reserializes the whole frontmatter.
 
-Modes add no floating Metadata or Properties surface over the text. Initial
+Modes add no floating Metadata surface over the text. Initial
 top clearance belongs to the scrolling document.
 
-### 5.2 Properties
+### 5.2 Authored YAML and Scholium Metadata
 
-Properties separates seven states that never imply one another: supported,
-applicable, recommended, Agent-required, creatable, present, and About-visible.
-Their owners are respectively the canonical property catalog, Analysis
-source-type profile, that profile's recommendation order, Triptych
-Agent-creation settings, role creation policy, exact YAML, and the About
-profile. Whether a present value is directly editable depends only on its
-current exact-source shape and the targeted patch contract; it is not a
-portable setting. Exact New Note YAML and Zotero binding are separate
-contracts again; neither is inferred from these states.
+The authored YAML vocabulary is deliberately small. Across Analysis, Topic,
+and Work, Scholium assigns canonical meaning to exactly two optional top-level
+keys: multiline text `summary` and a nonempty text list `keywords`. Neither is
+required, and Scholium never adds either outside an explicit New Note seed or
+an authorized exact-source edit. Every other existing YAML key is retired or
+custom source: its exact bytes, comments, order, quoting, multiline style,
+newlines, and delimiters remain preserved, but it grants no title, About,
+Search-field, linking, Agent, or creation semantics. There is no alias, dual
+read, automatic migration, or compatibility projection from retired YAML.
 
-Every canonical field is researcher-owned source metadata. Scholium has no
-protected-machine Property. Identity, fingerprints, provenance, bindings,
-timestamps, permissions, and app facts remain outside YAML even when a custom
-key has a similar name. Unknown or retired YAML remains byte-preserved custom
-source. Literal `property:` Search addressability grants no canonical meaning.
+`summary` is a short researcher-authored navigation description of the current
+Note. It is not a source abstract, Skill, unified stance, completeness claim,
+Researcher State, acceptance, or writer proof. `keywords` are short
+researcher-authored retrieval terms. Both remain visible and editable in
+Source and may participate in About and Search. Literal `property:` Search
+addressability does not grant any other YAML key canonical meaning.
 
-Analysis recognizes the citation-ready catalog and source-type profiles in
+All other canonical structured values are **Scholium Metadata**. The
+researcher owns every value; Scholium owns the role-aware schema, storage
+format, validation, and compare-and-swap transaction. One portable JSON record
+at `.scholium/note-metadata/v1/<stable-note-uuid>.json` belongs to one stable
+Note identity. It is neither Markdown nor a writable projection of Markdown,
+and it never reconstructs or rewrites source. A missing record means no managed
+values. Damaged, future, orphaned, wrong-role, or concurrently changed records
+fail closed and retain their exact bytes for recovery.
+
+Analysis uses the citation-ready managed catalog and source-type profiles in
 Appendix A. It uses string `publication_date`, never numeric `year`; publication
 state belongs to `publication_status`. Creator fields use ordered nonempty
-CreatorLists. Scholium validates shapes and source safety but never verifies or
-normalizes bibliographic truth, identifiers, URLs, language, dates, names,
-volume/issue/pages, or publisher data.
+CreatorLists. Topic manages `aliases`; Work manages `work_type` and
+`coauthors`. Scholium validates value shapes and structural safety but never
+verifies or normalizes bibliographic truth, identifiers, URLs, language, dates,
+names, volume/issue/pages, publisher data, or philosophical content.
 
-`research_unit`, `completion`, and role-specific `scope` have no canonical
-meaning. All roles instead share optional top-level `limitations`, a nonempty
-ordered list of material boundaries. Analysis alone adds `source_basis`, a
-nonempty ordered list describing consulted material, version, range, or
-locator conditions; it is not completion or a quality grade. Existing
-`research_unit`, `year`, `access`, `text_reliability`, `locators`, Debate
-Importance, Work `kind`/`authors`/`venue`, and other retired bytes remain custom
-source without aliases, migration, dual reads, filters, or special UI.
+Analysis managed `title` resolves display identity before the first H1 and
+filename. Topic and Work resolve first H1, then filename. YAML `title` never
+resolves identity. Rename never synchronizes managed title or H1. One resolver
+supplies Workspace, Search, Link Graph, and Research Actions.
 
-Analysis YAML `title` is an optional analyzed-source title and resolves display
-identity before first H1 and filename. It is not shown in About. Topic and Work
-do not recognize YAML `title`; both resolve first H1, then filename. Rename
-never synchronizes YAML title or H1. One resolver supplies Workspace, Search,
-Link Graph, and Research Actions.
+Supported, applicable, recommended, Agent-required, present, and About-visible
+are separate states. Their owners are the managed catalog, Analysis source-type
+profile, that profile's recommendation order, Triptych Agent-creation settings,
+the identity-keyed record, and the About profile. New Note YAML and Zotero
+binding are separate contracts and are never inferred from managed metadata.
+Identity, fingerprints, provenance, bindings, timestamps, permissions, and app
+facts are not researcher-managed fields.
 
-`summary` is an optional multiline navigation declaration about the current
-Note. It is not a source abstract, Skill, unified stance, completeness claim,
-Researcher State, acceptance, or writer proof. Researcher and authorized Agent
-edits share the exact-revision, attribution, conflict, and recovery boundary;
-the current value alone never identifies its author.
+Each Triptych role stores an independent About order and exact delimiter-free
+`newNoteYAML`; that seed may contain only `summary` and `keywords`. Analysis
+additionally stores per-source-type managed fields an Agent must supply. The
+three built-in seeds and all built-in required sets are empty. About defaults
+never materialize values. Settings uses one explicit schema envelope and
+exact-byte `SettingsRevision`; save is an expected-revision atomic transaction
+with readback. Old, future, damaged, conflicting, and
+current-schema-needs-review states remain distinct and never fall back to
+overwriting defaults.
 
-Each Triptych role stores independent About order and exact delimiter-free
-`newNoteYAML`. Analysis additionally stores per-source-type Agent-required
-fields. The three built-in seeds and all built-in required sets are empty.
-About defaults never materialize keys. Settings uses
-one explicit schema envelope and exact-byte `SettingsRevision`; save is an
-expected-revision atomic transaction with readback. Old, future, damaged,
-conflicting, and current-schema-needs-review states remain distinct and never
-fall back to overwriting defaults.
+The **Metadata** sheet edits only the current Note's Scholium-managed record.
+It offers applicable fields on demand, validates the complete candidate, and
+saves against the exact loaded metadata revision. Creating the first field
+does not create YAML; editing metadata remains available when authored YAML is
+absent or malformed. A concurrent metadata change preserves the draft and
+requires a reload instead of overwriting. About composes selected managed
+values with authored `summary` and `keywords`, omits absent or empty values,
+and preserves semantic group names for assistive technology.
 
-The portable Settings schema owns only the three role Property profiles,
-Analysis per-source-type Agent requirements, and the Attention dismissal
-period. It stores no prompt bodies or active prompt selection. Research
-Guidance intellectual configuration remains owned by exact Markdown Methods
-and Practices rather than a second settings representation.
+This metadata boundary imposes no body schema. Scholium never inserts,
+migrates, requires, or interprets body sections such as detailed summaries,
+source basis, limitations, or research notes. The researcher decides what the
+Markdown body contains.
 
-Complete Properties uses one role-aware sheet for Analysis, Topic, and Work and
-shows every safely bounded existing top-level property. Canonical or observably
-scalar/list values receive direct controls whenever their exact source range can
-be targeted; unsupported or ambiguous shapes remain read-only with a Source
-route. All custom top-level fields stay together in one final custom group.
-Semantic groups are separated by whitespace rather than repeated visible group
-headings; their names remain available to assistive technology. **Add a
-Property…** creates only a missing applicable canonical key with a valid
-nonempty value. A YAML-free
-Note offers explicit **Add YAML Properties…** or **Keep Without YAML**; insertion
-is a single current-fingerprint-bound source transaction, never automatic or
-batch migration. About omits absent and empty values, follows the same group
-order and whitespace grammar, and renders final Tags as neutral capsules.
+Opening, copying, or exporting one Markdown file carries only that authored
+file; Scholium Metadata is not injected for convenience. Moving or synchronizing
+the complete Triptych carries the portable `.scholium/note-metadata/` records
+with their stable identities. Any future flattened export that includes
+managed fields requires an explicit destination format and remains a derived,
+non-round-trippable export rather than a new source authority.
 
 ### 5.3 Create, duplicate, rename, and identity
 
@@ -398,7 +403,7 @@ or failed drop changes no source or disclosure. **Move Folder…** and the named
 accessibility action remain the non-drag route.
 
 A folder is only a vault-relative filesystem location used for classification.
-It has no UUID, Properties, Research Record, recovery identity, or independent
+It has no UUID, Metadata, Research Record, recovery identity, or independent
 application identity. Empty folders remain visible in Library. **New Folder**
 immediately and atomically claims `Untitled Folder`, `Untitled Folder 2`, and so
 on inside the clicked folder; it opens no sheet. Once that directory claim is
@@ -433,13 +438,14 @@ Scholium atomically claims the first available path in the sequence
 existing or comparison-equivalent path. A concurrent collision advances to the
 next name; another error stops without creating a substitute elsewhere.
 Successful creation selects and opens the note. Creation never presents a
-sheet, popover, naming form, or required-properties step; naming and Properties
+sheet, popover, naming form, or required-metadata step; naming and Metadata
 remain later explicit edits.
 
 GUI, researcher CLI, and authenticated Agent creation share one
 Application-owned managed creator. It snapshots one valid Settings revision,
-selects the role seed, composes the complete candidate once, atomically claims
-the path, commits source and stable identity, and readbacks before publishing.
+selects the role seed, composes the complete source candidate once, atomically
+claims the path, commits source, stable identity, and any typed managed metadata,
+and jointly reads them back before publishing.
 Import, Duplicate, Restore, external discovery, and managed Critique creation
 retain their own complete-source contracts and do not inject the seed.
 
@@ -453,12 +459,12 @@ nonempty; later Review uses the body boundary, never raw byte count, for Empty
 Note and does not start an empty renderer. Malformed frontmatter is never empty.
 
 Typed Agent Analysis creation requires an `AnalysisSourceType` plus valid
-applicable canonical values. Application serializes `type`, optional analyzed
-source `title`, other supplied fields in profile order, then the exact seed.
-The Agent must satisfy that type's Settings-required fields. It cannot submit
-`type` again, collide with a seed key, invent placeholders, receive seed values,
-or use create authority after the new identity exists. Researcher CLI creation
-uses the same creator and seed but has no Agent-required-field policy.
+applicable managed values. Application writes those values only to the new
+identity-keyed metadata record and writes only the exact role seed to YAML.
+The Agent must satisfy that type's Settings-required fields. It cannot invent
+placeholders, receive seed values, govern the body, or use create authority
+after the new identity exists. Researcher CLI creation uses the same creator
+and seed but has no Agent-required-field policy.
 
 Only after the source commit and latest authoritative Library projection are
 available, successful creation clears active Library filters, expands only the
@@ -469,7 +475,10 @@ this presentation transition preserves the prior filters, disclosure, sort,
 selection, and visible source.
 
 Paths are locations; notes have stable app-owned identities. Duplication creates
-a new identity with no inherited Settlement or Research Records. Rename keeps
+a new identity, copies the exact source and current managed metadata values,
+and inherits neither Settlement nor Research Records. A metadata-copy failure
+is a committed-operation recovery warning, never a reason to repeat the source
+duplication. Rename keeps
 the current containing folder; Move changes placement by drag or the explicit
 File/accessibility route. Confirmed moves and renames preserve records and
 update resolved incoming links. Ambiguous

@@ -965,7 +965,7 @@ struct PortableResearchRecordContractsTests {
                 readableNotes: [target],
                 writableNotes: [target],
                 writeOperations: [.modifyMarkdown],
-                editablePropertyKeys: []
+                editableMetadataKeys: []
             )
         )
     }

@@ -382,7 +382,7 @@ struct ContentView: View {
             openProperties: {
                 guard let path = appState.currentNote?.relativePath else { return }
                 appState.editingNotePath = path
-                appState.showFrontmatterEditor = true
+                appState.showMetadataEditor = true
             },
             openAttention: {
                 guard let note = appState.currentNote,
@@ -641,7 +641,7 @@ struct ContentView: View {
             editProperties: {
                 guard let path = documentPath else { return }
                 appState.editingNotePath = path
-                appState.showFrontmatterEditor = true
+                appState.showMetadataEditor = true
             },
             openResearchAction: { actionID, selection in
                 appState.openResearchAction(actionID, selection: selection)
@@ -800,25 +800,21 @@ struct ContentView: View {
     @ViewBuilder
     private func sheetContent(for route: WindowSheetRoute) -> some View {
         switch route {
-        case .frontmatter(let route):
+        case .metadata(let route):
             if let note = note(at: route.path) {
-                FrontmatterEditorView(
+                MetadataEditorView(
                     note: note,
-                    expectedRevision: appState.currentDocumentRevisions[note.relativePath],
+                    expectedRevision: note.workspaceSnapshot?.metadata?.revision,
                     onClose: {
-                        finishFrontmatter(route)
-                    },
-                    onOpenSource: {
-                        finishFrontmatter(route)
-                        appState.requestPresentationMode = .source
+                        finishMetadata(route)
                     },
                     reload: {
-                        try await appState.reloadProperties(for: note.relativePath)
+                        try await appState.reloadMetadata(for: note.relativePath)
                     }
-                ) { proposedFrontmatter, revision in
-                    _ = try await appState.saveProperties(
+                ) { fields, revision in
+                    _ = try await appState.saveMetadata(
                         for: note,
-                        proposedFrontmatter: proposedFrontmatter,
+                        proposedFields: fields,
                         expectedRevision: revision
                     )
                 }
@@ -1009,8 +1005,8 @@ struct ContentView: View {
         return appState.notes.first(where: { $0.relativePath == path })
     }
 
-    private func finishFrontmatter(_ route: FrontmatterPanelRoute) {
-        appState.presentationRouter.finishFrontmatter(route)
+    private func finishMetadata(_ route: MetadataPanelRoute) {
+        appState.presentationRouter.finishMetadata(route)
     }
 
     @ViewBuilder

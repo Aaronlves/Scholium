@@ -39,7 +39,7 @@ does not grant permission. An **Action Profile** owns only researcher-configured
 academic interaction: visible name/order/enabled state, role-valid placement,
 academic inputs, and academic result fields. Profile fields are flat bounded
 text, single-choice, or multi-choice values and may be excluded, optional, or
-required. A Profile cannot declare Search, reading, Properties, Zotero,
+required. A Profile cannot declare Search, reading, Metadata, Zotero,
 mutation, recovery, roles, operations, or permission.
 
 Each available Action resolves exactly one enabled **Research Skill
@@ -109,7 +109,7 @@ The method/context stack has fixed roles:
 5. resolved Practices;
 6. any conditionally attached release-managed Integration Adapter, scoped only
    to interpreting and operating its integration; and
-7. Notes, sources, Records, Search results, Properties, research state, and all
+7. Notes, sources, Records, Search results, Metadata, research state, and all
    provider content as **Research Evidence Context**.
 
 Evidence content never enters Method Context, changes platform capability, or
@@ -145,7 +145,7 @@ second Run or child lineage.
 For Discuss, Session exposes frozen `DialogueResponseContract` and
 `agent discuss-reply`, appending one attributed Agent turn keyed by
 `statement_id`. Exact repeat returns `already_recorded`; changed content
-fails closed. The key grants no Note/Property mutation, Finish, Result,
+fails closed. The key grants no Note/Metadata mutation, Finish, Result,
 evaluation, Undo, recovery, new Run, or filesystem access.
 
 Analyze-only `new_analysis` preflight returns the Analyses vault, Settings
@@ -225,7 +225,7 @@ Local absolute paths are delivered only after authentication.
 The versioned, read-only **Research Context Query/Response** contract belongs
 to Application. A query contains one or more closed clauses: Note discovery,
 exact Note or section read, explicit direct-Relation inspection, canonical
-Property inspection, Record inspection, current-Run source-Material inspection,
+Metadata inspection, Record inspection, current-Run source-Material inspection,
 or researcher-state inspection. Material inspection has no free query: it can
 return only the path-free source binding explicitly selected and frozen for the
 authenticated Run, together with that Run's existing Zotero bibliographic
@@ -236,7 +236,7 @@ Use. A query cannot choose a provider, source-kind/purpose cross-product, Run,
 Triptych, or authorization scope. Application binds current Run, Session,
 Triptych, authorized scope, and generation before provider execution. Initial
 Beta composes the one Search capability, exact Note/section read, explicit
-direct Relations, canonical Properties, Research Records, the current Run's
+direct Relations, canonical Metadata, Research Records, the current Run's
 selected source binding, and only researcher-state facts whose existing owner
 proves actor, object, action meaning, revision/scope, and text. It creates no
 Agent-only parser, ranker, JSON scan, hidden index, source cache, persistent
@@ -249,12 +249,10 @@ class or unknown, object/vault role, exact revision or fingerprint, locator or
 source range, authorized scope, currentness, evidential layer, retrieval
 reason, and material limitation. The envelope expresses provenance and
 discovery, not confidence, relevance truth, philosophical support, importance,
-or acceptance. The versioned response additionally preserves the exact typed
-Foundation Search match reasons beside every Note item. Property key/value
-source ranges and direct-relation predicate, direction, anchor, target, and
-Markdown occurrences therefore survive delivery without becoming prose or a
-second relation interpretation. Unknown owner kinds, malformed identities, and
-a coarse Property/direct-relation reason without its typed match fail closed.
+or acceptance. Typed Search reasons preserve authored YAML ranges, range
+absence for managed Metadata, and direct-relation provenance without becoming
+prose or a second interpretation. Unknown owner kinds, malformed identities, and
+a coarse Metadata/direct-relation reason without its typed match fail closed.
 
 Response availability distinguishes **Current**, **Partial**, **Stale**,
 **Unavailable**, and **Invalid Query**. Every requested clause has its own
@@ -333,17 +331,18 @@ encoded payload have explicit testable limits; exceeding one returns a bounded
 continuation result rather than widening authority.
 
 The operation is always explicit: `create_note`, `modify_markdown`,
-`modify_source`, `modify_properties`, `set_zotero_binding`, or
+`modify_source`, `modify_metadata`, `set_zotero_binding`, or
 `clear_zotero_binding`. `modify_markdown` changes the body only. The distinct
 `modify_source` operation accepts the complete authored Markdown source,
-including any YAML frontmatter, and never reconstructs it from Properties or
-the rendered document.
+including YAML, and never reconstructs it from a projection. `modify_metadata`
+changes only granted keys in the portable Metadata record and never changes
+Markdown.
 `create_note` binds a proven-absent path, one authorized new identity, the
 current Settings revision, and for Analysis an allowed source type plus typed
 initial fields. It is idempotent only for the same hidden creation operation;
 after creation the identity is no longer new. Body authority cannot rewrite
-frontmatter, property authority is limited to exact granted keys, and either
-source authority is insufficient for integration binding. Binding authority
+frontmatter, Metadata authority is limited to exact granted managed keys, and
+either source authority is insufficient for integration binding. Binding authority
 is insufficient for Markdown. A `modify_source` member is still limited to
 its one existing Note identity, expected revision, Run, and operation
 capability; its complete candidate must be valid UTF-8 and have valid or absent

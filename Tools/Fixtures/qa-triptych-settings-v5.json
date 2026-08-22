@@ -10,20 +10,19 @@
     {
       "visibleFields" : [
         "type",
+        "title",
+        "authors",
         "publication_date",
-        "limitations",
         "summary",
-        "source_basis",
-        "tags"
+        "keywords"
       ]
     },
     "topic_knowledge",
     {
       "visibleFields" : [
-        "summary",
         "aliases",
-        "limitations",
-        "tags"
+        "summary",
+        "keywords"
       ]
     },
     "output",
@@ -32,10 +31,9 @@
         "work_type",
         "coauthors",
         "summary",
-        "limitations",
-        "tags"
+        "keywords"
       ]
     }
   ],
-  "schemaVersion" : 4
+  "schemaVersion" : 5
 }

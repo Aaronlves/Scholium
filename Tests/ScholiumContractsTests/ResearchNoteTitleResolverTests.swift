@@ -4,18 +4,33 @@ import Testing
 
 @Suite("Role-aware research note titles")
 struct ResearchNoteTitleResolverTests {
-    @Test("Analysis resolves YAML title, then H1, then filename")
+    @Test("Analysis resolves managed title, then H1, then filename and ignores YAML title")
     func analysisFallbackOrder() {
         let property = note(
             "Folder/Filename.md",
             "---\ntitle: YAML Title\n---\n# Heading Title\n"
         )
+        let metadata = NoteMetadataSnapshot(
+            record: NoteMetadataRecord(
+                noteID: UUID(),
+                fields: ["title": .string("Managed Title")]
+            ),
+            revision: DocumentFingerprint(content: "managed")
+        )
+        #expect(ResearchNoteTitleResolver.resolve(
+            document: property,
+            profile: .analysis,
+            metadata: metadata
+        ) == ResearchNoteTitleResolution(
+            title: "Managed Title",
+            source: .managedMetadata
+        ))
         #expect(ResearchNoteTitleResolver.resolve(
             document: property,
             profile: .analysis
         ) == ResearchNoteTitleResolution(
-            title: "YAML Title",
-            source: .analysisProperty
+            title: "Heading Title",
+            source: .firstLevelOneHeading
         ))
 
         let heading = note("Folder/Filename.md", "# Heading Title\n")

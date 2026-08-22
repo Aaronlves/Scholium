@@ -32,7 +32,7 @@ struct SearchProtocolContractsTests {
 
     @Test("Note provider remains the default and preserves finite lexical syntax")
     func noteProviderFiniteSyntax() throws {
-        let result = SearchQueryParser.parse(#"title:"reflective \"equilibrium\"" summary:autonomy autonom* -tag:survey"#)
+        let result = SearchQueryParser.parse(#"title:"reflective \"equilibrium\"" summary:autonomy autonom* -keyword:survey"#)
         let ast = try #require(result.ast)
         #expect(result.diagnostics.isEmpty)
         #expect(ast.provider == .note)
@@ -393,14 +393,8 @@ struct SearchProtocolContractsTests {
     func semanticProjection() throws {
         let source = """
         ---
-        title: Test Note
         summary: "A concise autonomy map"
-        aliases: [Alias]
-        authors:
-          - family: Author
-        publication_date: "2026"
-        tags: [search]
-        status: draft
+        keywords: [search]
         ---
         # Heading Text
 
@@ -420,11 +414,22 @@ struct SearchProtocolContractsTests {
         [^one]: Footnote *content*
         """
         let document = NoteDocument(relativePath: "Folder/Test Note.md", rawContent: source)
+        let metadata = NoteMetadataSnapshot(
+            record: NoteMetadataRecord(
+                noteID: UUID(),
+                fields: [
+                    "title": .string("Test Note"),
+                    "authors": .array([.object(["family": .string("Author")])]),
+                    "publication_date": .string("2026"),
+                ]
+            ),
+            revision: DocumentFingerprint(content: "metadata")
+        )
         let projection = SearchDocumentProjection(
             document: document,
             profile: .analysis,
             hasBrokenLink: true
-        )
+        ).applyingNoteMetadata(metadata, profile: .analysis, source: source)
 
         #expect(projection.title == "Test Note")
         #expect(projection.summary == "A concise autonomy map")
@@ -501,39 +506,27 @@ struct SearchProtocolContractsTests {
         })
     }
 
-    @Test("CreatorList preserves creator order and exact searchable component ranges")
-    func creatorListProjection() throws {
-        let source = """
-        ---
-        authors:
-          - family: Scanlon
-            given: T.
-          - literal: World Health Organization
-        ---
-        Body
-        """
+    @Test("Managed CreatorList preserves order without claiming Markdown ranges")
+    func creatorListProjection() {
+        let source = "# Creators\n\nBody\n"
+        let metadata = NoteMetadataSnapshot(
+            record: NoteMetadataRecord(
+                noteID: UUID(),
+                fields: ["authors": .array([
+                    .object(["family": .string("Scanlon"), "given": .string("T.")]),
+                    .object(["literal": .string("World Health Organization")]),
+                ])]
+            ),
+            revision: DocumentFingerprint(content: "creators")
+        )
         let projection = SearchDocumentProjection(
             document: NoteDocument(relativePath: "Creators.md", rawContent: source),
             profile: .analysis
-        )
+        ).applyingNoteMetadata(metadata, profile: .analysis, source: source)
         #expect(projection.authors == ["T. Scanlon", "World Health Organization"])
         let components = projection.segments.filter { $0.field == .author }
         #expect(components.map(\.text) == ["T. Scanlon", "World Health Organization"])
-        let person = try #require(components.first)
-        let fullRange = try #require(person.sourceUTF16Range(
-            forNormalizedUTF16Range: 0..<person.normalizedText.utf16.count
-        ))
-        let personSource = (source as NSString).substring(with: NSRange(
-            location: fullRange.lowerBound,
-            length: fullRange.count
-        ))
-        #expect(personSource.hasPrefix("Scanlon"))
-        #expect(personSource.contains("given: T."))
-        let literal = try #require(components.last?.sourceRange)
-        #expect((source as NSString).substring(with: NSRange(
-            location: literal.utf16LowerBound,
-            length: literal.utf16UpperBound - literal.utf16LowerBound
-        )) == "World Health Organization")
+        #expect(components.allSatisfy { $0.sourceRange == nil })
     }
 
     @Test("Summary projection fails closed when exact scalar provenance is unavailable")
@@ -543,7 +536,10 @@ struct SearchProtocolContractsTests {
                 relativePath: "\(name).md",
                 rawContent: "---\nsummary: \(indicator)\n  block discovery text\n---\nBody\n"
             )
-            let blockProperties = SearchPropertyProjection(document: block)
+            let blockProperties = SearchPropertyProjection(
+                document: block,
+                profile: .analysis
+            )
             #expect(blockProperties.entry(forExactKey: "summary")?.valueKind
                 == .string)
             #expect(blockProperties.entry(forExactKey: "summary")?.stringMembers

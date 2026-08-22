@@ -100,6 +100,10 @@ enum WorkspaceSnapshotBuilder {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try Task.checkCancellation()
+        let noteMetadataByID = Dictionary(
+            uniqueKeysWithValues: try await dependencies.controlStore
+                .noteMetadataRecords().map { ($0.record.noteID, $0) }
+        )
         guard mode == .live,
               let vault = assignment.vault(for: slot),
               let repository = dependencies.repositories[vault.id],
@@ -208,6 +212,7 @@ enum WorkspaceSnapshotBuilder {
             graph: nil,
             identityAmbiguitiesByVault: [vault.id: identityRecovery.ambiguities],
             stableNoteIDs: stableNoteIDs,
+            noteMetadataByID: noteMetadataByID,
             zoteroBindingsByNoteID: zoteroBindingsByNoteID
         )
         let vaultSnapshot = WorkspaceVaultSnapshot(
@@ -235,12 +240,16 @@ enum WorkspaceSnapshotBuilder {
                         broken: 0,
                         ambiguous: 0
                     ),
+                    metadata: identityStates[document.relativePath]?.resolvedID
+                        .flatMap { noteMetadataByID[$0] },
                     headings: semantics[document.relativePath]?.headings ?? [],
                     cachedSemanticDocument: semantics[document.relativePath],
                     cachedTitleProjection: semantics[document.relativePath].map {
                         WorkspaceNoteTitleProjection(
                             document: document,
                             vaultRole: vault.role,
+                            metadata: identityStates[document.relativePath]?.resolvedID
+                                .flatMap { noteMetadataByID[$0] },
                             semantic: $0
                         )
                     }
@@ -303,6 +312,10 @@ enum WorkspaceSnapshotBuilder {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try Task.checkCancellation()
+        let noteMetadataByID = Dictionary(
+            uniqueKeysWithValues: try await dependencies.controlStore
+                .noteMetadataRecords().map { ($0.record.noteID, $0) }
+        )
 
         var loadedVaults: [LoadedVault] = []
         var semanticDocuments: [VaultQualifiedNoteID: MarkdownSemanticDocument] = [:]
@@ -386,18 +399,6 @@ enum WorkspaceSnapshotBuilder {
                     relativePath: document.relativePath
                 )
                 semanticDocuments[id] = semantic
-                linkCatalog.append(
-                    LinkCatalogNote(
-                        vaultID: vault.id,
-                        document: document,
-                        profile: WorkflowProfileResolver.resolve(
-                            vaultRole: vault.role,
-                            frontmatter: document.parsedFrontmatter,
-                            relativePath: document.relativePath
-                        ),
-                        semantic: semantic
-                    )
-                )
             }
             let identityProjectionStart = clock.now
             var identityStates = Dictionary(
@@ -438,6 +439,21 @@ enum WorkspaceSnapshotBuilder {
                 identityHealthIssues.append(
                     "Portable note identity for \(vault.name): \(error.localizedDescription)"
                 )
+            }
+            for document in activeDocuments {
+                let metadata = identityStates[document.relativePath]?.resolvedID
+                    .flatMap { noteMetadataByID[$0] }
+                linkCatalog.append(LinkCatalogNote(
+                    vaultID: vault.id,
+                    document: document,
+                    profile: WorkflowProfileResolver.resolve(
+                        vaultRole: vault.role,
+                        frontmatter: document.parsedFrontmatter,
+                        relativePath: document.relativePath
+                    ),
+                    metadata: metadata,
+                    semantic: semantics[document.relativePath]
+                ))
             }
             loadedVaults.append(
                 LoadedVault(
@@ -546,6 +562,8 @@ enum WorkspaceSnapshotBuilder {
                     vaultRole: loaded.vault.role,
                     document: document,
                     stableNoteID: stableNoteID,
+                    metadata: stableNoteID.flatMap(UUID.init(uuidString:))
+                        .flatMap { noteMetadataByID[$0] },
                     semantic: semantic,
                     cachedSourceProjection: cachedSourceProjection,
                     hasBrokenLink: brokenNoteIDs.contains(id)
@@ -615,6 +633,7 @@ enum WorkspaceSnapshotBuilder {
             additionalAttention: materialChangedSinceUseAttention,
             graph: graph,
             stableNoteIDs: stableNoteIDs,
+            noteMetadataByID: noteMetadataByID,
             zoteroBindingsByNoteID: zoteroBindingsByNoteID
         )
 
@@ -699,6 +718,8 @@ enum WorkspaceSnapshotBuilder {
                                 $0.code == .ambiguous || $0.code == .ambiguousHeading
                             }
                         ),
+                        metadata: loaded.identityStates[document.relativePath]?.resolvedID
+                            .flatMap { noteMetadataByID[$0] },
                         headings: loaded.semantics[
                             document.relativePath
                         ]?.headings ?? [],
@@ -711,6 +732,8 @@ enum WorkspaceSnapshotBuilder {
                             WorkspaceNoteTitleProjection(
                                 document: document,
                                 vaultRole: loaded.vault.role,
+                                metadata: loaded.identityStates[document.relativePath]?.resolvedID
+                                    .flatMap { noteMetadataByID[$0] },
                                 semantic: $0
                             )
                         }

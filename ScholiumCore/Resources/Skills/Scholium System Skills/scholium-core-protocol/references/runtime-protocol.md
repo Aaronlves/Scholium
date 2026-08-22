@@ -60,12 +60,13 @@ directly.
    the Discussion.
 3. Use `agent extend-write-set` only when the Method requires another target.
    For one returned current member, use `agent write` for `create_note`,
-   `modify_markdown`, or `modify_properties`; use
+   `modify_markdown`, `modify_source`, or `modify_metadata`; use
    `agent write-zotero-binding` for `set_zotero_binding` or
    `clear_zotero_binding`. Never put a binding operation in a document-write
    payload.
 4. On a conflict, use the action returned for `agent resolve-write-conflict`.
-   Reread changed source before deciding whether to create a new write input.
+   Reread the changed source or Metadata owner before deciding whether to
+   create a new write input.
 5. Use `agent reload` whenever the current authenticated Run state is
    uncertain. A `stale_run` response means an exact Target, Material, or formal
    source boundary changed. Stop that Run; do not retry a write or Result

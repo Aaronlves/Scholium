@@ -140,7 +140,7 @@
   status announcement or Document accessibility item. Agent direct Undo reports
   its per-document result without moving Document focus.
 
-### Properties and portable settings
+### Metadata and portable settings
 
 - Settings exposes one named search field, Application, This Triptych, and
   Research Guidance groups, the selected destination, and current detail title
@@ -158,7 +158,8 @@
   standard macOS reservations, and conflicts name the problem and conflicting
   command inline; invalid input never changes the menu. Menu labels and
   shortcut accessibility values update together after Save.
-- Settings names the selected role, exact YAML editor, fixed delimiters,
+- Settings names the selected role, optional exact New Note YAML editor for
+  `summary` and `keywords`, fixed delimiters,
   source-type picker, Agent-required checkboxes, About fields, validation
   location, dirty/save/conflict state, and separate restore or clear
   consequences in one keyboard order. Its multiline YAML editor keeps
@@ -167,8 +168,9 @@
   fields in another role or type remain named and prevent the single atomic
   save. Revision conflict preserves the draft and offers **Reload Saved
   Settings**; errors are never color-only or a generic alert.
-- Complete Properties exposes existing key, label, value/summary, direct-edit
-  or source-only state, and not-typical status. Its spacing-defined semantic
+- Complete Metadata exposes existing managed key, label, value/summary,
+  direct-edit state, and not-typical status. Authored YAML fields remain
+  separately named and route to Source. Its spacing-defined semantic
   groups retain accessible group names without duplicate visible headings.
   Concise field definitions use pointer Help instead of persistent copy.
   Low-frequency field actions reveal on pointer hover or keyboard focus without
@@ -176,13 +178,12 @@
   Each direct editor has one persistent accessible label; contributor items
   retain their number, kind, subfield labels, and contextual Add/Remove action
   at 200% text and narrow widths.
-  **Add a Property…** is a searchable
-  grouped chooser with one listbox selection, keyboard acceptance, Escape
-  cancellation, and focus return. YAML-free insertion explicitly distinguishes
-  **Add YAML Properties…** from **Keep Without YAML**.
+- **Add a Field…** is a searchable grouped chooser with one listbox
+  selection, keyboard acceptance, Escape cancellation, and focus return. It
+  never creates a YAML envelope or adds prescribed body content.
 - About uses the same spacing-defined groups and accessible group names as
-  Complete Properties. The complete fact grid preserves row/column
-  association under enlargement and reflow. Tags are individually readable
+  Complete Metadata. The complete fact grid preserves row/column
+  association under enlargement and reflow. Keywords are individually readable
   neutral tokens in source order, not color-coded status or unlabeled chips.
 
 ### Search, Inspector, and Research Actions

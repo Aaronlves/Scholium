@@ -95,7 +95,7 @@ struct ResearchActionExecutionContractsTests {
                 readableNotes: [readable],
                 writableNotes: [changed],
                 writeOperations: [.modifyMarkdown],
-                editablePropertyKeys: []
+                editableMetadataKeys: []
             )
         }
     }

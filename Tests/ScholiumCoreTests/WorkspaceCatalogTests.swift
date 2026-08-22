@@ -66,25 +66,36 @@ struct WorkspaceCatalogTests {
         }
     }
 
-    @Test("Analysis catalog notes project authored academic identity fields")
+    @Test("Analysis catalog notes project portable managed academic identity fields")
     func analysisAcademicIdentity() throws {
         let analyses = vault("Analyses", .sourceCorpus)
-        let document = note(
-            "Scanlon.md",
-            """
-            ---
-            title: What We Owe to Each Other
-            authors:
-              - family: Scanlon
-                given: T. M.
-            publication_date: 1998-01-01
-            ---
-            Analysis
-            """
+        let document = note("Scanlon.md", "Analysis")
+        let noteID = UUID()
+        let record = NoteMetadataRecord(
+            noteID: noteID,
+            fields: [
+                "title": .string("What We Owe to Each Other"),
+                "authors": .array([.object([
+                    "family": .string("Scanlon"),
+                    "given": .string("T. M."),
+                ])]),
+                "publication_date": .string("1998-01-01T00:00:00.000Z"),
+            ]
+        )
+        let qualifiedID = VaultQualifiedNoteID(
+            vaultID: analyses.id,
+            relativePath: document.relativePath
         )
         let catalog = WorkspaceCatalogBuilder.build(
             vaults: [analyses],
-            documents: [analyses.id: [document]]
+            documents: [analyses.id: [document]],
+            stableNoteIDs: [qualifiedID: noteID],
+            noteMetadataByID: [
+                noteID: NoteMetadataSnapshot(
+                    record: record,
+                    revision: DocumentFingerprint(data: try record.encodedPortableData())
+                ),
+            ]
         )
         let result = try #require(catalog.notes.first)
         #expect(result.authors == ["T. M. Scanlon"])

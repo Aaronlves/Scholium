@@ -61,8 +61,8 @@ struct SidebarLibraryFilterMenu: View {
                     .disabled(!options.catalogIsAvailable)
                 }
                 Section("Metadata") {
-                    Menu("Tag") {
-                        Button("All Tags") { updateFilters { $0.tag = nil } }
+                    Menu("Keyword") {
+                        Button("All Keywords") { updateFilters { $0.tag = nil } }
                         Divider()
                         ForEach(options.tags, id: \.self) { tag in
                             filterChoice(tag, selected: filters.tag == tag) {
@@ -84,8 +84,8 @@ struct SidebarLibraryFilterMenu: View {
                     }
                 }
                 if !options.propertyKeys.isEmpty {
-                    Section("Properties") {
-                        Button("Any Property") {
+                    Section("Metadata") {
+                        Button("Any Metadata Field") {
                             updateFilters {
                                 $0.propertyKey = nil
                                 $0.propertyValue = nil

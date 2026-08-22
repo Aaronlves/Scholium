@@ -76,10 +76,10 @@ enum ScholiumL10n {
         static var propertyProfiles: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.propertyProfiles",
-                defaultValue: "Property Profiles",
+                defaultValue: "Metadata Profiles",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for New Note YAML, Agent requirements, and About fields."
+                comment: "Settings tab for minimal New Note YAML, Agent metadata requirements, and About fields."
             )
         }
 

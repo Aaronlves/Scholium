@@ -438,6 +438,24 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func saveMetadata(
+        _ id: VaultQualifiedNoteID,
+        fields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?
+    ) async throws -> WorkspaceMutationOutcome<NoteMetadataSnapshot> {
+        try await requireOperations().saveMetadata(
+            id,
+            fields: fields,
+            expectedRevision: expectedRevision
+        )
+    }
+
+    func metadata(
+        _ id: VaultQualifiedNoteID
+    ) async throws -> NoteMetadataSnapshot? {
+        try await requireOperations().metadata(id)
+    }
+
     func commit(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,

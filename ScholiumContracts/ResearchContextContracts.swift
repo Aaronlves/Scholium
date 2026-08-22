@@ -750,14 +750,14 @@ public enum ResearchContextClauseKind: String, Codable, CaseIterable, Hashable, 
     case discoverNote = "discover_note"
     case readNote = "read_note"
     case inspectRelations = "inspect_relations"
-    case inspectProperties = "inspect_properties"
+    case inspectMetadata = "inspect_metadata"
     case inspectRecords = "inspect_records"
     case inspectMaterials = "inspect_materials"
     case inspectResearcherState = "inspect_researcher_state"
 
     public var sourceKind: ResearchContextSourceKind {
         switch self {
-        case .discoverNote, .readNote, .inspectRelations, .inspectProperties: .note
+        case .discoverNote, .readNote, .inspectRelations, .inspectMetadata: .note
         case .inspectRecords: .record
         case .inspectMaterials: .material
         case .inspectResearcherState: .researcherState
@@ -923,7 +923,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         }
         let hasQuery = normalizedQuery != nil
         let clauseIsValid: Bool = switch kind {
-        case .discoverNote, .inspectRelations, .inspectProperties, .inspectRecords:
+        case .discoverNote, .inspectRelations, .inspectMetadata, .inspectRecords:
             hasQuery && note == nil && expectedFingerprint == nil
                 && normalizedHeading == nil && cursor == nil
         case .readNote:

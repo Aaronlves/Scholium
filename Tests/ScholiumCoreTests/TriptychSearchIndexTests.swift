@@ -4,7 +4,7 @@ import SQLite3
 import Testing
 @testable import ScholiumCore
 
-@Suite("Triptych Search v7 index")
+@Suite("Triptych Search v9 index")
 struct TriptychSearchIndexTests {
     @Test("One corpus ranks exact identity before lexical results and applies vault scope")
     func unifiedCorpusAndScope() async throws {
@@ -694,10 +694,10 @@ struct TriptychSearchIndexTests {
         init() throws {
             root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
                 .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v7-test-artifacts", isDirectory: true)
+                .appendingPathComponent("search-v9-test-artifacts", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v7.sqlite")
+            databaseURL = root.appendingPathComponent("search-v9.sqlite")
         }
 
         func item(

@@ -198,6 +198,8 @@ public actor TriptychControlStore {
             default:
                 throw error
             }
+        } catch is NoteMetadataError {
+            return true
         }
     }
 
@@ -275,6 +277,7 @@ public actor TriptychControlStore {
     private let identitiesURL: URL
     private let analysisZoteroBindingsURL: URL
     private let attachmentCatalogURL: URL
+    private let noteMetadataCatalogURL: URL
     private let fileManager: FileManager
     private let controlWriteHook: (@Sendable (URL) throws -> Void)?
     private let controlPostSwapHook: (@Sendable (URL) throws -> Void)?
@@ -291,6 +294,9 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
+        noteMetadataCatalogURL = controlURL
+            .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         controlWriteHook = nil
@@ -313,6 +319,9 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
+        noteMetadataCatalogURL = controlURL
+            .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         controlWriteHook = nil
@@ -354,6 +363,9 @@ public actor TriptychControlStore {
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
+        noteMetadataCatalogURL = controlURL
+            .appendingPathComponent("note-metadata", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
         self.controlPostSwapHook = controlPostSwapHook
@@ -376,6 +388,9 @@ public actor TriptychControlStore {
         analysisZoteroBindingsURL = controlURL.appendingPathComponent("analysis-zotero-bindings.json")
         attachmentCatalogURL = controlURL
             .appendingPathComponent("attachments", isDirectory: true)
+            .appendingPathComponent("v1", isDirectory: true)
+        noteMetadataCatalogURL = controlURL
+            .appendingPathComponent("note-metadata", isDirectory: true)
             .appendingPathComponent("v1", isDirectory: true)
         self.fileManager = fileManager
         self.controlWriteHook = controlWriteHook
@@ -430,6 +445,7 @@ public actor TriptychControlStore {
             at: analysisZoteroBindingsURL
         )
         try ensureAttachmentCatalogDirectory()
+        try ensureNoteMetadataCatalogDirectory()
 
         let manifestData = try Data(
             contentsOf: manifestURL,
@@ -474,6 +490,7 @@ public actor TriptychControlStore {
         }
         _ = try identitySnapshot()
         _ = try zoteroBindings()
+        _ = try noteMetadataRecords()
         return manifest
     }
 
@@ -512,6 +529,9 @@ public actor TriptychControlStore {
         }
         if fileManager.fileExists(atPath: analysisZoteroBindingsURL.path) {
             _ = try zoteroBindings()
+        }
+        if fileManager.fileExists(atPath: noteMetadataCatalogURL.path) {
+            _ = try noteMetadataRecords()
         }
     }
 
@@ -710,6 +730,241 @@ public actor TriptychControlStore {
             }
             if let coordinationError { throw coordinationError }
             guard let outcome else { throw ImageAttachmentError.catalogConflict }
+            try outcome.get()
+        }
+    }
+
+    /// Reads every portable Note metadata file as an immutable snapshot. A
+    /// damaged or unexpectedly named record invalidates the complete catalog;
+    /// callers must never publish a silently incomplete metadata projection.
+    public func noteMetadataRecords() throws -> [NoteMetadataSnapshot] {
+        guard fileManager.fileExists(atPath: noteMetadataCatalogURL.path) else {
+            return []
+        }
+        try validateNoteMetadataCatalogDirectory()
+        let urls = try fileManager.contentsOfDirectory(
+            at: noteMetadataCatalogURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ).filter { $0.pathExtension == "json" }
+        let identities = Dictionary(
+            uniqueKeysWithValues: try identityPayload().records.map { ($0.id, $0) }
+        )
+        let profilesByVaultID = try noteMetadataProfilesByVaultID()
+        var snapshots: [NoteMetadataSnapshot] = []
+        for url in urls {
+            let values = try url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isRegularFile == true,
+                  values.isSymbolicLink != true else {
+                throw NoteMetadataError.invalidCatalog
+            }
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            guard let record = try? decoder().decode(
+                NoteMetadataRecord.self,
+                from: data
+            ), url.deletingPathExtension().lastPathComponent
+                == record.noteID.uuidString.lowercased() else {
+                throw NoteMetadataError.invalidCatalog
+            }
+            try validateNoteMetadataRecord(
+                record,
+                identities: identities,
+                profilesByVaultID: profilesByVaultID
+            )
+            snapshots.append(NoteMetadataSnapshot(
+                record: record,
+                revision: DocumentFingerprint(data: data)
+            ))
+        }
+        guard Set(snapshots.map(\.record.noteID)).count == snapshots.count else {
+            throw NoteMetadataError.invalidCatalog
+        }
+        return snapshots.sorted {
+            $0.record.noteID.uuidString < $1.record.noteID.uuidString
+        }
+    }
+
+    public func noteMetadata(noteID: UUID) throws -> NoteMetadataSnapshot? {
+        let url = noteMetadataRecordURL(noteID: noteID)
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        try validateNoteMetadataCatalogDirectory()
+        let values = try url.resourceValues(forKeys: [
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+        ])
+        guard values.isRegularFile == true, values.isSymbolicLink != true else {
+            throw NoteMetadataError.invalidRecord(noteID)
+        }
+        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        guard let record = try? decoder().decode(NoteMetadataRecord.self, from: data),
+              record.noteID == noteID else {
+            throw NoteMetadataError.invalidRecord(noteID)
+        }
+        let identities = Dictionary(
+            uniqueKeysWithValues: try identityPayload().records.map { ($0.id, $0) }
+        )
+        try validateNoteMetadataRecord(
+            record,
+            identities: identities,
+            profilesByVaultID: try noteMetadataProfilesByVaultID()
+        )
+        return NoteMetadataSnapshot(
+            record: record,
+            revision: DocumentFingerprint(data: data)
+        )
+    }
+
+    /// Creates or compare-and-swap replaces one metadata record. `nil`
+    /// expected revision authorizes only creation; it never overwrites a
+    /// record that appeared concurrently through another Scholium instance or
+    /// a sync participant.
+    @discardableResult
+    public func saveNoteMetadata(
+        noteID: UUID,
+        fields: [String: YAMLValue],
+        expectedRevision: DocumentFingerprint?
+    ) throws -> NoteMetadataSnapshot {
+        try withPortableControlLock {
+            guard let identity = try identityRecord(id: noteID) else {
+                throw NoteMetadataError.identityUnavailable(noteID)
+            }
+            let profilesByVaultID = try noteMetadataProfilesByVaultID()
+            guard let profile = profilesByVaultID[identity.vaultID],
+                  NoteMetadataContractCatalog.validate(
+                    fields: fields,
+                    profile: profile
+                  ).isEmpty else {
+                throw NoteMetadataError.invalidRecord(noteID)
+            }
+            try ensureNoteMetadataCatalogDirectory()
+            let record = NoteMetadataRecord(noteID: noteID, fields: fields)
+            let candidate = try record.encodedPortableData()
+            let url = noteMetadataRecordURL(noteID: noteID)
+            let readback: Data
+            if fileManager.fileExists(atPath: url.path) {
+                let current = try Data(contentsOf: url, options: [.mappedIfSafe])
+                guard let expectedRevision,
+                      DocumentFingerprint(data: current) == expectedRevision else {
+                    throw NoteMetadataError.revisionConflict(noteID)
+                }
+                do {
+                    readback = try replaceExactFile(
+                        at: url,
+                        expected: current,
+                        candidate: candidate,
+                        conflict: NoteMetadataError.revisionConflict(noteID)
+                    )
+                } catch let error as TriptychControlError {
+                    if case .controlFileCommitUncertain(let reason) = error {
+                        throw NoteMetadataError.commitUncertain(noteID, reason)
+                    }
+                    throw error
+                }
+            } else {
+                guard expectedRevision == nil else {
+                    throw NoteMetadataError.revisionConflict(noteID)
+                }
+                try controlCreateHook?(url)
+                do {
+                    try candidate.write(to: url, options: .withoutOverwriting)
+                } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                    throw NoteMetadataError.revisionConflict(noteID)
+                } catch {
+                    if let current = try? Data(contentsOf: url, options: [.mappedIfSafe]),
+                       current == candidate {
+                        readback = current
+                    } else if fileManager.fileExists(atPath: url.path) {
+                        throw NoteMetadataError.commitUncertain(
+                            noteID,
+                            error.localizedDescription
+                        )
+                    } else {
+                        throw error
+                    }
+                    guard let decoded = try? decoder().decode(
+                        NoteMetadataRecord.self,
+                        from: readback
+                    ), decoded == record else {
+                        throw NoteMetadataError.commitUncertain(
+                            noteID,
+                            "The record readback did not match the candidate."
+                        )
+                    }
+                    return NoteMetadataSnapshot(
+                        record: decoded,
+                        revision: DocumentFingerprint(data: readback)
+                    )
+                }
+                do {
+                    readback = try Data(contentsOf: url, options: [.mappedIfSafe])
+                } catch {
+                    throw NoteMetadataError.commitUncertain(
+                        noteID,
+                        error.localizedDescription
+                    )
+                }
+            }
+            guard readback == candidate,
+                  let decoded = try? decoder().decode(
+                    NoteMetadataRecord.self,
+                    from: readback
+                  ), decoded == record else {
+                throw NoteMetadataError.commitUncertain(
+                    noteID,
+                    "The record readback did not match the exact candidate bytes."
+                )
+            }
+            return NoteMetadataSnapshot(
+                record: decoded,
+                revision: DocumentFingerprint(data: readback)
+            )
+        }
+    }
+
+    /// Removes only the exact loaded metadata revision. This is used by
+    /// bounded creation rollback and permanent deletion; ordinary field edits
+    /// retain an empty record instead of turning absence into an ambiguous
+    /// write state.
+    public func removeNoteMetadata(_ expected: NoteMetadataSnapshot) throws {
+        try withPortableControlLock {
+            let id = expected.record.noteID
+            let url = noteMetadataRecordURL(noteID: id)
+            guard fileManager.fileExists(atPath: url.path) else { return }
+            let coordinator = NSFileCoordinator(filePresenter: nil)
+            var coordinationError: NSError?
+            var outcome: Result<Void, Error>?
+            coordinator.coordinate(
+                writingItemAt: url,
+                options: .forDeleting,
+                error: &coordinationError
+            ) { coordinatedURL in
+                outcome = Result {
+                    let current = try Data(
+                        contentsOf: coordinatedURL,
+                        options: [.mappedIfSafe]
+                    )
+                    guard DocumentFingerprint(data: current) == expected.revision else {
+                        throw NoteMetadataError.revisionConflict(id)
+                    }
+                    try self.fileManager.removeItem(at: coordinatedURL)
+                    guard !self.fileManager.fileExists(atPath: coordinatedURL.path) else {
+                        throw NoteMetadataError.commitUncertain(
+                            id,
+                            "The record still exists after deletion."
+                        )
+                    }
+                }
+            }
+            if let coordinationError { throw coordinationError }
+            guard let outcome else {
+                throw NoteMetadataError.commitUncertain(
+                    id,
+                    "The coordinated deletion produced no result."
+                )
+            }
             try outcome.get()
         }
     }
@@ -1558,6 +1813,71 @@ public actor TriptychControlStore {
             withIntermediateDirectories: true
         )
         try validateAttachmentCatalogDirectory()
+    }
+
+    private func ensureNoteMetadataCatalogDirectory() throws {
+        try ensureControlDirectory()
+        try fileManager.createDirectory(
+            at: noteMetadataCatalogURL,
+            withIntermediateDirectories: true
+        )
+        try validateNoteMetadataCatalogDirectory()
+    }
+
+    private func validateNoteMetadataCatalogDirectory() throws {
+        let ownerURL = noteMetadataCatalogURL.deletingLastPathComponent()
+        for url in [controlURL, ownerURL, noteMetadataCatalogURL] {
+            let values = try url.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isDirectory == true, values.isSymbolicLink != true else {
+                throw NoteMetadataError.invalidCatalog
+            }
+        }
+        let canonicalControl = controlURL.resolvingSymlinksInPath().standardizedFileURL
+        let canonicalCatalog = noteMetadataCatalogURL
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let rootPath = canonicalControl.path.hasSuffix("/")
+            ? canonicalControl.path
+            : canonicalControl.path + "/"
+        guard canonicalCatalog.path.hasPrefix(rootPath) else {
+            throw NoteMetadataError.invalidCatalog
+        }
+    }
+
+    private func noteMetadataRecordURL(noteID: UUID) -> URL {
+        noteMetadataCatalogURL.appendingPathComponent(
+            "\(noteID.uuidString.lowercased()).json",
+            isDirectory: false
+        )
+    }
+
+    private func noteMetadataProfilesByVaultID() throws -> [UUID: SchemaProfileID] {
+        Dictionary(uniqueKeysWithValues: try manifest().vaultIDs.map { slot, vaultID in
+            let profile: SchemaProfileID = switch slot {
+            case .paperAnalysis: .analysis
+            case .topicKnowledge: .topicMarkdown
+            case .output: .draftProject
+            }
+            return (vaultID, profile)
+        })
+    }
+
+    private func validateNoteMetadataRecord(
+        _ record: NoteMetadataRecord,
+        identities: [UUID: NoteIdentityRecord],
+        profilesByVaultID: [UUID: SchemaProfileID]
+    ) throws {
+        guard let identity = identities[record.noteID],
+              let profile = profilesByVaultID[identity.vaultID],
+              NoteMetadataContractCatalog.validate(
+                fields: record.fields,
+                profile: profile
+              ).isEmpty else {
+            throw NoteMetadataError.invalidRecord(record.noteID)
+        }
     }
 
     private func validateAttachmentCatalogDirectory() throws {

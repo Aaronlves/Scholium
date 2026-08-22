@@ -73,17 +73,20 @@ public struct ResearchWriteRecoveryReference: Codable, Hashable, Sendable {
     public let operationID: UUID
     public let target: ResearchWriteTargetHandle
     public let sourceRecoveryID: InterruptedSaveRecoveryID?
+    public let metadataFields: [String: YAMLValue]?
 
     public init(
         runID: UUID,
         operationID: UUID,
         target: ResearchWriteTargetHandle,
-        sourceRecoveryID: InterruptedSaveRecoveryID? = nil
+        sourceRecoveryID: InterruptedSaveRecoveryID? = nil,
+        metadataFields: [String: YAMLValue]? = nil
     ) {
         self.runID = runID
         self.operationID = operationID
         self.target = target
         self.sourceRecoveryID = sourceRecoveryID
+        self.metadataFields = metadataFields
     }
 }
 
@@ -94,13 +97,16 @@ public struct ResearchWriteRecoveryReference: Codable, Hashable, Sendable {
 public struct ManagedCreationRecoveryReference: Codable, Hashable, Sendable {
     public let target: VaultQualifiedNoteID
     public let reservedIdentityID: UUID
+    public let metadataFields: [String: YAMLValue]?
 
     public init(
         target: VaultQualifiedNoteID,
-        reservedIdentityID: UUID
+        reservedIdentityID: UUID,
+        metadataFields: [String: YAMLValue]? = nil
     ) {
         self.target = target
         self.reservedIdentityID = reservedIdentityID
+        self.metadataFields = metadataFields
     }
 }
 

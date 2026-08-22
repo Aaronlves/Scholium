@@ -159,6 +159,107 @@ struct DocumentOperationsTests {
         await reopenedRuntime.shutdown()
     }
 
+    @Test("Metadata save is revision-checked and leaves exact Markdown and YAML bytes unchanged")
+    func metadataSaveDoesNotRewriteSource() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let id = VaultQualifiedNoteID(
+            vaultID: fixture.targetID.vaultID,
+            relativePath: "Managed Metadata.md"
+        )
+        let exactSource = "\u{FEFF}---\r\ntitle: Retired YAML title\r\nsummary: Exact source summary\r\nkeywords: [one, two]\r\ncustom: 'keep'\r\n---\r\n# Authored heading\r\n"
+        _ = try await handle.documents.create(id, content: exactSource)
+
+        let first = try await handle.documents.saveMetadata(
+            id,
+            fields: [
+                "type": .string("journal_article"),
+                "title": .string("Managed title"),
+            ],
+            expectedRevision: nil
+        ).committedValue
+        #expect(try await handle.documents.load(id).rawContent == exactSource)
+        #expect(first.record.fields["title"] == .string("Managed title"))
+
+        await #expect(throws: NoteMetadataError.self) {
+            _ = try await handle.documents.saveMetadata(
+                id,
+                fields: ["type": .string("book")],
+                expectedRevision: nil
+            )
+        }
+        let second = try await handle.documents.saveMetadata(
+            id,
+            fields: [
+                "type": .string("journal_article"),
+                "title": .string("Revised managed title"),
+            ],
+            expectedRevision: first.revision
+        ).committedValue
+        #expect(second.revision != first.revision)
+        #expect(try await handle.documents.load(id).rawContent == exactSource)
+
+        let refreshed = try await handle.refresh()
+        let projected = try #require(refreshed.document(id: id))
+        #expect(projected.metadata == second)
+        #expect(ResearchNoteTitleResolver.resolve(
+            document: projected.document,
+            profile: projected.schemaProfile,
+            metadata: projected.metadata
+        ).title == "Revised managed title")
+        await runtime.shutdown()
+    }
+
+    @Test("Duplicate preserves exact source while copying portable metadata to a new identity")
+    func duplicateCopiesPortableMetadata() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let sourceID = VaultQualifiedNoteID(
+            vaultID: fixture.targetID.vaultID,
+            relativePath: "Metadata Original.md"
+        )
+        let exactSource = "---\nsummary: Authored summary\nkeywords: [copy]\nlegacy: keep\n---\n# Exact body\n"
+        let source = try await handle.documents.create(
+            sourceID,
+            content: exactSource
+        ).committedValue
+        let metadata = try await handle.documents.saveMetadata(
+            sourceID,
+            fields: [
+                "type": .string("book"),
+                "title": .string("Managed title"),
+            ],
+            expectedRevision: nil
+        ).committedValue
+
+        let destinationPath = "Metadata Copy.md"
+        let duplicateOutcome = try await handle.documents.duplicate(
+            sourceID,
+            to: destinationPath,
+            expectedRevision: source.fingerprint
+        )
+        #expect(duplicateOutcome.portableMetadataRecoveryWarning == nil)
+        #expect(duplicateOutcome.committedValue.rawContent == exactSource)
+
+        let refreshed = try await handle.refresh()
+        let sourceProjection = try #require(refreshed.document(id: sourceID))
+        let duplicateID = VaultQualifiedNoteID(
+            vaultID: sourceID.vaultID,
+            relativePath: destinationPath
+        )
+        let duplicateProjection = try #require(refreshed.document(id: duplicateID))
+        #expect(duplicateProjection.stableIdentity.resolvedID
+            != sourceProjection.stableIdentity.resolvedID)
+        #expect(duplicateProjection.metadata?.record.fields == metadata.record.fields)
+        #expect(duplicateProjection.metadata?.record.noteID
+            == duplicateProjection.stableIdentity.resolvedID)
+        await runtime.shutdown()
+    }
+
     @Test("Typed creation validates Core contracts and preserves canonical source bytes")
     func typedCreationUsesCorePropertyContract() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -341,9 +442,9 @@ struct DocumentOperationsTests {
         let saved = try await handle.research.settings()
         var settings = saved.settings
         settings.properties[.paperAnalysis]?.newNoteYAML =
-            "tags: [draft]\ncustom: |+\n  exact\n  ---\n  after\n\n"
+            "keywords: [draft]\nsummary: |+\n  exact\n  ---\n  after\n\n"
         settings.properties[.topicKnowledge]?.newNoteYAML = "summary: Map\n"
-        settings.properties[.output]?.newNoteYAML = "work_type: chapter\n"
+        settings.properties[.output]?.newNoteYAML = "keywords: [chapter]\n"
         _ = try await handle.research.saveSettings(
             settings,
             expectedRevision: saved.revision
@@ -352,10 +453,10 @@ struct DocumentOperationsTests {
         let cases: [(WorkspaceVaultSlot, String)] = [
             (
                 .paperAnalysis,
-                "---\ntags: [draft]\ncustom: |+\n  exact\n  ---\n  after\n\n---\n"
+                "---\nkeywords: [draft]\nsummary: |+\n  exact\n  ---\n  after\n\n---\n"
             ),
             (.topicKnowledge, "---\nsummary: Map\n---\n"),
-            (.output, "---\nwork_type: chapter\n---\n"),
+            (.output, "---\nkeywords: [chapter]\n---\n"),
         ]
         for (slot, expectedSource) in cases {
             let registeredVault = try #require(fixture.assignment.vault(for: slot))
@@ -391,7 +492,7 @@ struct DocumentOperationsTests {
         let saved = try await handle.research.settings()
         var settings = saved.settings
         settings.properties[.paperAnalysis]?.newNoteYAML =
-            "# researcher seed\ntags: [configured]\n"
+            "# researcher seed\nkeywords: [configured]\n"
         settings.analysisAgentCreation.requiredFieldsBySourceType[.journalArticle] = [
             "authors",
         ]
@@ -413,7 +514,7 @@ struct DocumentOperationsTests {
         )
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
-            properties: [authors, title]
+            fields: [authors, title]
         )
         let reservedIdentity = UUID()
         let created = try await handle.documents.createManagedNote(
@@ -430,17 +531,19 @@ struct DocumentOperationsTests {
         ).committedValue
 
         #expect(created.stableIdentity.resolvedID == reservedIdentity)
-        #expect(created.document.parsedFrontmatter["type"] == .string("journal_article"))
-        #expect(created.document.parsedFrontmatter["title"] == .string("Reasons and Persons"))
-        #expect(created.document.parsedFrontmatter["authors"] == authors.value)
-        #expect(created.document.parsedFrontmatter["tags"] == .array([.string("configured")]))
+        #expect(created.document.parsedFrontmatter["keywords"]
+            == .array([.string("configured")]))
+        #expect(created.document.parsedFrontmatter["type"] == nil)
+        #expect(created.document.parsedFrontmatter["title"] == nil)
+        #expect(created.document.parsedFrontmatter["authors"] == nil)
+        #expect(created.metadata?.record.fields["type"] == .string("journal_article"))
+        #expect(created.metadata?.record.fields["title"] == .string("Reasons and Persons"))
+        #expect(created.metadata?.record.fields["authors"] == authors.value)
         #expect(created.document.body == "# Working body\n")
         let source = created.document.rawContent
-        let typeRange = try #require(source.range(of: "type: journal_article"))
-        let titleRange = try #require(source.range(of: "title: Reasons and Persons"))
         let seedRange = try #require(source.range(of: "# researcher seed"))
-        #expect(typeRange.lowerBound < titleRange.lowerBound)
-        #expect(titleRange.lowerBound < seedRange.lowerBound)
+        let keywordRange = try #require(source.range(of: "keywords: [configured]"))
+        #expect(seedRange.lowerBound < keywordRange.lowerBound)
 
         await #expect(throws: DocumentCreationError.missingRequiredAgentFields(["authors"])) {
             _ = try await handle.documents.createManagedNote(
@@ -449,7 +552,7 @@ struct DocumentOperationsTests {
                     destination: .exact(relativePath: "Agent/Missing.md"),
                     analysisMetadata: try AnalysisCreationMetadata(
                         sourceType: .journalArticle,
-                        properties: [title]
+                        fields: [title]
                     ),
                     authority: .authenticatedAgent(
                         settingsRevision: configured.revision,
@@ -471,11 +574,14 @@ struct DocumentOperationsTests {
                 destination: .exact(relativePath: "Researcher/Created.md"),
                 analysisMetadata: try AnalysisCreationMetadata(
                     sourceType: .journalArticle,
-                    properties: [title]
+                    fields: [title]
                 )
             )
         ).committedValue
-        #expect(researcher.document.parsedFrontmatter["authors"] == nil)
+        #expect(researcher.document.parsedFrontmatter["title"] == nil)
+        #expect(researcher.metadata?.record.fields["title"]
+            == .string("Reasons and Persons"))
+        #expect(researcher.metadata?.record.fields["authors"] == nil)
 
         await runtime.shutdown()
     }

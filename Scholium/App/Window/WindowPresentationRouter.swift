@@ -2,7 +2,7 @@ import ScholiumContracts
 import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
-    case frontmatter(FrontmatterPanelRoute)
+    case metadata(MetadataPanelRoute)
     case researchAction(ResearchActionPanelRoute)
     case researchAgentPermission(UUID)
     case noteFileOperation(NoteFileRequest)
@@ -14,7 +14,7 @@ enum WindowSheetRoute: Identifiable {
 
     var id: String {
         switch self {
-        case .frontmatter(let route): route.id
+        case .metadata(let route): route.id
         case .researchAction(let route):
             "research-action:\(route.presentationID.uuidString.lowercased())"
         case .researchAgentPermission(let requestID):
@@ -91,11 +91,11 @@ final class WindowPresentationRouter: ObservableObject {
         sheet = nil
     }
 
-    func presentFrontmatter(path: String) {
-        present(.frontmatter(FrontmatterPanelRoute(path: path)))
+    func presentMetadata(path: String) {
+        present(.metadata(MetadataPanelRoute(path: path)))
     }
 
-    func finishFrontmatter(_ route: FrontmatterPanelRoute) {
+    func finishMetadata(_ route: MetadataPanelRoute) {
         guard sheet?.id == route.id else { return }
         dismissSheet()
     }

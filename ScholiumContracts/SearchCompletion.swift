@@ -72,7 +72,7 @@ public extension SearchCapabilities {
             }.map {
                 let value = Self.queryValue($0)
                 let detail = switch field.valueKind {
-                case .property: "Top-level Property key in the authorized scope"
+                case .property: "Canonical Metadata or authored YAML key in the authorized scope"
                 case .noteIdentity: "Exact Note identity in the authorized scope"
                 case .canonical: "Canonical \(field.name) value"
                 case .lexical: "\(field.name) value"

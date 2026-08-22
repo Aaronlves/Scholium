@@ -47,6 +47,7 @@ public struct WorkspaceGraphCounts: Codable, Hashable, Sendable {
 public enum WorkspaceNoteDerivedProjectionState: String, Codable, Hashable, Sendable {
     case current
     case sourceAhead
+    case portableMetadataAhead
 }
 
 /// Portable note identity is distinct from the note's current vault-qualified
@@ -67,17 +68,21 @@ public enum WorkspaceNoteIdentityState: Hashable, Sendable {
 
 package struct WorkspaceNoteTitleProjection: Hashable, Sendable {
     package let sourceFingerprint: DocumentFingerprint
+    package let metadataRevision: DocumentFingerprint?
     package let resolution: ResearchNoteTitleResolution
 
     package init(
         document: NoteDocument,
         vaultRole: VaultRole,
+        metadata: NoteMetadataSnapshot? = nil,
         semantic: MarkdownSemanticDocument
     ) {
         sourceFingerprint = document.fingerprint
+        metadataRevision = metadata?.revision
         resolution = ResearchNoteTitleResolver.resolve(
             document: document,
             vaultRole: vaultRole,
+            metadata: metadata,
             semantic: semantic
         )
     }
@@ -97,6 +102,10 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
     public let fileMetadata: WorkspaceFileMetadata
     public let graphCounts: WorkspaceGraphCounts
     public let derivedProjectionState: WorkspaceNoteDerivedProjectionState
+    /// Portable researcher-owned structured metadata joined by stable Note
+    /// identity. It is authoritative for managed fields and is never derived
+    /// from same-named YAML keys.
+    public let metadata: NoteMetadataSnapshot?
     /// Source-bound heading projection prepared by the workspace catalog for
     /// this exact fingerprint. Presentation consumers must not parse Markdown
     /// again merely to build document navigation.
@@ -137,6 +146,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
         graphCounts: WorkspaceGraphCounts,
+        metadata: NoteMetadataSnapshot? = nil,
         headings: [HeadingNode] = [],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current
     ) {
@@ -147,6 +157,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             document: document,
             fileMetadata: fileMetadata,
             graphCounts: graphCounts,
+            metadata: metadata,
             headings: headings,
             derivedProjectionState: derivedProjectionState,
             cachedSemanticDocument: nil,
@@ -161,6 +172,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         document: NoteDocument,
         fileMetadata: WorkspaceFileMetadata,
         graphCounts: WorkspaceGraphCounts,
+        metadata: NoteMetadataSnapshot? = nil,
         headings: [HeadingNode],
         derivedProjectionState: WorkspaceNoteDerivedProjectionState = .current,
         cachedSemanticDocument: MarkdownSemanticDocument? = nil,
@@ -172,12 +184,14 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         self.document = document
         self.fileMetadata = fileMetadata
         self.graphCounts = graphCounts
+        self.metadata = metadata
         self.headings = headings
         self.derivedProjectionState = derivedProjectionState
         self.cachedSemanticDocument = cachedSemanticDocument?.fingerprint == document.fingerprint
             ? cachedSemanticDocument
             : nil
         self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
+            && cachedTitleProjection?.metadataRevision == metadata?.revision
             ? cachedTitleProjection
             : nil
     }
@@ -189,6 +203,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             && lhs.fingerprint == rhs.fingerprint
             && lhs.fileMetadata == rhs.fileMetadata
             && lhs.graphCounts == rhs.graphCounts
+            && lhs.metadata?.revision == rhs.metadata?.revision
             && lhs.derivedProjectionState == rhs.derivedProjectionState
     }
 
@@ -199,7 +214,36 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(fingerprint)
         hasher.combine(fileMetadata)
         hasher.combine(graphCounts)
+        hasher.combine(metadata?.revision)
         hasher.combine(derivedProjectionState)
+    }
+
+    /// Immediate window projection after one proven portable metadata commit.
+    /// Source bytes remain unchanged; workspace-wide Search and catalog state
+    /// catch up in the owning refresh generation.
+    public func applyingCommittedMetadata(
+        _ metadata: NoteMetadataSnapshot
+    ) -> WorkspaceNoteSnapshot {
+        WorkspaceNoteSnapshot(
+            id: id,
+            vaultRole: vaultRole,
+            stableIdentity: stableIdentity,
+            document: document,
+            fileMetadata: fileMetadata,
+            graphCounts: graphCounts,
+            metadata: metadata,
+            headings: headings,
+            derivedProjectionState: .portableMetadataAhead,
+            cachedSemanticDocument: cachedSemanticDocument,
+            cachedTitleProjection: cachedSemanticDocument.map {
+                WorkspaceNoteTitleProjection(
+                    document: document,
+                    vaultRole: vaultRole,
+                    metadata: metadata,
+                    semantic: $0
+                )
+            }
+        )
     }
 }
 
@@ -211,17 +255,20 @@ public struct WorkspaceManagedNoteCommit: Sendable {
     public let vaultRole: VaultRole
     public let stableIdentity: WorkspaceNoteIdentityState
     public let document: NoteDocument
+    public let metadata: NoteMetadataSnapshot?
 
     public init(
         id: VaultQualifiedNoteID,
         vaultRole: VaultRole,
         stableIdentity: WorkspaceNoteIdentityState,
-        document: NoteDocument
+        document: NoteDocument,
+        metadata: NoteMetadataSnapshot? = nil
     ) {
         self.id = id
         self.vaultRole = vaultRole
         self.stableIdentity = stableIdentity
         self.document = document
+        self.metadata = metadata
     }
 
     /// A bounded window presentation while the matching complete Workspace
@@ -244,6 +291,7 @@ public struct WorkspaceManagedNoteCommit: Sendable {
                 broken: 0,
                 ambiguous: 0
             ),
+            metadata: metadata,
             headings: [],
             derivedProjectionState: .sourceAhead
         )
@@ -805,15 +853,18 @@ public struct WorkspaceMutationOutcome<CommittedValue: Sendable>: Sendable {
     public let committedValue: CommittedValue
     public let derivedRefreshWarning: String?
     public let identityRecoveryWarning: String?
+    public let portableMetadataRecoveryWarning: String?
 
     public init(
         committedValue: CommittedValue,
         derivedRefreshWarning: String? = nil,
-        identityRecoveryWarning: String? = nil
+        identityRecoveryWarning: String? = nil,
+        portableMetadataRecoveryWarning: String? = nil
     ) {
         self.committedValue = committedValue
         self.derivedRefreshWarning = derivedRefreshWarning
         self.identityRecoveryWarning = identityRecoveryWarning
+        self.portableMetadataRecoveryWarning = portableMetadataRecoveryWarning
     }
 }
 

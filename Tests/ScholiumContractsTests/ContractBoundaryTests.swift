@@ -127,7 +127,8 @@ struct ContractBoundaryTests {
         let outcome = WorkspaceMutationOutcome(
             committedValue: revision,
             derivedRefreshWarning: "index unavailable",
-            identityRecoveryWarning: "identity unavailable"
+            identityRecoveryWarning: "identity unavailable",
+            portableMetadataRecoveryWarning: "metadata unavailable"
         )
         let researchError = ScholiumApplicationError.operationCommittedButRefreshFailed(
             operation: "research completion",
@@ -141,6 +142,7 @@ struct ContractBoundaryTests {
         #expect(outcome.committedValue == revision)
         #expect(outcome.derivedRefreshWarning == "index unavailable")
         #expect(outcome.identityRecoveryWarning == "identity unavailable")
+        #expect(outcome.portableMetadataRecoveryWarning == "metadata unavailable")
         #expect(researchError.durableMutationWasCommitted)
         #expect(researchError.mustNotRetryMutation)
         #expect(researchError.mutationRequiresReconciliation)

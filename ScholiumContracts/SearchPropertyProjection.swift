@@ -1,8 +1,8 @@
 import Foundation
 import Yams
 
-/// A read-only, exact-source projection of queryable top-level YAML properties.
-/// It never grants a custom YAML key canonical Scholium Property semantics.
+/// A read-only projection of canonical structured Note fields. Authored YAML
+/// retains exact ranges; managed Metadata deliberately has no Markdown range.
 public struct SearchPropertyProjection: Hashable, Sendable {
     public enum ValueKind: String, Codable, Hashable, Sendable {
         case null
@@ -17,12 +17,12 @@ public struct SearchPropertyProjection: Hashable, Sendable {
     public struct StringMember: Codable, Hashable, Sendable {
         public let value: String
         public let normalizedValue: String
-        public let sourceRange: SearchSourceRange
+        public let sourceRange: SearchSourceRange?
 
         public init(
             value: String,
             normalizedValue: String,
-            sourceRange: SearchSourceRange
+            sourceRange: SearchSourceRange?
         ) {
             self.value = value
             self.normalizedValue = normalizedValue
@@ -32,14 +32,14 @@ public struct SearchPropertyProjection: Hashable, Sendable {
 
     public struct Entry: Codable, Hashable, Sendable {
         public let key: String
-        public let keySourceRange: SearchSourceRange
+        public let keySourceRange: SearchSourceRange?
         public let valueKind: ValueKind
         public let isEmpty: Bool
         public let stringMembers: [StringMember]
 
         public init(
             key: String,
-            keySourceRange: SearchSourceRange,
+            keySourceRange: SearchSourceRange?,
             valueKind: ValueKind,
             isEmpty: Bool,
             stringMembers: [StringMember]
@@ -63,10 +63,15 @@ public struct SearchPropertyProjection: Hashable, Sendable {
     public let entries: [Entry]
     public let issues: [Issue]
 
-    public init(document: NoteDocument) {
+    public init(
+        document: NoteDocument,
+        profile: SchemaProfileID = .genericMarkdown,
+        metadata: NoteMetadataSnapshot? = nil
+    ) {
+        let managedEntries = Self.managedEntries(metadata)
         guard let frontmatter = document.rawFrontmatter,
               document.validationWarnings.isEmpty else {
-            entries = []
+            entries = managedEntries
             issues = document.rawFrontmatter == nil ? [] : [.invalidYAML]
             return
         }
@@ -75,31 +80,39 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         do {
             root = try Yams.compose(yaml: frontmatter)
         } catch {
-            entries = []
+            entries = managedEntries
             issues = [.invalidYAML]
             return
         }
         guard let root else {
-            entries = []
+            entries = managedEntries
             issues = []
             return
         }
         guard case .mapping(let mapping) = root else {
-            entries = []
+            entries = managedEntries
             issues = [.nonMappingRoot]
             return
         }
 
         let source = Source(document: document, frontmatter: frontmatter)
-        var projected: [Entry] = []
+        let authoredKeys = Set(
+            PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
+        )
+        var projected: [Entry] = managedEntries
         var projectionIssues: [Issue] = []
         var keyCounts: [String: Int] = [:]
 
         for pair in mapping {
             guard case .scalar(let keyScalar) = pair.key,
                   keyScalar.style == .plain,
-                  pair.key.string != nil,
-                  Self.isQueryableKey(keyScalar.string),
+                  let rawKey = pair.key.string,
+                  authoredKeys.contains(
+                    rawKey.precomposedStringWithCanonicalMapping
+                  ) else {
+                continue
+            }
+            guard Self.isQueryableKey(keyScalar.string),
                   let keyRange = source.range(
                     startingAt: keyScalar.mark,
                     tokenUTF16Length: keyScalar.string.utf16.count
@@ -132,7 +145,8 @@ public struct SearchPropertyProjection: Hashable, Sendable {
         projectionIssues.append(contentsOf: duplicates.sorted().map(Issue.duplicateKey))
         entries = projected.sorted {
             if $0.key != $1.key { return $0.key < $1.key }
-            return $0.keySourceRange.utf16LowerBound < $1.keySourceRange.utf16LowerBound
+            return ($0.keySourceRange?.utf16LowerBound ?? -1)
+                < ($1.keySourceRange?.utf16LowerBound ?? -1)
         }
         issues = projectionIssues
     }
@@ -140,6 +154,54 @@ public struct SearchPropertyProjection: Hashable, Sendable {
     public func entry(forExactKey key: String) -> Entry? {
         let exact = key.precomposedStringWithCanonicalMapping
         return entries.first { $0.key == exact }
+    }
+
+    private static func managedEntries(
+        _ metadata: NoteMetadataSnapshot?
+    ) -> [Entry] {
+        guard let metadata else { return [] }
+        return metadata.record.fields.keys.sorted().compactMap { key in
+            guard let value = metadata.record.fields[key] else { return nil }
+            let kind: ValueKind
+            let values: [String]
+            let isEmpty: Bool
+            switch value {
+            case .null:
+                kind = .null; values = []; isEmpty = true
+            case .string(let text):
+                kind = .string; values = [text]
+                isEmpty = SearchTextNormalization.normalize(text).isEmpty
+            case .array(let members):
+                let strings = members.compactMap(\.scalarString)
+                if strings.count == members.count {
+                    kind = .stringSequence
+                    values = strings
+                } else {
+                    kind = .sequence
+                    values = []
+                }
+                isEmpty = members.isEmpty
+            case .object(let members):
+                kind = .mapping; values = []; isEmpty = members.isEmpty
+            case .integer, .double, .boolean:
+                kind = .scalar
+                values = value.scalarString.map { [$0] } ?? []
+                isEmpty = false
+            }
+            return Entry(
+                key: key,
+                keySourceRange: nil,
+                valueKind: kind,
+                isEmpty: isEmpty,
+                stringMembers: values.map {
+                    StringMember(
+                        value: $0,
+                        normalizedValue: SearchTextNormalization.normalize($0),
+                        sourceRange: nil
+                    )
+                }
+            )
+        }
     }
 
     private static func project(

@@ -328,7 +328,7 @@ struct LocalAgentBridgeTests {
             create["document_write_intent"] as? [String: Any]
         )
         createIntent.removeValue(forKey: "content")
-        createIntent.removeValue(forKey: "properties")
+        createIntent.removeValue(forKey: "metadata")
         create["document_write_intent"] = createIntent
         let decodedCreate = try LocalAgentBridgeWireCoding.decode(
             LocalAgentBridgeRequest.self,
@@ -336,26 +336,26 @@ struct LocalAgentBridgeTests {
         )
         #expect(decodedCreate.documentWriteIntent?.operation == .createNote)
 
-        var property = try wireObject(ResearchDocumentWriteIntent(
+        var metadata = try wireObject(ResearchDocumentWriteIntent(
             role: .topic,
             relativePath: "Agency.md",
-            operation: .modifyProperties,
-            properties: [try CanonicalPropertyInput(
-                key: "summary",
-                value: .string("Exact")
+            operation: .modifyMetadata,
+            metadata: [try CanonicalPropertyInput(
+                key: "aliases",
+                value: .array([.string("Exact")])
             )]
         ))
-        var propertyIntent = try #require(
-            property["document_write_intent"] as? [String: Any]
+        var metadataIntent = try #require(
+            metadata["document_write_intent"] as? [String: Any]
         )
-        propertyIntent.removeValue(forKey: "content")
-        property["document_write_intent"] = propertyIntent
-        let decodedProperty = try LocalAgentBridgeWireCoding.decode(
+        metadataIntent.removeValue(forKey: "content")
+        metadata["document_write_intent"] = metadataIntent
+        let decodedMetadata = try LocalAgentBridgeWireCoding.decode(
             LocalAgentBridgeRequest.self,
-            from: JSONSerialization.data(withJSONObject: property)
+            from: JSONSerialization.data(withJSONObject: metadata)
         )
-        #expect(decodedProperty.documentWriteIntent?.properties.map(\.key)
-            == ["summary"])
+        #expect(decodedMetadata.documentWriteIntent?.metadata.map(\.key)
+            == ["aliases"])
 
         var markdown = try wireObject(ResearchDocumentWriteIntent(
             role: .topic,
@@ -433,7 +433,7 @@ struct LocalAgentBridgeTests {
             "content": "changed",
             "properties": [],
         ]
-        #expect(throws: LocalAgentBridgeError.self) {
+        #expect(throws: Error.self) {
             _ = try LocalAgentBridgeWireCoding.decode(
                 LocalAgentBridgeRequest.self,
                 from: JSONSerialization.data(withJSONObject: invalid)
@@ -958,7 +958,7 @@ private func testFidelityContext(
                 search: true,
                 read: true,
                 relations: true,
-                properties: true,
+                metadata: true,
                 records: true,
                 researchState: true,
                 zotero: false,

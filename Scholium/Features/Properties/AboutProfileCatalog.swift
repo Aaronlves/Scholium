@@ -77,6 +77,10 @@ enum AboutProfileCatalog {
     }
 
     static func allowsOptionalField(_ key: String, profile: SchemaProfileID) -> Bool {
+        guard PropertyPresentationCatalog.presentation(
+            for: key,
+            in: profile
+        ) != nil else { return false }
         return !(profile == .analysis && key == "title")
     }
 

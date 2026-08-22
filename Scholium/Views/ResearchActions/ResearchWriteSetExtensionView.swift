@@ -127,8 +127,8 @@ struct ResearchWriteSetExtensionView: View {
                                 Text(operationTitles(candidate.operations))
                                     .font(ScholiumTypography.interface(.small))
                                     .scholiumForeground(.secondaryText)
-                                if !candidate.propertyKeys.isEmpty {
-                                    Text("Properties: \(propertyPlanDescription(candidate))")
+                                if !candidate.metadataKeys.isEmpty {
+                                    Text("Metadata: \(metadataPlanDescription(candidate))")
                                         .font(ScholiumTypography.exact(.small))
                                         .scholiumForeground(.secondaryText)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -203,17 +203,17 @@ struct ResearchWriteSetExtensionView: View {
             case .createNote: String(localized: "Create Note")
             case .modifyMarkdown: String(localized: "Modify Markdown")
             case .modifySource: String(localized: "Modify Complete Source")
-            case .modifyProperties: String(localized: "Modify Properties")
+            case .modifyMetadata: String(localized: "Modify Metadata")
             case .setZoteroBinding: String(localized: "Set Zotero Link")
             case .clearZoteroBinding: String(localized: "Clear Zotero Link")
             }
         }.joined(separator: ", ")
     }
 
-    private func propertyPlanDescription(
+    private func metadataPlanDescription(
         _ candidate: ResearchWriteSetCandidate
     ) -> String {
-        candidate.propertyWritePlans.map {
+        candidate.metadataWritePlans.map {
             "\($0.key) (\($0.valueKind.rawValue))"
         }.joined(separator: ", ")
     }

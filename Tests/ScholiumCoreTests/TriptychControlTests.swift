@@ -5,6 +5,75 @@ import ScholiumContracts
 
 @Suite("Portable Triptych control directory")
 struct TriptychControlTests {
+    @Test("Portable Note metadata is identity-keyed, revision-checked, and independent of YAML")
+    func portableNoteMetadataLifecycle() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultID = UUID()
+        let topicVaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: vaultID,
+            .topicKnowledge: topicVaultID,
+            .output: UUID(),
+        ])
+        let sourceRevision = DocumentFingerprint(content: "# Authored source\n")
+        let identity = try #require(try await store.identity(
+            forVaultID: vaultID,
+            relativePath: "Paper.md",
+            fingerprint: sourceRevision
+        ))
+        let first = try await store.saveNoteMetadata(
+            noteID: identity.id,
+            fields: [
+                "type": .string("journal_article"),
+                "title": .string("Managed title"),
+            ],
+            expectedRevision: nil
+        )
+        #expect(try await store.noteMetadata(noteID: identity.id) == first)
+        #expect(try await store.noteMetadataRecords() == [first])
+
+        await #expect(throws: NoteMetadataError.self) {
+            try await store.saveNoteMetadata(
+                noteID: identity.id,
+                fields: ["type": .string("book")],
+                expectedRevision: nil
+            )
+        }
+        await #expect(throws: NoteMetadataError.self) {
+            try await store.saveNoteMetadata(
+                noteID: identity.id,
+                fields: ["custom": .string("not schema-owned")],
+                expectedRevision: first.revision
+            )
+        }
+        let topicIdentity = try #require(try await store.identity(
+            forVaultID: topicVaultID,
+            relativePath: "Topic.md",
+            fingerprint: DocumentFingerprint(content: "# Topic\n")
+        ))
+        await #expect(throws: NoteMetadataError.self) {
+            try await store.saveNoteMetadata(
+                noteID: topicIdentity.id,
+                fields: ["title": .string("Analysis-only field")],
+                expectedRevision: nil
+            )
+        }
+        let second = try await store.saveNoteMetadata(
+            noteID: identity.id,
+            fields: [
+                "type": .string("journal_article"),
+                "title": .string("Revised managed title"),
+            ],
+            expectedRevision: first.revision
+        )
+        #expect(second.revision != first.revision)
+        #expect(second.record.fields["title"] == .string("Revised managed title"))
+
+        try await store.removeNoteMetadata(second)
+        #expect(try await store.noteMetadata(noteID: identity.id) == nil)
+    }
+
     @Test("Portable attachment records retain only stable identity and typed location")
     func attachmentCatalogRegistrationAndRemoval() async throws {
         let fixture = try Fixture()
@@ -61,7 +130,7 @@ struct TriptychControlTests {
             "analysisAgentCreation",
             "attentionDismissalDays",
         ])
-        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 4)
+        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 5)
     }
 
     @Test("The isolated QA Settings fixture uses only the current schema")
@@ -71,7 +140,7 @@ struct TriptychControlTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
-            "Tools/Fixtures/qa-triptych-settings-v4.json"
+            "Tools/Fixtures/qa-triptych-settings-v5.json"
         ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
@@ -91,11 +160,11 @@ struct TriptychControlTests {
     @Test("Properties configuration preserves order and removes duplicate fields")
     func propertiesConfigurationOrderingAndDeduplication() {
         var configuration = VaultPropertiesConfiguration(
-            newNoteYAML: "tags: [draft]\r\n\r\n",
+            newNoteYAML: "keywords: [draft]\r\n\r\n",
             visibleFields: [" authors ", "publication_date", "authors", "", "type"]
         )
 
-        #expect(configuration.newNoteYAML == "tags: [draft]\n\n")
+        #expect(configuration.newNoteYAML == "keywords: [draft]\n\n")
         #expect(configuration.visibleFields == ["authors", "publication_date", "type"])
 
         configuration.moveVisibleField("type", to: 0)
@@ -133,7 +202,7 @@ struct TriptychControlTests {
 
         let expected = TriptychSettings(properties: [
             .paperAnalysis: VaultPropertiesConfiguration(
-                newNoteYAML: "language: en\n",
+                newNoteYAML: "summary: Portable source summary\n",
                 visibleFields: ["authors", "publication_date", "type"]
             ),
             .topicKnowledge: VaultPropertiesConfiguration(
@@ -151,7 +220,8 @@ struct TriptychControlTests {
         let loaded = try await store.settings()
 
         #expect(loaded.settings.properties == expected.properties)
-        #expect(loaded.settings.properties[.paperAnalysis]?.newNoteYAML == "language: en\n")
+        #expect(loaded.settings.properties[.paperAnalysis]?.newNoteYAML
+            == "summary: Portable source summary\n")
         #expect(loaded.settings.properties[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
         #expect(loaded.settings.properties[.output]?.visibleFields == ["work_type", "coauthors"])
         #expect(loaded.settings.analysisAgentCreation.requiredFields(for: .journalArticle) == ["title", "authors"])
@@ -223,7 +293,7 @@ struct TriptychControlTests {
         #expect(try await store.settings() == initial)
     }
 
-    @Test("Settings compiler distinguishes custom seed keys from another role's canonical keys")
+    @Test("Settings compiler rejects every New Note YAML key outside summary and keywords")
     func seedRoleMismatch() throws {
         var settings = TriptychSettings()
         settings.properties[.output] = VaultPropertiesConfiguration(
@@ -238,7 +308,9 @@ struct TriptychControlTests {
             newNoteYAML: "researcher_method: dialectical\n",
             visibleFields: []
         )
-        try TriptychSettingsValidator.validate(settings)
+        #expect(throws: TriptychSettingsValidationError.self) {
+            try TriptychSettingsValidator.validate(settings)
+        }
     }
 
     @Test("Settings loader distinguishes old, future, corrupt, and current-schema review states")
@@ -273,7 +345,7 @@ struct TriptychControlTests {
         await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
         #expect(try Data(contentsOf: url) == oldSchemaBytes)
 
-        try Data(#"{"schemaVersion":4,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        try Data(#"{"schemaVersion":5,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
         var reviewed = TriptychSettings()
@@ -320,7 +392,7 @@ struct TriptychControlTests {
         try Data(#"{"schemaVersion":999}"#.utf8).write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .futureSchema(999))
 
-        try Data(#"{"schemaVersion":4,"properties":"damaged"}"#.utf8)
+        try Data(#"{"schemaVersion":5,"properties":"damaged"}"#.utf8)
             .write(to: url, options: .atomic)
         #expect(try await store.settingsLoadState() == .corrupted)
         #expect(!(try await store.settingsLoadState()).authorizesAboutProjection)

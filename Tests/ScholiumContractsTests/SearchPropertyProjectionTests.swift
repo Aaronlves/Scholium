@@ -1,127 +1,95 @@
+import Foundation
 import Testing
 @testable import ScholiumContracts
 
 @Suite("Search property projection")
 struct SearchPropertyProjectionTests {
-    @Test("projects top-level presence and exact string source ranges")
-    func projectsTopLevelStrings() throws {
-        let document = NoteDocument(
-            relativePath: "Topic.md",
-            rawContent: """
-            ---
-            language: Ancient Greek
-            aliases: [Akrasia, "Weakness of Will"]
-            count: 3
-            nested:
-              language: Latin
-            ---
-            Body
-            """
+    @Test("Indexes only authored YAML allowlist fields with exact source ranges")
+    func authoredYAMLAllowlist() throws {
+        let source = """
+        ---
+        summary: A navigation summary
+        keywords: [Akrasia, "Weakness of Will"]
+        title: Retired YAML title
+        custom: keep exact but ignore
+        ---
+        Body
+        """
+        let projection = SearchPropertyProjection(
+            document: NoteDocument(relativePath: "Topic.md", rawContent: source),
+            profile: .topicMarkdown
         )
 
-        let projection = SearchPropertyProjection(document: document)
-        #expect(projection.entries.map(\.key) == ["aliases", "count", "language", "nested"])
+        #expect(projection.entries.map(\.key) == ["keywords", "summary"])
+        #expect(projection.entry(forExactKey: "title") == nil)
+        #expect(projection.entry(forExactKey: "custom") == nil)
+        let summary = try #require(projection.entry(forExactKey: "summary"))
+        let summaryRange = try #require(summary.stringMembers.first?.sourceRange)
+        #expect(sourceText(source, in: summaryRange) == "A navigation summary")
+        let keywords = try #require(projection.entry(forExactKey: "keywords"))
+        #expect(keywords.stringMembers.map(\.value) == ["Akrasia", "Weakness of Will"])
+        #expect(try keywords.stringMembers.map {
+            sourceText(source, in: try #require($0.sourceRange))
+        } == ["Akrasia", "\"Weakness of Will\""])
+    }
 
+    @Test("Managed fields are queryable without claiming Markdown source ranges")
+    func managedMetadataHasNoSourceRanges() throws {
+        let noteID = UUID()
+        let record = NoteMetadataRecord(
+            noteID: noteID,
+            fields: [
+                "type": .string("journal_article"),
+                "language": .string("Ancient Greek"),
+                "authors": .array([.object([
+                    "family": .string("Scanlon"),
+                ])]),
+            ]
+        )
+        let metadata = NoteMetadataSnapshot(
+            record: record,
+            revision: DocumentFingerprint(data: try record.encodedPortableData())
+        )
+        let projection = SearchPropertyProjection(
+            document: NoteDocument(
+                relativePath: "Analysis.md",
+                rawContent: "---\nsummary: Authored\nlegacy: exact\n---\n# Body\n"
+            ),
+            profile: .analysis,
+            metadata: metadata
+        )
+
+        #expect(projection.entries.map(\.key)
+            == ["authors", "language", "summary", "type"])
         let language = try #require(projection.entry(forExactKey: "language"))
-        #expect(language.valueKind == .string)
-        #expect(language.stringMembers.map(\.value) == ["Ancient Greek"])
-        let languageRange = try #require(language.stringMembers.first?.sourceRange)
-        #expect(source(document.rawContent, in: languageRange) == "Ancient Greek")
-
-        let aliases = try #require(projection.entry(forExactKey: "aliases"))
-        #expect(aliases.valueKind == .stringSequence)
-        #expect(aliases.stringMembers.map(\.value) == ["Akrasia", "Weakness of Will"])
-        #expect(aliases.stringMembers.map { source(document.rawContent, in: $0.sourceRange) }
-            == ["Akrasia", "\"Weakness of Will\""])
-
-        #expect(projection.entry(forExactKey: "Language") == nil)
-        #expect(projection.entry(forExactKey: "nested")?.stringMembers.isEmpty == true)
-        #expect(projection.entry(forExactKey: "nested")?.isEmpty == false)
+        #expect(language.keySourceRange == nil)
+        #expect(language.stringMembers.first?.value == "Ancient Greek")
+        #expect(language.stringMembers.first?.sourceRange == nil)
+        #expect(projection.entry(forExactKey: "legacy") == nil)
     }
 
-    @Test("does not coerce scalars or mixed arrays into exact string values")
-    func excludesCoercionAndMixedArrays() throws {
-        let document = NoteDocument(
-            relativePath: "Topic.md",
-            rawContent: """
-            ---
-            enabled: true
-            year: 2026
-            mixed: [claim, 3]
-            empty: null
-            blank: ""
-            empty_list: []
-            empty_map: {}
-            ---
-            """
+    @Test("Malformed YAML does not hide independent managed metadata")
+    func malformedYAMLIsIndependent() throws {
+        let record = NoteMetadataRecord(
+            noteID: UUID(),
+            fields: ["aliases": .array([.string("Practical agency")])]
         )
-        let projection = SearchPropertyProjection(document: document)
-        #expect(projection.entry(forExactKey: "enabled")?.valueKind == .scalar)
-        #expect(projection.entry(forExactKey: "year")?.stringMembers.isEmpty == true)
-        #expect(projection.entry(forExactKey: "mixed")?.valueKind == .sequence)
-        #expect(projection.entry(forExactKey: "mixed")?.stringMembers.isEmpty == true)
-        #expect(projection.entry(forExactKey: "empty")?.valueKind == .null)
-        #expect(projection.entry(forExactKey: "empty")?.isEmpty == true)
-        #expect(projection.entry(forExactKey: "blank")?.isEmpty == true)
-        #expect(projection.entry(forExactKey: "empty_list")?.isEmpty == true)
-        #expect(projection.entry(forExactKey: "empty_map")?.isEmpty == true)
-    }
-
-    @Test("fails closed when document validation rejects ambiguous keys")
-    func rejectsAmbiguousKeys() {
-        let duplicate = NoteDocument(
-            relativePath: "Topic.md",
-            rawContent: """
-            ---
-            language: Greek
-            language: Latin
-            "quoted key": value
-            ---
-            """
-        )
-        let projection = SearchPropertyProjection(document: duplicate)
-        #expect(projection.entry(forExactKey: "language") == nil)
-        #expect(projection.issues == [.invalidYAML])
-
-        let quoted = SearchPropertyProjection(document: NoteDocument(
-            relativePath: "Topic.md",
-            rawContent: "---\n\"quoted key\": value\n---\n"
-        ))
-        #expect(quoted.entries.isEmpty)
-        #expect(quoted.issues == [.unboundedKey])
-    }
-
-    @Test("preserves diacritics while folding case and whitespace")
-    func valueNormalization() throws {
-        let document = NoteDocument(
-            relativePath: "Topic.md",
-            rawContent: """
-            ---
-            concept: "  ÉTHIQUE  "
-            ---
-            """
-        )
-        let member = try #require(
-            SearchPropertyProjection(document: document)
-                .entry(forExactKey: "concept")?.stringMembers.first
-        )
-        #expect(member.normalizedValue == "éthique")
-        #expect(member.normalizedValue != SearchTextNormalization.normalize("ethique"))
-    }
-
-    @Test("retains exact UTF-16 ranges through BOM, CRLF, emoji, and RTL values")
-    func sourceFidelity() throws {
-        let text = "\u{FEFF}---\r\nconcept: \"🧭 قيمة\"\r\n---\r\nBody\r\n"
-        let member = try #require(
-            SearchPropertyProjection(document: NoteDocument(
+        let projection = SearchPropertyProjection(
+            document: NoteDocument(
                 relativePath: "Topic.md",
-                rawContent: text
-            )).entry(forExactKey: "concept")?.stringMembers.first
+                rawContent: "---\nsummary: [unfinished\n---\nBody\n"
+            ),
+            profile: .topicMarkdown,
+            metadata: NoteMetadataSnapshot(
+                record: record,
+                revision: DocumentFingerprint(data: try record.encodedPortableData())
+            )
         )
-        #expect(source(text, in: member.sourceRange) == "\"🧭 قيمة\"")
+        #expect(projection.entries.map(\.key) == ["aliases"])
+        #expect(projection.issues == [.invalidYAML])
     }
 
-    private func source(_ text: String, in range: SearchSourceRange) -> String? {
+    private func sourceText(_ text: String, in range: SearchSourceRange) -> String? {
         guard let lower = text.utf16.index(
             text.utf16.startIndex,
             offsetBy: range.utf16LowerBound,

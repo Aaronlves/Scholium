@@ -20,8 +20,9 @@ public enum AnalysisSourceType: String, Codable, CaseIterable, Hashable, Sendabl
     case audiovisual
     case other
 
-    /// Stable CSL type output for the future citation adapter. Mapping is
-    /// intentionally one-way and does not import a CSL schema into YAML.
+    /// Stable CSL type output for the citation adapter. Mapping is
+    /// intentionally one-way and does not import a CSL schema into authored
+    /// YAML.
     public var cslType: String {
         switch self {
         case .journalArticle: "article-journal"
@@ -75,15 +76,11 @@ public enum AnalysisSourceTypeProfileCatalog {
         profiles[sourceType]!
     }
 
-    private static let alwaysAvailableResearch = [
-        "source_basis", "limitations", "summary", "tags",
-    ]
-
     private static let profiles: [AnalysisSourceType: AnalysisSourceTypeProfile] =
         Dictionary(uniqueKeysWithValues: AnalysisSourceType.allCases.map { sourceType in
             let recommended = recommendedFields(for: sourceType)
-            let applicable = unique(recommended + conditionalFields(for: sourceType) + alwaysAvailableResearch)
-            let serialization = PropertyContractCatalog.analysisCanonicalKeys.filter(applicable.contains)
+            let applicable = unique(recommended + conditionalFields(for: sourceType))
+            let serialization = NoteMetadataContractCatalog.analysisCanonicalKeys.filter(applicable.contains)
             return (
                 sourceType,
                 AnalysisSourceTypeProfile(
@@ -145,7 +142,7 @@ public enum AnalysisSourceTypeProfileCatalog {
         case .dataset, .software, .audiovisual:
             ["medium", "publisher", "doi", "url", "accessed_date", "language"]
         case .other:
-            PropertyContractCatalog.analysisCanonicalKeys
+            NoteMetadataContractCatalog.analysisCanonicalKeys
         }
     }
 

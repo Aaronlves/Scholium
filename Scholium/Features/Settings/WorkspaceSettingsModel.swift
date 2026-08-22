@@ -87,7 +87,7 @@ enum WorkspaceSettingsMutationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .triptychChanged:
-            String(localized: "The active Triptych changed. The Properties draft was preserved and was not written.", table: "Localizable", bundle: .module)
+            String(localized: "The active Triptych changed. The metadata draft was preserved and was not written.", table: "Localizable", bundle: .module)
         case .commitRequiresReview:
             String(localized: "Scholium reread the portable settings after an uncertain save. Review the current saved version before trying again.", table: "Localizable", bundle: .module)
         case .reconciliationRequired:
@@ -413,7 +413,7 @@ final class WorkspaceSettingsModel: ObservableObject {
             }
             let warning: String?
             if !targetIsCurrent {
-                warning = String(localized: "The settings were saved to the Triptych where the edit began. Reload Properties to show the currently active Triptych.", table: "Localizable", bundle: .module)
+                warning = String(localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Profiles to show the currently active Triptych.", table: "Localizable", bundle: .module)
             } else if commit.derivedRefreshWarning != nil {
                 warning = String(localized: "Portable settings were saved. Research views will refresh when the workspace is available.", table: "Localizable", bundle: .module)
             } else {
@@ -448,7 +448,7 @@ final class WorkspaceSettingsModel: ObservableObject {
                 return WorkspaceSettingsSaveResult(
                     warning: targetIsCurrent
                         ? String(localized: "Portable settings were reread and the requested save is present.", table: "Localizable", bundle: .module)
-                        : String(localized: "The settings were saved to the Triptych where the edit began. Reload Properties to show the currently active Triptych.", table: "Localizable", bundle: .module),
+                        : String(localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Profiles to show the currently active Triptych.", table: "Localizable", bundle: .module),
                     targetIsCurrent: targetIsCurrent
                 )
             }

@@ -207,5 +207,10 @@ extension ScholiumCLI {
                 "scholium: warning: The source operation committed, but stable note identity recovery is incomplete. Do not repeat the mutation. \(warning)\n"
             )
         }
+        if let warning = outcome.portableMetadataRecoveryWarning {
+            writeError(
+                "scholium: warning: The source operation committed, but portable Note metadata recovery is incomplete. Inspect Metadata before continuing; do not repeat the mutation. \(warning)\n"
+            )
+        }
     }
 }

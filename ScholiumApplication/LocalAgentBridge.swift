@@ -1443,7 +1443,6 @@ enum LocalAgentBridgeWireCoding {
              ResearchAgentConnectionError.invalidAnalysisCreationMetadata,
              DocumentCreationError.invalidMetadata,
              DocumentCreationError.inapplicableAnalysisProperty,
-             DocumentCreationError.analysisSeedCollision,
              is DecodingError:
             code = .invalidRequest
         default: code = .operationFailed

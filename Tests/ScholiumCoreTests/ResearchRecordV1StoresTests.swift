@@ -1337,7 +1337,7 @@ struct ResearchRecordV1StoresTests {
             researcherProvided
         )
         #expect(storedResearcher == researcherProvided)
-        #expect(storedResearcher.schemaVersion == 2)
+        #expect(storedResearcher.schemaVersion == LocalAgentAnalysisCreationRecord.currentSchemaVersion)
         #expect(storedResearcher.bindingState == nil)
         await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.advanceAgentAnalysisCreationBinding(
@@ -1357,29 +1357,34 @@ struct ResearchRecordV1StoresTests {
         let url = store.storageURL
             .appendingPathComponent(record.id.uuidString.lowercased() + ".json")
         let currentBytes = try Data(contentsOf: url)
-        var envelope = try #require(
-            JSONSerialization.jsonObject(with: currentBytes) as? [String: Any]
+        let envelope = try JSONDecoder().decode(
+            LocalResearchExecutionEnvelope.self,
+            from: currentBytes
         )
-        let encodedPayload = try #require(envelope["payload"] as? String)
-        let payload = try #require(Data(base64Encoded: encodedPayload))
+        let payload = envelope.payload
         var object = try #require(
             JSONSerialization.jsonObject(with: payload) as? [String: Any]
         )
         object["raw_activity_key"] = "must-never-persist"
         let modifiedPayload = try JSONSerialization.data(withJSONObject: object)
-        envelope["payload"] = modifiedPayload.base64EncodedString()
-        envelope["payload_fingerprint"] = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(DocumentFingerprint(data: modifiedPayload))
+        let modifiedEnvelope = LocalExecutionEnvelopeFixture(
+            envelope: envelope,
+            payload: modifiedPayload
         )
-        try JSONSerialization.data(withJSONObject: envelope).write(to: url)
+        try JSONEncoder().encode(modifiedEnvelope).write(to: url)
 
         let listing = try await store.listing()
         #expect(listing.records.isEmpty)
         #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
         try await store.validateDeletionAuthority()
-        #expect(try await store.activeExecutionIDs(
-            containing: LocalResearchExecutionStore.noteIDs(in: record)
-        ) == [record.id])
+        let affectedNoteIDs = LocalResearchExecutionStore.noteIDs(in: record)
+        do {
+            _ = try await store.activeExecutionIDs(containing: affectedNoteIDs)
+            Issue.record("Expected scoped recovery for the rejected current payload.")
+        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
+            #expect(Set(preview.affectedNoteIDs ?? []) == affectedNoteIDs)
+            #expect(preview.items.map(\.fileName) == [url.lastPathComponent])
+        }
         await #expect(throws: LocalResearchExecutionStoreError.self) {
             _ = try await store.record(id: record.id)
         }
@@ -2011,7 +2016,7 @@ struct ResearchRecordV1StoresTests {
                 readableNotes: [target],
                 writableNotes: [target],
                 writeOperations: [.modifyMarkdown],
-                editablePropertyKeys: []
+                editableMetadataKeys: []
             )
         )
     }

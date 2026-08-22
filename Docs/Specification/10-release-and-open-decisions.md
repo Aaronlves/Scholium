@@ -23,7 +23,7 @@ Architecture, Status, and evidence rather than copying them into another pack.
   Callout authoring, Wikilink aliases, Analysis Reference completion, image
   attachment Import/Index, Document statistics, native spelling routes, and mode
   changes;
-- categorized About/Properties, optional top-level Research fields, Settle,
+- categorized About/Metadata, optional authored YAML summary/keywords, Settle,
   and simplified Actions;
 - native split resize/visibility, Document tabs without shell reconstruction,
   focus, keyboard, light/dark, scaling, minimum width, and core VoiceOver; and
@@ -40,8 +40,8 @@ hierarchical Materials, Research Guidance/Recovery, Connections, Attention,
 Zotero unavailable/read-only behavior, CLI parity, shared Record Search,
 deletion/restore, adaptations, and
 1380/1080/900/minimum-width workspaces.
-Search acceptance separately covers provider/scope authorization, literal
-top-level Property presence and exact string matching, direct relation
+Search acceptance separately covers provider/scope authorization, canonical
+Metadata presence and exact string matching with authority-correct provenance, direct relation
 direction, Record attribution and statement locators, Explain/completion,
 Saved Search re-evaluation, App/CLI parity, stale refusal, corruption rebuild,
 and incremental/clean-build equivalence. Passing retrieval fixtures does not

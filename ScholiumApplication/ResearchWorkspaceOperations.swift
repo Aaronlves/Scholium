@@ -1242,6 +1242,32 @@ extension WorkspaceHandle {
         } catch {
             throw ResearchBoundedWriteSetError.recoveryRequired
         }
+        var createdMetadata: NoteMetadataSnapshot?
+        if let fields = link.metadataFields, source != nil {
+            do {
+                if let current = try await researchWorkspaceDependencies.controlStore
+                    .noteMetadata(noteID: entry.noteID) {
+                    guard current.record.fields == fields else {
+                        throw NoteMetadataError.revisionConflict(entry.noteID)
+                    }
+                } else {
+                    createdMetadata = try await researchWorkspaceDependencies.controlStore
+                        .saveNoteMetadata(
+                            noteID: entry.noteID,
+                            fields: fields,
+                            expectedRevision: nil
+                        )
+                }
+            } catch {
+                try? await researchWorkspaceDependencies.controlStore
+                    .rollbackManagedCreationIdentity(
+                        identityReconciliation,
+                        vaultID: entry.note.vaultID,
+                        relativePath: entry.note.relativePath
+                    )
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+        }
         let didEstablishCreatedNote = source != nil
         let finalSource: NoteDocument?
         do {
@@ -1263,9 +1289,16 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.recoveryRequired
         }
         if let finalSource {
+            let finalMetadata = try? await researchWorkspaceDependencies.controlStore
+                .noteMetadata(noteID: entry.noteID)
             guard finalSource.fingerprint == intendedRevision,
                   finalIdentity?.id == entry.noteID,
-                  finalIdentity?.fingerprint == intendedRevision else {
+                  finalIdentity?.fingerprint == intendedRevision,
+                  finalMetadata?.record.fields == link.metadataFields else {
+                if let createdMetadata {
+                    try? await researchWorkspaceDependencies.controlStore
+                        .removeNoteMetadata(createdMetadata)
+                }
                 try? await researchWorkspaceDependencies.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: entry.note.vaultID,
@@ -1281,6 +1314,24 @@ extension WorkspaceHandle {
                     relativePath: entry.note.relativePath
                 )
                 throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+            let currentMetadata: NoteMetadataSnapshot?
+            do {
+                currentMetadata = try await researchWorkspaceDependencies.controlStore
+                    .noteMetadata(noteID: entry.noteID)
+            } catch {
+                throw ResearchBoundedWriteSetError.recoveryRequired
+            }
+            if let currentMetadata {
+                guard currentMetadata.record.fields == link.metadataFields else {
+                    throw ResearchBoundedWriteSetError.recoveryRequired
+                }
+                do {
+                    try await researchWorkspaceDependencies.controlStore
+                        .removeNoteMetadata(currentMetadata)
+                } catch {
+                    throw ResearchBoundedWriteSetError.recoveryRequired
+                }
             }
         }
         _ = try await researchWorkspaceDependencies.localResearchExecutionStore
@@ -1326,6 +1377,7 @@ extension WorkspaceHandle {
         } catch {
             throw TriptychTransactionError.recoveryRequired(record)
         }
+
         guard source == nil || source?.fingerprint == intendedRevision else {
             throw TriptychTransactionError.recoveryRequired(record)
         }
@@ -1341,6 +1393,35 @@ extension WorkspaceHandle {
             )
         } catch {
             throw TriptychTransactionError.recoveryRequired(record)
+        }
+
+        var createdMetadata: NoteMetadataSnapshot?
+        if let fields = reference.metadataFields, source != nil {
+            do {
+                if let current = try await researchWorkspaceDependencies.controlStore
+                    .noteMetadata(noteID: reference.reservedIdentityID) {
+                    guard current.record.fields == fields else {
+                        throw NoteMetadataError.revisionConflict(
+                            reference.reservedIdentityID
+                        )
+                    }
+                } else {
+                    createdMetadata = try await researchWorkspaceDependencies.controlStore
+                        .saveNoteMetadata(
+                            noteID: reference.reservedIdentityID,
+                            fields: fields,
+                            expectedRevision: nil
+                        )
+                }
+            } catch {
+                try? await researchWorkspaceDependencies.controlStore
+                    .rollbackManagedCreationIdentity(
+                        identityReconciliation,
+                        vaultID: reference.target.vaultID,
+                        relativePath: reference.target.relativePath
+                    )
+                throw TriptychTransactionError.recoveryRequired(record)
+            }
         }
 
         let finalSource: NoteDocument?
@@ -1367,10 +1448,17 @@ extension WorkspaceHandle {
             throw TriptychTransactionError.recoveryRequired(record)
         }
         if let finalSource {
+            let finalMetadata = try? await researchWorkspaceDependencies.controlStore
+                .noteMetadata(noteID: reference.reservedIdentityID)
             guard finalSource.fingerprint == intendedRevision,
                   finalPathIdentity?.id == reference.reservedIdentityID,
                   finalPathIdentity?.fingerprint == intendedRevision,
-                  finalReservedIdentity == finalPathIdentity else {
+                  finalReservedIdentity == finalPathIdentity,
+                  finalMetadata?.record.fields == reference.metadataFields else {
+                if let createdMetadata {
+                    try? await researchWorkspaceDependencies.controlStore
+                        .removeNoteMetadata(createdMetadata)
+                }
                 try? await researchWorkspaceDependencies.controlStore.rollbackManagedCreationIdentity(
                     identityReconciliation,
                     vaultID: reference.target.vaultID,
@@ -1387,6 +1475,24 @@ extension WorkspaceHandle {
                     relativePath: reference.target.relativePath
                 )
                 throw TriptychTransactionError.recoveryRequired(record)
+            }
+            let currentMetadata: NoteMetadataSnapshot?
+            do {
+                currentMetadata = try await researchWorkspaceDependencies.controlStore
+                    .noteMetadata(noteID: reference.reservedIdentityID)
+            } catch {
+                throw TriptychTransactionError.recoveryRequired(record)
+            }
+            if let current = currentMetadata {
+                guard current.record.fields == reference.metadataFields else {
+                    throw TriptychTransactionError.recoveryRequired(record)
+                }
+                do {
+                    try await researchWorkspaceDependencies.controlStore
+                        .removeNoteMetadata(current)
+                } catch {
+                    throw TriptychTransactionError.recoveryRequired(record)
+                }
             }
         }
         try await researchWorkspaceDependencies.transactionRecoveryStore.resolve(record)

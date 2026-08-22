@@ -189,7 +189,7 @@ struct ResearchBoundedWriteOperationsTests {
         let savedSettings = try await handle.research.settings()
         var settings = savedSettings.settings
         settings.properties[.paperAnalysis]?.newNoteYAML =
-            "# researcher seed\ntags: [configured]\n"
+            "# researcher seed\nkeywords: [configured]\n"
         settings.analysisAgentCreation.requiredFieldsBySourceType[.journalArticle] = [
             "authors",
         ]
@@ -227,7 +227,7 @@ struct ResearchBoundedWriteOperationsTests {
             $0.sourceType == .journalArticle
         })
         #expect(journalPlan.fields.first { $0.key == "authors" }?.isRequired == true)
-        #expect(journalPlan.fields.allSatisfy { $0.key != "tags" })
+        #expect(journalPlan.fields.allSatisfy { $0.key != "keywords" })
         let exposed = String(
             decoding: try JSONEncoder().encode(creationView),
             as: UTF8.self
@@ -241,7 +241,7 @@ struct ResearchBoundedWriteOperationsTests {
 
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
-            properties: [
+            fields: [
                 try CanonicalPropertyInput(
                     key: "title",
                     value: .string("Created Analysis")
@@ -296,8 +296,16 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(createdEntry.wasCreated)
         let document = try await handle.documents.load(createdEntry.note)
         #expect(document.body == "# Analysis body\n")
-        #expect(document.parsedFrontmatter["type"] == .string("journal_article"))
-        #expect(document.parsedFrontmatter["tags"] == .array([.string("configured")]))
+        #expect(document.parsedFrontmatter["type"] == nil)
+        #expect(document.parsedFrontmatter["keywords"]
+            == .array([.string("configured")]))
+        let createdMetadata = try #require(
+            try await handle.services.controlStore.noteMetadata(
+                noteID: createdEntry.noteID
+            )
+        )
+        #expect(createdMetadata.record.fields["type"] == .string("journal_article"))
+        #expect(createdMetadata.record.fields["title"] == .string("Created Analysis"))
         #expect(try await handle.services.controlStore.identityRecord(
             vaultID: createdEntry.note.vaultID,
             relativePath: createdEntry.note.relativePath
@@ -319,44 +327,48 @@ struct ResearchBoundedWriteOperationsTests {
             )
         }
 
-        let propertyExtension = try await handle.research.extendAgentWriteSet(
+        let metadataExtension = try await handle.research.extendAgentWriteSet(
             credential: connection.credential,
             run: connection.handoff.run,
             intent: try ResearchWriteSetExtensionIntent(
                 targets: [try ResearchWriteSetTargetSelector(
                     role: .analysis,
                     relativePath: createdEntry.note.relativePath,
-                    operations: [.modifyProperties],
-                    propertyKeys: ["summary"]
+                    operations: [.modifyMetadata],
+                    metadataKeys: ["title"]
                 )],
                 academicReason: "Add one exact field under fresh existing-Note authority."
             )
         )
-        #expect(propertyExtension.state == .allowedSubset)
-        let augmented = try #require(propertyExtension.entries.first {
+        #expect(metadataExtension.state == .allowedSubset)
+        let augmented = try #require(metadataExtension.entries.first {
             $0.relativePath == createdEntry.note.relativePath
         })
         #expect(!augmented.expectsAbsence)
-        #expect(augmented.operations == [.modifyProperties])
-        #expect(augmented.propertyKeys == ["summary"])
-        let propertyWrite = try await handle.research.writeAgentDocument(
+        #expect(augmented.operations == [.modifyMetadata])
+        #expect(augmented.metadataKeys == ["title"])
+        let metadataWrite = try await handle.research.writeAgentDocument(
             credential: connection.credential,
             run: connection.handoff.run,
             intent: try ResearchDocumentWriteIntent(
                 role: .analysis,
                 relativePath: createdEntry.note.relativePath,
-                operation: .modifyProperties,
-                properties: [try CanonicalPropertyInput(
-                    key: "summary",
-                    value: .string("Fresh authority after managed creation.")
+                operation: .modifyMetadata,
+                metadata: [try CanonicalPropertyInput(
+                    key: "title",
+                    value: .string("Revised Created Analysis")
                 )]
             )
         )
-        #expect(propertyWrite.state == .committed)
+        #expect(metadataWrite.state == .committed)
         let finalDocument = try await handle.documents.load(createdEntry.note)
-        #expect(finalDocument.fingerprint != firstCreatedRevision)
-        #expect(finalDocument.parsedFrontmatter["summary"]
-            == .string("Fresh authority after managed creation."))
+        #expect(finalDocument.fingerprint == firstCreatedRevision)
+        #expect(finalDocument.parsedFrontmatter["title"] == nil)
+        let finalMetadata = try #require(
+            try await handle.services.controlStore.noteMetadata(noteID: createdEntry.noteID)
+        )
+        #expect(finalMetadata.record.fields["title"]
+            == .string("Revised Created Analysis"))
         let cancelError = await #expect(
             throws: ResearchFunctionContractError.self
         ) {
@@ -421,8 +433,8 @@ struct ResearchBoundedWriteOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Property authority changes only the exact approved YAML keys")
-    func propertyWritePreservesBodyAndRejectsExtraKeys() async throws {
+    @Test("Metadata authority changes only approved managed keys and preserves exact source")
+    func metadataWritePreservesSourceAndRejectsExtraKeys() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -445,17 +457,17 @@ struct ResearchBoundedWriteOperationsTests {
                     try ResearchWriteSetTargetSelector(
                         role: .analysis,
                         relativePath: "Analysis.md",
-                        operations: [.modifyProperties],
-                        propertyKeys: ["tags"]
+                        operations: [.modifyMetadata],
+                        metadataKeys: ["language"]
                     ),
                     try ResearchWriteSetTargetSelector(
                         role: .topic,
                         relativePath: "Agency.md",
-                        operations: [.modifyProperties],
-                        propertyKeys: ["aliases", "summary"]
+                        operations: [.modifyMetadata],
+                        metadataKeys: ["aliases"]
                     ),
                 ],
-                academicReason: "Update two researcher-approved Topic properties."
+                academicReason: "Update two researcher-approved Metadata fields."
             )
         )
         #expect(extensionResult.state == .allowedSubset)
@@ -463,67 +475,91 @@ struct ResearchBoundedWriteOperationsTests {
             $0.relativePath == "Analysis.md"
         })
         #expect(initialTarget.operations == [
-            .modifyMarkdown, .modifyProperties, .modifySource,
+            .modifyMarkdown, .modifyMetadata, .modifySource,
         ])
-        #expect(initialTarget.propertyKeys == ["tags"])
+        #expect(initialTarget.metadataKeys == ["language"])
         #expect(extensionResult.entries.first {
             $0.relativePath == "Agency.md"
-        }?.propertyKeys == ["aliases", "summary"])
-        let propertyPlans = try #require(extensionResult.entries.first {
+        }?.metadataKeys == ["aliases"])
+        let metadataPlans = try #require(extensionResult.entries.first {
             $0.relativePath == "Agency.md"
-        }?.propertyWritePlans)
-        #expect(propertyPlans.first { $0.key == "aliases" }?.valueKind == .textList)
-        #expect(propertyPlans.first { $0.key == "summary" }?.valueKind == .multilineText)
+        }?.metadataWritePlans)
+        #expect(metadataPlans.first { $0.key == "aliases" }?.valueKind == .textList)
 
         let initialBefore = try await handle.documents.load(fixture.analysisID)
-        let initialPropertyWrite = try await handle.research.writeAgentDocument(
+        let initialMetadataWrite = try await handle.research.writeAgentDocument(
             credential: connection.credential,
             run: connection.handoff.run,
             intent: try ResearchDocumentWriteIntent(
                 role: .analysis,
                 relativePath: "Analysis.md",
-                operation: .modifyProperties,
-                properties: [try CanonicalPropertyInput(
-                    key: "tags",
-                    value: .array([.string("bounded")])
+                operation: .modifyMetadata,
+                metadata: [try CanonicalPropertyInput(
+                    key: "language",
+                    value: .string("en")
                 )]
             )
         )
-        #expect(initialPropertyWrite.state == .committed)
+        #expect(initialMetadataWrite.state == .committed)
         let initialAfter = try await handle.documents.load(fixture.analysisID)
-        #expect(initialAfter.body == initialBefore.body)
-        #expect(initialAfter.parsedFrontmatter["tags"]
-            == .array([.string("bounded")]))
+        #expect(initialAfter.rawContent == initialBefore.rawContent)
 
-        let write = try await handle.research.writeAgentDocument(
+        let topicIdentity = try #require(try await handle.services.controlStore.identityRecord(
+            vaultID: fixture.topicID.vaultID,
+            relativePath: fixture.topicID.relativePath
+        ))
+        let externalMetadata = try await handle.services.controlStore.saveNoteMetadata(
+            noteID: topicIdentity.id,
+            fields: ["aliases": .array([.string("External change")])],
+            expectedRevision: nil
+        )
+        let writeIntent = try ResearchDocumentWriteIntent(
+            requestID: UUID(),
+            role: .topic,
+            relativePath: "Agency.md",
+            operation: .modifyMetadata,
+            metadata: [
+                try CanonicalPropertyInput(
+                    key: "aliases",
+                    value: .array([
+                        .string("Freedom"),
+                        .string("Practical agency"),
+                    ])
+                ),
+            ]
+        )
+        let conflict = try await handle.research.writeAgentDocument(
             credential: connection.credential,
             run: connection.handoff.run,
-            intent: try ResearchDocumentWriteIntent(
+            intent: writeIntent
+        )
+        #expect(conflict.state == .conflict)
+        #expect(try await handle.services.controlStore.noteMetadata(
+            noteID: topicIdentity.id
+        )?.revision == externalMetadata.revision)
+        let refreshed = try await handle.research.resolveAgentWriteConflict(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteConflictResolutionIntent(
                 requestID: UUID(),
                 role: .topic,
                 relativePath: "Agency.md",
-                operation: .modifyProperties,
-                properties: [
-                    try CanonicalPropertyInput(
-                        key: "summary",
-                        value: .string("A bounded account of agency.")
-                    ),
-                    try CanonicalPropertyInput(
-                        key: "aliases",
-                        value: .array([
-                            .string("Freedom"),
-                            .string("Practical agency"),
-                        ])
-                    ),
-                ]
+                action: .refreshAuthority
             )
+        )
+        #expect(refreshed.state == .readyToRetry)
+        let write = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: writeIntent
         )
         #expect(write.state == .committed)
         let after = try await handle.documents.load(fixture.topicID)
-        #expect(after.body == before.body)
-        #expect(after.parsedFrontmatter["summary"]
-            == .string("A bounded account of agency."))
-        #expect(after.parsedFrontmatter["aliases"] == .array([
+        #expect(after.rawContent == before.rawContent)
+        let topicMetadata = try #require(
+            try await handle.services.controlStore.noteMetadata(noteID: topicIdentity.id)
+        )
+        #expect(topicMetadata.record.fields["aliases"] == .array([
             .string("Freedom"), .string("Practical agency"),
         ]))
 
@@ -535,9 +571,9 @@ struct ResearchBoundedWriteOperationsTests {
                     requestID: UUID(),
                     role: .topic,
                     relativePath: "Agency.md",
-                    operation: .modifyProperties,
-                    properties: [try CanonicalPropertyInput(
-                        key: "tags",
+                    operation: .modifyMetadata,
+                    metadata: [try CanonicalPropertyInput(
+                        key: "summary",
                         value: .array([.string("unauthorized")])
                     )]
                 )
@@ -1243,8 +1279,8 @@ struct ResearchBoundedWriteOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Property authority requires a researcher-established valid YAML envelope")
-    func propertyAuthorityRequiresValidFrontmatter() async throws {
+    @Test("Metadata authority is independent of absent or malformed YAML")
+    func metadataAuthorityIsIndependentOfFrontmatter() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -1260,11 +1296,11 @@ struct ResearchBoundedWriteOperationsTests {
         )
         let plainID = VaultQualifiedNoteID(
             vaultID: fixture.topicID.vaultID,
-            relativePath: "Property Plain.md"
+            relativePath: "Metadata Plain.md"
         )
         let malformedID = VaultQualifiedNoteID(
             vaultID: fixture.topicID.vaultID,
-            relativePath: "Property Malformed.md"
+            relativePath: "Metadata Malformed.md"
         )
         let plain = try await handle.documents.create(
             plainID,
@@ -1275,63 +1311,47 @@ struct ResearchBoundedWriteOperationsTests {
             content: "---\nsummary: incomplete\n"
         )
         _ = try await handle.refresh()
-        for path in [plainID.relativePath, malformedID.relativePath] {
-            await #expect(throws: ResearchBoundedWriteSetError.operationNotAuthorized) {
-                _ = try await handle.research.extendAgentWriteSet(
-                    credential: connection.credential,
-                    run: connection.handoff.run,
-                    intent: try ResearchWriteSetExtensionIntent(
-                        targets: [try ResearchWriteSetTargetSelector(
-                            role: .topic,
-                            relativePath: path,
-                            operations: [.modifyProperties],
-                            propertyKeys: ["summary"]
-                        )],
-                        academicReason: "Properties require a valid researcher-owned envelope."
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [plainID.relativePath, malformedID.relativePath].map { path in
+                    try ResearchWriteSetTargetSelector(
+                        role: .topic,
+                        relativePath: path,
+                        operations: [.modifyMetadata],
+                        metadataKeys: ["aliases"]
                     )
-                )
-            }
-        }
+                },
+                academicReason: "Add managed aliases without changing authored source."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
         #expect(try await handle.documents.load(plainID).sourceBytes
             == plain.sourceBytes)
         #expect(try await handle.documents.load(malformedID).rawContent
             == "---\nsummary: incomplete\n")
-
-        let inserted = try await handle.documents.save(
-            plainID,
-            changeSet: .insertFrontmatter([
-                "summary": .string("Researcher established YAML")
-            ]),
-            expectedRevision: plain.fingerprint
-        ).committedValue.document
-        #expect(inserted.frontmatterState == .valid)
-        let allowed = try await handle.research.extendAgentWriteSet(
-            credential: connection.credential,
-            run: connection.handoff.run,
-            intent: try ResearchWriteSetExtensionIntent(
-                targets: [try ResearchWriteSetTargetSelector(
+        for (path, alias) in [
+            (plainID.relativePath, "Plain alias"),
+            (malformedID.relativePath, "Malformed source alias"),
+        ] {
+            #expect(try await handle.research.writeAgentDocument(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: try ResearchDocumentWriteIntent(
                     role: .topic,
-                    relativePath: plainID.relativePath,
-                    operations: [.modifyProperties],
-                    propertyKeys: ["summary"]
-                )],
-                academicReason: "Update the now explicit Property."
-            )
-        )
-        #expect(allowed.state == .allowedSubset)
-        #expect(try await handle.research.writeAgentDocument(
-            credential: connection.credential,
-            run: connection.handoff.run,
-            intent: try ResearchDocumentWriteIntent(
-                role: .topic,
-                relativePath: plainID.relativePath,
-                operation: .modifyProperties,
-                properties: [try CanonicalPropertyInput(
-                    key: "summary",
-                    value: .string("Agent bounded update")
-                )]
-            )
-        ).state == .committed)
+                    relativePath: path,
+                    operation: .modifyMetadata,
+                    metadata: [try CanonicalPropertyInput(
+                        key: "aliases",
+                        value: .array([.string(alias)])
+                    )]
+                )
+            ).state == .committed)
+        }
+        #expect(try await handle.documents.load(plainID).sourceBytes == plain.sourceBytes)
+        #expect(try await handle.documents.load(malformedID).rawContent
+            == "---\nsummary: incomplete\n")
         await runtime.shutdown()
     }
 

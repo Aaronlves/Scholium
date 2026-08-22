@@ -370,7 +370,7 @@ extension ScholiumUITests {
             exercisePeripheralVisibilityControls()
         }
 
-        XCTContext.runActivity(named: "Search, properties, and inspector") { _ in
+        XCTContext.runActivity(named: "Search, metadata, and inspector") { _ in
             app.typeKey("f", modifierFlags: [.command, .shift])
             let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
             let field = app.descendants(matching: .any)["scholium.searchField"]
@@ -382,13 +382,13 @@ extension ScholiumUITests {
             XCTAssertTrue(waitUntil(timeout: 3) { !search.exists })
 
             app.menuBars.menuBarItems["Edit"].click()
-            let editProperties = app.menuItems["Edit Properties…"].firstMatch
-            XCTAssertTrue(editProperties.waitForExistence(timeout: 3))
-            editProperties.click()
-            let properties = app.descendants(matching: .any)["scholium.propertiesEditor"]
-            XCTAssertTrue(properties.waitForExistence(timeout: 5))
+            let editMetadata = app.menuItems["Edit Metadata…"].firstMatch
+            XCTAssertTrue(editMetadata.waitForExistence(timeout: 3))
+            editMetadata.click()
+            let metadata = app.descendants(matching: .any)["scholium.metadataEditor"]
+            XCTAssertTrue(metadata.waitForExistence(timeout: 5))
             app.buttons["Cancel"].click()
-            XCTAssertTrue(waitUntil(timeout: 3) { !properties.exists })
+            XCTAssertTrue(waitUntil(timeout: 3) { !metadata.exists })
 
             inspectorButton.click()
             XCTAssertTrue(inspector.waitForExistence(timeout: 3))
@@ -671,7 +671,7 @@ extension ScholiumUITests {
             newNote.click()
             XCTAssertFalse(
                 app.buttons["Create"].firstMatch.waitForExistence(timeout: 1),
-                "Direct note creation must not present a naming or Properties sheet."
+                "Direct note creation must not present a naming or Metadata sheet."
             )
             let createdURL = triptychDirectory.appendingPathComponent(
                 "01-analyses/\(path)"
@@ -736,36 +736,36 @@ extension ScholiumUITests {
             identifier: "com_apple_SwiftUI_Settings_window"
         ).firstMatch
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 8))
-        let propertiesPane = settingsWindow.descendants(matching: .any)[
-            "Properties"
+        let metadataPane = settingsWindow.descendants(matching: .any)[
+            "Metadata Profiles"
         ].firstMatch
-        XCTAssertTrue(propertiesPane.waitForExistence(timeout: 8))
-        propertiesPane.click()
-        let retryProperties = settingsWindow.buttons["Retry Properties Settings"]
-        if retryProperties.waitForExistence(timeout: 2) {
-            retryProperties.click()
+        XCTAssertTrue(metadataPane.waitForExistence(timeout: 8))
+        metadataPane.click()
+        let retryMetadata = settingsWindow.buttons["Retry Metadata Settings"]
+        if retryMetadata.waitForExistence(timeout: 2) {
+            retryMetadata.click()
         }
         let seedEditor = settingsWindow.descendants(matching: .any)[
             "YAML added to new Analysis notes without boundaries"
         ].firstMatch
         XCTAssertTrue(seedEditor.waitForExistence(timeout: 10))
-        try paste("tags: [seeded]\n", into: seedEditor)
-        let saveProperties = settingsWindow.buttons["Save Properties"]
+        try paste("keywords: [seeded]\n", into: seedEditor)
+        let saveMetadata = settingsWindow.buttons["Save Metadata Settings"]
         XCTAssertTrue(waitUntil(timeout: 5) {
-            saveProperties.exists && saveProperties.isEnabled
+            saveMetadata.exists && saveMetadata.isEnabled
         })
-        saveProperties.click()
+        saveMetadata.click()
         let settingsURL = triptychDirectory
             .appendingPathComponent(".scholium", isDirectory: true)
             .appendingPathComponent("settings.json")
         XCTAssertTrue(waitUntil(timeout: 10) {
             (try? String(contentsOf: settingsURL, encoding: .utf8))?
-                .contains("tags: [seeded]") == true
+                .contains("keywords: [seeded]") == true
         })
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !settingsWindow.exists })
 
-        let seededSource = "---\ntags: [seeded]\n---\n"
+        let seededSource = "---\nkeywords: [seeded]\n---\n"
         let seededMarker = "warm-seeded-first-keystroke\n"
         try createAndType(
             path: "Untitled 2.md",
@@ -779,7 +779,7 @@ extension ScholiumUITests {
         selectResearchInspectorMode("overview")
         let about = app.descendants(matching: .any)["scholium.about"]
         XCTAssertTrue(about.waitForExistence(timeout: 8))
-        XCTAssertTrue(about.staticTexts["Tags"].exists)
+        XCTAssertTrue(about.staticTexts["Keywords"].exists)
         XCTAssertTrue(about.staticTexts["seeded"].exists)
         for omittedField in [
             "Completion", "Limitations", "Authors", "Year", "Type", "Source Basis",
@@ -1280,7 +1280,7 @@ extension ScholiumUITests {
             "Triptychs",
             "Appearance",
             "Hotkeys",
-            "Property Profiles",
+            "Metadata Profiles",
             "Attention",
             "Methods & Practices",
             "Action Profiles",
@@ -1302,14 +1302,14 @@ extension ScholiumUITests {
             "scholium.triptychName"
         ].waitForExistence(timeout: 8))
 
-        app.descendants(matching: .any)["Property Profiles"].firstMatch.click()
+        app.descendants(matching: .any)["Metadata Profiles"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 8) {
             !self.app.descendants(matching: .any)[
                 "scholium.settings.triptychScope"
             ].exists
         })
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.properties.role"
+            "scholium.metadataProfiles.role"
         ].waitForExistence(timeout: 8))
 
         app.descendants(matching: .any)["Appearance"].firstMatch.click()

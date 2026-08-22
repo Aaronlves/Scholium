@@ -306,7 +306,7 @@ public struct NoteDocument: Sendable {
         }
         guard !insertions.isEmpty else {
             throw VaultRepositoryError.invalidFrontmatter(
-                "Add at least one Property before creating YAML frontmatter."
+                "Add at least one authored YAML field before creating frontmatter."
             )
         }
 
@@ -325,7 +325,7 @@ public struct NoteDocument: Sendable {
         guard !planned.patchedFrontmatter
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw VaultRepositoryError.invalidFrontmatter(
-                "Add at least one Property before creating YAML frontmatter."
+                "Add at least one authored YAML field before creating frontmatter."
             )
         }
 

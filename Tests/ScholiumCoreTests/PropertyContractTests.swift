@@ -1,32 +1,35 @@
 import ScholiumContracts
 import Testing
 
-@Suite("Canonical property contracts")
+@Suite("Authored YAML and managed metadata contracts")
 struct PropertyContractTests {
-    @Test("Analysis catalog is the frozen 56-key clean-sheet vocabulary")
+    @Test("Authored YAML has exactly summary and keywords semantics")
     func analysisCatalog() throws {
         let contracts = PropertyContractCatalog.contracts(for: .analysis)
         let keys = contracts.map(\.canonicalKey)
 
-        #expect(keys.count == 56)
-        #expect(Set(keys).count == 56)
-        #expect(keys.contains("publication_date"))
-        #expect(keys.contains("reviewed_authors"))
-        #expect(keys.contains("archive_location"))
-        #expect(keys.contains("source_basis"))
-        #expect(!keys.contains("year"))
-        #expect(!keys.contains("research_unit"))
-        #expect(!keys.contains("zotero_item_key"))
-        #expect(!keys.contains("debate_importance"))
+        #expect(keys == ["summary", "keywords"])
+        #expect(PropertyContractCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey)
+            == keys)
+        #expect(PropertyContractCatalog.contracts(for: .draftProject).map(\.canonicalKey)
+            == keys)
     }
 
-    @Test("Topic and Work use the small clean-sheet vocabularies")
+    @Test("Managed metadata retains role-specific structured vocabularies")
     func roleCatalogs() {
-        #expect(PropertyContractCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey) == [
-            "aliases", "summary", "limitations", "tags",
+        let analysis = NoteMetadataContractCatalog.contracts(for: .analysis).map(\.canonicalKey)
+        #expect(analysis.count == 52)
+        #expect(analysis.contains("publication_date"))
+        #expect(analysis.contains("reviewed_authors"))
+        #expect(analysis.contains("archive_location"))
+        #expect(!analysis.contains("source_basis"))
+        #expect(!analysis.contains("limitations"))
+        #expect(!analysis.contains("summary"))
+        #expect(NoteMetadataContractCatalog.contracts(for: .topicMarkdown).map(\.canonicalKey) == [
+            "aliases",
         ])
-        #expect(PropertyContractCatalog.contracts(for: .draftProject).map(\.canonicalKey) == [
-            "work_type", "coauthors", "summary", "limitations", "tags",
+        #expect(NoteMetadataContractCatalog.contracts(for: .draftProject).map(\.canonicalKey) == [
+            "work_type", "coauthors",
         ])
     }
 
@@ -39,7 +42,7 @@ struct PropertyContractTests {
             ]),
         ]
 
-        #expect(PropertyContractCatalog.validate(frontmatter: valid, profile: .analysis).isEmpty)
+        #expect(NoteMetadataContractCatalog.validate(fields: valid, profile: .analysis).isEmpty)
     }
 
     @Test("CreatorList rejects mixed, unknown, empty, and legacy string shapes")
@@ -54,8 +57,8 @@ struct PropertyContractTests {
         ]
 
         for value in invalidValues {
-            let issues = PropertyContractCatalog.validate(
-                frontmatter: ["authors": value],
+            let issues = NoteMetadataContractCatalog.validate(
+                fields: ["authors": value],
                 profile: .analysis
             )
             #expect(issues.map(\.code) == [.invalidCreator])
@@ -64,12 +67,14 @@ struct PropertyContractTests {
 
     @Test("Text lists and tags reject scalar coercion")
     func textCollectionsRequireStrings() {
-        for key in ["source_basis", "limitations", "tags"] {
-            #expect(PropertyContractCatalog.validate(
-                frontmatter: [key: .array([.boolean(true), .integer(1)])],
-                profile: .analysis
-            ).map(\.code) == [.invalidValueKind])
-        }
+        #expect(PropertyContractCatalog.validate(
+            frontmatter: ["keywords": .array([.boolean(true), .integer(1)])],
+            profile: .analysis
+        ).map(\.code) == [.invalidValueKind])
+        #expect(NoteMetadataContractCatalog.validate(
+            fields: ["aliases": .array([.boolean(true), .integer(1)])],
+            profile: .topicMarkdown
+        ).map(\.code) == [.invalidValueKind])
     }
 
     @Test("Structured editing accepts repairable empty shapes but rejects shape guessing")
@@ -99,20 +104,20 @@ struct PropertyContractTests {
     @Test("Dates remain source-safe strings and are not parsed or normalized")
     func dateShape() {
         for value in ["2026", "circa 1920", "forthcoming?", "1990/1992"] {
-            #expect(PropertyContractCatalog.validate(
-                frontmatter: ["publication_date": .string(value)],
+            #expect(NoteMetadataContractCatalog.validate(
+                fields: ["publication_date": .string(value)],
                 profile: .analysis
             ).isEmpty)
         }
-        #expect(PropertyContractCatalog.validate(
-            frontmatter: ["publication_date": .integer(2026)],
+        #expect(NoteMetadataContractCatalog.validate(
+            fields: ["publication_date": .integer(2026)],
             profile: .analysis
         ).map(\.code) == [.invalidValueKind])
     }
 
     @Test("Source types have one CSL mapping and valid profile partitions")
     func sourceTypeProfiles() {
-        let canonical = Set(PropertyContractCatalog.analysisCanonicalKeys)
+        let canonical = Set(NoteMetadataContractCatalog.analysisCanonicalKeys)
         #expect(AnalysisSourceType.allCases.count == 18)
         #expect(Set(AnalysisSourceType.allCases.map(\.cslType)).contains("article-journal"))
 
@@ -133,6 +138,9 @@ struct PropertyContractTests {
                 "year": .integer(2020),
                 "research_unit": .object(["completion": .string("complete")]),
                 "zotero_item_key": .string("ABCD1234"),
+                "title": .string("Retired YAML title"),
+                "source_basis": .array([.string("Researcher decides")]),
+                "limitations": .array([.string("Researcher decides")]),
                 "custom_field": .object(["nested": .boolean(true)]),
             ],
             profile: .analysis

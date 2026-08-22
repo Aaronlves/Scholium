@@ -224,7 +224,7 @@ private extension ScholiumCLI {
             "agent preflight-analysis": AgentCLICommandHelp(
                 usage: "scholium agent preflight-analysis --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentAnalysisCreationPreflightRequest schema \(ResearchAgentAnalysisCreationPreflightRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, request_id, destination {schema_version, managed_default_filename}, metadata {source_type, properties}, and exactly one of source {library, item_key} or source_route=researcher_provided. Direct Agent creation always resolves one Markdown filename at the Analyses-vault root. A researcher-selected subfolder requires a researcher-created existing Analysis target; the Agent wire has no subfolder assertion.",
+                input: "Strict JSON fields: schema_version, request_id, destination {schema_version, managed_default_filename}, metadata {source_type, fields}, and exactly one of source {library, item_key} or source_route=researcher_provided. Direct Agent creation always resolves one Markdown filename at the Analyses-vault root. A researcher-selected subfolder requires a researcher-created existing Analysis target; the Agent wire has no subfolder assertion.",
                 output: "The current Analyses vault identity, Settings revision, source-type applicable fields, Agent-required fields, application-owned seed keys, exact destination and stable/source/Trash state, one status, retry contract, and—only when ready—the exact start_new_analysis payload.",
                 nextSteps: [
                     "Use start_new_analysis unchanged inside agent start only when status is ready",
@@ -296,7 +296,7 @@ private extension ScholiumCLI {
             "agent extend-write-set": AgentCLICommandHelp(
                 usage: "scholium agent extend-write-set --run <locator> --from <json|->",
                 inputContract: "ResearchWriteSetExtensionIntent schema \(ResearchWriteSetExtensionIntent.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]. Only modify_properties also requires nonempty property_keys with the exact requested top-level keys. academic_reason explains why the current Method needs these targets.",
+                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]. Only modify_metadata also requires nonempty metadata_keys with the exact requested managed keys. academic_reason explains why the current Method needs these targets.",
                 output: "AgentWriteSetReport with state, the current capability-free bounded-write-set entries, and a message.",
                 nextSteps: [
                     "scholium agent reload --run <locator> after a pending researcher decision",
@@ -307,7 +307,7 @@ private extension ScholiumCLI {
             "agent write": AgentCLICommandHelp(
                 usage: "scholium agent write --run <locator> --from <json|->",
                 inputContract: "AgentDocumentWriteDraft",
-                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body) and changes the body only. modify_source requires source containing the complete Markdown document, including any YAML. create_note may omit content and applies the current managed seed. modify_properties uses properties [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, properties:[{key,value}]}. Source input is validated and committed as exact authored bytes; it is never reconstructed from Properties.",
+                input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content (an explicit empty string intentionally clears the body) and changes the body only. modify_source requires source containing the complete authored Markdown document, including any YAML. create_note may omit content and applies only the current minimal YAML seed. modify_metadata uses metadata [{key, value}], where value is an ordinary JSON scalar, array, or object. Analysis create_note may add analysis_metadata {source_type, fields:[{key,value}]}. Authored source and portable Metadata use separate revision-checked transactions.",
                 output: "AgentDocumentWriteReport with state, the current target view, and a message. Scholium supplies identity, expected revision, atomic write, and retry authority.",
                 nextSteps: [
                     "scholium agent resolve-write-conflict --run <locator> --from <json|-> when the returned state is conflict",
@@ -317,7 +317,7 @@ private extension ScholiumCLI {
             "agent write-zotero-binding": AgentCLICommandHelp(
                 usage: "scholium agent write-zotero-binding --run <locator> --from <json|->",
                 inputContract: "AgentZoteroBindingWriteDraft",
-                input: "Strict JSON fields: role=analysis, relative_path, and operation set_zotero_binding or clear_zotero_binding. set_zotero_binding also requires library ({kind:user} or {kind:group,group_id:<positive integer>}) and item_key; clear_zotero_binding accepts neither. This command cannot write Markdown, Properties, or Zotero library data.",
+                input: "Strict JSON fields: role=analysis, relative_path, and operation set_zotero_binding or clear_zotero_binding. set_zotero_binding also requires library ({kind:user} or {kind:group,group_id:<positive integer>}) and item_key; clear_zotero_binding accepts neither. This command cannot write Markdown, Scholium Metadata, or Zotero library data.",
                 output: "AgentZoteroBindingWriteReport with state, current target view, message, and any bounded recovery warning. Scholium supplies stable Analysis identity, portable binding revision, and one-use write authority.",
                 nextSteps: [
                     "scholium agent reload --run <locator> after conflict or uncertain recovery state",
@@ -429,7 +429,7 @@ private extension ScholiumCLI {
             "action show": "Usage: scholium action show <run-id> [--triptych <selector>] --format json|markdown",
             "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
             "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
-            "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--analysis-from <json-file>]\n\nCreates through the role's managed New Note YAML. Body input is UTF-8 LF text without a top-level YAML envelope, not complete Markdown source. Analysis JSON is {\"source_type\":\"journal_article\",\"properties\":[{\"key\":\"title\",\"value\":\"Example\"}]}; value is an ordinary JSON scalar, array, or object. Researcher creation does not enforce Agent-only required fields.",
+            "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--analysis-from <json-file>]\n\nCreates through the role's optional New Note YAML seed. Body input is UTF-8 LF text without a top-level YAML envelope, not complete Markdown source. Analysis JSON is {\"source_type\":\"journal_article\",\"fields\":[{\"key\":\"title\",\"value\":\"Example\"}]}; value is an ordinary JSON scalar, array, or object. Researcher creation does not enforce Agent-only required fields.",
             "note import": "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML.",
             "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",
             "note move": "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>",
