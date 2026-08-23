@@ -490,6 +490,37 @@ struct WorkspaceSettingsArchitectureTests {
         try TriptychSettingsValidator.validate(candidate)
     }
 
+    @Test("Archiving a custom field prunes only its About and Agent discovery selections")
+    func archivedFieldPrunesDiscoverySelections() throws {
+        var saved = TriptychSettings()
+        saved.metadataFields[.paperAnalysis] = [
+            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+        ]
+        saved.about[.paperAnalysis]?.visibleFields.append("argument_stage")
+        saved.analysisAgentCreation.preferredFieldsBySourceType[.journalArticle] = [
+            "argument_stage",
+        ]
+        var archivedFields = saved.metadataFields
+        archivedFields[.paperAnalysis]?[0].lifecycle = .archived
+
+        let candidate = MetadataSettingsCandidateBuilder.build(
+            from: saved,
+            metadataFields: archivedFields,
+            aboutConfigurations: saved.about,
+            agentCreation: saved.analysisAgentCreation
+        )
+
+        #expect(candidate.metadataFields[.paperAnalysis]?[0].lifecycle == .archived)
+        #expect(candidate.about[.paperAnalysis]?.visibleFields.contains(
+            "argument_stage"
+        ) == false)
+        #expect(candidate.analysisAgentCreation.preferredFields(
+            for: .journalArticle
+        ).contains("argument_stage") == false)
+        try TriptychSettingsValidator.validate(candidate)
+        try TriptychSettingsValidator.validateTransition(from: saved, to: candidate)
+    }
+
     @Test("Metadata Settings separates definitions, Agent preferences, and About order")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -513,6 +544,11 @@ struct WorkspaceSettingsArchitectureTests {
             #expect(properties.contains(section))
         }
         #expect(properties.contains("Every field is optional"))
+        #expect(properties.contains("Archive Field"))
+        #expect(properties.contains("Restore Field"))
+        #expect(properties.contains("Used in "))
+        #expect(properties.contains("description: normalizedOptionalText"))
+        #expect(properties.contains("allowedValues:"))
         #expect(properties.contains("preferredFieldsBySourceType"))
         #expect(properties.contains("Restore About Defaults"))
         #expect(!properties.contains("Structured Editing"))

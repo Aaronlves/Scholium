@@ -164,10 +164,13 @@
   dirty/save/conflict state, and separate restore or clear consequences in one
   keyboard order. Fixed `summary` and `keywords` creation behavior is not a
   setting or editable technical region.
-- A new field definition exposes its exact key, derived display label, value
-  kind, global role scope, and the fact that no Note, About profile, or Agent
-  preference changes automatically. Invalid or duplicate keys remain inline
-  drafts and never partially update the resolved catalog.
+- A field definition exposes its immutable exact key and value kind, editable
+  display label and description, controlled choices where applicable, active
+  or archived state, role-wide scope, and current Note-use count. Archive and
+  Restore are named keyboard-focusable actions and state that stored values are
+  retained. Adding or editing a definition changes no Note automatically;
+  invalid keys, labels, descriptions, or choices remain inline drafts and never
+  partially update the resolved catalog.
 - Source-type switching retains every unsaved preference draft. Invalid
   fields in another role or type remain named and prevent the single atomic
   save. Revision conflict preserves the draft and offers **Reload Saved

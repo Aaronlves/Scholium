@@ -767,8 +767,8 @@ public actor TriptychControlStore {
     }
 
     /// Reads every portable Note metadata file as an immutable snapshot. A
-    /// damaged or unexpectedly named record invalidates the complete catalog;
-    /// callers must never publish a silently incomplete metadata projection.
+    /// damaged record fails the complete projection with exact single-record
+    /// recovery authority; callers never publish a silently partial catalog.
     public func noteMetadataRecords(
         catalog: NoteMetadataCatalog
     ) throws -> [NoteMetadataSnapshot] {
@@ -780,7 +780,7 @@ public actor TriptychControlStore {
             at: noteMetadataCatalogURL,
             includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
             options: [.skipsHiddenFiles]
-        ).filter { $0.pathExtension == "json" }
+        ).filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         let identities = Dictionary(
             uniqueKeysWithValues: try identityPayload().records.map { ($0.id, $0) }
         )
@@ -796,15 +796,9 @@ public actor TriptychControlStore {
                 throw NoteMetadataError.invalidCatalog
             }
             let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-            guard let record = try? decoder().decode(
-                NoteMetadataRecord.self,
-                from: data
-            ), url.deletingPathExtension().lastPathComponent
-                == record.noteID.uuidString.lowercased() else {
-                throw NoteMetadataError.invalidCatalog
-            }
-            try validateNoteMetadataRecord(
-                record,
+            let record = try decodedNoteMetadataRecord(
+                at: url,
+                data: data,
                 identities: identities,
                 profilesByVaultID: profilesByVaultID,
                 catalog: catalog
@@ -834,15 +828,12 @@ public actor TriptychControlStore {
             throw NoteMetadataError.invalidRecord(noteID)
         }
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-        guard let record = try? decoder().decode(NoteMetadataRecord.self, from: data),
-              record.noteID == noteID else {
-            throw NoteMetadataError.invalidRecord(noteID)
-        }
         let identities = Dictionary(
             uniqueKeysWithValues: try identityPayload().records.map { ($0.id, $0) }
         )
-        try validateNoteMetadataRecord(
-            record,
+        let record = try decodedNoteMetadataRecord(
+            at: url,
+            data: data,
             identities: identities,
             profilesByVaultID: try noteMetadataProfilesByVaultID(),
             catalog: try metadataCatalog()
@@ -851,6 +842,46 @@ public actor TriptychControlStore {
             record: record,
             revision: DocumentFingerprint(data: data)
         )
+    }
+
+    /// Moves exactly the fingerprinted invalid record to a unique non-record
+    /// sibling name. The preserved bytes remain portable and inspectable; no
+    /// valid record, Markdown source, or other control file is touched.
+    @discardableResult
+    public func archiveInvalidNoteMetadataRecord(
+        _ issue: NoteMetadataRecoveryIssue
+    ) throws -> URL {
+        try withPortableControlLock {
+            guard issue.fileName == URL(fileURLWithPath: issue.fileName).lastPathComponent,
+                  !issue.fileName.isEmpty,
+                  (issue.fileName as NSString).pathExtension == "json" else {
+                throw NoteMetadataError.recoveryIssueChanged
+            }
+            try validateNoteMetadataCatalogDirectory()
+            let sourceURL = noteMetadataCatalogURL.appendingPathComponent(
+                issue.fileName,
+                isDirectory: false
+            )
+            do {
+                return try ExactStatePreserver.preserve(
+                    sourceURL,
+                    kind: .regularFile,
+                    recoveryStem: "\(issue.fileName).unsupported",
+                    fileEligibility: { data in
+                        DocumentFingerprint(data: data) == issue.fingerprint
+                    },
+                    fileManager: fileManager
+                )
+            } catch ExactStatePreservationError.missing,
+                    ExactStatePreservationError.unsafe {
+                throw NoteMetadataError.recoveryIssueChanged
+            } catch ExactStatePreservationError.preservationFailed(let reason) {
+                if reason == "The file changed and no longer qualifies for recovery. Reload its current state." {
+                    throw NoteMetadataError.recoveryIssueChanged
+                }
+                throw NoteMetadataError.recoveryArchiveFailed(reason)
+            }
+        }
     }
 
     /// Creates or compare-and-swap replaces one metadata record. `nil`
@@ -1902,20 +1933,49 @@ public actor TriptychControlStore {
         })
     }
 
-    private func validateNoteMetadataRecord(
-        _ record: NoteMetadataRecord,
+    private func decodedNoteMetadataRecord(
+        at url: URL,
+        data: Data,
         identities: [UUID: NoteIdentityRecord],
         profilesByVaultID: [UUID: SchemaProfileID],
         catalog: NoteMetadataCatalog
-    ) throws {
-        guard let identity = identities[record.noteID],
-              let profile = profilesByVaultID[identity.vaultID],
-              catalog.validate(
-                fields: record.fields,
-                profile: profile
-              ).isEmpty else {
-            throw NoteMetadataError.invalidRecord(record.noteID)
+    ) throws -> NoteMetadataRecord {
+        let fingerprint = DocumentFingerprint(data: data)
+        guard let record = try? decoder().decode(NoteMetadataRecord.self, from: data) else {
+            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
+                fileName: url.lastPathComponent,
+                fingerprint: fingerprint,
+                noteID: nil,
+                reason: .invalidEnvelope
+            ))
         }
+        guard url.deletingPathExtension().lastPathComponent
+                == record.noteID.uuidString.lowercased() else {
+            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
+                fileName: url.lastPathComponent,
+                fingerprint: fingerprint,
+                noteID: record.noteID,
+                reason: .fileIdentityMismatch
+            ))
+        }
+        guard let identity = identities[record.noteID] else {
+            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
+                fileName: url.lastPathComponent,
+                fingerprint: fingerprint,
+                noteID: record.noteID,
+                reason: .orphanedNoteIdentity
+            ))
+        }
+        guard let profile = profilesByVaultID[identity.vaultID],
+              catalog.validate(fields: record.fields, profile: profile).isEmpty else {
+            throw NoteMetadataError.recoveryRequired(NoteMetadataRecoveryIssue(
+                fileName: url.lastPathComponent,
+                fingerprint: fingerprint,
+                noteID: record.noteID,
+                reason: .invalidRoleOrFields
+            ))
+        }
+        return record
     }
 
     private func validateAttachmentCatalogDirectory() throws {

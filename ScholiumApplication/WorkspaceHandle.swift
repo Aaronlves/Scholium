@@ -219,6 +219,21 @@ private struct WorkspaceRefreshPayload: Sendable {
     let publication: RefreshPublication
     let failureDisposition: DerivedRefreshFailureDisposition
     let sourceCatalogPreparation: SourceCatalogPreparation
+    /// Non-nil only when every merged request is a Metadata-only mutation.
+    /// Values are exact committed record deltas over the last complete map.
+    let metadataChanges: [UUID: NoteMetadataSnapshot]?
+
+    init(
+        publication: RefreshPublication,
+        failureDisposition: DerivedRefreshFailureDisposition,
+        sourceCatalogPreparation: SourceCatalogPreparation,
+        metadataChanges: [UUID: NoteMetadataSnapshot]? = nil
+    ) {
+        self.publication = publication
+        self.failureDisposition = failureDisposition
+        self.sourceCatalogPreparation = sourceCatalogPreparation
+        self.metadataChanges = metadataChanges
+    }
 
     static func merged(_ payloads: [Self]) throws -> Self {
         guard let first = payloads.first else { throw CancellationError() }
@@ -234,6 +249,15 @@ private struct WorkspaceRefreshPayload: Sendable {
                 affectedVaultIDs.formUnion(affected)
             }
         }
+        let metadataChanges: [UUID: NoteMetadataSnapshot]? = if payloads.allSatisfy({
+            $0.metadataChanges != nil
+        }) {
+            payloads.compactMap(\.metadataChanges).reduce(into: [:]) { result, changes in
+                result.merge(changes) { _, latest in latest }
+            }
+        } else {
+            nil
+        }
         return Self(
             publication: mergedPublication(payloads.map(\.publication)),
             failureDisposition: includesCommittedMutation
@@ -241,7 +265,8 @@ private struct WorkspaceRefreshPayload: Sendable {
                 : .failed(affectedVaultIDs: affectedVaultIDs),
             sourceCatalogPreparation: .merged(
                 payloads.map(\.sourceCatalogPreparation)
-            )
+            ),
+            metadataChanges: metadataChanges
         )
     }
 
@@ -649,6 +674,17 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 manifest = try await controlStore.bootstrap(
                     vaultIDs: vaultIDs,
                     preferredTriptychID: assignment.id
+                )
+            } catch let error as NoteMetadataError {
+                if case .recoveryRequired(let issue) = error {
+                    throw ScholiumApplicationError.noteMetadataRecoveryRequired(
+                        controlPath: controlURL.path,
+                        issue: issue
+                    )
+                }
+                throw ScholiumApplicationError.portableControlRecoveryRequired(
+                    controlPath: controlURL.path,
+                    reason: error.localizedDescription
                 )
             } catch let error as TriptychControlError {
                 switch error {
@@ -2067,6 +2103,27 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ), identity.fingerprint == document.fingerprint else {
             throw NoteMetadataError.identityUnavailableAtPath(id.relativePath)
         }
+        let currentMetadata = try await services.controlStore.noteMetadata(
+            noteID: identity.id
+        )
+        let addedKeys = Set(fields.keys).subtracting(
+            currentMetadata.map { Set($0.record.fields.keys) } ?? []
+        )
+        let activeKeys = Set(
+            metadataCatalog.activeContracts(for: profile).map(\.canonicalKey)
+        )
+        let inactiveAdditions = addedKeys.subtracting(activeKeys).sorted()
+        guard inactiveAdditions.isEmpty else {
+            throw DocumentCreationError.invalidMetadata(
+                inactiveAdditions.map { key in
+                    PropertyValidationIssue(
+                        propertyKey: key,
+                        code: .invalidValueKind,
+                        message: "\(key) is archived and cannot be added to another Note."
+                    )
+                }
+            )
+        }
         let snapshot = try await services.controlStore.saveNoteMetadata(
             noteID: identity.id,
             fields: fields,
@@ -2077,7 +2134,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             failureDisposition: .staleAfterCommittedMutation(
                 affectedVaultIDs: [id.vaultID]
             ),
-            sourceCatalogPreparation: .none
+            sourceCatalogPreparation: .none,
+            metadataChanges: [identity.id: snapshot]
         ))
         endSourceMutation(mutationLease)
         ownsMutation = false
@@ -2664,6 +2722,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 // initial-open blind interval as one completion boundary.
                 try await prepareSourceCatalogs(.fullReconcile)
                 didCompleteActivationReconciliation = true
+            } else if mode == .snapshot, payload.metadataChanges != nil {
+                // This handle loaded the complete source cohort immediately
+                // before the CAS Metadata mutation. Reuse that exact cohort;
+                // a Metadata-only write does not authorize or require a new
+                // three-vault filesystem reconciliation.
             } else {
                 try await prepareSourceCatalogs(payload.sourceCatalogPreparation)
             }
@@ -2683,12 +2746,27 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let graphGeneration = nextGraphGeneration
             nextGraphGeneration += 1
+            let metadataByID: [UUID: NoteMetadataSnapshot]? = payload.metadataChanges.map {
+                changes in
+                var values: [UUID: NoteMetadataSnapshot] = Dictionary(
+                    uniqueKeysWithValues: currentSnapshot.vaults
+                        .flatMap(\.documents)
+                        .compactMap { note -> (UUID, NoteMetadataSnapshot)? in
+                            guard let noteID = note.stableIdentity.resolvedID,
+                                  let metadata = note.metadata else { return nil }
+                            return (noteID, metadata)
+                        }
+                )
+                values.merge(changes) { _, latest in latest }
+                return values
+            }
             let build = try await WorkspaceSnapshotBuilder.build(
                 assignment: assignment,
                 mode: mode,
                 dependencies: services.snapshotBuilderDependencies,
                 graphGeneration: graphGeneration,
-                workspaceGeneration: workspaceGeneration
+                workspaceGeneration: workspaceGeneration,
+                noteMetadataByID: metadataByID
             )
             try await researchStateRepairBarrierForTesting?()
             let repairedBuild = try await WorkspaceResearchStateReconciler
@@ -2741,7 +2819,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         publicationDuration: Duration?
     ) {
         refreshLogger.info(
-            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
+            "generation=\(measurement.workspaceGeneration, privacy: .public) files=\(measurement.enumeratedFiles, privacy: .public) reads=\(measurement.readFiles, privacy: .public) parses=\(measurement.parsedDocuments, privacy: .public) projections=\(measurement.projectedDocuments, privacy: .public) metadataReads=\(measurement.metadataRecordsRead, privacy: .public) sourceBytes=\(measurement.snapshotSourceBytes, privacy: .public) enumerate=\(String(describing: measurement.enumerationDuration), privacy: .public) read=\(String(describing: measurement.readDuration), privacy: .public) parse=\(String(describing: measurement.parseDuration), privacy: .public) project=\(String(describing: measurement.projectionDuration), privacy: .public) identity=\(String(describing: measurement.identityProjectionDuration), privacy: .public) graph=\(String(describing: measurement.graphDuration), privacy: .public) research=\(String(describing: measurement.researchStateDuration), privacy: .public) searchProjection=\(String(describing: measurement.searchDocumentProjectionDuration), privacy: .public) search=\(String(describing: measurement.searchDuration), privacy: .public) assemble=\(String(describing: measurement.snapshotAssemblyDuration), privacy: .public) publish=\(String(describing: publicationDuration), privacy: .public) total=\(String(describing: measurement.totalDuration), privacy: .public)"
         )
     }
 

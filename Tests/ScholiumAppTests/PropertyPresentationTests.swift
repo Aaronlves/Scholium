@@ -139,6 +139,51 @@ struct PropertyPresentationTests {
         #expect(fields.first { $0.key == "type" }?.isRecommended == true)
     }
 
+    @Test("Archived custom fields retain present values but leave new-value and About discovery")
+    func archivedCustomFieldPresentation() throws {
+        let catalog = NoteMetadataCatalog(customFieldsByRole: [
+            .topicKnowledge: [
+                MetadataFieldDefinition(
+                    key: "research_stage",
+                    valueKind: .choice,
+                    label: "Research Stage",
+                    description: "Current stage of the topic",
+                    allowedValues: ["draft", "review"],
+                    lifecycle: .archived
+                ),
+            ],
+        ])
+        let presentNote = propertyWorkspaceLocation(
+            NoteDocument(relativePath: "topic.md", rawContent: "# Topic\n"),
+            role: .topicKnowledge,
+            metadataFields: ["research_stage": .string("draft")]
+        )
+        let present = PropertyEditorModel(
+            note: presentNote,
+            metadataCatalog: catalog
+        )
+        let field = try #require(present.presentFields.first {
+            $0.key == "research_stage"
+        })
+        #expect(field.label == "Research Stage")
+        #expect(field.help == "Current stage of the topic")
+        #expect(field.allowedValues == ["draft", "review"])
+
+        let absent = PropertyEditorModel(
+            note: propertyWorkspaceLocation(
+                NoteDocument(relativePath: "empty.md", rawContent: "# Empty\n"),
+                role: .topicKnowledge
+            ),
+            metadataCatalog: catalog
+        )
+        #expect(!absent.availableFields.contains { $0.key == "research_stage" })
+        #expect(!AboutProfileCatalog.allowsOptionalField(
+            "research_stage",
+            profile: .topicMarkdown,
+            catalog: catalog
+        ))
+    }
+
     @Test("Managed list edits preserve duplicate researcher values")
     func duplicateListEntriesRemainDistinct() throws {
         let note = propertyWorkspaceLocation(

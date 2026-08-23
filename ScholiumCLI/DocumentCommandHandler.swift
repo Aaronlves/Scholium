@@ -44,10 +44,97 @@ extension ScholiumCLI {
     ) async throws {
         guard let subcommand = arguments.first else {
             throw CLIError.usage(
-                "Usage: scholium note <create|replace|move|move-to-trash> ..."
+                "Usage: scholium note <create|metadata-read|metadata-set|metadata-remove|replace|move|move-to-trash> ..."
             )
         }
         switch subcommand {
+        case "metadata-read":
+            guard arguments.count >= 2 else {
+                throw CLIError.usage(
+                    "Usage: scholium note metadata-read <vault>:<path> [--format json]"
+                )
+            }
+            let format = option("--format", in: arguments) ?? "json"
+            guard format == "json" else {
+                throw CLIError.usage("Metadata read supports --format json.")
+            }
+            let (vault, path) = try await context.resolveTarget(arguments[1])
+            let assignment = try await context.triptych(containing: [vault.id])
+            let handle = try await context.handle(for: assignment)
+            let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
+            let source = try await handle.documents.load(id)
+            let metadata = try await handle.documents.metadata(id)
+            try writeMetadataReport(
+                vault: vault,
+                path: path,
+                source: source,
+                metadata: metadata
+            )
+        case "metadata-set":
+            guard arguments.count >= 3,
+                  let valuePath = option("--value-from", in: arguments),
+                  let expected = option("--expected", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium note metadata-set <vault>:<path> <key> --value-from <json-file> --expected <metadata-sha256|absent>"
+                )
+            }
+            let (vault, path) = try await context.resolveTarget(arguments[1])
+            let assignment = try await context.triptych(containing: [vault.id])
+            let handle = try await context.handle(for: assignment)
+            let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
+            let current = try await handle.documents.metadata(id)
+            let expectedRevision = try requireExpectedMetadata(expected, current: current)
+            let value = try metadataValue(
+                from: Data(try sourceContent(from: valuePath).utf8)
+            )
+            var fields = current?.record.fields ?? [:]
+            fields[arguments[2]] = value
+            let outcome = try await handle.documents.saveMetadata(
+                id,
+                fields: fields,
+                expectedRevision: expectedRevision
+            )
+            let source = try await handle.documents.load(id)
+            try writeMetadataReport(
+                vault: vault,
+                path: path,
+                source: source,
+                metadata: outcome.committedValue
+            )
+            writeMutationWarnings(outcome)
+        case "metadata-remove":
+            guard arguments.count >= 3,
+                  let expected = option("--expected", in: arguments) else {
+                throw CLIError.usage(
+                    "Usage: scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>"
+                )
+            }
+            let (vault, path) = try await context.resolveTarget(arguments[1])
+            let assignment = try await context.triptych(containing: [vault.id])
+            let handle = try await context.handle(for: assignment)
+            let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
+            guard let current = try await handle.documents.metadata(id),
+                  current.record.fields[arguments[2]] != nil else {
+                throw CLIError.usage(
+                    "That managed Metadata field is not present. Run metadata-read before removing it."
+                )
+            }
+            let expectedRevision = try requireExpectedMetadata(expected, current: current)
+            var fields = current.record.fields
+            fields.removeValue(forKey: arguments[2])
+            let outcome = try await handle.documents.saveMetadata(
+                id,
+                fields: fields,
+                expectedRevision: expectedRevision
+            )
+            let source = try await handle.documents.load(id)
+            try writeMetadataReport(
+                vault: vault,
+                path: path,
+                source: source,
+                metadata: outcome.committedValue
+            )
+            writeMutationWarnings(outcome)
         case "create":
             guard arguments.count >= 2 else {
                 throw CLIError.usage(
@@ -198,6 +285,93 @@ extension ScholiumCLI {
             throw CLIError.usage(
                 "Revision mismatch. Re-read the note and use its current SHA-256 fingerprint."
             )
+        }
+    }
+
+    private static func requireExpectedMetadata(
+        _ expected: String,
+        current: NoteMetadataSnapshot?
+    ) throws -> DocumentFingerprint? {
+        if expected == "absent" {
+            guard current == nil else {
+                throw CLIError.usage(
+                    "Metadata revision mismatch. Run metadata-read and use its current metadata_sha256."
+                )
+            }
+            return nil
+        }
+        guard let current,
+              expected.lowercased() == current.revision.sha256.lowercased() else {
+            throw CLIError.usage(
+                "Metadata revision mismatch. Run metadata-read and use its current metadata_sha256."
+            )
+        }
+        return current.revision
+    }
+
+    private static func writeMetadataReport(
+        vault: RegisteredVault,
+        path: String,
+        source: NoteDocument,
+        metadata: NoteMetadataSnapshot?
+    ) throws {
+        let report: [String: Any] = [
+            "vault_id": vault.id.uuidString,
+            "vault_name": vault.name,
+            "relative_path": path,
+            "source_sha256": source.fingerprint.sha256,
+            "metadata_sha256": metadata?.revision.sha256 ?? NSNull(),
+            "fields": (metadata?.record.fields ?? [:]).mapValues(metadataJSONObject),
+        ]
+        let data = try JSONSerialization.data(
+            withJSONObject: report,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        write(String(decoding: data, as: UTF8.self) + "\n")
+    }
+
+    private static func metadataValue(from data: Data) throws -> YAMLValue {
+        let object = try JSONSerialization.jsonObject(
+            with: data,
+            options: [.fragmentsAllowed]
+        )
+        return try metadataValue(fromJSONObject: object)
+    }
+
+    private static func metadataValue(fromJSONObject object: Any) throws -> YAMLValue {
+        switch object {
+        case is NSNull:
+            return .null
+        case let value as String:
+            return .string(value)
+        case let value as NSNumber:
+            if CFGetTypeID(value) == CFBooleanGetTypeID() {
+                return .boolean(value.boolValue)
+            }
+            let double = value.doubleValue
+            if double.rounded() == double,
+               double >= Double(Int.min), double <= Double(Int.max) {
+                return .integer(value.intValue)
+            }
+            return .double(double)
+        case let values as [Any]:
+            return .array(try values.map(metadataValue(fromJSONObject:)))
+        case let values as [String: Any]:
+            return .object(try values.mapValues(metadataValue(fromJSONObject:)))
+        default:
+            throw CLIError.usage("Metadata values must be valid JSON values.")
+        }
+    }
+
+    private static func metadataJSONObject(_ value: YAMLValue) -> Any {
+        switch value {
+        case .string(let value): value
+        case .integer(let value): value
+        case .double(let value): value
+        case .boolean(let value): value
+        case .null: NSNull()
+        case .array(let values): values.map(metadataJSONObject)
+        case .object(let values): values.mapValues(metadataJSONObject)
         }
     }
 

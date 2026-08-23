@@ -164,9 +164,10 @@ The shared sheet edits Metadata from the current workspace catalog at the
 record revision. Labels and values remain; Help explains definitions. Actions
 reveal on hover/focus without reflow. Whitespace groups fields.
 Contributors retain numbered subfields and the neutral segmented kind selector.
-Save stays emphasized. The sheet never changes YAML; authored `summary` and
-`keywords` route to Source; unknown YAML is not a field. Definitions remain in
-This Triptych Settings. About reuses the configured cross-authority order.
+The sheet never changes YAML. `summary` and `keywords`
+route to Source; unknown YAML is not a field. Definitions remain in Settings.
+Archived fields are absent from Add a Field but remain editable or removable.
+About reuses the configured cross-authority order.
 
 ## 18.5 Contextual research and Actions
 

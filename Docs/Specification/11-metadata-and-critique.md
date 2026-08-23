@@ -8,8 +8,9 @@ Scholium separates two researcher-owned authorities. Authored YAML recognizes
 only optional `summary` and `keywords`. Every other canonical structured value
 uses one identity-keyed Scholium Metadata record. The built-in managed catalog
 defines stable product fields. Each Triptych may append independent Analysis,
-Topic, and Work definitions containing only a stable key plus a supported
-simple value kind. The workspace resolves those two sources into one role
+Topic, and Work definitions containing a stable key and supported simple value
+kind, label, optional description, optional controlled choices, and lifecycle.
+The workspace resolves those two sources into one role
 catalog. Analysis source-type profiles define applicability and recommendation
 order for built-ins; custom Analysis fields apply to every source type without
 becoming recommended. About selects optional managed fields; fixed New Note
@@ -134,11 +135,15 @@ technology instead of visible repeated headings. About shows only selected,
 nonempty values. Authored `keywords` render as neutral content capsules.
 
 `settings.json` stores three independent values under one exact-byte revision
-and one atomic save: append-only managed-field definitions by role, About
+and one atomic save: stable managed-field definitions by role, About
 profiles by role, and Analysis Agent field preferences by source type. A custom
 definition uses a lowercase snake-case key and one of text, multiline text,
-text list, number, boolean, or source-safe date. It cannot shadow a built-in or
-authored-YAML key. Adding it changes no Note and does not select it elsewhere.
+text list, number, boolean, source-safe date, or controlled choice. It cannot
+shadow a built-in or authored-YAML key. Its key, value kind, and order do not
+change; label and optional description may change; controlled choices may only
+be appended. Archive and Restore are reversible. Archived fields retain stored
+values, validation, editing, and Search but leave Add Field, About selection,
+and Agent preferences. Adding it changes no Note and does not select it elsewhere.
 Every preference names a shape-known managed field applicable to its source
 type, but remains guidance:
 an Agent may omit it without blocking creation or creating a placeholder.

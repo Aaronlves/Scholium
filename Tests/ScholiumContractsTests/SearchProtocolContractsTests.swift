@@ -237,6 +237,7 @@ struct SearchProtocolContractsTests {
 
         let scoped = SearchCompletionContext(
             propertyKeys: ["language", "limitations"],
+            propertyValues: ["language": ["Greek", "Latin"]],
             noteIdentities: ["Groundwork", "Critique of Practical Reason"]
         )
         #expect(
@@ -251,6 +252,12 @@ struct SearchProtocolContractsTests {
                 context: scoped
             ).first?.replacementText
                 == #"from-note:"Critique of Practical Reason""#
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "property:language=Gr",
+                context: scoped
+            ).first?.replacementText == "property:language=Greek"
         )
         #expect(
             SearchCapabilities.current.completions(
@@ -346,6 +353,15 @@ struct SearchProtocolContractsTests {
                 for: "from-note:Anch",
                 context: SearchCompletionContext(noteIdentities: ["Anchor"])
             ).first?.replacementText == "from-note:Anchor"
+        )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "property:stage=d",
+                context: SearchCompletionContext(
+                    propertyKeys: ["stage"],
+                    propertyValues: ["stage": ["draft", "review"]]
+                )
+            ).first?.replacementText == "property:stage=draft"
         )
     }
 

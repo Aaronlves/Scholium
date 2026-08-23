@@ -196,12 +196,12 @@ completion, **Explain Query**, and CLI help. Baseline completion exposes only
 fields and canonical values supported by the current contract; after an
 explicit provider clause, it exposes only that provider's legal capabilities.
 Completion edits only visible query text and creates no hidden token or chip.
-Scope-first Metadata-key and Note-identity candidates are optional, not a
-Foundation requirement. The Application may provide them only from the
-currently authorized provider, scope, and authority after representative use
-shows that the static capability description is insufficient for query
-discovery. Such candidates remain bounded, edit only visible query text, and
-never create hidden state, a second AST, or a second parser.
+The Application supplies bounded scope-first Metadata-key candidates only from
+the currently authorized Note provider and visible scope. After
+`property:<key>=`, a controlled-value field supplies its current allowed values.
+Scope-first Note-identity candidates remain an optional extension. All such
+candidates edit only visible query text and never create hidden state, a second
+AST, or a second parser.
 The Application response carries the typed explanation used by App and CLI.
 Presentation may format that response but must not parse the query again or
 construct a second interpretation. Explain reports provider, scope, clauses,
@@ -310,6 +310,15 @@ unverifiable source is never overwritten or recreated; the candidate remains
 available for inspection and copying. If the candidate is already canonical,
 Recovery verifies that fact and removes only the completed machine-local
 record.
+
+Portable Metadata recovery is separate from Markdown save recovery and
+whole-control recovery. Workspace preflight identifies one invalid record by
+its direct filename, exact byte fingerprint, optional embedded Note identity,
+and failure class. After confirmation, Scholium archives only that unchanged
+regular file to a unique non-record sibling and retries ordinary preflight. A
+missing, replaced, or changed file stops the operation for reload; no
+source, valid neighboring Metadata record, settings file, identity file, or
+complete `.scholium` directory is moved.
 
 System-Trash deletion recovery is a separate visible forward plan, not a save
 candidate or source backup. It shows the original source items, known resulting

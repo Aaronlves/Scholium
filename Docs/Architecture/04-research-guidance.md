@@ -113,11 +113,16 @@ Practice owners; Action Profiles edits only the academic profile document.
 Each editor mutates one owner at a time through an expected-revision
 transaction.
 
-Portable `TriptychSettings` schema 7 is a separate strict owner for role
-Metadata. It contains append-only field definitions by role, About order over
+Portable `TriptychSettings` schema 8 is a separate strict owner for role
+Metadata. It contains stable field definitions by role, About order over
 optional managed fields, and per-source-type optional Agent preferences over
 managed Analysis fields. These are separate subvalues in one transaction;
 adding a definition mutates neither of the other two.
+Definition keys, value kinds, order, and existing controlled choices are
+monotonic identity. Labels, optional descriptions, and active/archived state
+are editable; choices can be appended. Archived definitions remain in record
+validation and Search but are removed from new-value, About, and Agent
+selection by the one candidate compiler.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -140,6 +145,10 @@ state supplies an explicit empty display profile, never default authority.
 Current-note Metadata editing instead depends on the exact portable metadata
 revision and role catalog. Authored YAML editing remains an explicit Source
 operation.
+Researcher CLI Metadata read/set/remove commands call the same public
+Application operations, use natural JSON at their boundary, and expose the
+Metadata revision independently from the source fingerprint. No delivery
+adapter imports Core or addresses the portable JSON directory.
 Portable Triptych Settings does not store prompt bodies or active prompt
 selection. Exact Markdown Methods and Practices remain the sole persisted
 owners of Research Guidance intellectual configuration; runtime action
@@ -147,7 +156,8 @@ contracts consume those owners without a second template representation.
 
 `PropertyContractCatalog` owns the authored YAML allowlist;
 `BuiltInNoteMetadataCatalog` owns product-managed shapes;
-`TriptychSettings.metadataFields` owns researcher-defined simple shapes;
+`TriptychSettings.metadataFields` owns researcher-defined simple shapes and
+their presentation/lifecycle guidance;
 `NoteMetadataCatalog` is the one immutable workspace-scoped resolution of both;
 `AnalysisSourceTypeProfileCatalog` owns applicable/recommended/serialization
 order for built-ins, while custom Analysis fields append to every source type.

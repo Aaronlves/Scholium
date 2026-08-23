@@ -84,6 +84,10 @@
   reveals on hover or focus without reflow. It edits only identity-keyed
   Scholium Metadata and never inserts or changes YAML. Authored `summary` and
   `keywords` remain visible through About and editable in Source.
+- Workspace access recovery distinguishes one fingerprinted invalid Metadata
+  record from an unsupported complete portable-control owner. Its confirmation
+  names the direct record and archives only that unchanged file before retrying
+  Triptych configuration.
 - Inspector presents Overview, Connect, and Actions through the shared
   segmented control. Overview shows Needs Attention, Review, then About; Connect switches Incoming
   and Outgoing direct relations; Actions shows role-valid Platform Actions and
@@ -179,10 +183,13 @@
   to Saved and built-in-default restoration, and confirms before a profile
   switch can discard an unsaved draft.
 - Settings → Metadata uses the shared segmented role selector and three
-  deliberately independent sections: append-only Managed Fields for the
+  deliberately independent sections: stable Managed Fields for the
   selected role, source-type-specific optional Agent preferences for Analyses,
-  and About visibility/order. Adding a field does not populate Notes or select
-  it in Agent or About settings; reset, clear, revert, reload after
+  and About visibility/order. Custom rows expose editable labels and
+  descriptions, controlled-choice extension, lifecycle, use counts, and named
+  Archive/Restore without permitting key/kind mutation or value deletion.
+  Adding a field does not populate Notes or select it in Agent or About settings;
+  reset, clear, revert, reload after
   conflict, and atomic Save are separate actions. Current-schema repair keeps
   the decoded candidate and frozen exact-byte revision; unsupported or damaged
   schema states preserve their source and do not expose editable defaults.

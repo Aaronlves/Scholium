@@ -232,6 +232,7 @@ struct ArchitectureStabilityMeasurementTests {
             "read_files": measurement.readFiles,
             "parsed_documents": measurement.parsedDocuments,
             "projected_documents": measurement.projectedDocuments,
+            "metadata_records_read": measurement.metadataRecordsRead,
             "snapshot_source_bytes": measurement.snapshotSourceBytes,
             "enumeration_ms": milliseconds(measurement.enumerationDuration),
             "read_ms": milliseconds(measurement.readDuration),

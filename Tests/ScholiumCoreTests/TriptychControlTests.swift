@@ -123,6 +123,70 @@ struct TriptychControlTests {
         }
     }
 
+    @Test("One invalid Metadata record is fingerprint-bound and archived without disturbing neighbors")
+    func invalidMetadataRecordRecoveryIsSingleRecord() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let analysisVaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: analysisVaultID,
+            .topicKnowledge: UUID(),
+            .output: UUID(),
+        ])
+        let firstIdentity = try #require(try await store.identity(
+            forVaultID: analysisVaultID,
+            relativePath: "First.md",
+            fingerprint: DocumentFingerprint(content: "First")
+        ))
+        let secondIdentity = try #require(try await store.identity(
+            forVaultID: analysisVaultID,
+            relativePath: "Second.md",
+            fingerprint: DocumentFingerprint(content: "Second")
+        ))
+        let first = try await store.saveNoteMetadata(
+            noteID: firstIdentity.id,
+            fields: ["title": .string("First")],
+            expectedRevision: nil
+        )
+        let second = try await store.saveNoteMetadata(
+            noteID: secondIdentity.id,
+            fields: ["title": .string("Second")],
+            expectedRevision: nil
+        )
+        let recordURL = fixture.root
+            .appendingPathComponent(".scholium/note-metadata/v1", isDirectory: true)
+            .appendingPathComponent("\(firstIdentity.id.uuidString.lowercased()).json")
+        let invalidBytes = Data("{\"damaged\":true}".utf8)
+        try invalidBytes.write(to: recordURL, options: .atomic)
+
+        let issue: NoteMetadataRecoveryIssue
+        do {
+            _ = try await store.noteMetadataRecords(catalog: .builtIn)
+            Issue.record("The damaged Metadata record unexpectedly loaded.")
+            return
+        } catch let NoteMetadataError.recoveryRequired(value) {
+            issue = value
+        }
+        #expect(issue.fileName == recordURL.lastPathComponent)
+        #expect(issue.fingerprint == DocumentFingerprint(data: invalidBytes))
+        #expect(issue.reason == .invalidEnvelope)
+        #expect(try await store.noteMetadata(noteID: secondIdentity.id) == second)
+
+        let changedBytes = Data("{\"changed\":true}".utf8)
+        try changedBytes.write(to: recordURL, options: .atomic)
+        await #expect(throws: NoteMetadataError.self) {
+            _ = try await store.archiveInvalidNoteMetadataRecord(issue)
+        }
+        #expect(try Data(contentsOf: recordURL) == changedBytes)
+        try invalidBytes.write(to: recordURL, options: .atomic)
+
+        let preservedURL = try await store.archiveInvalidNoteMetadataRecord(issue)
+        #expect(!FileManager.default.fileExists(atPath: recordURL.path))
+        #expect(try Data(contentsOf: preservedURL) == invalidBytes)
+        #expect(try await store.noteMetadataRecords(catalog: .builtIn) == [second])
+        #expect(first.record.noteID == firstIdentity.id)
+    }
+
     @Test("Portable attachment records retain only stable identity and typed location")
     func attachmentCatalogRegistrationAndRemoval() async throws {
         let fixture = try Fixture()
@@ -180,7 +244,7 @@ struct TriptychControlTests {
             "analysisAgentCreation",
             "attentionDismissalDays",
         ])
-        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 7)
+        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 8)
     }
 
     @Test("The isolated QA Settings fixture uses only the current schema")
@@ -190,7 +254,7 @@ struct TriptychControlTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
-            "Tools/Fixtures/qa-triptych-settings-v7.json"
+            "Tools/Fixtures/qa-triptych-settings-v8.json"
         ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
@@ -371,7 +435,7 @@ struct TriptychControlTests {
         await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
         #expect(try Data(contentsOf: url) == oldSchemaBytes)
 
-        try Data(#"{"schemaVersion":7,"metadataFields":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        try Data(#"{"schemaVersion":8,"metadataFields":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
         var reviewedObject = try #require(

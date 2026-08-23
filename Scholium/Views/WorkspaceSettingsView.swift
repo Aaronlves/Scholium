@@ -542,7 +542,11 @@ private struct MetadataSettingsView: View {
     @State private var errorMessage: String?
     @State private var isAddingField = false
     @State private var newFieldKey = ""
+    @State private var newFieldLabel = ""
+    @State private var newFieldDescription = ""
+    @State private var newFieldChoices = ""
     @State private var newFieldKind: PropertyValueKind = .text
+    @State private var choiceDrafts: [String: String] = [:]
 
     private var selectedProfile: SchemaProfileID {
         switch selectedSlot {
@@ -856,7 +860,7 @@ private struct MetadataSettingsView: View {
     private var fieldDefinitionsSection: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             settingsSectionTitle("Managed Fields")
-            Text("Fields added here become optional Metadata fields for every Note in this role. Adding one does not change any Note, About profile, or Agent preference.")
+            Text("Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels and descriptions can change; archiving is reversible and preserves every stored value.")
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -872,23 +876,7 @@ private struct MetadataSettingsView: View {
                     spacing: ScholiumMetrics.Settings.listRowSpacing
                 ) {
                     ForEach(definitions, id: \.key) { definition in
-                        HStack(spacing: ScholiumMetrics.Settings.rowControlSpacing) {
-                            VStack(
-                                alignment: .leading,
-                                spacing: ScholiumMetrics.Properties.headerDetailSpacing
-                            ) {
-                                Text(displayName(for: definition.key))
-                                    .font(ScholiumTypography.interface(.body))
-                                Text(definition.key)
-                                    .font(ScholiumTypography.exact(.small))
-                                    .scholiumForeground(.mutedText)
-                            }
-                            Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
-                            Text(displayName(for: definition.valueKind))
-                                .font(ScholiumTypography.interface(.compact))
-                                .scholiumForeground(.secondaryText)
-                        }
-                        .accessibilityElement(children: .combine)
+                        managedFieldRow(definition)
                     }
                 }
             }
@@ -899,6 +887,12 @@ private struct MetadataSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .accessibilityLabel("Managed field key")
                         .accessibilityIdentifier("scholium.metadataSettings.fieldKey")
+                    TextField("Display Name", text: $newFieldLabel, prompt: Text("Research Stage"))
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Managed field display name")
+                    TextField("Description (Optional)", text: $newFieldDescription)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Managed field description")
                     Picker("Value Type", selection: $newFieldKind) {
                         ForEach(customFieldKinds, id: \.self) { kind in
                             Text(displayName(for: kind)).tag(kind)
@@ -906,6 +900,16 @@ private struct MetadataSettingsView: View {
                     }
                     .pickerStyle(.menu)
                     .accessibilityIdentifier("scholium.metadataSettings.valueType")
+                    if newFieldKind == .choice {
+                        TextField(
+                            "Choices (One Per Line)",
+                            text: $newFieldChoices,
+                            axis: .vertical
+                        )
+                        .lineLimit(3...6)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Controlled choices, one per line")
+                    }
                     if let message = newFieldValidationMessage {
                         Text(message)
                             .font(ScholiumTypography.interface(.small))
@@ -932,7 +936,74 @@ private struct MetadataSettingsView: View {
     }
 
     private var customFieldKinds: [PropertyValueKind] {
-        [.text, .multilineText, .textList, .number, .boolean, .date]
+        [.text, .multilineText, .textList, .number, .boolean, .date, .choice]
+    }
+
+    @ViewBuilder
+    private func managedFieldRow(_ definition: MetadataFieldDefinition) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Settings.rowControlSpacing) {
+                VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                    TextField("Display Name", text: definitionLabelBinding(definition.key))
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Display name for \(definition.key)")
+                    Text(definition.key)
+                        .font(ScholiumTypography.exact(.small))
+                        .scholiumForeground(.mutedText)
+                }
+                Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
+                VStack(alignment: .trailing, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
+                    Text(displayName(for: definition.valueKind))
+                        .font(ScholiumTypography.interface(.compact))
+                        .scholiumForeground(.secondaryText)
+                    Text(definition.lifecycle == .active ? "Active" : "Archived")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                }
+            }
+            TextField(
+                "Description (Optional)",
+                text: definitionDescriptionBinding(definition.key)
+            )
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("Description for \(definition.key)")
+
+            if definition.valueKind == .choice {
+                Text((definition.allowedValues ?? []).joined(separator: " · "))
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .textSelection(.enabled)
+                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    TextField(
+                        "Add Choice",
+                        text: choiceDraftBinding(definition.key)
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("New controlled choice for \(definition.key)")
+                    Button("Add Choice") { appendChoice(to: definition.key) }
+                        .disabled(!canAppendChoice(to: definition.key))
+                }
+            }
+
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Used in \(metadataUsageCount(for: definition.key)) Notes")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                Spacer()
+                Button(definition.lifecycle == .active ? "Archive Field" : "Restore Field") {
+                    setLifecycle(
+                        definition.lifecycle == .active ? .archived : .active,
+                        for: definition.key
+                    )
+                }
+                .accessibilityHint(
+                    definition.lifecycle == .active
+                        ? "Stops offering this field for new values without deleting stored values."
+                        : "Offers this field for new values again."
+                )
+            }
+        }
+        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
     }
 
     private var newFieldValidationMessage: String? {
@@ -947,7 +1018,11 @@ private struct MetadataSettingsView: View {
         var candidate = metadataFields
         candidate[selectedSlot, default: []].append(MetadataFieldDefinition(
             key: newFieldKey,
-            valueKind: newFieldKind
+            valueKind: newFieldKind,
+            label: newFieldLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil : newFieldLabel,
+            description: normalizedOptionalText(newFieldDescription),
+            allowedValues: newFieldKind == .choice ? parsedNewFieldChoices : nil
         ))
         do {
             try TriptychSettingsValidator.validateMetadataFieldDefinitions(candidate)
@@ -967,7 +1042,11 @@ private struct MetadataSettingsView: View {
         guard newFieldValidationMessage == nil else { return }
         metadataFields[selectedSlot, default: []].append(MetadataFieldDefinition(
             key: newFieldKey,
-            valueKind: newFieldKind
+            valueKind: newFieldKind,
+            label: newFieldLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil : newFieldLabel,
+            description: normalizedOptionalText(newFieldDescription),
+            allowedValues: newFieldKind == .choice ? parsedNewFieldChoices : nil
         ))
         cancelAddingField()
     }
@@ -975,7 +1054,84 @@ private struct MetadataSettingsView: View {
     private func cancelAddingField() {
         isAddingField = false
         newFieldKey = ""
+        newFieldLabel = ""
+        newFieldDescription = ""
+        newFieldChoices = ""
         newFieldKind = .text
+    }
+
+    private var parsedNewFieldChoices: [String] {
+        newFieldChoices.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func normalizedOptionalText(_ value: String) -> String? {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func definitionLabelBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { definition(for: key)?.label ?? MetadataFieldDefinition.defaultLabel(for: key) },
+            set: { value in updateDefinition(key) { $0.label = value } }
+        )
+    }
+
+    private func definitionDescriptionBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { definition(for: key)?.description ?? "" },
+            set: { value in updateDefinition(key) { $0.description = normalizedOptionalText(value) } }
+        )
+    }
+
+    private func choiceDraftBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { choiceDrafts[key] ?? "" },
+            set: { choiceDrafts[key] = $0 }
+        )
+    }
+
+    private func definition(for key: String) -> MetadataFieldDefinition? {
+        metadataFields[selectedSlot]?.first { $0.key == key }
+    }
+
+    private func updateDefinition(
+        _ key: String,
+        _ update: (inout MetadataFieldDefinition) -> Void
+    ) {
+        guard var definitions = metadataFields[selectedSlot],
+              let index = definitions.firstIndex(where: { $0.key == key }) else { return }
+        update(&definitions[index])
+        metadataFields[selectedSlot] = definitions
+    }
+
+    private func setLifecycle(_ lifecycle: MetadataFieldLifecycle, for key: String) {
+        updateDefinition(key) { $0.lifecycle = lifecycle }
+    }
+
+    private func metadataUsageCount(for key: String) -> Int {
+        settingsModel.snapshot.metadataUsageCounts[selectedSlot]?[key] ?? 0
+    }
+
+    private func canAppendChoice(to key: String) -> Bool {
+        guard let definition = definition(for: key) else { return false }
+        let value = choiceDrafts[key, default: ""]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return !value.isEmpty
+            && value.utf8.count <= 128
+            && !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+            && !(definition.allowedValues ?? []).contains(value)
+    }
+
+    private func appendChoice(to key: String) {
+        guard canAppendChoice(to: key) else { return }
+        let value = choiceDrafts[key, default: ""]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        updateDefinition(key) { definition in
+            definition.allowedValues = (definition.allowedValues ?? []) + [value]
+        }
+        choiceDrafts[key] = ""
     }
 
     private var agentPreferencesSection: some View {
@@ -1412,11 +1568,31 @@ private struct MetadataSettingsView: View {
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata value type is unsupported.", table: "Localizable", bundle: .module)
             repair = String(localized: "Choose one of the available simple value types.", table: "Localizable", bundle: .module)
-        case .metadataFieldDefinitionsAreAppendOnly(let value):
-            role = value; sourceType = nil; key = nil
+        case .invalidMetadataFieldLabel(let value, let field):
+            role = value; sourceType = nil; key = field
             section = .fieldDefinitions
-            diagnosticReason = String(localized: "Existing custom Metadata definitions cannot be renamed, reordered, or removed.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Revert those definitions and append a new field instead.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(localized: "This custom Metadata display name is invalid.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Use a nonempty display name of at most 80 UTF-8 bytes.", table: "Localizable", bundle: .module)
+        case .invalidMetadataFieldDescription(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "This custom Metadata description is invalid.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Use one line of at most 240 UTF-8 bytes, or leave it blank.", table: "Localizable", bundle: .module)
+        case .invalidMetadataFieldChoices(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "This custom Metadata field has invalid controlled choices.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Provide unique nonempty choices. Existing choices can only be extended.", table: "Localizable", bundle: .module)
+        case .metadataFieldIdentityChanged(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "This custom Metadata field's stable key, value type, or position changed.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Restore its identity and use Archive Field to stop offering it.", table: "Localizable", bundle: .module)
+        case .metadataFieldChoicesRemoved(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "An existing controlled choice was removed or reordered.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Restore the existing order; controlled choices may only be appended.", table: "Localizable", bundle: .module)
         case .noncanonicalConfigurationField(let value, let field):
             role = value; sourceType = nil; key = field
             section = .configuration

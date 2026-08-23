@@ -70,9 +70,53 @@ public struct NoteMetadataSnapshot: Codable, Hashable, Sendable {
     }
 }
 
+public enum NoteMetadataRecoveryReason: String, Codable, Hashable, Sendable {
+    case invalidEnvelope
+    case fileIdentityMismatch
+    case orphanedNoteIdentity
+    case invalidRoleOrFields
+}
+
+/// Fingerprint-bound recovery authority for exactly one portable metadata
+/// record. It contains no record values and cannot authorize any other file.
+public struct NoteMetadataRecoveryIssue: Codable, Hashable, Sendable {
+    public let fileName: String
+    public let fingerprint: DocumentFingerprint
+    public let noteID: UUID?
+    public let reason: NoteMetadataRecoveryReason
+
+    public init(
+        fileName: String,
+        fingerprint: DocumentFingerprint,
+        noteID: UUID?,
+        reason: NoteMetadataRecoveryReason
+    ) {
+        self.fileName = fileName
+        self.fingerprint = fingerprint
+        self.noteID = noteID
+        self.reason = reason
+    }
+
+    public var explanation: String {
+        switch reason {
+        case .invalidEnvelope:
+            "The JSON record is damaged or uses an unsupported schema."
+        case .fileIdentityMismatch:
+            "The record's filename and embedded Note identity do not agree."
+        case .orphanedNoteIdentity:
+            "The record does not belong to a current stable Note identity."
+        case .invalidRoleOrFields:
+            "The record contains fields that do not match its Note role or the current Metadata catalog."
+        }
+    }
+}
+
 public enum NoteMetadataError: LocalizedError, Equatable, Sendable {
     case invalidCatalog
     case invalidRecord(UUID)
+    case recoveryRequired(NoteMetadataRecoveryIssue)
+    case recoveryIssueChanged
+    case recoveryArchiveFailed(String)
     case revisionConflict(UUID)
     case identityUnavailable(UUID)
     case identityUnavailableAtPath(String)
@@ -84,6 +128,12 @@ public enum NoteMetadataError: LocalizedError, Equatable, Sendable {
             "Portable Note metadata is damaged or uses an unsupported schema. Its exact files were preserved."
         case .invalidRecord(let id):
             "Portable metadata for Note \(id.uuidString) is invalid. Its exact bytes were preserved."
+        case .recoveryRequired(let issue):
+            "Portable Note metadata record \(issue.fileName) requires recovery. \(issue.explanation) Its exact bytes were preserved."
+        case .recoveryIssueChanged:
+            "The portable Note metadata recovery record changed. Reload its current state before archiving it."
+        case .recoveryArchiveFailed(let reason):
+            "The portable Note metadata record could not be archived safely: \(reason)"
         case .revisionConflict:
             "This Note's metadata changed after it was loaded. Reload the current values before saving."
         case .identityUnavailable(let id):

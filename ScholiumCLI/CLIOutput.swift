@@ -85,6 +85,10 @@ extension ScholiumCLI {
           scholium read <vault>:<relative-path> [--format json]
           scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>]
               [--analysis-from <json-file>]
+          scholium note metadata-read <vault>:<path> [--format json]
+          scholium note metadata-set <vault>:<path> <key> --value-from <json-file>
+              --expected <metadata-sha256|absent>
+          scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>
           scholium note import <vault>:<path> --from <markdown-file>
           scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>
           scholium note move <vault>:<path> <new-path> --expected <sha256>
@@ -430,6 +434,9 @@ private extension ScholiumCLI {
             "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
             "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
             "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]\n\nAlways creates fixed YAML with summary and keywords. Authored YAML JSON may supply {\"summary\":\"...\",\"keywords\":[\"...\"]}; omission keeps summary:null and keywords:[]. Body input is UTF-8 LF text without a top-level YAML envelope. Analysis JSON is {\"source_type\":\"journal_article\",\"fields\":[{\"key\":\"title\",\"value\":\"Example\"}]}; every managed field is optional.",
+            "note metadata-read": "Usage: scholium note metadata-read <vault>:<path> [--format json]\n\nReads only the Note's validated portable Scholium Metadata record and its independent metadata_sha256 revision. Markdown source remains separate.",
+            "note metadata-set": "Usage: scholium note metadata-set <vault>:<path> <key> --value-from <json-file> --expected <metadata-sha256|absent>\n\nSets one role-valid managed field through the same complete-record CAS used by the app. The value file contains one JSON scalar, array, or object matching the field contract. Use absent only when metadata-read reports no record.",
+            "note metadata-remove": "Usage: scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>\n\nRemoves one present managed field through the same complete-record CAS used by the app. It never changes YAML or Markdown.",
             "note import": "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML.",
             "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",
             "note move": "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>",

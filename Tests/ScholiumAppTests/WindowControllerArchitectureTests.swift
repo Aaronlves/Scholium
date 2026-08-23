@@ -2183,8 +2183,9 @@ struct WindowControllerArchitectureTests {
             "removeLocalTriptychRegistration": 1,
             "registeredVaults": 3,
             "registeredTriptychs": 3,
-            "portableContainerURL": 3,
+            "portableContainerURL": 4,
             "preserveUnsupportedPortableControl": 1,
+            "archiveInvalidNoteMetadataRecord": 1,
             "workspaceCapabilities": 2,
             "refreshPendingResearchAgentPermissions": 1,
             "vaultConfig": 2,
@@ -2203,7 +2204,7 @@ struct WindowControllerArchitectureTests {
 
         #expect(compositionAndSubscription.values.reduce(0, +) == 12)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
-        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 19)
+        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 21)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))

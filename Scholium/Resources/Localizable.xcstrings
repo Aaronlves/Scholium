@@ -2290,6 +2290,9 @@
         }
       }
     },
+    "Add Choice" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "添加选项" } } }
+    },
     "Add Collection Editor" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3683,6 +3686,9 @@
         }
       }
     },
+    "An existing controlled choice was removed or reordered." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已有的受控选项被移除或重新排序。" } } }
+    },
     "Analyses" : {
       "localizations" : {
         "en" : {
@@ -4121,6 +4127,12 @@
         }
       }
     },
+    "Archive Field" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "归档字段" } } }
+    },
+    "Archive Invalid Metadata Record?" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "归档无效的元数据记录？" } } }
+    },
     "Archive Location" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4140,6 +4152,12 @@
           }
         }
       }
+    },
+    "Archive Record" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "归档记录" } } }
+    },
+    "Archive Record…" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "归档记录…" } } }
     },
     "Archive Unreadable Research Actions?" : {
       "localizations" : {
@@ -4260,6 +4278,9 @@
           }
         }
       }
+    },
+    "Archived" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已归档" } } }
     },
     "Argument or Objection/Reply" : {
       "localizations" : {
@@ -6178,6 +6199,9 @@
           }
         }
       }
+    },
+    "Choices (One Per Line)" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "选项（每行一个）" } } }
     },
     "Choices as value: Label" : {
       "localizations" : {
@@ -8773,6 +8797,9 @@
         }
       }
     },
+    "Controlled choices, one per line" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "受控选项，每行一个" } } }
+    },
     "Copied the complete Method improvement handoff." : {
       "localizations" : {
         "zh-Hans" : {
@@ -10821,6 +10848,12 @@
         }
       }
     },
+    "Description (Optional)" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "说明（可选）" } } }
+    },
+    "Description for %@" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 的说明" } } }
+    },
     "Destination" : {
       "localizations" : {
         "en" : {
@@ -11396,6 +11429,9 @@
         }
       }
     },
+    "Display Name" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "显示名称" } } }
+    },
     "Display equations" : {
       "localizations" : {
         "en" : {
@@ -11421,6 +11457,9 @@
           }
         }
       }
+    },
+    "Display name for %@" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 的显示名称" } } }
     },
     "Disposition" : {
       "localizations" : {
@@ -13258,6 +13297,9 @@
           }
         }
       }
+    },
+    "Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels and descriptions can change; archiving is reversible and preserves every stored value." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此处添加的字段会成为该角色下每篇笔记的可选元数据字段。字段键和值类型不可更改。标签和说明可以修改；归档可撤销，并会保留所有已存储的值。" } } }
     },
     "Fields added here become optional Metadata fields for every Note in this role. Adding one does not change any Note, About profile, or Agent preference." : {
       "localizations" : {
@@ -17143,6 +17185,12 @@
         }
       }
     },
+    "Managed field description" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "托管字段说明" } } }
+    },
+    "Managed field display name" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "托管字段显示名称" } } }
+    },
     "Managed field key" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18880,6 +18928,9 @@
         }
       }
     },
+    "New controlled choice for %@" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 的新受控选项" } } }
+    },
     "New note created. Edit is ready." : {
       "localizations" : {
         "zh-Hans" : {
@@ -20477,6 +20528,9 @@
         }
       }
     },
+    "Offers this field for new values again." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "再次允许为此字段添加新值。" } } }
+    },
     "Official Scholium CLI download" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20518,6 +20572,9 @@
           }
         }
       }
+    },
+    "One portable Note Metadata record is damaged, orphaned, or incompatible with its current role. Archive only that exact record so Scholium can reload the remaining Metadata catalog." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "一条可移植笔记元数据记录已损坏、成为孤立记录，或与当前角色不兼容。请仅归档该记录，以便 Scholium 重新载入其余元数据目录。" } } }
     },
     "One researcher-authored Method feedback comment is still unhandled." : {
       "localizations" : {
@@ -23183,6 +23240,9 @@
           }
         }
       }
+    },
+    "Provide unique nonempty choices. Existing choices can only be extended." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请提供不重复的非空选项。已有选项只能扩充。" } } }
     },
     "Publication" : {
       "localizations" : {
@@ -26028,6 +26088,9 @@
         }
       }
     },
+    "Research Stage" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "研究阶段" } } }
+    },
     "Research Unit" : {
       "localizations" : {
         "en" : {
@@ -26557,6 +26620,9 @@
         }
       }
     },
+    "Restore Field" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "恢复字段" } } }
+    },
     "Restore Interrupted Save?" : {
       "localizations" : {
         "zh-Hans" : {
@@ -26610,6 +26676,9 @@
         }
       }
     },
+    "Restore its identity and use Archive Field to stop offering it." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "恢复其标识，或使用“归档字段”停止提供该字段。" } } }
+    },
     "Restore only if the current Note still matches the expected revision" : {
       "localizations" : {
         "zh-Hans" : {
@@ -26661,6 +26730,9 @@
           }
         }
       }
+    },
+    "Restore the existing order; controlled choices may only be appended." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "恢复已有顺序；受控选项只能追加。" } } }
     },
     "Restore the missing role configuration." : {
       "localizations" : {
@@ -29087,6 +29159,9 @@
         }
       }
     },
+    "Scholium will preserve this record’s exact bytes under a unique recovery name, remove only that invalid record from the active Metadata catalog, and reload the Triptych. Markdown and every other portable control file remain unchanged." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Scholium 会将此记录的精确字节保存在唯一的恢复名称下，仅从活动元数据目录中移除该无效记录，然后重新载入三库工作区。Markdown 和其他所有可移植控制文件均保持不变。" } } }
+    },
     "Scholium will recheck each exact planned source and continue deletion and privacy cleanup. Already deleted source is never restored; a changed or unreadable source stops without being removed." : {
       "localizations" : {
         "zh-Hans" : {
@@ -31287,6 +31362,9 @@
           }
         }
       }
+    },
+    "Stops offering this field for new values without deleting stored values." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "停止为此字段提供新值，但不删除已存储的值。" } } }
     },
     "Storage Unavailable" : {
       "localizations" : {
@@ -33821,6 +33899,18 @@
         }
       }
     },
+    "This custom Metadata description is invalid." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此自定义元数据说明无效。" } } }
+    },
+    "This custom Metadata display name is invalid." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此自定义元数据显示名称无效。" } } }
+    },
+    "This custom Metadata field has invalid controlled choices." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此自定义元数据字段包含无效的受控选项。" } } }
+    },
+    "This custom Metadata field's stable key, value type, or position changed." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此自定义元数据字段的稳定键、值类型或位置已改变。" } } }
+    },
     "This custom Metadata key is already owned by Scholium or authored YAML." : {
       "localizations" : {
         "zh-Hans" : {
@@ -35749,6 +35839,9 @@
         }
       }
     },
+    "Use a nonempty display name of at most 80 UTF-8 bytes." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请使用不超过 80 个 UTF-8 字节的非空显示名称。" } } }
+    },
     "Use a unique lowercase snake_case key." : {
       "localizations" : {
         "zh-Hans" : {
@@ -35840,6 +35933,9 @@
           }
         }
       }
+    },
+    "Use one line of at most 240 UTF-8 bytes, or leave it blank." : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请使用不超过 240 个 UTF-8 字节的单行说明，或留空。" } } }
     },
     "Use selected passage" : {
       "localizations" : {
@@ -35965,6 +36061,9 @@
           }
         }
       }
+    },
+    "Used in %lld Notes" : {
+      "localizations" : { "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已用于 %lld 篇笔记" } } }
     },
     "Used only to screen reading leads from an Analysis. It does not create a Research Action, edit notes, or write to Zotero." : {
       "localizations" : {

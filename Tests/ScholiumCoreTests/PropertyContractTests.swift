@@ -77,24 +77,58 @@ struct PropertyContractTests {
         }
     }
 
-    @Test("Custom definitions are append-only after they become workspace authority")
-    func customDefinitionsAreAppendOnly() throws {
+    @Test("Custom definitions retain stable identity while guidance and lifecycle evolve")
+    func customDefinitionLifecycle() throws {
         var current = TriptychSettings()
         current.metadataFields[.output] = [
-            MetadataFieldDefinition(key: "draft_stage", valueKind: .text),
+            MetadataFieldDefinition(
+                key: "draft_stage",
+                valueKind: .choice,
+                label: "Draft Stage",
+                description: "Current editorial stage",
+                allowedValues: ["draft", "review"]
+            ),
         ]
-        var appended = current
-        appended.metadataFields[.output, default: []].append(
+        var evolved = current
+        evolved.metadataFields[.output]?[0].label = "Writing Stage"
+        evolved.metadataFields[.output]?[0].description = "Researcher-defined workflow stage"
+        evolved.metadataFields[.output]?[0].allowedValues?.append("complete")
+        evolved.metadataFields[.output]?[0].lifecycle = .archived
+        evolved.metadataFields[.output, default: []].append(
             MetadataFieldDefinition(key: "target_words", valueKind: .number)
         )
-        try TriptychSettingsValidator.validateTransition(from: current, to: appended)
+        try TriptychSettingsValidator.validate(evolved)
+        try TriptychSettingsValidator.validateTransition(from: current, to: evolved)
+
+        let catalog = NoteMetadataCatalog(settings: evolved)
+        #expect(catalog.contract(for: "draft_stage", profile: .draftProject) != nil)
+        #expect(catalog.activeContracts(for: .draftProject).contains {
+            $0.canonicalKey == "draft_stage"
+        } == false)
+        #expect(catalog.validate(
+            fields: ["draft_stage": .string("review")],
+            profile: .draftProject
+        ).isEmpty)
 
         var renamed = current
         renamed.metadataFields[.output] = [
-            MetadataFieldDefinition(key: "writing_stage", valueKind: .text),
+            MetadataFieldDefinition(
+                key: "writing_stage",
+                valueKind: .choice,
+                allowedValues: ["draft", "review"]
+            ),
         ]
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validateTransition(from: current, to: renamed)
+        }
+
+        var removedChoice = current
+        removedChoice.metadataFields[.output]?[0].allowedValues = ["review"]
+        #expect(throws: TriptychSettingsValidationError.self) {
+            try TriptychSettingsValidator.validateTransition(
+                from: current,
+                to: removedChoice
+            )
         }
     }
 

@@ -308,24 +308,34 @@ at `.scholium/note-metadata/v1/<stable-note-uuid>.json` belongs to one stable
 Note identity. It is neither Markdown nor a writable projection of Markdown,
 and it never reconstructs or rewrites source. A missing record means no managed
 values. Damaged, future, orphaned, wrong-role, or concurrently changed records
-fail closed and retain their exact bytes for recovery.
+fail closed and retain their exact bytes for recovery. A damaged record blocks
+publication until the researcher confirms archiving that one filename and
+fingerprint to a non-record sibling. A changed record cancels recovery; valid
+neighboring records, source, and the remaining portable-control owner are never
+archived with it.
 
 Analysis uses the citation-ready built-in catalog and source-type profiles in
 Appendix A. It uses string `publication_date`, never numeric `year`; publication
 state belongs to `publication_status`. Creator fields use ordered nonempty
 CreatorLists. Topic manages built-in `aliases`; Work manages built-in
-`work_type` and `coauthors`. In addition, the researcher may append global
+`work_type` and `coauthors`. In addition, the researcher may define global
 managed-field definitions independently for Analysis, Topic, and Work in This
-Triptych Settings. A definition contains only one stable key and one supported
-simple value kind. It creates no value, placeholder, default, requiredness,
-body section, authored YAML, About visibility, Agent preference, or integration
-mapping. An Analysis custom field applies to every Analysis source type.
+Triptych Settings. A definition contains one stable key and supported simple
+value kind, researcher-facing label and optional description, optional ordered
+choices for a controlled text value, and active or archived lifecycle. It
+creates no value, placeholder, default, requiredness, body section, authored
+YAML, About visibility, Agent preference, or integration mapping. An Analysis
+custom field applies to every Analysis source type.
 
 The resolved role catalog is the built-in catalog followed by that role's
 researcher-defined fields. It is one workspace-scoped immutable contract used
 for Metadata validation, editing, Search, Library filters, About selection, and
-Agent field plans. Current Settings permits appending definitions but not
-renaming or removing them, so a stored value cannot silently lose its schema.
+Agent field plans. Settings may change label and description, append controlled
+choices, archive a field, or restore it. It never removes or reorders a
+definition, changes its key or value kind, or removes an existing choice.
+Archived fields remain valid, editable when already present, and searchable,
+but are excluded from Add Field, About choices, and Agent preferences. Thus a
+stored value cannot silently lose its schema.
 Scholium validates value shapes and structural safety but never verifies or
 normalizes bibliographic truth, identifiers, URLs, language, dates, names,
 volume/issue/pages, publisher data, or philosophical content.
@@ -365,6 +375,12 @@ absent or malformed. A concurrent metadata change preserves the draft and
 requires a reload instead of overwriting. About composes selected managed
 values with authored `summary` and `keywords`, omits absent or empty values,
 and preserves semantic group names for assistive technology.
+
+The researcher CLI uses the same Application-owned record operation:
+`note metadata-read` returns source and Metadata fingerprints plus natural JSON
+values; `note metadata-set` and `note metadata-remove` require the exact current
+Metadata fingerprint (or explicit `absent` creation) and never use the source
+fingerprint as Metadata authority. They do not open or rewrite YAML.
 
 This metadata boundary imposes no body schema. Scholium never inserts,
 migrates, requires, or interprets body sections such as detailed summaries,

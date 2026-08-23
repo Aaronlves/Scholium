@@ -36,6 +36,24 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the Metadata lifecycle and recovery integration passed its
+  focused Contracts, Core, Application, Settings, presentation, Search,
+  localization, architecture, and 11 signed executable-CLI lifecycle owners.
+  Disposable fixtures prove stable key/kind identity; editable labels and
+  descriptions; append-only controlled choices; reversible archival that
+  retains existing values; scope-aware property/choice completion; natural-JSON
+  CLI CAS without source changes; exact single-record recovery; and a
+  Metadata-only refresh with zero source and Metadata-catalog record reads. The
+  task's single complete `verify.sh` run passed documentation and shipped-Skill
+  guards, 199 Web-editor tests, reproducible bundles, RDF-1, 455 Core tests, 3
+  performance tests, 147 Contract tests, 267 Application tests, 15 bridge
+  tests, and the architecture measurement. All 645 App tests ran with one
+  failure: the intended new recovery call was absent from the WindowModel Store
+  allowlist. The allowlist was corrected, and its complete 58-test architecture
+  owner passed. Per the one-complete-gate rule, later symbol, sandbox-bridge,
+  and Release stages were not rerun. This is local automated evidence, not
+  packaged, visual, assistive-technology, or researcher acceptance.
+
 - On 2026-08-23, managed New Note creation removed the generic complete-source
   `create` port and duplicate Untitled-request construction. GUI, researcher
   CLI, and authenticated Agent creation retain one `createManagedNote` owner;

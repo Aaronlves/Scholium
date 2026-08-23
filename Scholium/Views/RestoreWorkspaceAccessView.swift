@@ -8,6 +8,7 @@ struct RestoreWorkspaceAccessView: View {
     let recovery: WorkspaceAccessRecovery
     let restore: (URL) async throws -> Void
     let rebuildPortableControl: () async throws -> URL
+    let archiveNoteMetadataRecord: () async throws -> URL
     let canRemoveRegistration: Bool
     let removeRegistration: () async throws -> Void
     let quitApplication: () -> Void
@@ -17,6 +18,7 @@ struct RestoreWorkspaceAccessView: View {
     @State private var isRebuildingPortableControl = false
     @State private var confirmsRegistrationRemoval = false
     @State private var confirmsPortableControlRebuild = false
+    @State private var confirmsMetadataRecordArchive = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -61,6 +63,8 @@ struct RestoreWorkspaceAccessView: View {
                 Button(primaryTitle) {
                     if recovery.kind == .unsupportedPortableControl {
                         confirmsPortableControlRebuild = true
+                    } else if recovery.kind == .invalidNoteMetadataRecord {
+                        confirmsMetadataRecordArchive = true
                     } else {
                         chooseFolder()
                     }
@@ -97,6 +101,18 @@ struct RestoreWorkspaceAccessView: View {
         } message: {
             Text("Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state.")
         }
+        .confirmationDialog(
+            "Archive Invalid Metadata Record?",
+            isPresented: $confirmsMetadataRecordArchive,
+            titleVisibility: .visible
+        ) {
+            Button("Archive Record", role: .destructive) {
+                archiveMetadataRecord()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Scholium will preserve this record’s exact bytes under a unique recovery name, remove only that invalid record from the active Metadata catalog, and reload the Triptych. Markdown and every other portable control file remain unchanged.")
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.restoreAccess")
     }
@@ -121,17 +137,38 @@ struct RestoreWorkspaceAccessView: View {
                 table: "Localizable",
                 bundle: .module
             )
+        case .invalidNoteMetadataRecord:
+            String(
+                localized: "One portable Note Metadata record is damaged, orphaned, or incompatible with its current role. Archive only that exact record so Scholium can reload the remaining Metadata catalog.",
+                table: "Localizable",
+                bundle: .module
+            )
         }
     }
 
     private var primaryTitle: LocalizedStringResource {
-        recovery.kind == .unsupportedPortableControl
-            ? "Archive and Rebuild…"
-            : "Choose Folder…"
+        switch recovery.kind {
+        case .unsupportedPortableControl: "Archive and Rebuild…"
+        case .invalidNoteMetadataRecord: "Archive Record…"
+        case .vault, .portableControl: "Choose Folder…"
+        }
     }
 
     private var isBusy: Bool {
         isRestoring || isRemovingRegistration || isRebuildingPortableControl
+    }
+
+    private func archiveMetadataRecord() {
+        isRebuildingPortableControl = true
+        errorMessage = nil
+        Task {
+            do {
+                _ = try await archiveNoteMetadataRecord()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isRebuildingPortableControl = false
+        }
     }
 
     private func chooseFolder() {

@@ -39,6 +39,7 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     var triptychSettings: TriptychSettings
     var settingsRevision: SettingsRevision?
     var portableSettingsState: WorkspacePortableSettingsState
+    var metadataUsageCounts: [WorkspaceVaultSlot: [String: Int]]
 
     init(
         registeredVaults: [RegisteredVault] = [],
@@ -46,7 +47,8 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
         activeTriptychID: UUID? = nil,
         triptychSettings: TriptychSettings = TriptychSettings(),
         settingsRevision: SettingsRevision? = nil,
-        portableSettingsState: WorkspacePortableSettingsState? = nil
+        portableSettingsState: WorkspacePortableSettingsState? = nil,
+        metadataUsageCounts: [WorkspaceVaultSlot: [String: Int]] = [:]
     ) {
         self.registeredVaults = registeredVaults
         self.registeredTriptychs = registeredTriptychs
@@ -56,6 +58,7 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
         self.portableSettingsState = portableSettingsState
             ?? settingsRevision.map(WorkspacePortableSettingsState.current)
             ?? .unavailable
+        self.metadataUsageCounts = metadataUsageCounts
     }
 }
 

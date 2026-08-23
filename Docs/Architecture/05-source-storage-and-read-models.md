@@ -162,7 +162,7 @@ without copying its exact source.
 Contracts split structured values by authority. `PropertyContractCatalog`
 contains only authored YAML `summary` and `keywords` for all three roles.
 `BuiltInNoteMetadataCatalog` owns the product vocabulary and complex shapes;
-portable schema-7 Settings owns append-only simple definitions by role.
+portable schema-8 Settings owns stable simple definitions and lifecycle by role.
 `NoteMetadataCatalog` resolves both once per workspace generation and is the
 sole catalog consumed by Core record validation, Application plans, Search,
 Library filters, Settings, About, and the Metadata editor. It defines
@@ -176,7 +176,12 @@ recommendation, and deterministic presentation order.
 only that UUID and a field mapping in canonical sorted JSON. Reads validate the
 record schema, UUID/path identity agreement, and role catalog before publishing
 any value; one invalid file fails the complete Metadata projection closed and
-preserves its exact bytes. Creates and edits use a metadata-revision
+preserves its exact bytes. Preflight reports that direct filename, exact
+fingerprint, optional embedded identity, and failure class. Confirmed recovery
+uses the shared exact-state preserver to archive only that unchanged regular
+file under a non-JSON sibling name; replacement or drift refuses the action,
+and valid neighbor records and the rest of `.scholium` remain untouched.
+Creates and edits use a metadata-revision
 compare-and-swap, atomic replacement, canonical readback, and an explicit
 uncertain-commit outcome. The researcher owns every field value; Scholium owns
 the schema, location, validation, and transaction. No metadata file is a
@@ -209,6 +214,13 @@ validated record value and revision with no Markdown range. Unknown YAML is
 not indexed. The v9 disposable index stores nullable structured-field ranges;
 incremental publication and clean rebuild consume the same authorized Note and
 Metadata manifest.
+
+A Metadata-only commit carries its exact single-record delta through the
+existing refresh coordinator. The builder overlays that delta on the last
+complete Metadata map, reprojects Search/Graph/snapshot state, and records zero
+Metadata catalog reads and zero source enumerate/read/parse/project work. Any
+coalesced non-Metadata request drops the optimization and uses the ordinary
+complete authority read; there is no second refresh or index owner.
 
 `SearchDocumentProjection` additionally emits a `.summary` lexical segment
 only from the canonical top-level string and the exact scalar range already

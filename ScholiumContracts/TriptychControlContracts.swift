@@ -141,11 +141,12 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 7
+    public static let currentSchemaVersion = 8
 
     public let schemaVersion: Int
-    /// Append-only global managed-field definitions, independently scoped to
-    /// Analysis, Topic, and Work. Adding a definition changes no Note value.
+    /// Stable global managed-field definitions, independently scoped to
+    /// Analysis, Topic, and Work. Adding or archiving a definition changes no
+    /// Note value.
     public var metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] {
         didSet { metadataFields = Self.completeMetadataFields(metadataFields) }
     }

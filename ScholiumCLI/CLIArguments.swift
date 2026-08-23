@@ -240,6 +240,21 @@ extension ScholiumCLI {
                     "--analysis-from": .value,
                 ]
             ),
+            "note metadata-read": .init(
+                pathLength: 2,
+                positionalCount: 1 ... 1,
+                options: ["--format": .value]
+            ),
+            "note metadata-set": .init(
+                pathLength: 2,
+                positionalCount: 2 ... 2,
+                options: ["--value-from": .value, "--expected": .value]
+            ),
+            "note metadata-remove": .init(
+                pathLength: 2,
+                positionalCount: 2 ... 2,
+                options: ["--expected": .value]
+            ),
             "note import": .init(
                 pathLength: 2,
                 positionalCount: 1 ... 1,

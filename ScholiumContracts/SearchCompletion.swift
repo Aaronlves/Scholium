@@ -19,13 +19,16 @@ public struct SearchCompletion: Codable, Hashable, Identifiable, Sendable {
 /// provide values for fields already typed as Property or Note identity.
 public struct SearchCompletionContext: Codable, Hashable, Sendable {
     public let propertyKeys: [String]
+    public let propertyValues: [String: [String]]
     public let noteIdentities: [String]
 
     public init(
         propertyKeys: [String] = [],
+        propertyValues: [String: [String]] = [:],
         noteIdentities: [String] = []
     ) {
         self.propertyKeys = propertyKeys
+        self.propertyValues = propertyValues
         self.noteIdentities = noteIdentities
     }
 
@@ -59,13 +62,26 @@ public extension SearchCapabilities {
             guard let field = capability.fields.first(where: {
                 $0.name == rawField
             }) else { return [] }
-            let allowedValues: [String] = switch field.valueKind {
-            case .property:
-                partialValue.contains("=") ? [] : context.propertyKeys
-            case .noteIdentity:
-                context.noteIdentities
-            case .canonical, .lexical:
-                field.allowedValues
+            if field.valueKind == .property,
+               let separator = partialValue.firstIndex(of: "=") {
+                let key = String(partialValue[..<separator])
+                let valuePrefix = String(partialValue[partialValue.index(after: separator)...])
+                let matches = Self.uniqueSorted(context.propertyValues[key] ?? [])
+                    .filter { $0.lowercased().hasPrefix(valuePrefix) }
+                return matches.prefix(limit).map { value in
+                    let replacement = "property:\(key)=\(Self.queryValue(value))"
+                    return SearchCompletion(
+                        replacementText: prefix + replacement,
+                        displayText: replacement,
+                        detail: "Controlled value for \(key)"
+                    )
+                }
+            }
+            let allowedValues: [String]
+            switch field.valueKind {
+            case .property: allowedValues = context.propertyKeys
+            case .noteIdentity: allowedValues = context.noteIdentities
+            case .canonical, .lexical: allowedValues = field.allowedValues
             }
             candidates = Self.uniqueSorted(allowedValues).filter {
                 $0.lowercased().hasPrefix(partialValue)

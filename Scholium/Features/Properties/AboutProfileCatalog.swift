@@ -61,7 +61,15 @@ enum MetadataSettingsCandidateBuilder {
             candidates[slot] = configuration
         }
         settings.about = candidates
-        settings.analysisAgentCreation = agentCreation
+        var activeAgentCreation = agentCreation
+        for sourceType in AnalysisSourceType.allCases {
+            let active = Set(
+                catalog.analysisContracts(for: sourceType).map(\.canonicalKey)
+            )
+            activeAgentCreation.preferredFieldsBySourceType[sourceType] =
+                agentCreation.preferredFields(for: sourceType).filter(active.contains)
+        }
+        settings.analysisAgentCreation = activeAgentCreation
         return settings
     }
 }
@@ -104,7 +112,9 @@ enum AboutProfileCatalog {
               ) != nil else {
             return false
         }
-        return catalog.contract(for: key, profile: profile) != nil
+        return catalog.activeContracts(for: profile).contains {
+            $0.canonicalKey == key
+        }
     }
 
     private static func fixedAuthoredFields(for profile: SchemaProfileID) -> [String] {

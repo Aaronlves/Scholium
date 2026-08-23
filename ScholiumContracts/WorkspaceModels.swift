@@ -878,6 +878,10 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case workspaceStillLoading(UUID)
     case workspaceRegistrationInUse(UUID)
     case portableControlRecoveryRequired(controlPath: String, reason: String)
+    case noteMetadataRecoveryRequired(
+        controlPath: String,
+        issue: NoteMetadataRecoveryIssue
+    )
     case manifestIdentityMismatch(expected: UUID, actual: UUID)
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case operationCommitUncertain(operation: String, reason: String)
@@ -945,6 +949,8 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
         case .portableControlRecoveryRequired(let controlPath, let reason):
             "The portable control folder at \(controlPath) is incompatible or damaged. Preserve the entire folder before Scholium creates current control state. \(reason)"
+        case .noteMetadataRecoveryRequired(let controlPath, let issue):
+            "The portable Note metadata record \(issue.fileName) under \(controlPath) requires recovery. Archive only this exact record before reloading the Triptych. \(issue.explanation)"
         case .manifestIdentityMismatch(let expected, let actual):
             "The portable Triptych identity is \(actual.uuidString), not \(expected.uuidString)."
         case .operationCommittedButRefreshFailed(let operation, let reason):

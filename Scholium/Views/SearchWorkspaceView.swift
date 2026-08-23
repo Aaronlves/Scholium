@@ -6,6 +6,7 @@ import SwiftUI
 /// Search state itself remains owned by `DiscoveryController`; persistence and
 /// presentation routing stay explicit at the `ContentView` composition root.
 struct SpotlightSearchContext {
+    let completionContext: SearchCompletionContext
     let savedSearches: [SavedSearch]
     let savedSearchLoadFailure: String?
     let recoverSavedSearches: () async -> Void
@@ -486,7 +487,10 @@ struct SpotlightSearchPanelView: View {
         guard searchFocused,
               suppressedCompletionQuery != queryDraft,
               !searchFieldHasMarkedText else { return [] }
-        return SearchCapabilities.current.completions(for: queryDraft)
+        return SearchCapabilities.current.completions(
+            for: queryDraft,
+            context: context.completionContext
+        )
     }
 
     private var completionList: some View {

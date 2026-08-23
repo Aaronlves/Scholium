@@ -235,6 +235,86 @@ struct WorkspaceRuntimeMembershipTests {
         await runtime.shutdown()
     }
 
+    @Test("Invalid portable Metadata recovery archives one record and reopens the same Triptych")
+    func singleMetadataRecordRecovery() async throws {
+        let fixture = try await RuntimeMembershipFixture.make()
+        defer { fixture.remove() }
+        let analysisVault = try #require(
+            fixture.assignment.vault(for: .paperAnalysis)
+        )
+        let id = VaultQualifiedNoteID(
+            vaultID: analysisVault.id,
+            relativePath: "Recover Metadata.md"
+        )
+        let exactSource = Data("# Recover Metadata\n".utf8)
+        let seedingRuntime = fixture.liveRuntime()
+        let handle = try await seedingRuntime.openWorkspace(id: fixture.assignment.id)
+        _ = try await handle.documents.importMarkdownSource(
+            String(decoding: exactSource, as: UTF8.self),
+            at: id
+        )
+        _ = try await handle.documents.saveMetadata(
+            id,
+            fields: ["title": .string("Recover")],
+            expectedRevision: nil
+        )
+        let stableID = try #require(
+            try await handle.snapshot().document(id: id)?.stableIdentity.resolvedID
+        )
+        await seedingRuntime.shutdown()
+
+        let settingsURL = fixture.rootURL.appendingPathComponent(
+            ".scholium/settings.json"
+        )
+        let settingsBytes = try Data(contentsOf: settingsURL)
+        let recordURL = fixture.rootURL
+            .appendingPathComponent(".scholium/note-metadata/v1", isDirectory: true)
+            .appendingPathComponent("\(stableID.uuidString.lowercased()).json")
+        let invalidBytes = Data("{\"invalid\":true}".utf8)
+        try invalidBytes.write(to: recordURL, options: .atomic)
+        let runtime = fixture.liveRuntime()
+
+        let issue: NoteMetadataRecoveryIssue
+        do {
+            _ = try await runtime.configureTriptych(
+                paperAnalysisURL: fixture.analysesURL,
+                topicKnowledgeURL: fixture.topicsURL,
+                outputURL: fixture.worksURL,
+                portableContainerURL: fixture.rootURL,
+                triptychID: fixture.assignment.id,
+                triptychName: fixture.assignment.triptych.name
+            )
+            Issue.record("Invalid Metadata unexpectedly opened.")
+            await runtime.shutdown()
+            return
+        } catch let ScholiumApplicationError.noteMetadataRecoveryRequired(_, value) {
+            issue = value
+        }
+
+        let preserved = try await runtime.archiveInvalidNoteMetadataRecord(
+            portableContainerURL: fixture.rootURL,
+            worksURL: fixture.worksURL,
+            issue: issue,
+            triptychID: fixture.assignment.id
+        )
+        #expect(try Data(contentsOf: preserved) == invalidBytes)
+        #expect(try Data(contentsOf: settingsURL) == settingsBytes)
+        #expect(try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
+            id.relativePath
+        )) == exactSource)
+
+        let reopened = try await runtime.configureTriptych(
+            paperAnalysisURL: fixture.analysesURL,
+            topicKnowledgeURL: fixture.topicsURL,
+            outputURL: fixture.worksURL,
+            portableContainerURL: fixture.rootURL,
+            triptychID: fixture.assignment.id,
+            triptychName: fixture.assignment.triptych.name
+        )
+        #expect(reopened.assignment.id == fixture.assignment.id)
+        await runtime.shutdown()
+    }
+
     @Test("Snapshot runtime freezes membership and rejects registry or presentation mutations")
     func snapshotIsReadOnly() async throws {
         let fixture = try await RuntimeMembershipFixture.make()

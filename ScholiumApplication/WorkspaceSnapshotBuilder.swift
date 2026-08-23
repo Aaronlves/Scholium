@@ -8,6 +8,10 @@ struct WorkspaceRefreshMeasurement: Sendable {
     let readFiles: Int
     let parsedDocuments: Int
     let projectedDocuments: Int
+    /// Portable Metadata records read from disk for this generation. A
+    /// Metadata-only delta reuses the last complete validated map and reads
+    /// zero catalog records after the committed record's own readback.
+    let metadataRecordsRead: Int
     let enumerationDuration: Duration
     let readDuration: Duration
     let parseDuration: Duration
@@ -286,6 +290,7 @@ enum WorkspaceSnapshotBuilder {
                 readFiles: measurement.readFiles,
                 parsedDocuments: measurement.parsedDocuments,
                 projectedDocuments: measurement.projectedDocuments,
+                metadataRecordsRead: noteMetadataByID.count,
                 enumerationDuration: measurement.enumerationDuration,
                 readDuration: measurement.readDuration,
                 parseDuration: measurement.parseDuration,
@@ -309,16 +314,26 @@ enum WorkspaceSnapshotBuilder {
         mode: WorkspaceConfigurationMode,
         dependencies: WorkspaceSnapshotBuilderDependencies,
         graphGeneration: Int,
-        workspaceGeneration: UInt64
+        workspaceGeneration: UInt64,
+        noteMetadataByID preloadedNoteMetadataByID: [UUID: NoteMetadataSnapshot]? = nil
     ) async throws -> WorkspaceSnapshotBuildResult {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try Task.checkCancellation()
         let metadataCatalog = try await dependencies.controlStore.metadataCatalog()
+        let loadedMetadata: [NoteMetadataSnapshot]
+        if let preloadedNoteMetadataByID {
+            loadedMetadata = Array(preloadedNoteMetadataByID.values)
+        } else {
+            loadedMetadata = try await dependencies.controlStore
+                .noteMetadataRecords(catalog: metadataCatalog)
+        }
         let noteMetadataByID = Dictionary(
-            uniqueKeysWithValues: try await dependencies.controlStore
-                .noteMetadataRecords(catalog: metadataCatalog).map { ($0.record.noteID, $0) }
+            uniqueKeysWithValues: loadedMetadata.map { ($0.record.noteID, $0) }
         )
+        let metadataRecordsRead = preloadedNoteMetadataByID == nil
+            ? loadedMetadata.count
+            : 0
 
         var loadedVaults: [LoadedVault] = []
         var semanticDocuments: [VaultQualifiedNoteID: MarkdownSemanticDocument] = [:]
@@ -832,6 +847,7 @@ enum WorkspaceSnapshotBuilder {
                 projectedDocuments: sourceMeasurements.reduce(0) {
                     $0 + $1.projectedDocuments
                 },
+                metadataRecordsRead: metadataRecordsRead,
                 enumerationDuration: sourceMeasurements.reduce(.zero) {
                     $0 + $1.enumerationDuration
                 },

@@ -190,6 +190,7 @@ private extension WorkspaceRefreshMeasurement {
             readFiles: readFiles,
             parsedDocuments: parsedDocuments,
             projectedDocuments: projectedDocuments,
+            metadataRecordsRead: metadataRecordsRead,
             enumerationDuration: enumerationDuration,
             readDuration: readDuration,
             parseDuration: parseDuration,

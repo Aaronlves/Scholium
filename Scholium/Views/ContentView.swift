@@ -353,6 +353,7 @@ struct ContentView: View {
 
     private var spotlightSearchContext: SpotlightSearchContext {
         SpotlightSearchContext(
+            completionContext: searchCompletionContext,
             savedSearches: appState.searchController.savedSearches,
             savedSearchLoadFailure: appState.searchController.savedSearchLoadFailure,
             recoverSavedSearches: {
@@ -365,6 +366,36 @@ struct ContentView: View {
             rename: { appState.searchController.rename($0, to: $1) },
             move: { appState.searchController.move($0, by: $1) },
             delete: { appState.searchController.delete($0) }
+        )
+    }
+
+    private var searchCompletionContext: SearchCompletionContext {
+        let profiles: [SchemaProfileID]
+        switch appState.discoveryController.search.criteria.scope {
+        case .currentVault:
+            profiles = [NoteMetadataCatalog.profile(for: shellState.selectedWorkspace)]
+        case .thisNote:
+            profiles = appState.currentNote.map { [$0.schemaProfile] } ?? []
+        case .triptych:
+            profiles = [.analysis, .topicMarkdown, .draftProject]
+        }
+        let managedContracts = profiles.flatMap {
+            workspaceProjectionController.metadataCatalog.contracts(for: $0)
+        }
+        let authoredContracts = profiles.flatMap {
+            PropertyContractCatalog.contracts(for: $0)
+        }
+        let contracts = managedContracts + authoredContracts
+        let keys = Array(Set(contracts.map(\.canonicalKey))).sorted()
+        let values = Dictionary(
+            contracts.compactMap { contract in
+                contract.allowedValues.map { (contract.canonicalKey, $0) }
+            },
+            uniquingKeysWith: { lhs, rhs in Array(Set(lhs + rhs)).sorted() }
+        )
+        return SearchCompletionContext(
+            propertyKeys: keys,
+            propertyValues: values
         )
     }
 

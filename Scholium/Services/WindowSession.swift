@@ -498,6 +498,24 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         )
     }
 
+    @discardableResult
+    func archiveInvalidNoteMetadataRecord(
+        portableContainerURL: URL,
+        worksURL: URL,
+        issue: NoteMetadataRecoveryIssue,
+        triptychID: UUID
+    ) async throws -> URL {
+        guard handles[triptychID] == nil, installationTasks[triptychID] == nil else {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
+        }
+        return try await applicationRuntime.archiveInvalidNoteMetadataRecord(
+            portableContainerURL: portableContainerURL,
+            worksURL: worksURL,
+            issue: issue,
+            triptychID: triptychID
+        )
+    }
+
     func resolveVault(_ selector: String) async throws -> RegisteredVault {
         try await applicationRuntime.resolveVault(selector)
     }
@@ -722,13 +740,26 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             settingsRevision = nil
             portableSettingsState = .corrupted
         }
+        let workspaceSnapshot = try await handle.snapshot()
+        var metadataUsageCounts: [WorkspaceVaultSlot: [String: Int]] = [:]
+        for vault in workspaceSnapshot.vaults {
+            var counts: [String: Int] = [:]
+            for note in vault.documents {
+                guard let fields = note.metadata?.record.fields else { continue }
+                for key in fields.keys {
+                    counts[key, default: 0] += 1
+                }
+            }
+            metadataUsageCounts[vault.slot] = counts
+        }
         return WorkspaceSettingsSnapshot(
             registeredVaults: vaults,
             registeredTriptychs: triptychs,
             activeTriptychID: handle.id,
             triptychSettings: triptychSettings,
             settingsRevision: settingsRevision,
-            portableSettingsState: portableSettingsState
+            portableSettingsState: portableSettingsState,
+            metadataUsageCounts: metadataUsageCounts
         )
     }
 

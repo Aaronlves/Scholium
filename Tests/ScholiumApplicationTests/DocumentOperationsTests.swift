@@ -214,7 +214,11 @@ struct DocumentOperationsTests {
             relativePath: "Managed Metadata.md"
         )
         let exactSource = "\u{FEFF}---\r\ntitle: Retired YAML title\r\nsummary: Exact source summary\r\nkeywords: [one, two]\r\ncustom: 'keep'\r\n---\r\n# Authored heading\r\n"
-        _ = try await handle.documents.importMarkdownSource(exactSource, at: id)
+        let imported = try await handle.documents.importMarkdownSource(exactSource, at: id)
+            .committedValue
+        let stableID = try #require(
+            try await handle.snapshot().document(id: id)?.stableIdentity.resolvedID
+        )
 
         let first = try await handle.documents.saveMetadata(
             id,
@@ -244,6 +248,17 @@ struct DocumentOperationsTests {
         ).committedValue
         #expect(second.revision != first.revision)
         #expect(try await handle.documents.load(id).rawContent == exactSource)
+        _ = try await handle.awaitCommittedSourceProjection(
+            id: id,
+            stableIdentity: stableID,
+            fingerprint: imported.fingerprint
+        )
+        let metadataRefresh = await handle.latestRefreshMeasurement
+        #expect(metadataRefresh.enumeratedFiles == 0)
+        #expect(metadataRefresh.readFiles == 0)
+        #expect(metadataRefresh.parsedDocuments == 0)
+        #expect(metadataRefresh.projectedDocuments == 0)
+        #expect(metadataRefresh.metadataRecordsRead == 0)
 
         let refreshed = try await handle.refresh()
         let projected = try #require(refreshed.document(id: id))

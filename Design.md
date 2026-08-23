@@ -377,11 +377,12 @@ Mac** boundary.
 The This Triptych **Metadata** destination keeps three explicit sections in
 one role-selected detail: global field definitions first, optional Agent
 preferences for Analysis second, and About order last. Adding a definition is
-an inline bounded form with a labelled key field, finite value-kind picker,
-Cancel, and Add Field action. Existing custom definitions are a compact textual
-list; built-in fields are not repeated as a 52-row schema inventory. The view
-does not offer definition rename or removal, and adding a definition neither
-checks an About/Agent option nor writes a Note.
+an inline bounded form with labelled key, display-name, optional-description,
+finite value-kind and controlled-choice inputs, Cancel, and Add Field. Existing
+custom definitions expose editable semantic copy, type, lifecycle, use count,
+and named Archive or Restore; stable key and kind remain static. Built-ins are
+not repeated as a 52-row schema inventory. Adding or archiving a definition
+neither checks an About/Agent option nor writes or deletes a Note value.
 
 Document Appearance presents Configuration, Line width, Body Typeface, Font
 size, and Line spacing before one **Advanced Appearance** disclosure. Body

@@ -241,6 +241,45 @@ public actor WorkspaceRuntime {
         )
     }
 
+    /// Archives one exact invalid portable Metadata record without replacing
+    /// the remaining `.scholium` owner or touching any research vault source.
+    @discardableResult
+    public func archiveInvalidNoteMetadataRecord(
+        portableContainerURL: URL,
+        worksURL: URL,
+        issue: NoteMetadataRecoveryIssue,
+        triptychID: UUID
+    ) async throws -> URL {
+        try requireActive()
+        guard case .live(_, let applicationSupportURL) = membership else {
+            throw ScholiumApplicationError.runtimeConfigurationUnavailable
+        }
+        guard handles[triptychID] == nil,
+              openings[triptychID] == nil,
+              !retainedHandles.values.contains(where: { $0.assignment.id == triptychID }) else {
+            throw ScholiumApplicationError.workspaceRegistrationInUse(triptychID)
+        }
+        let container = portableContainerURL.resolvingSymlinksInPath().standardizedFileURL
+        let expected = worksURL.standardizedFileURL.deletingLastPathComponent()
+            .resolvingSymlinksInPath().standardizedFileURL
+        guard container.path == expected.path else {
+            throw PortableControlAccessError.invalidContainer(
+                expected: expected.path,
+                selected: container.path
+            )
+        }
+        let scopeStarted = portableContainerURL.startAccessingSecurityScopedResource()
+        defer { if scopeStarted { portableContainerURL.stopAccessingSecurityScopedResource() } }
+        let coordinationURL = applicationSupportURL
+            .appendingPathComponent("Triptychs", isDirectory: true)
+            .appendingPathComponent(triptychID.uuidString, isDirectory: true)
+        let store = try TriptychControlStore(
+            worksVaultURL: worksURL,
+            coordinationURL: coordinationURL
+        )
+        return try await store.archiveInvalidNoteMetadataRecord(issue)
+    }
+
     /// Builds a deterministic, source-only workspace bootstrap candidate.
     /// Delivery targets never construct vault or Application Support paths.
     public nonisolated func bootstrapCandidate(
@@ -689,6 +728,17 @@ public actor WorkspaceRuntime {
             _ = try await researchConfiguration.profileSnapshot()
             _ = try await researchConfiguration.collaborationSnapshot()
             _ = try await researchConfiguration.citationMethodSnapshot()
+        } catch let error as NoteMetadataError {
+            if case .recoveryRequired(let issue) = error {
+                throw ScholiumApplicationError.noteMetadataRecoveryRequired(
+                    controlPath: controlURL.path,
+                    issue: issue
+                )
+            }
+            throw ScholiumApplicationError.portableControlRecoveryRequired(
+                controlPath: controlURL.path,
+                reason: error.localizedDescription
+            )
         } catch let error as TriptychControlError {
             throw ScholiumApplicationError.portableControlRecoveryRequired(
                 controlPath: controlURL.path,

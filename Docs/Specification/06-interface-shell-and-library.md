@@ -404,7 +404,9 @@ Menus follow researcher tasks:
   provider-specific scope, no empty sheet, and bounded Note or Record results
   that identify match context, source freshness, and destination. Typing a
   valid field prefix may open one bounded capability-driven completion list;
-  accepting an item edits only the visible query text. Completion and results
+  scope-authorized property keys participate, optional Note identities may
+  participate, and a controlled property value completes after `=`. Accepting an item edits only
+  the visible query text. Completion and results
   never expose two simultaneous keyboard selections or turn Search into an
   advanced workspace. **Explain Query** presents the typed explanation carried
   by the Application Search response and shared with CLI—provider, scope,

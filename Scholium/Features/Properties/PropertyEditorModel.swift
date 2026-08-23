@@ -143,10 +143,10 @@ struct PropertyEditorModel: Sendable {
             }
             applicable = perType.dropFirst().reduce(perType.first ?? []) { $0.intersection($1) }
                 .union(["type"])
-                .union(metadataCatalog.customFields(for: .analysis).map(\.key))
+                .union(metadataCatalog.activeCustomFields(for: .analysis).map(\.key))
             recommended = ["type"]
         } else {
-            applicable = Set(metadataCatalog.contracts(for: profile).map(\.canonicalKey))
+            applicable = Set(metadataCatalog.activeContracts(for: profile).map(\.canonicalKey))
             recommended = []
         }
         return PropertyPresentationCatalog.managedPresentations(

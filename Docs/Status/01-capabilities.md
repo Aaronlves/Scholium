@@ -38,9 +38,11 @@
 - Managed New Note always writes `summary: null` then `keywords: []` in one
   fixed authored-YAML scaffold. Typed GUI/CLI/Agent creation may populate those
   values; adding Metadata never changes the YAML envelope.
-- Portable Metadata settings own append-only custom field definitions for
-  Analyses, Topics, and Works, each with only a stable key and simple value
-  shape. The current workspace-scoped resolved catalog combines those
+- Portable Metadata settings own stable custom field definitions for Analyses,
+  Topics, and Works. Key and value shape are permanent; labels, descriptions,
+  append-only controlled choices, and reversible active/archived lifecycle are
+  manageable. Archived fields retain existing values and Search while leaving
+  new-value, About, and Agent selection. The current workspace-scoped resolved catalog combines those
   definitions with built-ins and governs Metadata validation, Search, Library
   filters, About, Complete Metadata, and Agent field plans. About visibility
   and per-source-type Analysis Agent preferences are separate selections;
@@ -57,6 +59,12 @@
   every Markdown byte unchanged. Record identity, role catalog, canonical
   readback, conflict, and uncertain commit are checked. Authored `summary` and
   `keywords` remain Source-owned; unknown YAML is preserved but nonsemantic.
+- Researcher CLI Metadata read/set/remove uses those same public Application
+  capabilities and its own exact record fingerprint. A Metadata-only commit
+  carries one record delta through the existing refresh owner with zero source
+  enumeration/read/parse/projection and zero portable Metadata catalog reads.
+  Invalid portable records expose a confirmed exact-file archive bound to one
+  unchanged filename and fingerprint; neighbors and source remain untouched.
 
 ## Notes, documents, and file operations
 
@@ -101,6 +109,8 @@
   Research Context. It supports This Note, This Vault, and Triptych scope;
   Note and Record providers; lexical, structured-field, and direct-relation clauses;
   typed match reasons; Saved Searches; completion; and Explain Query.
+  Note completion receives scope-authorized property keys and controlled values
+  without creating a second query interpretation.
 - An undecodable Saved Search file can be explicitly archived byte-exactly and
   reset without changing a valid concurrent replacement or any vault.
 - This Note searches the live editor snapshot. Other results remain bound to

@@ -71,8 +71,16 @@ enum PropertyPresentationCatalog {
         return contracts.enumerated().map { index, contract in
             PropertyPresentation(
                 key: contract.canonicalKey,
-                label: label(for: contract.canonicalKey),
-                help: help(for: contract.canonicalKey),
+                label: label(
+                    for: contract.canonicalKey,
+                    profile: profile,
+                    catalog: catalog
+                ),
+                help: help(
+                    for: contract.canonicalKey,
+                    profile: profile,
+                    catalog: catalog
+                ),
                 group: group(for: contract.canonicalKey, profile: profile),
                 order: index,
                 controlStyle: controlStyle(for: contract)
@@ -195,7 +203,11 @@ enum PropertyPresentationCatalog {
         }
     }
 
-    private static func label(for key: String) -> String {
+    private static func label(
+        for key: String,
+        profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> String {
         let fixed: [String: String] = [
             "type": "Source Type", "title": "Title", "short_title": "Short Title",
             "original_title": "Original Title", "reviewed_title": "Reviewed Title",
@@ -223,11 +235,17 @@ enum PropertyPresentationCatalog {
             "aliases": "Aliases", "work_type": "Work Type", "coauthors": "Co-authors",
         ]
         return ScholiumL10n.dynamicString(
-            fixed[key] ?? key.replacingOccurrences(of: "_", with: " ").capitalized
+            fixed[key]
+                ?? catalog.customField(for: key, profile: profile)?.label
+                ?? MetadataFieldDefinition.defaultLabel(for: key)
         )
     }
 
-    private static func help(for key: String) -> String? {
+    private static func help(
+        for key: String,
+        profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> String? {
         let text: String? = switch key {
         case "title": "Title of the analyzed source."
         case "type": "Broad source type used to select applicable bibliographic fields."
@@ -239,7 +257,8 @@ enum PropertyPresentationCatalog {
         case "keywords": "Short researcher-defined retrieval terms stored in authored YAML."
         default: nil
         }
-        return text.map(ScholiumL10n.dynamicString)
+        return (text ?? catalog.customField(for: key, profile: profile)?.description)
+            .map(ScholiumL10n.dynamicString)
     }
 }
 

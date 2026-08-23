@@ -26,7 +26,8 @@
 - Complete direct keyboard, VoiceOver, English and Simplified Chinese,
   ordinary/minimum-width, and conflict acceptance for Metadata custom-field
   definition, per-type optional Agent preferences, About selection/order,
-  append-only explanation, Complete Metadata chooser,
+  stable-key/lifecycle explanation, controlled choices, Archive/Restore use
+  counts, Complete Metadata chooser,
   CreatorList editor, first-record creation, removal/Undo, and Source routes for
   authored `summary` and `keywords`.
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
@@ -94,9 +95,10 @@
 ## Search and performance
 
 - Review the [Search Case Pack](04-verification.md#search-case-pack) with the
-  researcher before deciding whether dynamic Metadata-key or Note-identity
-  completion is needed. Keep Explain Query compact only if its complete fields
-  remain keyboard and VoiceOver reachable.
+  researcher and directly accept dynamic Metadata-key and controlled-value
+  completion before deciding whether Note-identity completion is also needed.
+  Keep Explain Query compact only if its complete fields remain keyboard and
+  VoiceOver reachable.
 - Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
   Dictation, visual, and research-use acceptance for Note and Record Search.
 - Freeze the exact source, artifact, and fixture, then rerun every approved G7

@@ -66,6 +66,56 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!pairHelp.contains("pairing-code.txt"))
     }
 
+    @Test("The real researcher CLI reads and CAS-updates managed Metadata without changing source")
+    func researcherMetadataCLI() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let target = "\(fixture.analysisTarget.note.vaultID.uuidString):\(fixture.analysisTarget.note.relativePath)"
+
+        let initial = try #require(
+            JSONSerialization.jsonObject(with: try cli.run([
+                "note", "metadata-read", target, "--format", "json",
+            ]).stdout) as? [String: Any]
+        )
+        let initialRevision = try #require(initial["metadata_sha256"] as? String)
+        let initialSourceRevision = try #require(initial["source_sha256"] as? String)
+        #expect((initial["fields"] as? [String: Any])?["language"] as? String == "Greek")
+
+        let valueURL = fixture.rootURL.appendingPathComponent("metadata-value.json")
+        try Data(#""Latin""#.utf8).write(to: valueURL, options: .atomic)
+        let updated = try #require(
+            JSONSerialization.jsonObject(with: try cli.run([
+                "note", "metadata-set", target, "language",
+                "--value-from", valueURL.path,
+                "--expected", initialRevision,
+            ]).stdout) as? [String: Any]
+        )
+        let updatedRevision = try #require(updated["metadata_sha256"] as? String)
+        #expect(updatedRevision != initialRevision)
+        #expect(updated["source_sha256"] as? String == initialSourceRevision)
+        #expect((updated["fields"] as? [String: Any])?["language"] as? String == "Latin")
+
+        try cli.expectFailure([
+            "note", "metadata-set", target, "language",
+            "--value-from", valueURL.path,
+            "--expected", initialRevision,
+        ], contains: "Metadata revision mismatch")
+
+        let removed = try #require(
+            JSONSerialization.jsonObject(with: try cli.run([
+                "note", "metadata-remove", target, "language",
+                "--expected", updatedRevision,
+            ]).stdout) as? [String: Any]
+        )
+        #expect(removed["source_sha256"] as? String == initialSourceRevision)
+        #expect((removed["fields"] as? [String: Any])?["language"] == nil)
+    }
+
     @Test("The real CLI preflights direct Analysis creation, starts without pairing, writes, and ends")
     func agentStartContextWriteAndEnd() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[

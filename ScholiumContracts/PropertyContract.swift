@@ -404,25 +404,59 @@ public enum PropertyContractCatalog {
     }
 }
 
+public enum MetadataFieldLifecycle: String, Codable, Hashable, Sendable {
+    case active
+    case archived
+}
+
 /// One researcher-defined managed field applied globally to one Triptych role.
-/// It owns only a stable key and a simple value shape; requiredness, defaults,
-/// About visibility, Agent preference, integrations, and authored source are
-/// deliberately outside this contract.
+/// The key and value shape are stable storage identity. Label, description,
+/// controlled choices, and lifecycle are schema guidance only; requiredness,
+/// defaults, About visibility, Agent preference, integrations, and authored
+/// source remain deliberately outside this contract.
 public struct MetadataFieldDefinition: Codable, Hashable, Sendable {
     public static let supportedValueKinds: Set<PropertyValueKind> = [
-        .text, .multilineText, .number, .date, .boolean, .textList,
+        .text, .multilineText, .number, .date, .boolean, .textList, .choice,
     ]
 
     public let key: String
     public let valueKind: PropertyValueKind
+    public var label: String
+    public var description: String?
+    public var allowedValues: [String]?
+    public var lifecycle: MetadataFieldLifecycle
 
-    public init(key: String, valueKind: PropertyValueKind) {
+    public init(
+        key: String,
+        valueKind: PropertyValueKind,
+        label: String? = nil,
+        description: String? = nil,
+        allowedValues: [String]? = nil,
+        lifecycle: MetadataFieldLifecycle = .active
+    ) {
         self.key = key
         self.valueKind = valueKind
+        self.label = label ?? Self.defaultLabel(for: key)
+        self.description = description
+        self.allowedValues = allowedValues
+        self.lifecycle = lifecycle
     }
 
     public var contract: PropertyContract {
-        PropertyContract(canonicalKey: key, valueKind: valueKind)
+        PropertyContract(
+            canonicalKey: key,
+            valueKind: valueKind,
+            allowedValues: allowedValues
+        )
+    }
+
+    public var isActive: Bool { lifecycle == .active }
+
+    public static func defaultLabel(for key: String) -> String {
+        key.replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
     }
 }
 
@@ -564,7 +598,7 @@ public enum BuiltInNoteMetadataCatalog {
 }
 
 /// The one immutable, workspace-scoped Metadata catalog. It resolves the
-/// product-owned built-ins with append-only researcher definitions from the
+/// product-owned built-ins with stable researcher definitions from the
 /// current Triptych settings and is safe to pass across delivery boundaries.
 public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
     public let customFieldsByRole: [WorkspaceVaultSlot: [MetadataFieldDefinition]]
@@ -588,6 +622,14 @@ public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
     public func contracts(for profile: SchemaProfileID) -> [PropertyContract] {
         BuiltInNoteMetadataCatalog.contracts(for: profile)
             + customFields(for: profile).map(\.contract)
+    }
+
+    /// Contracts available for adding a new value or configuring About and
+    /// Agent guidance. Archived definitions remain in `contracts(for:)` so
+    /// existing values validate, render, and remain searchable.
+    public func activeContracts(for profile: SchemaProfileID) -> [PropertyContract] {
+        BuiltInNoteMetadataCatalog.contracts(for: profile)
+            + activeCustomFields(for: profile).map(\.contract)
     }
 
     public func contract(
@@ -632,7 +674,7 @@ public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
         )
         let orderedBuiltIns = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
             .serializationFieldOrder.compactMap { builtInByKey[$0] }
-        return orderedBuiltIns + customFields(for: .analysis).map(\.contract)
+        return orderedBuiltIns + activeCustomFields(for: .analysis).map(\.contract)
     }
 
     public func isAnalysisFieldApplicable(
@@ -646,9 +688,29 @@ public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
         customFieldsByRole[role] ?? []
     }
 
+    public func activeCustomFields(
+        for role: WorkspaceVaultSlot
+    ) -> [MetadataFieldDefinition] {
+        customFields(for: role).filter(\.isActive)
+    }
+
     public func customFields(for profile: SchemaProfileID) -> [MetadataFieldDefinition] {
         guard let role = Self.role(for: profile) else { return [] }
         return customFields(for: role)
+    }
+
+    public func activeCustomFields(
+        for profile: SchemaProfileID
+    ) -> [MetadataFieldDefinition] {
+        guard let role = Self.role(for: profile) else { return [] }
+        return activeCustomFields(for: role)
+    }
+
+    public func customField(
+        for key: String,
+        profile: SchemaProfileID
+    ) -> MetadataFieldDefinition? {
+        customFields(for: profile).first { $0.key == key }
     }
 
     public static func role(for profile: SchemaProfileID) -> WorkspaceVaultSlot? {
