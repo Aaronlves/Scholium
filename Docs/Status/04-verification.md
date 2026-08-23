@@ -36,6 +36,15 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the external-Agent Action simplification passed
+  six-Action, Core, Query, interface, localization, and 11 signed-CLI owners.
+  The complete gate passed documentation, 199 Web tests, bundles, RDF-1, 455
+  Core, 3 performance, and 147 Contract tests; all 269 Application tests ran,
+  with three stale deleted-file assertions corrected by their four-test
+  owner. Later stages were not rerun. XCUITest stopped prelaunch because
+  nonprivate `Desktop/TestVaults` was absent. This is not visual, packaged, or
+  external-account acceptance.
+
 - On 2026-08-23, the Metadata lifecycle and recovery integration passed its
   focused Contracts, Core, Application, Settings, presentation, Search,
   localization, architecture, and 11 signed executable-CLI lifecycle owners.

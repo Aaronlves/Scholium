@@ -59,25 +59,22 @@ struct CLIApplicationDelegationTests {
         #expect(!sources.zotero.contains("ZoteroMCPTransportLocator."))
     }
 
-    @Test("Action CLI is a thin Contracts-to-Application adapter")
-    func actionCommandsDelegateWithoutRoutingPolicy() throws {
+    @Test("External Agent Actions use one Contracts-to-Application command family")
+    func agentCommandsDelegateWithoutParallelActionRouting() throws {
         let sources = try CLISources.load()
 
-        #expect(sources.entry.contains(#"case "action":"#))
-        #expect(sources.action.contains("handle.research.availableActions(for: target)"))
-        #expect(sources.action.contains("handle.research.prepareAction(request)"))
-        #expect(sources.action.contains("handle.research.actionRun(id: runID)"))
-        #expect(!sources.action.contains("prepareActionFidelity"))
-        #expect(!sources.action.contains("prepare-fidelity"))
-        #expect(!sources.action.contains("select-resources"))
-        #expect(!sources.action.contains("completeAction"))
-        #expect(sources.action.contains("handle.research.cancelAction(runID: runID)"))
+        #expect(!sources.entry.contains(#"case "action":"#))
+        #expect(!sources.output.contains("scholium action prepare"))
+        #expect(sources.agent.contains("operations.start("))
+        #expect(sources.agent.contains("operations.context("))
+        #expect(sources.agent.contains("operations.query("))
         #expect(sources.agent.contains("operations.submitResult("))
         #expect(sources.agent.contains("operations.continueResearch("))
-        #expect(!sources.action.contains("import " + "ScholiumCore"))
-        #expect(!sources.action.contains("ResearchFunction"))
-        #expect(!sources.action.contains("packageID"))
-        #expect(!sources.action.contains("createCheckpoint"))
+        #expect(sources.agent.contains("operations.end("))
+        #expect(!sources.agent.contains("import " + "ScholiumCore"))
+        #expect(!sources.agent.contains("ResearchFunction"))
+        #expect(!sources.agent.contains("packageID"))
+        #expect(!sources.agent.contains("createCheckpoint"))
     }
 
     @Test("CLI JSON uses the public Action request and authenticated Agent Result contracts")
@@ -208,7 +205,6 @@ private struct CLISources {
     let output: String
     let document: String
     let zotero: String
-    let action: String
     let agent: String
 
     static func load() throws -> Self {
@@ -246,10 +242,6 @@ private struct CLISources {
             ),
             zotero: String(
                 contentsOf: cli.appendingPathComponent("ZoteroCommandHandler.swift"),
-                encoding: .utf8
-            ),
-            action: String(
-                contentsOf: cli.appendingPathComponent("ResearchActionCommandHandler.swift"),
                 encoding: .utf8
             ),
             agent: String(

@@ -105,8 +105,11 @@ that complete copied handoff; it is not separately rendered or exposed to the
 accessibility tree. **Copy New Handoff** invalidates the prior pairing, obtains
 a replacement, and copies it while retaining the same Run and recovery state.
 The Agent enters the code through CLI standard input. An Agent-originated
-`agent start` request uses the same Application preparation path and returns a
-protected Session directly; it does not create or consume a Pairing Code.
+`agent start` request uses the same Application preparation path, carries the
+complete typed academic-input map for validation against the just-resolved
+current Profile, and returns a protected Session directly; it does not create
+or consume a Pairing Code. The CLI exposes no parallel public `action`
+preparation, inspection, or cancellation family for external Agents.
 `agent preflight-analysis` calls
 `WorkspaceRuntime.preflightResearchAgentAnalysisCreation` without issuing a
 Session. `WorkspaceHandle` resolves the assigned Analyses vault, uses the
@@ -202,6 +205,14 @@ Materials, and formal source owners, and returns typed `stale_run` rather than
 a usable packet after true drift. It never reads later method/Profile values or
 old Research Context responses.
 
+Application derives ordered authenticated `next_actions` from the frozen
+Action, Result Contract, and current bounded-write-set state. Discuss receives
+one fillable reply plus Finish; each ready writable member receives its exact
+role, relative path, operation, and payload form; every non-Discuss Action
+receives a strict Result template generated from its current academic fields
+and any Fidelity boundary. CLI help describes those typed contracts but does
+not maintain a second template owner.
+
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
 facts, and current Result Contract; `methodContext` contains primary Skill and
@@ -238,7 +249,8 @@ adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
 confidence score, or broaden scope.
 
-Research Context request schema 3 contains only closed clause schema 2 values.
+Research Context request schema 4 contains only closed clause schema 4 values
+and uses snake-case Agent input keys throughout.
 The nested clause version changes with its closed kind and legal-shape set; a
 schema 1 clause therefore cannot silently acquire Material inspection. The
 Application validates the clause's legal query shape and platform capability,

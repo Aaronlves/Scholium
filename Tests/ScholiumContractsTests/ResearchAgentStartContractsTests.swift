@@ -34,7 +34,9 @@ struct ResearchAgentStartContractsTests {
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: creation,
-            academicPurpose: "Reconstruct the paper's argument."
+            academicInputs: [
+                "research-request": .freeText("Reconstruct the paper's argument."),
+            ]
         )
 
         let encoder = JSONEncoder()
@@ -53,6 +55,9 @@ struct ResearchAgentStartContractsTests {
         #expect(decoded.sourceRoute == nil)
         let json = String(decoding: data, as: UTF8.self)
         #expect(json.contains("new_analysis"))
+        #expect(json.contains("academic_inputs"))
+        #expect(json.contains("research-request"))
+        #expect(!json.contains("academic_purpose"))
         #expect(json.contains("\"fields\""))
         #expect(!json.contains("\"properties\""))
         #expect(json.contains("managed_default_filename"))
@@ -175,6 +180,13 @@ struct ResearchAgentStartContractsTests {
                 actionID: .analyze,
                 newAnalysis: creation,
                 sourceRoute: .researcherProvided
+            )
+        }
+        #expect(throws: ResearchAgentStartContractError.self) {
+            try ResearchAgentStartRequest(
+                actionID: .analyze,
+                target: existingTarget,
+                academicInputs: ["invalid field": .freeText("No")]
             )
         }
 

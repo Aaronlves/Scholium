@@ -122,6 +122,7 @@ struct ResearchActionPanelView: View {
                     alignment: .leading,
                     spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing
                 ) {
+                    primaryResearchRequest
                     platformInputs
                     academicInputs
                     status
@@ -441,6 +442,14 @@ struct ResearchActionPanelView: View {
     }
 
     @ViewBuilder
+    private var primaryResearchRequest: some View {
+        if let researchRequestField {
+            academicField(researchRequestField)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
     private var academicInputs: some View {
         if !requiredAcademicFields.isEmpty || !optionalAcademicFields.isEmpty {
             VStack(
@@ -491,14 +500,26 @@ struct ResearchActionPanelView: View {
 
     private var requiredAcademicFields: [ResearchAcademicFieldDefinition] {
         controller.profile?.academicInputFields.filter {
-            $0.requirement == .required
+            $0.requirement == .required && !isResearchRequest($0)
         } ?? []
     }
 
     private var optionalAcademicFields: [ResearchAcademicFieldDefinition] {
         controller.profile?.academicInputFields.filter {
-            $0.requirement == .optional
+            $0.requirement == .optional && !isResearchRequest($0)
         } ?? []
+    }
+
+    private var researchRequestField: ResearchAcademicFieldDefinition? {
+        controller.profile?.academicInputFields.first {
+            $0.requirement != .excluded && isResearchRequest($0)
+        }
+    }
+
+    private func isResearchRequest(
+        _ field: ResearchAcademicFieldDefinition
+    ) -> Bool {
+        field.fieldID.rawValue == "research-request"
     }
 
     private var actionSheetLayout: ResearchActionSheetLayout {
@@ -976,7 +997,7 @@ struct ResearchActionPanelView: View {
             ?? String(localized: "note", table: "Localizable", bundle: .module)
         return platform.operations.contains(.modifyInitialNote)
             ? String(
-                localized: "May update this \(role).",
+                localized: "Can update this \(role). Additional context stays read-only unless you approve a later request for specific Notes.",
                 table: "Localizable",
                 bundle: .module
             )

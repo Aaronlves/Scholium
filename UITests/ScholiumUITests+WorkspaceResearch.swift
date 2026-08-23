@@ -1632,16 +1632,12 @@ extension ScholiumUITests {
             "scholium.researchAction.focalNoteSearch"
         ].waitForExistence(timeout: 8))
         XCTAssertEqual(additionalContext.value as? String, "Expanded")
-        let additionalInstructions = sheet.buttons[
-            "scholium.researchAction.additionalInstructions"
-        ]
-        XCTAssertTrue(additionalInstructions.waitForExistence(timeout: 8))
-        XCTAssertEqual(additionalInstructions.value as? String, "Collapsed")
-        additionalInstructions.click()
         XCTAssertTrue(sheet.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
-        XCTAssertEqual(additionalInstructions.value as? String, "Expanded")
+        XCTAssertFalse(sheet.descendants(matching: .any)[
+            "scholium.researchAction.additionalInstructions"
+        ].exists)
         XCTAssertFalse(sheet.descendants(matching: .any)[
             "scholium.researchFunctionPanel"
         ].exists)
@@ -2055,10 +2051,10 @@ extension ScholiumUITests {
             XCTAssertFalse(sheet.descendants(matching: .any)[
                 "scholium.researchAction.focalNoteSearch"
             ].exists)
-            XCTAssertTrue(sheet.descendants(matching: .any)[
+            XCTAssertFalse(sheet.descendants(matching: .any)[
                 "scholium.researchAction.additionalInstructions"
             ].exists)
-            XCTAssertFalse(sheet.descendants(matching: .any)[
+            XCTAssertTrue(sheet.descendants(matching: .any)[
                 "scholium.researchAction.academicText.research-request"
             ].exists)
             XCTAssertTrue(sheet.buttons["Cancel"].exists)
@@ -2119,11 +2115,6 @@ extension ScholiumUITests {
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.focalNoteSearch"
         ].waitForExistence(timeout: 8))
-        let additionalInstructions = app.buttons[
-            "scholium.researchAction.additionalInstructions"
-        ]
-        XCTAssertTrue(additionalInstructions.waitForExistence(timeout: 8))
-        additionalInstructions.click()
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].waitForExistence(timeout: 8))
@@ -2374,11 +2365,6 @@ extension ScholiumUITests {
             "scholium.researchAction.sheet"
         ]
         XCTAssertTrue(actionSheet.waitForExistence(timeout: 8))
-        let additionalInstructions = app.descendants(matching: .any)[
-            "scholium.researchAction.additionalInstructions"
-        ]
-        XCTAssertTrue(additionalInstructions.waitForExistence(timeout: 5))
-        additionalInstructions.click()
         let request = app.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ]
@@ -2727,8 +2713,10 @@ extension ScholiumUITests {
         XCTAssertTrue(
             proofWindow.buttons["Allow Selected Notes"].waitForExistence(timeout: 3)
         )
-        XCTAssertTrue(proofWindow.buttons["Continue Without Changes"].exists)
-        XCTAssertTrue(proofWindow.buttons["Cancel Request"].exists)
+        XCTAssertTrue(proofWindow.buttons[
+            "Continue Without Additional Notes"
+        ].exists)
+        XCTAssertFalse(proofWindow.buttons["Cancel Request"].exists)
 
         proofWindow.staticTexts["Research Record"].click()
         XCTAssertTrue(proofWindow.textFields["Search records"].waitForExistence(timeout: 3))
@@ -2762,8 +2750,8 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(sheet.waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["Allow Selected Notes"].exists)
-        XCTAssertTrue(app.buttons["Continue Without Changes"].exists)
-        XCTAssertTrue(app.buttons["Cancel Request"].exists)
+        XCTAssertTrue(app.buttons["Continue Without Additional Notes"].exists)
+        XCTAssertFalse(app.buttons["Cancel Request"].exists)
         XCTAssertTrue(app.staticTexts["ACADEMIC REASON"].exists)
         XCTAssertTrue(app.staticTexts["REQUESTED NOTES"].exists)
         app.typeKey(.escape, modifierFlags: [])

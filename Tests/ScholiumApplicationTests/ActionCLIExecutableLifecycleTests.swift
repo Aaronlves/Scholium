@@ -222,7 +222,9 @@ struct ActionCLIExecutableLifecycleTests {
         let startRequest = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: newAnalysis,
-            academicPurpose: "Analyze the Zotero paper."
+            academicInputs: [
+                "research-request": .freeText("Analyze the Zotero paper."),
+            ]
         )
         let startReceipt = try ResearchAgentStartReceipt(
             run: run,
@@ -1411,8 +1413,10 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(versionObject["cli_version"] as? String == "0.1.0")
         #expect(versionObject["release_label"] as? String == "development")
         #expect(versionObject["build_number"] as? String == "0")
-        let help = try cli.run(["action", "prepare", "--help", "--format", "json"])
-        #expect(String(decoding: help.stdout, as: UTF8.self).contains("action prepare"))
+        let help = try cli.run([
+            "help", "agent", "start", "--format", "json",
+        ])
+        #expect(String(decoding: help.stdout, as: UTF8.self).contains("agent start"))
         let updateHelp = try cli.run(["help", "update"])
         #expect(String(decoding: updateHelp.stdout, as: UTF8.self).contains(
             "scholium update [--check]"
@@ -1422,6 +1426,7 @@ struct ActionCLIExecutableLifecycleTests {
         let rootHelpText = String(decoding: rootHelp.stdout, as: UTF8.self)
         #expect(!rootHelpText.contains(retiredCommand))
         #expect(!rootHelpText.contains("prepare-fidelity"))
+        #expect(!rootHelpText.contains("scholium action prepare"))
         let resultHelp = try cli.run([
             "help", "agent", "submit-result", "--format", "json",
         ])

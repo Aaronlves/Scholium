@@ -294,8 +294,10 @@ sheet exclusivity; `ResearchActionController` owns transient Profile-field
 values and rejects stale availability or preparation results. `NoteContentView`
 retains only the focused `openResearchAction(id:selection:)` action for menu and
 keyboard invocation; it contains no Action presentation or bottom inset. The
-sheet presents the Action, app-owned Target, whether the Action may modify that
-document, and the Profile's closed academic fields. Revision and authority stay
+sheet presents the Action, app-owned Target, a directly visible Research
+Request when the Profile includes it, whether the Action may modify that
+document, the read-only status of Additional Context, and the Profile's
+remaining closed academic fields. Revision and authority stay
 Application-owned; conflict and recovery appear only when they give the
 researcher an executable decision. One **Copy Handoff** footer action first
 revalidates and freezes the Action internally, then copies the complete

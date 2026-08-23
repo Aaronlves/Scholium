@@ -309,14 +309,14 @@ extension ResearchFunctionCoordinator {
                 "Use scholium agent discuss-reply --run <locator> --from <json|-> for each attributed Agent turn. The strict JSON fields are statement_id, attribution, and text; generate one stable statement_id per turn and reuse the same ID and content after an outcome-unknown response.",
                 "After the final durable Agent turn, use scholium agent finish-discussion --run <locator> to finish this same Run and form its portable Discussion Record. Finish accepts no Result body, edits no Note or Metadata, grants no next Run, and does not imply researcher acceptance.",
                 "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
-                "Cancel this prepared run with: scholium action cancel \(runID.uuidString.lowercased()) --triptych \(workspaceID.uuidString.lowercased())",
+                "End this authenticated Run with scholium agent end --run <locator>. Closing a researcher sheet does not end the Run.",
             ]
             return sections.joined(separator: "\n")
         }
         sections += [
             "Use the authenticated Agent Run context for the frozen Result Contract. Submit one concise Record Title together with its academic fields and explicit source-use testimony using scholium agent submit-result --run <locator> --from <file|->. The Record Title is a one-line identity for the finished record, not a duplicate academic result or process summary. Scholium supplies current identity, revision, write, and recovery facts; do not transcribe machine identifiers or fingerprints.",
             "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
-            "Cancel this prepared run with: scholium action cancel \(runID.uuidString.lowercased()) --triptych \(workspaceID.uuidString.lowercased())",
+            "End this authenticated Run with scholium agent end --run <locator>. Closing a researcher sheet does not end the Run.",
         ]
         return sections.joined(separator: "\n")
     }
@@ -330,10 +330,7 @@ extension ResearchFunctionCoordinator {
             state: preparation.state,
             reusedCompletion: preparation.reusedCompletion,
             derivedRefreshWarning: preparation.derivedRefreshWarning,
-            nextActions: try agentActions(
-                snapshot: preparation.snapshot,
-                state: preparation.state
-            )
+            nextActions: []
         )
     }
 
@@ -358,65 +355,8 @@ extension ResearchFunctionCoordinator {
             childRunIDs: completion.childRunIDs ?? [],
             completedAt: completion.completedAt,
             derivedRefreshWarning: completion.derivedRefreshWarning,
-            nextActions: completionAgentActions(completion)
+            nextActions: []
         )
-    }
-
-    private func agentActions(
-        snapshot: ResearchFunctionSnapshot,
-        state: ResearchFunctionRunState
-    ) throws -> [AgentCommandAction] {
-        let runID = snapshot.runID.uuidString.lowercased()
-        var actions = [AgentCommandAction(
-            kind: .inspect,
-            label: "Show the immutable run and current state",
-            command: actionCommand(["show", runID, "--format", "json"])
-        )]
-        guard state == .prepared else {
-            return actions
-        }
-
-        if snapshot.request.function == .discuss,
-           let recordID = snapshot.recordID {
-            actions.insert(AgentCommandAction(
-                kind: .reply,
-                label: "Record the attributed Discuss response",
-                command: [
-                    "scholium", "discuss", "reply",
-                    recordID.uuidString.lowercased(),
-                    "--triptych", workspaceID.uuidString.lowercased(),
-                    "--agent", "REPLACE_WITH_AGENT_NAME",
-                    "--from", "-",
-                ],
-                inputTemplate: "REPLACE_WITH_ATTRIBUTED_DISCUSS_RESPONSE"
-            ), at: 0)
-
-        }
-        actions.append(AgentCommandAction(
-            kind: .cancel,
-            label: "Cancel this uncompleted run",
-            command: actionCommand(["cancel", runID, "--format", "json"])
-        ))
-        return actions
-    }
-
-    private func completionAgentActions(
-        _ completion: ResearchFunctionCompletion
-    ) -> [AgentCommandAction] {
-        let runID = completion.runID.uuidString.lowercased()
-        var actions: [AgentCommandAction] = []
-        actions.append(AgentCommandAction(
-            kind: .inspect,
-            label: "Show the immutable run and current state",
-            command: actionCommand(["show", runID, "--format", "json"])
-        ))
-        return actions
-    }
-
-    private func actionCommand(_ arguments: [String]) -> [String] {
-        ["scholium", "action"] + arguments + [
-            "--triptych", workspaceID.uuidString.lowercased(),
-        ]
     }
 
     private func renderFunctionJSON<T: Encodable>(_ value: T) throws -> String {

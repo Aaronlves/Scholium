@@ -849,7 +849,7 @@ public struct ResearchContextPageCursor: Codable, Hashable, Sendable {
 /// product, Run, Triptych, or authorization scope; Application binds those
 /// facts after authenticating the request.
 public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
     public static let maximumLimit = 20
 
     public let schemaVersion: Int
@@ -949,8 +949,13 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion, id, kind, scope, query, note, expectedFingerprint,
-             sectionHeading, limit, useEligibility, cursor
+        case schemaVersion = "schema_version"
+        case id, kind, scope, query, note
+        case expectedFingerprint = "expected_fingerprint"
+        case sectionHeading = "section_heading"
+        case limit
+        case useEligibility = "use_eligibility"
+        case cursor
     }
 
     public init(from decoder: Decoder) throws {
@@ -981,7 +986,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
 /// Agent-facing request. Run and Triptych authority are deliberately absent:
 /// the authenticated Application boundary supplies them before provider work.
 public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
     public static let maximumClauses = 4
 
     public let schemaVersion: Int
@@ -1007,7 +1012,10 @@ public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable 
         self.clauses = clauses
     }
 
-    private enum CodingKeys: String, CodingKey, CaseIterable { case schemaVersion, id, clauses }
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case id, clauses
+    }
 
     public init(from decoder: Decoder) throws {
         try ResearchContextValidation.rejectUnknownKeys(decoder, allowed: CodingKeys.self)

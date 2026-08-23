@@ -107,7 +107,11 @@
   **Refresh Zotero Metadata…**. Its direct sheet reads only the linked item,
   presents fields to fill or update with current and Zotero values, retains
   Cancel while reading, and presents **Done** when every mapped value is current.
-- Action sheets expose academic inputs, target and mutation consequence,
+- Action sheets keep Profile Research Request visible, place only other
+  optional inputs under Additional Instructions, and explain target mutation,
+  read-only Additional Context, and later extra-Note approval. The bounded
+  extra-write sheet has one denial, **Continue Without Additional Notes**;
+  **End Action** remains separate. Sheets also expose
   handoff, active Run state, continuation, cancellation, and recovery without
   exposing credentials, registration keys, protocol internals, or
   implementation hashes. Finalized Result, Evaluation, and Method Feedback now

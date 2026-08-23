@@ -149,16 +149,12 @@ struct ResearchWriteSetExtensionView: View {
 
     private var decisionButtons: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Cancel Request", role: .destructive) {
-                resolve(.cancelled, [])
-            }
-            .disabled(isResolving)
-            Spacer()
             if isResolving {
                 ProgressView().controlSize(.small)
                     .accessibilityLabel("Revalidating bounded write request")
             }
-            Button("Continue Without Changes") {
+            Spacer()
+            Button("Continue Without Additional Notes") {
                 resolve(.continueWithoutChanges, [])
             }
             .keyboardShortcut(.cancelAction)

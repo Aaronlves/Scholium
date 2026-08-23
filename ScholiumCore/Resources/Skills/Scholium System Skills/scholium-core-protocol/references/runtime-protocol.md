@@ -71,11 +71,13 @@ directly.
    uncertain. A `stale_run` response means an exact Target, Material, or formal
    source boundary changed. Stop that Run; do not retry a write or Result
    against the changed boundary.
-6. Finish the substantive Action with `agent submit-result` after applying the
-   selected Method's own checks. Analyze performs its bounded fidelity
-   self-check inside the Analyze Method; it does not create a Check Fidelity
-   child Run. Check Fidelity is a separate read-only Action and is prepared
-   only when the researcher explicitly initiates it.
+6. Finish Analyze, Synthesize, Write, Critique, or Check Fidelity with
+   `agent submit-result` after applying the selected Method's own checks. Finish
+   Discuss instead with `agent finish-discussion` after the final durable Agent
+   turn; Discuss accepts no generic Result body. Analyze performs its bounded
+   fidelity self-check inside the Analyze Method; it does not create a Check
+   Fidelity child Run. Check Fidelity is a separate read-only Action and is
+   prepared only when the researcher explicitly initiates it.
 7. Use `agent continue` only for a distinct next Action, or `agent end` to stop
    an unfinished Run without a Result.
 

@@ -317,7 +317,7 @@ scholium doctor --format json
 scholium update --check
 scholium update
 scholium help action
-scholium action prepare --help
+scholium help agent start
 ```
 
 The CLI shares Application capabilities for registered Triptychs, Search,

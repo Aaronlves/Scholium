@@ -740,8 +740,7 @@ private struct ResearchWriteSetExtensionProof: View {
 
     private var writeSetExtensionButtons: some View {
         Group {
-            Button("Cancel Request", role: .destructive) {}
-            Button("Continue Without Changes") {}
+            Button("Continue Without Additional Notes") {}
             Button("Allow Selected Notes") {}
                 .keyboardShortcut(.defaultAction)
                 .disabled(!notes.contains(where: \.isSelected))

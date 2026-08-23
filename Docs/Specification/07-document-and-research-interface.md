@@ -532,8 +532,9 @@ title axis; trailing text states **Running**; and a separately named direct
 second line. Larger interface text or localization may grow the row rather
 than clip its title, state, or ending route.
 
-An Action sheet ends at successful handoff: request/focal context, academic
-inputs or repair, then **Copy Handoff**. The copied instructions contain only
+An Action sheet shows Profile **Research Request** uncollapsed, target effect,
+read-only Additional Context, extra-Note approval, collapsed optionals/repair,
+then **Copy Handoff**. The copied instructions contain only
 Run locator, one-time Pairing Code, local route, and CLI steps; the code is
 never a separate field. Copy freezes when needed but never selects or opens an
 Agent app. Success closes and restores focus to the Action row; failure keeps

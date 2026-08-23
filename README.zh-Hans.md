@@ -256,7 +256,7 @@ scholium doctor --format json
 scholium update --check
 scholium update
 scholium help action
-scholium action prepare --help
+scholium help agent start
 ```
 
 CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关注、准确读取、Discussion

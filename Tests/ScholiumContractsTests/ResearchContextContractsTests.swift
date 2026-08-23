@@ -29,6 +29,17 @@ struct ResearchContextContractsTests {
         #expect(object["triptychID"] == nil)
         #expect(object["sourceKinds"] == nil)
         #expect(object["purposes"] == nil)
+        #expect(object["schema_version"] as? Int
+            == ResearchContextRequest.currentSchemaVersion)
+        #expect(object["schemaVersion"] == nil)
+        let encodedClause = try #require(
+            (object["clauses"] as? [[String: Any]])?.first
+        )
+        #expect(encodedClause["schema_version"] as? Int
+            == ResearchContextClause.currentSchemaVersion)
+        #expect(encodedClause["section_heading"] as? String == "Objections")
+        #expect(encodedClause["use_eligibility"] as? String == "context_use")
+        #expect(encodedClause["schemaVersion"] == nil)
 
         var obsolete = object
         obsolete.removeValue(forKey: "clauses")
@@ -66,9 +77,9 @@ struct ResearchContextContractsTests {
         var retiredMaterial = try #require(
             JSONSerialization.jsonObject(with: materialBytes) as? [String: Any]
         )
-        #expect(retiredMaterial["schemaVersion"] as? Int
+        #expect(retiredMaterial["schema_version"] as? Int
             == ResearchContextClause.currentSchemaVersion)
-        retiredMaterial["schemaVersion"] =
+        retiredMaterial["schema_version"] =
             ResearchContextClause.currentSchemaVersion - 1
         #expect(throws: ResearchContextContractError.self) {
             _ = try JSONDecoder().decode(

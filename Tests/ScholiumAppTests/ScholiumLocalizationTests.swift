@@ -237,8 +237,10 @@ struct ScholiumLocalizationTests {
             ) == "允许所选笔记"
         )
         #expect(
-            ScholiumL10n.string("Cancel Request", locale: simplifiedChinese)
-                == "取消请求"
+            ScholiumL10n.string(
+                "Continue Without Additional Notes",
+                locale: simplifiedChinese
+            ) == "不添加其他笔记并继续"
         )
         #expect(
             ScholiumL10n.string(
@@ -259,11 +261,11 @@ struct ScholiumLocalizationTests {
         #expect(
             String(
                 format: ScholiumL10n.string(
-                    "May update this %@.",
+                    "Can update this %@. Additional context stays read-only unless you approve a later request for specific Notes.",
                     locale: simplifiedChinese
                 ),
                 "议题"
-            ) == "可能更新当前议题。"
+            ) == "可以更新当前议题。除非您之后批准针对特定笔记的请求，否则附加上下文保持只读。"
         )
         #expect(
             ScholiumL10n.string(

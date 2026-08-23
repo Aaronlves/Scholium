@@ -88,13 +88,10 @@ public struct AgentCreationRecoveryBranch: Codable, Hashable, Sendable {
 }
 
 public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
-    case inspect
     case reply
-    case promote
-    case selectResources = "select_resources"
+    case write
     case submitResult = "submit_result"
     case finish
-    case cancel
 }
 
 /// A delivery-neutral, shell-safe next step. `command` is an argument vector,

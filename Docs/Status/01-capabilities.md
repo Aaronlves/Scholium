@@ -139,14 +139,20 @@
   Method, Practices, Profile, Result Contract, collaboration policy, read scope,
   and initial Bounded Write Set member.
 - GUI Copy Handoff and Copy New Handoff deliver one Run locator and one-use
-  Pairing Code for the installed CLI. The CLI also exposes `agent start`, which
+  Pairing Code for the installed CLI. `scholium agent` is the only external-
+  Agent Action lifecycle; the prior public `action` preparation family is no
+  longer reachable. `agent start`
   resolves a selected Triptych and current Analysis/Action directly, stores a
   process-bound Session credential locally, and requires no Pairing Code.
+  It carries the complete typed academic-input map and validates every current
+  custom required Profile field before creating a Run or new Analysis.
   A healthy CLI registry resolves UUID or unique-name selectors, including a
   UUID-shaped name; if that projection is absent or lacks a UUID, Application
   validates the UUID directly. First use creates and validates the current-user-
   only CLI home and Session directory. Both routes use the same protected
-  Session for subsequent operations.
+  Session for subsequent operations. Authenticated Context supplies fillable
+  current `next_actions` for all six Actions: Discuss reply/finish, each ready
+  bounded write, and every non-Discuss Result submission.
 - A staged Analyze or other write Result completes after the Action's own
   transaction and Method checks. Analyze performs one bounded fidelity
   self-check inside its Method and records unresolved or unavailable limits in
@@ -170,12 +176,12 @@
   source, or Run does not fabricate a Trash state; after current preflight, its
   request/creation/start fingerprint tuple can advance by exact CAS only while
   destination, route/binding, authored YAML, source type, managed values, and
-  academic purpose remain frozen. Settings preference changes grant no
+  typed academic inputs remain frozen. Settings preference changes grant no
   authority. That reservation exists for both Zotero and researcher-
   provided creation. Exact
   replay resumes the frozen confirmed source/identity revision and same Run;
   it also requires the complete frozen start payload, including academic
-  purpose. Concurrent identical starts coalesce, while
+  inputs. Concurrent identical starts coalesce, while
   changed committed input, terminal state, changed Zotero relationship, or
   missing source cannot reuse it as a new write.
 - Bridge and preflight results distinguish path and identity occupation,

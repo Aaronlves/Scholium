@@ -126,12 +126,13 @@ syntax. These owners neither replace nor repeat one another.
 
 ### 8.2 Agent entry, local pairing, layered delivery, and Research Context
 
-GUI preparation and Agent-originated `agent start` are valid entry routes to
-the same Run contract. GUI preparation offers the one-time Pairing Code below;
-direct start supplies Triptych, Action, target, and purpose to Application,
-which resolves current authority and returns a protected Session without a
-Pairing Code. Both routes share Context, writes, Result, continuation, End,
-conflict, and recovery. A write Result becomes final after its own transaction
+GUI preparation and Agent-originated `agent start` share one Run contract. GUI
+offers the one-time Pairing Code below;
+direct start supplies Triptych, Action, target, and all typed Profile inputs,
+then receives a Session directly. The sheet
+keeps Profile **Research Request** visible even when optional; only other
+optional inputs collapse. Both routes use only `scholium agent` and share
+Context, writes, Result, continuation, End, conflict, and recovery. A write Result becomes final after its own transaction
 and Result validation converge; it does not enter an **Awaiting Fidelity**
 state and does not prepare or attach a Check Fidelity child. Analyze performs
 its bounded source/content fidelity self-check through its registered Method
@@ -206,9 +207,9 @@ Delivery is progressive:
 
 - a newly paired Agent session receives Core Protocol, capability catalog, and
   Session boundary once;
-- each Run receives a short Run Brief with current state, exact Method Context,
-  and Result Contract; an explicitly initiated Fidelity Run also receives its
-  exact audit boundary, inspection requests, and strict Result template;
+- each Run receives a short Run Brief, exact Method Context, Result Contract,
+  and fillable `next_actions` for Discuss reply/finish, each ready write, or the
+  strict non-Discuss Result; Fidelity adds its exact boundary and inspections;
 - Research Context arrives only after an explicit query;
 - a specialized capability explains only its additional contract on first
   use; and
@@ -315,12 +316,13 @@ Triptych material and the displayed operation on its initial object. That
 object enters the Run's Bounded Write Set without a redundant second prompt.
 Reading a Work does not trigger the Works policy.
 
-Adding one or more extra documents to the same Run is a distinct consequential
-operation. Ask Me Every Time presents one bounded set and permits a subset;
-Ask Me Only for Works asks only when the set creates or changes a Work; Full
-Access binds a valid set without a sheet. The same policy governs creation of a
-next Run. Skill or Practice edits require their own researcher-initiated
-method-improvement action. No policy authorizes third-party disclosure.
+Adding extra documents is a distinct consequential operation. Ask Me Every
+Time presents one bounded set and permits a subset; Ask Me Only for Works asks
+only when it changes a Work; Full Access binds a valid set without a sheet. A
+sheet's sole denial is **Continue Without Additional Notes**; **End Action**
+separately ends the whole Run. The same policy governs a next Run. Skill or
+Practice edits require a researcher-initiated method-improvement action. No
+policy authorizes third-party disclosure.
 
 The **Bounded Write Set** is hidden, short-lived, expandable, and owned only by
 its Run. Each member binds Triptych, stable existing-document identity or one

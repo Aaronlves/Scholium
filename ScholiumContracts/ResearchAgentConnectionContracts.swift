@@ -401,7 +401,7 @@ public struct ResearchAgentAnalysisCreationPreflight: Codable, Hashable, Sendabl
 /// current Note identity, Action Profile, Method, and revision after receiving
 /// this request; the request never carries a write grant or source bytes.
 public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID
@@ -414,12 +414,14 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
     /// local source directly to the external Agent. New creation carries the
     /// same declaration inside its preflight-owned request.
     public let sourceRoute: ResearchAgentSourceRoute?
-    public let academicPurpose: String?
+    /// Academic values are validated against the current resolved Profile by
+    /// Application. This request carries no Profile definition or permission.
+    public let academicInputs: [String: ResearchAcademicFieldValue]
 
     public init(
         actionID: ResearchActionID,
         target: VaultQualifiedNoteID,
-        academicPurpose: String? = nil,
+        academicInputs: [String: ResearchAcademicFieldValue] = [:],
         sourceRoute: ResearchAgentSourceRoute? = nil
     ) throws {
         try self.init(
@@ -427,14 +429,14 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
             target: target,
             newAnalysis: nil,
             sourceRoute: sourceRoute,
-            academicPurpose: academicPurpose
+            academicInputs: academicInputs
         )
     }
 
     public init(
         actionID: ResearchActionID,
         newAnalysis: ResearchAgentNewAnalysisRequest,
-        academicPurpose: String? = nil,
+        academicInputs: [String: ResearchAcademicFieldValue] = [:],
         sourceRoute: ResearchAgentSourceRoute? = nil
     ) throws {
         try self.init(
@@ -442,7 +444,7 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
             target: nil,
             newAnalysis: newAnalysis,
             sourceRoute: sourceRoute,
-            academicPurpose: academicPurpose
+            academicInputs: academicInputs
         )
     }
 
@@ -451,17 +453,16 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         target: VaultQualifiedNoteID?,
         newAnalysis: ResearchAgentNewAnalysisRequest?,
         sourceRoute: ResearchAgentSourceRoute?,
-        academicPurpose: String?
+        academicInputs: [String: ResearchAcademicFieldValue]
     ) throws {
-        let normalizedPurpose = academicPurpose?.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard normalizedPurpose == nil || normalizedPurpose?.isEmpty == false,
-              normalizedPurpose?.utf8.count ?? 0 <= 16 * 1_024,
-              (target == nil) != (newAnalysis == nil),
+        guard (target == nil) != (newAnalysis == nil),
               newAnalysis == nil || actionID == .analyze,
               sourceRoute == nil || actionID == .analyze,
-              sourceRoute == nil || (newAnalysis == nil && target != nil) else {
+              sourceRoute == nil || (newAnalysis == nil && target != nil),
+              academicInputs.count <= 64,
+              academicInputs.keys.allSatisfy({
+                  ResearchAcademicFieldID(rawValue: $0) != nil
+              }) else {
             throw ResearchAgentStartContractError.invalidRequest
         }
         schemaVersion = Self.currentSchemaVersion
@@ -469,7 +470,7 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         self.target = target
         self.newAnalysis = newAnalysis
         self.sourceRoute = sourceRoute
-        self.academicPurpose = normalizedPurpose
+        self.academicInputs = academicInputs
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -478,7 +479,7 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         case target
         case newAnalysis = "new_analysis"
         case sourceRoute = "source_route"
-        case academicPurpose = "academic_purpose"
+        case academicInputs = "academic_inputs"
     }
 
     public init(from decoder: Decoder) throws {
@@ -505,9 +506,9 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
                 ResearchAgentSourceRoute.self,
                 forKey: .sourceRoute
             ),
-            academicPurpose: container.decodeIfPresent(
-                String.self,
-                forKey: .academicPurpose
+            academicInputs: container.decode(
+                [String: ResearchAcademicFieldValue].self,
+                forKey: .academicInputs
             )
         )
     }
@@ -522,7 +523,7 @@ public struct ResearchAgentStartRequest: Codable, Hashable, Sendable {
         )
         try container.encodeIfPresent(newAnalysis, forKey: .newAnalysis)
         try container.encodeIfPresent(sourceRoute, forKey: .sourceRoute)
-        try container.encodeIfPresent(academicPurpose, forKey: .academicPurpose)
+        try container.encode(academicInputs, forKey: .academicInputs)
     }
 }
 

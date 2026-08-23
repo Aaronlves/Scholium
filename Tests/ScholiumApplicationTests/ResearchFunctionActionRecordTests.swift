@@ -4,6 +4,127 @@ import Foundation
 import Testing
 
 extension ResearchFunctionOperationsTests {
+    @Test("Every Platform Action returns one complete authenticated Agent command path")
+    func everyActionReturnsCurrentAgentTemplates() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = actionNote(try await researchFunctionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        ))
+        let topic = actionNote(try await researchFunctionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        ))
+        let work = actionNote(try await researchFunctionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        ))
+        let cases: [(ResearchActionID, ResearchActionNoteSnapshot)] = [
+            (.discuss, analysis),
+            (.analyze, analysis),
+            (.synthesize, topic),
+            (.write, work),
+            (.critique, work),
+            (.checkFidelity, analysis),
+        ]
+
+        for (actionID, target) in cases {
+            let platformInputs = actionID == .checkFidelity
+                ? try ResearchActionPlatformInputs(fidelityChecks: [.content])
+                : try ResearchActionPlatformInputs()
+            let preparation = try await handle.research.prepareAction(
+                try await actionRequest(
+                    handle: handle,
+                    actionID: actionID,
+                    target: target,
+                    platformInputs: platformInputs
+                )
+            )
+            let handoff = try await handle.research.issueAgentHandoff(
+                runID: preparation.runID
+            )
+            let credential = try await handle.research.pairAgent(
+                run: handoff.run,
+                pairingCode: handoff.pairingCode
+            )
+            let context = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+            #expect(context.nextActions.allSatisfy {
+                Array($0.command.prefix(2)) == ["scholium", "agent"]
+            })
+
+            if actionID == .discuss {
+                #expect(context.nextActions.map { $0.kind } == [
+                    AgentCommandActionKind.reply,
+                    AgentCommandActionKind.finish,
+                ])
+                let reply = try #require(context.nextActions.first)
+                let replyTemplate = try #require(reply.inputTemplate)
+                #expect(replyTemplate.contains("statement_id"))
+                #expect(replyTemplate.contains("attribution"))
+            } else {
+                let result = try #require(
+                    context.nextActions.first {
+                        $0.kind == AgentCommandActionKind.submitResult
+                    }
+                )
+                let resultTemplate = try #require(result.inputTemplate)
+                let object = try #require(
+                    JSONSerialization.jsonObject(
+                        with: Data(resultTemplate.utf8)
+                    ) as? [String: Any]
+                )
+                #expect(object["schema_version"] as? Int
+                    == ResearchAgentResultSubmission.currentSchemaVersion)
+                #expect(object["record_title"] as? String != nil)
+                #expect((object["context_use_claims"] as? [Any])?.isEmpty == true)
+                #expect(object["fidelity_outcomes"] as? [Any] != nil)
+                let academicResults = try #require(
+                    object["academic_results"] as? [String: Any]
+                )
+                let values = try #require(
+                    academicResults["values"] as? [String: Any]
+                )
+                let derivesDefaultFidelity = actionID == .checkFidelity
+                #expect(derivesDefaultFidelity
+                    ? values.isEmpty
+                    : Set(values.keys) == Set(
+                        preparation.snapshot.resultContract.academicFields.map {
+                            $0.fieldID.rawValue
+                        }
+                    ))
+                #expect((object["literature_recommendations"] != nil)
+                    == (actionID == .analyze))
+
+                let writes = context.nextActions.filter {
+                    $0.kind == AgentCommandActionKind.write
+                }
+                let expectsWrite = [.analyze, .synthesize, .write]
+                    .contains(actionID)
+                #expect(writes.isEmpty == !expectsWrite)
+                for write in writes {
+                    let template = try #require(write.inputTemplate)
+                    #expect(template.contains("\"relative_path\""))
+                    #expect(template.contains("\"operation\""))
+                }
+            }
+
+            _ = try await runtime.endResearchAgentRun(
+                credential: credential,
+                run: handoff.run
+            )
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Completion source observation rejects same-byte path identity reuse")
     func completionObservationRevalidatesIdentityAfterSourceRead() async throws {
         let fixture = try await ResearchFixture.make()

@@ -78,10 +78,6 @@ extension ScholiumCLI {
           scholium workspace attention [--triptych <uuid-or-unique-name>] [--kind <queue>] --format json
           scholium workspace bootstrap --triptych <uuid-or-unique-name> --target <directory>
               [--conventions-file <file>] [--format markdown|json]
-          scholium action available --from <json|-> --format json
-          scholium action prepare --from <json|-> --format json|markdown
-          scholium action show <run-id> [--triptych <selector>] --format json|markdown
-          scholium action cancel <run-id> [--triptych <selector>]
           scholium read <vault>:<relative-path> [--format json]
           scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>]
               [--analysis-from <json-file>]
@@ -240,7 +236,7 @@ private extension ScholiumCLI {
             "agent start": AgentCLICommandHelp(
                 usage: "scholium agent start --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, action_id, exactly one of existing target {vault_id, relative_path} or the unchanged new_analysis payload returned by agent preflight-analysis, optional source_route=researcher_provided only for an existing Analysis, and optional academic_purpose. Optional Settings preferences grant no authority and cannot invalidate creation; replay requires the exact complete start payload.",
+                input: "Strict JSON fields: schema_version, action_id, exactly one of existing target {vault_id, relative_path} or the unchanged new_analysis payload returned by agent preflight-analysis, optional source_route=researcher_provided only for an existing Analysis, and academic_inputs containing every required current Profile field. Each academic input is a typed freeText, singleChoice, or multipleChoice value. Optional Settings preferences grant no authority and cannot invalidate creation; replay requires the exact complete start payload.",
                 output: "ResearchAgentStartReceipt with the new Run locator, Action, target revision, state, and a non-secret message. The Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
                     "Run agent preflight-analysis first for every new Analysis",
@@ -281,7 +277,7 @@ private extension ScholiumCLI {
             "agent query": AgentCLICommandHelp(
                 usage: "scholium agent query --run <locator> --from <json|->",
                 inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
-                input: "Strict JSON fields: schemaVersion, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schemaVersion, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), useEligibility, and only the fields allowed by its closed kind. Ordinary read_note uses query; a Fidelity inspection request supplied by Scholium instead uses exact note {vaultID, relativePath} plus expectedFingerprint. Send supplied inspection requests unchanged; do not reconstruct identity or fingerprints.",
+                input: "Strict snake-case JSON fields: schema_version, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schema_version, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), use_eligibility, and only the fields allowed by its closed kind. Ordinary read_note uses query; a Fidelity inspection request supplied by Scholium instead uses exact note {vault_id, relative_path} plus expected_fingerprint. Send supplied inspection requests unchanged; do not reconstruct identity or fingerprints.",
                 output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with one visible availability, items, limitations, and optional stateless continuation cursor for every requested clause.",
                 nextSteps: [
                     "Repeat scholium agent query with a narrower request when needed",
@@ -440,10 +436,6 @@ private extension ScholiumCLI {
             "workspace skill-sources": "Usage: scholium workspace skill-sources [--triptych <selector>] --format json\n\nReports the release-managed Core Protocol and exact enabled Triptych-managed Method folders that an authorized setup Agent may link into its host's project-level Skill directory. It creates no link, scans no arbitrary folder, and exposes no machine-local Method locator.",
             "workspace attention": "Usage: scholium workspace attention [--triptych <selector>] [--kind <queue>] --format json",
             "workspace bootstrap": "Usage: scholium workspace bootstrap --triptych <selector> --target <directory> [--conventions-file <file>] [--format markdown|json]",
-            "action available": "Usage: scholium action available --from <target-json|-> --format json",
-            "action prepare": "Usage: scholium action prepare --from <request-json|-> --format json|markdown",
-            "action show": "Usage: scholium action show <run-id> [--triptych <selector>] --format json|markdown",
-            "action cancel": "Usage: scholium action cancel <run-id> [--triptych <selector>] [--format json]",
             "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
             "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]\n\nAlways creates fixed YAML with summary and keywords. Authored YAML JSON may supply {\"summary\":\"...\",\"keywords\":[\"...\"]}; omission keeps summary:null and keywords:[]. Body input is UTF-8 LF text without a top-level YAML envelope. Analysis JSON is {\"source_type\":\"journal_article\",\"fields\":[{\"key\":\"title\",\"value\":\"Example\"}]}; every managed field is optional.",
             "note metadata-read": "Usage: scholium note metadata-read <vault>:<path> [--format json]\n\nReads only the Note's validated portable Scholium Metadata record and its independent metadata_sha256 revision. Markdown source remains separate.",

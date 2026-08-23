@@ -38,11 +38,95 @@ struct ResearchFunctionCoordinatorTests {
             try ResearchAgentStartRequest(
                 actionID: .analyze,
                 newAnalysis: creation,
-                academicPurpose: academicPurpose
+                academicInputs: academicPurpose.map {
+                    ["research-request": .freeText($0)]
+                } ?? [:]
             ),
             preflight,
             preflight.targetState.target
         )
+    }
+
+    @Test("Direct Agent start validates every current custom academic input")
+    func directStartSupportsCustomRequiredAcademicInputs() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            assignments: [fixture.assignment]
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let profiles = try await handle.research.academicActionProfiles()
+        let originalAnalyze = try #require(
+            profiles.document.profile(for: .analyze)
+        )
+        let focusID = try #require(
+            ResearchAcademicFieldID(rawValue: "required-focus")
+        )
+        let focus = try ResearchAcademicFieldDefinition.freeText(
+            id: focusID,
+            label: "Required Focus",
+            requirement: .required
+        )
+        let customized = try ResearchAcademicActionProfile(
+            actionID: originalAnalyze.actionID,
+            displayName: originalAnalyze.displayName,
+            order: originalAnalyze.order,
+            isEnabled: originalAnalyze.isEnabled,
+            applicableRoles: originalAnalyze.applicableRoles,
+            academicInputFields: originalAnalyze.academicInputFields + [focus],
+            academicResultFields: originalAnalyze.academicResultFields
+        )
+        let document = try ResearchAcademicProfileDocument(
+            profiles: profiles.document.profiles.map {
+                $0.actionID == .analyze ? customized : $0
+            }
+        )
+        _ = try await handle.research.saveAcademicActionProfiles(
+            document,
+            expectedRevision: profiles.revision
+        )
+
+        let incomplete = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            target: fixture.analysisNoteID,
+            academicInputs: [
+                "research-request": .freeText("Analyze the bounded source."),
+            ],
+            sourceRoute: .researcherProvided
+        )
+        await #expect(throws: ResearchAcademicProfileError.self) {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: incomplete,
+                sessionValidity: 300
+            )
+        }
+
+        let complete = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            target: fixture.analysisNoteID,
+            academicInputs: [
+                "research-request": .freeText("Analyze the bounded source."),
+                "required-focus": .freeText("Test the central inference."),
+            ],
+            sourceRoute: .researcherProvided
+        )
+        let started = try await runtime.startResearchAgentRun(
+            triptychID: fixture.assignment.id,
+            request: complete,
+            sessionValidity: 300
+        )
+        let context = try await runtime.researchAgentContext(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        #expect(context.brief.academicPurpose == "Analyze the bounded source.")
+        _ = try await runtime.endResearchAgentRun(
+            credential: started.credential,
+            run: started.receipt.run
+        )
+        await runtime.shutdown()
     }
 
     @Test("Analysis creation preflight exposes optional preferences without Settings authority")
@@ -151,7 +235,9 @@ struct ResearchFunctionCoordinatorTests {
         let initialStart = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: #require(initialPreflight.startNewAnalysis),
-            academicPurpose: "Frozen initial purpose"
+            academicInputs: [
+                "research-request": .freeText("Frozen initial purpose"),
+            ]
         )
 
         let gate = AgentCreationReservationGate()
@@ -280,7 +366,9 @@ struct ResearchFunctionCoordinatorTests {
         let changed = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: #require(prepared.request.newAnalysis),
-            academicPurpose: "A concurrent changed purpose."
+            academicInputs: [
+                "research-request": .freeText("A concurrent changed purpose."),
+            ]
         )
         await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
             _ = try await runtime.startResearchAgentRun(
@@ -728,7 +816,7 @@ struct ResearchFunctionCoordinatorTests {
         let changedRequest = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: changedCreation,
-            academicPurpose: request.academicPurpose
+            academicInputs: request.academicInputs
         )
         await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
             _ = try await runtime.startResearchAgentRun(
@@ -740,7 +828,11 @@ struct ResearchFunctionCoordinatorTests {
         let changedPurpose = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: creation,
-            academicPurpose: "A changed purpose must not receive the existing Run."
+            academicInputs: [
+                "research-request": .freeText(
+                    "A changed purpose must not receive the existing Run."
+                ),
+            ]
         )
         await #expect(throws: ResearchAgentConnectionError.newAnalysisReplayConflict) {
             _ = try await runtime.startResearchAgentRun(
@@ -947,9 +1039,9 @@ struct ResearchFunctionCoordinatorTests {
             host: handle
         )
         #expect(recovered.snapshot == preparation.snapshot)
-        #expect(Set(try coordinator.attachingAgentActions(
+        #expect(try coordinator.attachingAgentActions(
             to: recovered
-        ).nextActions?.map(\.kind) ?? []) == [.inspect, .cancel])
+        ).nextActions == nil)
         let submission = ResearchFunctionCompletionSubmission(
             runID: preparation.runID,
             confirmationToken: preparation.snapshot.confirmationToken,

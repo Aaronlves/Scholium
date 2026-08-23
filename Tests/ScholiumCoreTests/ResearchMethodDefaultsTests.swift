@@ -249,6 +249,7 @@ struct ResearchMethodDefaultsTests {
             "`agent resolve-write-conflict`",
             "`agent reload`",
             "`agent submit-result`",
+            "`agent finish-discussion`",
             "`agent continue`",
             "`agent end`",
         ] {

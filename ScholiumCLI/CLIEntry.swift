@@ -80,8 +80,6 @@ struct ScholiumCLI {
                     try await runGraph(Array(arguments.dropFirst()), context: context)
                 case "workspace":
                     try await runWorkspace(Array(arguments.dropFirst()), context: context)
-                case "action":
-                    try await runAction(Array(arguments.dropFirst()), context: context)
                 case "read":
                     try await runRead(Array(arguments.dropFirst()), context: context)
                 case "note":

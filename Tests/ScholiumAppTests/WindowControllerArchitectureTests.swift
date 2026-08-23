@@ -2487,7 +2487,8 @@ struct WindowControllerArchitectureTests {
         #expect(permissions.contains(".keyboardShortcut(.defaultAction)"))
         #expect(permissions.contains(".keyboardShortcut(.cancelAction)"))
         #expect(permissions.contains("Allow Selected Notes"))
-        #expect(permissions.contains("Continue Without Changes"))
+        #expect(permissions.contains("Continue Without Additional Notes"))
+        #expect(!permissions.contains("Cancel Request"))
         #expect(permissions.contains(
             "This starts a new independent Run with current permissions"
         ))

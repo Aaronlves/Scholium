@@ -331,10 +331,10 @@ extension ScholiumUITests {
         XCTAssertFalse(app.descendants(matching: .any)[
             "scholium.researchAction.focalNoteSearch"
         ].exists)
-        XCTAssertTrue(app.descendants(matching: .any)[
+        XCTAssertFalse(app.descendants(matching: .any)[
             "scholium.researchAction.additionalInstructions"
         ].exists)
-        XCTAssertFalse(app.descendants(matching: .any)[
+        XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.academicText.research-request"
         ].exists)
         XCTAssertFalse(app.staticTexts["Supported modes"].exists)

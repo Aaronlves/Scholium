@@ -61,7 +61,9 @@ struct ResearchActionHandoffPresentationTests {
 
         #expect(actionPanel.contains("Text(\"Target\")"))
         #expect(actionPanel.contains("Text(actionEffectLabel)"))
-        #expect(actionPanel.contains("localized: \"May update this \\(role).\""))
+        #expect(actionPanel.contains(
+            "Additional context stays read-only unless you approve a later request"
+        ))
         #expect(actionPanel.contains("localized: \"Does not change research documents.\""))
         #expect(actionPanel.contains("Label(\"Handoff ready\""))
         #expect(actionPanel.contains("scholium.researchAction.connection"))
@@ -76,6 +78,8 @@ struct ResearchActionHandoffPresentationTests {
         #expect(actionPanel.contains("title: \"Copy New Handoff\""))
         #expect(actionPanel.contains("scholium.researchAction.additionalContext"))
         #expect(actionPanel.contains("scholium.researchAction.additionalInstructions"))
+        #expect(actionPanel.contains("private var primaryResearchRequest"))
+        #expect(actionPanel.contains("$0.requirement != .excluded && isResearchRequest($0)"))
         #expect(actionPanel.contains("ScholiumDisclosureHeaderButton("))
         #expect(!actionPanel.contains("DisclosureGroup"))
         #expect(actionPanel.contains("Citation checks use the active style from Research Guidance."))

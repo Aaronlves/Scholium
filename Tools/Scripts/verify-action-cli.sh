@@ -5,6 +5,7 @@ ROOT="${0:A:h:h:h}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")}"
 export DEVELOPER_DIR
 SCRATCH="${2:-${ROOT}/.build/action-cli-verification}"
+mkdir -p "${SCRATCH}"
 
 if (( $# >= 1 )); then
   BINARY="$1"

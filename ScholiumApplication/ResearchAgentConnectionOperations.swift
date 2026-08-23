@@ -280,9 +280,7 @@ extension WorkspaceHandle {
             )
         }
         let academicInputs = try ResearchAcademicFieldValues(
-            rawValues: request.academicPurpose.map {
-                ["research-request": .freeText($0)]
-            } ?? [:],
+            rawValues: request.academicInputs,
             definitions: action.profile.profile.academicInputFields
         )
         let execution = ResearchActionExecutionRequest(
@@ -775,6 +773,7 @@ extension WorkspaceHandle {
               let analysisVaultID = self.assignment.vault(for: .paperAnalysis)?.id else {
             throw ResearchActionExecutionContractError.staleResolution
         }
+        try await validateNewAnalysisAcademicInputs(request.academicInputs)
         let target = VaultQualifiedNoteID(
             vaultID: analysisVaultID,
             relativePath: creation.destination.resolvedRelativePath
@@ -878,7 +877,7 @@ extension WorkspaceHandle {
             sourceRoute: creation.sourceRoute,
             initialMetadata: creation.metadata,
             initialAuthoredYAML: creation.authoredYAML,
-            academicPurpose: request.academicPurpose
+            academicPurpose: request.researchRequestText
         )
         var storedCreation = try await researchAgentConnectionDependencies
             .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID)
@@ -1067,7 +1066,7 @@ extension WorkspaceHandle {
         let existingTargetRequest = try ResearchAgentStartRequest(
             actionID: request.actionID,
             target: target,
-            academicPurpose: request.academicPurpose,
+            academicInputs: request.academicInputs,
             sourceRoute: creation.sourceRoute
         )
         return try await startResearchAgentRun(
@@ -1149,6 +1148,22 @@ extension WorkspaceHandle {
                 sourceState: .unreadable
             )
         }
+    }
+
+    private func validateNewAnalysisAcademicInputs(
+        _ values: [String: ResearchAcademicFieldValue]
+    ) async throws {
+        guard let snapshot = try await researchActionResolverDependencies
+            .researchConfigurationStore.profileSnapshot(),
+              let profile = snapshot.document.profile(for: .analyze),
+              profile.isEnabled,
+              profile.applicableRoles.contains(.analysis) else {
+            throw ResearchActionExecutionContractError.actionUnavailable(.analyze)
+        }
+        _ = try ResearchAcademicFieldValues(
+            rawValues: values,
+            definitions: profile.academicInputFields
+        )
     }
 
     private func makeAgentAnalysisPreflight(
@@ -1739,21 +1754,53 @@ extension WorkspaceHandle {
         run: ResearchRunLocator
     ) async throws -> [AgentCommandAction] {
         if action.actionID == .discuss {
-            return [AgentCommandAction(
-                kind: .finish,
-                label: "Finish the Discussion after the final durable Agent turn and form its Record",
-                command: [
-                    "scholium", "agent", "finish-discussion", "--run",
-                    run.rawValue,
-                ]
-            )]
+            return [
+                AgentCommandAction(
+                    kind: .reply,
+                    label: "Append one attributed Agent turn to this Discussion",
+                    command: [
+                        "scholium", "agent", "discuss-reply", "--run",
+                        run.rawValue, "--from", "-",
+                    ],
+                    inputTemplate: try Self.agentJSONTemplate([
+                        "statement_id": "REPLACE_WITH_STABLE_UUID",
+                        "attribution": "REPLACE_WITH_AGENT_NAME",
+                        "text": "REPLACE_WITH_ATTRIBUTED_AGENT_TURN",
+                    ])
+                ),
+                AgentCommandAction(
+                    kind: .finish,
+                    label: "Finish the Discussion after the final durable Agent turn and form its Record",
+                    command: [
+                        "scholium", "agent", "finish-discussion", "--run",
+                        run.rawValue,
+                    ]
+                ),
+            ]
         }
-        guard action.actionID == .checkFidelity else { return [] }
+        var actions = try Self.authenticatedWriteActions(
+            record.boundedWriteSet.entries,
+            run: run
+        )
+        actions.append(try await authenticatedResultAction(
+            for: record,
+            action: action,
+            run: run
+        ))
+        return actions
+    }
+
+    private func authenticatedResultAction(
+        for record: LocalResearchExecutionRecord,
+        action: ResearchActionSnapshot,
+        run: ResearchRunLocator
+    ) async throws -> AgentCommandAction {
         let defaultFidelityFields = ResearchAcademicProfileCatalog
             .defaultProfiles.first(where: { $0.actionID == .checkFidelity })?
             .academicResultFields ?? []
         let derivesDefaultAcademicResults =
-            action.resultContract.academicFields == defaultFidelityFields
+            action.actionID == .checkFidelity
+                && action.resultContract.academicFields == defaultFidelityFields
         var academicValues: [String: Any] = [:]
         if !derivesDefaultAcademicResults {
             for field in action.resultContract.academicFields
@@ -1775,10 +1822,13 @@ extension WorkspaceHandle {
                 academicValues[field.fieldID.rawValue] = value
             }
         }
-        let fidelityContract = try await authenticatedFidelityContract(for: record)
+        let fidelityContract = action.actionID == .checkFidelity
+            ? try await authenticatedFidelityContract(for: record)
+            : nil
         let requiredUnavailable = fidelityContract?.requiredUnavailableChecks ?? []
         let evidenceLimitation = fidelityContract?.evidenceLimitation
-        let outcomes: [[String: Any]] = record.snapshot.request.checks
+        let outcomes: [[String: Any]] = action.actionID == .checkFidelity
+            ? record.snapshot.request.checks
             .sorted { $0.rawValue < $1.rawValue }
             .map { check in
                 let isUnavailable = requiredUnavailable.contains(check)
@@ -1796,9 +1846,11 @@ extension WorkspaceHandle {
                         : ["REMOVE_FOR_passed_OR_REPLACE_WITH_SPECIFIC_FINDING"],
                 ]
             }
+            : []
         let template: [String: Any] = [
             "schema_version": ResearchAgentResultSubmission.currentSchemaVersion,
-            "record_title": Self.fidelityRecordTitle(
+            "record_title": Self.agentRecordTitle(
+                actionName: action.resolvedProfile.profile.displayName,
                 targetTitle: record.snapshot.request.target.title
             ),
             "disposition": "completed",
@@ -1806,21 +1858,98 @@ extension WorkspaceHandle {
             "context_use_claims": [],
             "fidelity_outcomes": outcomes,
         ]
-        let data = try JSONSerialization.data(
-            withJSONObject: template,
-            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        )
-        return [AgentCommandAction(
+        var completeTemplate = template
+        if action.actionID == .analyze {
+            completeTemplate["literature_recommendations"] = []
+        }
+        return AgentCommandAction(
             kind: .submitResult,
-            label: derivesDefaultAcademicResults
-                ? "Submit only the attributed Fidelity outcomes; Scholium derives the default aggregate Finding fields"
-                : "Submit the attributed Fidelity outcomes and researcher-customized academic fields",
+            label: action.actionID == .checkFidelity && derivesDefaultAcademicResults
+                ? "Submit the attributed Fidelity outcomes; Scholium derives the default aggregate Finding fields"
+                : "Submit this Action's frozen academic Result Contract",
             command: [
                 "scholium", "agent", "submit-result", "--run",
                 run.rawValue, "--from", "-",
             ],
-            inputTemplate: String(decoding: data, as: UTF8.self)
-        )]
+            inputTemplate: try Self.agentJSONTemplate(completeTemplate)
+        )
+    }
+
+    private static func authenticatedWriteActions(
+        _ entries: [ResearchBoundedWriteSetEntry],
+        run: ResearchRunLocator
+    ) throws -> [AgentCommandAction] {
+        try entries
+            .filter { $0.state == .ready }
+            .sorted {
+                ($0.role.rawValue, $0.note.relativePath)
+                    < ($1.role.rawValue, $1.note.relativePath)
+            }
+            .flatMap { entry in
+                try entry.allowedOperations
+                    .sorted { $0.rawValue < $1.rawValue }
+                    .map { operation in
+                        let command = operation.isZoteroBindingOperation
+                            ? "write-zotero-binding"
+                            : "write"
+                        return AgentCommandAction(
+                            kind: .write,
+                            label: "Write \(entry.title) with \(operation.rawValue)",
+                            command: [
+                                "scholium", "agent", command, "--run",
+                                run.rawValue, "--from", "-",
+                            ],
+                            inputTemplate: try agentWriteTemplate(
+                                entry: entry,
+                                operation: operation
+                            )
+                        )
+                    }
+            }
+    }
+
+    private static func agentWriteTemplate(
+        entry: ResearchBoundedWriteSetEntry,
+        operation: ResearchDocumentWriteOperation
+    ) throws -> String {
+        var template: [String: Any] = [
+            "role": entry.role.rawValue,
+            "relative_path": entry.note.relativePath,
+            "operation": operation.rawValue,
+        ]
+        switch operation {
+        case .modifyMarkdown:
+            template["content"] = "REPLACE_WITH_COMPLETE_MARKDOWN_BODY"
+        case .modifySource:
+            template["source"] = "REPLACE_WITH_COMPLETE_AUTHORED_MARKDOWN_SOURCE"
+        case .modifyMetadata:
+            template["metadata"] = entry.allowedMetadataKeys.map {
+                ["key": $0, "value": "REPLACE_WITH_TYPED_VALUE"]
+            }
+        case .createNote:
+            template["content"] = "REPLACE_WITH_MARKDOWN_BODY_OR_EMPTY_STRING"
+            template["authored_yaml"] = ["summary": NSNull(), "keywords": []]
+            if entry.role == .analysis {
+                template["analysis_metadata"] = [
+                    "source_type": "REPLACE_WITH_ALLOWED_SOURCE_TYPE",
+                    "fields": [],
+                ]
+            }
+        case .setZoteroBinding:
+            template["library"] = ["kind": "REPLACE_WITH_user_OR_group"]
+            template["item_key"] = "REPLACE_WITH_EXACT_ZOTERO_ITEM_KEY"
+        case .clearZoteroBinding:
+            break
+        }
+        return try agentJSONTemplate(template)
+    }
+
+    private static func agentJSONTemplate(_ object: Any) throws -> String {
+        let data = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        return String(decoding: data, as: UTF8.self)
     }
 
     private static func stableAgentUUID(runID: UUID, label: String) -> UUID {
@@ -1836,14 +1965,18 @@ extension WorkspaceHandle {
         ].joined(separator: "-"))!
     }
 
-    private static func fidelityRecordTitle(targetTitle: String) -> String {
-        var title = "Fidelity — "
+    private static func agentRecordTitle(
+        actionName: String,
+        targetTitle: String
+    ) -> String {
+        var title = actionName.trimmingCharacters(in: .whitespacesAndNewlines)
+            + " — "
             + targetTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         while title.utf8.count > ResearchRecordTitle.maximumUTF8Count,
               !title.isEmpty {
             title.removeLast()
         }
-        return (try? ResearchRecordTitle(title))?.value ?? "Fidelity check"
+        return (try? ResearchRecordTitle(title))?.value ?? "Research result"
     }
 
     private static func agentRunState(
@@ -1997,6 +2130,15 @@ extension WorkspaceHandle {
         }
     }
 
+}
+
+private extension ResearchAgentStartRequest {
+    var researchRequestText: String? {
+        guard case .freeText(let text)? = academicInputs["research-request"] else {
+            return nil
+        }
+        return text
+    }
 }
 
 public enum ResearchAgentConnectionError: LocalizedError, Hashable, Sendable {
