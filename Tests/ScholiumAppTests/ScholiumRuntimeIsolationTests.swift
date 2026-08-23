@@ -118,6 +118,22 @@ struct ScholiumRuntimeIsolationTests {
             environment: ["SCHOLIUM_UI_TEST_SESSION_ID": "invalid"],
             bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
         ) == nil)
+
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fallback = ScholiumRuntimeIsolation.initialWindowSessionID(
+            environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixtureRoot.path],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        )
+        #expect(fallback == ScholiumRuntimeIsolation.qaFixtureWindowSessionID)
+        #expect(ScholiumRuntimeIsolation.initialWindowSessionID(
+            environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixtureRoot.path],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == fallback)
+        #expect(ScholiumRuntimeIsolation.initialWindowSessionID(
+            environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixtureRoot.path],
+            bundleIdentifier: "com.scholium.app"
+        ) == nil)
     }
 
     @Test("QA viewport control is independent from fixture configuration")

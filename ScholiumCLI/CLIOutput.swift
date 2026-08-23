@@ -191,6 +191,7 @@ private extension ScholiumCLI {
         "agent reload",
         "agent query",
         "agent discuss-reply",
+        "agent finish-discussion",
         "agent extend-write-set",
         "agent write",
         "agent write-zotero-binding",
@@ -294,7 +295,18 @@ private extension ScholiumCLI {
                 output: "ResearchAgentDiscussionReplyReceipt with recorded or already_recorded state. The portable Discussion remains the scholarly owner of the turn.",
                 nextSteps: [
                     "Repeat the same statement_id and content after an uncertain result; an exact retry is idempotent",
-                    "The researcher finishes the Discussion, or scholium agent end --run <locator> cancels the unfinished Run",
+                    "Continue the exchange with another attributed turn, or finish it with scholium agent finish-discussion --run <locator>",
+                    "Use scholium agent end --run <locator> only to cancel the unfinished Run",
+                ]
+            ),
+            "agent finish-discussion": AgentCLICommandHelp(
+                usage: "scholium agent finish-discussion --run <locator>",
+                inputContract: "Authenticated Discuss Run locator; no JSON body",
+                input: "Use the current Discuss Run after at least one durable Agent turn. Finishing forms the canonical portable Discussion Record and revokes this Run's Session; it does not edit a Note, submit a generic Result, or imply researcher acceptance.",
+                output: "ResearchAgentDiscussionFinishReceipt with finished=true and record_formed=true. The acknowledged local Session credential is then removed.",
+                nextSteps: [
+                    "Stop using this Run locator after success",
+                    "If outcome_unknown is returned, do not retry with the revoked credential; stop and report so the researcher can inspect the Discussion and Record",
                 ]
             ),
             "agent extend-write-set": AgentCLICommandHelp(

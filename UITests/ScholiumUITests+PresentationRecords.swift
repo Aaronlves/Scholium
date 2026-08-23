@@ -5,6 +5,31 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession() throws {
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.librarySurface"
+        ].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.noteRow.QA Autosave A.md"
+        ].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.windows.count, 1)
+
+        let sessionsURL = homeDirectory
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Window Sessions", isDirectory: true)
+        let sessions = try FileManager.default.contentsOfDirectory(
+            at: sessionsURL,
+            includingPropertiesForKeys: [.isRegularFileKey]
+        ).filter { $0.pathExtension == "json" }
+        XCTAssertEqual(
+            sessions.count,
+            1,
+            "A fixture launch without an explicit Session ID must reuse one per-process fallback."
+        )
+        XCTAssertNotNil(UUID(uuidString: sessions[0].deletingPathExtension().lastPathComponent))
+    }
+
+    @MainActor
     func testWorkspaceInitialDefaultPreservesNativeReachability() throws {
         waitForDocumentSurface()
         let window = app.windows.firstMatch

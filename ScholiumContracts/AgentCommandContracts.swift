@@ -93,6 +93,7 @@ public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
     case promote
     case selectResources = "select_resources"
     case submitResult = "submit_result"
+    case finish
     case cancel
 }
 

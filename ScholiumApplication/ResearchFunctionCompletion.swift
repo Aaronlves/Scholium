@@ -2,11 +2,6 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
-private struct ResearchFunctionManuscriptChildEvidence: Sendable {
-    let fidelity: ResearchFunctionCompletion?
-    let hasRevision: Bool
-}
-
 private struct ResearchFunctionConfirmedWriteSet: Sendable {
     let report: ResearchRunWriteReport
     let currentFingerprints: [UUID: DocumentFingerprint]
@@ -114,7 +109,7 @@ extension ResearchFunctionCoordinator {
                     "Keep a valid stored Discuss response contract and record a durable attributed reply before completing Discuss."
                 )
             }
-        case .critique, .develop, .fidelity, .revise, .manuscript:
+        case .critique, .develop, .fidelity, .revise:
             break
         }
 
@@ -216,12 +211,6 @@ extension ResearchFunctionCoordinator {
                     "Target modification status does not match its final fingerprint."
                 )
             }
-        } else if snapshot.request.function == .manuscript {
-            guard !submission.didModifyTarget else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "Manuscript coordination cannot claim a child Run's Target change as its own write."
-                )
-            }
         } else {
             guard !submission.didModifyTarget, !targetChanged else {
                 throw ResearchFunctionContractError.invalidCompletion(
@@ -238,8 +227,6 @@ extension ResearchFunctionCoordinator {
                     "A write-capable Research Action cannot select a Check Fidelity child run."
                 )
             }
-        case .manuscript:
-            break
         case .discuss, .fidelity, .critique:
             guard submittedChildRunIDs.isEmpty else {
                 throw ResearchFunctionContractError.invalidCompletion(
@@ -247,21 +234,6 @@ extension ResearchFunctionCoordinator {
                 )
             }
         }
-        let manuscriptChildren = snapshot.request.function == .manuscript
-            ? try await completedManuscriptChildren(
-                for: snapshot,
-                childRunIDs: submittedChildRunIDs,
-                finalTargetFingerprint: finalTargetFingerprint
-            )
-            : nil
-        if snapshot.request.function == .manuscript,
-           manuscriptChildren?.hasRevision != true,
-           targetChanged {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "A Manuscript Target can change only through a selected completed Write child run."
-            )
-        }
-        let manuscriptFidelity = manuscriptChildren?.fidelity
         let requiredChecks: Set<FidelityCheck>
         if snapshot.request.function == .fidelity {
             requiredChecks = snapshot.request.checks
@@ -367,9 +339,7 @@ extension ResearchFunctionCoordinator {
         }
 
         var state: ResearchFunctionRunState
-        if let manuscriptFidelity {
-            state = manuscriptFidelity.state
-        } else if requiredChecks.isEmpty {
+        if requiredChecks.isEmpty {
             state = .complete
         } else if snapshot.request.function == .fidelity,
                   !fidelityTargetResults.isEmpty,
@@ -392,8 +362,7 @@ extension ResearchFunctionCoordinator {
                 checks: requiredChecks
             )
             : nil
-        let evidenceKey = manuscriptFidelity?.fidelityEvidenceKey
-            ?? directFidelityEvidenceKey
+        let evidenceKey = directFidelityEvidenceKey
         let reused: ResearchFunctionCompletion?
         if let evidenceKey, snapshot.request.function == .fidelity {
             reused = try await completedFidelityEvidence(
@@ -403,8 +372,7 @@ extension ResearchFunctionCoordinator {
         } else {
             reused = nil
         }
-        let outcomes = manuscriptFidelity?.fidelityOutcomes
-            ?? reused?.fidelityOutcomes
+        let outcomes = reused?.fidelityOutcomes
             ?? submission.fidelityOutcomes
         if reused != nil { state = .complete }
         let completion = ResearchFunctionCompletion(
@@ -416,14 +384,12 @@ extension ResearchFunctionCoordinator {
             materialFingerprints: finalMaterialFingerprints,
             actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
             summary: stored.completion?.summary ?? submission.summary,
-            didModifyTarget: snapshot.request.function == .manuscript
-                ? false
-                : didConfirmTargetWrite,
+            didModifyTarget: didConfirmTargetWrite,
             fidelityOutcomes: outcomes,
             fidelityTargetResults: fidelityTargetResults,
             literatureRecommendations: submission.literatureRecommendations,
             fidelityEvidenceKey: evidenceKey,
-            reusedFidelityRunID: manuscriptFidelity?.runID ?? reused?.runID,
+            reusedFidelityRunID: reused?.runID,
             childRunIDs: submittedChildRunIDs,
             completedAt: stored.completion?.completedAt ?? submission.submittedAt,
             derivedRefreshWarning: stored.completion?.derivedRefreshWarning
@@ -1020,62 +986,6 @@ extension ResearchFunctionCoordinator {
         }?.completion
     }
 
-    private func completedManuscriptChildren(
-        for manuscript: ResearchFunctionSnapshot,
-        childRunIDs: [UUID],
-        finalTargetFingerprint: DocumentFingerprint
-    ) async throws -> ResearchFunctionManuscriptChildEvidence {
-        guard !childRunIDs.isEmpty,
-              Set(childRunIDs).count == childRunIDs.count else {
-            throw ResearchFunctionContractError.invalidCompletion(
-                "Manuscript completion must select one or more distinct child Action runs."
-            )
-        }
-        let byID = Dictionary(
-            uniqueKeysWithValues: try await authoritativeFunctionRecords().map { ($0.id, $0) }
-        )
-        let selected = try childRunIDs.map { runID in
-            guard let child = byID[runID],
-                  child.snapshot.runID != manuscript.runID,
-                  child.snapshot.preparedAt >= manuscript.preparedAt,
-                  child.snapshot.request.target.noteID == manuscript.request.target.noteID,
-                  child.completion?.state == .complete,
-                  [.critique, .revise, .fidelity].contains(
-                    child.snapshot.request.function
-                  ) else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "A selected Manuscript child is unavailable, incomplete, role-invalid, or belongs to another Target."
-                )
-            }
-            return child
-        }
-        let revisions = selected.filter { $0.snapshot.request.function == .revise }
-        let latestRevision = revisions.max { lhs, rhs in
-            lhs.snapshot.preparedAt < rhs.snapshot.preparedAt
-        }
-        if let latestRevision {
-            guard latestRevision.completion?.targetFingerprint == finalTargetFingerprint else {
-                throw ResearchFunctionContractError.invalidCompletion(
-                    "The latest selected Write child does not match the final Work revision."
-                )
-            }
-        }
-        let fidelityRuns = selected.filter { child in
-            child.snapshot.request.function == .fidelity
-                && child.completion?.targetFingerprint == finalTargetFingerprint
-                && child.completion?.fidelityEvidenceKey != nil
-                && child.completion?.fidelityOutcomes.contains(where: {
-                    $0.check == .content && $0.state != .unavailable
-                }) == true
-        }
-        let finalFidelity = fidelityRuns.max { lhs, rhs in
-            lhs.snapshot.preparedAt < rhs.snapshot.preparedAt
-        }
-        return ResearchFunctionManuscriptChildEvidence(
-            fidelity: finalFidelity?.completion,
-            hasRevision: latestRevision != nil
-        )
-    }
 }
 
 // MARK: - Continuation validation

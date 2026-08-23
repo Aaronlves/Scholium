@@ -304,7 +304,6 @@ enum ResearchActionProofKind: String, CaseIterable, Identifiable {
     case write
     case critique
     case checkFidelity
-    case manuscript
 
     var id: String { rawValue }
 
@@ -316,7 +315,6 @@ enum ResearchActionProofKind: String, CaseIterable, Identifiable {
         case .write: "Write"
         case .critique: "Critique"
         case .checkFidelity: "Check Fidelity"
-        case .manuscript: "Manuscript"
         }
     }
 
@@ -328,7 +326,6 @@ enum ResearchActionProofKind: String, CaseIterable, Identifiable {
         case .write: "pencil"
         case .critique: "text.magnifyingglass"
         case .checkFidelity: "checkmark.shield"
-        case .manuscript: "doc.richtext"
         }
     }
 
@@ -336,7 +333,7 @@ enum ResearchActionProofKind: String, CaseIterable, Identifiable {
         switch self {
         case .analyze: "Attention and Salience.md (Analysis)"
         case .synthesize: "Attention and Normative Reasons.md (Topic)"
-        case .write, .critique, .manuscript: "Revisable Judgment.md (Work)"
+        case .write, .critique: "Revisable Judgment.md (Work)"
         case .discuss, .checkFidelity: "Current note"
         }
     }
@@ -347,7 +344,6 @@ enum ResearchActionProofKind: String, CaseIterable, Identifiable {
         case .synthesize: "Current Topic only"
         case .write: "Current Work only"
         case .critique: "Critique output only; Work is read-only"
-        case .manuscript: "Separately authorized Work phases only"
         case .discuss, .checkFidelity: "None; current note is read-only"
         }
     }
@@ -575,7 +571,6 @@ private struct ResearchGuidanceSettingsDetail: View {
                                 ("Write", "Objection Development, Reply Construction"),
                                 ("Critique", "Argument Mapping, Counterexample Testing"),
                                 ("Check Fidelity", "Interpretive Triangulation"),
-                                ("Manuscript", "Thesis Stabilization, Terminological Audit"),
                             ], id: \.0) { name, practices in
                         ResearchWorkingMethodProofRow(name: name, practices: practices)
                         ScholiumStructuralRule()

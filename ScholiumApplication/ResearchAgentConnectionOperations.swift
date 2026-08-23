@@ -1738,6 +1738,16 @@ extension WorkspaceHandle {
         action: ResearchActionSnapshot,
         run: ResearchRunLocator
     ) async throws -> [AgentCommandAction] {
+        if action.actionID == .discuss {
+            return [AgentCommandAction(
+                kind: .finish,
+                label: "Finish the Discussion after the final durable Agent turn and form its Record",
+                command: [
+                    "scholium", "agent", "finish-discussion", "--run",
+                    run.rawValue,
+                ]
+            )]
+        }
         guard action.actionID == .checkFidelity else { return [] }
         let defaultFidelityFields = ResearchAcademicProfileCatalog
             .defaultProfiles.first(where: { $0.actionID == .checkFidelity })?
@@ -1961,7 +1971,8 @@ extension WorkspaceHandle {
             writeInitialObject: operations.contains(.modifyInitialNote),
             extendWriteSet: operations.contains(.extendWriteSet),
             continueResearch: operations.contains(.continueResearch),
-            discussionReply: operations.contains(.discuss)
+            discussionReply: operations.contains(.discuss),
+            discussionFinish: operations.contains(.discuss)
         )
     }
 

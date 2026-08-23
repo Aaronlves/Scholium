@@ -53,6 +53,31 @@ struct ResearchAgentDiscussionContractsTests {
             from: receiptData
         )
         #expect(decodedReceipt == receipt)
+
+        let finishReceipt = try ResearchAgentDiscussionFinishReceipt(
+            run: run,
+            discussionID: receipt.discussionID,
+            message: "The Discussion was finished and its portable Record was formed."
+        )
+        let finishData = try encoder.encode(finishReceipt)
+        let finishObject = try #require(
+            JSONSerialization.jsonObject(with: finishData) as? [String: Any]
+        )
+        #expect(finishObject["finished"] as? Bool == true)
+        #expect(finishObject["record_formed"] as? Bool == true)
+        #expect(try JSONDecoder().decode(
+            ResearchAgentDiscussionFinishReceipt.self,
+            from: finishData
+        ) == finishReceipt)
+
+        var invalidFinish = finishObject
+        invalidFinish["record_formed"] = false
+        #expect(throws: ResearchAgentDiscussionFinishContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchAgentDiscussionFinishReceipt.self,
+                from: JSONSerialization.data(withJSONObject: invalidFinish)
+            )
+        }
     }
 
     @Test("Reply request validation rejects unsupported schema and unsafe text")

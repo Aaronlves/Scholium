@@ -956,7 +956,6 @@ extension ResearchActionDefinition {
         case .writing: .revise
         case .critique: .critique
         case .checkFidelity: .fidelity
-        case .manuscript: .manuscript
         }
     }
 }

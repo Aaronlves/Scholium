@@ -13,7 +13,6 @@ struct ResearchActionFunctionMappingTests {
             (.write, .work, .revise),
             (.critique, .work, .critique),
             (.checkFidelity, .topic, .fidelity),
-            (.manuscript, .work, .manuscript),
         ]
 
         for (definition, role, expectedFunction) in cases {
@@ -33,7 +32,6 @@ struct ResearchActionFunctionMappingTests {
             (.revise, .work, .write),
             (.critique, .work, .critique),
             (.fidelity, .analysis, .checkFidelity),
-            (.manuscript, .work, .manuscript),
         ]
 
         for (function, role, actionID) in cases {

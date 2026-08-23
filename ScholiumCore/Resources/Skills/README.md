@@ -33,7 +33,6 @@ The files below serve these defaults:
 | Write | `Scholium Method Skills/scholium-write/SKILL.md` |
 | Critique | `Scholium Method Skills/scholium-critique/SKILL.md` |
 | Check Fidelity | `Scholium Method Skills/scholium-content-fidelity/SKILL.md` |
-| Manuscript | `Scholium Method Skills/scholium-manuscript/SKILL.md` |
 
 `BundledResearchMethodDefaults` installs the current default primary Markdown
 through the registration owner for a new Triptych. Later restoration explicitly

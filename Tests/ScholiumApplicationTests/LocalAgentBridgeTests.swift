@@ -289,6 +289,54 @@ struct LocalAgentBridgeTests {
         #expect(decodedResponse.context == nil)
     }
 
+    @Test("Bridge Discussion finish carries only the authenticated Run")
+    func discussionFinishShape() throws {
+        let run = try #require(
+            ResearchRunLocator(rawValue: "bridgediscussionfinish1")
+        )
+        let credential = try testCredential()
+        let request = try LocalAgentBridgeRequest(
+            operation: .discussionFinish,
+            run: run,
+            credential: credential
+        )
+        let data = try LocalAgentBridgeWireCoding.encode(request)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        #expect(object["operation"] as? String == "discussion_finish")
+        #expect(object["discussion_reply_request"] == nil)
+        let decoded = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeRequest.self,
+            from: data
+        )
+        #expect(decoded.operation == .discussionFinish)
+        #expect(decoded.run == run)
+        #expect(decoded.credential == credential)
+
+        let receipt = try ResearchAgentDiscussionFinishReceipt(
+            run: run,
+            discussionID: UUID(),
+            message: "The Discussion was finished and its portable Record was formed."
+        )
+        let response = try LocalAgentBridgeResponse(
+            correlationID: request.correlationID,
+            discussionFinishReceipt: receipt
+        )
+        let decodedResponse = try LocalAgentBridgeWireCoding.decode(
+            LocalAgentBridgeResponse.self,
+            from: LocalAgentBridgeWireCoding.encode(response)
+        )
+        #expect(decodedResponse.discussionFinishReceipt == receipt)
+        #expect(decodedResponse.discussionReplyReceipt == nil)
+
+        let recovery = LocalAgentBridgeErrorPayload.outcomeUnknownRecovery(
+            for: request
+        )
+        #expect(!recovery.safeToRetry)
+        #expect(recovery.nextStep == .stopAndReport)
+    }
+
     @Test("Bridge document-write JSON omits only operation-irrelevant fields")
     func documentWriteIntentOperationShapes() throws {
         let run = try #require(ResearchRunLocator(rawValue: "bridgewriteshapeabcd"))

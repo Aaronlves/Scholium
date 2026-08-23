@@ -44,6 +44,28 @@ extension WorkspaceRuntime {
             request: request
         )
     }
+
+    /// Finishes the current authenticated Discuss Run after at least one
+    /// durable Agent turn and forms its canonical portable Record.
+    public func finishResearchAgentDiscussion(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator
+    ) async throws -> ResearchAgentDiscussionFinishReceipt {
+        guard let sessions = researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let authenticated = try await sessions.authenticate(
+            credential,
+            run: run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
+        let handle = try await openWorkspace(id: authenticated.triptychID)
+        return try await handle.finishResearchAgentDiscussion(
+            credential: credential,
+            run: run
+        )
+    }
 }
 
 extension WorkspaceHandle {
@@ -138,6 +160,67 @@ extension WorkspaceHandle {
             statementID: request.statementID,
             state: .recorded,
             message: "The Agent Discussion reply was recorded."
+        )
+    }
+
+    func finishResearchAgentDiscussion(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator
+    ) async throws -> ResearchAgentDiscussionFinishReceipt {
+        try requireActive()
+        guard let sessions = researchAgentDiscussionDependencies.researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let authenticated = try await sessions.authenticate(
+            credential,
+            run: run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
+        guard authenticated.triptychID == self.id else {
+            throw ResearchAgentSessionError.sessionRejected
+        }
+        guard let execution = try await researchAgentDiscussionDependencies
+            .localResearchExecutionStore.recordIfPresent(id: authenticated.runID),
+              execution.triptychID == self.id,
+              execution.completion == nil,
+              let action = execution.snapshot.actionSnapshot,
+              action.actionID == .discuss,
+              execution.discussion?.id == authenticated.runID else {
+            throw ResearchAgentConnectionError.runUnavailable
+        }
+
+        let expected = try ResearchDiscussionFactory.make(
+            snapshot: execution.snapshot,
+            triptychID: self.id
+        )
+        let active: PortableResearchDiscussion
+        do {
+            active = try await researchAgentDiscussionDependencies
+                .portableResearchRecordStore.activeDiscussion(id: authenticated.runID)
+        } catch ResearchRecordStoreV1Error.discussionNotFound {
+            throw ResearchAgentConnectionError.runUnavailable
+        }
+        guard ResearchDiscussionFactory.activeMatches(active, expected: expected),
+              active.statements.contains(where: {
+                  $0.author == .agent
+                      && $0.createdAt >= execution.snapshot.preparedAt
+                      && !$0.attribution.isEmpty
+                      && !$0.text.isEmpty
+              }) else {
+            throw ResearchFunctionContractError.invalidCompletion(
+                "Record at least one durable attributed Agent turn before finishing Discuss."
+            )
+        }
+
+        _ = try await researchFunctionCoordinator.finishProtectedDiscussion(
+            runID: authenticated.runID,
+            host: self
+        )
+        return try ResearchAgentDiscussionFinishReceipt(
+            run: run,
+            discussionID: active.id,
+            message: "The Discussion finished and formed one portable Research Record."
         )
     }
 }

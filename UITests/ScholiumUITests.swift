@@ -117,7 +117,10 @@ final class ScholiumUITests: XCTestCase {
     }
 
     private var initialOpenNoteForCurrentTest: String? {
-        if name.contains("testRestoreAccessQuitScholiumTerminatesApplication") {
+        if name.contains("testRestoreAccessQuitScholiumTerminatesApplication")
+            || name.contains(
+                "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
+            ) {
             return nil
         }
         if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
@@ -156,6 +159,9 @@ final class ScholiumUITests: XCTestCase {
         app = configuredApplication(
             sessionID: sessionID,
             initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest,
+            usesFixedSessionID: !name.contains(
+                "testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
+            ),
             autosaveDelayMS: name.contains(
                 "testDirtyLivePreviewSearchesThisNoteWithoutSaving"
             ) ? 300_000 : 5_000,

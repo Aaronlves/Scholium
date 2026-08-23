@@ -285,13 +285,13 @@ extension ResearchFunctionOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Critique uses its Result Contract, while Manuscript selects independent revision-specific child runs")
-    func critiqueAndManuscriptChildren() async throws {
+    @Test("Critique uses its frozen Result Contract without write authority")
+    func critiqueUsesFrozenResultContract() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        var work = try await researchFunctionTarget(
+        let work = try await researchFunctionTarget(
             fixture.workID,
             role: .work,
             handle: handle
@@ -329,135 +329,6 @@ extension ResearchFunctionOperationsTests {
             )
         )
         #expect(try await handle.documents.load(fixture.workID).fingerprint == work.fingerprint)
-
-        let defaultManuscript = try #require(
-            try await handle.research.availableProtectedFunctions(for: work).first {
-                $0.function == .manuscript
-            }
-        )
-        #expect(!defaultManuscript.isEnabled)
-        await #expect(throws: (any Error).self) {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(
-                    function: .manuscript,
-                    target: work
-                )
-            )
-        }
-        let registrations = try await handle.research.researchSkillRegistrations()
-        let manuscriptRegistration = try #require(
-            registrations.document.registration(for: .manuscript)
-        )
-        _ = try await handle.research.saveResearchSkillRegistrations(
-            try registrations.document.replacing(ResearchSkillRegistration(
-                key: manuscriptRegistration.key,
-                actionID: manuscriptRegistration.actionID,
-                displayName: manuscriptRegistration.displayName,
-                primaryMarkdown: manuscriptRegistration.primaryMarkdown,
-                skillFolder: manuscriptRegistration.skillFolder,
-                isEnabled: true
-            )),
-            expectedRevision: registrations.revision
-        )
-        let profiles = try await handle.research.academicActionProfiles()
-        let manuscriptProfile = try #require(
-            profiles.document.profile(for: .manuscript)
-        )
-        let enabledManuscriptProfile = try ResearchAcademicActionProfile(
-            actionID: manuscriptProfile.actionID,
-            displayName: manuscriptProfile.displayName,
-            order: manuscriptProfile.order,
-            isEnabled: true,
-            applicableRoles: manuscriptProfile.applicableRoles,
-            academicInputFields: manuscriptProfile.academicInputFields,
-            academicResultFields: manuscriptProfile.academicResultFields
-        )
-        _ = try await handle.research.saveAcademicActionProfiles(
-            try ResearchAcademicProfileDocument(
-                profiles: profiles.document.profiles.filter {
-                    $0.actionID != .manuscript
-                } + [enabledManuscriptProfile]
-            ),
-            expectedRevision: profiles.revision
-        )
-
-        let manuscript = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .manuscript, target: work)
-        )
-        #expect(try await handle.services.localResearchExecutionStore.record(
-            id: manuscript.runID
-        ).boundedWriteSet.entries.isEmpty)
-        #expect(!manuscript.instructions.contains("Critique, then Revise, then Fidelity"))
-        let revise = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .revise, target: work)
-        )
-        let workDocument = try await handle.documents.load(fixture.workID)
-        _ = try await writePreparedResearchDocument(
-            for: revise,
-            body: workDocument.body
-                + "\nAn explicit premise now supports the inference.\n",
-            handle: handle
-        )
-        let revisionCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: revise.runID,
-                confirmationToken: revise.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "Revised the inference and performed the Method self-check.",
-                didModifyTarget: true
-            )
-        )
-        #expect(revisionCompletion.state == .complete)
-        work = try await researchFunctionTarget(
-            fixture.workID,
-            role: .work,
-            handle: handle
-        )
-        let revisionFidelity = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: work,
-                checks: [.content]
-            )
-        )
-        _ = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: revisionFidelity.runID,
-                confirmationToken: revisionFidelity.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: work.fingerprint,
-                summary: "Checked the exact final Work revision.",
-                didModifyTarget: false,
-                fidelityOutcomes: [.passed(.content)]
-            )
-        )
-        let fidelityReuse = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
-                target: work,
-                checks: [.content]
-            )
-        )
-        #expect(fidelityReuse.state == .complete)
-        #expect(fidelityReuse.reusedCompletion?.runID == revisionFidelity.runID)
-        let completedManuscript = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: manuscript.runID,
-                confirmationToken: manuscript.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: work.fingerprint,
-                summary: "Coordinated the selected manuscript activities.",
-                didModifyTarget: false,
-                childRunIDs: [revise.runID, revisionFidelity.runID]
-            )
-        )
-        #expect(completedManuscript.state == .complete)
-        #expect(completedManuscript.childRunIDs == [revise.runID, revisionFidelity.runID])
-        #expect(completedManuscript.reusedFidelityRunID == revisionFidelity.runID)
-        let records = try await handle.research.finishedResearchRecords(noteID: nil)
-        #expect(records.first(where: { $0.id == revise.runID })?.confirmedChanges.count == 1)
-        #expect(records.first(where: { $0.id == manuscript.runID })?.confirmedChanges.isEmpty
-            == true)
         await runtime.shutdown()
     }
 

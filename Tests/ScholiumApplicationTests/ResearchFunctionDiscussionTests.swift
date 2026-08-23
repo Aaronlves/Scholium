@@ -200,7 +200,15 @@ extension ResearchFunctionOperationsTests {
             run: handoff.run
         )
         #expect(context.brief.capabilities.discussionReply)
+        #expect(context.brief.capabilities.discussionFinish)
         #expect(context.discussionResponseContract != nil)
+
+        await #expect(throws: ResearchFunctionContractError.self) {
+            _ = try await runtime.finishResearchAgentDiscussion(
+                credential: credential,
+                run: handoff.run
+            )
+        }
 
         let request = try ResearchAgentDiscussionReplyRequest(
             statementID: UUID(uuidString: "00000000-0000-4000-8000-000000000903")!,
@@ -238,11 +246,23 @@ extension ResearchFunctionOperationsTests {
             )
         }
 
-        let end = try await runtime.endResearchAgentRun(
+        let finish = try await runtime.finishResearchAgentDiscussion(
             credential: credential,
             run: handoff.run
         )
-        #expect(!end.recoveryRetained)
+        #expect(finish.finished)
+        #expect(finish.recordFormed)
+        #expect(finish.discussionID == preparation.runID)
+        #expect(try await handle.research.activeDiscussions(noteID: nil).isEmpty)
+        #expect(try await handle.research.finishedResearchRecords(noteID: nil).contains {
+            $0.id == preparation.runID && $0.kind == .discussion
+        })
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+        }
         await runtime.shutdown()
     }
 

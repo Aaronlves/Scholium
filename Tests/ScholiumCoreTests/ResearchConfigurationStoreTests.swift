@@ -257,12 +257,9 @@ struct ResearchConfigurationStoreTests {
         let profiles = try #require(await store.profileSnapshot())
         let policy = try #require(await store.collaborationSnapshot())
         #expect(registrations.document.registrations.map(\.actionID) == [
-            .analyze, .checkFidelity, .critique, .discuss, .manuscript,
-            .synthesize, .write,
+            .analyze, .checkFidelity, .critique, .discuss, .synthesize, .write,
         ])
-        #expect(profiles.document.profiles.count == 7)
-        #expect(registrations.document.registration(for: .manuscript)?.isEnabled == false)
-        #expect(profiles.document.profile(for: .manuscript)?.isEnabled == false)
+        #expect(profiles.document.profiles.count == 6)
         #expect(policy.document.policy == .askEveryTime)
 
         let bundledAnalyze = try BundledResearchMethodDefaults.primarySource(for: .analyze)

@@ -676,15 +676,6 @@ public enum ResearchAcademicProfileCatalog {
                     text("suggested-correction", "Suggested Correction", requirement: .optional),
                 ]
             ),
-            try! ResearchAcademicActionProfile(
-                actionID: .manuscript,
-                displayName: "Manuscript",
-                order: 60,
-                isEnabled: false,
-                applicableRoles: [.work],
-                academicInputFields: [request],
-                academicResultFields: []
-            ),
         ]
     }()
 
@@ -705,7 +696,7 @@ public enum ResearchAcademicProfileCatalog {
         case .synthesize: ("contribution", "no-warranted-change")
         case .write: ("change-kind", "no-warranted-change")
         case .critique: ("issue-kind", "no-substantive-issue")
-        case .discuss, .checkFidelity, .manuscript: nil
+        case .discuss, .checkFidelity: nil
         default: nil
         }
         guard let rule,

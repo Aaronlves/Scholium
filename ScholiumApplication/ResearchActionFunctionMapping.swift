@@ -16,7 +16,6 @@ enum ResearchActionFunctionMapping {
         case .writing: .revise
         case .critique: .critique
         case .checkFidelity: .fidelity
-        case .manuscript: .manuscript
         }
 
         guard function.allowedTargetRoles.contains(targetRole.functionTargetRole) else {
@@ -52,7 +51,6 @@ enum ResearchActionFunctionMapping {
         case .fidelity: .checkFidelity
         case .critique: .critique
         case .revise: .write
-        case .manuscript: .manuscript
         }
         try definition.validate(targetRole: targetRole.actionTargetRole)
         return definition

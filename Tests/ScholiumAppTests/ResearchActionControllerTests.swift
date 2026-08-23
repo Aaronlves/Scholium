@@ -990,7 +990,6 @@ struct ResearchActionControllerTests {
         case .write: definition = .write
         case .critique: definition = .critique
         case .checkFidelity: definition = .checkFidelity
-        case .manuscript: definition = .manuscript
         default: definition = .discuss
         }
         let resultField = try ResearchAcademicFieldDefinition.freeText(

@@ -276,6 +276,8 @@ public enum DiscussResponseTransport {
         scholium agent discuss-reply --run <locator> --from <json|->
         Use one stable statement_id per turn and repeat the same statement_id,
         attribution, and text after an outcome-unknown response.
+        After the final durable Agent turn, finish this same Run with:
+        scholium agent finish-discussion --run <locator>
         """
     }
 }

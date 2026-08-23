@@ -132,6 +132,29 @@ extension ScholiumCLI {
             try writeAgentJSON(receipt)
             return
         }
+        if arguments.first == "finish-discussion" {
+            guard let rawRun = option("--run", in: arguments),
+                  let run = ResearchRunLocator(rawValue: rawRun) else {
+                throw CLIError.usage(
+                    "Usage: scholium agent finish-discussion --run <locator>"
+                )
+            }
+            let store = credentialStore
+            let credential = try store.load(for: run)
+            let receipt = try await operations.finishDiscussion(
+                run: run,
+                credential: credential
+            )
+            do {
+                try store.remove(for: run)
+            } catch {
+                writeError(
+                    "scholium: warning: The Discussion finished, but its now-revoked local credential file could not be removed. Repair the protected Session store before using this Run again.\n"
+                )
+            }
+            try writeAgentJSON(receipt)
+            return
+        }
         if arguments.first == "extend-write-set" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
@@ -379,7 +402,7 @@ extension ScholiumCLI {
             return
         }
         throw CLIError.usage(
-            "Usage: scholium agent preflight-analysis|start|pair|context|reload|query|discuss-reply|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
+            "Usage: scholium agent preflight-analysis|start|pair|context|reload|query|discuss-reply|finish-discussion|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
         )
     }
 

@@ -330,10 +330,10 @@ Never add:
 
 The researcher-governed Skills contract requires protected platform protocol;
 one current editable primary Markdown Skill registration per available Action;
-exact-Wikilink Practices; optional local folder-path registration; optional
-hidden Manuscript; academic-only Action Profiles; one Triptych collaboration
-policy; Run-owned Bounded Write Sets; portable Research Records; and protected
-Zotero and local Agent transports.
+exact-Wikilink Practices; optional local folder-path registration;
+academic-only Action Profiles; one Triptych collaboration policy; Run-owned
+Bounded Write Sets; portable Research Records; and protected Zotero and local
+Agent transports.
 
 Outside the Beta/1.0 scope: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,

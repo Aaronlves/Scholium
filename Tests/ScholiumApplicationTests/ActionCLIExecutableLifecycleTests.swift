@@ -18,6 +18,7 @@ struct ActionCLIExecutableLifecycleTests {
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
             "preflight-analysis", "start", "pair", "context", "reload", "query", "discuss-reply",
+            "finish-discussion",
             "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
             "submit-result", "continue",
@@ -301,7 +302,8 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .pair, .query, .discussionReply, .extendWriteSet, .writeZoteroBinding,
+            case .pair, .query, .discussionReply, .discussionFinish,
+                    .extendWriteSet, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
                 throw LocalAgentBridgeError.invalidRequest
@@ -470,8 +472,8 @@ struct ActionCLIExecutableLifecycleTests {
             .contains(run.rawValue))
     }
 
-    @Test("The real CLI pairs through stdin, hides the Session secret, and reloads authenticated context")
-    func agentPairingAndContext() async throws {
+    @Test("The real CLI pairs, reloads Discuss context, and removes its credential after Finish")
+    func agentPairingContextAndDiscussionFinish() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
@@ -536,7 +538,8 @@ struct ActionCLIExecutableLifecycleTests {
                     zotero: true,
                     writeInitialObject: false,
                     extendWriteSet: false,
-                    discussionReply: true
+                    discussionReply: true,
+                    discussionFinish: true
                 )
             ),
             method: ResearchMethodContext(snapshot: method),
@@ -561,10 +564,10 @@ struct ActionCLIExecutableLifecycleTests {
                 boundedWriteSet: context.boundedWriteSet
             )
         }
-        let endReceipt = try ResearchRunEndReceipt(
+        let finishReceipt = try ResearchAgentDiscussionFinishReceipt(
             run: run,
-            recoveryRetained: false,
-            message: "The Run ended and refuses new Agent operations."
+            discussionID: UUID(),
+            message: "The Discussion finished and formed one portable Research Record."
         )
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
@@ -582,14 +585,15 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .context(context)
-            case .end:
+            case .discussionFinish:
                 guard request.run == run, request.credential == credential else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
-                return .endReceipt(endReceipt)
-            case .query, .discussionReply, .extendWriteSet, .writeDocument, .writeZoteroBinding,
+                return .discussionFinish(finishReceipt)
+            case .query, .discussionReply,
+                    .extendWriteSet, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
-                    .methodImprovementContext, .submitMethodImprovement:
+                    .methodImprovementContext, .submitMethodImprovement, .end:
                 throw LocalAgentBridgeError.invalidRequest
             }
         }
@@ -658,14 +662,14 @@ struct ActionCLIExecutableLifecycleTests {
             ofItemAtPath: credentialURL.path
         )
 
-        let ended = try cli.run(
-            ["agent", "end", "--run", run.rawValue],
+        let finished = try cli.run(
+            ["agent", "finish-discussion", "--run", run.rawValue],
             environment: environment
         )
-        let endOutput = String(decoding: ended.stdout, as: UTF8.self)
-        #expect(endOutput.contains("\"ended\" : true"))
-        #expect(endOutput.contains("\"recovery_retained\" : false"))
-        #expect(!endOutput.contains(credential.secret))
+        let finishOutput = String(decoding: finished.stdout, as: UTF8.self)
+        #expect(finishOutput.contains("\"finished\" : true"))
+        #expect(finishOutput.contains("\"record_formed\" : true"))
+        #expect(!finishOutput.contains(credential.secret))
         #expect(!FileManager.default.fileExists(atPath: credentialURL.path))
     }
 
@@ -799,7 +803,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .context, .query, .discussionReply,
+            case .context, .query, .discussionReply, .discussionFinish,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1249,7 +1253,8 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
-            case .context, .query, .discussionReply, .extendWriteSet, .writeDocument,
+            case .context, .query, .discussionReply, .discussionFinish,
+                    .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1561,7 +1566,8 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .context, .query, .discussionReply, .extendWriteSet, .writeDocument,
+            case .context, .query, .discussionReply, .discussionFinish,
+                    .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
                 throw LocalAgentBridgeError.invalidRequest

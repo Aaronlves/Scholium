@@ -72,13 +72,6 @@ enum BundledResearchMethodDefaults {
             resourceDirectory: "Scholium Method Skills/scholium-content-fidelity",
             resources: ["SKILL.md", "references/content.md", "references/citations.md"]
         ),
-        Definition(
-            actionID: .manuscript,
-            displayName: "Manuscript",
-            resourceDirectory: "Scholium Method Skills/scholium-manuscript",
-            resources: ["SKILL.md", "references/method.md"],
-            isEnabled: false
-        ),
     ]
 
     private static let practiceResources = [

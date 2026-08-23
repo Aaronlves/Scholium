@@ -1105,7 +1105,6 @@ extension ResearchActionDefinition {
         case .writing: "pencil"
         case .critique: "text.magnifyingglass"
         case .checkFidelity: "checkmark.shield"
-        case .manuscript: "doc.richtext"
         }
     }
 

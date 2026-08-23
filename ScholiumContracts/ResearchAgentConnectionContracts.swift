@@ -763,6 +763,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
     public let extendWriteSet: Bool
     public let continueResearch: Bool
     public let discussionReply: Bool
+    public let discussionFinish: Bool
 
     public init(
         search: Bool,
@@ -775,7 +776,8 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         writeInitialObject: Bool,
         extendWriteSet: Bool,
         continueResearch: Bool = false,
-        discussionReply: Bool = false
+        discussionReply: Bool = false,
+        discussionFinish: Bool = false
     ) {
         self.search = search
         self.read = read
@@ -788,6 +790,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         self.extendWriteSet = extendWriteSet
         self.continueResearch = continueResearch
         self.discussionReply = discussionReply
+        self.discussionFinish = discussionFinish
     }
 }
 
@@ -1032,7 +1035,7 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 10
+    public static let currentSchemaVersion = 11
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.
@@ -1091,6 +1094,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         self.fidelityContract = fidelityContract
         guard discussionResponseContract == nil
                 || brief.capabilities.discussionReply else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        guard discussionResponseContract == nil
+                || brief.capabilities.discussionFinish else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
         self.discussionResponseContract = discussionResponseContract

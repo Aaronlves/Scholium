@@ -302,7 +302,7 @@ private enum BuiltInActionVisualGroup: Equatable {
 private extension ResearchActionItemPresentation {
     var builtInVisualGroup: BuiltInActionVisualGroup {
         switch definition.executionKind {
-        case .discussion, .analysis, .synthesis, .writing, .manuscript:
+        case .discussion, .analysis, .synthesis, .writing:
             .research
         case .critique, .checkFidelity:
             .review
@@ -603,7 +603,6 @@ private extension ResearchActionID {
         case .write: .write
         case .critique: .critique
         case .checkFidelity: .checkFidelity
-        case .manuscript: .manuscript
         default: .discuss
         }
     }
@@ -622,8 +621,6 @@ private extension ResearchActionID {
             String(localized: "Critique", table: "Localizable", bundle: .module)
         case .checkFidelity:
             String(localized: "Check Fidelity", table: "Localizable", bundle: .module)
-        case .manuscript:
-            String(localized: "Manuscript", table: "Localizable", bundle: .module)
         default:
             String(localized: "Research Action", table: "Localizable", bundle: .module)
         }

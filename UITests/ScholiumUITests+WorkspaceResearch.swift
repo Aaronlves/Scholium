@@ -1358,7 +1358,7 @@ extension ScholiumUITests {
         app.descendants(matching: .any)["Methods & Practices"].firstMatch.click()
         for actionID in [
             "discuss", "analyze", "synthesize", "write", "critique",
-            "check-fidelity", "manuscript",
+            "check-fidelity",
         ] {
             XCTAssertTrue(app.descendants(matching: .any)[
                 "scholium.researchGuidance.method.\(actionID)"

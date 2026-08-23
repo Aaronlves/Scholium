@@ -121,11 +121,14 @@ cp -R "${QA_APP}" "${REGISTERED_QA}"
 # identifier. The test process must perform the only launch; pre-opening the
 # app here would create a second window before launchEnvironment is applied.
 profile="${1:-smoke}"
-if [[ "${profile}" == "smoke" || "${profile}" == "complete" ]]; then
-  shift $(( $# > 0 ? 1 : 0 ))
-else
-  profile="focused"
-fi
+case "${profile}" in
+  smoke|complete|focused)
+    shift $(( $# > 0 ? 1 : 0 ))
+    ;;
+  *)
+    profile="focused"
+    ;;
+esac
 test_arguments=("$@")
 common_arguments=(
   -project "${ROOT}/ScholiumUITests.xcodeproj" \

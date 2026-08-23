@@ -26,7 +26,6 @@ struct ResearchAgentResultContractsTests {
             .checkFidelity: [
                 "Finding", "Finding Status", "Suggested Correction",
             ],
-            .manuscript: [],
         ]
         for profile in ResearchAcademicProfileCatalog.defaultProfiles {
             #expect(
@@ -34,18 +33,6 @@ struct ResearchAgentResultContractsTests {
                     == expected[profile.actionID]
             )
         }
-
-        let manuscript = try #require(
-            ResearchAcademicProfileCatalog.defaultProfiles.first {
-                $0.actionID == .manuscript
-            }
-        )
-        let contract = try ResearchResultContract(
-            profile: manuscript,
-            registrationKey: ResearchSkillRegistrationKey(rawValue: UUID()),
-            profileRevision: try manuscript.contentRevision()
-        )
-        #expect(contract.academicFields.isEmpty)
 
         let synthesis = try #require(
             ResearchAcademicProfileCatalog.defaultProfiles.first {
@@ -414,11 +401,5 @@ struct ResearchAgentResultContractsTests {
             ))
         ).content.isEmpty)
 
-        let manuscript = try #require(
-            PlatformActionCatalog.definition(for: .manuscript)
-        )
-        #expect(manuscript.extensionWriteOperations.isEmpty)
-        #expect(!manuscript.operations.contains(.modifyInitialNote))
-        #expect(!manuscript.operations.contains(.extendWriteSet))
     }
 }

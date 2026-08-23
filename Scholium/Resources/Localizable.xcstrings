@@ -17201,22 +17201,6 @@
         }
       }
     },
-    "Manuscript" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Manuscript"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "稿件"
-          }
-        }
-      }
-    },
     "Mark Current Note Reviewed" : {
       "localizations" : {
         "zh-Hans" : {

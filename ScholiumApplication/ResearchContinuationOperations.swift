@@ -596,7 +596,6 @@ extension WorkspaceHandle {
         case .write: .write
         case .critique: .critique
         case .checkFidelity: .checkFidelity
-        case .manuscript: .manuscript
         default:
             throw ResearchActionExecutionContractError.actionUnavailable(actionID)
         }

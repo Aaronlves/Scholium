@@ -97,7 +97,6 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
         case .write: .writing
         case .critique: .critique
         case .checkFidelity: .checkFidelity
-        case .manuscript: .manuscript
         default: nil
         }
     }
@@ -153,13 +152,6 @@ public enum PlatformActionCatalog {
             executionKind: .checkFidelity,
             allowedTargetRoles: ResearchActionTargetRole.allCases,
             optionalSelectors: [.focalNotes, .passage, .fidelityChecks],
-            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
-        ),
-        try! PlatformActionDefinition(
-            actionID: .manuscript,
-            executionKind: .manuscript,
-            allowedTargetRoles: [.work],
-            optionalSelectors: [.focalNotes],
             operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .checkFidelity, .continueResearch]
         ),
     ]

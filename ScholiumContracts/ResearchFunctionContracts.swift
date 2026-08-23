@@ -8,7 +8,6 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
     case fidelity
     case critique
     case revise
-    case manuscript
 
     public var delivery: ResearchFunctionDelivery {
         .externalAgent
@@ -17,14 +16,14 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
     public var requiresAgentChangeEvidence: Bool {
         switch self {
         case .develop, .revise: true
-        case .discuss, .fidelity, .critique, .manuscript: false
+        case .discuss, .fidelity, .critique: false
         }
     }
 
     public var writesTarget: Bool {
         switch self {
         case .develop, .revise: true
-        case .discuss, .fidelity, .critique, .manuscript: false
+        case .discuss, .fidelity, .critique: false
         }
     }
 
@@ -32,7 +31,7 @@ public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendabl
         switch self {
         case .develop:
             [.analysis, .topic]
-        case .critique, .revise, .manuscript:
+        case .critique, .revise:
             [.work]
         case .discuss, .fidelity:
             Set(ResearchFunctionTargetRole.allCases)

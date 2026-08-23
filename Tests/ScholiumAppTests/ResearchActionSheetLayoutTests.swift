@@ -54,9 +54,5 @@ struct ResearchActionSheetLayoutTests {
             .focalNotes, .passage, .fidelityChecks,
         ])
 
-        let manuscript = try #require(
-            PlatformActionCatalog.definition(for: .manuscript)
-        )
-        #expect(manuscript.optionalSelectors == [.focalNotes])
     }
 }

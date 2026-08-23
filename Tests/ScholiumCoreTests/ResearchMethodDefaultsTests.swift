@@ -416,19 +416,6 @@ struct ResearchMethodDefaultsTests {
         #expect(contentFidelity.contains("researcher-authored wording without inferred"))
         #expect(contentFidelity.contains("researcher-stated commitment"))
 
-        let manuscript = try #require(BundledResearchMethodDefaults.definitions.first {
-            $0.actionID == .manuscript
-        })
-        let manuscriptMethod = String(
-            decoding: try BundledResearchSkillResources.data(
-                directory: manuscript.resourceDirectory,
-                relativePath: "references/method.md"
-            ),
-            as: UTF8.self
-        )
-        #expect(manuscriptMethod.contains("does not establish that the corresponding"))
-        #expect(manuscriptMethod.contains("readiness for that human decision"))
-
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -471,7 +458,6 @@ struct ResearchMethodDefaultsTests {
             writeMethod,
             feedback,
             contentFidelity,
-            manuscriptMethod,
             conceptualAnalyst,
             argumentReconstructionist,
         ] {

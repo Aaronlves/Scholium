@@ -693,7 +693,7 @@ punctuation.
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
 | Discuss / Analyze / Synthesize / Write | 讨论 / 分析 / 综合 / 写入 |
-| Critique / Check Fidelity / Manuscript | 评析 / 核查 / 稿件 |
+| Critique / Check Fidelity | 评析 / 核查 |
 | Research / Review / Judgment (Actions groups) | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |

@@ -612,11 +612,12 @@ private struct ScholiumBootstrapRoot: View {
     /// registered-Triptych restore flow above.
     private func openFixtureWorkspaceIfRequested() -> Bool {
         guard ScholiumRuntimeIsolation.fixtureRootURL() != nil,
+              let windowID = ScholiumRuntimeIsolation.initialWindowSessionID(),
               !didRouteToWorkspace
         else { return false }
         openWorkspace(
             TriptychWindowRoute(
-                windowID: ScholiumRuntimeIsolation.initialWindowSessionID() ?? UUID()
+                windowID: windowID
             )
         )
         return true

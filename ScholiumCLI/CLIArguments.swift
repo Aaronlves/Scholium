@@ -145,6 +145,10 @@ extension ScholiumCLI {
                 pathLength: 2,
                 options: ["--run": .value, "--from": .value]
             ),
+            "agent finish-discussion": .init(
+                pathLength: 2,
+                options: ["--run": .value]
+            ),
             "agent extend-write-set": .init(
                 pathLength: 2,
                 options: ["--run": .value, "--from": .value]

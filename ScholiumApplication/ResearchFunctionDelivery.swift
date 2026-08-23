@@ -76,10 +76,6 @@ extension ResearchFunctionCoordinator {
             // pre-edit Target. The final phase is a fresh Fidelity function run
             // prepared only after the external edit produces its fingerprint.
             phaseFunctions = [request.function]
-        case .manuscript:
-            // Manuscript coordinates, but never flattens the permissions or
-            // records of its child functions into one eager preparation.
-            phaseFunctions = [.manuscript]
         default:
             phaseFunctions = [request.function]
         }
@@ -243,8 +239,6 @@ extension ResearchFunctionCoordinator {
                 boundary = "Only the exact current Work Target is writable in this Action. Materials are read-only. The write key does not authorize creating, deleting, or renaming Notes. Scholium performs revision, identity, and containment checks at completion."
             case .critique:
                 boundary = "The Work Target and Materials are read-only. Findings may be written only to the separate Critique record prepared by Scholium."
-            case .manuscript:
-                boundary = "This run coordinates only. Prepare each needed Critique, Write, or Check Fidelity Action as an independently permissioned child run. Critique is optional. A substantive Write completes with its own Method checks; a separate Check Fidelity child is optional and belongs here only when the researcher explicitly requests that exact-revision audit."
             case .discuss:
                 let nextAction = switch request.target.role {
                 case .analysis: "Analyze"
@@ -303,12 +297,6 @@ extension ResearchFunctionCoordinator {
                 : renderedMethod
             sections += [phaseInstructions, ""]
         }
-        if request.function == .manuscript {
-            sections += [
-                "Do not edit from this coordination packet. Use the Action API only for child Actions this manuscript pass actually needs. When completing Manuscript, select the exact completed child runs; the latest selected Write must bind the final Work revision. Select a matching independent Check Fidelity child only when that researcher-requested audit is part of this Manuscript pass.",
-                "",
-            ]
-        }
         if usesBoundedWriteSet {
             sections += [
                 "Use the authenticated Agent CLI for every mutation. The current Run owns one bounded write set; each member is independently revision checked, recorded for diff and Undo, read back, and recoverable.",
@@ -319,7 +307,7 @@ extension ResearchFunctionCoordinator {
         if request.function == .discuss {
             sections += [
                 "Use scholium agent discuss-reply --run <locator> --from <json|-> for each attributed Agent turn. The strict JSON fields are statement_id, attribution, and text; generate one stable statement_id per turn and reuse the same ID and content after an outcome-unknown response.",
-                "The authenticated key appends only to this Run's active portable Discussion. It does not finish the Discussion, accept a Result, edit Notes or Metadata, or authorize another Run. The researcher owns Finish and any later Action.",
+                "After the final durable Agent turn, use scholium agent finish-discussion --run <locator> to finish this same Run and form its portable Discussion Record. Finish accepts no Result body, edits no Note or Metadata, grants no next Run, and does not imply researcher acceptance.",
                 "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
                 "Cancel this prepared run with: scholium action cancel \(runID.uuidString.lowercased()) --triptych \(workspaceID.uuidString.lowercased())",
             ]
@@ -516,7 +504,6 @@ private func defaultFunctionInstruction(
     case .fidelity: "Check the current note for content fidelity."
     case .critique: "Critique the current Work."
     case .revise: "Write the authorized change in the current Work."
-    case .manuscript: "Coordinate work on the manuscript as a whole."
     }
 }
 
@@ -538,6 +525,5 @@ private func publicActionName(
     case .critique: "Critique"
     case .revise: "Write"
     case .fidelity: "Content Fidelity"
-    case .manuscript: "Manuscript"
     }
 }

@@ -4102,7 +4102,6 @@ struct FrontendArchitectureTests {
             "Write to this Work within its explicit boundary.",
             "Produce bounded critical feedback before any separately authorized writing.",
             "Check content fidelity without modifying the note.",
-            "Run the configured manuscript method within its declared boundary.",
         ] {
             #expect(!localization.contains(retiredSummary))
         }

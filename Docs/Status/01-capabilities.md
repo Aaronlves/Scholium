@@ -134,8 +134,8 @@
 ## Research Actions and local Agent collaboration
 
 - The closed Platform catalog exposes the role-valid Discuss, Analyze,
-  Synthesize, Write, Critique, Check Fidelity, and optional hidden Manuscript
-  Actions. Preparation freezes the target, request, source and focal material,
+  Synthesize, Write, Critique, and Check Fidelity Actions. Preparation freezes
+  the target, request, source and focal material,
   Method, Practices, Profile, Result Contract, collaboration policy, read scope,
   and initial Bounded Write Set member.
 - GUI Copy Handoff and Copy New Handoff deliver one Run locator and one-use
@@ -187,9 +187,9 @@
   branches, each with its own identity-reuse and next-step contract. These
   owner states no longer fall through to `operation_failed`.
   Outcome-unknown recovery is operation-specific and executable; it no longer
-  points to a nonexistent generic request-status command. End response loss is
-  non-retryable because the acknowledged Session may already be revoked; the
-  Agent stops and reports for researcher inspection.
+  points to a nonexistent generic request-status command. End or Discussion-
+  Finish response loss is non-retryable because the acknowledged Session may
+  already be revoked; the Agent stops and reports for researcher inspection.
   Authenticated reload revalidates exact Target,
   Materials, and formal source state instead of returning a false-current
   packet. App
@@ -255,11 +255,14 @@
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
 - Authenticated Discuss Runs expose their frozen Dialogue Response Contract and
-  the `agent discuss-reply` command. A stable Agent statement ID makes an
-  outcome-unknown retry idempotent; the route appends only an attributed Agent
-  turn to the active portable Discussion and grants no Note/Metadata mutation,
-  Finish, evaluation, Undo, recovery, cross-Run, or arbitrary filesystem
-  authority.
+  the `agent discuss-reply` and `agent finish-discussion` commands. A stable
+  Agent statement ID makes reply outcome-unknown retry idempotent; the reply
+  route appends only an attributed Agent turn to the active portable
+  Discussion. After at least one such durable turn, Finish forms that Run's
+  portable Discussion Record and revokes the Session. Neither route grants
+  Note/Metadata mutation, evaluation, Undo, recovery, cross-Run, or arbitrary
+  filesystem authority, and Finish accepts no Result body or researcher
+  acceptance.
 - Closing an Action presentation leaves unfinished work active. End cancels a
   no-write Action; confirmed changes require Result submission so their Record
   and Review cannot be lost, while unresolved recovery blocks End.

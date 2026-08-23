@@ -11,6 +11,11 @@ enum ScholiumRuntimeIsolation {
 
     static let productionBundleIdentifier = "com.scholium.app"
     static let qaBundleIdentifier = "com.scholium.qa"
+    /// One fallback identity per QA process. Reusing it inside the process
+    /// prevents repeated bootstrap tasks from opening new scenes, while a new
+    /// launch receives a fresh value and cannot collide with stale native
+    /// scene bookkeeping from an earlier QA process.
+    static let qaFixtureWindowSessionID = UUID()
     static let packagedPerformanceIsolationArgument =
         "--scholium-performance-driver-isolation"
 
@@ -91,10 +96,12 @@ enum ScholiumRuntimeIsolation {
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> UUID? {
 #if DEBUG
-        guard bundleIdentifier == qaBundleIdentifier,
-              let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"])
-        else { return nil }
-        return UUID(uuidString: rawID)
+        guard bundleIdentifier == qaBundleIdentifier else { return nil }
+        if let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"]) {
+            return UUID(uuidString: rawID)
+        }
+        guard fixtureRootURL(environment: environment) != nil else { return nil }
+        return qaFixtureWindowSessionID
 #else
         return nil
 #endif

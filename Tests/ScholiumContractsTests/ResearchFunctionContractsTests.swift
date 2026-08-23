@@ -101,13 +101,11 @@ struct ResearchFunctionContractsTests {
         #expect(ResearchFunctionID.develop.allowedTargetRoles == [.analysis, .topic])
         #expect(ResearchFunctionID.critique.allowedTargetRoles == [.work])
         #expect(ResearchFunctionID.revise.allowedTargetRoles == [.work])
-        #expect(ResearchFunctionID.manuscript.allowedTargetRoles == [.work])
         #expect(ResearchFunctionID.discuss.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
         #expect(ResearchFunctionID.fidelity.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
 
         #expect(ResearchFunctionID.develop.writesTarget)
         #expect(ResearchFunctionID.revise.writesTarget)
-        #expect(!ResearchFunctionID.manuscript.writesTarget)
         #expect(!ResearchFunctionID.discuss.writesTarget)
         #expect(!ResearchFunctionID.fidelity.writesTarget)
         #expect(!ResearchFunctionID.critique.writesTarget)
@@ -115,7 +113,6 @@ struct ResearchFunctionContractsTests {
         #expect(ResearchFunctionID.develop.requiresAgentChangeEvidence)
         #expect(ResearchFunctionID.revise.requiresAgentChangeEvidence)
         #expect(!ResearchFunctionID.critique.requiresAgentChangeEvidence)
-        #expect(!ResearchFunctionID.manuscript.requiresAgentChangeEvidence)
         #expect(!ResearchFunctionID.discuss.requiresAgentChangeEvidence)
         #expect(!ResearchFunctionID.fidelity.requiresAgentChangeEvidence)
     }

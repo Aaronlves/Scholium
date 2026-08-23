@@ -169,11 +169,14 @@ new handoff, and non-idempotent existing-target start stops and reports. End is
 also non-retryable: it may already have revoked the Session, so response loss
 requires stop-and-report rather than another credential use.
 Both routes use the loopback-only framed bridge and the same authenticated
-Context, Discuss-turn, write, Result, End, conflict, and recovery owners. A
-Discuss-turn request uses the same authenticated Session and appends only to
-the active `PortableResearchDiscussion`; it does not use the Bounded Write Set
-or finish the exchange. The UI's End Action route calls the same Application
-cancellation owner as authenticated CLI end;
+Context, Discuss-turn, Discussion-Finish, write, Result, End, conflict, and
+recovery owners. A Discuss-turn request uses the same authenticated Session and
+appends only to the active `PortableResearchDiscussion`; it does not use the
+Bounded Write Set. After durable Agent response evidence exists, authenticated
+Discussion-Finish calls the same Application finish owner as the researcher,
+forms the portable Record, and revokes the Session. Its unknown outcome is
+non-retryable for the same reason as End. The UI's End Action route calls the
+same Application cancellation owner as authenticated CLI end;
 sheet dismissal alone does not end the Run. Cancelling Discuss converts its
 current portable exchange into a finished Research Record before removing the
 active projection, so researcher-authored statements are not discarded. A
@@ -424,8 +427,7 @@ participant revision or an earlier conflict/abandonment. A created change has
 no starting revision and cannot enter exact comparison or direct Undo. Its
 participant baseline is the first jointly committed source-and-identity
 revision; its ending revision is the last confirmed readback after any later
-authorized writes. Manuscript
-parent Records do not duplicate a selected child Action's change.
+authorized writes.
 `ExactSourceComparisonBuilder` is the single exact
 byte-diff owner for both Record confirmed-change pairs and Document conflict
 inputs; the projections remain disposable and non-Codable.
@@ -498,8 +500,10 @@ Comments retain stable Note/fingerprint and inclusive line range without a
 passage copy. Each attributed researcher/Agent turn updates only the active
 exchange. The authenticated Agent `discuss-reply` route validates the frozen
 Discuss Run and response contract, uses a stable statement ID for outcome-
-unknown retry, and writes no Note or Metadata. Finish validates current
-participants and forms one Record; closing
+unknown retry, and writes no Note or Metadata. Authenticated
+`finish-discussion` revalidates the same frozen Discuss Run, requires durable
+Agent response evidence, forms one Record, and revokes the Session without a
+Result body or write authority. Finish validates current participants; closing
 the sheet performs no storage action. Discussion does not use Bounded Write
 Set unless it explicitly continues into a separate write Action.
 

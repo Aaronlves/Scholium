@@ -23,7 +23,6 @@ public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
     public static let write = Self(uncheckedRawValue: "write")
     public static let critique = Self(uncheckedRawValue: "critique")
     public static let checkFidelity = Self(uncheckedRawValue: "check-fidelity")
-    public static let manuscript = Self(uncheckedRawValue: "manuscript")
 
     public var description: String { rawValue }
     public init(from decoder: Decoder) throws {
@@ -45,7 +44,7 @@ public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
 
     private static let supportedRawValues: Set<String> = [
         "discuss", "analyze", "synthesize", "write", "critique",
-        "check-fidelity", "manuscript",
+        "check-fidelity",
     ]
 }
 
@@ -58,7 +57,6 @@ public enum ResearchActionExecutionKind: String, Codable, CaseIterable, Hashable
     case writing
     case critique
     case checkFidelity = "check_fidelity"
-    case manuscript
 
     public var allowedTargetRoles: Set<ResearchActionTargetRole> {
         switch self {
@@ -68,7 +66,7 @@ public enum ResearchActionExecutionKind: String, Codable, CaseIterable, Hashable
             [.analysis]
         case .synthesis:
             [.topic]
-        case .writing, .critique, .manuscript:
+        case .writing, .critique:
             [.work]
         }
     }
@@ -134,10 +132,8 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
         defaultID: .checkFidelity,
         executionKind: .checkFidelity
     )
-    public static let manuscript = Self(defaultID: .manuscript, executionKind: .manuscript)
 
-    /// Stable default order before role filtering. Manuscript remains a
-    /// bundled optional definition and is not part of the default surface.
+    /// Stable default order before role filtering.
     public static let defaultDefinitions: [Self] = [
         .discuss,
         .analyze,
@@ -412,7 +408,6 @@ private extension ResearchActionID {
         case Self.write.rawValue: .writing
         case Self.critique.rawValue: .critique
         case Self.checkFidelity.rawValue: .checkFidelity
-        case Self.manuscript.rawValue: .manuscript
         default: nil
         }
     }

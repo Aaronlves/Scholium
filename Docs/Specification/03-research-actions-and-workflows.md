@@ -20,8 +20,6 @@ Action identity:
 There is no default mode picker. Analyze Source and Reanalyze are one adaptive
 Analyze Action; reading several Materials is context assembly rather than a
 Multi-note mode; Analyze and Synthesize remain separate scholarly Actions.
-**Manuscript** may remain an optional hidden Work Action, but it grants no
-extra authority and sequences only ordinary Runs.
 
 A **Run** is the only working object for one Action. It owns the task, initial
 research object, frozen Method Context, Result Contract, current capability
@@ -145,8 +143,11 @@ second Run or child lineage.
 For Discuss, Session exposes frozen `DialogueResponseContract` and
 `agent discuss-reply`, appending one attributed Agent turn keyed by
 `statement_id`. Exact repeat returns `already_recorded`; changed content
-fails closed. The key grants no Note/Metadata mutation, Finish, Result,
-evaluation, Undo, recovery, new Run, or filesystem access.
+fails closed. After at least one durable Agent turn, `agent finish-discussion`
+finishes that same Run, forms its portable Discussion Record, and revokes the
+Session. Finish accepts no Result body and grants no Note/Metadata mutation,
+evaluation, Undo, recovery, new Run, or filesystem access. It does not imply
+researcher acceptance.
 
 Analyze-only `new_analysis` preflight returns the Analyses vault, applicable
 managed fields, optional Settings preferences, fixed authored-YAML fields,
@@ -162,8 +163,8 @@ changes conflict; identical starts coalesce.
 
 Results encode retry safety, identity reuse, and one next step for occupation,
 stale projection, replay, Session expiry,
-and operation-specific unknown outcome. Unknown End is not retryable because
-Session may be revoked. Retained identity with missing/trashed
+and operation-specific unknown outcome. Unknown End or Discussion Finish is
+not retryable because Session may be revoked. Retained identity with missing/trashed
 source permits Restore or distinct creation—never recreation, overwrite,
 deletion, or retry rename.
 
@@ -511,9 +512,7 @@ an external edit made after Run preparation but before the first Agent commit
 is preserved by direct undo. A created change instead has no starting revision;
 its participant baseline is its first committed created revision. Comparison
 accepts only confirmed modified revision pairs and never labels Discussion,
-researcher, or external changes as Agent work. A Manuscript coordination Record
-does not copy a selected child Run's change; the child Action Record remains
-that write and change evidence's owner.
+researcher, or external changes as Agent work.
 
 Refresh Authority may replace the provisional starting evidence only before
 the first committed Agent write to that Note. After a committed write, refresh

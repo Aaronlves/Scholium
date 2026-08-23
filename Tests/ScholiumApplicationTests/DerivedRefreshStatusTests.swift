@@ -491,8 +491,8 @@ struct DerivedRefreshStatusTests {
         await runtime.shutdown()
     }
 
-    @Test("Manuscript accepts a committed child while derived refresh remains stale")
-    func manuscriptAcceptsCommittedChildAcrossRefreshFailures() async throws {
+    @Test("A committed revision remains complete while derived refresh is stale")
+    func revisionRemainsCompleteAcrossRefreshFailures() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
@@ -509,46 +509,6 @@ struct DerivedRefreshStatusTests {
         let invalidURL = fixture.topicsURL.appendingPathComponent("Invalid UTF-8.md")
         defer { try? FileManager.default.removeItem(at: invalidURL) }
 
-        let registrations = try await handle.research.researchSkillRegistrations()
-        let manuscriptRegistration = try #require(
-            registrations.document.registration(for: .manuscript)
-        )
-        _ = try await handle.research.saveResearchSkillRegistrations(
-            try registrations.document.replacing(ResearchSkillRegistration(
-                key: manuscriptRegistration.key,
-                actionID: manuscriptRegistration.actionID,
-                displayName: manuscriptRegistration.displayName,
-                primaryMarkdown: manuscriptRegistration.primaryMarkdown,
-                skillFolder: manuscriptRegistration.skillFolder,
-                isEnabled: true
-            )),
-            expectedRevision: registrations.revision
-        )
-        let profiles = try await handle.research.academicActionProfiles()
-        let manuscriptProfile = try #require(
-            profiles.document.profile(for: .manuscript)
-        )
-        let enabledProfile = try ResearchAcademicActionProfile(
-            actionID: manuscriptProfile.actionID,
-            displayName: manuscriptProfile.displayName,
-            order: manuscriptProfile.order,
-            isEnabled: true,
-            applicableRoles: manuscriptProfile.applicableRoles,
-            academicInputFields: manuscriptProfile.academicInputFields,
-            academicResultFields: manuscriptProfile.academicResultFields
-        )
-        _ = try await handle.research.saveAcademicActionProfiles(
-            try ResearchAcademicProfileDocument(
-                profiles: profiles.document.profiles.filter {
-                    $0.actionID != .manuscript
-                } + [enabledProfile]
-            ),
-            expectedRevision: profiles.revision
-        )
-
-        let manuscript = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .manuscript, target: work)
-        )
         let revise = try await handle.research.prepareProtectedFunction(
             ResearchFunctionRequest(function: .revise, target: work)
         )
@@ -604,33 +564,18 @@ struct DerivedRefreshStatusTests {
                 fidelityOutcomes: [.derivedRefreshPassedContent]
             )
         )
-        // Child selection consults durable execution evidence, not the
-        // disposable workspace projection.
+        // Durable execution evidence remains authoritative while the
+        // disposable workspace projection is stale.
         #expect(try await handle.services.localResearchExecutionStore.record(
             id: revise.runID
         ).completion?.state == .complete)
-        let manuscriptCompletion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
-                runID: manuscript.runID,
-                confirmationToken: manuscript.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: revisedFingerprint,
-                summary: "Coordinated the selected manuscript activity.",
-                didModifyTarget: false,
-                childRunIDs: [revise.runID, fidelity.runID]
-            )
-        )
-        #expect(manuscriptCompletion.state == .complete)
-        #expect(manuscriptCompletion.childRunIDs == [revise.runID, fidelity.runID])
-        #expect(manuscriptCompletion.reusedFidelityRunID == fidelity.runID)
-        #expect(manuscriptCompletion.derivedRefreshWarning?.isEmpty == false)
 
         try FileManager.default.removeItem(at: invalidURL)
         _ = try await handle.discovery.refresh()
         let functionRuns = try await handle.services.localResearchExecutionStore
             .listing().records
         #expect(functionRuns.first { $0.id == revise.runID }?.completion?.state == .complete)
-        #expect(functionRuns.first { $0.id == manuscript.runID }?.completion?.state == .complete)
+        #expect(functionRuns.first { $0.id == fidelity.runID }?.completion?.state == .complete)
         await runtime.shutdown()
     }
 }

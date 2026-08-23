@@ -99,7 +99,6 @@ extension ResearchConfigurationStore {
         case .write: "scholium-write"
         case .critique: "scholium-critique"
         case .checkFidelity: "scholium-content-fidelity"
-        case .manuscript: "scholium-manuscript"
         default:
             throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
                 actionID: actionID,

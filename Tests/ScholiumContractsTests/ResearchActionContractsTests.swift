@@ -15,7 +15,13 @@ struct ResearchActionContractsTests {
         #expect(ResearchActionDefinition.defaultDefinitions(for: .work).map(\.id) == [
             .discuss, .write, .critique, .checkFidelity,
         ])
-        #expect(!ResearchActionDefinition.defaultDefinitions.contains(.manuscript))
+        #expect(ResearchActionDefinition.defaultDefinitions.count == 6)
+        #expect(throws: DecodingError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchActionID.self,
+                from: Data(#""manuscript""#.utf8)
+            )
+        }
     }
 
     @Test("Action snapshots round trip through the clean current schema")
