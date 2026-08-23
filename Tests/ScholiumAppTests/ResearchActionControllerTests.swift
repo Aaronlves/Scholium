@@ -1045,8 +1045,7 @@ struct ResearchActionControllerTests {
             target: target,
             method: try ResearchMethodSnapshot(
                 registration: registration,
-                primaryMarkdownSource: "# Method\n\nExact controller fixture.\n",
-                practices: []
+                primaryMarkdownSource: "# Method\n\nExact controller fixture.\n"
             ),
             resolvedProfile: action.profile,
             platformInputs: try ResearchActionPlatformInputs(),

@@ -212,7 +212,7 @@ extension ScholiumUITests {
         }
         application.launchArguments += [
             "-scholium.settings.selectedPane", "research-guidance",
-            "-scholium.settings.researchGuidanceCategory", "Methods & Practices",
+            "-scholium.settings.researchGuidanceCategory", "Skills",
         ]
         if name.contains("testResearchWorkflowInterfaceProofs") {
             application.launchArguments += ["--scholium-research-workflow-proofs"]
@@ -776,7 +776,7 @@ extension ScholiumUITests {
         let destination = app.descendants(matching: .any)[
             openAdvanced
                 ? "scholium.settings.destination.externalToolsCitations"
-                : "scholium.settings.destination.methodsPractices"
+                : "scholium.settings.destination.skills"
         ]
         XCTAssertTrue(destination.waitForExistence(timeout: 10))
         destination.click()
@@ -785,10 +785,6 @@ extension ScholiumUITests {
                 app.descendants(matching: .any)["scholium.agentCLI.section"]
                     .waitForExistence(timeout: 10)
                 )
-        } else {
-            let practices = app.descendants(matching: .any)["Practices"].firstMatch
-            XCTAssertTrue(practices.waitForExistence(timeout: 10))
-            practices.click()
         }
     }
 
@@ -1007,7 +1003,6 @@ extension ScholiumUITests {
                 "display_name": createsSynthesisAttention
                     ? "Synthesize"
                     : "Analyze Note",
-                "practice_names": [],
                 "profile_revision": profileRevision,
             ],
             "participating_notes": participatingNotes,
@@ -1189,7 +1184,6 @@ extension ScholiumUITests {
                 "method": [
                     "registration_key": "10000000-0000-0000-0000-000000000003",
                     "display_name": "Synthesize",
-                    "practice_names": [],
                     "profile_revision": profileRevision,
                 ],
                 "primary_note_id": primary.noteID.uuidString,

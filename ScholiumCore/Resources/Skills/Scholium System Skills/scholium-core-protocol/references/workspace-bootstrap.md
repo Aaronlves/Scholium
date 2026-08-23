@@ -51,9 +51,9 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 ## Scholium routing
 
 - Apply the protected Scholium Core Protocol to every Scholium task.
-- Use the Platform Action's registered primary Method and its exact linked Practices.
-- Load Scholium Discussion Protocol for a Discussion ID; the ordinary Discuss Method supplies the intellectual procedure.
-- Never scan arbitrary global skill directories or substitute an unregistered Method.
+- Use the Platform Action's registered Skill and only the ordinary references it explicitly routes for the task.
+- Load Scholium Discussion Protocol for a Discussion ID; the registered Discuss Skill supplies the intellectual procedure.
+- Never scan arbitrary global skill directories or substitute an unregistered Skill.
 
 ## Workspace boundaries
 
@@ -69,7 +69,7 @@ Create a task-owned candidate before creating `AGENTS.md`. Use a fixed, concise 
 Do not include:
 
 - the bootstrap instruction itself;
-- full Method prose or optional Philosophical Practices;
+- full Skill prose or its reference files;
 - guessed paths, preferences, permissions, or methodological commitments;
 - Discussion transcripts, prompt templates, hidden prompts, temporary task context, credentials, or secrets;
 - claims that the researcher authored the initial generated wording;

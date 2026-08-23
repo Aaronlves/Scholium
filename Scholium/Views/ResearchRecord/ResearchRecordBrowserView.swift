@@ -3540,13 +3540,6 @@ private struct ResearchRecordTechnicalDetails: View {
                 value: record.method?.displayName ?? String(localized: "Not recorded")
             ),
             ScholiumApparatusFact(
-                id: "practices",
-                label: String(localized: "Practices"),
-                value: record.method?.practiceNames.isEmpty == false
-                    ? record.method?.practiceNames.joined(separator: ", ") ?? ""
-                    : String(localized: "Not recorded")
-            ),
-            ScholiumApparatusFact(
                 id: "source",
                 label: String(localized: "Source"),
                 value: record.sourceReference?.displayName

@@ -1999,8 +1999,7 @@ struct ResearchRecordV1StoresTests {
             target: target,
             method: try ResearchMethodSnapshot(
                 registration: registration,
-                primaryMarkdownSource: "# \(profile.displayName)\n\nExact test method.\n",
-                practices: []
+                primaryMarkdownSource: "# \(profile.displayName)\n\nExact test method.\n"
             ),
             resolvedProfile: try ResearchActionResolvedProfileSnapshot(
                 profile: profile,

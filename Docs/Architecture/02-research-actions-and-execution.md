@@ -35,7 +35,7 @@ delivery, extension, submission, finalization, cancellation, manual-end,
 continuation, and recovery coordinator. It is one Application component under
 the owning `WorkspaceHandle`, not another runtime or mutable Workspace
 snapshot. Its purpose-specific dependencies contain only the registration,
-Practice, Profile, collaboration, source, Search/read/Graph/Metadata/Record,
+Profile, collaboration, source, Search/read/Graph/Metadata/Record,
 repository, recovery, and local connection authorities required by those
 transactions.
 
@@ -50,14 +50,14 @@ authority.
 The closed `PlatformActionCatalog` first filters role-valid public Actions and
 provides their hard source/selectors/operations. Application then resolves
 exactly one enabled Skill registration for the Action, loads one coherent
-current primary Markdown entry, resolves exact-Wikilink Practices in order,
-loads the academic-only Profile, and evaluates source/integration availability.
+current `SKILL.md` entry and optional folder locator, loads the academic-only
+Profile, and evaluates source/integration availability.
 Missing, changed, ambiguous, or invalid owners fail closed with one repair
 route; no bundled fallback or package resolver participates.
 
 Opening the Action sheet flushes only its current initial object. Preparation
 rechecks the presented Action, object identity/revision, focal Materials,
-source access, registration, primary method, Practices, Profile, current
+source access, registration, Skill entry, Profile, current
 Triptych collaboration policy, and repository/recovery readiness. It creates
 one Run and inserts the displayed initial object into its Bounded Write Set.
 For every existing writable Note, `AgentChangeEvidenceStore` captures one exact
@@ -83,8 +83,8 @@ The Run snapshot freezes:
 
 - public Action, initial object, research request, focal Materials/source, and
   starting revisions;
-- registration relation/display identity, exact primary method text, resolved
-  Practice identities/text, and optional local folder path string;
+- registration relation/display identity, exact Skill-entry text, and optional
+  local folder path string;
 - academic Result Contract plus Application-owned machine fields;
 - capability availability and exact authorized read scope;
 - initial Bounded Write Set entry and its authorization provenance; and
@@ -188,7 +188,7 @@ the Application does not prepare, attach, or expose a post-write Fidelity
 child. A separate Fidelity Run is created only through the researcher-visible
 Check Fidelity Action.
 This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-research-guidance.md)
-owns the Method, Practice, Profile, collaboration-policy, and citation
+owns the Skill, Profile, collaboration-policy, and citation
 configuration consumed during preparation.
 
 The first authenticated Agent session receives the exact protected Core Skill
@@ -197,8 +197,8 @@ instructions as one bundled resource; Application loads them before claiming
 first delivery and embeds no prompt copy. Each allowed Run receives one Run
 Brief, Method Context, and Result Contract. Run Brief contains current
 task/object/state, safe capability availability and next action, not a dump or
-summary of research materials. Method Context preserves exact primary Skill
-and Practice text plus the post-authentication folder path. Result Contract
+summary of research materials. Method Context preserves the exact Skill entry
+plus the post-authentication folder path. Result Contract
 marks Agent academic fields versus Application machine fields. `reload`
 reconstructs this packet from the frozen Run, revalidates exact Target,
 Materials, and formal source owners, and returns typed `stale_run` rather than
@@ -215,8 +215,8 @@ not maintain a second template owner.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
-facts, and current Result Contract; `methodContext` contains primary Skill and
-Practices; `researchEvidence` contains Markdown, YAML declarations, citations,
+facts, and current Result Contract; `methodContext` contains the Skill entry
+and reference-folder path; `researchEvidence` contains Markdown, YAML declarations, citations,
 Zotero metadata, Records, and provider responses as typed data. Evidence text
 cannot alter the other two layers, Session, write set, tools, or next Action.
 
@@ -413,7 +413,7 @@ Record; a different payload fails closed. An interrupted committed
 source/finalization gap is repaired from the Run and transaction evidence
 unless a Record deletion tombstone forbids recreation.
 
-`PortableResearchRecordStore` owns strict schema-12 Records, including the
+`PortableResearchRecordStore` owns strict schema-13 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
 fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
@@ -464,7 +464,7 @@ source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
 `noteReviewStates`, and `resultArrivals` from current Local Execution payloads, exact
-schema-12 Record reads, and schema-1 Note Reviews. The projections
+schema-13 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, source bytes, prompts,
@@ -570,13 +570,13 @@ Method improvement is a separate explicitly researcher-started Run attached as
 the one current `methodImprovementRun` in its parent Local Execution payload.
 Starting **Improve Current Method...** from a Record with one current
 feedback comment freezes that exact comment revision/text, finalized Result
-fingerprint, registration, current primary Method, linked Practices, and every
-editable target revision. It issues a fresh short Pairing Code/Session through
+fingerprint, registration, current Skill entry, and its editable target
+revision. It issues a fresh short Pairing Code/Session through
 the same bridge; ordinary Action context, Bounded Write Set, and Result
 submission are not inherited.
 
 The authenticated `method-context` response exposes only those frozen exact
-targets. `improve-method` accepts one primary Method or linked Practice plus a
+target. `improve-method` accepts the frozen Skill entry plus a
 replacement, `diagnosed_no_change`, or `unavailable` diagnosis; CLI fills the
 comment, Result, and target revisions from the current authenticated context.
 A replacement obtains one non-Codable, nonreusable, short-lived capability
@@ -595,7 +595,7 @@ improvement rather than a feedback queue or method history. It clears only a com
 Result fingerprint remain exact; a concurrently modified comment remains.
 Identical submission retry is idempotent, different terminal input fails
 closed, and Session finalization removes remaining capability authority.
-Folder supplements outside the primary/Practice owner are reported for the
+Ordinary reference files outside the Skill-entry owner are reported for the
 Agent/researcher to edit with their selected filesystem tools; Scholium does
 not proxy them.
 

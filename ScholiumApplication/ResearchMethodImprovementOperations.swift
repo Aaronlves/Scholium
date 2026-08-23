@@ -131,8 +131,7 @@ extension WorkspaceHandle {
         }
         let method = try await currentResearchMethod(for: actionID)
         guard method.registration.key == methodReference.registrationKey,
-              method.registration.isEnabled,
-              method.practiceIssues.isEmpty else {
+              method.registration.isEnabled else {
             throw ResearchMethodImprovementError.methodChanged
         }
 
@@ -475,34 +474,17 @@ extension WorkspaceHandle {
         source: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> DocumentFingerprint {
-        switch target.kind {
-        case .primaryMethod:
-            let updated = try await saveCurrentResearchMethod(
-                registrationKey: registrationKey,
-                source: source,
-                expectedRevision: expectedRevision
-            )
-            guard updated.primaryMarkdownSource == source,
-                  updated.primaryMarkdownRevision
-                    == DocumentFingerprint(content: source) else {
-                throw ResearchMethodImprovementError.methodChanged
-            }
-            return updated.primaryMarkdownRevision
-        case .practice:
-            guard let relativePath = target.relativePath else {
-                throw ResearchMethodImprovementError.invalidContract
-            }
-            let updated = try await savePhilosophicalPractice(
-                relativePath: relativePath,
-                source: source,
-                expectedRevision: expectedRevision
-            )
-            guard updated.source == source,
-                  updated.revision == DocumentFingerprint(content: source) else {
-                throw ResearchMethodImprovementError.methodChanged
-            }
-            return updated.revision
+        let updated = try await saveCurrentResearchMethod(
+            registrationKey: registrationKey,
+            source: source,
+            expectedRevision: expectedRevision
+        )
+        guard updated.primaryMarkdownSource == source,
+              updated.primaryMarkdownRevision
+                == DocumentFingerprint(content: source) else {
+            throw ResearchMethodImprovementError.methodChanged
         }
+        return updated.primaryMarkdownRevision
     }
 
     private static func methodImprovementTarget(
@@ -512,24 +494,12 @@ extension WorkspaceHandle {
         if id == "primary-method" {
             return try ResearchMethodImprovementTarget(
                 id: id,
-                kind: .primaryMethod,
                 title: method.registration.displayName,
-                relativePath: nil,
                 source: method.primaryMarkdownSource,
                 revision: method.primaryMarkdownRevision
             )
         }
-        guard let practice = method.practices.first(where: {
-            id == "practice:\($0.relativePath)"
-        }) else { throw ResearchMethodImprovementError.invalidContract }
-        return try ResearchMethodImprovementTarget(
-            id: id,
-            kind: .practice,
-            title: practice.title,
-            relativePath: practice.relativePath,
-            source: practice.source,
-            revision: practice.revision
-        )
+        throw ResearchMethodImprovementError.invalidContract
     }
 
     private static func stableMethodImprovementRunID(

@@ -262,24 +262,15 @@ struct ResearchMethodImprovementOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("The same explicit boundary can replace one linked Practice exactly")
-    func linkedPracticeImprovement() async throws {
+    @Test("A Skill improvement exposes only the frozen SKILL.md target")
+    func skillImprovementHasOneTarget() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let method = try await handle.research.researchMethod(for: .synthesize)
-        let practice = try #require(
-            try await handle.research.philosophicalPractices().first
-        )
-        _ = try await handle.research.saveResearchMethod(
-            registrationKey: method.registration.key,
-            source: method.primaryMarkdownSource + "\n[[\(practice.title)]]\n",
-            expectedRevision: method.primaryMarkdownRevision
-        )
         let record = try await completedSynthesis(handle: handle, fixture: fixture)
-        let commented = try await addFeedback(
-            "Clarify one linked Practice without changing the primary Method.",
+        _ = try await addFeedback(
+            "Clarify how this Skill routes its philosophical lenses.",
             to: record,
             handle: handle
         )
@@ -294,34 +285,7 @@ struct ResearchMethodImprovementOperationsTests {
             credential: credential,
             run: handoff.run
         )
-        let target = try #require(context.targets.first(where: {
-            $0.kind == .practice && $0.relativePath == practice.relativePath
-        }))
-        let replacement = practice.source + "\nPractice replacement is exact.\n"
-        let submission = try ResearchMethodImprovementSubmission(
-            requestID: UUID(),
-            feedbackRevision: try #require(
-                commented.methodFeedbackComment?.revision
-            ),
-            expectedResultFingerprint: try commented.finalizedResultFingerprint(),
-            targetID: target.id,
-            expectedTargetRevision: target.revision,
-            disposition: .replace,
-            replacementSource: replacement,
-            diagnosis: "The bounded feedback concerns this linked Practice only."
-        )
-        let receipt = try await handle.research.submitMethodImprovement(
-            credential: credential,
-            run: handoff.run,
-            submission: submission
-        )
-        #expect(receipt.feedbackCleared)
-        let updated = try #require(
-            try await handle.research.philosophicalPractices().first(where: {
-                $0.relativePath == practice.relativePath
-            })
-        )
-        #expect(updated.source == replacement)
+        #expect(context.targets.map(\.id) == ["primary-method"])
         await runtime.shutdown()
     }
 

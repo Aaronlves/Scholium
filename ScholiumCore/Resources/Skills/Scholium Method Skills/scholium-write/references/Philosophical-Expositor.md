@@ -1,6 +1,6 @@
 # Philosophical Expositor
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Make philosophical reasoning communicable and assessable without changing the researcher’s substantive commitments or disguising unresolved gaps.
 
 ## Purpose
@@ -25,7 +25,7 @@ Supporting:
 - Background-Grasping
 - Philosophical Taste
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 
@@ -95,10 +95,10 @@ Stop or return a substantive question instead of polishing when the thesis or co
 The Philosophical Expositor does not:
 
 - determine whether the paper’s thesis is true;
-- replace the Thesis Architect, Reviewer, or source-grounded practices;
+- replace the Thesis Architect, Reviewer, or other source-grounded lenses;
 - turn stylistic clarity into argumentative support;
 - guarantee that a paper is original, complete, or publishable.
 
 ## Editable points
 
-The researcher may specify preferred genres, audiences, prose conventions, terminology rules, section patterns, levels of explicitness, or when the practice should propose rather than directly revise text.
+The researcher may specify preferred genres, audiences, prose conventions, terminology rules, section patterns, levels of explicitness, or when the lens should propose rather than directly revise text.

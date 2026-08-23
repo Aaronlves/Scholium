@@ -41,9 +41,9 @@ struct ResearchMethodsSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 if showsTitle {
                     settingsTitle(
-                        LocalizedStringResource("Methods", table: "Localizable", bundle: .module),
+                        LocalizedStringResource("Skills", table: "Localizable", bundle: .module),
                         detail: LocalizedStringResource(
-                            "Assign one primary Markdown Method to each Action and inspect its linked Practices.",
+                            "Assign one Skill to each Action. Its SKILL.md routes ordinary references, including philosophical lenses.",
                             table: "Localizable",
                             bundle: .module
                         )
@@ -67,27 +67,27 @@ struct ResearchMethodsSettingsView: View {
                         if canRecoverMethodLocators {
                             Divider()
                             ScholiumContentStateView(
-                                "Method Access Needs Repair",
-                                detail: Text("The machine-local Method access registry is unreadable. Its original bytes can be archived before resetting local Method access; portable registrations and research vault files remain unchanged."),
+                                "Skill Access Needs Repair",
+                                detail: Text("The machine-local Skill access registry is unreadable. Its original bytes can be archived before resetting local Skill access; portable registrations and research vault files remain unchanged."),
                                 indicator: .symbol("externaldrive.badge.exclamationmark", role: .attention),
                                 placement: .leading,
                                 density: .compact
                             ) {
-                                Button("Archive and Reset Method Access…") {
+                                Button("Archive and Reset Skill Access…") {
                                     confirmsMethodLocatorRecovery = true
                                 }
                             }
                         }
                     } else if isWorking {
                         ScholiumContentStateView(
-                            "Loading Methods…",
+                            "Loading Skills…",
                             indicator: .progress,
                             placement: .leading,
                             density: .compact
                         )
                     } else {
                         ScholiumContentStateView(
-                            "Methods Unavailable",
+                            "Skills Unavailable",
                             detail: Text(errorMessage ?? "Open a complete Triptych."),
                             indicator: .symbol("text.book.closed", role: .attention),
                             placement: .leading,
@@ -101,7 +101,7 @@ struct ResearchMethodsSettingsView: View {
                     table: "Localizable",
                     bundle: .module
                 )) {
-                    Text("Methods and Practices guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules.")
+                    Text("Skills and their ordinary references guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -120,7 +120,7 @@ struct ResearchMethodsSettingsView: View {
         .sheet(item: $editor) { context in
             ResearchGuidanceMarkdownEditSheet(
                 title: Text("Edit \(context.method.registration.displayName)"),
-                detail: Text("This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes."),
+                detail: Text("This edits SKILL.md only. Reference files, including philosophical lenses, keep their own exact bytes."),
                 sourceAccessibilityLabel: Text("Primary Research Skill Markdown"),
                 initialSource: context.method.primaryMarkdownSource
             ) { source in
@@ -135,11 +135,11 @@ struct ResearchMethodsSettingsView: View {
         .sheet(item: $newMethod) { context in
             ResearchGuidanceMarkdownCreationSheet(
                 title: Text("Create Research Skill"),
-                detail: Text("Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest."),
+                detail: Text("Scholium creates one ordinary local Skill folder with SKILL.md. Add references to that folder and route them explicitly from the Skill."),
                 nameLabel: "Display name",
                 sourceAccessibilityLabel: Text("Primary Research Skill Markdown"),
                 initialName: context.suggestedName,
-                initialSource: "# \(context.suggestedName)\n\nState the complete primary research method here.\n"
+                initialSource: "# \(context.suggestedName)\n\nState the complete research Skill and route any task-relevant references here.\n"
             ) { name, source in
                 _ = try await settingsModel.createResearchMethod(
                     actionID: context.actionID,
@@ -165,7 +165,7 @@ struct ResearchMethodsSettingsView: View {
             Text("This replaces the current primary Markdown with the default shipped by this Scholium build.")
         }
         .confirmationDialog(
-            "Archive and Reset Method Access?",
+            "Archive and Reset Skill Access?",
             isPresented: $confirmsMethodLocatorRecovery,
             titleVisibility: .visible
         ) {
@@ -174,9 +174,9 @@ struct ResearchMethodsSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Scholium will preserve the invalid machine-local Method access file under a unique recovery name and reset only local paths and bookmarks. Portable Method registrations, Method Markdown, and vault files will not be changed; external Methods must be registered again on this Mac.")
+            Text("Scholium will preserve the invalid machine-local Skill access file under a unique recovery name and reset only local paths and bookmarks. Portable Skill registrations, Skill files, and vault files will not be changed; external Skills must be registered again on this Mac.")
         }
-        .alert("Could Not Update Methods", isPresented: Binding(
+        .alert("Could Not Update Skills", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -197,24 +197,6 @@ struct ResearchMethodsSettingsView: View {
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                 if let method {
-                    if method.practices.isEmpty {
-                        Text("No linked Practices")
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                    } else {
-                        Text("Practices: \(method.practices.map(\.title).joined(separator: ", "))")
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    ForEach(Array(method.practiceIssues.enumerated()), id: \.offset) { _, issue in
-                        Label(
-                            practiceIssueText(issue),
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.attention)
-                    }
                     if let folder = method.skillFolderPath {
                         LabeledContent(
                             method.skillFolderIsAvailable == true
@@ -225,6 +207,9 @@ struct ResearchMethodsSettingsView: View {
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         .textSelection(.enabled)
+                        Text("References and philosophical lenses are ordinary files routed by SKILL.md.")
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
                     }
                 } else {
                     Label("Primary Markdown unavailable", systemImage: "exclamationmark.triangle")
@@ -266,19 +251,8 @@ struct ResearchMethodsSettingsView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
-            "scholium.researchGuidance.method.\(registration.actionID.rawValue)"
+            "scholium.researchGuidance.skill.\(registration.actionID.rawValue)"
         )
-    }
-
-    private func practiceIssueText(_ issue: ResearchPracticeResolutionIssue) -> String {
-        switch issue.kind {
-        case .missing:
-            "Missing Practice: \(issue.target)"
-        case .ambiguous:
-            "Ambiguous Practice: \(issue.target)"
-        case .unsupportedReference:
-            "Unsupported Practice reference: \(issue.target)"
-        }
     }
 
     @MainActor

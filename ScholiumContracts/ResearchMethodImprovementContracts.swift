@@ -1,30 +1,19 @@
 import Foundation
 
-public enum ResearchMethodImprovementTargetKind: String, Codable, Hashable,
-    Sendable
-{
-    case primaryMethod = "primary_method"
-    case practice
-}
-
-/// One exact file from the frozen Method context. The Agent may propose or
+/// The exact Skill entry from the frozen context. The Agent may propose or
 /// perform at most one target mutation for an explicitly researcher-started
 /// improvement Run.
 public struct ResearchMethodImprovementTarget: Codable, Hashable, Identifiable,
     Sendable
 {
     public let id: String
-    public let kind: ResearchMethodImprovementTargetKind
     public let title: String
-    public let relativePath: String?
     public let source: String
     public let revision: DocumentFingerprint
 
     public init(
         id: String,
-        kind: ResearchMethodImprovementTargetKind,
         title: String,
-        relativePath: String?,
         source: String,
         revision: DocumentFingerprint
     ) throws {
@@ -34,31 +23,17 @@ public struct ResearchMethodImprovementTarget: Codable, Hashable, Identifiable,
               revision == DocumentFingerprint(content: source) else {
             throw ResearchMethodImprovementError.invalidContract
         }
-        switch kind {
-        case .primaryMethod:
-            guard id == "primary-method", relativePath == nil else {
-                throw ResearchMethodImprovementError.invalidContract
-            }
-        case .practice:
-            guard let relativePath,
-                  id == "practice:\(relativePath)",
-                  ResearchMethodImprovementValidation.safeRelativeMarkdownPath(
-                    relativePath
-                  ) else {
-                throw ResearchMethodImprovementError.invalidContract
-            }
+        guard id == "primary-method" else {
+            throw ResearchMethodImprovementError.invalidContract
         }
         self.id = id
-        self.kind = kind
         self.title = title
-        self.relativePath = relativePath
         self.source = source
         self.revision = revision
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, kind, title
-        case relativePath = "relative_path"
+        case id, title
         case source, revision
     }
 
@@ -70,15 +45,7 @@ public struct ResearchMethodImprovementTarget: Codable, Hashable, Identifiable,
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
             id: container.decode(String.self, forKey: .id),
-            kind: container.decode(
-                ResearchMethodImprovementTargetKind.self,
-                forKey: .kind
-            ),
             title: container.decode(String.self, forKey: .title),
-            relativePath: container.decodeIfPresent(
-                String.self,
-                forKey: .relativePath
-            ),
             source: container.decode(String.self, forKey: .source),
             revision: container.decode(DocumentFingerprint.self, forKey: .revision)
         )
@@ -164,7 +131,7 @@ public struct ResearchMethodImprovementDraft: Codable, Hashable, Sendable {
 }
 
 public struct ResearchMethodImprovementSubmission: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let requestID: UUID
@@ -310,12 +277,8 @@ public struct ResearchMethodImprovementRun: Codable, Hashable, Identifiable,
         guard method.registration.key == registrationKey,
               method.registration.actionID == actionID,
               method.registration.isEnabled,
-              method.practiceIssues.isEmpty,
               method.primaryMarkdownRevision
                 == DocumentFingerprint(content: method.primaryMarkdownSource),
-              method.practices.allSatisfy({
-                  $0.revision == DocumentFingerprint(content: $0.source)
-              }),
               ResearchMethodImprovementValidation.safeText(
                 feedbackText,
                 maximum: 16_384
@@ -483,7 +446,7 @@ public struct ResearchMethodImprovementRun: Codable, Hashable, Identifiable,
 }
 
 public struct ResearchMethodImprovementContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let run: ResearchRunLocator
@@ -500,22 +463,10 @@ public struct ResearchMethodImprovementContext: Codable, Hashable, Sendable {
     {
         let primary = try ResearchMethodImprovementTarget(
             id: "primary-method",
-            kind: .primaryMethod,
             title: improvement.method.registration.displayName,
-            relativePath: nil,
             source: improvement.method.primaryMarkdownSource,
             revision: improvement.method.primaryMarkdownRevision
         )
-        let practices = try improvement.method.practices.map { practice in
-            try ResearchMethodImprovementTarget(
-                id: "practice:\(practice.relativePath)",
-                kind: .practice,
-                title: practice.title,
-                relativePath: practice.relativePath,
-                source: practice.source,
-                revision: practice.revision
-            )
-        }
         schemaVersion = Self.currentSchemaVersion
         self.run = run
         parentRecordID = improvement.parentRecordID
@@ -524,7 +475,7 @@ public struct ResearchMethodImprovementContext: Codable, Hashable, Sendable {
         feedbackRevision = improvement.feedbackRevision
         feedbackText = improvement.feedbackText
         expectedResultFingerprint = improvement.expectedResultFingerprint
-        targets = [primary] + practices
+        targets = [primary]
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -697,7 +648,7 @@ public enum ResearchMethodImprovementError: LocalizedError, Hashable, Sendable {
         case .feedbackChanged:
             "The Method feedback changed; start a new improvement Run without discarding the current comment."
         case .methodChanged:
-            "The selected Method or Practice changed; start a new improvement Run from its current revision."
+            "The selected Skill changed; start a new improvement Run from its current revision."
         case .resultChanged:
             "The source Research Result changed; the improvement Run cannot clear its comment."
         case .resultAlreadySubmitted:
@@ -714,13 +665,6 @@ private enum ResearchMethodImprovementValidation {
                 CharacterSet.controlCharacters.contains($0)
                     && $0 != "\n" && $0 != "\t" && $0 != "\r"
             })
-    }
-
-    static func safeRelativeMarkdownPath(_ value: String) -> Bool {
-        guard value.lowercased().hasSuffix(".md"),
-              !value.hasPrefix("/"), !value.hasPrefix("\\") else { return false }
-        let components = value.split(separator: "/", omittingEmptySubsequences: false)
-        return components.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
     }
 
     static func rejectUnknownFields<Key: CodingKey & CaseIterable>(

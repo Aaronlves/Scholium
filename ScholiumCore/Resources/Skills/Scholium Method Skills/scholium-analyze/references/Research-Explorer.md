@@ -1,6 +1,6 @@
 # Research Explorer
 
-Status: Editable default Practice
+Status: Bundled philosophical lens reference
 Primary function: Discover and sharpen philosophical questions, stakes, candidate gaps, and bounded research directions without inventing a researcher position or treating incomplete coverage as field knowledge.
 
 ## Core question
@@ -12,7 +12,7 @@ Primary function: Discover and sharpen philosophical questions, stakes, candidat
 Primary: Philosophical Taste; Background-Grasping.
 Supporting: Concept-Understanding; Logical and Dialectical Reasoning.
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 

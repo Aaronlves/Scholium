@@ -122,32 +122,6 @@ extension ResearchOperations {
         return try await handle.preserveInvalidMachineLocalMethodLocatorsAndReset()
     }
 
-    public func philosophicalPractices() async throws -> [ResearchPracticeSnapshot] {
-        let handle = try await reference.requireHandle()
-        return try await handle.currentPhilosophicalPractices()
-    }
-
-    public func createPhilosophicalPractice(
-        title: String,
-        source: String
-    ) async throws -> ResearchPracticeSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.createPhilosophicalPractice(title: title, source: source)
-    }
-
-    public func savePhilosophicalPractice(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.savePhilosophicalPractice(
-            relativePath: relativePath,
-            source: source,
-            expectedRevision: expectedRevision
-        )
-    }
-
 }
 
 extension WorkspaceHandle {
@@ -299,39 +273,6 @@ extension WorkspaceHandle {
         defer { endResearchConfigurationMutation(lease) }
         return try await services.researchConfigurationStore
             .preserveInvalidMachineLocalMethodLocatorsAndReset()
-    }
-
-    func currentPhilosophicalPractices() async throws -> [ResearchPracticeSnapshot] {
-        try requireActive()
-        return try await services.researchConfigurationStore.practiceCatalog()
-    }
-
-    func createPhilosophicalPractice(
-        title: String,
-        source: String
-    ) async throws -> ResearchPracticeSnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.createPractice(
-            title: title,
-            source: source
-        )
-    }
-
-    func savePhilosophicalPractice(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.savePractice(
-            relativePath: relativePath,
-            source: source,
-            expectedRevision: expectedRevision
-        )
     }
 
 }

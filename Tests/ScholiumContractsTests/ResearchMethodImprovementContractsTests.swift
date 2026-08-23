@@ -52,22 +52,16 @@ struct ResearchMethodImprovementContractsTests {
         }
     }
 
-    @Test("The Run freezes one current Method and exact Practice targets without a package or history")
+    @Test("The Run freezes one current Skill entry without a package or history")
     func frozenRunAndContext() throws {
         let registration = try ResearchSkillRegistration(
             actionID: .synthesize,
             displayName: "Synthesis Method",
             primaryMarkdown: .machineLocal()
         )
-        let practice = try ResearchPracticeSnapshot(
-            title: "Dialectical Partner",
-            relativePath: "Dialectical Partner.md",
-            source: "# Dialectical Partner\n"
-        )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Synthesis Method\n",
-            practices: [practice]
+            primaryMarkdownSource: "# Synthesis Method\n"
         )
         let run = try ResearchMethodImprovementRun(
             id: UUID(),
@@ -87,9 +81,7 @@ struct ResearchMethodImprovementContractsTests {
             run: locator,
             improvement: run
         )
-        #expect(context.targets.map(\.id) == [
-            "primary-method", "practice:Dialectical Partner.md",
-        ])
+        #expect(context.targets.map(\.id) == ["primary-method"])
         #expect(context.targets.allSatisfy {
             $0.revision == DocumentFingerprint(content: $0.source)
         })
@@ -117,8 +109,7 @@ struct ResearchMethodImprovementContractsTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Write Method\n",
-            practices: []
+            primaryMarkdownSource: "# Write Method\n"
         )
         let run = try ResearchMethodImprovementRun(
             id: UUID(),

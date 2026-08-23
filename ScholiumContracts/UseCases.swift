@@ -281,16 +281,6 @@ public protocol ResearchConfigurationUseCases: Sendable {
         actionID: ResearchActionID,
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchMethodSnapshot
-    func philosophicalPractices() async throws -> [ResearchPracticeSnapshot]
-    func createPhilosophicalPractice(
-        title: String,
-        source: String
-    ) async throws -> ResearchPracticeSnapshot
-    func savePhilosophicalPractice(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot
 }
 
 public protocol ResearchActionUseCases: Sendable {

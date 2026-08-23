@@ -633,7 +633,7 @@ when it already has a resolved Discuss Action. A Comment-only draft first opens
 the ordinary Discuss Action. Every new Discuss Action begins with a concise,
 editable request to discuss the Note including any existing Comments, so the
 researcher need not restate this routine collection rule; preparation freezes
-the registered primary Skill text, resolved Practices, optional folder-path
+the registered Skill entry text, optional folder-path
 string, and Result Contract for that same Discussion and preserves every
 Comment before any Agent handoff. Later handoffs reload those Run-frozen
 contracts rather than constructing an application-owned substitute prompt.

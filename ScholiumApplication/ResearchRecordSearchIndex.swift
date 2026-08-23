@@ -412,9 +412,6 @@ struct ResearchRecordSearchIndex: Sendable {
         var segments: [Segment] = [segment(.context, context), segment(.action, actionID)]
         if let method = record.method {
             segments.append(segment(.skill, method.displayName))
-            segments.append(contentsOf: method.practiceNames.map {
-                segment(.skill, $0)
-            })
         }
         if let source = record.sourceReference {
             segments.append(segment(.sourceReference, source.displayName))

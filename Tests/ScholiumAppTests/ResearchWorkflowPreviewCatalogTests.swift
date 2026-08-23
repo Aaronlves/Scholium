@@ -38,7 +38,7 @@ struct ResearchWorkflowPreviewCatalogTests {
         ]
 
         for category in [
-            "Methods & Practices",
+            "Skills",
             "Action Profiles",
             "Agent Access",
             "External Tools & Citations",
@@ -47,10 +47,9 @@ struct ResearchWorkflowPreviewCatalogTests {
         }
 
         for customization in [
-            "one current primary Markdown Method",
-            "Exact Wikilinks select Practices",
+            "one current Skill",
+            "philosophical lenses",
             "Flat researcher-facing fields",
-            "Exact Markdown linked from primary Methods",
             "Ask Me Every Time",
             "Ask Me Only for Works",
             "Full Triptych Access",

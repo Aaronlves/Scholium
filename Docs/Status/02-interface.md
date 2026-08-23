@@ -174,7 +174,7 @@
 
 - Settings now uses one searchable grouped sidebar: Application contains
   Triptychs, Appearance, and Hotkeys; This Triptych contains Metadata
-  and Attention; Research Guidance contains Methods & Practices, Action
+  and Attention; Research Guidance contains Skills, Action
   Profiles, Agent Access, and External Tools & Citations. Triptych selection
   remains inside the Triptychs detail, and search uses only static Settings
   metadata.

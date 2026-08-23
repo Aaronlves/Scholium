@@ -1,6 +1,6 @@
 # Argument Reconstructionist
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Recover the structure of an argument while distinguishing what is explicit in the source from what is reconstructed by the analyst.
 
 ## Purpose
@@ -24,7 +24,7 @@ Supporting:
 - Concept-Understanding
 - Background-Grasping
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 

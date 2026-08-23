@@ -174,12 +174,12 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
 
 /// Versioned public identity and authority recorded for one Action run.
 ///
-/// Schema v3 is created only after the resolver has frozen the exact Target,
-/// Method, academic Profile, protected Platform inputs, academic inputs,
+/// Schema v4 is created only after the resolver has frozen the exact Target,
+/// Skill, academic Profile, protected Platform inputs, academic inputs,
 /// Result Contract, and concrete authority envelope. It
 /// intentionally contains no internal Function ID.
 public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let definition: ResearchActionDefinition

@@ -24,7 +24,7 @@ struct ResearchMethodDefaultsTests {
         }
     }
 
-    @Test("Default bootstrap creates registrations and exact Practice documents")
+    @Test("Default bootstrap creates registrations and routed philosophical lens references")
     func bootstrapCreatesCurrentOwners() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "scholium-current-methods-\(UUID().uuidString)",
@@ -52,14 +52,20 @@ struct ResearchMethodDefaultsTests {
             #expect(method.registration.key == registration.key)
             #expect(!method.primaryMarkdownSource.isEmpty)
         }
-        let practices = try await store.practiceCatalog()
-        #expect(practices.count == 9)
-        #expect(Set(practices.map(\.title)).contains("Dialectical Partner"))
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(
+            "practices"
+        ).path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(
             "skill-folders/analyze/references/method-fit.md"
         ).path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(
             "skill-folders/write/references/genre-and-revision.md"
+        ).path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(
+            "skill-folders/analyze/references/Argument-Reconstructionist.md"
+        ).path))
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(
+            "skill-folders/critique/references/Reviewer.md"
         ).path))
     }
 
@@ -423,7 +429,7 @@ struct ResearchMethodDefaultsTests {
             .deletingLastPathComponent()
         let explorer = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumCore/Resources/Skills/Philosophical Practices/Research-Explorer.md"
+                "ScholiumCore/Resources/Skills/Scholium Method Skills/scholium-analyze/references/Research-Explorer.md"
             ),
             encoding: .utf8
         )
@@ -436,7 +442,7 @@ struct ResearchMethodDefaultsTests {
         #expect(explorer.contains("actual sequence of additions"))
         let conceptualAnalyst = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumCore/Resources/Skills/Philosophical Practices/Conceptual-Analyst.md"
+                "ScholiumCore/Resources/Skills/Scholium Method Skills/scholium-analyze/references/Conceptual-Analyst.md"
             ),
             encoding: .utf8
         )
@@ -445,7 +451,7 @@ struct ResearchMethodDefaultsTests {
         #expect(conceptualAnalyst.contains("biconditional"))
         let argumentReconstructionist = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumCore/Resources/Skills/Philosophical Practices/Argument-Reconstructionist.md"
+                "ScholiumCore/Resources/Skills/Scholium Method Skills/scholium-analyze/references/Argument-Reconstructionist.md"
             ),
             encoding: .utf8
         )

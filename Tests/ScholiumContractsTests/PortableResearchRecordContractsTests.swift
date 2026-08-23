@@ -93,7 +93,7 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 12)
+        #expect(object["schema_version"] as? Int == 13)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -113,7 +113,7 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 12 requires a frozen title and rejects every retired schema")
+    @Test("Schema 13 requires a frozen title and rejects every retired schema")
     func schemaSevenIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
@@ -446,17 +446,10 @@ struct PortableResearchRecordContractsTests {
         ))
     }
 
-    @Test("Portable Method attribution retains only registration, display name, and Practice names")
+    @Test("Portable Skill attribution retains only registration, display name, and Profile revision")
     func methodAttributionIsMinimal() throws {
-        let snapshot = try makeActionSnapshot(practiceNames: [
-            "Conceptual Analyst",
-            "Dialectical Partner",
-        ])
+        let snapshot = try makeActionSnapshot()
         let reference = try PortableResearchMethodReference(snapshot: snapshot)
-        #expect(reference.practiceNames == [
-            "Conceptual Analyst",
-            "Dialectical Partner",
-        ])
         let data = try JSONEncoder.scholium.encode(reference)
         let encoded = String(decoding: data, as: UTF8.self)
         #expect(!encoded.localizedCaseInsensitiveContains("package"))
@@ -900,9 +893,7 @@ struct PortableResearchRecordContractsTests {
         )
     }
 
-    private func makeActionSnapshot(
-        practiceNames: [String] = []
-    ) throws -> ResearchActionSnapshot {
+    private func makeActionSnapshot() throws -> ResearchActionSnapshot {
         let definition = ResearchActionDefinition.synthesize
         let target = ResearchActionNoteSnapshot(
             noteID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
@@ -932,14 +923,7 @@ struct PortableResearchRecordContractsTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Synthesize\n\nExact method.\n",
-            practices: try practiceNames.enumerated().map { index, name in
-                try ResearchPracticeSnapshot(
-                    title: name,
-                    relativePath: "Practice-\(index).md",
-                    source: "# \(name)\n\nExact Practice.\n"
-                )
-            }
+            primaryMarkdownSource: "# Synthesize\n\nExact method.\n"
         )
         let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
             profile: profile,

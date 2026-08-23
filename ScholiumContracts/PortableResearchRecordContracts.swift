@@ -284,49 +284,33 @@ public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sen
     }
 }
 
-/// Exact Method and Profile revisions retained without the Method prose,
+/// Exact Skill and Profile identity retained without the Skill prose,
 /// assembled prompt, Action parameters, authority grant, or machine locator.
 public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
     public let registrationKey: ResearchSkillRegistrationKey
     public let displayName: String
-    public let practiceNames: [String]
     public let profileRevision: DocumentFingerprint
 
     public init(
         registrationKey: ResearchSkillRegistrationKey,
         displayName: String,
-        practiceNames: [String] = [],
         profileRevision: DocumentFingerprint
     ) throws {
         guard !displayName.isEmpty,
               displayName.utf8.count <= 256,
               !PortableResearchRecordValidation.containsAbsolutePath(displayName),
-              Set(practiceNames).count == practiceNames.count,
-              practiceNames.allSatisfy({
-                  !$0.isEmpty
-                      && $0.utf8.count <= 256
-                      && !PortableResearchRecordValidation.containsAbsolutePath($0)
-              }),
               PortableResearchRecordValidation.isValidFingerprint(profileRevision)
         else { throw PortableResearchRecordError.invalidMethodReference }
         self.registrationKey = registrationKey
         self.displayName = displayName
-        self.practiceNames = practiceNames
         self.profileRevision = profileRevision
     }
 
     public init(snapshot: ResearchActionSnapshot) throws {
         let name = snapshot.method.registration.displayName
-        let practices = snapshot.method.practices.map(\.title)
         guard !name.isEmpty,
               name.utf8.count <= 256,
               !PortableResearchRecordValidation.containsAbsolutePath(name),
-              Set(practices).count == practices.count,
-              practices.allSatisfy({
-                  !$0.isEmpty
-                      && $0.utf8.count <= 256
-                      && !PortableResearchRecordValidation.containsAbsolutePath($0)
-              }),
               PortableResearchRecordValidation.isValidFingerprint(
                 snapshot.resolvedProfile.profileRevision
               ) else {
@@ -335,7 +319,6 @@ public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
         try self.init(
             registrationKey: snapshot.method.registration.key,
             displayName: name,
-            practiceNames: practices,
             profileRevision: snapshot.resolvedProfile.profileRevision
         )
     }
@@ -343,7 +326,6 @@ public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case registrationKey = "registration_key"
         case displayName = "display_name"
-        case practiceNames = "practice_names"
         case profileRevision = "profile_revision"
     }
 
@@ -358,16 +340,9 @@ public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
             forKey: .registrationKey
         )
         let displayName = try container.decode(String.self, forKey: .displayName)
-        let practiceNames = try container.decode([String].self, forKey: .practiceNames)
         guard !displayName.isEmpty,
               displayName.utf8.count <= 256,
-              !PortableResearchRecordValidation.containsAbsolutePath(displayName),
-              Set(practiceNames).count == practiceNames.count,
-              practiceNames.allSatisfy({
-                  !$0.isEmpty
-                      && $0.utf8.count <= 256
-                      && !PortableResearchRecordValidation.containsAbsolutePath($0)
-              }) else {
+              !PortableResearchRecordValidation.containsAbsolutePath(displayName) else {
             throw PortableResearchRecordError.invalidMethodReference
         }
         let profileRevision = try container.decode(
@@ -380,7 +355,6 @@ public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
         try self.init(
             registrationKey: registrationKey,
             displayName: displayName,
-            practiceNames: practiceNames,
             profileRevision: profileRevision
         )
     }
@@ -596,7 +570,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 12
+    public static let currentSchemaVersion = 13
 
     public let schemaVersion: Int
     public let id: UUID

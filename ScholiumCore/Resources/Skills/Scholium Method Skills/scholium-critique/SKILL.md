@@ -6,7 +6,7 @@ description: Critique an exact Work or passage as an attributed, read-only schol
 # Critique
 
 Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Method.
+its project-discovery route before applying this Skill.
 
 Assess the exact current Work revision independently. The Work and all Materials remain read-only; findings become attributed feedback, not silent edits or application facts.
 
@@ -22,6 +22,24 @@ Work.
 Use the bundled default form unless the researcher-owned active Method explicitly supplies another valid form: Overall Assessment; Strengths; Major Concerns; Source Support; Objections and Alternatives; Revision Priorities; Specific Findings; and Materials Consulted and Limitations. Do not manufacture content merely to fill a section.
 
 Distinguish what Analyses, Topics, and sources report, support, dispute, or leave uncertain from your own reconstruction and evaluation. Neutral links and transitive paths are not evidence. Distinguish exposition, argument, objection, reply, and researcher commitment.
+
+## Philosophical lenses
+
+Philosophical lenses are methodologically substantive references within this
+Skill, not separate authority objects. Select and read only the lenses needed
+for the assessed Work:
+
+- `references/Argument-Reconstructionist.md` for inferential structure and
+  hidden or bridge premises;
+- `references/Conceptual-Analyst.md` for a load-bearing concept, distinction,
+  formulation, or equivocation;
+- `references/Dialectical-Partner.md` for serious objections, reply routes,
+  concessions, and residual burdens;
+- `references/Reviewer.md` for genre-, audience-, and stage-sensitive review
+  thresholds and preservation priorities.
+
+Once selected, a lens's safeguards are part of the Critique method. No lens
+may add evidence, change the read-only boundary, or manufacture a finding.
 
 ## Boundary and feedback
 

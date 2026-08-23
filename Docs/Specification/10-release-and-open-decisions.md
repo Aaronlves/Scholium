@@ -33,8 +33,8 @@ rather than copying either into another pack.
   Finder restoration, externally missing source without Record cascade, Agent
   direct Undo, save interruption, and cross-window dirty-peer behavior.
 
-Beta/1.0 additionally cover applicable Research Actions, Skill
-registrations, exact-Wikilink Practices, Action Profiles and Result Contracts,
+Beta/1.0 additionally cover applicable Research Actions, Skill registrations,
+Skill-routed ordinary references and philosophical lenses, Action Profiles and Result Contracts,
 Triptych collaboration, process-bound pairing/Sessions, Bounded Write Sets,
 Research Context, portable Research Records and Researcher Evaluation,
 hierarchical Materials, Research Guidance/Recovery, Connections, Attention,
@@ -76,7 +76,7 @@ revision, Xcode/SDK, build, fixture identity, result, and artifact location.
 | **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |
-| **G10 Agent research collaboration** | Skill/Practice routing, Profiles/Result Contracts, Triptych collaboration, process-bound Sessions, bounded writes, Research Context, Records/Evaluation, and local bridges pass their journeys. |
+| **G10 Agent research collaboration** | Skill and ordinary-reference routing, Profiles/Result Contracts, Triptych collaboration, process-bound Sessions, bounded writes, Research Context, Records/Evaluation, and local bridges pass their journeys. |
 
 Usable Core/0.1 require G1–G4, G6, and G8; G9 applies to any distributed
 artifact. G6/G7 baselines and gaps must not be misrepresented as Beta passes.

@@ -2,7 +2,7 @@ import ScholiumContracts
 import SwiftUI
 
 enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
-    case methodsPractices = "Methods & Practices"
+    case skills = "Skills"
     case actionProfiles = "Action Profiles"
     case agentAccess = "Agent Access"
     case externalToolsCitations = "External Tools & Citations"
@@ -11,8 +11,8 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
 
     var localizedTitle: LocalizedStringResource {
         switch self {
-        case .methodsPractices:
-            LocalizedStringResource("Methods & Practices", table: "Localizable", bundle: .module)
+        case .skills:
+            LocalizedStringResource("Skills", table: "Localizable", bundle: .module)
         case .actionProfiles:
             LocalizedStringResource("Action Profiles", table: "Localizable", bundle: .module)
         case .agentAccess:
@@ -24,7 +24,7 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .methodsPractices: "text.book.closed"
+        case .skills: "text.book.closed"
         case .actionProfiles: "list.bullet.rectangle"
         case .agentAccess: "lock.shield"
         case .externalToolsCitations: "link"
@@ -38,8 +38,8 @@ struct ResearchGuidanceSettingsView: View {
     var body: some View {
         Group {
             switch category {
-            case .methodsPractices:
-                MethodsPracticesSettingsView()
+            case .skills:
+                ResearchMethodsSettingsView()
             case .actionProfiles:
                 ActionProfilesSettingsView()
             case .agentAccess:

@@ -1368,7 +1368,7 @@ struct ResearchRecordBrowserModelTests {
             PortableResearchMethodReference.self,
             from: Data(
                 """
-                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","practice_names":[],"profile_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}
+                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","profile_revision":{"sha256":"\(fingerprint.sha256)","byteCount":\(fingerprint.byteCount)}}
                 """.utf8)
         )
         let recommendations = try recommendations.enumerated().map {
@@ -1445,7 +1445,7 @@ struct ResearchRecordBrowserModelTests {
             PortableResearchMethodReference.self,
             from: Data(
                 """
-                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","practice_names":[],"profile_revision":{"sha256":"\(starting.sha256)","byteCount":\(starting.byteCount)}}
+                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Analysis","profile_revision":{"sha256":"\(starting.sha256)","byteCount":\(starting.byteCount)}}
                 """.utf8
             )
         )

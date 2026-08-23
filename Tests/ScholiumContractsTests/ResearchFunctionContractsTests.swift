@@ -450,7 +450,7 @@ struct ResearchFunctionContractsTests {
 
     }
 
-    @Test("Fidelity evidence identity changes with revision, scope, and exact Method context")
+    @Test("Fidelity evidence identity changes with revision, scope, and exact Skill entry")
     func fidelityEvidenceIdentity() throws {
         let target = target(role: .analysis)
         let anchor = CommentAnchor(
@@ -462,8 +462,7 @@ struct ResearchFunctionContractsTests {
             quotation: "claim"
         )
         let exactMethod = try method(
-            primarySource: "# Fidelity\n\nCheck exact content.\n",
-            practiceSource: "# Conceptual Analyst\n\nContent v1.\n"
+            primarySource: "# Fidelity\n\nCheck exact content.\n"
         )
         let whole = try snapshot(
             target: target,
@@ -480,12 +479,11 @@ struct ResearchFunctionContractsTests {
             scope: .passage(anchor),
             method: exactMethod
         )
-        let changedPractice = try snapshot(
+        let changedSkill = try snapshot(
             target: target,
             scope: .whole,
             method: method(
-                primarySource: exactMethod.primaryMarkdownSource,
-                practiceSource: "# Conceptual Analyst\n\nContent v2.\n"
+                primarySource: "# Fidelity\n\nCheck exact content and roles.\n"
             )
         )
         let changedCitationStyle = try snapshot(
@@ -505,7 +503,7 @@ struct ResearchFunctionContractsTests {
         #expect(makeKey(whole) == makeKey(whole))
         #expect(makeKey(whole) == makeKey(implicitWhole))
         #expect(makeKey(whole) != makeKey(passage))
-        #expect(makeKey(whole) != makeKey(changedPractice))
+        #expect(makeKey(whole) != makeKey(changedSkill))
         #expect(makeKey(whole) != makeKey(changedCitationStyle))
         #expect(ResearchFidelityEvidenceKey(
             snapshot: whole,
@@ -620,10 +618,7 @@ struct ResearchFunctionContractsTests {
         )
     }
 
-    private func method(
-        primarySource: String,
-        practiceSource: String
-    ) throws -> ResearchMethodSnapshot {
+    private func method(primarySource: String) throws -> ResearchMethodSnapshot {
         let registration = try ResearchSkillRegistration(
             key: ResearchSkillRegistrationKey(
                 rawValue: UUID(
@@ -636,12 +631,7 @@ struct ResearchFunctionContractsTests {
         )
         return try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: primarySource,
-            practices: [ResearchPracticeSnapshot(
-                title: "Conceptual Analyst",
-                relativePath: "Conceptual-Analyst.md",
-                source: practiceSource
-            )]
+            primaryMarkdownSource: primarySource
         )
     }
 

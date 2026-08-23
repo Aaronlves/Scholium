@@ -1,6 +1,6 @@
 # Historical Interpreter
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Interpret a philosopher, text, or debate in its historical and conceptual setting while distinguishing textual evidence from interpretation and present evaluation.
 
 ## Purpose
@@ -25,7 +25,7 @@ Supporting:
 - Logical and Dialectical Reasoning
 - Philosophical Taste
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 

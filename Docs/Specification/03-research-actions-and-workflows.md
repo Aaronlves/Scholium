@@ -59,30 +59,35 @@ string. It never enumerates, copies, snapshots, hashes, validates, proxies,
 uploads, explains, or executes that folder. The Agent reads any supplementary
 files through its own local file capability. Missing entry or folder paths are
 reported explicitly. An inaccessible folder never causes Scholium to invent a
-transport fallback; the Agent may continue from the delivered primary method
-and Practices or report the limitation.
+transport fallback; the Agent may continue from the delivered Skill entry or
+report the limitation.
 
-**Philosophical Practices** are researcher-owned Markdown method references.
-A primary Skill entry names zero or more Practices through exact ordinary
-Wikilinks. Scholium resolves exact title or explicit path, preserves first-use
-order, delivers duplicate references once, and reports missing or ambiguous
-references without substitution. Practice references never enter research
-Connections, grant capability, create evidence, or override the researcher
-request or platform safety. A Practice may combine a lens, procedure, and
-criterion; Scholium creates no Practice type or dependency graph.
+**Philosophical lenses** are methodologically substantive ordinary reference
+files inside a Skill folder. `SKILL.md` explicitly routes the smallest
+task-relevant lens set and states when a selected lens's evidential
+distinctions and safeguards become part of the Skill's method. A lens may
+combine a perspective, procedure, and criterion, but it is not a second
+product object: Scholium creates no lens catalog, registration, resolver,
+snapshot field, Settings destination, Record field, or dependency graph.
+Reference files never enter research Connections, grant capability, create
+evidence, or override the researcher request or platform safety. Scholium does
+not infer lens selection from Wikilinks or filenames.
+Pre-cutover `.scholium/practices` bytes remain untouched and nonauthorizing;
+Scholium neither reads nor migrates them.
 
-If the machine-local Method locator document is invalid, Methods exposes a
+If the machine-local Skill locator document is invalid, Skills exposes a
 confirmed archive-and-reset action. Scholium preserves the exact invalid file
 under a unique sibling recovery name, installs an empty current locator
-document, and requires affected external Methods to be selected again on that
-Mac. Portable registrations, Method and Practice Markdown, Research Records,
+document, and requires affected external Skills to be selected again on that
+Mac. Portable registrations, Skill and reference files, Research Records,
 and vault files remain unchanged; I/O or unsafe storage is not silently reset.
 
-Run creation freezes the registration relation, exact primary entry text,
-resolved Practice identities and text, optional Skill-folder path string, and
-Result Contract. Later registration, Skill, Practice, or Profile edits affect
-new Runs only; Scholium does not freeze or track folder contents. A new
-Triptych begins with editable current default methods. Updates never overwrite
+Run creation freezes the registration relation, exact Skill entry text,
+optional Skill-folder path string, and Result Contract. Later registration,
+Skill-entry, or Profile edits affect new Runs only; Scholium does not freeze or
+track folder contents. References are read through the Agent's local file
+capability only when the frozen Skill routes them. A new Triptych begins with
+editable current default Skills and bundled lens references. Updates never overwrite
 researcher edits. **Restore Default…** means the current app-bundled default
 and states the replacement consequence before writing.
 
@@ -90,24 +95,25 @@ Bundled defaults may state research burdens, not one universal method or
 researcher grade. Scoped Agent judgments never certify novelty,
 publishability, doctoral level, field completeness, or acceptance.
 
-Scholium-mediated Skill or Practice edits replace only the exact expected
-current source and read it back. There is no recovery copy, revision list,
+Scholium-mediated Skill improvement replaces only the exact expected
+`SKILL.md` and reads it back. Ordinary references are edited through ordinary
+filesystem tools. There is no recovery copy, revision list,
 version browser, comparison history, package lineage, or past-method
 reproduction promise.
 Research Records retain only the hidden registration relation, then-visible
-method name, and referenced Practice names, never complete method text or
-folder contents.
+Skill name, and Profile revision, never Skill text, reference names, or folder
+contents.
 
 The method/context stack has fixed roles:
 
 1. protected Scholium execution and safety facts;
 2. the researcher's current request;
-3. the primary Skill entry;
-4. supplementary files the Agent actually reads from the registered folder;
-5. resolved Practices;
-6. any conditionally attached release-managed Integration Adapter, scoped only
+3. the Skill entry;
+4. ordinary references, including philosophical lenses, that the Skill
+   explicitly routes and the Agent actually reads from the registered folder;
+5. any conditionally attached release-managed Integration Adapter, scoped only
    to interpreting and operating its integration; and
-7. Notes, sources, Records, Search results, Metadata, research state, and all
+6. Notes, sources, Records, Search results, Metadata, research state, and all
    provider content as **Research Evidence Context**.
 
 Evidence content never enters Method Context, changes platform capability, or
@@ -208,7 +214,7 @@ Delivery is progressive:
   and `reload`/`help` anchors without repeating Core Protocol.
 
 `reload` revalidates exact Target, Materials, and formal source, then returns
-the frozen method, Practices, folder path, Result Contract, and current state.
+the frozen Skill entry, folder path, Result Contract, and current state.
 Genuine drift returns `stale_run`; an authenticated write uses the Run-owned
 revision and completes without scheduling a Fidelity Action. Reload substitutes
 no later method and replays no cached Context response, ranking, availability, or
@@ -311,8 +317,8 @@ Adding extra documents is a distinct consequential operation. Ask Me Every
 Time presents one bounded set and permits a subset; Ask Me Only for Works asks
 only when it changes a Work; Full Access binds a valid set without a sheet. A
 sheet's sole denial is **Continue Without Additional Notes**; **End Action**
-separately ends the whole Run. The same policy governs a next Run. Skill or
-Practice edits require a researcher-initiated method-improvement action. No
+separately ends the whole Run. The same policy governs a next Run. Skill-entry
+edits require a researcher-initiated method-improvement action. No
 policy authorizes third-party disclosure.
 
 The **Bounded Write Set** is hidden, short-lived, expandable, and owned only by
@@ -577,7 +583,7 @@ the `continued from` Record relationship.
 
 Full Access may create the next Run directly; the other policies use the same
 single decision rule and ask only when required. The new Run independently
-resolves current Skill, Practices, Profile, policy, Result Contract, and
+resolves current Skill, Profile, policy, Result Contract, and
 write set. It does not inherit document handles, transaction state, method,
 permission decision, Research Context response, candidates, rank, cache,
 availability, or future Assembly. Handoff references are re-resolved against
@@ -616,11 +622,11 @@ editing the comment alone authorizes no Agent access. Starting that action, not
 Full Access, Evaluation, or source disposition, creates one
 separately paired improvement Run bound to the parent Record, exact comment
 revision/text, finalized Result fingerprint, original registration relation,
-current primary Method, linked Practices, and their exact revisions. It
+current Skill entry and its exact revision. It
 inherits no ordinary Action context, Result operation, Bounded Write Set, or
 blanket folder authority.
 
-The Agent may replace exactly one current primary Method or linked Practice,
+The Agent may replace exactly one current `SKILL.md`,
 or return one `diagnosed_no_change`/`unavailable` diagnosis after judging
 whether the issue concerns method, execution, material, provider, request, or
 preference. CLI obtains machine revisions from authenticated context rather
@@ -745,9 +751,8 @@ this is an attributed assessment, never an automatic diagnostic. Passage
 remains bounded unless the researcher broadens it.
 
 The Action uses the current registered Critique Skill. **Edit Critique
-Method...** opens **Settings → Research Guidance → Methods → Critique**, where
-the primary Markdown Method, Practices, optional folder path, last-edit
-recovery, and explicit default restoration belong.
+Skill...** opens **Settings → Research Guidance → Skills → Critique**, where
+the Skill entry, optional folder path, and explicit default restoration belong.
 
 ### 11.4 Critique form
 

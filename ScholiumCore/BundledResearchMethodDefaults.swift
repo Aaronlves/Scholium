@@ -30,7 +30,15 @@ enum BundledResearchMethodDefaults {
             actionID: .discuss,
             displayName: "Discuss",
             resourceDirectory: "Scholium Method Skills/scholium-discuss",
-            resources: ["SKILL.md", "references/method.md", "references/response-contract.md"]
+            resources: [
+                "SKILL.md",
+                "references/method.md",
+                "references/response-contract.md",
+                "references/Argument-Reconstructionist.md",
+                "references/Conceptual-Analyst.md",
+                "references/Dialectical-Partner.md",
+                "references/Research-Explorer.md",
+            ]
         ),
         Definition(
             actionID: .analyze,
@@ -41,13 +49,23 @@ enum BundledResearchMethodDefaults {
                 "references/method.md",
                 "references/method-fit.md",
                 "references/literature-recommendations.md",
+                "references/Argument-Reconstructionist.md",
+                "references/Conceptual-Analyst.md",
+                "references/Historical-Interpreter.md",
+                "references/Research-Explorer.md",
             ]
         ),
         Definition(
             actionID: .synthesize,
             displayName: "Synthesize",
             resourceDirectory: "Scholium Method Skills/scholium-synthesize",
-            resources: ["SKILL.md", "references/method.md"]
+            resources: [
+                "SKILL.md",
+                "references/method.md",
+                "references/Conceptual-Analyst.md",
+                "references/Dialectical-Partner.md",
+                "references/Systematizer.md",
+            ]
         ),
         Definition(
             actionID: .write,
@@ -58,32 +76,38 @@ enum BundledResearchMethodDefaults {
                 "references/method.md",
                 "references/genre-and-revision.md",
                 "references/feedback.md",
+                "references/Dialectical-Partner.md",
+                "references/Philosophical-Expositor.md",
+                "references/Systematizer.md",
+                "references/Thesis-Architect.md",
             ]
         ),
         Definition(
             actionID: .critique,
             displayName: "Critique",
             resourceDirectory: "Scholium Method Skills/scholium-critique",
-            resources: ["SKILL.md", "references/method.md"]
+            resources: [
+                "SKILL.md",
+                "references/method.md",
+                "references/Argument-Reconstructionist.md",
+                "references/Conceptual-Analyst.md",
+                "references/Dialectical-Partner.md",
+                "references/Reviewer.md",
+            ]
         ),
         Definition(
             actionID: .checkFidelity,
             displayName: "Check Fidelity",
             resourceDirectory: "Scholium Method Skills/scholium-content-fidelity",
-            resources: ["SKILL.md", "references/content.md", "references/citations.md"]
+            resources: [
+                "SKILL.md",
+                "references/content.md",
+                "references/citations.md",
+                "references/Argument-Reconstructionist.md",
+                "references/Conceptual-Analyst.md",
+                "references/Historical-Interpreter.md",
+            ]
         ),
-    ]
-
-    private static let practiceResources = [
-        "Argument-Reconstructionist.md",
-        "Conceptual-Analyst.md",
-        "Dialectical-Partner.md",
-        "Historical-Interpreter.md",
-        "Philosophical-Expositor.md",
-        "Research-Explorer.md",
-        "Reviewer.md",
-        "Systematizer.md",
-        "Thesis-Architect.md",
     ]
 
     static func install(into controlURL: URL) throws -> [ResearchSkillRegistration] {
@@ -131,11 +155,11 @@ enum BundledResearchMethodDefaults {
                     parent = referencesDescriptor!
                     leaf = components[1]
                 }
-                let destinationPath = folderURL.appendingPathComponent(resource).path
+                let destinationURLPath = folderURL.appendingPathComponent(resource).path
                 if try SecureResearchConfigurationIO.dataFileIfPresent(
                     parentDescriptor: parent,
                     leaf: leaf,
-                    path: destinationPath,
+                    path: destinationURLPath,
                     maximumByteCount: 1_048_576
                 ) == nil {
                     try SecureResearchConfigurationIO.createDataFile(
@@ -145,7 +169,7 @@ enum BundledResearchMethodDefaults {
                             directory: definition.resourceDirectory,
                             relativePath: resource
                         ),
-                        path: destinationPath
+                        path: destinationURLPath
                     )
                 }
             }
@@ -159,7 +183,6 @@ enum BundledResearchMethodDefaults {
                 isEnabled: definition.isEnabled
             ))
         }
-        try installPractices(controlURL: controlURL, rootDescriptor: root)
         guard fsync(root) == 0 else {
             throw ResearchConfigurationStoreError.unsafeStorage
         }
@@ -177,42 +200,6 @@ enum BundledResearchMethodDefaults {
             ),
             as: UTF8.self
         )
-    }
-
-    private static func installPractices(
-        controlURL: URL,
-        rootDescriptor: Int32
-    ) throws {
-        let directory = try SecureResearchConfigurationIO.ensureDirectory(
-            parentDescriptor: rootDescriptor,
-            name: ResearchConfigurationStore.practicesDirectoryName,
-            path: controlURL.appendingPathComponent(
-                ResearchConfigurationStore.practicesDirectoryName
-            ).path
-        )
-        defer { Darwin.close(directory) }
-        for resource in practiceResources {
-            let path = controlURL
-                .appendingPathComponent(ResearchConfigurationStore.practicesDirectoryName)
-                .appendingPathComponent(resource)
-                .path
-            if try SecureResearchConfigurationIO.dataFileIfPresent(
-                parentDescriptor: directory,
-                leaf: resource,
-                path: path,
-                maximumByteCount: 1_048_576
-            ) == nil {
-                try SecureResearchConfigurationIO.createDataFile(
-                    parentDescriptor: directory,
-                    leaf: resource,
-                    data: try BundledResearchSkillResources.data(
-                        directory: "Philosophical Practices",
-                        relativePath: resource
-                    ),
-                    path: path
-                )
-            }
-        }
     }
 
 }

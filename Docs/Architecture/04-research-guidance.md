@@ -1,7 +1,7 @@
 # Architecture: Research Guidance
 
-[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Method and
-Practice registration, academic Profiles,
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Skill
+registration and ordinary references, academic Profiles,
 collaboration and citation configuration, Settings composition, and
 configuration recovery. [Research Actions and Execution](02-research-actions-and-execution.md)
 alone owns preparation, pairing, Sessions, Run context, Bounded Write Sets,
@@ -21,9 +21,9 @@ ResearchConfigurationStore
               hidden stable key, display name, primary Markdown locator,
               optional machine-local folder locator, enabled state
         |
-        +-> SecureResearchMethodIO + ResearchPracticeResolver
-              exact primary Markdown / Practice reads and targeted writes
-              exact Wikilinks, first-use order, deterministic ambiguity
+        +-> SecureResearchMethodIO
+              exact SKILL.md reads and targeted writes
+              optional folder availability without reference enumeration
         |
         +-> ResearchAcademicProfileDocument
               flat academic input/result fields only
@@ -54,24 +54,24 @@ directory, diff versions, list history, validate dependencies, enumerate
 supplements, or execute scripts. External changes use the ordinary current-
 revision and conflict boundary.
 
-## Methods and Practices
+## Skills and ordinary references
 
-A Method registration points to one exact primary Markdown file and may also
+A Skill registration points to one exact `SKILL.md` entry and may also
 identify its containing ordinary folder for authenticated Agent access. New
-simple Methods may consist of that file alone. Registering or removing a
-Method never gives Scholium ownership of the surrounding directory.
+simple Skills may consist of that file alone. Registering or removing a Skill
+never gives Scholium ownership of the surrounding directory.
 
-Practices are ordinary Markdown files in a bounded Triptych-managed location
-or an explicitly selected machine-local location. `ResearchPracticeResolver`
-parses ordinary Wikilinks from the exact primary Method, resolves exact title
-or explicit path within the Practice catalog, de-duplicates after first use,
-and returns missing or ambiguous diagnostics. It does not resolve headings,
-blocks, aliases, transclusion, nested Practice dependencies, or Connections.
+Reference files, including philosophical lenses, remain ordinary files inside
+the Skill folder. The Skill entry explicitly routes the task-relevant files;
+Application neither catalogs nor parses those references, and no Wikilink,
+title, filename, alias, or transclusion creates a second product relation.
+Bundled defaults keep a bounded lens subset directly in each applicable
+Skill's `references/` directory. Those references are release-managed parts of
+their owning Skills, not an independently installed catalog or shared library.
 
-Each Method and Practice retains at most one machine-local pre-edit recovery
-point. A confirmed next Scholium edit replaces that point. Restore compares the
-current revision before writing and never treats the bundled default as a
-runtime fallback.
+Scholium's method-improvement Run edits only the exact registered `SKILL.md`.
+References remain editable through ordinary filesystem tools. Exact-revision
+replacement never treats the bundled default as a runtime fallback.
 
 ## Profiles and Platform authority
 
@@ -100,16 +100,16 @@ application, launch path, or Agent credential. The transient handoff for the
 current Run belongs to Research Actions and Execution.
 
 The citation document stores one optional code-catalog identifier such as APA
-7. It is an integration setting, not a Method, Practice, permission, or
+7. It is an integration setting, not a Skill, reference, permission, or
 executable component. Citation checking resolves it at preparation and fails
 closed when a requested check has no configured style.
 
 ## Settings and configuration transactions
 
-Settings presents one Research Guidance list/detail surface for Methods &
-Practices, Action Profiles, Agent Access, and External Tools & Citations. The
-Methods & Practices destination switches between the existing Method and
-Practice owners; Action Profiles edits only the academic profile document.
+Settings presents one Research Guidance list/detail surface for Skills, Action
+Profiles, Agent Access, and External Tools & Citations. Skills edits the
+registration and exact `SKILL.md`; it explains that lenses and other
+references are ordinary folder files. Action Profiles edits only the academic profile document.
 Each editor mutates one owner at a time through an expected-revision
 transaction.
 
@@ -150,8 +150,8 @@ Application operations, use natural JSON at their boundary, and expose the
 Metadata revision independently from the source fingerprint. No delivery
 adapter imports Core or addresses the portable JSON directory.
 Portable Triptych Settings does not store prompt bodies or active prompt
-selection. Exact Markdown Methods and Practices remain the sole persisted
-owners of Research Guidance intellectual configuration; runtime action
+selection. Exact Skill entries and their ordinary reference files remain the
+persisted intellectual configuration; runtime action
 contracts consume those owners without a second template representation.
 
 `PropertyContractCatalog` owns the authored YAML allowlist;
@@ -166,12 +166,11 @@ managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 
 The Action Profile editor can change only visible name, order, enabled state,
-role-valid placement, and bounded ordered academic fields. The Methods and
-Practices editors operate on exact Markdown and expose their one recovery
-point. External Tools & Citations presents citation selection before machine-
-local Zotero and CLI controls. Method and Practice recovery stays beside the
-affected editor.
-Invalid machine-local Method locators have one owner-specific,
+role-valid placement, and bounded ordered academic fields. The Skills editor
+operates on exact `SKILL.md`; ordinary reference editing remains outside this
+surface. External Tools & Citations presents citation selection before machine-
+local Zotero and CLI controls. Skill-locator recovery stays beside the affected editor.
+Invalid machine-local Skill locators have one owner-specific,
 confirmation-gated recovery operation. It uses the shared same-directory
 exact-state preserver, archives only a typed invalid file, and resets only its
 machine-local owner; unsafe storage remains fail-closed.
@@ -191,7 +190,7 @@ owns loading and delivering the protected Core Skill and any eligible typed
 Integration Adapter during an authenticated Run. Application selects the
 adapter from frozen Run facts; bundle discovery and Agent inference do not.
 Research Guidance distinguishes those release-managed bytes from
-researcher-owned Methods and Practices, which contain the Action's intellectual
+researcher-owned Skills and references, which contain the Action's intellectual
 procedure. Run Brief, Method context, Result Contract, adapter payload,
 capability availability, command inputs, and Research Context remain typed
 current data. Installed CLI help and tool schemas own current invocation

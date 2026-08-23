@@ -1,6 +1,6 @@
 # Systematizer
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Organize dispersed philosophical material into a coherent structure while preserving differences, uncertainty, and unresolved tension.
 
 ## Purpose
@@ -25,7 +25,7 @@ Supporting:
 - Background-Grasping
 - Philosophical Taste
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 

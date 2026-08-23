@@ -36,6 +36,14 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the Practice-to-reference cutover passed the complete gate:
+  all guards; 199 Web, 455 Core, 3 performance,
+  147 Contract, 269 Application, 16 bridge, and 645 App tests; 11 signed CLI
+  lifecycles; sandbox probe; and the 188.62-second Release build. Every default
+  Skill owns its lenses; no Practice catalog, resolver, Settings surface,
+  snapshot, Record field, or improvement target remains. No XCUITest or human
+  acceptance.
+
 - On 2026-08-23, the external-Agent Action simplification passed
   six-Action, Core, Query, interface, localization, and 11 signed-CLI owners.
   The complete gate passed documentation, 199 Web tests, bundles, RDF-1, 455
@@ -695,13 +703,6 @@ ten-sample span was 1,605,632 bytes versus 3,473,408 bytes for the preceding
 span, and the final-tail medians grew 0.236%. Under the corrected bounded,
 decelerating convergence rule this is a pass. These diagnostics validate the
 repair paths but do not replace the cooled, clean, exact-tagged packaged rerun.
-
-The prior isolated Search v7 regression report recorded a cold rebuild of
-778.043 ms, warm-query p95 of 28.332 ms, incremental-publication p95 of
-21.065 ms, database size of 46,254,760 bytes, and process peak RSS of
-144,310,272 bytes on the deterministic 800-Note fixture. The schema-v9
-Metadata projection supersedes that report; those measurements are not current
-v9 evidence, the packaged G7 gate, or approved release limits.
 
 On 2026-08-23 the focused Search v9 microbenchmark passed on the deterministic
 2,056-Note mixed-script fixture after the Metadata cutover: cold rebuild

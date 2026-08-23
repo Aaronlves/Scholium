@@ -12,9 +12,9 @@ trap cleanup EXIT
 
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIRST}"
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIRST}" --verify
-mkdir -p "${FIRST}/.scholium/practices"
-cp "${ROOT}/ScholiumCore/Resources/Skills/Philosophical Practices/Reviewer.md" \
-  "${FIRST}/.scholium/practices/Reviewer.md"
+mkdir -p "${FIRST}/.scholium/skill-folders/critique/references"
+cp "${ROOT}/ScholiumCore/Resources/Skills/Scholium Method Skills/scholium-critique/references/Reviewer.md" \
+  "${FIRST}/.scholium/skill-folders/critique/references/Reviewer.md"
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${FIRST}" --verify
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" --output "${SECOND}"
 cmp "${FIRST}/manifest.json" "${SECOND}/manifest.json"

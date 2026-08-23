@@ -938,22 +938,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 try await workspaceHandle(id: id).research
                     .preserveInvalidMachineLocalMethodLocatorsAndReset()
             },
-            philosophicalPractices: { [self] id in
-                try await workspaceHandle(id: id).research.philosophicalPractices()
-            },
-            createPhilosophicalPractice: { [self] id, title, source in
-                try await workspaceHandle(id: id).research.createPhilosophicalPractice(
-                    title: title,
-                    source: source
-                )
-            },
-            savePhilosophicalPractice: { [self] id, path, source, revision in
-                try await workspaceHandle(id: id).research.savePhilosophicalPractice(
-                    relativePath: path,
-                    source: source,
-                    expectedRevision: revision
-                )
-            },
             citationMethodStatus: { [self] workspaceID in
                 try await workspaceHandle(id: workspaceID).research.citationMethodStatus()
             },

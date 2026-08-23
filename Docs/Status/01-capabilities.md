@@ -136,7 +136,7 @@
 - The closed Platform catalog exposes the role-valid Discuss, Analyze,
   Synthesize, Write, Critique, and Check Fidelity Actions. Preparation freezes
   the target, request, source and focal material,
-  Method, Practices, Profile, Result Contract, collaboration policy, read scope,
+  Skill entry, reference-folder path, Profile, Result Contract, collaboration policy, read scope,
   and initial Bounded Write Set member.
 - GUI Copy Handoff and Copy New Handoff deliver one Run locator and one-use
   Pairing Code for the installed CLI. `scholium agent` is the only external-
@@ -256,7 +256,7 @@
 - An explicitly researcher-started `researcher_provided` Check Fidelity Run
   exposes the exact checks plus a typed Citation constraint. Without a formal
   source envelope, Citation must be `unavailable`; Note YAML URLs remain
-  authored metadata. The Fidelity Run forms its own schema-12 Record with
+  authored metadata. The Fidelity Run forms its own schema-13 Record with
   explicit unverified evidence rather than a fabricated source claim; Analyze
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
@@ -278,11 +278,11 @@
 - Comments, attributed Discussion turns, completed Action results, Context Use,
   confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-12 Records. Analyze Records retain one explicit Scholium-source,
+  schema-13 Records. Analyze Records retain one explicit Scholium-source,
   external-Zotero, or researcher-provided route without inventing source
   evidence. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-12 Records reject every other schema, including schema 11; unsupported
+  Schema-13 Records reject every other schema, including schemas 11 and 12; unsupported
   files remain byte-unchanged, unread, and nonauthorizing. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
@@ -306,11 +306,11 @@
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
-- Research Guidance supports Method and Practice registration and exact
-  expected-revision editing, explicit default restoration, academic
+- Research Guidance supports Skill registration and exact expected-revision
+  `SKILL.md` editing, bundled Skill-routed lens references, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external
   locators, and installed CLI controls.
-- Invalid machine-local Method locators expose an exact archive-and-reset
+- Invalid machine-local Skill locators expose an exact archive-and-reset
   operation; portable research configuration and vault files remain unchanged.
 - Built-in Zotero access reads local bibliographic metadata, searches exact
   user/group library items for researcher selection, keeps same-key libraries

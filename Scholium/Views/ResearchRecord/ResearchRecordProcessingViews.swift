@@ -1548,9 +1548,9 @@ private struct ResearchMethodImprovementHandoffSheet: View {
 
         Agent: use the installed `scholium` CLI yourself.
         1. Run `scholium agent pair --run \(handoff.run.rawValue)` and enter the Pairing Code above through standard input.
-        2. Run `scholium agent method-context --run \(handoff.run.rawValue)` to receive the exact researcher comment, frozen primary Method, linked Practices, and revisions.
-        3. Decide whether the issue concerns the Method or Practice rather than execution, material, provider, request, or preference. Submit at most one exact file replacement, or an explicit no-change/unavailable diagnosis, with `scholium agent improve-method --run \(handoff.run.rawValue) --from <json|->`.
-        4. End local access with `scholium agent end --run \(handoff.run.rawValue)`. Do not edit the Method files directly or reuse authority from another Run.
+        2. Run `scholium agent method-context --run \(handoff.run.rawValue)` to receive the exact researcher comment, frozen Skill entry, and revision.
+        3. Decide whether the issue concerns the Skill rather than execution, material, provider, request, or preference. Submit at most one exact SKILL.md replacement, or an explicit no-change/unavailable diagnosis, with `scholium agent improve-method --run \(handoff.run.rawValue) --from <json|->`.
+        4. End local access with `scholium agent end --run \(handoff.run.rawValue)`. Do not edit Skill files directly or reuse authority from another Run.
         """
     }
 

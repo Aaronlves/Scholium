@@ -1306,7 +1306,7 @@ extension ScholiumUITests {
             "Hotkeys",
             "Metadata",
             "Attention",
-            "Methods & Practices",
+            "Skills",
             "Action Profiles",
             "Agent Access",
             "External Tools & Citations",
@@ -1355,20 +1355,15 @@ extension ScholiumUITests {
         XCTAssertFalse(app.staticTexts["Researcher Skills"].exists)
         XCTAssertFalse(app.staticTexts["Permissions"].exists)
 
-        app.descendants(matching: .any)["Methods & Practices"].firstMatch.click()
+        app.descendants(matching: .any)["Skills"].firstMatch.click()
         for actionID in [
             "discuss", "analyze", "synthesize", "write", "critique",
             "check-fidelity",
         ] {
             XCTAssertTrue(app.descendants(matching: .any)[
-                "scholium.researchGuidance.method.\(actionID)"
+                "scholium.researchGuidance.skill.\(actionID)"
             ].waitForExistence(timeout: 8))
         }
-
-        let practices = app.descendants(matching: .any)["Practices"].firstMatch
-        XCTAssertTrue(practices.waitForExistence(timeout: 8))
-        practices.click()
-        XCTAssertTrue(app.buttons["New Practice…"].waitForExistence(timeout: 8))
 
         app.descendants(matching: .any)["Action Profiles"].firstMatch.click()
         XCTAssertTrue(app.descendants(matching: .any)[
@@ -1411,53 +1406,56 @@ extension ScholiumUITests {
     func testResearchGuidanceMarkdownCreationKeyboardAndDirtyClose() throws {
         openResearchGuidance()
 
-        let settingsWindow = app.windows["Methods & Practices"]
+        let settingsWindow = app.windows["Skills"]
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
-        let newPractice = settingsWindow.buttons["New Practice…"]
-        XCTAssertTrue(newPractice.waitForExistence(timeout: 5))
-        newPractice.click()
+        let manage = settingsWindow.buttons["Manage"].firstMatch
+        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        manage.click()
+        let newSkill = app.menuItems["Create New Skill…"].firstMatch
+        XCTAssertTrue(newSkill.waitForExistence(timeout: 5))
+        newSkill.click()
 
         let creationSheet = settingsWindow.descendants(matching: .any)[
             "scholium.researchGuidance.markdownCreationSheet"
         ]
         XCTAssertTrue(creationSheet.waitForExistence(timeout: 5))
-        let practiceTitle = creationSheet.textFields["Practice title"]
+        let skillTitle = creationSheet.textFields["Display name"]
         let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
-        XCTAssertTrue(practiceTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(skillTitle.waitForExistence(timeout: 5))
         XCTAssertTrue(
-            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: practiceTitle) },
-            "A new Practice must begin at its title field."
+            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: skillTitle) },
+            "A new Skill must begin at its display-name field."
         )
 
-        try paste("QA Closure Practice", into: practiceTitle)
-        let practiceSource = creationSheet.textViews[
-            "Philosophical Practice Markdown"
+        try paste("QA Closure Skill", into: skillTitle)
+        let skillSource = creationSheet.textViews[
+            "Primary Research Skill Markdown"
         ]
-        XCTAssertTrue(practiceSource.waitForExistence(timeout: 5))
+        XCTAssertTrue(skillSource.waitForExistence(timeout: 5))
         try paste(
-            "# QA Closure Practice\n\nState the philosophical practice here.\n",
-            into: practiceSource
+            "# QA Closure Skill\n\nRoute philosophical lens references here.\n",
+            into: skillSource
         )
-        practiceTitle.click()
+        skillTitle.click()
         app.typeKey(.escape, modifierFlags: [])
         let keepEditing = settingsWindow.buttons["Keep Editing"]
         XCTAssertTrue(keepEditing.waitForExistence(timeout: 5))
         XCTAssertTrue(settingsWindow.buttons["Discard Draft and Close"].exists)
         keepEditing.click()
         XCTAssertTrue(creationSheet.exists)
-        XCTAssertEqual(practiceTitle.value as? String, "QA Closure Practice")
+        XCTAssertEqual(skillTitle.value as? String, "QA Closure Skill")
         XCTAssertTrue(
-            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: practiceTitle) },
-            "Keeping a dirty Practice draft must restore focus to the title field."
+            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: skillTitle) },
+            "Keeping a dirty Skill draft must restore focus to the display-name field."
         )
 
-        practiceTitle.typeKey(.return, modifierFlags: [])
+        skillTitle.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(
             waitUntil(timeout: 10) { !creationSheet.exists },
             "Return in the title field must invoke the enabled default Create action."
         )
         XCTAssertTrue(settingsWindow.staticTexts[
-            "QA Closure Practice"
+            "QA Closure Skill"
         ].waitForExistence(timeout: 8))
     }
 
@@ -1486,7 +1484,7 @@ extension ScholiumUITests {
             return analyze["isEnabled"] as? Bool == false
         })
 
-        let settingsWindow = app.windows["Methods & Practices"]
+        let settingsWindow = app.windows["Skills"]
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
         openResearchGuidance()

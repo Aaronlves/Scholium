@@ -1,6 +1,6 @@
 # Conceptual Analyst
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Clarify concepts, distinctions, and conceptual relations without flattening differences among authors, traditions, or uses.
 
 ## Purpose
@@ -24,7 +24,7 @@ Supporting:
 - Background-Grasping
 - Logical and Dialectical Reasoning
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 

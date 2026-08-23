@@ -32,7 +32,7 @@ struct ResearchActionContractsTests {
         let data = try encoder.encode(snapshot)
         let encoded = String(decoding: data, as: UTF8.self)
 
-        #expect(encoded.contains(#""schema_version":3"#))
+        #expect(encoded.contains(#""schema_version":4"#))
         #expect(encoded.contains(#""action_id":"analyze""#))
         #expect(encoded.contains(#""registration""#))
         #expect(encoded.contains(#""result_contract""#))
@@ -57,11 +57,35 @@ struct ResearchActionContractsTests {
             )
         }
         object.removeValue(forKey: "unknown")
-        object["schema_version"] = 2
+        object["schema_version"] = 3
         #expect(throws: ResearchActionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchActionSnapshot.self,
                 from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        object["schema_version"] = ResearchActionSnapshot.currentSchemaVersion
+        var method = try #require(object["method"] as? [String: Any])
+        method["practices"] = []
+        object["method"] = method
+        #expect(throws: ResearchSkillRegistrationError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchActionSnapshot.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        let methodContext = ResearchMethodContext(snapshot: snapshot.method)
+        var methodContextObject = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(methodContext)
+            ) as? [String: Any]
+        )
+        methodContextObject["practices"] = []
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchMethodContext.self,
+                from: JSONSerialization.data(withJSONObject: methodContextObject)
             )
         }
         let internalFunctionName = Data(
@@ -178,8 +202,7 @@ struct ResearchActionContractsTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# \(profile.displayName)\n\nExact method.\n",
-            practices: []
+            primaryMarkdownSource: "# \(profile.displayName)\n\nExact method.\n"
         )
         let platformInputs = try ResearchActionPlatformInputs(
             fidelityChecks: definition.id == .checkFidelity ? [.content] : []

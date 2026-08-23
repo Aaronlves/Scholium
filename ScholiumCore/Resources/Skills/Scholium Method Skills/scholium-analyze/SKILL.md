@@ -6,7 +6,7 @@ description: Analyze or reanalyze one paper into its current Analysis note, reco
 # Analyze
 
 Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Method.
+its project-discovery route before applying this Skill.
 
 Analyze one explicit source and update only the current Analysis Target. Decide from the existing Analysis and source whether this is an initial analysis or a reanalysis; do not ask the researcher to choose a mode.
 
@@ -34,6 +34,26 @@ grounds any `literatureRecommendations` items. Reconstruct concepts and
 arguments before applying critical pressure. Critical testing is part of
 Analyze, not a separate interface mode, but it must never be presented as the
 source author's own position.
+
+## Philosophical lenses
+
+Philosophical lenses are methodologically substantive references within this
+Skill, not separate authority objects. Select the smallest lens set that fits
+the source and question, then read the corresponding reference before doing
+the affected work:
+
+- `references/Argument-Reconstructionist.md` for premise, inference, bridge,
+  objection, and argument-strength reconstruction;
+- `references/Conceptual-Analyst.md` for concepts, distinctions, definitions,
+  uses, and conceptual dependencies;
+- `references/Historical-Interpreter.md` for historically situated or
+  textually disputed interpretation;
+- `references/Research-Explorer.md` for bounded question, gap, method-fit, or
+  research-direction exploration.
+
+Use no lens by default merely to make the report look comprehensive. Once a
+lens is selected, its evidential distinctions and safeguards are part of this
+Skill's method.
 
 Before submitting, perform one bounded fidelity self-check against the exact
 saved Analysis revision and the source data actually inspected. Check source

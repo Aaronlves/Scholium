@@ -45,7 +45,6 @@ public actor ResearchConfigurationStore {
     public static let profileFileName = "academic-action-profiles-v1.json"
     public static let collaborationFileName = "collaboration-policy-v1.json"
     public static let citationMethodFileName = "citation-method-v1.json"
-    public static let practicesDirectoryName = "practices"
 
     private let controlURL: URL
     private let triptychID: UUID
@@ -491,8 +490,8 @@ public actor ResearchConfigurationStore {
         )
     }
 
-    /// Resolves current method bytes and exact-Wikilink Practices. It never
-    /// enumerates or reads the optional Skill folder.
+    /// Resolves the registered Skill entry and the optional folder locator. It
+    /// never enumerates, snapshots, or interprets ordinary reference files.
     public func methodSnapshot(for actionID: ResearchActionID) throws -> ResearchMethodSnapshot {
         guard let registration = try registrationSnapshot()?.document.registration(
             for: actionID
@@ -505,91 +504,13 @@ public actor ResearchConfigurationStore {
         let primarySource = try withPrimaryURL(for: registration) {
             try SecureResearchMethodIO.read(at: $0)
         }
-        let practices = try practiceCatalog()
-        let resolution = ResearchPracticeResolver.resolve(
-            primaryMarkdown: primarySource,
-            practices: practices
-        )
         let folder = try resolvedSkillFolder(for: registration)
         return try ResearchMethodSnapshot(
             registration: registration,
             primaryMarkdownSource: primarySource,
-            practices: resolution.practices,
-            practiceIssues: resolution.issues,
             skillFolderPath: folder.path,
             skillFolderIsAvailable: folder.isAvailable
         )
-    }
-
-    public func practiceCatalog() throws -> [ResearchPracticeSnapshot] {
-        try SecureResearchMethodIO.practiceCatalog(
-            controlURL: controlURL,
-            directoryName: Self.practicesDirectoryName
-        )
-    }
-
-    public func createPractice(
-        title: String,
-        source: String
-    ) throws -> ResearchPracticeSnapshot {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty,
-              trimmedTitle.utf8.count <= 256,
-              !trimmedTitle.contains("/"),
-              !trimmedTitle.contains("\\"),
-              !trimmedTitle.unicodeScalars.contains(where: {
-                  CharacterSet.controlCharacters.contains($0)
-              }) else {
-            throw ResearchConfigurationStoreError.invalidMethod(title)
-        }
-        let relativePath = "\(Self.practicesDirectoryName)/\(trimmedTitle).md"
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
-            relativePath: "\(trimmedTitle).md",
-            rawContent: source
-        ))
-        guard semantic.headings.first(where: { $0.level == 1 })?.text == trimmedTitle else {
-            throw ResearchConfigurationStoreError.invalidMethod(
-                "A Practice must begin with a level-one heading that exactly matches its title."
-            )
-        }
-        let location = try ResearchMethodFileLocation.triptychControl(relativePath)
-        let data = Data(source.utf8)
-        try SecureResearchMethodIO.create(
-            at: try triptychURL(for: location),
-            data: data
-        )
-        guard let created = try practiceCatalog().first(where: {
-            $0.relativePath == "\(trimmedTitle).md"
-        }), created.title == trimmedTitle else {
-            throw ResearchConfigurationStoreError.invalidMethod(relativePath)
-        }
-        return created
-    }
-
-    public func savePractice(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> ResearchPracticeSnapshot {
-        let location = try ResearchMethodFileLocation.triptychControl(
-            "\(Self.practicesDirectoryName)/\(relativePath)"
-        )
-        let resolved = try triptychURL(for: location)
-        let current = try SecureResearchMethodIO.data(at: resolved)
-        guard DocumentFingerprint(data: current) == expectedRevision else {
-            throw ResearchConfigurationStoreError.staleDocument
-        }
-        _ = try SecureResearchMethodIO.replace(
-            at: resolved,
-            data: Data(source.utf8),
-            expectedRevision: expectedRevision
-        )
-        guard let practice = try practiceCatalog().first(where: {
-            $0.relativePath == relativePath
-        }) else {
-            throw ResearchConfigurationStoreError.invalidMethod(relativePath)
-        }
-        return practice
     }
 
     public func savePrimaryMethod(
@@ -1050,101 +971,4 @@ private enum SecureResearchMethodIO {
         }
     }
 
-    static func practiceCatalog(
-        controlURL: URL,
-        directoryName: String
-    ) throws -> [ResearchPracticeSnapshot] {
-        let rootURL = controlURL.appendingPathComponent(directoryName, isDirectory: true)
-        guard FileManager.default.fileExists(atPath: rootURL.path) else { return [] }
-        let descriptor = try SecureResearchConfigurationIO.openAbsoluteDirectory(rootURL)
-        defer { Darwin.close(descriptor) }
-        var practices: [ResearchPracticeSnapshot] = []
-        for name in try SecureResearchConfigurationIO.entryNames(
-            descriptor: descriptor,
-            path: rootURL.path
-        ) where !name.hasPrefix(".") && name.lowercased().hasSuffix(".md") {
-            let data = try SecureResearchConfigurationIO.readDataFile(
-                parentDescriptor: descriptor,
-                leaf: name,
-                path: rootURL.appendingPathComponent(name).path,
-                maximumByteCount: maximumMethodByteCount
-            )
-            guard let source = String(data: data, encoding: .utf8) else {
-                throw ResearchConfigurationStoreError.invalidMethod(name)
-            }
-            let document = NoteDocument(relativePath: name, rawContent: source)
-            let semantic = MarkdownSemanticDocument(parsing: document)
-            let title = semantic.headings.first(where: { $0.level == 1 })?.text
-                ?? URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent
-            practices.append(try ResearchPracticeSnapshot(
-                title: title,
-                relativePath: name,
-                source: source,
-                revision: DocumentFingerprint(data: data)
-            ))
-        }
-        return practices.sorted {
-            $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
-        }
-    }
-
-}
-
-private enum ResearchPracticeResolver {
-    struct Resolution {
-        let practices: [ResearchPracticeSnapshot]
-        let issues: [ResearchPracticeResolutionIssue]
-    }
-
-    static func resolve(
-        primaryMarkdown: String,
-        practices: [ResearchPracticeSnapshot]
-    ) -> Resolution {
-        let document = NoteDocument(relativePath: "SKILL.md", rawContent: primaryMarkdown)
-        let semantic = MarkdownSemanticDocument(parsing: document)
-        var resolved: [ResearchPracticeSnapshot] = []
-        var resolvedPaths: Set<String> = []
-        var issues: [ResearchPracticeResolutionIssue] = []
-        for link in semantic.links where link.syntax == .wikilink || link.syntax == .embed {
-            let matches = practices.filter { practice in
-                let withoutExtension = URL(fileURLWithPath: practice.relativePath)
-                    .deletingPathExtension().path
-                return link.target == practice.title
-                    || link.target == practice.relativePath
-                    || link.target == withoutExtension
-            }
-            let unsupported = link.syntax != .wikilink
-                || link.alias != nil
-                || link.fragment != nil
-                || link.relationship != nil
-            if unsupported {
-                if !matches.isEmpty,
-                   let issue = try? ResearchPracticeResolutionIssue(
-                    kind: .unsupportedReference,
-                    target: link.target
-                   ) {
-                    issues.append(issue)
-                }
-                continue
-            }
-            if matches.count == 1, let practice = matches.first {
-                if resolvedPaths.insert(practice.relativePath).inserted {
-                    resolved.append(practice)
-                }
-            } else if matches.isEmpty {
-                if let issue = try? ResearchPracticeResolutionIssue(
-                    kind: .missing,
-                    target: link.target
-                ) {
-                    issues.append(issue)
-                }
-            } else if let issue = try? ResearchPracticeResolutionIssue(
-                kind: .ambiguous,
-                target: link.target
-            ) {
-                issues.append(issue)
-            }
-        }
-        return Resolution(practices: resolved, issues: issues)
-    }
 }

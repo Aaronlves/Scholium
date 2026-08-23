@@ -171,15 +171,6 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
         UUID, ResearchActionID, DocumentFingerprint
     ) async throws -> ResearchMethodSnapshot
     let recoverMachineLocalMethodLocators: (UUID) async throws -> URL?
-    let philosophicalPractices: (
-        UUID
-    ) async throws -> [ResearchPracticeSnapshot]
-    let createPhilosophicalPractice: (
-        UUID, String, String
-    ) async throws -> ResearchPracticeSnapshot
-    let savePhilosophicalPractice: (
-        UUID, String, String, DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot
     let citationMethodStatus: (UUID) async throws -> ResearchCitationMethodStatus
     let activateCitationMethod: (
         UUID, ResearchCitationMethodSelection, DocumentFingerprint?
@@ -649,43 +640,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         return try await capabilities.researchGuidance.restoreDefaultResearchMethod(
             id,
             actionID,
-            expectedRevision
-        )
-    }
-
-    func philosophicalPractices() async throws -> [ResearchPracticeSnapshot] {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.philosophicalPractices(id)
-    }
-
-    func createPhilosophicalPractice(
-        title: String,
-        source: String
-    ) async throws -> ResearchPracticeSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.createPhilosophicalPractice(
-            id,
-            title,
-            source
-        )
-    }
-
-    func savePhilosophicalPractice(
-        relativePath: String,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchPracticeSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.savePhilosophicalPractice(
-            id,
-            relativePath,
-            source,
             expectedRevision
         )
     }

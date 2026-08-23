@@ -5,8 +5,9 @@ description: Start or govern every Scholium-mediated Research Action, including 
 
 # Scholium Core Protocol
 
-This protected System Skill governs one Research Run. The registered primary
-Method and ordered linked Practices supply its intellectual procedure.
+This protected System Skill governs one Research Run. The registered Skill
+supplies its intellectual procedure and explicitly routes any task-relevant
+ordinary references, including philosophical lenses.
 
 ## Project discovery entry
 
@@ -15,7 +16,7 @@ no Run exists yet, treat the researcher's current request as the only possible
 authority to begin a direct Scholium Action. Resolve the exact current
 Triptych and target through Scholium, inspect `scholium help agent start`, use
 `scholium agent start` only for an eligible unambiguous request, then load
-`scholium agent context` before applying the registered Method. Ask when the
+`scholium agent context` before applying the registered Skill. Ask when the
 Action or target is materially ambiguous. The discovery link grants no
 research read, write, Session, Run, or reusable authority.
 
@@ -26,7 +27,7 @@ Research Run. Scholium returns that exact protected resource once after local
 authentication. It is the single content source for stable always-on Agent
 instructions and the authenticated Run workflow.
 
-The current Run Brief, Method, Practices, Result Contract, bounded write-set
+The current Run Brief, Skill, Result Contract, bounded write-set
 view, and Research Context carry changing task facts. Do not copy those facts
 into this Skill.
 

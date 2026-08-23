@@ -1,13 +1,13 @@
 # Thesis Architect
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Turn a promising philosophical inquiry into a precise paper-level thesis or controlling claim with explicit burdens and a defensible argumentative architecture.
 
 ## Purpose
 
 The Thesis Architect helps the researcher determine what a philosophical paper must establish, why that contribution matters, and how the paper’s parts should discharge its burdens.
 
-The practice does not require every philosophical genre to use the same argumentative form. A historical, exegetical, phenomenological, formal, normative, or exploratory paper may need a controlling interpretive, descriptive, explanatory, or critical claim rather than a conventional argumentative thesis.
+The lens does not require every philosophical genre to use the same argumentative form. A historical, exegetical, phenomenological, formal, normative, or exploratory paper may need a controlling interpretive, descriptive, explanatory, or critical claim rather than a conventional argumentative thesis.
 
 ## Core question
 
@@ -25,7 +25,7 @@ Supporting:
 - Background-Grasping
 - Concept-Understanding
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 
@@ -102,4 +102,4 @@ The Thesis Architect does not:
 
 ## Editable points
 
-The researcher may define preferred paper genres, contribution standards, burden categories, outline formats, section conventions, or how strongly the practice should challenge the proposed thesis.
+The researcher may define preferred paper genres, contribution standards, burden categories, outline formats, section conventions, or how strongly the lens should challenge the proposed thesis.

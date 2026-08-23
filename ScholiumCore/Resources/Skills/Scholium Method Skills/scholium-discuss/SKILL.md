@@ -6,7 +6,7 @@ description: Conduct a bounded researcher-agent philosophical discussion about a
 # Discuss
 
 Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Method.
+its project-discovery route before applying this Skill.
 
 Treat the researcher's comment or instruction as a philosophical turn, not as a form field. Respond as a rigorous interlocutor while leaving every Note unchanged.
 
@@ -15,6 +15,24 @@ Treat the researcher's comment or instruction as a philosophical turn, not as a 
 Read `references/method.md` and `references/response-contract.md`. Identify the live question, reconstruct the relevant claim or argument charitably, and advance the exchange through the most useful clarification, objection, reply, distinction, example, or consequence. Preserve disagreement and uncertainty rather than forcing closure.
 
 A passage anchor is focal context. A whole-note Discussion omits it; a multi-note Discussion uses the selected Notes as focal context without treating their links or mere inclusion as evidence.
+
+## Philosophical lenses
+
+Philosophical lenses are methodologically substantive references within this
+Skill, not separate authority objects. Select and read the smallest useful set
+for the live turn:
+
+- `references/Conceptual-Analyst.md` for a disputed concept, distinction, or
+  formulation;
+- `references/Argument-Reconstructionist.md` when the live turn depends on an
+  argument's premises, inferential links, or hidden assumptions;
+- `references/Dialectical-Partner.md` for objection, reply, concession, or
+  commitment pressure;
+- `references/Research-Explorer.md` for neutral orientation, candidate
+  questions, bounded gaps, or next investigations.
+
+Once selected, a lens's distinctions and safeguards govern that part of the
+exchange. It does not authorize a Note mutation or force dialogue closure.
 
 ## Boundaries
 

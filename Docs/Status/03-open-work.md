@@ -117,7 +117,7 @@
   and recovery with assistive technology. Finder
   metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
   completion are not save-success acceptance criteria.
-- Verify packaged reopen after an external Method, Practice, Skill folder, or
+- Verify packaged reopen after an external Skill entry, reference, folder, or
   Analyze source moves, disappears, is evicted, or is restored.
 - Complete direct acceptance of Zotero attachment selection and the built-in
   reader versus MCP boundary.

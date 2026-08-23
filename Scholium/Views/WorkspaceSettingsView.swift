@@ -10,7 +10,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     case hotkeys
     case metadata
     case attention
-    case methodsPractices
+    case skills
     case actionProfiles
     case agentAccess
     case externalToolsCitations
@@ -29,7 +29,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     ]
 
     static let researchGuidance: [Self] = [
-        .methodsPractices,
+        .skills,
         .actionProfiles,
         .agentAccess,
         .externalToolsCitations,
@@ -42,8 +42,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .hotkeys: ScholiumL10n.Settings.hotkeys
         case .metadata: ScholiumL10n.Settings.metadata
         case .attention: ScholiumL10n.Settings.attention
-        case .methodsPractices:
-            ResearchGuidanceCategory.methodsPractices.localizedTitle
+        case .skills:
+            ResearchGuidanceCategory.skills.localizedTitle
         case .actionProfiles:
             ResearchGuidanceCategory.actionProfiles.localizedTitle
         case .agentAccess: ResearchGuidanceCategory.agentAccess.localizedTitle
@@ -59,7 +59,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .hotkeys: "keyboard"
         case .metadata: "list.bullet.rectangle"
         case .attention: "exclamationmark.triangle"
-        case .methodsPractices: ResearchGuidanceCategory.methodsPractices.symbol
+        case .skills: ResearchGuidanceCategory.skills.symbol
         case .actionProfiles: ResearchGuidanceCategory.actionProfiles.symbol
         case .agentAccess: ResearchGuidanceCategory.agentAccess.symbol
         case .externalToolsCitations:
@@ -74,7 +74,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .appearance: .appearance
         case .hotkeys: .hotkeys
         case .attention: .attention
-        case .methodsPractices, .actionProfiles, .agentAccess,
+        case .skills, .actionProfiles, .agentAccess,
              .externalToolsCitations:
             .researchGuidance
         }
@@ -82,7 +82,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
 
     var researchGuidanceCategory: ResearchGuidanceCategory? {
         switch self {
-        case .methodsPractices: .methodsPractices
+        case .skills: .skills
         case .actionProfiles: .actionProfiles
         case .agentAccess: .agentAccess
         case .externalToolsCitations: .externalToolsCitations
@@ -106,8 +106,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
             ["Metadata", "fields", "About", "Agent preferences", "optional fields"]
         case .attention:
             ["Attention", "reminders", "dismissed items", "timing", "This Mac"]
-        case .methodsPractices:
-            ["Methods & Practices", "Research Skills", "Markdown", "Wikilinks", "recovery"]
+        case .skills:
+            ["Skills", "Research Skills", "SKILL.md", "references", "philosophical lenses", "recovery"]
         case .actionProfiles:
             ["Action Profiles", "academic inputs", "academic results", "roles", "fields"]
         case .agentAccess:
@@ -135,7 +135,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .attention: .attention
         case .researchGuidance:
             switch researchCategory {
-            case .methodsPractices: .methodsPractices
+            case .skills: .skills
             case .actionProfiles: .actionProfiles
             case .agentAccess: .agentAccess
             case .externalToolsCitations: .externalToolsCitations
@@ -149,7 +149,7 @@ struct ScholiumSettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "triptychs"
     @AppStorage("scholium.settings.researchGuidanceCategory")
-    private var persistedResearchCategory = ResearchGuidanceCategory.methodsPractices.rawValue
+    private var persistedResearchCategory = ResearchGuidanceCategory.skills.rawValue
     @State private var destination = ScholiumSettingsDestination.triptychs
     @State private var searchQuery = ""
 
@@ -219,7 +219,7 @@ struct ScholiumSettingsView: View {
             let pane = WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs
             let category = ResearchGuidanceCategory(
                 rawValue: persistedResearchCategory
-            ) ?? .methodsPractices
+            ) ?? .skills
             destination = ScholiumSettingsDestination.restored(
                 pane: pane,
                 researchCategory: category
@@ -361,8 +361,8 @@ struct ScholiumSettingsView: View {
             HotkeySettingsView(searchQuery: searchQuery)
         case .attention:
             AttentionSettingsView()
-        case .methodsPractices:
-            ResearchGuidanceSettingsView(category: .methodsPractices)
+        case .skills:
+            ResearchGuidanceSettingsView(category: .skills)
         case .actionProfiles:
             ResearchGuidanceSettingsView(category: .actionProfiles)
         case .agentAccess:

@@ -194,7 +194,7 @@ private struct ResearchResultReviewProofFixture {
             PortableResearchMethodReference.self,
             from: Data(
                 """
-                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Reconstruction","practice_names":["Source Fidelity"],"profile_revision":{"sha256":"\(topicStartRevision.sha256)","byteCount":\(topicStartRevision.byteCount)}}
+                {"registration_key":"10000000-0000-0000-0000-000000000001","display_name":"Argument Reconstruction","profile_revision":{"sha256":"\(topicStartRevision.sha256)","byteCount":\(topicStartRevision.byteCount)}}
                 """.utf8
             )
         )
@@ -507,7 +507,7 @@ private struct ResearchSheetButtons: View {
 // MARK: - Research Guidance
 
 private enum ResearchGuidanceProofCategory: String, CaseIterable, Identifiable {
-    case methodsPractices = "Methods & Practices"
+    case skills = "Skills"
     case actionProfiles = "Action Profiles"
     case agentAccess = "Agent Access"
     case externalToolsCitations = "External Tools & Citations"
@@ -516,7 +516,7 @@ private enum ResearchGuidanceProofCategory: String, CaseIterable, Identifiable {
 }
 
 private struct ResearchGuidanceSettingsProof: View {
-    @State private var category: ResearchGuidanceProofCategory = .methodsPractices
+    @State private var category: ResearchGuidanceProofCategory = .skills
 
     var body: some View {
         HStack(spacing: 0) {
@@ -557,9 +557,9 @@ private struct ResearchGuidanceSettingsDetail: View {
     @ViewBuilder
     private var settingsContent: some View {
         switch category {
-        case .methodsPractices:
+        case .skills:
             ResearchProofSection(title: "RESEARCH SKILLS") {
-                        Text("Each Platform Action routes to one current primary Markdown Method. Exact Wikilinks select Practices; an optional local folder is ordinary Agent-readable storage, not a package.")
+                        Text("Each Platform Action routes to one current Skill. SKILL.md selects task-relevant ordinary references, including philosophical lenses, from its local folder.")
                     .font(ScholiumTypography.scholarly(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -571,23 +571,18 @@ private struct ResearchGuidanceSettingsDetail: View {
                                 ("Write", "Objection Development, Reply Construction"),
                                 ("Critique", "Argument Mapping, Counterexample Testing"),
                                 ("Check Fidelity", "Interpretive Triangulation"),
-                            ], id: \.0) { name, practices in
-                        ResearchWorkingMethodProofRow(name: name, practices: practices)
+                            ], id: \.0) { name, lenses in
+                        ResearchWorkingMethodProofRow(name: name, lenses: lenses)
                         ScholiumStructuralRule()
                     }
                 }
             }
             ResearchProofSection(title: "BOUNDARY") {
-                Text("Method and Practice prose can guide scholarly work. It cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery.")
+                Text("Skill prose and its references can guide scholarly work. They cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ResearchSkillGroup(title: "PHILOSOPHICAL PRACTICES", detail: "Exact Markdown linked from primary Methods", rows: [
-                "Argument Mapping.md",
-                "Counterexample Testing.md",
-                "Interpretive Triangulation.md",
-            ], actionTitle: "Edit")
         case .actionProfiles:
                    ResearchSkillGroup(title: "ACADEMIC PROFILES", detail: "Flat researcher-facing fields", rows: [
                        "Analyze: source and passage inputs; evidence Result fields",
@@ -623,14 +618,14 @@ private struct ResearchGuidanceSettingsDetail: View {
 
 private struct ResearchWorkingMethodProofRow: View {
     let name: String
-    let practices: String
+    let lenses: String
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text(name)
                     .font(ScholiumTypography.interface(.rowTitle))
-                Text("Practices: \(practices)")
+                Text("Lens references: \(lenses)")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
             }

@@ -213,7 +213,6 @@ def make_record(
         "method": {
             "registration_key": "10000000-0000-0000-0000-000000000003",
             "display_name": "Synthesize",
-            "practice_names": [],
             "profile_revision": fingerprint("QA bounded Synthesize Profile"),
         },
         "primary_note_id": str(UUID(topic["id"])),

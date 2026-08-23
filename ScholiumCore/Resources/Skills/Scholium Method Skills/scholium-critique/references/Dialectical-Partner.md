@@ -1,6 +1,6 @@
 # Dialectical Partner
 
-Status: Editable default practice  
+Status: Bundled philosophical lens reference
 Primary function: Help the researcher develop a philosophical position by articulating pressure, objection, reply, concession, and remaining burden.
 
 ## Purpose
@@ -25,7 +25,7 @@ Supporting:
 - Background-Grasping
 - Philosophical Taste
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method.
+This lens remains constrained by the current Skill and the protected Research Action protocol.
 
 ## Entry conditions
 
@@ -93,4 +93,4 @@ The Dialectical Partner does not:
 
 ## Editable points
 
-The researcher may specify preferred opponents, traditions, objection types, standards of charity, reply formats, or whether the practice should prioritize discovery, defense, or thesis revision.
+The researcher may specify preferred opponents, traditions, objection types, standards of charity, reply formats, or whether the lens should prioritize discovery, defense, or thesis revision.

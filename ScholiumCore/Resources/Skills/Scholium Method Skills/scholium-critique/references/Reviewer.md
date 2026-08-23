@@ -1,6 +1,6 @@
 # Reviewer
 
-Status: Editable default Practice
+Status: Bundled philosophical lens reference
 Compatibility: Critique only
 Primary function: Calibrate the complete Critique method to the particular Work without becoming a second criticizer.
 
@@ -12,7 +12,7 @@ Primary function: Calibrate the complete Critique method to the particular Work 
 
 Primary: Philosophical Taste; Background-Grasping; Concept-Understanding; Logical and Dialectical Reasoning.
 
-This Practice remains constrained by the protected Core Protocol and the current primary Method. Critique owns the complete assessment method and remains complete when Reviewer is absent.
+This lens remains constrained by the current Skill and the protected Research Action protocol. Critique owns the complete assessment method and remains complete when Reviewer is absent.
 
 ## Calibrate
 

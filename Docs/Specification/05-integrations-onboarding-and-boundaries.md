@@ -329,8 +329,9 @@ Never add:
 - bundled general instructions purporting to teach researchers philosophy.
 
 The researcher-governed Skills contract requires protected platform protocol;
-one current editable primary Markdown Skill registration per available Action;
-exact-Wikilink Practices; optional local folder-path registration;
+one current editable Skill registration per available Action; Skill-routed
+ordinary references, including philosophical lenses; optional local
+folder-path registration;
 academic-only Action Profiles; one Triptych collaboration policy; Run-owned
 Bounded Write Sets; portable Research Records; and protected Zotero and local
 Agent transports.
@@ -358,8 +359,9 @@ research access. A direct `agent start` request or the current Run's copied
 handoff establishes the researcher-initiated research Session; Pairing Code is
 required only for the GUI-created handoff route.
 
-File-backed primary Skills, Practices, registrations, and Action Profiles are
-Settings-owned Research Guidance, not packages, a marketplace, executable
+File-backed Skills, registrations, and Action Profiles are Settings-owned
+Research Guidance; Skill references remain ordinary folder files. None are a
+marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
 remains authoritative for Markdown, ordinary Skill-folder contents, and
 attachment bytes; §3.3 owns the portable catalog and machine-local bookmark

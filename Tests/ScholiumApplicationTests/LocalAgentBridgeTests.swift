@@ -731,8 +731,7 @@ struct LocalAgentBridgeTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Write Method\n",
-            practices: []
+            primaryMarkdownSource: "# Write Method\n"
         )
         let improvement = try ResearchMethodImprovementRun(
             id: UUID(),
@@ -976,8 +975,7 @@ private func testFidelityContext(
     )
     let method = try ResearchMethodSnapshot(
         registration: registration,
-        primaryMarkdownSource: "# Fidelity\n",
-        practices: []
+        primaryMarkdownSource: "# Fidelity\n"
     )
     return try ResearchAuthenticatedRunContext(
         coreProtocol: nil,

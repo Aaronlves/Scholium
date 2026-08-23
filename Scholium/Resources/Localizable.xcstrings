@@ -4321,6 +4321,26 @@
         }
       }
     },
+    "Archive and Reset Skill Access?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置技能访问？"
+          }
+        }
+      }
+    },
+    "Archive and Reset Skill Access…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "归档并重置技能访问…"
+          }
+        }
+      }
+    },
     "Archived" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4464,6 +4484,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "评估"
+          }
+        }
+      }
+    },
+    "Assign one Skill to each Action. Its SKILL.md routes ordinary references, including philosophical lenses." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为每项操作指定一个技能。其 SKILL.md 会路由普通参考文件，包括哲学透镜。"
           }
         }
       }
@@ -9506,6 +9536,16 @@
         }
       }
     },
+    "Could Not Update Skills" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新技能"
+          }
+        }
+      }
+    },
     "Could not change vault role: %@" : {
       "localizations" : {
         "en" : {
@@ -11923,6 +11963,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每项操作都路由到一个当前主 Markdown 方法。实践仅从该方法中的精确 Wikilink 派生；可选本地文件夹仍是智能体可读取的普通存储，而不是软件包。"
+          }
+        }
+      }
+    },
+    "Each Platform Action routes to one current Skill. SKILL.md selects task-relevant ordinary references, including philosophical lenses, from its local folder." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每项平台操作都路由到一个当前技能。SKILL.md 会从本地文件夹中选择与任务相关的普通参考文件，包括哲学透镜。"
           }
         }
       }
@@ -16249,6 +16299,16 @@
         }
       }
     },
+    "Lens references: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透镜参考：%@"
+          }
+        }
+      }
+    },
     "Let the Agent finish setup" : {
       "localizations" : {
         "zh-Hans" : {
@@ -16867,6 +16927,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在加载研究记录…"
+          }
+        }
+      }
+    },
+    "Loading Skills…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入技能…"
           }
         }
       }
@@ -24498,6 +24568,16 @@
         }
       }
     },
+    "References and philosophical lenses are ordinary files routed by SKILL.md." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参考文件与哲学透镜均为由 SKILL.md 路由的普通文件。"
+          }
+        }
+      }
+    },
     "Refresh" : {
       "localizations" : {
         "en" : {
@@ -28874,6 +28954,16 @@
         }
       }
     },
+    "Scholium creates one ordinary local Skill folder with SKILL.md. Add references to that folder and route them explicitly from the Skill." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会创建一个含 SKILL.md 的普通本地技能文件夹。请将参考文件加入该文件夹，并从技能中明确路由。"
+          }
+        }
+      }
+    },
     "Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest." : {
       "localizations" : {
         "zh-Hans" : {
@@ -29275,6 +29365,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 会用唯一的恢复名称保留无效的机器本地方法访问文件，并且只重置本地路径和书签。便携方法注册、方法 Markdown 和研究库文件都不会被更改；外部方法需要在这台 Mac 上重新注册。"
+          }
+        }
+      }
+    },
+    "Scholium will preserve the invalid machine-local Skill access file under a unique recovery name and reset only local paths and bookmarks. Portable Skill registrations, Skill files, and vault files will not be changed; external Skills must be registered again on this Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 会用唯一的恢复名称保留无效的本机技能访问文件，并且只重置本地路径与书签。便携式技能注册、技能文件和知识库文件均不会改变；外部技能必须在此 Mac 上重新注册。"
           }
         }
       }
@@ -30822,6 +30922,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "技能"
+          }
+        }
+      }
+    },
+    "Skill Access Needs Repair" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能访问需要修复"
+          }
+        }
+      }
+    },
+    "Skill prose and its references can guide scholarly work. They cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能文本及其参考文件可指导学术工作。它们不能改变平台操作、会话、协作策略、有界写入、准确修订、冲突或恢复。"
+          }
+        }
+      }
+    },
+    "Skills" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能"
+          }
+        }
+      }
+    },
+    "Skills Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能不可用"
+          }
+        }
+      }
+    },
+    "Skills and their ordinary references guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能及其普通参考文件可指导学术工作；它们不会授予权限，也不会改变会话、修订、冲突或恢复规则。"
           }
         }
       }
@@ -33004,6 +33154,16 @@
         }
       }
     },
+    "The machine-local Skill access registry is unreadable. Its original bytes can be archived before resetting local Skill access; portable registrations and research vault files remain unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "本机技能访问注册表无法读取。重置本地技能访问前可先归档其原始字节；便携式注册与研究知识库文件保持不变。"
+          }
+        }
+      }
+    },
     "The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects." : {
       "localizations" : {
         "en" : {
@@ -34145,6 +34305,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此草稿保持只读，不产生当前状态。"
+          }
+        }
+      }
+    },
+    "This edits SKILL.md only. Reference files, including philosophical lenses, keep their own exact bytes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此操作只编辑 SKILL.md。包括哲学透镜在内的参考文件会保留各自的准确字节。"
           }
         }
       }

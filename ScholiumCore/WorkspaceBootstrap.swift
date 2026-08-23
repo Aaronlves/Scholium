@@ -66,11 +66,11 @@ public enum WorkspaceBootstrap {
         ## Scholium routing
 
         - Apply the protected Scholium Core Protocol to every Scholium task.
-        - Use the Platform Action's registered primary Method and its exact linked Practices.
-        - Load Scholium Discussion Protocol for a Discussion ID; use the ordinary Discuss Method for the intellectual exchange.
-        - Never scan arbitrary global skill directories or substitute an unregistered Method.
-        - Project-level Skill discovery links may expose only exact sources returned by `scholium workspace skill-sources --triptych <selector> --format json`; a link is a discovery pointer, not another Method owner.
-        - When the researcher asks this Agent to begin a Scholium Research Action directly, resolve the exact target through current Scholium discovery, inspect current `scholium help agent start`, run `scholium agent start`, then load `scholium agent context` before applying the registered Method.
+        - Use the Platform Action's registered Skill and only the ordinary references it explicitly routes for the task.
+        - Load Scholium Discussion Protocol for a Discussion ID; use the registered Discuss Skill for the intellectual exchange.
+        - Never scan arbitrary global skill directories or substitute an unregistered Skill.
+        - Project-level Skill discovery links may expose only exact sources returned by `scholium workspace skill-sources --triptych <selector> --format json`; a link is a discovery pointer, not another Skill owner.
+        - When the researcher asks this Agent to begin a Scholium Research Action directly, resolve the exact target through current Scholium discovery, inspect current `scholium help agent start`, run `scholium agent start`, then load `scholium agent context` before applying the registered Skill.
 
         ## Workspace boundaries
 

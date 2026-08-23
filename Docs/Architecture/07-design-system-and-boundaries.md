@@ -262,7 +262,7 @@ composition; neither is treated as production interface cadence.
 `ScholiumMetrics.ResearchGuidance` owns the categorized Settings surface's
 native list-detail containment thresholds and the explanatory collection-row
 rhythm. `researchSettingsCollectionRow` applies that one content/action layout
-to Method, Academic Profile, and Philosophical Practice rows while each caller
+to Skill and Academic Profile rows while each caller
 retains its domain values, operations, accessibility identifiers, and state.
 The shared presentation component performs no persistence, routing, or
 authorization work and does not style native controls themselves.

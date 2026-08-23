@@ -246,60 +246,10 @@ public struct ResearchSkillRegistrationSnapshot: Hashable, Sendable {
     }
 }
 
-public struct ResearchPracticeSnapshot: Codable, Hashable, Identifiable, Sendable {
-    public var id: String { relativePath }
-
-    public let title: String
-    public let relativePath: String
-    public let source: String
-    public let revision: DocumentFingerprint
-
-    public init(
-        title: String,
-        relativePath: String,
-        source: String,
-        revision: DocumentFingerprint? = nil
-    ) throws {
-        self.title = try ResearchSkillRegistrationValidation.text(
-            title,
-            maximumUTF8Count: 256
-        )
-        guard ResearchSkillRegistrationValidation.isSafeRelativePath(relativePath),
-              relativePath.lowercased().hasSuffix(".md"),
-              source.utf8.count <= 1_048_576 else {
-            throw ResearchSkillRegistrationError.invalidPractice
-        }
-        self.relativePath = relativePath
-        self.source = source
-        self.revision = revision ?? DocumentFingerprint(content: source)
-    }
-}
-
-public enum ResearchPracticeResolutionIssueKind: String, Codable, Hashable, Sendable {
-    case missing
-    case ambiguous
-    case unsupportedReference = "unsupported_reference"
-}
-
-public struct ResearchPracticeResolutionIssue: Codable, Hashable, Sendable {
-    public let kind: ResearchPracticeResolutionIssueKind
-    public let target: String
-
-    public init(kind: ResearchPracticeResolutionIssueKind, target: String) throws {
-        self.kind = kind
-        self.target = try ResearchSkillRegistrationValidation.text(
-            target,
-            maximumUTF8Count: 1_024
-        )
-    }
-}
-
 public struct ResearchMethodSnapshot: Codable, Hashable, Sendable {
     public let registration: ResearchSkillRegistration
     public let primaryMarkdownSource: String
     public let primaryMarkdownRevision: DocumentFingerprint
-    public let practices: [ResearchPracticeSnapshot]
-    public let practiceIssues: [ResearchPracticeResolutionIssue]
     /// Resolved machine-local delivery value. Local Execution may freeze it;
     /// portable registration and Record contracts never contain it.
     public let skillFolderPath: String?
@@ -309,25 +259,58 @@ public struct ResearchMethodSnapshot: Codable, Hashable, Sendable {
         registration: ResearchSkillRegistration,
         primaryMarkdownSource: String,
         primaryMarkdownRevision: DocumentFingerprint? = nil,
-        practices: [ResearchPracticeSnapshot],
-        practiceIssues: [ResearchPracticeResolutionIssue] = [],
         skillFolderPath: String? = nil,
         skillFolderIsAvailable: Bool? = nil
     ) throws {
-        guard primaryMarkdownSource.utf8.count <= 1_048_576,
-              Set(practices.map(\.relativePath)).count == practices.count else {
+        guard primaryMarkdownSource.utf8.count <= 1_048_576 else {
             throw ResearchSkillRegistrationError.invalidSnapshot
         }
         self.registration = registration
         self.primaryMarkdownSource = primaryMarkdownSource
         self.primaryMarkdownRevision = primaryMarkdownRevision
             ?? DocumentFingerprint(content: primaryMarkdownSource)
-        self.practices = practices
-        self.practiceIssues = practiceIssues
         self.skillFolderPath = skillFolderPath
         self.skillFolderIsAvailable = registration.skillFolder == nil
             ? nil
             : skillFolderIsAvailable
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case registration
+        case primaryMarkdownSource
+        case primaryMarkdownRevision
+        case skillFolderPath
+        case skillFolderIsAvailable
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchSkillRegistrationValidation.rejectUnknownFields(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            registration: container.decode(
+                ResearchSkillRegistration.self,
+                forKey: .registration
+            ),
+            primaryMarkdownSource: container.decode(
+                String.self,
+                forKey: .primaryMarkdownSource
+            ),
+            primaryMarkdownRevision: container.decode(
+                DocumentFingerprint.self,
+                forKey: .primaryMarkdownRevision
+            ),
+            skillFolderPath: container.decodeIfPresent(
+                String.self,
+                forKey: .skillFolderPath
+            ),
+            skillFolderIsAvailable: container.decodeIfPresent(
+                Bool.self,
+                forKey: .skillFolderIsAvailable
+            )
+        )
     }
 }
 
@@ -338,7 +321,6 @@ public enum ResearchSkillRegistrationError: LocalizedError, Hashable, Sendable {
     case invalidFolderPath
     case entryOutsideFolder
     case invalidDocument
-    case invalidPractice
     case invalidSnapshot
     case invalidText
 
@@ -356,8 +338,6 @@ public enum ResearchSkillRegistrationError: LocalizedError, Hashable, Sendable {
             "The primary Markdown entry must remain inside its registered Skill folder."
         case .invalidDocument:
             "The Research Skill registration document is invalid."
-        case .invalidPractice:
-            "The Philosophical Practice is invalid."
         case .invalidSnapshot:
             "The frozen Research Method snapshot is invalid."
         case .invalidText:

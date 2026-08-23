@@ -10,7 +10,7 @@ Mode:
 Purpose:
 Required Method Skill:
 Required System adapter, if any:
-Linked or explicitly relevant Practices:
+Task-relevant philosophical lens references:
 Read set:
 Write set:
 Permission:
@@ -42,7 +42,7 @@ Before every phase, including the first:
 2. clear the preceding retrieval set, write set, permission, status assumptions, method instructions, and stop condition;
 3. select the phase's exact Method Skill;
 4. rebuild context from sources and explicit handoffs;
-5. determine optional Practices for this phase only;
+5. select only the philosophical lenses explicitly routed by this phase's Skill;
 6. record the phase's own durability expectation.
 
 Do not treat the previous phase's reconstruction, criticism, synthesis, or proposal as accepted. It enters the new phase with its provenance and uncertainty intact.
@@ -102,7 +102,7 @@ Stop the affected phase when:
 - required evidence or a stable target is unavailable;
 - scope would need to expand;
 - permission is missing or ambiguous;
-- an optional Practice conflicts with the Core Protocol;
+- a routed lens conflicts with the Core Protocol;
 - proceeding would require silently choosing a philosophical commitment;
 - a prior phase's output cannot support the assumed handoff;
 - concurrent changes make the target revision uncertain.

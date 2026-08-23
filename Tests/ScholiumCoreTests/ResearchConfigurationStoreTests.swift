@@ -92,8 +92,8 @@ struct ResearchConfigurationStoreTests {
         }
     }
 
-    @Test("Exact Wikilinks resolve Practices once in first-occurrence order")
-    func practiceResolution() async throws {
+    @Test("Legacy Practice bytes remain untouched and nonauthorizing")
+    func legacyPracticeBytesAreIgnored() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         try fixture.writeMethod("""
@@ -118,46 +118,48 @@ struct ResearchConfigurationStoreTests {
             expectedRevision: nil
         )
 
+        let legacy = try Data(contentsOf: fixture.practices.appendingPathComponent(
+            "dialectical.md"
+        ))
         let snapshot = try await store.methodSnapshot(for: .analyze)
-        #expect(snapshot.practices.map(\.title) == [
-            "Dialectical Partner", "Conceptual Analyst",
-        ])
-        #expect(snapshot.practiceIssues == [try ResearchPracticeResolutionIssue(
-            kind: .missing,
-            target: "Missing Practice"
-        )])
+        #expect(snapshot.primaryMarkdownSource.contains("[[Dialectical Partner]]"))
         #expect(snapshot.primaryMarkdownRevision == DocumentFingerprint(
             content: snapshot.primaryMarkdownSource
         ))
+        #expect(try Data(contentsOf: fixture.practices.appendingPathComponent(
+            "dialectical.md"
+        )) == legacy)
     }
 
-    @Test("Alias, heading, embed, and ambiguity do not silently select a Practice")
-    func unsupportedAndAmbiguousPracticeLinks() async throws {
+    @Test("Registered Skill references remain ordinary unenumerated files")
+    func skillReferencesAreNotEnumerated() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        try fixture.writeMethod("""
-        # Analyze
-
-        [[Same Name]]
-        [[Exact Practice|Alias]]
-        [[Exact Practice#Heading]]
-        ![[Exact Practice]]
-        """)
-        try fixture.writePractice(name: "a.md", source: "# Same Name\n\nA\n")
-        try fixture.writePractice(name: "b.md", source: "# Same Name\n\nB\n")
-        try fixture.writePractice(name: "exact.md", source: "# Exact Practice\n\nExact\n")
+        let references = fixture.methods.appendingPathComponent(
+            "references", isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: references,
+            withIntermediateDirectories: true
+        )
+        try Data([0xFF, 0xFE]).write(to: references.appendingPathComponent("lens.md"))
         let store = fixture.store()
+        let registration = try ResearchSkillRegistration(
+            actionID: .analyze,
+            displayName: "Analyze",
+            primaryMarkdown: .triptychControl("methods/analyze.md"),
+            skillFolder: .triptychControl("methods")
+        )
         _ = try await store.saveRegistrations(
-            ResearchSkillRegistrationDocument(registrations: [fixture.registration()]),
+            ResearchSkillRegistrationDocument(registrations: [registration]),
             expectedRevision: nil
         )
 
         let snapshot = try await store.methodSnapshot(for: .analyze)
-        #expect(snapshot.practices.isEmpty)
-        #expect(snapshot.practiceIssues.map(\.kind) == [
-            .ambiguous, .unsupportedReference, .unsupportedReference,
-            .unsupportedReference,
-        ])
+        #expect(snapshot.skillFolderPath == fixture.methods.path)
+        #expect(snapshot.skillFolderIsAvailable == true)
+        #expect(try Data(contentsOf: references.appendingPathComponent("lens.md"))
+            == Data([0xFF, 0xFE]))
     }
 
     @Test("Unknown Profile fields and linked method paths fail closed")

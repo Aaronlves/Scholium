@@ -257,7 +257,7 @@ private extension ScholiumCLI {
                 usage: "scholium agent context --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the Run locator from the handoff. The CLI loads the hidden Session credential from protected local state.",
-                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief with current state, frozen Method and Practices, Result Contract, any exact Fidelity target/material/source boundary with ready inspection_requests, current bounded write set, continuation handoff, and typed next_actions.",
+                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief with current state, frozen Skill entry and reference-folder path, Result Contract, any exact Fidelity target/material/source boundary with ready inspection_requests, current bounded write set, continuation handoff, and typed next_actions.",
                 nextSteps: [
                     "scholium agent query --run <locator> --from <json|-> when more Research Context is needed",
                     "scholium agent reload --run <locator> whenever current Run state is uncertain",
@@ -370,7 +370,7 @@ private extension ScholiumCLI {
                 usage: "scholium agent method-context --run <locator>",
                 inputContract: "Authenticated Method-improvement Run locator; no JSON body",
                 input: "Use the locator from an explicit Improve Current Method handoff. The CLI loads the hidden Session credential.",
-                output: "ResearchMethodImprovementContext with the unchanged researcher feedback, finalized Result fingerprint, and exact primary Method and linked Practice targets.",
+                output: "ResearchMethodImprovementContext with the unchanged researcher feedback, finalized Result fingerprint, and exact Skill entry target.",
                 nextSteps: [
                     "scholium agent improve-method --run <locator> --from <json|-> for at most one returned target_id",
                     "scholium agent end --run <locator> if the improvement Run cannot continue",

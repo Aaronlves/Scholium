@@ -70,8 +70,8 @@ Scholium 是一个由编译器强制边界的模块化单体。不可变值与�
 
 当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、笔记和文件夹
 生命周期、外部编辑冲突、恢复点和逐笔记恢复、Settle、统一 Discussion、Critique，
-以及带可编辑当前 Method、学术 Profile 与 Philosophical Practice 的 Research
-Actions。Search v9 为应用、CLI、研究记录与通过认证的 Research Context 提供同一个
+以及带可编辑当前 Skill、包内普通 references 和 philosophical lenses、学术 Profile
+的 Research Actions。Search v9 为应用、CLI、研究记录与通过认证的 Research Context 提供同一个
 类型明确的检索 owner，支持词法、规范元数据、明确直接关系、YAML summary 与
 Record 查询，而不让索引取得研究内容权威。
 

@@ -23,11 +23,12 @@
   attributed replies, and any authorized child Action. Closing its Action
   surface preserves it; **Finish Discussion** creates one Research Record and
   makes no claim of acceptance, truth, or settlement.
-- A **Research Skill Registration** binds one Action to one current primary
-  Markdown method, an optional ordinary local Skill-folder path, and one
+- A **Research Skill Registration** binds one Action to one current `SKILL.md`
+  entry, an optional ordinary local Skill-folder path, and one
   hidden stable relation key. It has no product version, package, dependency,
-  or execution semantics. A **Philosophical Practice** is a researcher-owned
-  method reference resolved only from exact Wikilinks in that primary method.
+  or execution semantics. **Philosophical lenses** are methodologically
+  substantive ordinary references routed by that Skill; they have no separate
+  registration, catalog, resolver, snapshot, or execution authority.
   An **Action Profile** configures bounded academic inputs and result fields;
   it never declares platform capability or permission.
 - **Settle** is the researcher's fingerprint-bound, replaceable current
@@ -103,12 +104,12 @@ Fingerprints detect revisions; they are not permission tokens and do not need
 to be copied into the agent prompt.
 
 The Application API validates each Research Action's initial object, focal
-context, source access, revision, registered Skill, Practices, Result Contract,
+context, source access, revision, registered Skill, Result Contract,
 permission, write set, and completion. Frontends select semantic Actions,
 never protected mechanism identifiers or assembled technical instructions.
-Protected Scholium protocol owns capability and safety; one registered primary
-Markdown Skill supplies the intellectual procedure; referenced Practices
-supplement it without granting authority.
+Protected Scholium protocol owns capability and safety; one registered Skill
+supplies the intellectual procedure and routes task-relevant ordinary
+references, including philosophical lenses, without granting authority.
 
 Current bundled methods are usable editable defaults, not best methods,
 philosophy lessons, packages, or certification. The researcher may edit,
@@ -207,8 +208,8 @@ The portable directory beside Works contains only:
   stable attachment identities to an explicit imported vault-relative path or
   indexed absolute Finder path without storing attachment bytes, machine-local
   bookmark data, or reconstructing Markdown links;
-- current primary Skill Markdown, optional machine-local folder markers,
-  Philosophical Practices, Action Profiles, and explicit Action bindings; and
+- current Skill registrations, optional machine-local folder markers, Action
+  Profiles, and explicit Action bindings; and
 - portable intellectual Research Records under
   `.scholium/research-records/v1/`.
 

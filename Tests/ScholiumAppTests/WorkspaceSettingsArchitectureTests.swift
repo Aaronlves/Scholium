@@ -95,7 +95,7 @@ struct WorkspaceSettingsArchitectureTests {
             "case hotkeys",
             "case metadata",
             "case attention",
-            "case methodsPractices",
+            "case skills",
             "case actionProfiles",
             "case agentAccess",
             "case externalToolsCitations",
@@ -792,7 +792,6 @@ struct WorkspaceSettingsArchitectureTests {
         let guidanceFiles = [
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
-            "MethodsPracticesSettingsView.swift",
             "ActionProfilesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
@@ -821,7 +820,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("NavigationSplitView {"))
         #expect(!source.contains("HSplitView"))
         for category in [
-            "Methods & Practices",
+            "Skills",
             "Action Profiles",
             "Agent Access",
             "External Tools & Citations",
@@ -831,11 +830,11 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("scholium.researchGuidance.categoryList"))
         #expect(settingsSource.contains("scholium.settings.sidebarList"))
         #expect(settingsSource.contains("ScholiumSettingsDestination.researchGuidance"))
-        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .methodsPractices)"))
+        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .skills)"))
         #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
         #expect(!source.contains("Prompt Templates"))
         #expect(!source.contains("card grid"))
-        #expect(rootSource.contains("MethodsPracticesSettingsView()"))
+        #expect(rootSource.contains("ResearchMethodsSettingsView()"))
         #expect(rootSource.contains("ActionProfilesSettingsView()"))
         #expect(!rootSource.contains("private struct WorkingMethodEditorContext"))
         #expect(!rootSource.contains("private struct ResearchActionProfileEditorView"))
@@ -871,13 +870,6 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let practicesSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/MethodsPracticesSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-
         #expect(componentSource.contains("func researchSettingsCollectionRow<"))
         #expect(
             componentSource.contains(
@@ -900,7 +892,6 @@ struct WorkspaceSettingsArchitectureTests {
                 separatedBy: "researchSettingsCollectionRow {"
             ).count == 2
         )
-        #expect(practicesSource.contains("researchSettingsCollectionRow {"))
         #expect(!methodsSource.contains("HStack(alignment: .top, spacing: 14)"))
         #expect(!profilesSource.contains("HStack(alignment: .top, spacing: 14)"))
         #expect(!methodsSource.contains(".padding(.vertical, 10)"))
@@ -1020,13 +1011,6 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let practicesSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/MethodsPracticesSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-
         #expect(componentSource.contains("struct ResearchGuidanceMarkdownEditSheet"))
         #expect(componentSource.contains("struct ResearchGuidanceMarkdownCreationSheet"))
         #expect(componentSource.contains(".interactiveDismissDisabled(isDirty || isWorking)"))
@@ -1038,8 +1022,6 @@ struct WorkspaceSettingsArchitectureTests {
 
         #expect(methodsSource.contains("ResearchGuidanceMarkdownEditSheet("))
         #expect(methodsSource.contains("ResearchGuidanceMarkdownCreationSheet("))
-        #expect(practicesSource.contains("ResearchGuidanceMarkdownEditSheet("))
-        #expect(practicesSource.contains("ResearchGuidanceMarkdownCreationSheet("))
         for supersededOwner in [
             "ResearchMethodSourceEditor",
             "NewResearchMethodEditor",
@@ -1047,7 +1029,6 @@ struct WorkspaceSettingsArchitectureTests {
             "NewResearchPracticeEditor",
         ] {
             #expect(!methodsSource.contains(supersededOwner))
-            #expect(!practicesSource.contains(supersededOwner))
         }
     }
 
@@ -1062,7 +1043,7 @@ struct WorkspaceSettingsArchitectureTests {
 
         var creationDraft = ResearchGuidanceMarkdownCreationDraft(
             name: "",
-            source: "# Practice\n"
+            source: "# Skill\n"
         )
         #expect(!creationDraft.isDirty)
         #expect(!creationDraft.canCreate)
@@ -1082,7 +1063,6 @@ struct WorkspaceSettingsArchitectureTests {
         let source = try [
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
-            "MethodsPracticesSettingsView.swift",
             "ActionProfilesSettingsView.swift",
             "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
@@ -1103,9 +1083,9 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Edit Primary Markdown"))
         #expect(!source.contains("Restore Previous Edit"))
         #expect(source.contains("Restore Scholium Default"))
-        #expect(source.contains("Methods & Practices"))
+        #expect(source.contains("Skills"))
         #expect(source.contains("Action Profiles"))
-        #expect(source.contains("New Practice…"))
+        #expect(source.contains("philosophical lenses"))
         #expect(source.contains("Academic Inputs"))
         #expect(source.contains("Academic Results"))
         #expect(source.contains("Edit Academic Profile"))
@@ -1114,13 +1094,13 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Multiple Choice"))
         #expect(source.contains("Not Included"))
         #expect(source.contains("saveAcademicActionProfiles"))
-        #expect(source.contains("Assign one primary Markdown Method to each Action"))
+        #expect(source.contains("Assign one Skill to each Action"))
         #expect(!source.contains("ResearchGuidanceDraftStore"))
         #expect(!source.contains("ResearcherSkillDraftKey"))
         #expect(!source.contains("ResearchActionProfileDraftKey"))
         #expect(!source.contains("Install from Local Directory…"))
         #expect(!settingsRootSource.contains("researchGuidanceDraftStore"))
-        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .methodsPractices)"))
+        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .skills)"))
         #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))

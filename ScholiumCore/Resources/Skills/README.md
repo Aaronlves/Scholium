@@ -1,4 +1,4 @@
-# Scholium research-method resources
+# Scholium Research Skill resources
 
 This tree is release-managed source material. It has no catalog, package,
 plugin, version, dependency, or execution semantics.
@@ -10,9 +10,9 @@ plugin, version, dependency, or execution semantics.
 - Each available Action in a Triptych has exactly one current opaque Skill
   registration: visible name, Action, primary Markdown entry, optional ordinary
   local folder path, and enabled state.
-- The primary Markdown entry is the Method authority. Exact Wikilinks in that
-  entry select ordered researcher-owned Philosophical Practice Markdown.
-- An optional Skill folder is ordinary Agent-readable storage. Scholium stores
+- `SKILL.md` is the Skill entry. It explicitly routes task-relevant ordinary
+  references, including philosophical lenses, from the registered folder.
+- A Skill folder is ordinary Agent-readable storage. Scholium stores
   only a portable machine-local marker plus a private path/bookmark locator and
   neither catalogs, copies, freezes, hashes, validates, proxies, nor executes
   the folder's other contents.
@@ -20,12 +20,13 @@ plugin, version, dependency, or execution semantics.
   Platform Action definitions own roles, capabilities, machine facts, and
   supported operations. One Triptych collaboration policy owns interruption
   behavior.
-- Scholium-mediated Method and Practice edits replace only the exact expected
-  current source; this tree does not provide edit history.
+- Scholium-mediated Skill improvement replaces only the exact expected
+  `SKILL.md`; ordinary references are edited as ordinary files outside that
+  bounded Run. This tree provides no edit history.
 
 The files below serve these defaults:
 
-| Action | Default primary Method source |
+| Action | Default Skill entry |
 | --- | --- |
 | Discuss | `Scholium Method Skills/scholium-discuss/SKILL.md` |
 | Analyze | `Scholium Method Skills/scholium-analyze/SKILL.md` |
@@ -50,7 +51,9 @@ resource verbatim and embeds no second prompt. Platform contracts and current
 Application state remain the runtime authority, so Skill text cannot grant
 scope, capability, or write permission.
 
-`Philosophical Practices` contains the nine exact default Practice documents
-copied into a new Triptych. The folder has no entry point or activation
-metadata and is not a Skill package. Citation style is a protected Platform
-integration setting; it is not represented by a bundled Skill.
+Each default Skill's `references/` directory directly contains its
+methodologically substantive philosophical lenses, and that Skill's
+`SKILL.md` decides when each lens applies. Lenses have no independent shared
+library, catalog, registration, resolver, snapshot, or execution authority.
+Citation style is a protected Platform integration setting; it is not
+represented by a bundled Skill.

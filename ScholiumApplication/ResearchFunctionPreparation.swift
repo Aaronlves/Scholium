@@ -52,27 +52,13 @@ struct ResearchFunctionMethodAuthorityBinding: Encodable {
     let registrationKey: String
     let action: ResearchActionID
     let primaryMarkdownRevision: DocumentFingerprint
-    let practices: [ResearchFunctionPracticeAuthorityBinding]
     let skillFolderPath: String?
 
     init(_ method: ResearchMethodSnapshot) {
         registrationKey = method.registration.key.description
         action = method.registration.actionID
         primaryMarkdownRevision = method.primaryMarkdownRevision
-        practices = method.practices.map(ResearchFunctionPracticeAuthorityBinding.init)
         skillFolderPath = method.skillFolderPath
-    }
-}
-
-struct ResearchFunctionPracticeAuthorityBinding: Encodable {
-    let title: String
-    let relativePath: String
-    let revision: DocumentFingerprint
-
-    init(_ practice: ResearchPracticeSnapshot) {
-        title = practice.title
-        relativePath = practice.relativePath
-        revision = practice.revision
     }
 }
 

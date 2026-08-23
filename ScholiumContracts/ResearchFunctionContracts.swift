@@ -976,7 +976,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
 }
 
 /// A stable audit key. A changed Target, Material revision, check,
-/// registered primary Method, Practice, or Profile revision creates a new key
+/// registered Skill entry or Profile revision creates a new key
 /// and therefore cannot silently reuse stale Fidelity evidence.
 public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
     public let revision: DocumentFingerprint
@@ -1029,11 +1029,6 @@ public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
             lines.append(
                 "method:\(method.registration.key.description):\(method.primaryMarkdownRevision.sha256):\(method.primaryMarkdownRevision.byteCount)"
             )
-            for practice in method.practices {
-                lines.append(
-                    "practice:\(practice.relativePath):\(practice.revision.sha256):\(practice.revision.byteCount)"
-                )
-            }
         }
         revision = DocumentFingerprint(content: lines.joined(separator: "\n"))
     }

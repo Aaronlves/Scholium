@@ -6,7 +6,7 @@ description: Draft or revise the current Work while preserving researcher author
 # Write
 
 Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Method.
+its project-discovery route before applying this Skill.
 
 Modify only the current Work Target within the exact authorized scope. Treat Analyses, Topics, sources, Critiques, Comments, and Discussion turns as read-only inputs.
 
@@ -23,6 +23,24 @@ authorizes an alternative argument.
 Keep exposition, argument, objection, reply, and researcher commitment distinct. Do not turn a reported source view, agent recommendation, or unresolved possibility into the researcher's voice. Stabilize concepts, method, contribution burden, and inferential structure before polishing prose.
 
 When writing responds to feedback or Critique, read `references/feedback.md`. Decide each relevant item explicitly before editing; never treat agent or human feedback as automatically accepted.
+
+## Philosophical lenses
+
+Philosophical lenses are methodologically substantive references within this
+Skill, not separate authority objects. Select and read the smallest set needed
+for the authorized writing operation:
+
+- `references/Dialectical-Partner.md` when an authorized revision develops an
+  objection, reply, concession, or comparison of philosophical costs;
+- `references/Philosophical-Expositor.md` for assessable exposition and prose
+  that preserves unresolved gaps and substantive commitments;
+- `references/Systematizer.md` for relations, dependencies, terminology drift,
+  or dispersed material that must be organized without forced unity;
+- `references/Thesis-Architect.md` for controlling claims, contribution
+  burdens, section functions, or substantial paper architecture.
+
+Once selected, a lens's safeguards are part of this Skill's method. It cannot
+widen the authorized range or silently change the researcher's thesis.
 
 ## Feedback
 

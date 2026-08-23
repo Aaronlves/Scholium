@@ -826,7 +826,6 @@ public struct ResearchRunBrief: Codable, Hashable, Sendable {
 public struct ResearchMethodContext: Codable, Hashable, Sendable {
     public let displayName: String
     public let primaryMarkdown: String
-    public let practices: [ResearchPracticeSnapshot]
     /// Delivered only after authentication. Scholium records the selected
     /// folder path but does not enumerate, snapshot, or own its contents.
     public let skillFolderPath: String?
@@ -834,8 +833,27 @@ public struct ResearchMethodContext: Codable, Hashable, Sendable {
     public init(snapshot: ResearchMethodSnapshot) {
         displayName = snapshot.registration.displayName
         primaryMarkdown = snapshot.primaryMarkdownSource
-        practices = snapshot.practices
         skillFolderPath = snapshot.skillFolderPath
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case displayName
+        case primaryMarkdown
+        case skillFolderPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentConnectionCoding.rejectUnknownFields(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        primaryMarkdown = try container.decode(String.self, forKey: .primaryMarkdown)
+        skillFolderPath = try container.decodeIfPresent(
+            String.self,
+            forKey: .skillFolderPath
+        )
     }
 }
 
@@ -1036,7 +1054,7 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 11
+    public static let currentSchemaVersion = 12
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.

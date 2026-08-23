@@ -157,8 +157,7 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Analysis Method\n\nKeep source limits visible.\n",
-            practices: []
+            primaryMarkdownSource: "# Analysis Method\n\nKeep source limits visible.\n"
         )
         let context = try ResearchAuthenticatedRunContext(
             coreProtocol: "Scholium Core Protocol",
@@ -517,8 +516,7 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Discussion Method\n\nPreserve alternatives.\n",
-            practices: []
+            primaryMarkdownSource: "# Discussion Method\n\nPreserve alternatives.\n"
         )
         let profileRevision = try profile.contentRevision()
         let context = try ResearchAuthenticatedRunContext(
@@ -1495,8 +1493,7 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let method = try ResearchMethodSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Synthesis Method\n",
-            practices: []
+            primaryMarkdownSource: "# Synthesis Method\n"
         )
         let improvement = try ResearchMethodImprovementRun(
             id: UUID(),

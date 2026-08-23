@@ -191,10 +191,10 @@ Menus follow researcher tasks:
   search rather than a repeated Settings heading. Triptych registration and selection remain inside the
   Triptychs detail; navigation exposes no global Triptych selector.
   Static page, section, control, and command metadata supplies Settings search;
-  authored Method, Practice, YAML, profile, and document content is never
+  authored Skill, reference, YAML, profile, and document content is never
   indexed into it. Navigation has three explicit groups: **Application** owns
   Triptychs, Document Appearance, and Hotkeys; **This Triptych** owns Metadata
-  Profiles and Attention; **Research Guidance** owns Methods & Practices,
+  Profiles and Attention; **Research Guidance** owns Skills,
   Action Profiles, Agent Access, and External Tools & Citations. Scoped detail
   sections say **This Triptych** or **This Mac** where one page presents both.
   No General or Advanced destination becomes an unrelated catch-all.

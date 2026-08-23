@@ -267,7 +267,6 @@ package struct ResearchLiteratureRecommendationDerivedIndex: Equatable, Sendable
             record.researchRecordFocalNoteTitle,
             record.sourceReference?.displayName,
             record.method?.displayName,
-            record.method?.practiceNames.joined(separator: " "),
         ].compactMap { $0 }.joined(separator: "\n")
         return ResearchLiteratureRecommendationOccurrence(
             parentRecord: record,

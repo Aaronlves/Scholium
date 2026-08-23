@@ -266,27 +266,12 @@ extension ResearchFunctionCoordinator {
                 "### Primary Skill Markdown",
                 phase.method.primaryMarkdownSource,
             ]
-            for practice in phase.method.practices {
-                exactMethod += [
-                    "",
-                    "### Philosophical Practice: \(practice.title)",
-                    practice.source,
-                ]
-            }
             if let folderPath = phase.method.skillFolderPath {
                 exactMethod += [
                     "",
-                    "### Optional local Skill folder",
-                    "The following path is ordinary Agent-readable storage. Scholium has not enumerated, validated, or frozen its contents: \(folderPath)",
+                    "### Local Skill folder",
+                    "The following path contains this Skill's ordinary references, including any philosophical lenses named by SKILL.md. Read only the references the Skill routes for this task. Scholium has not enumerated, interpreted, or frozen their contents: \(folderPath)",
                 ]
-            }
-            if !phase.method.practiceIssues.isEmpty {
-                exactMethod += [
-                    "",
-                    "### Unresolved Practice references",
-                ] + phase.method.practiceIssues.map {
-                    "- \($0.kind.rawValue): \($0.target)"
-                }
             }
             let renderedMethod = exactMethod.joined(separator: "\n")
             let phaseInstructions = usesBoundedWriteSet
