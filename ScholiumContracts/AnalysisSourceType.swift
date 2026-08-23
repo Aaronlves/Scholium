@@ -80,7 +80,7 @@ public enum AnalysisSourceTypeProfileCatalog {
         Dictionary(uniqueKeysWithValues: AnalysisSourceType.allCases.map { sourceType in
             let recommended = recommendedFields(for: sourceType)
             let applicable = unique(recommended + conditionalFields(for: sourceType))
-            let serialization = NoteMetadataContractCatalog.analysisCanonicalKeys.filter(applicable.contains)
+            let serialization = BuiltInNoteMetadataCatalog.analysisCanonicalKeys.filter(applicable.contains)
             return (
                 sourceType,
                 AnalysisSourceTypeProfile(
@@ -142,7 +142,7 @@ public enum AnalysisSourceTypeProfileCatalog {
         case .dataset, .software, .audiovisual:
             ["medium", "publisher", "doi", "url", "accessed_date", "language"]
         case .other:
-            NoteMetadataContractCatalog.analysisCanonicalKeys
+            BuiltInNoteMetadataCatalog.analysisCanonicalKeys
         }
     }
 

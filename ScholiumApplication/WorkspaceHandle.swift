@@ -1365,9 +1365,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             request: request,
             slot: slot
         )
+        let metadataCatalog = try await services.controlStore.metadataCatalog()
         let initialMetadataFields = try managedCreationMetadataFields(
             request: request,
-            slot: slot
+            slot: slot,
+            catalog: metadataCatalog
         )
         let repository = try repository(vaultID: request.vaultID)
         let registeredVault = try vault(id: request.vaultID)
@@ -1571,10 +1573,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         request: ManagedNoteCreationRequest,
         slot: WorkspaceVaultSlot
     ) throws -> String {
-        _ = try managedCreationMetadataFields(
-            request: request,
-            slot: slot
-        )
         let authored: AuthoredNoteYAML
         if let supplied = request.authoredYAML {
             authored = supplied
@@ -1623,25 +1621,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func managedCreationMetadataFields(
         request: ManagedNoteCreationRequest,
-        slot: WorkspaceVaultSlot
+        slot: WorkspaceVaultSlot,
+        catalog: NoteMetadataCatalog
     ) throws -> [String: YAMLValue]? {
         if let metadata = request.analysisMetadata {
             guard slot == .paperAnalysis else {
                 throw DocumentCreationError.analysisMetadataRoleMismatch
             }
-            let profile = AnalysisSourceTypeProfileCatalog.profile(
-                for: metadata.sourceType
-            )
-            let applicable = Set(profile.applicableFields)
             var values: [String: YAMLValue] = [
                 "type": .string(metadata.sourceType.rawValue),
             ]
             for input in metadata.fields {
-                guard applicable.contains(input.key),
-                      NoteMetadataContractCatalog.contract(
-                        for: input.key,
-                        profile: .analysis
-                      ) != nil else {
+                guard catalog.isAnalysisFieldApplicable(
+                    input.key,
+                    sourceType: metadata.sourceType
+                ) else {
                     throw DocumentCreationError.inapplicableAnalysisProperty(
                         input.key,
                         metadata.sourceType
@@ -1649,7 +1643,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
                 values[input.key] = input.value
             }
-            let issues = NoteMetadataContractCatalog.validate(
+            let issues = catalog.validate(
                 fields: values,
                 profile: .analysis
             )
@@ -1764,23 +1758,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             !values.isEmpty && values.values.allSatisfy(isNonemptyManagedValue)
         case .null:
             false
-        }
-    }
-
-    static func frontmatterEditValue(
-        _ value: YAMLValue
-    ) throws -> FrontmatterEditValue {
-        switch value {
-        case .string(let value): .string(value)
-        case .integer(let value): .integer(value)
-        case .double(let value): .double(value)
-        case .boolean(let value): .boolean(value)
-        case .array(let values):
-            .sequence(try values.map(frontmatterEditValue))
-        case .object(let values):
-            .mapping(try values.mapValues(frontmatterEditValue))
-        case .null:
-            throw DocumentCreationError.invalidMetadata([])
         }
     }
 
@@ -2075,12 +2052,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let document = try await repository(vaultID: id.vaultID).load(
             relativePath: id.relativePath
         )
-        let profile = WorkflowProfileResolver.resolve(
-            vaultRole: registeredVault.role,
-            frontmatter: document.parsedFrontmatter,
-            relativePath: document.relativePath
-        )
-        let issues = NoteMetadataContractCatalog.validate(
+        let profile = WorkflowProfileResolver.resolve(vaultRole: registeredVault.role)
+        let metadataCatalog = try await services.controlStore.metadataCatalog()
+        let issues = metadataCatalog.validate(
             fields: fields,
             profile: profile
         )
@@ -4061,33 +4035,40 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let vaultRoles = Dictionary(uniqueKeysWithValues: orderedVaults().map {
             ($0.id, $0.role)
         })
-        let catalog = documents.map { id, document in
-            let role = vaultRoles[id.vaultID] ?? .other
-            return LinkCatalogNote(
+        let catalog = try await exactLinkCatalog(
+            documents: documents,
+            semantics: semantics,
+            vaultRoles: vaultRoles
+        )
+        let sourceManifestHash = SearchSourceManifest.hash(documents.map {
+            id, document in
+            SearchSourceManifestEntry(
                 vaultID: id.vaultID,
-                document: document,
-                profile: WorkflowProfileResolver.resolve(
-                    vaultRole: role,
-                    frontmatter: document.parsedFrontmatter,
-                    relativePath: document.relativePath
-                ),
-                semantic: semantics[id]
+                relativePath: id.relativePath,
+                fingerprint: document.fingerprint
             )
-        }
+        })
         let graph = LinkGraphBuilder.build(
             generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
             catalog: catalog,
             documents: semantics,
-            resolutionScope: .workspace
+            resolutionScope: .workspace,
+            sourceManifestHash: sourceManifestHash
         )
-        return IncomingLinkRewriter.folderPlan(
+        guard let plan = IncomingLinkRewriter.folderPlanUsingValidatedSnapshot(
             documents: documents,
+            catalog: catalog,
             graph: graph,
             vaultID: vaultID,
             sourceFolder: sourceFolder,
             destinationFolder: destinationFolder,
             noteMoves: noteMoves
-        )
+        ) else {
+            throw VaultRepositoryError.writeFailed(
+                "The exact Metadata-aware Link catalog could not be proven for this folder move."
+            )
+        }
+        return plan
     }
 
     private func workspaceMovePlan(
@@ -4160,31 +4141,69 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let vaultRoles = Dictionary(uniqueKeysWithValues: orderedVaults().map {
             ($0.id, $0.role)
         })
-        let catalog = documents.map { id, document in
-            let role = vaultRoles[id.vaultID] ?? .other
-            return LinkCatalogNote(
+        let catalog = try await exactLinkCatalog(
+            documents: documents,
+            semantics: semantics,
+            vaultRoles: vaultRoles
+        )
+        let sourceManifestHash = SearchSourceManifest.hash(documents.map {
+            id, document in
+            SearchSourceManifestEntry(
                 vaultID: id.vaultID,
-                document: document,
-                profile: WorkflowProfileResolver.resolve(
-                    vaultRole: role,
-                    frontmatter: document.parsedFrontmatter,
-                    relativePath: document.relativePath
-                ),
-                semantic: semantics[id]
+                relativePath: id.relativePath,
+                fingerprint: document.fingerprint
             )
-        }
+        })
         let graph = LinkGraphBuilder.build(
             generation: (currentSnapshot.discovery.catalog.graph?.generation ?? 0) + 1,
             catalog: catalog,
             documents: semantics,
-            resolutionScope: .workspace
+            resolutionScope: .workspace,
+            sourceManifestHash: sourceManifestHash
         )
-        return IncomingLinkRewriter.plan(
+        guard let plan = IncomingLinkRewriter.planUsingValidatedSnapshot(
             documents: documents,
+            catalog: catalog,
             graph: graph,
             moving: source,
             to: destination
+        ) else {
+            throw VaultRepositoryError.writeFailed(
+                "The exact Metadata-aware Link catalog could not be proven for this Note move."
+            )
+        }
+        return plan
+    }
+
+    private func exactLinkCatalog(
+        documents: [VaultQualifiedNoteID: NoteDocument],
+        semantics: [VaultQualifiedNoteID: MarkdownSemanticDocument],
+        vaultRoles: [UUID: VaultRole]
+    ) async throws -> [LinkCatalogNote] {
+        let metadataCatalog = try await services.controlStore.metadataCatalog()
+        let metadataByID = Dictionary(uniqueKeysWithValues:
+            try await services.controlStore.noteMetadataRecords(
+                catalog: metadataCatalog
+            ).map { ($0.record.noteID, $0) }
         )
+        var catalog: [LinkCatalogNote] = []
+        catalog.reserveCapacity(documents.count)
+        for id in documents.keys.sorted() {
+            guard let document = documents[id] else { continue }
+            let role = vaultRoles[id.vaultID] ?? .other
+            let identity = try await services.controlStore.identityRecord(
+                vaultID: id.vaultID,
+                relativePath: id.relativePath
+            )
+            catalog.append(LinkCatalogNote(
+                vaultID: id.vaultID,
+                document: document,
+                profile: WorkflowProfileResolver.resolve(vaultRole: role),
+                metadata: identity.flatMap { metadataByID[$0.id] },
+                semantic: semantics[id]
+            ))
+        }
+        return catalog
     }
 
     private func requireExpectedIdentity(

@@ -75,12 +75,14 @@ extension WorkspaceHandle {
         let metadataSnapshot = try await services.controlStore.noteMetadata(
             noteID: identity.id
         )
+        let metadataCatalog = try await services.controlStore.metadataCatalog()
         return try ZoteroMetadataPlanner.plan(
             noteID: noteID,
             sourceRevision: document.fingerprint,
             bindingSnapshot: bindingSnapshot,
             metadataSnapshot: metadataSnapshot,
-            source: source
+            source: source,
+            metadataCatalog: metadataCatalog
         )
     }
 
@@ -101,12 +103,14 @@ extension WorkspaceHandle {
         let metadataSnapshot = try await services.controlStore.noteMetadata(
             noteID: identity.id
         )
+        let metadataCatalog = try await services.controlStore.metadataCatalog()
         return try ZoteroMetadataPlanner.plan(
             noteID: identity.id,
             sourceRevision: document.fingerprint,
             bindingSnapshot: bindingSnapshot,
             metadataSnapshot: metadataSnapshot,
             source: source,
+            metadataCatalog: metadataCatalog,
             mode: .refresh
         )
     }

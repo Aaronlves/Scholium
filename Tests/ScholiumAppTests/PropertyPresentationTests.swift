@@ -9,8 +9,11 @@ struct PropertyPresentationTests {
     @Test("Descriptors combine managed fields with the two authored YAML fields")
     func descriptorsResolveToOwningContracts() {
         for profile in PropertyPresentationCatalog.currentProfiles {
-            let presentations = PropertyPresentationCatalog.presentations(for: profile)
-            let expected = NoteMetadataContractCatalog.contracts(for: profile)
+            let presentations = PropertyPresentationCatalog.presentations(
+                for: profile,
+                catalog: .builtIn
+            )
+            let expected = NoteMetadataCatalog.builtIn.contracts(for: profile)
                 + PropertyContractCatalog.contracts(for: profile)
             #expect(presentations.count == Set(presentations.map(\.key)).count)
             #expect(Set(presentations.map(\.key)) == Set(expected.map(\.canonicalKey)))
@@ -31,14 +34,14 @@ struct PropertyPresentationTests {
                 "title": .string("Managed title"),
             ]
         )
-        let model = PropertyEditorModel(note: note)
+        let model = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
 
         #expect(model.presentFields.map(\.key).contains("type"))
         #expect(model.presentFields.map(\.key).contains("title"))
         #expect(!model.presentFields.map(\.key).contains("authors"))
         #expect(!model.presentFields.map(\.key).contains("summary"))
         #expect(note.managedMetadataValue(named: "title") == .string("Managed title"))
-        #expect(note.topLevelProperty(named: "title") == .string("YAML title"))
+        #expect(note.authoredYAMLValue(named: "title") == nil)
         #expect(note.rawContent == source)
     }
 
@@ -49,7 +52,7 @@ struct PropertyPresentationTests {
             role: .sourceCorpus,
             metadataFields: ["type": .string("book")]
         )
-        let model = PropertyEditorModel(note: note)
+        let model = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
         let type = try #require(model.presentFields.first { $0.key == "type" })
         let invalid = model.updating(
             note.managedMetadataFields,
@@ -70,7 +73,7 @@ struct PropertyPresentationTests {
             role: .sourceCorpus,
             metadataFields: ["type": .string("book")]
         )
-        let model = PropertyEditorModel(note: note)
+        let model = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
         let title = try #require(model.availableFields.first { $0.key == "title" })
         let proposed = model.updating(
             note.managedMetadataFields,
@@ -91,7 +94,7 @@ struct PropertyPresentationTests {
             role: .sourceCorpus,
             metadataFields: ["type": .string("journal_article")]
         )
-        let model = PropertyEditorModel(note: note)
+        let model = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
         let sourceProfile = AnalysisSourceTypeProfileCatalog.profile(for: .journalArticle)
 
         #expect(Set(model.availableFields.map(\.key))
@@ -112,12 +115,13 @@ struct PropertyPresentationTests {
             role: .sourceCorpus,
             metadataFields: ["type": .string("book")]
         )
-        let bookModel = PropertyEditorModel(note: note)
+        let bookModel = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
         let isbn = try #require(bookModel.availableFields.first { $0.key == "isbn" })
         #expect(isbn.isTypicalForSourceType)
 
         let articleModel = PropertyEditorModel(
             note: note,
+            metadataCatalog: .builtIn,
             analysisSourceTypeOverride: .journalArticle
         )
         #expect(articleModel.canonicalField(for: "isbn")?.isTypicalForSourceType == false)
@@ -130,7 +134,7 @@ struct PropertyPresentationTests {
             NoteDocument(relativePath: "analysis.md", rawContent: "Body\n"),
             role: .sourceCorpus
         )
-        let fields = PropertyEditorModel(note: note).availableFields
+        let fields = PropertyEditorModel(note: note, metadataCatalog: .builtIn).availableFields
         #expect(Set(fields.map(\.key)) == ["type", "title", "authors", "publication_date"])
         #expect(fields.first { $0.key == "type" }?.isRecommended == true)
     }
@@ -142,7 +146,7 @@ struct PropertyPresentationTests {
             role: .topicKnowledge,
             metadataFields: ["aliases": .array([.string("one")])]
         )
-        let model = PropertyEditorModel(note: note)
+        let model = PropertyEditorModel(note: note, metadataCatalog: .builtIn)
         let aliases = try #require(model.presentFields.first { $0.key == "aliases" })
         let proposed = model.updating(
             note.managedMetadataFields,
@@ -150,7 +154,7 @@ struct PropertyPresentationTests {
             value: .array([.string("one"), .string("one")])
         )
         #expect(proposed["aliases"] == .array([.string("one"), .string("one")]))
-        #expect(note.topLevelProperty(named: "keywords") == .array([.string("source")]))
+        #expect(note.authoredYAMLValue(named: "keywords") == .array([.string("source")]))
     }
 
     @Test("Unauthoritative settings grant no About fields")
@@ -166,7 +170,7 @@ struct PropertyPresentationTests {
             isAuthoritative: true
         )
         #expect(denied.visibleFields.isEmpty)
-        #expect(allowed == TriptychSettings.defaultProperties[.paperAnalysis])
+        #expect(allowed == TriptychSettings.defaultAbout[.paperAnalysis])
     }
 
     @Test("Choice values display human labels")

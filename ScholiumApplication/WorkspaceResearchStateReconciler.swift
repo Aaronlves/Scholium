@@ -174,6 +174,7 @@ enum WorkspaceResearchStateReconciler {
             mode: snapshot.mode,
             phase: snapshot.phase,
             generatedAt: snapshot.generatedAt,
+            metadataCatalog: snapshot.metadataCatalog,
             vaults: snapshot.vaults,
             discovery: snapshot.discovery,
             research: repairedResearch

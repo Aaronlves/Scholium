@@ -56,8 +56,13 @@ struct ResearchFunctionCoordinatorTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let original = try await handle.services.controlStore.settings()
         var settings = original.settings
+        settings.metadataFields[.paperAnalysis] = [
+            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+        ]
         settings.analysisAgentCreation = AnalysisAgentCreationConfiguration(
-            preferredFieldsBySourceType: [.journalArticle: ["authors"]]
+            preferredFieldsBySourceType: [
+                .journalArticle: ["authors", "argument_stage"],
+            ]
         )
         let preferredSnapshot = try await handle.services.controlStore.saveSettings(
             settings,
@@ -79,9 +84,12 @@ struct ResearchFunctionCoordinatorTests {
             request: input
         )
         #expect(ready.status == .ready)
-        #expect(ready.preferredFields == ["authors"])
+        #expect(Set(ready.preferredFields) == ["authors", "argument_stage"])
         #expect(Set(ready.fixedYAMLFields) == ["summary", "keywords"])
         #expect(ready.applicableFields.contains { $0.canonicalKey == "authors" })
+        #expect(ready.applicableFields.contains {
+            $0.canonicalKey == "argument_stage" && $0.valueKind == .text
+        })
         let start = try ResearchAgentStartRequest(
             actionID: .analyze,
             newAnalysis: #require(ready.startNewAnalysis)

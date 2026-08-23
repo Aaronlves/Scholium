@@ -158,11 +158,16 @@
   standard macOS reservations, and conflicts name the problem and conflicting
   command inline; invalid input never changes the menu. Menu labels and
   shortcut accessibility values update together after Save.
-- Settings names the selected role, source-type picker, optional Agent-preferred
+- Settings names the selected role, global managed-field definitions, Add
+  Field form, value-kind picker, source-type picker, optional Agent-preferred
   managed-field checkboxes, About managed fields, validation location,
   dirty/save/conflict state, and separate restore or clear consequences in one
   keyboard order. Fixed `summary` and `keywords` creation behavior is not a
   setting or editable technical region.
+- A new field definition exposes its exact key, derived display label, value
+  kind, global role scope, and the fact that no Note, About profile, or Agent
+  preference changes automatically. Invalid or duplicate keys remain inline
+  drafts and never partially update the resolved catalog.
 - Source-type switching retains every unsaved preference draft. Invalid
   fields in another role or type remain named and prevent the single atomic
   save. Revision conflict preserves the draft and offers **Reload Saved

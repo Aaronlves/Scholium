@@ -430,11 +430,7 @@ actor VaultSourceCatalog {
             if projectionRequirement == .search {
                 searchProjection = SearchDocumentProjection(
                     document: loaded.document,
-                    profile: WorkflowProfileResolver.resolve(
-                        vaultRole: vaultRole,
-                        frontmatter: loaded.document.parsedFrontmatter,
-                        relativePath: loaded.document.relativePath
-                    ),
+                    profile: WorkflowProfileResolver.resolve(vaultRole: vaultRole),
                     semantic: semantic
                 )
             } else {
@@ -509,11 +505,7 @@ actor VaultSourceCatalog {
             searchProjection: record.semantic.map { semantic in
                 SearchDocumentProjection(
                     document: record.document,
-                    profile: WorkflowProfileResolver.resolve(
-                        vaultRole: vaultRole,
-                        frontmatter: record.document.parsedFrontmatter,
-                        relativePath: record.document.relativePath
-                    ),
+                    profile: WorkflowProfileResolver.resolve(vaultRole: vaultRole),
                     semantic: semantic
                 )
             }

@@ -1542,9 +1542,9 @@ struct WindowControllerArchitectureTests {
 
     @Test("Settings constructs independently of any document window")
     func standaloneSettingsConstruction() {
-        let model = WorkspaceSettingsModel(selectedPane: .propertyProfiles)
+        let model = WorkspaceSettingsModel(selectedPane: .metadata)
 
-        #expect(model.selectedPane == .propertyProfiles)
+        #expect(model.selectedPane == .metadata)
         #expect(model.snapshot.registeredVaults.isEmpty)
         #expect(model.snapshot.registeredTriptychs.isEmpty)
         model.selectPane(.researchGuidance)

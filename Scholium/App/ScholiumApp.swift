@@ -3657,7 +3657,11 @@ final class WindowModel: ObservableObject {
         if let tag = selectedTag { result = result.filter { $0.tags.contains(tag) } }
         if let author = selectedAuthor { result = result.filter { $0.authors.contains(author) } }
         if let key = selectedPropertyKey, let value = selectedPropertyValue {
-            result = result.filter { $0.property(at: key)?.appFilterValues.contains(value) == true }
+            let catalog = workspaceProjectionController.metadataCatalog
+            result = result.filter {
+                $0.semanticProperty(at: key, catalog: catalog)?
+                    .appFilterValues.contains(value) == true
+            }
         }
         return result.sorted(by: notesAreOrdered)
     }
@@ -4488,7 +4492,7 @@ final class WindowModel: ObservableObject {
         return workspaceAssignment?.vault(for: selected) == nil ? nil : selected
     }
 
-    var currentDocumentPropertiesConfiguration: VaultPropertiesConfiguration? {
+    var currentDocumentAboutConfiguration: VaultAboutConfiguration? {
         guard let vault = currentDocumentVault,
               let slot = WorkspaceVaultSlot.allCases.first(where: {
                   workspaceAssignment?.vault(for: $0)?.id == vault.id
@@ -6153,7 +6157,8 @@ final class WindowModel: ObservableObject {
             editorSessionID: sessionID,
             source: source,
             editorRevision: UInt64(max(0, session.editorSession.generation)),
-            metadata: note.workspaceSnapshot?.metadata
+            metadata: note.workspaceSnapshot?.metadata,
+            metadataCatalog: workspaceProjectionController.metadataCatalog
         )
     }
 

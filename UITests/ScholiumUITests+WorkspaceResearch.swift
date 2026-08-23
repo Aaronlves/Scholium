@@ -638,7 +638,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testManagedNewNoteDirectToEditWithAndWithoutRoleSeed() throws {
+    func testManagedNewNoteKeepsFixedYAMLAfterAddingCustomMetadataField() throws {
         let libraryFilters = app.descendants(matching: .any)[
             "scholium.libraryFilters"
         ]
@@ -704,9 +704,10 @@ extension ScholiumUITests {
         }
 
         let firstMarker = "cold-no-seed-first-keystroke\n"
+        let fixedYAML = "---\nsummary: null\nkeywords: []\n---\n"
         try createAndType(
             path: "Untitled.md",
-            initialSource: "",
+            initialSource: fixedYAML,
             marker: firstMarker
         )
 
@@ -737,7 +738,7 @@ extension ScholiumUITests {
         ).firstMatch
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 8))
         let metadataPane = settingsWindow.descendants(matching: .any)[
-            "Metadata Profiles"
+            "Metadata"
         ].firstMatch
         XCTAssertTrue(metadataPane.waitForExistence(timeout: 8))
         metadataPane.click()
@@ -745,11 +746,23 @@ extension ScholiumUITests {
         if retryMetadata.waitForExistence(timeout: 2) {
             retryMetadata.click()
         }
-        let seedEditor = settingsWindow.descendants(matching: .any)[
-            "YAML added to new Analysis notes without boundaries"
+        let addField = settingsWindow.descendants(matching: .any)[
+            "scholium.metadataSettings.addField"
         ].firstMatch
-        XCTAssertTrue(seedEditor.waitForExistence(timeout: 10))
-        try paste("keywords: [seeded]\n", into: seedEditor)
+        XCTAssertTrue(addField.waitForExistence(timeout: 10))
+        addField.click()
+        let fieldKey = settingsWindow.descendants(matching: .any)[
+            "scholium.metadataSettings.fieldKey"
+        ].firstMatch
+        XCTAssertTrue(fieldKey.waitForExistence(timeout: 5))
+        fieldKey.typeText("argument_stage")
+        let commitField = settingsWindow.descendants(matching: .any)[
+            "scholium.metadataSettings.commitField"
+        ].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            commitField.exists && commitField.isEnabled
+        })
+        commitField.click()
         let saveMetadata = settingsWindow.buttons["Save Metadata Settings"]
         XCTAssertTrue(waitUntil(timeout: 5) {
             saveMetadata.exists && saveMetadata.isEnabled
@@ -760,36 +773,47 @@ extension ScholiumUITests {
             .appendingPathComponent("settings.json")
         XCTAssertTrue(waitUntil(timeout: 10) {
             (try? String(contentsOf: settingsURL, encoding: .utf8))?
-                .contains("keywords: [seeded]") == true
+                .contains("argument_stage") == true
         })
         settingsWindow.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !settingsWindow.exists })
 
-        let seededSource = "---\nkeywords: [seeded]\n---\n"
-        let seededMarker = "warm-seeded-first-keystroke\n"
+        let secondMarker = "warm-custom-field-first-keystroke\n"
         try createAndType(
             path: "Untitled 2.md",
-            initialSource: seededSource,
-            marker: seededMarker
+            initialSource: fixedYAML,
+            marker: secondMarker
         )
         XCTAssertTrue(waitUntil(timeout: 20) {
             createdTitle.value as? String == "Untitled 2"
         })
 
-        selectResearchInspectorMode("overview")
-        let about = app.descendants(matching: .any)["scholium.about"]
-        XCTAssertTrue(about.waitForExistence(timeout: 8))
-        XCTAssertTrue(about.staticTexts["Keywords"].exists)
-        XCTAssertTrue(about.staticTexts["seeded"].exists)
-        for omittedField in [
-            "Completion", "Limitations", "Authors", "Year", "Type", "Source Basis",
-        ] {
-            XCTAssertFalse(about.staticTexts[omittedField].exists)
-        }
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.reviewResearchStatusGate"
-        ].exists)
-        XCTAssertFalse(app.buttons["Complete Review"].exists)
+        app.menuBars.menuBarItems["Edit"].click()
+        let editMetadata = app.menuItems["Edit Metadata…"].firstMatch
+        XCTAssertTrue(editMetadata.waitForExistence(timeout: 3))
+        editMetadata.click()
+        let metadataEditor = app.descendants(matching: .any)[
+            "scholium.metadataEditor"
+        ].firstMatch
+        XCTAssertTrue(metadataEditor.waitForExistence(timeout: 5))
+        app.descendants(matching: .any)[
+            "scholium.metadataEditor.addField"
+        ].firstMatch.click()
+        let chooserSearch = app.descendants(matching: .any)[
+            "scholium.metadataChooser.search"
+        ].firstMatch
+        XCTAssertTrue(chooserSearch.waitForExistence(timeout: 5))
+        chooserSearch.typeText("argument_stage")
+        XCTAssertTrue(app.staticTexts["Argument Stage"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].firstMatch.click()
+        app.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !metadataEditor.exists })
+        let secondURL = triptychDirectory.appendingPathComponent(
+            "01-analyses/Untitled 2.md"
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (try? self.source(at: secondURL)) == fixedYAML + secondMarker
+        })
     }
 
     @MainActor
@@ -1280,7 +1304,7 @@ extension ScholiumUITests {
             "Triptychs",
             "Appearance",
             "Hotkeys",
-            "Metadata Profiles",
+            "Metadata",
             "Attention",
             "Methods & Practices",
             "Action Profiles",
@@ -1302,14 +1326,14 @@ extension ScholiumUITests {
             "scholium.triptychName"
         ].waitForExistence(timeout: 8))
 
-        app.descendants(matching: .any)["Metadata Profiles"].firstMatch.click()
+        app.descendants(matching: .any)["Metadata"].firstMatch.click()
         XCTAssertTrue(waitUntil(timeout: 8) {
             !self.app.descendants(matching: .any)[
                 "scholium.settings.triptychScope"
             ].exists
         })
         XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.metadataProfiles.role"
+            "scholium.metadataSettings.role"
         ].waitForExistence(timeout: 8))
 
         app.descendants(matching: .any)["Appearance"].firstMatch.click()

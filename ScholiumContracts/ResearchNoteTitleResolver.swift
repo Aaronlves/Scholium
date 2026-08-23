@@ -62,11 +62,7 @@ public enum ResearchNoteTitleResolver {
     ) -> ResearchNoteTitleResolution {
         resolve(
             document: document,
-            profile: WorkflowProfileResolver.resolve(
-                vaultRole: vaultRole,
-                frontmatter: document.parsedFrontmatter,
-                relativePath: document.relativePath
-            ),
+            profile: WorkflowProfileResolver.resolve(vaultRole: vaultRole),
             metadata: metadata,
             semantic: semantic
         )

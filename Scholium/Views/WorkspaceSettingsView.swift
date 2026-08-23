@@ -8,7 +8,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     case triptychs
     case appearance
     case hotkeys
-    case propertyProfiles
+    case metadata
     case attention
     case methodsPractices
     case actionProfiles
@@ -24,7 +24,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     ]
 
     static let triptych: [Self] = [
-        .propertyProfiles,
+        .metadata,
         .attention,
     ]
 
@@ -40,7 +40,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .triptychs: ScholiumL10n.Settings.triptychs
         case .appearance: ScholiumL10n.Settings.appearance
         case .hotkeys: ScholiumL10n.Settings.hotkeys
-        case .propertyProfiles: ScholiumL10n.Settings.propertyProfiles
+        case .metadata: ScholiumL10n.Settings.metadata
         case .attention: ScholiumL10n.Settings.attention
         case .methodsPractices:
             ResearchGuidanceCategory.methodsPractices.localizedTitle
@@ -57,7 +57,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .triptychs: "rectangle.3.group"
         case .appearance: "paintbrush"
         case .hotkeys: "keyboard"
-        case .propertyProfiles: "slider.horizontal.3"
+        case .metadata: "list.bullet.rectangle"
         case .attention: "exclamationmark.triangle"
         case .methodsPractices: ResearchGuidanceCategory.methodsPractices.symbol
         case .actionProfiles: ResearchGuidanceCategory.actionProfiles.symbol
@@ -70,7 +70,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     var pane: WorkspaceSettingsPane {
         switch self {
         case .triptychs: .triptychs
-        case .propertyProfiles: .propertyProfiles
+        case .metadata: .metadata
         case .appearance: .appearance
         case .hotkeys: .hotkeys
         case .attention: .attention
@@ -86,7 +86,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .actionProfiles: .actionProfiles
         case .agentAccess: .agentAccess
         case .externalToolsCitations: .externalToolsCitations
-        case .triptychs, .propertyProfiles, .appearance, .hotkeys,
+        case .triptychs, .metadata, .appearance, .hotkeys,
              .attention: nil
         }
     }
@@ -102,8 +102,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
                 + ScholiumHotkeyCommand.allCases.flatMap {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }
-        case .propertyProfiles:
-            ["Metadata Profiles", "About", "Agent preferences", "optional fields"]
+        case .metadata:
+            ["Metadata", "fields", "About", "Agent preferences", "optional fields"]
         case .attention:
             ["Attention", "reminders", "dismissed items", "timing", "This Mac"]
         case .methodsPractices:
@@ -129,7 +129,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     ) -> Self {
         switch pane {
         case .triptychs: .triptychs
-        case .propertyProfiles: .propertyProfiles
+        case .metadata: .metadata
         case .appearance: .appearance
         case .hotkeys: .hotkeys
         case .attention: .attention
@@ -342,8 +342,8 @@ struct ScholiumSettingsView: View {
         switch destination {
         case .triptychs:
             WorkspaceSettingsView()
-        case .propertyProfiles:
-            MetadataProfilesSettingsView()
+        case .metadata:
+            MetadataSettingsView()
         case .appearance:
             if let store = settingsModel.cssSnippetStore {
                 AppearanceSettingsView(store: store)
@@ -523,11 +523,13 @@ private struct AttentionSettingsView: View {
     }
 }
 
-private struct MetadataProfilesSettingsView: View {
+private struct MetadataSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var selectedSlot: WorkspaceVaultSlot = .paperAnalysis
-    @State private var configurations = TriptychSettings.defaultProperties
-    @State private var savedConfigurations = TriptychSettings.defaultProperties
+    @State private var metadataFields = TriptychSettings.defaultMetadataFields
+    @State private var savedMetadataFields = TriptychSettings.defaultMetadataFields
+    @State private var aboutConfigurations = TriptychSettings.defaultAbout
+    @State private var savedAboutConfigurations = TriptychSettings.defaultAbout
     @State private var agentCreation = AnalysisAgentCreationConfiguration()
     @State private var savedAgentCreation = AnalysisAgentCreationConfiguration()
     @State private var savedTriptychSettings = TriptychSettings()
@@ -538,6 +540,9 @@ private struct MetadataProfilesSettingsView: View {
     @State private var hasLoaded = false
     @State private var revisionConflict = false
     @State private var errorMessage: String?
+    @State private var isAddingField = false
+    @State private var newFieldKey = ""
+    @State private var newFieldKind: PropertyValueKind = .text
 
     private var selectedProfile: SchemaProfileID {
         switch selectedSlot {
@@ -548,9 +553,18 @@ private struct MetadataProfilesSettingsView: View {
     }
 
     private var recommendedKeys: [String] {
-        PropertyPresentationCatalog.presentations(for: selectedProfile)
+        PropertyPresentationCatalog.presentations(
+            for: selectedProfile,
+            catalog: candidateCatalog
+        )
             .map(\.key)
-            .filter { AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile) }
+            .filter {
+                AboutProfileCatalog.allowsOptionalField(
+                    $0,
+                    profile: selectedProfile,
+                    catalog: candidateCatalog
+                )
+            }
     }
 
     private var availableKeys: [String] {
@@ -562,19 +576,29 @@ private struct MetadataProfilesSettingsView: View {
             .sorted { displayName(for: $0).localizedStandardCompare(displayName(for: $1)) == .orderedAscending }
     }
 
-    private var selectedConfiguration: VaultPropertiesConfiguration {
-        var configuration = configurations[selectedSlot] ?? TriptychSettings.defaultProperties[selectedSlot]
-            ?? VaultPropertiesConfiguration()
+    private var selectedConfiguration: VaultAboutConfiguration {
+        var configuration = aboutConfigurations[selectedSlot]
+            ?? TriptychSettings.defaultAbout[selectedSlot]
+            ?? VaultAboutConfiguration()
         configuration.visibleFields.removeAll {
-            !AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
+            !AboutProfileCatalog.allowsOptionalField(
+                $0,
+                profile: selectedProfile,
+                catalog: candidateCatalog
+            )
         }
         return configuration
     }
 
+    private var candidateCatalog: NoteMetadataCatalog {
+        NoteMetadataCatalog(customFieldsByRole: metadataFields)
+    }
+
     private var candidateSettings: TriptychSettings {
-        PropertiesSettingsCandidateBuilder.build(
+        MetadataSettingsCandidateBuilder.build(
             from: savedTriptychSettings,
-            configurations: configurations,
+            metadataFields: metadataFields,
+            aboutConfigurations: aboutConfigurations,
             agentCreation: agentCreation
         )
     }
@@ -585,6 +609,7 @@ private struct MetadataProfilesSettingsView: View {
 
     private struct SettingsDiagnostic {
         enum Section {
+            case fieldDefinitions
             case agentPreferences
             case configuration
             case other
@@ -632,8 +657,8 @@ private struct MetadataProfilesSettingsView: View {
                 key: nil,
                 line: nil,
                 column: nil,
-                reason: String(localized: "The complete metadata profile candidate could not be validated.", table: "Localizable", bundle: .module),
-                repair: String(localized: "Review the complete metadata profile candidate before saving.", table: "Localizable", bundle: .module)
+                reason: String(localized: "The complete Metadata settings candidate could not be validated.", table: "Localizable", bundle: .module),
+                repair: String(localized: "Review the complete Metadata settings candidate before saving.", table: "Localizable", bundle: .module)
             )
         }
     }
@@ -675,9 +700,9 @@ private struct MetadataProfilesSettingsView: View {
     private var writableSettingsContent: some View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
             settingsTitle(
-                ScholiumL10n.Settings.propertyProfiles,
+                ScholiumL10n.Settings.metadata,
                 detail: LocalizedStringResource(
-                    "Choose optional Scholium-managed fields for Agent guidance and About. New Note YAML is fixed by Scholium.",
+                    "Define optional managed fields for each role, then choose Agent guidance and About presentation independently. New Note YAML remains fixed.",
                     table: "Localizable",
                     bundle: .module
                 )
@@ -717,14 +742,17 @@ private struct MetadataProfilesSettingsView: View {
                     ),
                 ],
                 label: String(localized: "Metadata role"),
-                accessibilityIdentifier: "scholium.metadataProfiles.role"
+                accessibilityIdentifier: "scholium.metadataSettings.role"
             )
+            .disabled(isAddingField)
 
             ScrollView {
                 LazyVStack(
                     alignment: .leading,
                     spacing: ScholiumGrid.Spacing.sectionSeparation
                 ) {
+                    fieldDefinitionsSection
+                    Divider()
                     if selectedSlot == .paperAnalysis {
                         agentPreferencesSection
                         Divider()
@@ -774,7 +802,7 @@ private struct MetadataProfilesSettingsView: View {
 
     private var unavailableSettingsTitle: LocalizedStringResource {
         switch settingsModel.portableSettingsState {
-        case .unavailable: "Metadata Profiles Require a Complete Triptych"
+        case .unavailable: "Metadata Settings Require a Complete Triptych"
         case .missing: "Portable Metadata Settings Are Missing"
         case .oldSchema: "Metadata Settings Use an Older Schema"
         case .futureSchema: "Metadata Settings Use a Newer Schema"
@@ -825,6 +853,131 @@ private struct MetadataProfilesSettingsView: View {
         }
     }
 
+    private var fieldDefinitionsSection: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            settingsSectionTitle("Managed Fields")
+            Text("Fields added here become optional Metadata fields for every Note in this role. Adding one does not change any Note, About profile, or Agent preference.")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            let definitions = metadataFields[selectedSlot] ?? []
+            if definitions.isEmpty {
+                Text("No custom fields. Built-in fields remain available.")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+            } else {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.Settings.listRowSpacing
+                ) {
+                    ForEach(definitions, id: \.key) { definition in
+                        HStack(spacing: ScholiumMetrics.Settings.rowControlSpacing) {
+                            VStack(
+                                alignment: .leading,
+                                spacing: ScholiumMetrics.Properties.headerDetailSpacing
+                            ) {
+                                Text(displayName(for: definition.key))
+                                    .font(ScholiumTypography.interface(.body))
+                                Text(definition.key)
+                                    .font(ScholiumTypography.exact(.small))
+                                    .scholiumForeground(.mutedText)
+                            }
+                            Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
+                            Text(displayName(for: definition.valueKind))
+                                .font(ScholiumTypography.interface(.compact))
+                                .scholiumForeground(.secondaryText)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+
+            if isAddingField {
+                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    TextField("Field Key", text: $newFieldKey, prompt: Text("research_stage"))
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Managed field key")
+                        .accessibilityIdentifier("scholium.metadataSettings.fieldKey")
+                    Picker("Value Type", selection: $newFieldKind) {
+                        ForEach(customFieldKinds, id: \.self) { kind in
+                            Text(displayName(for: kind)).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("scholium.metadataSettings.valueType")
+                    if let message = newFieldValidationMessage {
+                        Text(message)
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.destructive)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Button("Cancel") { cancelAddingField() }
+                            .keyboardShortcut(.escape)
+                        Button("Add Field") { addFieldDefinition() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(newFieldValidationMessage != nil)
+                            .accessibilityIdentifier("scholium.metadataSettings.commitField")
+                    }
+                }
+                .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
+            } else {
+                Button("Add Field…") {
+                    isAddingField = true
+                }
+                .accessibilityIdentifier("scholium.metadataSettings.addField")
+            }
+        }
+    }
+
+    private var customFieldKinds: [PropertyValueKind] {
+        [.text, .multilineText, .textList, .number, .boolean, .date]
+    }
+
+    private var newFieldValidationMessage: String? {
+        guard isAddingField else { return nil }
+        guard !newFieldKey.isEmpty else {
+            return String(
+                localized: "Use a unique lowercase snake_case key.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        var candidate = metadataFields
+        candidate[selectedSlot, default: []].append(MetadataFieldDefinition(
+            key: newFieldKey,
+            valueKind: newFieldKind
+        ))
+        do {
+            try TriptychSettingsValidator.validateMetadataFieldDefinitions(candidate)
+            return nil
+        } catch let error as TriptychSettingsValidationError {
+            return diagnostic(for: error).displayMessage
+        } catch {
+            return String(
+                localized: "The complete Metadata settings candidate could not be validated.",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+    }
+
+    private func addFieldDefinition() {
+        guard newFieldValidationMessage == nil else { return }
+        metadataFields[selectedSlot, default: []].append(MetadataFieldDefinition(
+            key: newFieldKey,
+            valueKind: newFieldKind
+        ))
+        cancelAddingField()
+    }
+
+    private func cancelAddingField() {
+        isAddingField = false
+        newFieldKey = ""
+        newFieldKind = .text
+    }
+
     private var agentPreferencesSection: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("Agent-Created Analyses")
@@ -870,9 +1023,15 @@ private struct MetadataProfilesSettingsView: View {
         fields: [PropertyPresentation]
     )] {
         let sourceProfile = AnalysisSourceTypeProfileCatalog.profile(for: selectedSourceType)
-        let applicable = Set(sourceProfile.applicableFields).subtracting(["type"])
+        let applicable = Set(
+            candidateCatalog.analysisContracts(for: selectedSourceType)
+                .map(\.canonicalKey)
+        ).subtracting(["type"])
         let recommended = Set(sourceProfile.recommendedFieldOrder)
-        let fields = PropertyPresentationCatalog.presentations(for: .analysis)
+        let fields = PropertyPresentationCatalog.presentations(
+            for: .analysis,
+            catalog: candidateCatalog
+        )
             .filter { applicable.contains($0.key) }
         let grouped = Dictionary(grouping: fields, by: \.group)
         return PropertyPresentationCatalog.orderedGroups(for: .analysis).compactMap { group in
@@ -1018,12 +1177,12 @@ private struct MetadataProfilesSettingsView: View {
     private var restoreActions: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Button("Restore About Defaults") {
-                guard let defaults = TriptychSettings.defaultProperties[selectedSlot] else {
+                guard let defaults = TriptychSettings.defaultAbout[selectedSlot] else {
                     return
                 }
                 var configuration = selectedConfiguration
                 configuration.visibleFields = defaults.visibleFields
-                configurations[selectedSlot] = configuration
+                aboutConfigurations[selectedSlot] = configuration
             }
         }
     }
@@ -1052,7 +1211,7 @@ private struct MetadataProfilesSettingsView: View {
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.destructive)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("scholium.metadataProfiles.validation")
+                .accessibilityIdentifier("scholium.metadataSettings.validation")
             if diagnostic.role != nil || diagnostic.sourceType != nil {
                 Button("Review Invalid Setting") {
                     reveal(diagnostic)
@@ -1064,27 +1223,33 @@ private struct MetadataProfilesSettingsView: View {
     private var aboutConfigurationGroups: [AboutProfileGroup] {
         AboutProfileCatalog.groupedEntries(
             for: selectedProfile,
-            visibleFields: selectedConfiguration.visibleFields
+            visibleFields: selectedConfiguration.visibleFields,
+            catalog: candidateCatalog
         )
     }
 
     private var hiddenAboutConfigurationGroups: [AboutProfileGroup] {
         let hidden = availableKeys.filter {
-            AboutProfileCatalog.allowsOptionalField($0, profile: selectedProfile)
+            AboutProfileCatalog.allowsOptionalField(
+                $0,
+                profile: selectedProfile,
+                catalog: candidateCatalog
+            )
                 && !selectedConfiguration.visibleFields.contains($0)
         }
         return AboutProfileCatalog.groupedEntries(
             for: selectedProfile,
-            visibleFields: hidden
+            visibleFields: hidden,
+            catalog: candidateCatalog
         )
     }
 
     private func updateSelectedConfiguration(
-        _ update: (inout VaultPropertiesConfiguration) -> Void
+        _ update: (inout VaultAboutConfiguration) -> Void
     ) {
         var configuration = selectedConfiguration
         update(&configuration)
-        configurations[selectedSlot] = configuration
+        aboutConfigurations[selectedSlot] = configuration
     }
 
     private func moveVisibleField(_ field: String, within group: [String], to index: Int) {
@@ -1103,7 +1268,8 @@ private struct MetadataProfilesSettingsView: View {
     private func displayName(for key: String) -> String {
         if let presentation = PropertyPresentationCatalog.presentation(
             for: key,
-            in: selectedProfile
+            in: selectedProfile,
+            catalog: candidateCatalog
         ) {
             return presentation.label
         }
@@ -1111,6 +1277,21 @@ private struct MetadataProfilesSettingsView: View {
             .split(separator: " ")
             .map { $0.capitalized }
             .joined(separator: " ")
+    }
+
+    private func displayName(for kind: PropertyValueKind) -> String {
+        switch kind {
+        case .text: "Text"
+        case .multilineText: "Multiline Text"
+        case .textList: "Text List"
+        case .number: "Number"
+        case .boolean: "Checkbox"
+        case .date: "Date Text"
+        case .tags: "Tags"
+        case .choice: "Choice"
+        case .mapping: "Mapping"
+        case .creatorList: "Creators"
+        }
     }
 
     private func save() {
@@ -1169,11 +1350,10 @@ private struct MetadataProfilesSettingsView: View {
 
     private func installSavedDraft(_ snapshot: WorkspaceSettingsSnapshot) {
         let settings = snapshot.triptychSettings
-        let properties = settings.properties.isEmpty
-            ? TriptychSettings.defaultProperties
-            : settings.properties
-        configurations = properties
-        savedConfigurations = properties
+        metadataFields = settings.metadataFields
+        savedMetadataFields = settings.metadataFields
+        aboutConfigurations = settings.about
+        savedAboutConfigurations = settings.about
         agentCreation = settings.analysisAgentCreation
         savedAgentCreation = settings.analysisAgentCreation
         savedTriptychSettings = settings
@@ -1185,8 +1365,10 @@ private struct MetadataProfilesSettingsView: View {
     }
 
     private func revertToSaved() {
-        configurations = savedConfigurations
+        metadataFields = savedMetadataFields
+        aboutConfigurations = savedAboutConfigurations
         agentCreation = savedAgentCreation
+        cancelAddingField()
         revisionConflict = settingsModel.snapshot.activeTriptychID != savedTriptychID
             || settingsModel.settingsRevision != savedSettingsRevision
         errorMessage = nil
@@ -1213,8 +1395,28 @@ private struct MetadataProfilesSettingsView: View {
         case .incompleteRoleConfiguration:
             role = nil; sourceType = nil; key = nil
             section = .configuration
-            diagnosticReason = String(localized: "The metadata profile candidate is missing a Triptych role.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(localized: "The Metadata settings candidate is missing a Triptych role.", table: "Localizable", bundle: .module)
             repair = String(localized: "Restore the missing role configuration.", table: "Localizable", bundle: .module)
+        case .invalidMetadataFieldDefinition(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "This custom Metadata key is invalid or duplicated.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Use a unique lowercase snake_case key.", table: "Localizable", bundle: .module)
+        case .metadataFieldShadowsReservedKey(let value, let field):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "This custom Metadata key is already owned by Scholium or authored YAML.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Choose a different key.", table: "Localizable", bundle: .module)
+        case .metadataFieldKindUnsupported(let value, let field, _):
+            role = value; sourceType = nil; key = field
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "This custom Metadata value type is unsupported.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Choose one of the available simple value types.", table: "Localizable", bundle: .module)
+        case .metadataFieldDefinitionsAreAppendOnly(let value):
+            role = value; sourceType = nil; key = nil
+            section = .fieldDefinitions
+            diagnosticReason = String(localized: "Existing custom Metadata definitions cannot be renamed, reordered, or removed.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Revert those definitions and append a new field instead.", table: "Localizable", bundle: .module)
         case .noncanonicalConfigurationField(let value, let field):
             role = value; sourceType = nil; key = field
             section = .configuration
@@ -1234,7 +1436,7 @@ private struct MetadataProfilesSettingsView: View {
             role = nil; sourceType = nil; key = nil
             section = .other
             diagnosticReason = String(localized: "Attention dismissal days must be positive.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Repair Attention settings before saving metadata profiles.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Repair Attention settings before saving Metadata settings.", table: "Localizable", bundle: .module)
         }
         return SettingsDiagnostic(
             section: section,

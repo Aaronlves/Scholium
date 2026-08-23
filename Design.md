@@ -374,6 +374,15 @@ scope is visible in navigation and repeated inside a mixed-scope detail only
 where a consequential action needs the explicit **This Triptych** or **This
 Mac** boundary.
 
+The This Triptych **Metadata** destination keeps three explicit sections in
+one role-selected detail: global field definitions first, optional Agent
+preferences for Analysis second, and About order last. Adding a definition is
+an inline bounded form with a labelled key field, finite value-kind picker,
+Cancel, and Add Field action. Existing custom definitions are a compact textual
+list; built-in fields are not repeated as a 52-row schema inventory. The view
+does not offer definition rename or removal, and adding a definition neither
+checks an About/Agent option nor writes a Note.
+
 Document Appearance presents Configuration, Line width, Body Typeface, Font
 size, and Line spacing before one **Advanced Appearance** disclosure. Body
 details, Headings, and Callouts live inside that disclosure; Advanced CSS has

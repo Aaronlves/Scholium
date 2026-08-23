@@ -989,22 +989,6 @@
         }
       }
     },
-    "%lld machine or custom properties are preserved in Source mode." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%lld machine or custom properties are preserved in Source mode."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "源文本模式中保留了 %lld 个机器字段或自定义字段。"
-          }
-        }
-      }
-    },
     "%lld modified, %lld created" : {
       "localizations" : {
         "en" : {
@@ -2388,6 +2372,16 @@
         }
       }
     },
+    "Add Field…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加字段…"
+          }
+        }
+      }
+    },
     "Add Method Feedback…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2506,16 +2500,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "添加可见字段"
-          }
-        }
-      }
-    },
-    "Add YAML Properties…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加 YAML 属性…"
           }
         }
       }
@@ -3685,16 +3669,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 回应已可供你审阅。"
-          }
-        }
-      }
-    },
-    "An existing YAML value cannot be bounded for a safe Properties edit." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法为现有 YAML 值确定可安全编辑的属性边界。"
           }
         }
       }
@@ -6588,6 +6562,16 @@
         }
       }
     },
+    "Choose a different key." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择其他键。"
+          }
+        }
+      }
+    },
     "Choose a finished Discussion or Action from the record list." : {
       "localizations" : {
         "zh-Hans" : {
@@ -6734,6 +6718,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择一个确切条目，然后检查它可以填入的空白 Scholium 元数据字段。"
+          }
+        }
+      }
+    },
+    "Choose one of the available simple value types." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择一种可用的简单值类型。"
           }
         }
       }
@@ -9304,22 +9298,6 @@
         }
       }
     },
-    "Could Not Save Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could Not Save Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法保存属性"
-          }
-        }
-      }
-    },
     "Could Not Save Research Guidance" : {
       "localizations" : {
         "en" : {
@@ -10543,6 +10521,16 @@
         }
       }
     },
+    "Define optional managed fields for each role, then choose Agent guidance and About presentation independently. New Note YAML remains fixed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为每个角色定义可选的机器管理字段，然后分别选择 Agent 指引和“关于”展示。新建笔记的 YAML 保持固定。"
+          }
+        }
+      }
+    },
     "Delete" : {
       "localizations" : {
         "en" : {
@@ -11050,16 +11038,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "丢弃草稿并重新载入当前笔记"
-          }
-        }
-      }
-    },
-    "Discard Properties Draft?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "丢弃属性草稿？"
           }
         }
       }
@@ -12059,38 +12037,6 @@
         }
       }
     },
-    "Edit Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑属性"
-          }
-        }
-      }
-    },
-    "Edit Properties…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit Properties…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑属性…"
-          }
-        }
-      }
-    },
     "Edit Response…" : {
       "localizations" : {
         "en" : {
@@ -12712,26 +12658,6 @@
         }
       }
     },
-    "Every key here is written to every future %@ note. Empty values remain present properties." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此处的每个键都会写入今后每篇 %@ 笔记。空值仍会保留为属性。"
-          }
-        }
-      }
-    },
-    "Every key here is written to every future %arg note. Empty values remain present properties." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此处每个键都会写入今后新建的每篇 %arg 笔记。空值仍会作为属性保留。"
-          }
-        }
-      }
-    },
     "Every recorded multi-file operation has been inspected." : {
       "localizations" : {
         "en" : {
@@ -12896,6 +12822,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保留现有值"
+          }
+        }
+      }
+    },
+    "Existing custom Metadata definitions cannot be renamed, reordered, or removed." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "现有自定义元数据定义不能重命名、重新排序或移除。"
           }
         }
       }
@@ -13283,6 +13219,16 @@
         }
       }
     },
+    "Field Key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字段键"
+          }
+        }
+      }
+    },
     "Field Name" : {
       "localizations" : {
         "zh-Hans" : {
@@ -13309,6 +13255,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字段不可用"
+          }
+        }
+      }
+    },
+    "Fields added here become optional Metadata fields for every Note in this role. Adding one does not change any Note, About profile, or Agent preference." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此添加的字段将成为此角色下每篇笔记的可选元数据字段。添加字段不会更改任何笔记、“关于”配置或 Agent 偏好。"
           }
         }
       }
@@ -17177,6 +17133,26 @@
         }
       }
     },
+    "Managed Fields" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器管理字段"
+          }
+        }
+      }
+    },
+    "Managed field key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "机器管理字段键"
+          }
+        }
+      }
+    },
     "Manuscript" : {
       "localizations" : {
         "en" : {
@@ -17617,16 +17593,6 @@
         }
       }
     },
-    "Metadata Profiles Require a Complete Triptych" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "元数据配置需要完整的三联体"
-          }
-        }
-      }
-    },
     "Metadata Settings Are Damaged" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17643,6 +17609,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "元数据设置需要处理"
+          }
+        }
+      }
+    },
+    "Metadata Settings Require a Complete Triptych" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元数据设置需要完整的三联体"
           }
         }
       }
@@ -17951,38 +17927,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "修改元数据"
-          }
-        }
-      }
-    },
-    "Modify Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Modify Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "修改属性"
-          }
-        }
-      }
-    },
-    "Modify bounded Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Modify bounded Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "修改限定的属性"
           }
         }
       }
@@ -19257,16 +19201,6 @@
         }
       }
     },
-    "No Matching Properties" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有匹配的属性"
-          }
-        }
-      }
-    },
     "No Matching Recommendations" : {
       "localizations" : {
         "zh-Hans" : {
@@ -19713,6 +19647,16 @@
         }
       }
     },
+    "No custom fields. Built-in fields remain available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无自定义字段。内建字段仍然可用。"
+          }
+        }
+      }
+    },
     "No discovery locators were recorded." : {
       "localizations" : {
         "zh-Hans" : {
@@ -19755,22 +19699,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "概览中没有显示字段。"
-          }
-        }
-      }
-    },
-    "No fields are shown when Properties is opened." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No fields are shown when Properties is opened."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开属性时不会显示任何字段。"
           }
         }
       }
@@ -19963,32 +19891,6 @@
         }
       }
     },
-    "No priority properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No priority properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无优先属性"
-          }
-        }
-      }
-    },
-    "No properties yet." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚无属性。"
-          }
-        }
-      }
-    },
     "No reading leads have been requested for this Triptych." : {
       "localizations" : {
         "en" : {
@@ -20073,16 +19975,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有需要处置的来源修改"
-          }
-        }
-      }
-    },
-    "No structured fields are currently authorized for this role. Review portable Properties settings, or keep this note without YAML." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此角色目前没有获准使用的结构化字段。请检查便携属性设置，或让此笔记保持无 YAML。"
           }
         }
       }
@@ -20796,22 +20688,6 @@
         }
       }
     },
-    "Open Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开属性"
-          }
-        }
-      }
-    },
     "Open Recovery to inspect the uncertain write result." : {
       "localizations" : {
         "en" : {
@@ -21104,16 +20980,6 @@
         }
       }
     },
-    "Open or configure a complete Triptych before changing portable Properties settings." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先打开或配置一个完整三联体，再更改可移植属性设置。"
-          }
-        }
-      }
-    },
     "Open or configure a complete Triptych before changing portable metadata settings." : {
       "localizations" : {
         "zh-Hans" : {
@@ -21394,16 +21260,6 @@
         }
       }
     },
-    "Opening Source closes Complete Properties. The unsaved structured draft will be discarded; the note on disk will not change." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开源文本会关闭完整属性。未保存的结构化草稿将被丢弃；磁盘上的笔记不会更改。"
-          }
-        }
-      }
-    },
     "Opening YAML boundary added by Scholium" : {
       "localizations" : {
         "zh-Hans" : {
@@ -21426,22 +21282,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在打开研究库…"
-          }
-        }
-      }
-    },
-    "Opens Properties for this Analysis" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opens Properties for this Analysis"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为此分析打开属性"
           }
         }
       }
@@ -22240,22 +22080,6 @@
         }
       }
     },
-    "PROPERTIES" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "PROPERTIES"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性"
-          }
-        }
-      }
-    },
     "PROVENANCE" : {
       "localizations" : {
         "en" : {
@@ -22595,16 +22419,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "缺少便携元数据设置"
-          }
-        }
-      }
-    },
-    "Portable Properties Settings Are Missing" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "缺少可移植属性设置"
           }
         }
       }
@@ -23282,134 +23096,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "提示词模板"
-          }
-        }
-      }
-    },
-    "Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性"
-          }
-        }
-      }
-    },
-    "Properties Require a Complete Triptych" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性需要完整三联体"
-          }
-        }
-      }
-    },
-    "Properties Settings Are Damaged" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性设置已损坏"
-          }
-        }
-      }
-    },
-    "Properties Settings Need Attention" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性设置需要处理"
-          }
-        }
-      }
-    },
-    "Properties Settings Use a Newer Schema" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性设置使用较新架构"
-          }
-        }
-      }
-    },
-    "Properties Settings Use an Older Schema" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性设置使用较旧架构"
-          }
-        }
-      }
-    },
-    "Properties configuration saved" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Properties configuration saved"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性配置已保存"
-          }
-        }
-      }
-    },
-    "Properties configuration saved. Research views will refresh when the workspace is available." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性配置已保存。工作区可用时将刷新研究视图。"
-          }
-        }
-      }
-    },
-    "Properties role" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性角色"
-          }
-        }
-      }
-    },
-    "Properties: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性：%@"
-          }
-        }
-      }
-    },
-    "Properties: %arg" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Properties: %arg"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性：%arg"
           }
         }
       }
@@ -25718,32 +25404,12 @@
         }
       }
     },
-    "Repair Attention settings before saving Properties." : {
+    "Repair Attention settings before saving Metadata settings." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保存属性前，请先修复 Attention 设置。"
-          }
-        }
-      }
-    },
-    "Repair Attention settings before saving metadata profiles." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先修复“待处理”设置，再保存元数据配置。"
-          }
-        }
-      }
-    },
-    "Repair Research Guidance settings before saving Properties." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存属性前，请先修复研究指导设置。"
+            "value" : "请先修复关注事项设置，再保存元数据设置。"
           }
         }
       }
@@ -26492,22 +26158,6 @@
         }
       }
     },
-    "Researcher Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Researcher Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究者属性"
-          }
-        }
-      }
-    },
     "Researcher Response" : {
       "localizations" : {
         "zh-Hans" : {
@@ -27232,16 +26882,6 @@
         }
       }
     },
-    "Retry Properties Settings" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重试属性设置"
-          }
-        }
-      }
-    },
     "Retry Refresh" : {
       "localizations" : {
         "en" : {
@@ -27610,6 +27250,16 @@
         }
       }
     },
+    "Revert those definitions and append a new field instead." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请还原这些定义，并改为追加新字段。"
+          }
+        }
+      }
+    },
     "Revert to Saved" : {
       "localizations" : {
         "zh-Hans" : {
@@ -27820,22 +27470,12 @@
         }
       }
     },
-    "Review the complete Properties candidate before saving." : {
+    "Review the complete Metadata settings candidate before saving." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保存前请检查完整的属性候选配置。"
-          }
-        }
-      }
-    },
-    "Review the complete metadata profile candidate before saving." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在保存前检查完整的元数据配置候选项。"
+            "value" : "保存前请检查完整的元数据设置候选项。"
           }
         }
       }
@@ -28418,22 +28058,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存配置"
-          }
-        }
-      }
-    },
-    "Save Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Save Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存属性"
           }
         }
       }
@@ -30364,16 +29988,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "设置 Zotero 关联"
-          }
-        }
-      }
-    },
-    "Set the optional About fields, display order, and structured-editing allowlist for each Triptych vault. Existing custom YAML remains visible in Complete Properties; Source mode always exposes the exact source." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为脉络中的每个研究库设置可选的“关于”字段、显示顺序和结构化编辑允许列表。现有自定义 YAML 仍会显示在“完整属性”中；“源文本”模式始终显示逐字节源文本。"
           }
         }
       }
@@ -32410,6 +32024,16 @@
         }
       }
     },
+    "The Metadata settings candidate is missing a Triptych role." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元数据设置候选项缺少一个三联体角色。"
+          }
+        }
+      }
+    },
     "The Method Feedback is removed only when you choose Save Response." : {
       "localizations" : {
         "en" : {
@@ -32458,16 +32082,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法可以指导学术工作，但无法隐藏或扩展这些由应用拥有的事实。"
-          }
-        }
-      }
-    },
-    "The Properties candidate is missing a Triptych role." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "属性候选配置缺少一个 Triptych 角色。"
           }
         }
       }
@@ -32540,16 +32154,6 @@
         }
       }
     },
-    "The YAML uses a structure that cannot be edited safely as Properties." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此 YAML 使用了无法作为属性安全编辑的结构。"
-          }
-        }
-      }
-    },
     "The YAML uses a structure that cannot be edited safely." : {
       "localizations" : {
         "zh-Hans" : {
@@ -32582,16 +32186,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前研究指导模板选择不完整或不一致。"
-          }
-        }
-      }
-    },
-    "The active Triptych changed. The Properties draft was preserved and was not written." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前 Triptych 已更改。属性草稿已保留，且未写入。"
           }
         }
       }
@@ -32662,22 +32256,12 @@
         }
       }
     },
-    "The complete Properties candidate could not be validated." : {
+    "The complete Metadata settings candidate could not be validated." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法验证完整的属性候选配置。"
-          }
-        }
-      }
-    },
-    "The complete metadata profile candidate could not be validated." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法验证完整的元数据配置候选项。"
+            "value" : "无法验证完整的元数据设置候选项。"
           }
         }
       }
@@ -33198,16 +32782,6 @@
         }
       }
     },
-    "The metadata profile candidate is missing a Triptych role." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "元数据配置候选项缺少一个三联体角色。"
-          }
-        }
-      }
-    },
     "The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects." : {
       "localizations" : {
         "en" : {
@@ -33470,16 +33044,6 @@
         }
       }
     },
-    "The saved Properties settings changed after this draft was loaded. The saved version and this draft were both preserved." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "载入此草稿后，已保存的属性设置发生了变化。已保存版本和此草稿均已保留。"
-          }
-        }
-      }
-    },
     "The saved Researcher Response and finalized Agent result remain unchanged." : {
       "localizations" : {
         "en" : {
@@ -33650,22 +33214,12 @@
         }
       }
     },
-    "The settings were saved to the Triptych where the edit began. Reload Metadata Profiles to show the currently active Triptych." : {
+    "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "设置已保存到开始编辑时的三联体。请重新载入“元数据配置”以显示当前三联体。"
-          }
-        }
-      }
-    },
-    "The settings were saved to the Triptych where the edit began. Reload Properties to show the currently active Triptych." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "设置已保存到开始编辑时的 Triptych。请重新载入属性，以显示当前活动的 Triptych。"
+            "value" : "设置已保存到开始编辑时的三联体。请重新载入元数据设置，以显示当前活跃的三联体。"
           }
         }
       }
@@ -34267,6 +33821,36 @@
         }
       }
     },
+    "This custom Metadata key is already owned by Scholium or authored YAML." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此自定义元数据键已由 Scholium 或用户编写的 YAML 占用。"
+          }
+        }
+      }
+    },
+    "This custom Metadata key is invalid or duplicated." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此自定义元数据键无效或重复。"
+          }
+        }
+      }
+    },
+    "This custom Metadata value type is unsupported." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不支持此自定义元数据值类型。"
+          }
+        }
+      }
+    },
     "This draft field does not apply to %@. Discard it or choose its source type before saving." : {
       "localizations" : {
         "zh-Hans" : {
@@ -34480,26 +34064,6 @@
         }
       }
     },
-    "This note changed on disk. The Properties draft was preserved and cannot be saved against the older revision." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "磁盘上的此笔记已更改。属性草稿已保留，无法按旧修订保存。"
-          }
-        }
-      }
-    },
-    "This note has no YAML properties." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此笔记没有 YAML 属性。"
-          }
-        }
-      }
-    },
     "This note has no body content." : {
       "localizations" : {
         "zh-Hans" : {
@@ -34590,22 +34154,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此笔记仍可阅读，但在其记录从 %1$@ 移至 %2$@ 完成之前，评论、研究记录、恢复和文件更改均不可用。"
-          }
-        }
-      }
-    },
-    "This note uses an older property set. You can edit its existing properties now and add newer schema properties when useful." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This note uses an older property set. You can edit its existing properties now and add newer schema properties when useful."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此笔记使用较旧的属性集。您现在可以编辑其现有属性，并在有用时添加更新的架构属性。"
           }
         }
       }
@@ -36201,6 +35749,16 @@
         }
       }
     },
+    "Use a unique lowercase snake_case key." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请使用唯一的小写 snake_case 键。"
+          }
+        }
+      }
+    },
     "Use as Context" : {
       "localizations" : {
         "en" : {
@@ -36498,6 +36056,16 @@
         }
       }
     },
+    "Value Type" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "值类型"
+          }
+        }
+      }
+    },
     "Vault" : {
       "localizations" : {
         "en" : {
@@ -36542,22 +36110,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究库角色已更改为 %@"
-          }
-        }
-      }
-    },
-    "Vault-Wide Properties" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Vault-Wide Properties"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究库全局属性"
           }
         }
       }
@@ -37275,16 +36827,6 @@
         }
       }
     },
-    "YAML Properties Need Source" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "YAML 属性需要源文"
-          }
-        }
-      }
-    },
     "YAML added to new %@ notes without boundaries" : {
       "localizations" : {
         "zh-Hans" : {
@@ -37916,6 +37458,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "references/evaluation-questions.md"
+          }
+        }
+      }
+    },
+    "research_stage" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "research_stage"
           }
         }
       }

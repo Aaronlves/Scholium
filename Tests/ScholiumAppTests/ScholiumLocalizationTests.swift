@@ -35,9 +35,9 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.localized(
-                ScholiumL10n.Settings.propertyProfiles,
+                ScholiumL10n.Settings.metadata,
                 locale: simplifiedChinese
-            ) == "属性配置"
+            ) == "元数据"
         )
         #expect(
             ScholiumL10n.string("Ready to install", locale: simplifiedChinese)

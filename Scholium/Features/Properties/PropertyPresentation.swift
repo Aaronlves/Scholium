@@ -9,7 +9,7 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
     case topicDescription
     case workDescription
     case authoredYAML
-    case other
+    case customMetadata
 
     var label: String {
         switch self {
@@ -19,7 +19,7 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
         case .topicDescription: ScholiumL10n.dynamicString("Topic Description")
         case .workDescription: ScholiumL10n.dynamicString("Work Description")
         case .authoredYAML: ScholiumL10n.dynamicString("Authored YAML")
-        case .other: ScholiumL10n.dynamicString("Other Metadata")
+        case .customMetadata: ScholiumL10n.dynamicString("Custom Metadata")
         }
     }
 
@@ -28,8 +28,8 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
         case .source, .topicDescription, .workDescription: 0
         case .publication: 1
         case .accessAndIdentifiers: 2
-        case .authoredYAML: 3
-        case .other: 4
+        case .customMetadata: 3
+        case .authoredYAML: 4
         }
     }
 }
@@ -62,8 +62,11 @@ enum PropertyPresentationCatalog {
         .draftProject,
     ]
 
-    static func presentations(for profile: SchemaProfileID) -> [PropertyPresentation] {
-        let contracts = NoteMetadataContractCatalog.contracts(for: profile)
+    static func presentations(
+        for profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> [PropertyPresentation] {
+        let contracts = catalog.contracts(for: profile)
             + PropertyContractCatalog.contracts(for: profile)
         return contracts.enumerated().map { index, contract in
             PropertyPresentation(
@@ -79,18 +82,24 @@ enum PropertyPresentationCatalog {
         }
     }
 
-    static func managedPresentations(for profile: SchemaProfileID) -> [PropertyPresentation] {
+    static func managedPresentations(
+        for profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> [PropertyPresentation] {
         let managedKeys = Set(
-            NoteMetadataContractCatalog.contracts(for: profile).map(\.canonicalKey)
+            catalog.contracts(for: profile).map(\.canonicalKey)
         )
-        return presentations(for: profile).filter { managedKeys.contains($0.key) }
+        return presentations(for: profile, catalog: catalog).filter {
+            managedKeys.contains($0.key)
+        }
     }
 
     static func contract(
         for presentation: PropertyPresentation,
-        in profile: SchemaProfileID
+        in profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
     ) -> PropertyContract? {
-        guard let contract = NoteMetadataContractCatalog.contract(
+        guard let contract = catalog.contract(
             for: presentation.key,
             profile: profile
         ) ?? PropertyContractCatalog.contract(
@@ -102,21 +111,22 @@ enum PropertyPresentationCatalog {
 
     static func presentation(
         for key: String,
-        in profile: SchemaProfileID
+        in profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
     ) -> PropertyPresentation? {
-        presentations(for: profile).first { $0.key == key }
+        presentations(for: profile, catalog: catalog).first { $0.key == key }
     }
 
     static func orderedGroups(for profile: SchemaProfileID) -> [PropertyPresentationGroup] {
         switch profile {
         case .analysis:
-            [.source, .publication, .accessAndIdentifiers, .authoredYAML, .other]
+            [.source, .publication, .accessAndIdentifiers, .customMetadata, .authoredYAML]
         case .topicMarkdown:
-            [.topicDescription, .authoredYAML, .other]
+            [.topicDescription, .customMetadata, .authoredYAML]
         case .draftProject:
-            [.workDescription, .authoredYAML, .other]
+            [.workDescription, .customMetadata, .authoredYAML]
         case .genericMarkdown:
-            [.other]
+            [.customMetadata]
         }
     }
 
@@ -154,13 +164,19 @@ enum PropertyPresentationCatalog {
         case .analysis:
             if analysisSourceKeys.contains(key) { return .source }
             if analysisAccessKeys.contains(key) { return .accessAndIdentifiers }
-            return .publication
+            return BuiltInNoteMetadataCatalog.contract(for: key, profile: profile) == nil
+                ? .customMetadata
+                : .publication
         case .topicMarkdown:
-            return .topicDescription
+            return BuiltInNoteMetadataCatalog.contract(for: key, profile: profile) == nil
+                ? .customMetadata
+                : .topicDescription
         case .draftProject:
-            return .workDescription
+            return BuiltInNoteMetadataCatalog.contract(for: key, profile: profile) == nil
+                ? .customMetadata
+                : .workDescription
         case .genericMarkdown:
-            return .other
+            return .customMetadata
         }
     }
 

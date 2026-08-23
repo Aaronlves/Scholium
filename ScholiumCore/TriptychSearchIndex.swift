@@ -713,11 +713,7 @@ public actor TriptychSearchIndex {
         )
         let exactIndexedRevision = indexed?.fingerprint == note.fingerprint
         let role = descriptor?.role ?? .other
-        let profile = WorkflowProfileResolver.resolve(
-            vaultRole: role,
-            frontmatter: note.parsedFrontmatter,
-            relativePath: note.relativePath
-        )
+        let profile = WorkflowProfileResolver.resolve(vaultRole: role)
         let projection = SearchDocumentProjection(
             document: note,
             profile: profile,
@@ -754,7 +750,8 @@ public actor TriptychSearchIndex {
             properties: SearchPropertyProjection(
                 document: note,
                 profile: profile,
-                metadata: source.metadata
+                metadata: source.metadata,
+                metadataCatalog: source.metadataCatalog
             ).entries
         )
         guard SearchMatcher.satisfies(

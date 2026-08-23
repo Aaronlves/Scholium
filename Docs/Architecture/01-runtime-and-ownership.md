@@ -421,7 +421,7 @@ portable store. A Continue Research child remains available by exact ID and
 Search, but the feature folds it beneath its direct parent instead of
 projecting a peer collection row.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
-immutable catalog, per-vault snapshots, selected Library's
+immutable research catalog, resolved Metadata catalog, per-vault snapshots, selected Library's
 Notes/tags/authors/revisions and property-filter options, graph, Note
 Search generation, derived-refresh status,
 and catalog refresh lifecycle. It accepts only the active runtime and increasing

@@ -54,7 +54,8 @@ struct ZoteroMetadataFillTests {
                 revision: DocumentFingerprint(content: "bindings-v1")
             ),
             metadataSnapshot: metadata,
-            source: source
+            source: source,
+            metadataCatalog: .builtIn
         )
 
         #expect(plan.retainedConflicts.map(\.key) == ["type", "title"])
@@ -70,7 +71,7 @@ struct ZoteroMetadataFillTests {
         #expect(plan.resultFields["container_title"] == nil)
         #expect(plan.resultFields["summary"] == nil)
         #expect(plan.resultFields["keywords"] == nil)
-        #expect(NoteMetadataContractCatalog.validate(
+        #expect(NoteMetadataCatalog.builtIn.validate(
             fields: plan.resultFields,
             profile: .analysis
         ).isEmpty)
@@ -114,6 +115,7 @@ struct ZoteroMetadataFillTests {
             ),
             metadataSnapshot: metadata,
             source: source,
+            metadataCatalog: .builtIn,
             mode: .refresh
         )
 

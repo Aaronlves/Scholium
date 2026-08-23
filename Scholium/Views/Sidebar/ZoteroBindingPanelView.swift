@@ -175,7 +175,7 @@ struct ZoteroBindingPanelView: View {
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         Text(hit.item.key)
-                            .font(.system(.caption, design: .monospaced))
+                            .font(ScholiumTypography.exact(.small))
                             .scholiumForeground(.mutedText)
                             .accessibilityLabel("Zotero item key \(hit.item.key)")
                     }
@@ -270,7 +270,7 @@ struct ZoteroBindingPanelView: View {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text(libraryLabel(plan.source.library))
                 Text(plan.source.item.key)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(ScholiumTypography.exact(.small))
             }
             .font(ScholiumTypography.interface(.small))
             .scholiumForeground(.secondaryText)
@@ -300,7 +300,10 @@ struct ZoteroBindingPanelView: View {
             Text(title)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
             ForEach(fields) { field in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                ) {
                     Text(fieldLabel(field.key))
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     if let conflictPlan,
@@ -321,7 +324,11 @@ struct ZoteroBindingPanelView: View {
     }
 
     private func fieldLabel(_ key: String) -> String {
-        PropertyPresentationCatalog.presentation(for: key, in: .analysis)?.label
+        PropertyPresentationCatalog.presentation(
+            for: key,
+            in: .analysis,
+            catalog: .builtIn
+        )?.label
             ?? key.replacingOccurrences(of: "_", with: " ").capitalized
     }
 

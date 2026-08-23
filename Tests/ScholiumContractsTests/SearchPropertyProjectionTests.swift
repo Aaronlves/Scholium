@@ -68,6 +68,36 @@ struct SearchPropertyProjectionTests {
         #expect(projection.entry(forExactKey: "legacy") == nil)
     }
 
+    @Test("Search indexes resolved custom Metadata but ignores unmanaged record keys")
+    func customMetadataRequiresCatalogAuthority() throws {
+        let record = NoteMetadataRecord(
+            noteID: UUID(),
+            fields: [
+                "argument_stage": .string("objection"),
+                "unmanaged_record_key": .string("must stay hidden"),
+            ]
+        )
+        let metadata = NoteMetadataSnapshot(
+            record: record,
+            revision: DocumentFingerprint(data: try record.encodedPortableData())
+        )
+        let catalog = NoteMetadataCatalog(customFieldsByRole: [
+            .paperAnalysis: [
+                MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+            ],
+        ])
+        let projection = SearchPropertyProjection(
+            document: NoteDocument(relativePath: "Analysis.md", rawContent: "Body\n"),
+            profile: .analysis,
+            metadata: metadata,
+            metadataCatalog: catalog
+        )
+
+        #expect(projection.entry(forExactKey: "argument_stage")?.stringMembers
+            .map(\.value) == ["objection"])
+        #expect(projection.entry(forExactKey: "unmanaged_record_key") == nil)
+    }
+
     @Test("Malformed YAML does not hide independent managed metadata")
     func malformedYAMLIsIndependent() throws {
         let record = NoteMetadataRecord(

@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Window document metadata projection")
 struct WindowDocumentMetadataProjectionTests {
-    @Test("Status remains custom source YAML with generic filter projection")
+    @Test("Unknown YAML remains source-only and never becomes a semantic property")
     func statusIsNotCoreVocabulary() {
         let source = """
         ---
@@ -18,15 +18,16 @@ struct WindowDocumentMetadataProjectionTests {
         let note = metadataLocation(source, role: .sourceCorpus)
 
         #expect(PropertyContractCatalog.contract(for: "status", profile: .analysis) == nil)
-        #expect(note.property(at: "status") == .string("reviewed"))
-        #expect(note.filterableProperties["status"] == ["reviewed"])
+        #expect(note.authoredYAMLValue(named: "status") == nil)
+        #expect(note.semanticProperty(at: "status", catalog: .builtIn) == nil)
+        #expect(note.filterableProperties(catalog: .builtIn)["status"] == nil)
         #expect(note.rawContent == source)
     }
 
-    @Test("Publication date is source-safe text and legacy year stays custom")
+    @Test("Managed publication date wins while same-named YAML remains source-only")
     func publicationDateUsesCoreShape() throws {
         let contract = try #require(
-            PropertyContractCatalog.contract(for: "publication_date", profile: .analysis)
+            NoteMetadataCatalog.builtIn.contract(for: "publication_date", profile: .analysis)
         )
         #expect(contract.valueKind == .date)
         #expect(PropertyContractCatalog.contract(for: "year", profile: .analysis) == nil)
@@ -39,10 +40,18 @@ struct WindowDocumentMetadataProjectionTests {
         ---
         Body
         """
-        let note = metadataLocation(source, role: .sourceCorpus)
+        let note = metadataLocation(
+            source,
+            role: .sourceCorpus,
+            metadataFields: ["publication_date": .string("1990/1992")]
+        )
 
-        #expect(note.property(at: "publication_date") == .string("1990/1992"))
-        #expect(note.property(at: "year") == .integer(1991))
+        #expect(note.authoredYAMLValue(named: "publication_date") == nil)
+        #expect(note.semanticProperty(
+            at: "publication_date",
+            catalog: .builtIn
+        ) == .string("1990/1992"))
+        #expect(note.semanticProperty(at: "year", catalog: .builtIn) == nil)
         #expect(note.rawContent == source)
     }
 
@@ -113,48 +122,67 @@ struct WindowDocumentMetadataProjectionTests {
         #expect(appModelSource.contains("PropertyContractCatalog.contract"))
     }
 
-    @Test("Sidebar property options aggregate each note projection once")
+    @Test("Sidebar property options aggregate canonical YAML and resolved managed Metadata only")
     func propertyFilterOptionsPreserveValuesAndLimits() {
+        let catalog = NoteMetadataCatalog(customFieldsByRole: [
+            .paperAnalysis: [
+                MetadataFieldDefinition(key: "research_status", valueKind: .text),
+                MetadataFieldDefinition(key: "too_long", valueKind: .text),
+            ],
+        ])
         let first = metadataLocation(
             """
             ---
             status: complete
-            authors:
-              - Beauvoir
-              - Arendt
-            custom: Alpha
-            relevance: 9
+            summary: Alpha
+            keywords: [ethics]
             nested:
               child: Gamma
-            too_long: \(String(repeating: "x", count: 81))
             ---
             First
             """,
             role: .sourceCorpus,
-            relativePath: "First.md"
+            relativePath: "First.md",
+            metadataFields: [
+                "authors": .array([
+                    .object(["literal": .string("Beauvoir")]),
+                    .object(["literal": .string("Arendt")]),
+                ]),
+                "research_status": .string("complete"),
+                "too_long": .string(String(repeating: "x", count: 81)),
+            ]
         )
         let second = metadataLocation(
             """
             ---
             status: reviewed
-            authors:
-              - Arendt
-              - Weil
-            custom: Beta
+            summary: Beta
+            keywords: [ethics, value]
             ---
             Second
             """,
             role: .sourceCorpus,
-            relativePath: "Second.md"
+            relativePath: "Second.md",
+            metadataFields: [
+                "authors": .array([
+                    .object(["literal": .string("Arendt")]),
+                    .object(["literal": .string("Weil")]),
+                ]),
+                "research_status": .string("reviewed"),
+            ]
         )
 
-        let options = WindowPropertyFilterOptions(notes: [first, second])
+        let options = WindowPropertyFilterOptions(
+            notes: [first, second],
+            catalog: catalog
+        )
 
-        #expect(options.valuesByKey["status"] == ["complete", "reviewed"])
+        #expect(options.valuesByKey["summary"] == ["Alpha", "Beta"])
+        #expect(options.valuesByKey["keywords"] == ["ethics", "value"])
         #expect(options.valuesByKey["authors"] == ["Arendt", "Beauvoir", "Weil"])
-        #expect(options.valuesByKey["custom"] == ["Alpha", "Beta"])
-        #expect(options.valuesByKey["relevance"] == nil)
-        #expect(options.valuesByKey["nested.child"] == ["Gamma"])
+        #expect(options.valuesByKey["research_status"] == ["complete", "reviewed"])
+        #expect(options.valuesByKey["status"] == nil)
+        #expect(options.valuesByKey["nested.child"] == nil)
         #expect(options.valuesByKey["too_long"] == nil)
         #expect(options.keys == options.keys.sorted {
             $0.localizedStandardCompare($1) == .orderedAscending
@@ -207,10 +235,10 @@ struct WindowDocumentMetadataProjectionTests {
         )
 
         #expect(controller.contains(
-            "var propertyFilterOptions = WindowPropertyFilterOptions(notes: [])"
+            "var propertyFilterOptions = WindowPropertyFilterOptions("
         ))
         #expect(controller.contains(
-            "state.propertyFilterOptions = WindowPropertyFilterOptions(notes: notes)"
+            "state.propertyFilterOptions = WindowPropertyFilterOptions("
         ))
         #expect(controller.contains("state.authors = Set(notes.flatMap(\\.authors)).sorted()"))
         #expect(!controller.contains("state.years"))
@@ -229,13 +257,21 @@ struct WindowDocumentMetadataProjectionTests {
 private func metadataLocation(
     _ source: String,
     role: VaultRole,
-    relativePath: String = "metadata.md"
+    relativePath: String = "metadata.md",
+    metadataFields: [String: YAMLValue]? = nil
 ) -> WindowDocumentLocation {
     let document = NoteDocument(relativePath: relativePath, rawContent: source)
+    let noteID = UUID()
+    let metadata = metadataFields.map {
+        NoteMetadataSnapshot(
+            record: NoteMetadataRecord(noteID: noteID, fields: $0),
+            revision: DocumentFingerprint(content: String(describing: $0))
+        )
+    }
     return .workspace(WorkspaceNoteSnapshot(
         id: VaultQualifiedNoteID(vaultID: UUID(), relativePath: relativePath),
         vaultRole: role,
-        stableIdentity: .unresolved,
+        stableIdentity: .resolved(noteID),
         document: document,
         fileMetadata: WorkspaceFileMetadata(
             byteCount: document.sourceBytes.count,
@@ -247,6 +283,7 @@ private func metadataLocation(
             outgoing: 0,
             broken: 0,
             ambiguous: 0
-        )
+        ),
+        metadata: metadata
     ))
 }

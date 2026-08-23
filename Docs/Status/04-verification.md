@@ -36,6 +36,24 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the resolved YAML/Metadata boundary passed its focused
+  Contract, Core, Application, App, Search, Link, Agent, Zotero, Settings, and
+  source-fidelity owners. The task's single complete `verify.sh` attempt passed
+  documentation and shipped-Skill guards, all 199 Web-editor tests,
+  reproducible bundles, RDF-1, 454 Core tests, 3 Core performance tests, 147
+  Contract tests, 265 Application tests, 15 bridge tests, and the serialized
+  Application architecture measurement. All 643 App tests then ran, with five
+  issues in three tests: a new Zotero sheet used raw typography/cadence values,
+  and one projection fixture still treated retired `tags` and `authors` YAML as
+  scanned fields. The implementation and fixture were corrected without
+  restoring generic YAML semantics; the complete 98-test Frontend architecture
+  suite and the exact projection test passed. Per the one-complete-gate rule,
+  later gate stages and the complete gate were not rerun. The focused Metadata
+  XCUITest built for testing, but execution stopped before app launch because
+  the configured disposable `Desktop/TestVaults` fixture was absent. This is
+  local automated implementation evidence, not packaged, visual,
+  assistive-technology, or researcher acceptance.
+
 - On 2026-08-23, exact-key Zotero retrieval and bound-item refresh passed 21
   focused Contract, Application, and App architecture tests. They cover no
   item-collection fallback for a missing complete key, distinct exact

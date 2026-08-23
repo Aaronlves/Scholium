@@ -55,20 +55,20 @@
         }
       }
     },
-    "settings.tab.propertyProfiles" : {
-      "comment" : "Settings tab for optional Agent-managed fields and About profiles.",
+    "settings.tab.metadata" : {
+      "comment" : "Settings tab for managed field definitions, Agent preferences, and About profiles.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Metadata Profiles"
+            "value" : "Metadata"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "元数据配置"
+            "value" : "元数据"
           }
         }
       }

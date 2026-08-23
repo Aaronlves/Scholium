@@ -45,16 +45,8 @@ enum NoteProfile: String, Codable, Hashable {
   case draftProject
   case generic
 
-  static func infer(
-    vaultRole: VaultRole,
-    frontmatter: [String: YAMLValue],
-    relativePath: String
-  ) -> Self {
-    let resolved = WorkflowProfileResolver.resolve(
-      vaultRole: vaultRole,
-      frontmatter: frontmatter,
-      relativePath: relativePath
-    )
+  static func infer(vaultRole: VaultRole) -> Self {
+    let resolved = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
     switch resolved {
     case .analysis: return .paperAnalysis
     case .topicMarkdown: return .topicKnowledge
@@ -179,11 +171,7 @@ extension WindowDocumentLocation {
   }
   var vaultRole: VaultRole { workspaceSnapshot?.vaultRole ?? .other }
   var profile: NoteProfile {
-    NoteProfile.infer(
-      vaultRole: vaultRole,
-      frontmatter: frontmatter,
-      relativePath: relativePath
-    )
+    NoteProfile.infer(vaultRole: vaultRole)
   }
   /// Malformed frontmatter remains readable as exact source. Structured
   /// properties use only Core's parsed projection and never reconstruct bytes.
@@ -203,13 +191,13 @@ extension WindowDocumentLocation {
       .flatMap { PropertyContractCatalog.creatorNames(from: $0) }?
       .map(\.displayName) ?? []
   }
-  var created: Date? { property(at: "created")?.appDateValue }
-  var modified: Date? { property(at: "updated")?.appDateValue }
-
-  /// Exact top-level YAML lookup. Custom keys may contain dots, so Properties
-  /// and About must not reinterpret their authored spelling as a key path.
-  func topLevelProperty(named key: String) -> YAMLValue? {
-    frontmatter[key]
+  /// Exact lookup for the two authored YAML keys Scholium recognizes. Unknown
+  /// YAML remains Source-only even when a caller supplies its exact spelling.
+  func authoredYAMLValue(named key: String) -> YAMLValue? {
+    guard PropertyContractCatalog.contract(for: key, profile: schemaProfile) != nil else {
+      return nil
+    }
+    return frontmatter[key]
   }
 
   var managedMetadataFields: [String: YAMLValue] {
@@ -221,6 +209,9 @@ extension WindowDocumentLocation {
   }
 
   func authoredTopLevelScalarToken(named key: String) -> String? {
+    guard PropertyContractCatalog.contract(for: key, profile: schemaProfile) != nil else {
+      return nil
+    }
     guard let frontmatter = document.rawFrontmatter else { return nil }
     return try? FrontmatterPatchPlanner.authoredScalarToken(
       frontmatter: frontmatter,
@@ -235,73 +226,45 @@ extension WindowDocumentLocation {
 
   var schemaProfile: SchemaProfileID {
     workspaceSnapshot?.schemaProfile
-      ?? WorkflowProfileResolver.resolve(
-        vaultRole: vaultRole,
-        frontmatter: frontmatter,
-        relativePath: relativePath
-      )
+      ?? WorkflowProfileResolver.resolve(vaultRole: vaultRole)
   }
 
-  func property(at keyPath: String) -> YAMLValue? {
+  func semanticProperty(
+    at keyPath: String,
+    catalog: NoteMetadataCatalog
+  ) -> YAMLValue? {
     let parts = keyPath.split(separator: ".", maxSplits: 1).map(String.init)
     guard let rootKey = parts.first else { return nil }
-    let contract = propertyContract(for: rootKey)
-    let canonicalKey = contract?.canonicalKey ?? rootKey
-    let root = frontmatter[canonicalKey]
+    let root: YAMLValue?
+    if PropertyContractCatalog.contract(for: rootKey, profile: schemaProfile) != nil {
+      root = frontmatter[rootKey]
+    } else if catalog.contract(for: rootKey, profile: schemaProfile) != nil {
+      root = managedMetadataFields[rootKey]
+    } else {
+      return nil
+    }
     guard let root else { return nil }
     guard parts.count == 2 else { return root }
     guard case .object(let values) = root else { return nil }
     return values[parts[1]]
   }
 
-  /// Prefer the note's resolved profile, then consult the complete Core
-  /// catalog for recognized canonical properties whose semantic home is
-  /// another current profile.
-  private func propertyContract(for key: String) -> PropertyContract? {
-    if let contract = PropertyContractCatalog.contract(for: key, profile: schemaProfile) {
-      return contract
-    }
-    for profile in SchemaProfileID.allCases {
-      if let contract = PropertyContractCatalog.contract(for: key, profile: profile) {
-        return contract
-      }
-    }
-    return nil
-  }
-
-  var filterableProperties: [String: [String]] {
+  func filterableProperties(
+    catalog: NoteMetadataCatalog
+  ) -> [String: [String]] {
     var result: [String: [String]] = [:]
-    let inactiveAnalysisKeys: Set<String>
-    switch schemaProfile {
-    case .analysis:
-      inactiveAnalysisKeys = ["relevance"]
-    default:
-      inactiveAnalysisKeys = []
+    for contract in PropertyContractCatalog.contracts(for: schemaProfile) {
+      guard let value = frontmatter[contract.canonicalKey] else { continue }
+      result[contract.canonicalKey] = value.appFilterValues
     }
-    for (key, value) in frontmatter where !inactiveAnalysisKeys.contains(key) {
-      if case .object(let nested) = value {
-        for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
-          result["\(key).\(path)"] = [nestedValue]
-        }
+    for contract in catalog.contracts(for: schemaProfile) {
+      let key = contract.canonicalKey
+      guard let value = managedMetadataFields[key] else { continue }
+      if contract.valueKind == .creatorList,
+         let creators = PropertyContractCatalog.creatorNames(from: value) {
+        result[key] = creators.map(\.displayName)
       } else {
         result[key] = value.appFilterValues
-      }
-    }
-    for (key, value) in managedMetadataFields {
-      if case .object(let nested) = value {
-        for (path, nestedValue) in YAMLValue.object(nested).flattenedScalarValues {
-          result["\(key).\(path)"] = [nestedValue]
-        }
-      } else {
-        result[key] = value.appFilterValues
-      }
-    }
-    let canonicalKeys = Set(SchemaProfileID.allCases.flatMap { profile in
-      PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
-    })
-    for canonicalKey in canonicalKeys where result[canonicalKey] == nil {
-      if let value = property(at: canonicalKey) {
-        result[canonicalKey] = value.appFilterValues
       }
     }
     return result

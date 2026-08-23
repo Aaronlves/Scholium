@@ -89,6 +89,50 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("A move resolves Topic aliases only through managed Metadata")
+    func moveUsesManagedTopicAlias() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topics = try #require(fixture.assignment.vault(for: .topicKnowledge))
+        let works = try #require(fixture.assignment.vault(for: .output))
+        let topicID = VaultQualifiedNoteID(
+            vaultID: topics.id,
+            relativePath: "Alias Target.md"
+        )
+        let referenceID = VaultQualifiedNoteID(
+            vaultID: works.id,
+            relativePath: "Alias Reference.md"
+        )
+        let topic = try await handle.documents.create(
+            topicID,
+            content: "---\naliases: [YAML Alias]\n---\n# Alias Target\n"
+        ).committedValue
+        _ = try await handle.documents.saveMetadata(
+            topicID,
+            fields: ["aliases": .array([.string("Managed Alias")])],
+            expectedRevision: nil
+        ).committedValue
+        _ = try await handle.documents.create(
+            referenceID,
+            content: "# Reference\n\n[[Managed Alias]] [[YAML Alias]]\n"
+        ).committedValue
+        _ = try await handle.refresh()
+
+        let commit = try await handle.documents.move(
+            topicID,
+            to: "Moved Alias Target.md",
+            expectedRevision: topic.fingerprint
+        ).committedValue
+        let reference = try await handle.documents.load(referenceID)
+
+        #expect(commit.rewrites.count == 1)
+        #expect(reference.rawContent.contains("[[Moved Alias Target]]"))
+        #expect(reference.rawContent.contains("[[YAML Alias]]"))
+        await runtime.shutdown()
+    }
+
     @Test("A captured Trash target rejects a reused path with another stable identity")
     func mutationTargetRejectsIdentityDrift() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -477,8 +521,11 @@ struct DocumentOperationsTests {
 
         let saved = try await handle.research.settings()
         var settings = saved.settings
+        settings.metadataFields[.paperAnalysis] = [
+            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+        ]
         settings.analysisAgentCreation.preferredFieldsBySourceType[.journalArticle] = [
-            "authors",
+            "authors", "argument_stage",
         ]
         let configured = try await handle.research.saveSettings(
             settings,
@@ -498,7 +545,14 @@ struct DocumentOperationsTests {
         )
         let metadata = try AnalysisCreationMetadata(
             sourceType: .journalArticle,
-            fields: [authors, title]
+            fields: [
+                authors,
+                title,
+                try CanonicalPropertyInput(
+                    key: "argument_stage",
+                    value: .string("reconstruction")
+                ),
+            ]
         )
         let reservedIdentity = UUID()
         let created = try await handle.documents.createManagedNote(
@@ -526,6 +580,8 @@ struct DocumentOperationsTests {
         #expect(created.metadata?.record.fields["type"] == .string("journal_article"))
         #expect(created.metadata?.record.fields["title"] == .string("Reasons and Persons"))
         #expect(created.metadata?.record.fields["authors"] == authors.value)
+        #expect(created.metadata?.record.fields["argument_stage"]
+            == .string("reconstruction"))
         #expect(created.document.body == "# Working body\n")
         let optional = try await handle.documents.createManagedNote(
             try ManagedNoteCreationRequest(
@@ -561,7 +617,7 @@ struct DocumentOperationsTests {
 
         #expect(configured.settings.analysisAgentCreation.preferredFields(
             for: .journalArticle
-        ) == ["authors"])
+        ) == ["authors", "argument_stage"])
         await runtime.shutdown()
     }
 
@@ -731,7 +787,7 @@ struct DocumentOperationsTests {
         #expect(await gate.waitUntilArrived())
 
         var changed = saved.settings
-        changed.properties[.topicKnowledge]?.visibleFields = []
+        changed.about[.topicKnowledge]?.visibleFields = []
         _ = try await handle.research.saveSettings(
             changed,
             expectedRevision: saved.revision

@@ -147,6 +147,7 @@ public enum ZoteroMetadataPlanner {
         bindingSnapshot: AnalysisZoteroBindingsSnapshot,
         metadataSnapshot: NoteMetadataSnapshot?,
         source: ZoteroExactItemRead,
+        metadataCatalog: NoteMetadataCatalog,
         mode: ZoteroMetadataFillMode = .linkAndFill
     ) throws -> ZoteroMetadataPlan {
         if let metadataSnapshot,
@@ -198,7 +199,7 @@ public enum ZoteroMetadataPlanner {
                 toFill.append(field)
             }
         }
-        guard NoteMetadataContractCatalog.validate(
+        guard metadataCatalog.validate(
             fields: resultFields,
             profile: .analysis
         ).isEmpty else {

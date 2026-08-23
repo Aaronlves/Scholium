@@ -66,9 +66,14 @@ public struct SearchPropertyProjection: Hashable, Sendable {
     public init(
         document: NoteDocument,
         profile: SchemaProfileID = .genericMarkdown,
-        metadata: NoteMetadataSnapshot? = nil
+        metadata: NoteMetadataSnapshot? = nil,
+        metadataCatalog: NoteMetadataCatalog = .builtIn
     ) {
-        let managedEntries = Self.managedEntries(metadata)
+        let managedEntries = Self.managedEntries(
+            metadata,
+            profile: profile,
+            catalog: metadataCatalog
+        )
         guard let frontmatter = document.rawFrontmatter,
               document.validationWarnings.isEmpty else {
             entries = managedEntries
@@ -157,10 +162,13 @@ public struct SearchPropertyProjection: Hashable, Sendable {
     }
 
     private static func managedEntries(
-        _ metadata: NoteMetadataSnapshot?
+        _ metadata: NoteMetadataSnapshot?,
+        profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
     ) -> [Entry] {
         guard let metadata else { return [] }
-        return metadata.record.fields.keys.sorted().compactMap { key in
+        let recognized = Set(catalog.contracts(for: profile).map(\.canonicalKey))
+        return metadata.record.fields.keys.filter(recognized.contains).sorted().compactMap { key in
             guard let value = metadata.record.fields[key] else { return nil }
             let kind: ValueKind
             let values: [String]

@@ -4,7 +4,6 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
     public let id: VaultQualifiedNoteID
     public let title: String?
     public let aliases: [String]
-    public let noteType: String?
     public let headings: [HeadingNode]
     public let blockAnchors: [String: SourceSpan]
 
@@ -12,14 +11,12 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         id: VaultQualifiedNoteID,
         title: String? = nil,
         aliases: [String] = [],
-        noteType: String? = nil,
         headings: [HeadingNode] = [],
         blockAnchors: [String: SourceSpan] = [:]
     ) {
         self.id = id
         self.title = title
         self.aliases = aliases
-        self.noteType = noteType
         self.headings = headings
         self.blockAnchors = blockAnchors
     }
@@ -39,10 +36,9 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
             metadata: metadata,
             semantic: semantic
         ).title
-        aliases = NoteMetadataContractCatalog.contract(for: "aliases", profile: profile) == nil
-            ? []
-            : metadata?.record.fields["aliases"]?.canonicalStringList ?? []
-        noteType = document.parsedFrontmatter["note_type"]?.nonemptyString
+        aliases = profile == .topicMarkdown
+            ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
+            : []
         headings = semantic.headings
         blockAnchors = Self.blockAnchors(in: document, blocks: semantic.blocks)
     }
@@ -66,14 +62,6 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
             if anchors[identifier] == nil { anchors[identifier] = block.span }
         }
         return anchors
-    }
-}
-
-private extension YAMLValue {
-    var nonemptyString: String? {
-        guard case .string(let value) = self else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

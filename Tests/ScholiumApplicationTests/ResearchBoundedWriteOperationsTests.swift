@@ -511,10 +511,13 @@ struct ResearchBoundedWriteOperationsTests {
             vaultID: fixture.topicID.vaultID,
             relativePath: fixture.topicID.relativePath
         ))
+        let topicMetadataBeforeExternalChange = try #require(
+            try await handle.services.controlStore.noteMetadata(noteID: topicIdentity.id)
+        )
         let externalMetadata = try await handle.services.controlStore.saveNoteMetadata(
             noteID: topicIdentity.id,
             fields: ["aliases": .array([.string("External change")])],
-            expectedRevision: nil
+            expectedRevision: topicMetadataBeforeExternalChange.revision
         )
         let writeIntent = try ResearchDocumentWriteIntent(
             requestID: UUID(),
@@ -1494,11 +1497,6 @@ struct ResearchBoundedWriteOperationsTests {
                 targets: [
                     try ResearchWriteSetTargetSelector(
                         role: .topic,
-                        relativePath: "Agency.md",
-                        operations: [.modifyMarkdown]
-                    ),
-                    try ResearchWriteSetTargetSelector(
-                        role: .topic,
                         relativePath: "Plain.md",
                         operations: [.modifyMarkdown]
                     ),
@@ -1513,13 +1511,13 @@ struct ResearchBoundedWriteOperationsTests {
             credential: connection.credential,
             run: connection.handoff.run,
             intent: try ResearchDocumentWriteIntent(
-                role: .topic,
-                relativePath: "Agency.md",
+                role: .analysis,
+                relativePath: "Analysis.md",
                 content: frontmatterLikeBody
             )
         )
         #expect(validWrite.state == .committed)
-        let valid = try await handle.documents.load(fixture.topicID)
+        let valid = try await handle.documents.load(fixture.analysisID)
         #expect(valid.frontmatterState == .valid)
         #expect(valid.parsedFrontmatter["secret"] == nil)
         #expect(valid.body == frontmatterLikeBody)

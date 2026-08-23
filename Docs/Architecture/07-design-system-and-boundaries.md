@@ -276,6 +276,13 @@ into `ScholiumHotkeyPreferences`, the versioned UserDefaults owner shared with
 `ScholiumCommands`; it owns no command execution, and Hotkeys never enter
 portable Triptych settings.
 
+The This Triptych Metadata detail consumes one candidate
+`NoteMetadataCatalog` derived from its settings draft. Its field-definition,
+Agent-preference, and About sections mutate three separate subvalues and save
+only through the existing exact-revision Settings transaction. The inline Add
+Field form owns only a key and supported simple value kind; it has no source,
+record, About, Agent, Zotero, or body mutation authority.
+
 `ScholiumGrid.ResearchSheet` owns the common editorial rhythm for research-
 facing sheet content: a 4pt title/detail gap, 16pt body-section cadence, 8pt
 footer-control gap, and a bounded status inset. `ScholiumMetrics.ResearchSheet`

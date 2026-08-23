@@ -27,7 +27,7 @@ public struct TriptychManifest: Codable, Hashable, Sendable {
     }
 }
 
-public struct VaultPropertiesConfiguration: Codable, Hashable, Sendable {
+public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
     /// Optional Scholium-managed fields shown by About, in display order.
     /// Authored `summary` and `keywords` have a fixed presentation contract
     /// and are deliberately not configurable here.
@@ -141,29 +141,37 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
 
     public let schemaVersion: Int
-    public var properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
-        didSet { properties = Self.completeProperties(properties) }
+    /// Append-only global managed-field definitions, independently scoped to
+    /// Analysis, Topic, and Work. Adding a definition changes no Note value.
+    public var metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] {
+        didSet { metadataFields = Self.completeMetadataFields(metadataFields) }
+    }
+    public var about: [WorkspaceVaultSlot: VaultAboutConfiguration] {
+        didSet { about = Self.completeAbout(about) }
     }
     public var analysisAgentCreation: AnalysisAgentCreationConfiguration
     public var attentionDismissalDays: Int
 
     public init(
-        properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = Self.defaultProperties,
+        metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = Self.defaultMetadataFields,
+        about: [WorkspaceVaultSlot: VaultAboutConfiguration] = Self.defaultAbout,
         analysisAgentCreation: AnalysisAgentCreationConfiguration = .init(),
         attentionDismissalDays: Int = 7
     ) {
         schemaVersion = Self.currentSchemaVersion
-        self.properties = Self.completeProperties(properties)
+        self.metadataFields = Self.completeMetadataFields(metadataFields)
+        self.about = Self.completeAbout(about)
         self.analysisAgentCreation = analysisAgentCreation
         self.attentionDismissalDays = max(1, attentionDismissalDays)
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
-        case properties
+        case metadataFields
+        case about
         case analysisAgentCreation
         case attentionDismissalDays
     }
@@ -178,19 +186,25 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
                 debugDescription: "Unsupported Triptych settings schema \(schemaVersion)."
             )
         }
-        let properties = try container.decode(
-            [WorkspaceVaultSlot: VaultPropertiesConfiguration].self,
-            forKey: .properties
+        let metadataFields = try container.decode(
+            [WorkspaceVaultSlot: [MetadataFieldDefinition]].self,
+            forKey: .metadataFields
         )
-        guard Set(properties.keys) == Set(WorkspaceVaultSlot.allCases) else {
+        let about = try container.decode(
+            [WorkspaceVaultSlot: VaultAboutConfiguration].self,
+            forKey: .about
+        )
+        guard Set(metadataFields.keys) == Set(WorkspaceVaultSlot.allCases),
+              Set(about.keys) == Set(WorkspaceVaultSlot.allCases) else {
             throw DecodingError.dataCorruptedError(
-                forKey: .properties,
+                forKey: .metadataFields,
                 in: container,
-                debugDescription: "Metadata Profile settings must contain exactly all Triptych roles."
+                debugDescription: "Metadata settings must contain exactly all Triptych roles."
             )
         }
         self.schemaVersion = schemaVersion
-        self.properties = properties
+        self.metadataFields = metadataFields
+        self.about = about
         analysisAgentCreation = try container.decode(
             AnalysisAgentCreationConfiguration.self,
             forKey: .analysisAgentCreation
@@ -204,30 +218,47 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
-        try container.encode(properties, forKey: .properties)
+        try container.encode(metadataFields, forKey: .metadataFields)
+        try container.encode(about, forKey: .about)
         try container.encode(analysisAgentCreation, forKey: .analysisAgentCreation)
         try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
     }
 
-    public static let defaultProperties: [WorkspaceVaultSlot: VaultPropertiesConfiguration] = [
-        .paperAnalysis: VaultPropertiesConfiguration(
+    public static let defaultMetadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = [
+        .paperAnalysis: [],
+        .topicKnowledge: [],
+        .output: [],
+    ]
+
+    public static let defaultAbout: [WorkspaceVaultSlot: VaultAboutConfiguration] = [
+        .paperAnalysis: VaultAboutConfiguration(
             visibleFields: [
                 "type", "authors", "publication_date",
             ]
         ),
-        .topicKnowledge: VaultPropertiesConfiguration(
+        .topicKnowledge: VaultAboutConfiguration(
             visibleFields: ["aliases"]
         ),
-        .output: VaultPropertiesConfiguration(
+        .output: VaultAboutConfiguration(
             visibleFields: ["work_type", "coauthors"]
         ),
     ]
 
-    private static func completeProperties(
-        _ properties: [WorkspaceVaultSlot: VaultPropertiesConfiguration]
-    ) -> [WorkspaceVaultSlot: VaultPropertiesConfiguration] {
-        var result = defaultProperties
-        for (slot, configuration) in properties {
+    private static func completeMetadataFields(
+        _ fields: [WorkspaceVaultSlot: [MetadataFieldDefinition]]
+    ) -> [WorkspaceVaultSlot: [MetadataFieldDefinition]] {
+        var result = defaultMetadataFields
+        for (slot, definitions) in fields {
+            result[slot] = definitions
+        }
+        return result
+    }
+
+    private static func completeAbout(
+        _ about: [WorkspaceVaultSlot: VaultAboutConfiguration]
+    ) -> [WorkspaceVaultSlot: VaultAboutConfiguration] {
+        var result = defaultAbout
+        for (slot, configuration) in about {
             result[slot] = configuration
         }
         return result

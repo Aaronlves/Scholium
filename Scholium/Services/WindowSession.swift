@@ -722,20 +722,13 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             settingsRevision = nil
             portableSettingsState = .corrupted
         }
-        var propertyKeys: [WorkspaceVaultSlot: Set<String>] = [:]
-        for vault in try await handle.documents.snapshot() {
-            propertyKeys[vault.slot] = Set(
-                vault.documents.flatMap { $0.document.parsedFrontmatter.keys }
-            )
-        }
         return WorkspaceSettingsSnapshot(
             registeredVaults: vaults,
             registeredTriptychs: triptychs,
             activeTriptychID: handle.id,
             triptychSettings: triptychSettings,
             settingsRevision: settingsRevision,
-            portableSettingsState: portableSettingsState,
-            propertyKeysBySlot: propertyKeys
+            portableSettingsState: portableSettingsState
         )
     }
 

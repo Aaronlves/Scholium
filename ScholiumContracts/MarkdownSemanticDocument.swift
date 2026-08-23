@@ -454,7 +454,7 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
 
 public enum MarkdownSemanticParser {
     public static func parse(_ document: NoteDocument) -> MarkdownSemanticDocument {
-        let diagnosesLegacyRelationArrows = document.parsedFrontmatter["project_role"]?.displayScalar != "template"
+        let diagnosesLegacyRelationArrows = true
         let sourceMapper = SemanticSourceMapper(document.rawContent)
         let bodyOffset = sourceMapper.utf16Offset(forUTF8Offset: document.bodyByteRange.lowerBound) ?? 0
         let bodyMapper = SemanticSourceMapper(document.body)

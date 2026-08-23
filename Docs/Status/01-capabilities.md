@@ -38,13 +38,19 @@
 - Managed New Note always writes `summary: null` then `keywords: []` in one
   fixed authored-YAML scaffold. Typed GUI/CLI/Agent creation may populate those
   values; adding Metadata never changes the YAML envelope.
-- Portable Metadata Profile settings own each role's optional managed About
-  fields plus per-source-type Analysis Agent preferences. Every selected field
-  remains optional. One strict candidate validation and exact settings
+- Portable Metadata settings own append-only custom field definitions for
+  Analyses, Topics, and Works, each with only a stable key and simple value
+  shape. The current workspace-scoped resolved catalog combines those
+  definitions with built-ins and governs Metadata validation, Search, Library
+  filters, About, Complete Metadata, and Agent field plans. About visibility
+  and per-source-type Analysis Agent preferences are separate selections;
+  definitions do not select either one and every field remains optional. One
+  strict candidate validation and exact settings
   target identity plus revision guard the atomic save; uncertain or
   committed-with-refresh-warning outcomes are authoritatively reconciled.
-  Unavailable or invalid settings remain nonauthorizing for preferences and
-  About, but fixed managed creation does not consume them as authority.
+  Unavailable or invalid settings remain nonauthorizing for custom fields,
+  preferences, and About, but fixed managed creation does not consume them as
+  authority.
 - Complete Metadata reads and compare-and-swap edits one identity-keyed
   `.scholium/note-metadata/v1/<uuid>.json` record, offers only role-valid
   managed fields, supports structured CreatorLists and date text, and leaves
@@ -105,6 +111,9 @@
   absent from that projection. Research Context identifies the current Note
   revision's writer as unknown unless a separate existing operation or Record
   owner proves an actor; it does not infer attribution or keep writer history.
+- Unknown valid YAML remains exact authored Source but contributes no Search
+  field, Library filter, Link/Relation behavior, Agent context, identity,
+  workflow role, title, alias, or other Scholium semantic projection.
 - One graph owner resolves neutral, support, opposition, and undirected
   incompatibility relations. Neutral links and transitive paths remain
   Connections rather than philosophical evidence.

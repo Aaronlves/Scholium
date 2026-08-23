@@ -310,39 +310,55 @@ and it never reconstructs or rewrites source. A missing record means no managed
 values. Damaged, future, orphaned, wrong-role, or concurrently changed records
 fail closed and retain their exact bytes for recovery.
 
-Analysis uses the citation-ready managed catalog and source-type profiles in
+Analysis uses the citation-ready built-in catalog and source-type profiles in
 Appendix A. It uses string `publication_date`, never numeric `year`; publication
 state belongs to `publication_status`. Creator fields use ordered nonempty
-CreatorLists. Topic manages `aliases`; Work manages `work_type` and
-`coauthors`. Scholium validates value shapes and structural safety but never
-verifies or normalizes bibliographic truth, identifiers, URLs, language, dates,
-names, volume/issue/pages, publisher data, or philosophical content.
+CreatorLists. Topic manages built-in `aliases`; Work manages built-in
+`work_type` and `coauthors`. In addition, the researcher may append global
+managed-field definitions independently for Analysis, Topic, and Work in This
+Triptych Settings. A definition contains only one stable key and one supported
+simple value kind. It creates no value, placeholder, default, requiredness,
+body section, authored YAML, About visibility, Agent preference, or integration
+mapping. An Analysis custom field applies to every Analysis source type.
+
+The resolved role catalog is the built-in catalog followed by that role's
+researcher-defined fields. It is one workspace-scoped immutable contract used
+for Metadata validation, editing, Search, Library filters, About selection, and
+Agent field plans. Current Settings permits appending definitions but not
+renaming or removing them, so a stored value cannot silently lose its schema.
+Scholium validates value shapes and structural safety but never verifies or
+normalizes bibliographic truth, identifiers, URLs, language, dates, names,
+volume/issue/pages, publisher data, or philosophical content.
 
 Analysis managed `title` resolves display identity before the first H1 and
 filename. Topic and Work resolve first H1, then filename. YAML `title` never
 resolves identity. Rename never synchronizes managed title or H1. One resolver
 supplies Workspace, Search, Link Graph, and Research Actions.
 
-Supported, applicable, recommended, Agent-preferred, present, and About-visible
-are separate states. Their owners are the managed catalog, Analysis source-type
-profile, that profile's recommendation order, Triptych Agent-creation settings,
-the identity-keyed record, and the About profile. New Note YAML and Zotero
-binding are separate contracts and are never inferred from managed metadata.
+Defined, applicable, recommended, Agent-preferred, present, and About-visible
+are separate states. Their owners are the resolved managed catalog, Analysis
+source-type profile, that profile's recommendation order, Triptych Agent-
+creation settings, the identity-keyed record, and the About profile. A custom
+Analysis definition is globally applicable but never automatically recommended
+or Agent-preferred. New Note YAML and Zotero binding are separate contracts and
+are never inferred from managed metadata.
 Identity, fingerprints, provenance, bindings, timestamps, permissions, and app
 facts are not researcher-managed fields.
 
-Each Triptych role stores an independent About order over optional managed
-fields. Authored `summary` and `keywords` have fixed About placement and are not
-Settings choices. Analysis additionally stores per-source-type managed fields
-to highlight to an Agent; every highlighted field remains optional and omission
-never blocks creation. Settings uses one explicit schema envelope and
+Each Triptych role stores its field definitions and independent About order as
+separate values. Authored `summary` and `keywords` have fixed About placement
+and are not Settings choices. Analysis additionally stores per-source-type
+managed fields to highlight to an Agent; every highlighted field remains
+optional and omission never blocks creation. Adding a definition does not add
+it to About or any Agent preference. Settings uses one explicit schema envelope and
 exact-byte `SettingsRevision`; save is an expected-revision atomic transaction
 with readback. Old, future, damaged, conflicting, and
 current-schema-needs-review states remain distinct and never fall back to
 overwriting defaults.
 
 The **Metadata** sheet edits only the current Note's Scholium-managed record.
-It offers applicable fields on demand, validates the complete candidate, and
+It offers fields from the current resolved role catalog on demand, validates
+the complete candidate, and
 saves against the exact loaded metadata revision. Creating the first field
 does not create YAML; editing metadata remains available when authored YAML is
 absent or malformed. A concurrent metadata change preserves the draft and

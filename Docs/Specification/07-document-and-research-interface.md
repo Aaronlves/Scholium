@@ -157,17 +157,16 @@ Source to Review.
 Source remains selectable only under **View > Document Mode**; `Command-R`
 performs the same switch. Controls remain borderless.
 No second identity row, Document Metadata, or More; complete
-Metadata remains in Research. Compact identity stays secondary and static;
-H1 stays primary without handoff or scroll animation.
+Metadata stays in Research. Compact identity is secondary; H1 remains primary.
 Document Text Size is per-window and source-neutral.
 
-The shared sheet edits role-valid Metadata at the record revision.
-Labels and values remain; definitions use Help. Its action slot reveals on
-hover/focus without reflow and stays accessible. Whitespace groups fields.
+The shared sheet edits Metadata from the current workspace catalog at the
+record revision. Labels and values remain; Help explains definitions. Actions
+reveal on hover/focus without reflow. Whitespace groups fields.
 Contributors retain numbered subfields and the neutral segmented kind selector.
 Save stays emphasized. The sheet never changes YAML; authored `summary` and
-`keywords` route to Source, and unknown YAML is not a managed field. About
-reuses the configured cross-authority order without merging ownership.
+`keywords` route to Source; unknown YAML is not a field. Definitions remain in
+This Triptych Settings. About reuses the configured cross-authority order.
 
 ## 18.5 Contextual research and Actions
 

@@ -597,6 +597,7 @@ struct SearchProtocolContractsTests {
             vaultName: "Analyses",
             vaultRole: .sourceCorpus,
             document: document,
+            metadataCatalog: .builtIn,
             semantic: semantic,
             cachedSourceProjection: cached,
             hasBrokenLink: true

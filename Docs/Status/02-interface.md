@@ -165,7 +165,7 @@
 ## Appearance, adaptation, and localization
 
 - Settings now uses one searchable grouped sidebar: Application contains
-  Triptychs, Appearance, and Hotkeys; This Triptych contains Metadata Profiles
+  Triptychs, Appearance, and Hotkeys; This Triptych contains Metadata
   and Attention; Research Guidance contains Methods & Practices, Action
   Profiles, Agent Access, and External Tools & Citations. Triptych selection
   remains inside the Triptychs detail, and search uses only static Settings
@@ -178,15 +178,17 @@
   details, Headings, Callouts, and CSS behind explicit disclosures, adds Revert
   to Saved and built-in-default restoration, and confirms before a profile
   switch can discard an unsaved draft.
-- Settings → Metadata Profiles uses the shared segmented role selector and the
-  ordered Agent-Created Analyses and About sections. Agent preferences remain
-  source-type-specific and explicitly optional; reset, clear, revert, reload after
+- Settings → Metadata uses the shared segmented role selector and three
+  deliberately independent sections: append-only Managed Fields for the
+  selected role, source-type-specific optional Agent preferences for Analyses,
+  and About visibility/order. Adding a field does not populate Notes or select
+  it in Agent or About settings; reset, clear, revert, reload after
   conflict, and atomic Save are separate actions. Current-schema repair keeps
   the decoded candidate and frozen exact-byte revision; unsupported or damaged
   schema states preserve their source and do not expose editable defaults.
   Invalid preferences identify their source type and field. Fixed New Note
   YAML is not configurable in Settings.
-- Settings Metadata Profiles and Complete Metadata disable their complete editing
+- Settings Metadata and Complete Metadata disable their complete editing
   surface while a save is pending, so no post-submit keystroke can be silently
   overwritten or discarded when the acknowledged result arrives.
 - System, Light, and Dark use one semantic resolver across native and document surfaces. Accent and

@@ -260,8 +260,13 @@ struct WindowWorkspaceProjectionControllerTests {
         )
         let replacement = fixture.note(
             path: "Active.md",
-            source: "---\ntags: [updated]\nauthors:\n  - family: Arendt\npublication_date: \"2024\"\n---\n# After\n",
-            stableID: fixture.activeNoteID
+            source: "---\nkeywords: [updated]\ntags: [ignored]\nauthors:\n  - family: Ignored\n---\n# After\n",
+            stableID: fixture.activeNoteID,
+            metadataFields: [
+                "authors": .array([.object([
+                    "family": .string("Arendt"),
+                ])]),
+            ]
         )
 
         let vault = controller.recordCommittedNote(
@@ -740,9 +745,17 @@ struct WindowWorkspaceProjectionControllerTests {
         func note(
             path: String,
             source: String,
-            stableID: UUID
+            stableID: UUID,
+            metadataFields: [String: YAMLValue]? = nil
         ) -> WorkspaceNoteSnapshot {
             let document = NoteDocument(relativePath: path, rawContent: source)
+            let metadata = metadataFields.map {
+                let record = NoteMetadataRecord(noteID: stableID, fields: $0)
+                return NoteMetadataSnapshot(
+                    record: record,
+                    revision: DocumentFingerprint(content: String(describing: $0))
+                )
+            }
             return WorkspaceNoteSnapshot(
                 id: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
                 vaultRole: vault.role,
@@ -758,7 +771,8 @@ struct WindowWorkspaceProjectionControllerTests {
                     outgoing: 0,
                     broken: 0,
                     ambiguous: 0
-                )
+                ),
+                metadata: metadata
             )
         }
     }

@@ -490,7 +490,7 @@ public actor TriptychControlStore {
         }
         _ = try identitySnapshot()
         _ = try zoteroBindings()
-        _ = try noteMetadataRecords()
+        _ = try noteMetadataRecords(catalog: metadataCatalog())
         return manifest
     }
 
@@ -531,7 +531,7 @@ public actor TriptychControlStore {
             _ = try zoteroBindings()
         }
         if fileManager.fileExists(atPath: noteMetadataCatalogURL.path) {
-            _ = try noteMetadataRecords()
+            _ = try noteMetadataRecords(catalog: metadataCatalog())
         }
     }
 
@@ -560,6 +560,24 @@ public actor TriptychControlStore {
         return decodeSettingsLoadState(data)
     }
 
+    /// Resolves the one workspace Metadata catalog. A current-schema settings
+    /// candidate may still authorize its independently valid definitions while
+    /// About or Agent preferences await repair; unsupported envelopes expose
+    /// built-ins only and never invent custom definitions.
+    public func metadataCatalog() throws -> NoteMetadataCatalog {
+        switch try settingsLoadState() {
+        case .current(let snapshot):
+            return NoteMetadataCatalog(settings: snapshot.settings)
+        case .needsReview(let settings, _, _):
+            try TriptychSettingsValidator.validateMetadataFieldDefinitions(
+                settings.metadataFields
+            )
+            return NoteMetadataCatalog(settings: settings)
+        case .missing, .oldSchema, .futureSchema, .corrupted:
+            return .builtIn
+        }
+    }
+
     @discardableResult
     public func saveSettings(
         _ settings: TriptychSettings,
@@ -577,6 +595,20 @@ public actor TriptychControlStore {
         let current = try Data(contentsOf: settingsURL, options: [.mappedIfSafe])
         guard DocumentFingerprint(data: current) == expectedRevision.fingerprint else {
             throw TriptychControlError.settingsRevisionConflict
+        }
+        guard let currentSettings = try? decoder().decode(
+            TriptychSettings.self,
+            from: current
+        ) else {
+            throw TriptychControlError.settingsCorrupted
+        }
+        do {
+            try TriptychSettingsValidator.validateTransition(
+                from: currentSettings,
+                to: settings
+            )
+        } catch {
+            throw TriptychControlError.settingsNeedsReview(error.localizedDescription)
         }
         let candidate = try encodedData(settings)
         let readback = try replaceExactFile(
@@ -737,7 +769,9 @@ public actor TriptychControlStore {
     /// Reads every portable Note metadata file as an immutable snapshot. A
     /// damaged or unexpectedly named record invalidates the complete catalog;
     /// callers must never publish a silently incomplete metadata projection.
-    public func noteMetadataRecords() throws -> [NoteMetadataSnapshot] {
+    public func noteMetadataRecords(
+        catalog: NoteMetadataCatalog
+    ) throws -> [NoteMetadataSnapshot] {
         guard fileManager.fileExists(atPath: noteMetadataCatalogURL.path) else {
             return []
         }
@@ -772,7 +806,8 @@ public actor TriptychControlStore {
             try validateNoteMetadataRecord(
                 record,
                 identities: identities,
-                profilesByVaultID: profilesByVaultID
+                profilesByVaultID: profilesByVaultID,
+                catalog: catalog
             )
             snapshots.append(NoteMetadataSnapshot(
                 record: record,
@@ -809,7 +844,8 @@ public actor TriptychControlStore {
         try validateNoteMetadataRecord(
             record,
             identities: identities,
-            profilesByVaultID: try noteMetadataProfilesByVaultID()
+            profilesByVaultID: try noteMetadataProfilesByVaultID(),
+            catalog: try metadataCatalog()
         )
         return NoteMetadataSnapshot(
             record: record,
@@ -832,8 +868,9 @@ public actor TriptychControlStore {
                 throw NoteMetadataError.identityUnavailable(noteID)
             }
             let profilesByVaultID = try noteMetadataProfilesByVaultID()
+            let catalog = try metadataCatalog()
             guard let profile = profilesByVaultID[identity.vaultID],
-                  NoteMetadataContractCatalog.validate(
+                  catalog.validate(
                     fields: fields,
                     profile: profile
                   ).isEmpty else {
@@ -1868,11 +1905,12 @@ public actor TriptychControlStore {
     private func validateNoteMetadataRecord(
         _ record: NoteMetadataRecord,
         identities: [UUID: NoteIdentityRecord],
-        profilesByVaultID: [UUID: SchemaProfileID]
+        profilesByVaultID: [UUID: SchemaProfileID],
+        catalog: NoteMetadataCatalog
     ) throws {
         guard let identity = identities[record.noteID],
               let profile = profilesByVaultID[identity.vaultID],
-              NoteMetadataContractCatalog.validate(
+              catalog.validate(
                 fields: record.fields,
                 profile: profile
               ).isEmpty else {

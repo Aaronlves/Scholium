@@ -10,45 +10,57 @@ enum WorkspaceAboutConfiguration {
         settings: TriptychSettings,
         slot: WorkspaceVaultSlot,
         isAuthoritative: Bool
-    ) -> VaultPropertiesConfiguration {
+    ) -> VaultAboutConfiguration {
         guard isAuthoritative else {
-            return VaultPropertiesConfiguration(visibleFields: [])
+            return VaultAboutConfiguration(visibleFields: [])
         }
-        return settings.properties[slot]
-            ?? TriptychSettings.defaultProperties[slot]
-            ?? VaultPropertiesConfiguration()
+        return settings.about[slot]
+            ?? TriptychSettings.defaultAbout[slot]
+            ?? VaultAboutConfiguration()
     }
 }
 
-enum PropertiesSettingsCandidateBuilder {
+enum MetadataSettingsCandidateBuilder {
     static func build(
         from base: TriptychSettings,
-        configurations: [WorkspaceVaultSlot: VaultPropertiesConfiguration],
+        metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]],
+        aboutConfigurations: [WorkspaceVaultSlot: VaultAboutConfiguration],
         agentCreation: AnalysisAgentCreationConfiguration
     ) -> TriptychSettings {
         var settings = base
-        var candidates = configurations
+        settings.metadataFields = metadataFields
+        let catalog = NoteMetadataCatalog(settings: settings)
+        var candidates = aboutConfigurations
         for slot in WorkspaceVaultSlot.allCases {
             var configuration = candidates[slot]
-                ?? TriptychSettings.defaultProperties[slot]
-                ?? VaultPropertiesConfiguration()
+                ?? TriptychSettings.defaultAbout[slot]
+                ?? VaultAboutConfiguration()
             let profile: SchemaProfileID = switch slot {
             case .paperAnalysis: .analysis
             case .topicKnowledge: .topicMarkdown
             case .output: .draftProject
             }
             configuration.visibleFields.removeAll {
-                !AboutProfileCatalog.allowsOptionalField($0, profile: profile)
+                !AboutProfileCatalog.allowsOptionalField(
+                    $0,
+                    profile: profile,
+                    catalog: catalog
+                )
             }
             configuration.visibleFields = AboutProfileCatalog.groupedEntries(
                 for: profile,
-                visibleFields: configuration.visibleFields
+                visibleFields: configuration.visibleFields,
+                catalog: catalog
             ).flatMap(\.keys).filter {
-                AboutProfileCatalog.allowsOptionalField($0, profile: profile)
+                AboutProfileCatalog.allowsOptionalField(
+                    $0,
+                    profile: profile,
+                    catalog: catalog
+                )
             }
             candidates[slot] = configuration
         }
-        settings.properties = candidates
+        settings.about = candidates
         settings.analysisAgentCreation = agentCreation
         return settings
     }
@@ -59,14 +71,19 @@ enum PropertiesSettingsCandidateBuilder {
 enum AboutProfileCatalog {
     static func groupedEntries(
         for profile: SchemaProfileID,
-        visibleFields: [String]?
+        visibleFields: [String]?,
+        catalog: NoteMetadataCatalog
     ) -> [AboutProfileGroup] {
         let managedFields = (visibleFields ?? defaultVisibleFields(for: profile)).filter {
-            allowsOptionalField($0, profile: profile)
+            allowsOptionalField($0, profile: profile, catalog: catalog)
         }
         let fields = managedFields + fixedAuthoredFields(for: profile)
         let grouped = Dictionary(grouping: fields) { key in
-            PropertyPresentationCatalog.presentation(for: key, in: profile)?.group ?? .other
+            PropertyPresentationCatalog.presentation(
+                for: key,
+                in: profile,
+                catalog: catalog
+            )?.group ?? .customMetadata
         }
         return PropertyPresentationCatalog.orderedGroups(for: profile).compactMap { group in
             guard let keys = grouped[group], !keys.isEmpty else { return nil }
@@ -74,12 +91,20 @@ enum AboutProfileCatalog {
         }.sorted { $0.group.order < $1.group.order }
     }
 
-    static func allowsOptionalField(_ key: String, profile: SchemaProfileID) -> Bool {
+    static func allowsOptionalField(
+        _ key: String,
+        profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> Bool {
         guard key != "title",
-              PropertyPresentationCatalog.presentation(for: key, in: profile) != nil else {
+              PropertyPresentationCatalog.presentation(
+                for: key,
+                in: profile,
+                catalog: catalog
+              ) != nil else {
             return false
         }
-        return NoteMetadataContractCatalog.contract(for: key, profile: profile) != nil
+        return catalog.contract(for: key, profile: profile) != nil
     }
 
     private static func fixedAuthoredFields(for profile: SchemaProfileID) -> [String] {
@@ -93,6 +118,6 @@ enum AboutProfileCatalog {
         case .draftProject: .output
         case .genericMarkdown: nil
         }
-        return slot.flatMap { TriptychSettings.defaultProperties[$0]?.visibleFields } ?? []
+        return slot.flatMap { TriptychSettings.defaultAbout[$0]?.visibleFields } ?? []
     }
 }

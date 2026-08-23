@@ -8,7 +8,7 @@ import Testing
 struct WorkspaceSettingsArchitectureTests {
     @Test("Settings model has no window or document session state")
     func constructionIsWindowIndependent() async {
-        let model = WorkspaceSettingsModel(selectedPane: .propertyProfiles)
+        let model = WorkspaceSettingsModel(selectedPane: .metadata)
         let storedTypeNames = Mirror(reflecting: model).children.map {
             String(reflecting: type(of: $0.value))
         }
@@ -16,8 +16,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(storedTypeNames.allSatisfy { !$0.contains("WindowModel") })
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentController") })
         #expect(storedTypeNames.allSatisfy { !$0.contains("DocumentSession") })
-        #expect(model.selectedPane == .propertyProfiles)
-        #expect(model.snapshot.propertyKeysBySlot.isEmpty)
+        #expect(model.selectedPane == .metadata)
+        #expect(model.snapshot.triptychSettings.metadataFields.values.allSatisfy { $0.isEmpty })
         #expect(!model.hasWritableTriptychSettings)
 
         model.replaceSnapshot(WorkspaceSettingsSnapshot(
@@ -33,7 +33,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(
             WorkspaceSettingsPane.allCases.map(\.rawValue) == [
                 "triptychs",
-                "property-profiles",
+                "metadata",
                 "appearance",
                 "hotkeys",
                 "attention",
@@ -93,7 +93,7 @@ struct WorkspaceSettingsArchitectureTests {
             "case triptychs",
             "case appearance",
             "case hotkeys",
-            "case propertyProfiles",
+            "case metadata",
             "case attention",
             "case methodsPractices",
             "case actionProfiles",
@@ -153,7 +153,7 @@ struct WorkspaceSettingsArchitectureTests {
         ]
         #expect(triptychsSource.contains("scholium.settings.triptychScope"))
         #expect(source.contains("ScholiumL10n.Settings.triptychs"))
-        #expect(source.contains("ScholiumL10n.Settings.propertyProfiles"))
+        #expect(source.contains("ScholiumL10n.Settings.metadata"))
         #expect(source.contains("ScholiumL10n.Settings.appearance"))
         #expect(source.contains("ScholiumL10n.Settings.attention"))
         #expect(source.contains("Reminder Timing for This Triptych"))
@@ -473,23 +473,24 @@ struct WorkspaceSettingsArchitectureTests {
     func repairableCandidateDiffersFromRawSettings() throws {
         let raw = Data(#"{"visibleFields":[" authors ","authors"]}"#.utf8)
         let decoded = try JSONDecoder().decode(
-            VaultPropertiesConfiguration.self,
+            VaultAboutConfiguration.self,
             from: raw
         )
         var saved = TriptychSettings()
-        saved.properties[.paperAnalysis] = decoded
-        let candidate = PropertiesSettingsCandidateBuilder.build(
+        saved.about[.paperAnalysis] = decoded
+        let candidate = MetadataSettingsCandidateBuilder.build(
             from: saved,
-            configurations: saved.properties,
+            metadataFields: saved.metadataFields,
+            aboutConfigurations: saved.about,
             agentCreation: saved.analysisAgentCreation
         )
 
         #expect(candidate != saved)
-        #expect(candidate.properties[.paperAnalysis]?.visibleFields == ["authors"])
+        #expect(candidate.about[.paperAnalysis]?.visibleFields == ["authors"])
         try TriptychSettingsValidator.validate(candidate)
     }
 
-    @Test("Metadata Profiles exposes only optional machine fields and About order")
+    @Test("Metadata Settings separates definitions, Agent preferences, and About order")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -501,14 +502,14 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let start = try #require(source.range(of: "private struct MetadataProfilesSettingsView"))
+        let start = try #require(source.range(of: "private struct MetadataSettingsView"))
         let end = try #require(source.range(
             of: "struct AgentCLISettingsView",
             range: start.upperBound..<source.endIndex
         ))
         let properties = String(source[start.lowerBound..<end.lowerBound])
 
-        for section in ["Agent-Created Analyses", "settingsSectionTitle(\"About\")"] {
+        for section in ["Managed Fields", "Agent-Created Analyses", "settingsSectionTitle(\"About\")"] {
             #expect(properties.contains(section))
         }
         #expect(properties.contains("Every field is optional"))
@@ -540,7 +541,7 @@ struct WorkspaceSettingsArchitectureTests {
             .deletingLastPathComponent()
         let source = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+                "Scholium/Views/Metadata/MetadataEditorView.swift"
             ),
             encoding: .utf8
         )

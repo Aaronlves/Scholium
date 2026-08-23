@@ -80,6 +80,7 @@ public struct SearchSourceSnapshot: Codable, Hashable, Sendable {
     public let source: String
     public let editorRevision: UInt64
     public let metadata: NoteMetadataSnapshot?
+    public let metadataCatalog: NoteMetadataCatalog
 
     public init(
         noteID: VaultQualifiedNoteID,
@@ -87,7 +88,8 @@ public struct SearchSourceSnapshot: Codable, Hashable, Sendable {
         editorSessionID: UUID,
         source: String,
         editorRevision: UInt64,
-        metadata: NoteMetadataSnapshot? = nil
+        metadata: NoteMetadataSnapshot? = nil,
+        metadataCatalog: NoteMetadataCatalog = .builtIn
     ) {
         self.noteID = noteID
         self.stableNoteID = stableNoteID
@@ -95,6 +97,7 @@ public struct SearchSourceSnapshot: Codable, Hashable, Sendable {
         self.source = source
         self.editorRevision = editorRevision
         self.metadata = metadata
+        self.metadataCatalog = metadataCatalog
     }
 
     public var fingerprint: DocumentFingerprint {

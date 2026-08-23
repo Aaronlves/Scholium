@@ -447,11 +447,7 @@ public enum WorkspaceCatalogBuilder {
                     return LinkCatalogNote(
                         vaultID: vault.id,
                         document: document,
-                        profile: WorkflowProfileResolver.resolve(
-                            vaultRole: vault.role,
-                            frontmatter: document.parsedFrontmatter,
-                            relativePath: document.relativePath
-                        ),
+                        profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
                         metadata: stableNoteIDs[id].flatMap { noteMetadataByID[$0] },
                         semantic: resolvedSemanticDocuments[id]
                     )

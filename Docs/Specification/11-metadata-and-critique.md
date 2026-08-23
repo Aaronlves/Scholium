@@ -1,17 +1,21 @@
-# Specification: Metadata Profiles and Critique
+# Specification: Metadata and Critique
 
 [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Appendices A–B.
 
-## Appendix A. Default metadata profiles
+## Appendix A. Metadata catalogs and settings
 
 Scholium separates two researcher-owned authorities. Authored YAML recognizes
 only optional `summary` and `keywords`. Every other canonical structured value
-uses one identity-keyed Scholium Metadata record. The managed catalog defines
-shape and meaning; Analysis source-type profiles define applicability and
-recommendation order; About selects optional managed fields; fixed New Note
+uses one identity-keyed Scholium Metadata record. The built-in managed catalog
+defines stable product fields. Each Triptych may append independent Analysis,
+Topic, and Work definitions containing only a stable key plus a supported
+simple value kind. The workspace resolves those two sources into one role
+catalog. Analysis source-type profiles define applicability and recommendation
+order for built-ins; custom Analysis fields apply to every source type without
+becoming recommended. About selects optional managed fields; fixed New Note
 YAML owns only authored `summary` and `keywords`; Agent-preferred fields are
-optional guidance for typed Analysis creation. App facts and integrations belong to neither
-authority.
+optional guidance for typed Analysis creation. App facts and integrations
+belong to neither authority.
 
 ### Shared authored YAML
 
@@ -29,7 +33,7 @@ aliases, migration, or dual reads.
 
 ### Analyses
 
-All 52 Analysis managed fields are optional researcher-owned values. The Source
+All 52 built-in Analysis managed fields are optional researcher-owned values. The Source
 group contains choice `type`; text `title`, `short_title`, `original_title`,
 `reviewed_title`, `genre`, `medium`, `version`, and `language`; and CreatorList
 `authors`, `editors`, `translators`, `collection_editors`,
@@ -90,8 +94,8 @@ requirement.
 Default About order is Source `type`, `authors`; Publication
 `publication_date`; then Authored YAML `summary`, `keywords`. Managed `title`
 participates in Analysis identity and remains editable in Metadata but is not
-repeated in About. Applicable managed fields can be added on demand without
-creating or changing YAML.
+repeated in About. Applicable built-in and custom managed fields can be added
+to a Note on demand without creating or changing YAML.
 
 ### Topics
 
@@ -121,18 +125,24 @@ canonical meaning.
 
 ### Shared presentation and settings rules
 
-Group order is Analysis **Source → Publication → Access & Identifiers →
-Authored YAML**, Topic **Topic Description → Authored YAML**, and Work **Work
-Description → Authored YAML**. One catalog owns membership. Metadata and About
+Group order is Analysis **Source → Publication → Access & Identifiers → Custom
+Metadata → Authored YAML**, Topic **Topic Description → Custom Metadata →
+Authored YAML**, and Work **Work Description → Custom Metadata → Authored
+YAML**. One resolved workspace catalog owns membership. Metadata and About
 distinguish groups through whitespace while retaining group names for assistive
 technology instead of visible repeated headings. About shows only selected,
 nonempty values. Authored `keywords` render as neutral content capsules.
 
-`settings.json` stores the About profiles and Analysis Agent field preferences
-under one exact-byte revision and one atomic save. Every preference names a
-shape-known managed field applicable to its source type, but remains guidance:
+`settings.json` stores three independent values under one exact-byte revision
+and one atomic save: append-only managed-field definitions by role, About
+profiles by role, and Analysis Agent field preferences by source type. A custom
+definition uses a lowercase snake-case key and one of text, multiline text,
+text list, number, boolean, or source-safe date. It cannot shadow a built-in or
+authored-YAML key. Adding it changes no Note and does not select it elsewhere.
+Every preference names a shape-known managed field applicable to its source
+type, but remains guidance:
 an Agent may omit it without blocking creation or creating a placeholder.
-Restore About defaults does not alter Agent preferences. The fixed authored
+Restore About defaults does not alter definitions or Agent preferences. The fixed authored
 YAML scaffold is Application-owned creation policy, not Settings content;
 Settings cannot add, remove, reorder, or require `summary`, `keywords`, or any
 other authored field.

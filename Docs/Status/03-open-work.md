@@ -24,8 +24,9 @@
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.
 - Complete direct keyboard, VoiceOver, English and Simplified Chinese,
-  ordinary/minimum-width, and conflict acceptance for the Metadata Profiles
-  per-type optional Agent preferences, Complete Metadata chooser,
+  ordinary/minimum-width, and conflict acceptance for Metadata custom-field
+  definition, per-type optional Agent preferences, About selection/order,
+  append-only explanation, Complete Metadata chooser,
   CreatorList editor, first-record creation, removal/Undo, and Source routes for
   authored `summary` and `keywords`.
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
@@ -82,12 +83,13 @@
   in Verification and do not satisfy G7. Extend shared source-range fixtures
   before changing parser or syntax rules.
 - Repeat the direct-to-Edit QA journey with and without a `summary`/`keywords`
-  seed after the isolated fixture reaches a usable document surface. The
-  2026-08-23 attempt remained in bootstrap and therefore provides no current
-  interaction evidence for body focus, first-keystroke persistence, Metadata,
-  or source fidelity. Then measure command dispatch to acknowledged selection
-  and complete human-visible acceptance before describing the path as zero
-  latency.
+  value after the isolated fixture reaches a usable document surface. The
+  2026-08-23 custom-Metadata/fixed-YAML journey compiled, but its run stopped
+  before launch because the configured disposable `Desktop/TestVaults`
+  fixture was absent. It therefore provides no interaction evidence for body
+  focus, first-keystroke persistence, Settings, Complete Metadata, or source
+  fidelity. Then measure command dispatch to acknowledged selection and
+  complete human-visible acceptance before describing the path as zero latency.
 
 ## Search and performance
 

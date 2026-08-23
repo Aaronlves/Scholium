@@ -84,11 +84,10 @@ public struct ResearchAnalysisCreationFieldPlan: Codable, Hashable, Sendable {
         allowedValues: [String]? = nil,
         isPreferred: Bool
     ) throws {
-        guard let contract = NoteMetadataContractCatalog.contract(
-            for: key,
-            profile: .analysis
-        ), contract.valueKind == valueKind,
-              contract.allowedValues == allowedValues else {
+        guard !key.isEmpty,
+              key.utf8.count <= 64,
+              Set(allowedValues ?? []).count == (allowedValues?.count ?? 0),
+              (valueKind == .choice) == (allowedValues != nil) else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
         self.key = key
@@ -131,12 +130,9 @@ public struct ResearchAnalysisCreationSourcePlan: Codable, Hashable, Sendable {
         sourceType: AnalysisSourceType,
         fields: [ResearchAnalysisCreationFieldPlan]
     ) throws {
-        let applicable = Set(
-            AnalysisSourceTypeProfileCatalog.profile(for: sourceType).applicableFields
-        )
-        guard fields.count <= NoteMetadataContractCatalog.analysisCanonicalKeys.count,
+        guard fields.count <= 256,
               Set(fields.map(\.key)).count == fields.count,
-              fields.allSatisfy({ $0.key != "type" && applicable.contains($0.key) }) else {
+              fields.allSatisfy({ $0.key != "type" }) else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
         self.sourceType = sourceType

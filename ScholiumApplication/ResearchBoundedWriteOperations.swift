@@ -983,11 +983,13 @@ extension WorkspaceHandle {
             throw ResearchBoundedWriteSetError.invalidWrite
         }
 
+        let metadataCatalog = try await researchBoundedWriteDependencies.controlStore
+            .metadataCatalog()
         let currentMetadata = try await researchBoundedWriteDependencies.controlStore
             .noteMetadata(noteID: entry.noteID)
         var candidateFields = currentMetadata?.record.fields ?? [:]
         for input in intent.metadata { candidateFields[input.key] = input.value }
-        guard NoteMetadataContractCatalog.validate(
+        guard metadataCatalog.validate(
             fields: candidateFields,
             profile: Self.schemaProfile(for: entry.role)
         ).isEmpty else {
@@ -1793,6 +1795,8 @@ extension WorkspaceHandle {
         let settings = selectors.contains(where: { $0.operations == [.createNote] })
             ? try await researchBoundedWriteDependencies.controlStore.settings()
             : nil
+        let metadataCatalog = try await researchBoundedWriteDependencies.controlStore
+            .metadataCatalog()
         let zoteroBindings = selectors.contains(where: {
             $0.operations.contains(where: \.isZoteroBindingOperation)
         }) ? try await researchBoundedWriteDependencies.controlStore.zoteroBindings() : nil
@@ -1828,7 +1832,10 @@ extension WorkspaceHandle {
                     relativePath: selector.relativePath
                 )
                 let analysisCreationPlans = selector.role == .analysis
-                    ? try Self.analysisCreationPlans(settings: settings.settings)
+                    ? try Self.analysisCreationPlans(
+                        settings: settings.settings,
+                        catalog: metadataCatalog
+                    )
                     : []
                 candidates.append(try ResearchWriteSetCandidate(
                     handle: ResearchWriteTargetHandle(
@@ -1881,7 +1888,8 @@ extension WorkspaceHandle {
                     .sorted()
                 let metadataWritePlans = try Self.metadataWritePlans(
                     mergedKeys,
-                    role: selector.role
+                    role: selector.role,
+                    catalog: metadataCatalog
                 )
                 let metadataRevision = mergedOperations.contains(.modifyMetadata)
                     ? try await researchBoundedWriteDependencies.controlStore
@@ -1923,7 +1931,8 @@ extension WorkspaceHandle {
             }
             let metadataWritePlans = try Self.metadataWritePlans(
                 selector.metadataKeys,
-                role: selector.role
+                role: selector.role,
+                catalog: metadataCatalog
             )
             let metadataRevision = selector.operations.contains(.modifyMetadata)
                 ? try await researchBoundedWriteDependencies.controlStore
@@ -2363,20 +2372,17 @@ extension WorkspaceHandle {
     }
 
     private static func analysisCreationPlans(
-        settings: TriptychSettings
+        settings: TriptychSettings,
+        catalog: NoteMetadataCatalog
     ) throws -> [ResearchAnalysisCreationSourcePlan] {
         return try AnalysisSourceType.allCases.map { sourceType in
-            let profile = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
             let preferred = Set(
                 settings.analysisAgentCreation.preferredFields(for: sourceType)
             )
-            let fields = try profile.serializationFieldOrder.compactMap {
-                key -> ResearchAnalysisCreationFieldPlan? in
-                guard key != "type",
-                      let contract = NoteMetadataContractCatalog.contract(
-                        for: key,
-                        profile: .analysis
-                      ) else { return nil }
+            let fields = try catalog.analysisContracts(for: sourceType).compactMap {
+                contract -> ResearchAnalysisCreationFieldPlan? in
+                let key = contract.canonicalKey
+                guard key != "type" else { return nil }
                 return try ResearchAnalysisCreationFieldPlan(
                     key: key,
                     valueKind: contract.valueKind,
@@ -2393,12 +2399,13 @@ extension WorkspaceHandle {
 
     private static func metadataWritePlans(
         _ keys: [String],
-        role: ResearchActionTargetRole
+        role: ResearchActionTargetRole,
+        catalog: NoteMetadataCatalog
     ) throws -> [ResearchMetadataWriteFieldPlan] {
         guard !keys.isEmpty else { return [] }
         let profile = schemaProfile(for: role)
         return try keys.sorted().map { key in
-            guard let contract = NoteMetadataContractCatalog.contract(
+            guard let contract = catalog.contract(
                 for: key,
                 profile: profile
             ) else {

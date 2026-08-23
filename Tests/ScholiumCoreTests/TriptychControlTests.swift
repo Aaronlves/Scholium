@@ -31,7 +31,7 @@ struct TriptychControlTests {
             expectedRevision: nil
         )
         #expect(try await store.noteMetadata(noteID: identity.id) == first)
-        #expect(try await store.noteMetadataRecords() == [first])
+        #expect(try await store.noteMetadataRecords(catalog: .builtIn) == [first])
 
         await #expect(throws: NoteMetadataError.self) {
             try await store.saveNoteMetadata(
@@ -72,6 +72,55 @@ struct TriptychControlTests {
 
         try await store.removeNoteMetadata(second)
         #expect(try await store.noteMetadata(noteID: identity.id) == nil)
+    }
+
+    @Test("Saved custom definitions immediately govern Metadata records for their role")
+    func customMetadataDefinitionLifecycle() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let analysisVaultID = UUID()
+        let topicVaultID = UUID()
+        _ = try await store.bootstrap(vaultIDs: [
+            .paperAnalysis: analysisVaultID,
+            .topicKnowledge: topicVaultID,
+            .output: UUID(),
+        ])
+        let settingsSnapshot = try await store.settings()
+        var settings = settingsSnapshot.settings
+        settings.metadataFields[.paperAnalysis] = [
+            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+        ]
+        _ = try await store.saveSettings(
+            settings,
+            expectedRevision: settingsSnapshot.revision
+        )
+        let catalog = try await store.metadataCatalog()
+        #expect(catalog.contract(for: "argument_stage", profile: .analysis) != nil)
+
+        let analysis = try #require(try await store.identity(
+            forVaultID: analysisVaultID,
+            relativePath: "Argument.md",
+            fingerprint: DocumentFingerprint(content: "Argument")
+        ))
+        let saved = try await store.saveNoteMetadata(
+            noteID: analysis.id,
+            fields: ["argument_stage": .string("reply")],
+            expectedRevision: nil
+        )
+        #expect(saved.record.fields["argument_stage"] == .string("reply"))
+
+        let topic = try #require(try await store.identity(
+            forVaultID: topicVaultID,
+            relativePath: "Topic.md",
+            fingerprint: DocumentFingerprint(content: "Topic")
+        ))
+        await #expect(throws: NoteMetadataError.self) {
+            try await store.saveNoteMetadata(
+                noteID: topic.id,
+                fields: ["argument_stage": .string("wrong role")],
+                expectedRevision: nil
+            )
+        }
     }
 
     @Test("Portable attachment records retain only stable identity and typed location")
@@ -126,11 +175,12 @@ struct TriptychControlTests {
 
         #expect(Set(object.keys) == [
             "schemaVersion",
-            "properties",
+            "metadataFields",
+            "about",
             "analysisAgentCreation",
             "attentionDismissalDays",
         ])
-        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 6)
+        #expect((object["schemaVersion"] as? NSNumber)?.intValue == 7)
     }
 
     @Test("The isolated QA Settings fixture uses only the current schema")
@@ -140,7 +190,7 @@ struct TriptychControlTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let data = try Data(contentsOf: repositoryRoot.appendingPathComponent(
-            "Tools/Fixtures/qa-triptych-settings-v6.json"
+            "Tools/Fixtures/qa-triptych-settings-v7.json"
         ))
         let settings = try JSONDecoder().decode(TriptychSettings.self, from: data)
 
@@ -151,7 +201,8 @@ struct TriptychControlTests {
         )
         #expect(Set(object.keys) == [
             "schemaVersion",
-            "properties",
+            "metadataFields",
+            "about",
             "analysisAgentCreation",
             "attentionDismissalDays",
         ])
@@ -159,7 +210,7 @@ struct TriptychControlTests {
 
     @Test("Properties configuration preserves order and removes duplicate fields")
     func propertiesConfigurationOrderingAndDeduplication() {
-        var configuration = VaultPropertiesConfiguration(
+        var configuration = VaultAboutConfiguration(
             visibleFields: [" authors ", "publication_date", "authors", "", "type"]
         )
 
@@ -180,14 +231,14 @@ struct TriptychControlTests {
         let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
         _ = try await store.bootstrap(vaultIDs: ids)
 
-        let expected = TriptychSettings(properties: [
-            .paperAnalysis: VaultPropertiesConfiguration(
+        let expected = TriptychSettings(about: [
+            .paperAnalysis: VaultAboutConfiguration(
                 visibleFields: ["authors", "publication_date", "type"]
             ),
-            .topicKnowledge: VaultPropertiesConfiguration(
+            .topicKnowledge: VaultAboutConfiguration(
                 visibleFields: ["aliases"]
             ),
-            .output: VaultPropertiesConfiguration(
+            .output: VaultAboutConfiguration(
                 visibleFields: ["work_type", "coauthors"]
             ),
         ], analysisAgentCreation: AnalysisAgentCreationConfiguration(
@@ -198,26 +249,26 @@ struct TriptychControlTests {
         _ = try await store.saveSettings(expected, expectedRevision: initial.revision)
         let loaded = try await store.settings()
 
-        #expect(loaded.settings.properties == expected.properties)
-        #expect(loaded.settings.properties[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
-        #expect(loaded.settings.properties[.output]?.visibleFields == ["work_type", "coauthors"])
+        #expect(loaded.settings.about == expected.about)
+        #expect(loaded.settings.about[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
+        #expect(loaded.settings.about[.output]?.visibleFields == ["work_type", "coauthors"])
         #expect(loaded.settings.analysisAgentCreation.preferredFields(for: .journalArticle) == ["title", "authors"])
     }
 
     @Test("Missing vault Properties entries receive role defaults")
     func propertiesConfigurationCompletesTriptych() {
-        let settings = TriptychSettings(properties: [
-            .paperAnalysis: VaultPropertiesConfiguration(
+        let settings = TriptychSettings(about: [
+            .paperAnalysis: VaultAboutConfiguration(
                 visibleFields: ["authors"]
             ),
         ])
 
-        #expect(settings.properties.count == WorkspaceVaultSlot.allCases.count)
-        #expect(settings.properties[.paperAnalysis]?.visibleFields == ["authors"])
-        #expect(settings.properties[.topicKnowledge] == TriptychSettings.defaultProperties[.topicKnowledge])
-        #expect(settings.properties[.output] == TriptychSettings.defaultProperties[.output])
-        #expect(settings.properties[.output]?.visibleFields.contains("work_type") == true)
-        #expect(settings.properties[.output]?.visibleFields.contains("kind") == false)
+        #expect(settings.about.count == WorkspaceVaultSlot.allCases.count)
+        #expect(settings.about[.paperAnalysis]?.visibleFields == ["authors"])
+        #expect(settings.about[.topicKnowledge] == TriptychSettings.defaultAbout[.topicKnowledge])
+        #expect(settings.about[.output] == TriptychSettings.defaultAbout[.output])
+        #expect(settings.about[.output]?.visibleFields.contains("work_type") == true)
+        #expect(settings.about[.output]?.visibleFields.contains("kind") == false)
     }
 
     @Test("Settings save rejects a stale exact-byte revision without overwriting")
@@ -250,7 +301,7 @@ struct TriptychControlTests {
         ))
         let initial = try await store.settings()
         var invalid = initial.settings
-        invalid.properties[.paperAnalysis] = VaultPropertiesConfiguration(
+        invalid.about[.paperAnalysis] = VaultAboutConfiguration(
             visibleFields: ["summary"]
         )
         invalid.analysisAgentCreation = AnalysisAgentCreationConfiguration(
@@ -272,14 +323,14 @@ struct TriptychControlTests {
     @Test("Settings profiles contain only optional managed fields")
     func authoredFieldsAreNotSettingsSelections() throws {
         var settings = TriptychSettings()
-        settings.properties[.output] = VaultPropertiesConfiguration(
+        settings.about[.output] = VaultAboutConfiguration(
             visibleFields: ["summary"]
         )
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validate(settings)
         }
 
-        settings.properties[.output] = TriptychSettings.defaultProperties[.output]
+        settings.about[.output] = TriptychSettings.defaultAbout[.output]
         settings.analysisAgentCreation = AnalysisAgentCreationConfiguration(
             preferredFieldsBySourceType: [.webpage: ["isbn"]]
         )
@@ -320,7 +371,7 @@ struct TriptychControlTests {
         await expectSettingsError(store, matching: { if case .settingsOldSchema(3) = $0 { true } else { false } })
         #expect(try Data(contentsOf: url) == oldSchemaBytes)
 
-        try Data(#"{"schemaVersion":6,"properties":"damaged"}"#.utf8).write(to: url, options: .atomic)
+        try Data(#"{"schemaVersion":7,"metadataFields":"damaged"}"#.utf8).write(to: url, options: .atomic)
         await expectSettingsError(store, matching: { if case .settingsCorrupted = $0 { true } else { false } })
 
         var reviewedObject = try #require(

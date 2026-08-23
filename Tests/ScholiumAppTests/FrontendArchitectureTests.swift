@@ -816,7 +816,7 @@ struct FrontendArchitectureTests {
         #expect(settings.contains("info.status == .available ? .confirmed : .attention"))
 
         let frontmatter = try #require(
-            viewSources["Scholium/Views/Frontmatter/FrontmatterEditorView.swift"]
+            viewSources["Scholium/Views/Metadata/MetadataEditorView.swift"]
         )
         #expect(frontmatter.contains("ScholiumColorRole.destructive.color"))
 
@@ -2521,7 +2521,7 @@ struct FrontendArchitectureTests {
             "Scholium/Views/Backlinks/ConnectionsInspectorView.swift",
             "Scholium/Views/WorkspaceSettingsView.swift",
             "Scholium/Views/SearchWorkspaceView.swift",
-            "Scholium/Views/Frontmatter/FrontmatterEditorView.swift",
+            "Scholium/Views/Metadata/MetadataEditorView.swift",
             "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift",
         ]
         let consumerSources = try consumerPaths.map { path in
@@ -3867,7 +3867,7 @@ struct FrontendArchitectureTests {
         )
         let frontmatter = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+                "Scholium/Views/Metadata/MetadataEditorView.swift"
             ),
             encoding: .utf8
         )
@@ -3928,7 +3928,7 @@ struct FrontendArchitectureTests {
         )
         let frontmatter = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+                "Scholium/Views/Metadata/MetadataEditorView.swift"
             ),
             encoding: .utf8
         )
@@ -5033,7 +5033,7 @@ struct FrontendArchitectureTests {
         )
         let frontmatterSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Frontmatter/FrontmatterEditorView.swift"
+                "Scholium/Views/Metadata/MetadataEditorView.swift"
             ),
             encoding: .utf8
         )

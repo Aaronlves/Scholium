@@ -26,14 +26,17 @@ struct PropertyEditorField: Identifiable, Hashable, Sendable {
 struct PropertyEditorModel: Sendable {
     let note: WindowDocumentLocation
     let profile: SchemaProfileID
+    let metadataCatalog: NoteMetadataCatalog
     let analysisSourceTypeOverride: AnalysisSourceType?
 
     init(
         note: WindowDocumentLocation,
+        metadataCatalog: NoteMetadataCatalog,
         analysisSourceTypeOverride: AnalysisSourceType? = nil
     ) {
         self.note = note
         self.profile = note.schemaProfile
+        self.metadataCatalog = metadataCatalog
         self.analysisSourceTypeOverride = analysisSourceTypeOverride
     }
 
@@ -115,7 +118,7 @@ struct PropertyEditorModel: Sendable {
         proposedFields: [String: YAMLValue],
         changedKeys: Set<String>
     ) -> [PropertyValidationIssue] {
-        return NoteMetadataContractCatalog.validate(
+        return metadataCatalog.validate(
             fields: proposedFields,
             profile: profile
         ).filter { issue in
@@ -130,7 +133,9 @@ struct PropertyEditorModel: Sendable {
         let recommended: Set<String>
         if profile == .analysis, let sourceType {
             let sourceProfile = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
-            applicable = Set(sourceProfile.applicableFields)
+            applicable = Set(
+                metadataCatalog.analysisContracts(for: sourceType).map(\.canonicalKey)
+            )
             recommended = Set(sourceProfile.recommendedFieldOrder)
         } else if profile == .analysis {
             let perType = AnalysisSourceType.allCases.map {
@@ -138,13 +143,17 @@ struct PropertyEditorModel: Sendable {
             }
             applicable = perType.dropFirst().reduce(perType.first ?? []) { $0.intersection($1) }
                 .union(["type"])
+                .union(metadataCatalog.customFields(for: .analysis).map(\.key))
             recommended = ["type"]
         } else {
-            applicable = Set(NoteMetadataContractCatalog.contracts(for: profile).map(\.canonicalKey))
+            applicable = Set(metadataCatalog.contracts(for: profile).map(\.canonicalKey))
             recommended = []
         }
-        return PropertyPresentationCatalog.managedPresentations(for: profile).compactMap { presentation in
-            guard let contract = NoteMetadataContractCatalog.contract(
+        return PropertyPresentationCatalog.managedPresentations(
+            for: profile,
+            catalog: metadataCatalog
+        ).compactMap { presentation in
+            guard let contract = metadataCatalog.contract(
                 for: presentation.key,
                 profile: profile
             ) else { return nil }

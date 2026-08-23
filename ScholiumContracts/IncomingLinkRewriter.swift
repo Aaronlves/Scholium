@@ -312,7 +312,6 @@ public enum IncomingLinkRewriter {
                 id: destination,
                 title: note.title,
                 aliases: note.aliases,
-                noteType: note.noteType,
                 headings: note.headings,
                 blockAnchors: note.blockAnchors
             )
@@ -589,7 +588,6 @@ public enum IncomingLinkRewriter {
                 id: destination,
                 title: note.title,
                 aliases: note.aliases,
-                noteType: note.noteType,
                 headings: note.headings,
                 blockAnchors: note.blockAnchors
             )

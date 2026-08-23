@@ -404,10 +404,31 @@ public enum PropertyContractCatalog {
     }
 }
 
-/// Researcher-owned structured values stored by Scholium beside the
-/// Triptych, keyed by portable Note identity. These contracts never authorize
-/// reading or rewriting same-named YAML keys.
-public enum NoteMetadataContractCatalog {
+/// One researcher-defined managed field applied globally to one Triptych role.
+/// It owns only a stable key and a simple value shape; requiredness, defaults,
+/// About visibility, Agent preference, integrations, and authored source are
+/// deliberately outside this contract.
+public struct MetadataFieldDefinition: Codable, Hashable, Sendable {
+    public static let supportedValueKinds: Set<PropertyValueKind> = [
+        .text, .multilineText, .number, .date, .boolean, .textList,
+    ]
+
+    public let key: String
+    public let valueKind: PropertyValueKind
+
+    public init(key: String, valueKind: PropertyValueKind) {
+        self.key = key
+        self.valueKind = valueKind
+    }
+
+    public var contract: PropertyContract {
+        PropertyContract(canonicalKey: key, valueKind: valueKind)
+    }
+}
+
+/// Product-owned built-in Scholium Metadata shapes. Workspace consumers use a
+/// resolved `NoteMetadataCatalog`, not this seed catalog directly.
+public enum BuiltInNoteMetadataCatalog {
     public static func contracts(for profile: SchemaProfileID) -> [PropertyContract] {
         cachedProfile(for: profile).contracts
     }
@@ -539,5 +560,124 @@ public enum NoteMetadataContractCatalog {
         allowed: [String]? = nil
     ) -> PropertyContract {
         PropertyContract(canonicalKey: key, valueKind: kind, allowedValues: allowed)
+    }
+}
+
+/// The one immutable, workspace-scoped Metadata catalog. It resolves the
+/// product-owned built-ins with append-only researcher definitions from the
+/// current Triptych settings and is safe to pass across delivery boundaries.
+public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
+    public let customFieldsByRole: [WorkspaceVaultSlot: [MetadataFieldDefinition]]
+
+    public init(
+        customFieldsByRole: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = [:]
+    ) {
+        var completed: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = [:]
+        for role in WorkspaceVaultSlot.allCases {
+            completed[role] = customFieldsByRole[role] ?? []
+        }
+        self.customFieldsByRole = completed
+    }
+
+    public init(settings: TriptychSettings) {
+        self.init(customFieldsByRole: settings.metadataFields)
+    }
+
+    public static let builtIn = NoteMetadataCatalog()
+
+    public func contracts(for profile: SchemaProfileID) -> [PropertyContract] {
+        BuiltInNoteMetadataCatalog.contracts(for: profile)
+            + customFields(for: profile).map(\.contract)
+    }
+
+    public func contract(
+        for key: String,
+        profile: SchemaProfileID
+    ) -> PropertyContract? {
+        contracts(for: profile).first { $0.canonicalKey == key }
+    }
+
+    public func validate(
+        fields: [String: YAMLValue],
+        profile: SchemaProfileID
+    ) -> [PropertyValidationIssue] {
+        let contracts = contracts(for: profile)
+        let recognized = Set(contracts.map(\.canonicalKey))
+        var issues = fields.keys.filter { !recognized.contains($0) }.sorted().map {
+            PropertyValidationIssue(
+                propertyKey: $0,
+                code: .invalidValueKind,
+                message: "\($0) is not a managed field for this Note role."
+            )
+        }
+        issues.append(contentsOf: PropertyContractCatalog.validate(
+            values: fields,
+            against: contracts
+        ))
+        return issues
+    }
+
+    public var analysisCanonicalKeys: [String] {
+        contracts(for: .analysis).map(\.canonicalKey)
+    }
+
+    /// Built-in Analysis fields retain source-type profile order. Custom
+    /// fields are globally applicable and follow in definition order.
+    public func analysisContracts(
+        for sourceType: AnalysisSourceType
+    ) -> [PropertyContract] {
+        let builtInByKey = Dictionary(
+            uniqueKeysWithValues: BuiltInNoteMetadataCatalog
+                .contracts(for: .analysis).map { ($0.canonicalKey, $0) }
+        )
+        let orderedBuiltIns = AnalysisSourceTypeProfileCatalog.profile(for: sourceType)
+            .serializationFieldOrder.compactMap { builtInByKey[$0] }
+        return orderedBuiltIns + customFields(for: .analysis).map(\.contract)
+    }
+
+    public func isAnalysisFieldApplicable(
+        _ key: String,
+        sourceType: AnalysisSourceType
+    ) -> Bool {
+        analysisContracts(for: sourceType).contains { $0.canonicalKey == key }
+    }
+
+    public func customFields(for role: WorkspaceVaultSlot) -> [MetadataFieldDefinition] {
+        customFieldsByRole[role] ?? []
+    }
+
+    public func customFields(for profile: SchemaProfileID) -> [MetadataFieldDefinition] {
+        guard let role = Self.role(for: profile) else { return [] }
+        return customFields(for: role)
+    }
+
+    public static func role(for profile: SchemaProfileID) -> WorkspaceVaultSlot? {
+        switch profile {
+        case .analysis: .paperAnalysis
+        case .topicMarkdown: .topicKnowledge
+        case .draftProject: .output
+        case .genericMarkdown: nil
+        }
+    }
+
+    public static func profile(for role: WorkspaceVaultSlot) -> SchemaProfileID {
+        switch role {
+        case .paperAnalysis: .analysis
+        case .topicKnowledge: .topicMarkdown
+        case .output: .draftProject
+        }
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        WorkspaceVaultSlot.allCases.allSatisfy {
+            lhs.customFields(for: $0) == rhs.customFields(for: $0)
+        }
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        for role in WorkspaceVaultSlot.allCases {
+            hasher.combine(role)
+            hasher.combine(customFields(for: role))
+        }
     }
 }

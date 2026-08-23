@@ -24,7 +24,13 @@ struct DocumentPreviewCatalogTests {
         let graph = LinkGraphBuilder.build(
             generation: 7,
             catalog: [
-                LinkCatalogNote(id: sourceID, title: "A", aliases: [], noteType: nil, headings: [], blockAnchors: [:]),
+                LinkCatalogNote(
+                    id: sourceID,
+                    title: "A",
+                    aliases: [],
+                    headings: [],
+                    blockAnchors: [:]
+                ),
                 LinkCatalogNote(vaultID: vaultID, document: target, semantic: semantic[targetID]),
             ],
             documents: semantic

@@ -127,7 +127,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     private var initialWorkspaceReadyTimeout: TimeInterval {
-        if name.contains("testManagedNewNoteDirectToEditWithAndWithoutRoleSeed")
+        if name.contains("testManagedNewNoteKeepsFixedYAMLAfterAddingCustomMetadataField")
             || name.contains("testFolderContextMenuCreatesInsideFolderAndExposesLifecycleActions") {
             return 90
         }

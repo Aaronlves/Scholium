@@ -81,7 +81,8 @@ struct ResearchProjectionFreshnessView: View {
 struct ResearchOverviewPresentation {
     let visibleAttentionItems: [AttentionQueueItem]
     let freshness: ResearchProjectionFreshness
-    let propertiesConfiguration: VaultPropertiesConfiguration?
+    let aboutConfiguration: VaultAboutConfiguration?
+    let metadataCatalog: NoteMetadataCatalog
     let zoteroBinding: AnalysisZoteroBinding?
     let noteReviewState: WorkspaceNoteReviewState?
     let stableNoteID: UUID?
@@ -100,9 +101,10 @@ struct ResearchInspectorContentContext {
 
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
-    var propertiesConfiguration: VaultPropertiesConfiguration? {
-        presentation.propertiesConfiguration
+    var aboutConfiguration: VaultAboutConfiguration? {
+        presentation.aboutConfiguration
     }
+    var metadataCatalog: NoteMetadataCatalog { presentation.metadataCatalog }
     var zoteroBinding: AnalysisZoteroBinding? { presentation.zoteroBinding }
     var noteReviewState: WorkspaceNoteReviewState? {
         presentation.noteReviewState
@@ -391,7 +393,8 @@ struct ResearchOverviewView: View {
     private var aboutGroups: [AboutGroupContent] {
         AboutProfileCatalog.groupedEntries(
             for: note.schemaProfile,
-            visibleFields: context.propertiesConfiguration?.visibleFields
+            visibleFields: context.aboutConfiguration?.visibleFields,
+            catalog: context.metadataCatalog
         ).compactMap { configured in
             let facts = configured.keys.compactMap { key in
                 isLongResearchField(key) || key == "keywords" ? nil : propertyFact(for: key)
@@ -410,13 +413,13 @@ struct ResearchOverviewView: View {
     }
 
     private func propertyFact(for key: String) -> ScholiumApparatusFact? {
-        let isManaged = NoteMetadataContractCatalog.contract(
+        let isManaged = context.metadataCatalog.contract(
             for: key,
             profile: note.schemaProfile
         ) != nil
         guard let raw = isManaged
             ? note.managedMetadataValue(named: key)
-            : note.topLevelProperty(named: key) else { return nil }
+            : note.authoredYAMLValue(named: key) else { return nil }
         let value: String
         if !isManaged,
            case .string = raw,
@@ -429,17 +432,25 @@ struct ResearchOverviewView: View {
         }
         let label = PropertyPresentationCatalog.presentation(
             for: key,
-            in: note.schemaProfile
+            in: note.schemaProfile,
+            catalog: context.metadataCatalog
         )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
         return ScholiumApparatusFact(id: key, label: label, value: value)
     }
 
     private func readingBlocks(for key: String) -> [ReadingBlock] {
+        let isManaged = context.metadataCatalog.contract(
+            for: key,
+            profile: note.schemaProfile
+        ) != nil
         guard isLongResearchField(key),
-              let value = note.topLevelProperty(named: key) else { return [] }
+              let value = isManaged
+                ? note.managedMetadataValue(named: key)
+                : note.authoredYAMLValue(named: key) else { return [] }
         let label = PropertyPresentationCatalog.presentation(
             for: key,
-            in: note.schemaProfile
+            in: note.schemaProfile,
+            catalog: context.metadataCatalog
         )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
         switch value {
         case .string(let text):
@@ -459,7 +470,11 @@ struct ResearchOverviewView: View {
     }
 
     private func isLongResearchField(_ key: String) -> Bool {
-        key == "summary"
+        if key == "summary" { return true }
+        return context.metadataCatalog.contract(
+            for: key,
+            profile: note.schemaProfile
+        )?.valueKind == .multilineText
     }
 
     private func propertyDisplayValue(_ value: YAMLValue, key: String) -> String? {
@@ -534,7 +549,8 @@ private struct AboutTagsView: View {
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: [],
                 freshness: .unavailable("No workspace is open."),
-                propertiesConfiguration: nil,
+                aboutConfiguration: nil,
+                metadataCatalog: .builtIn,
                 zoteroBinding: nil,
                 noteReviewState: nil,
                 stableNoteID: nil

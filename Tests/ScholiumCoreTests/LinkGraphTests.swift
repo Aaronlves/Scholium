@@ -436,6 +436,49 @@ struct LinkGraphTests {
         #expect(LinkGraphBuilder.resolve("Agenc", from: id("Output/Draft.md"), catalog: catalog) == .broken("Agenc"))
     }
 
+    @Test("Topic aliases come from managed Metadata and never from unknown YAML")
+    func aliasesRespectMetadataAuthority() throws {
+        let source = document(
+            "Output/Draft.md",
+            "[[Managed Alias]] [[YAML Alias]]"
+        )
+        let topic = document(
+            "Topics/Control.md",
+            "---\naliases: [YAML Alias]\n---\n# Control\n"
+        )
+        let topicID = id(topic.relativePath)
+        let record = NoteMetadataRecord(
+            noteID: UUID(),
+            fields: ["aliases": .array([.string("Managed Alias")])]
+        )
+        let metadata = NoteMetadataSnapshot(
+            record: record,
+            revision: DocumentFingerprint(data: try record.encodedPortableData())
+        )
+        let semantics = [
+            id(source.relativePath): MarkdownSemanticDocument(parsing: source),
+            topicID: MarkdownSemanticDocument(parsing: topic),
+        ]
+        let graph = LinkGraphBuilder.build(
+            generation: 1,
+            catalog: [
+                LinkCatalogNote(vaultID: vaultID, document: source),
+                LinkCatalogNote(
+                    vaultID: vaultID,
+                    document: topic,
+                    profile: .topicMarkdown,
+                    metadata: metadata
+                ),
+            ],
+            documents: semantics
+        )
+        let resolutions = graph.outgoing[id(source.relativePath), default: []]
+            .map(\.occurrence.resolution)
+
+        #expect(resolutions.contains(.resolved(topicID)))
+        #expect(resolutions.contains(.broken("YAML Alias")))
+    }
+
     @Test("Headings and blocks resolve to exact full-file source spans")
     func destinations() {
         let source = document("Output/Draft.md", "See [[Topics/Control#Argument]] and [[Topics/Control#^core]].")

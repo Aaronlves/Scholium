@@ -11,11 +11,7 @@ public enum SchemaProfileID: String, Codable, CaseIterable, Sendable {
 
 public enum WorkflowProfileResolver {
     /// Registered vault role is the only semantic profile authority.
-    public static func resolve(
-        vaultRole: VaultRole,
-        frontmatter _: [String: YAMLValue],
-        relativePath _: String
-    ) -> SchemaProfileID {
+    public static func resolve(vaultRole: VaultRole) -> SchemaProfileID {
         switch vaultRole {
         case .sourceCorpus: return .analysis
         case .topicKnowledge: return .topicMarkdown
@@ -26,15 +22,6 @@ public enum WorkflowProfileResolver {
 }
 
 public extension YAMLValue {
-    /// A read-only dotted-key projection for search, filters, and diagnostics.
-    /// This is intentionally not a serializer or an editing representation.
-    var flattenedScalarValues: [String: String] {
-        guard case .object(let values) = self else { return [:] }
-        var result: [String: String] = [:]
-        Self.flatten(values, prefix: nil, into: &result)
-        return result
-    }
-
     var displayScalar: String {
         switch self {
         case .string(let value): value
@@ -50,19 +37,4 @@ public extension YAMLValue {
         }
     }
 
-    private static func flatten(
-        _ values: [String: YAMLValue],
-        prefix: String?,
-        into result: inout [String: String]
-    ) {
-        for key in values.keys.sorted() {
-            guard let value = values[key] else { continue }
-            let path = prefix.map { "\($0).\(key)" } ?? key
-            if case .object(let nested) = value {
-                flatten(nested, prefix: path, into: &result)
-            } else {
-                result[path] = value.displayScalar
-            }
-        }
-    }
 }

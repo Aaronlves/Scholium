@@ -161,9 +161,13 @@ without copying its exact source.
 
 Contracts split structured values by authority. `PropertyContractCatalog`
 contains only authored YAML `summary` and `keywords` for all three roles.
-`NoteMetadataContractCatalog` is the sole canonical vocabulary and shape
-authority for Scholium Metadata. It defines role-valid fields, value kinds,
-allowed values, and CreatorList structure without owning researcher values.
+`BuiltInNoteMetadataCatalog` owns the product vocabulary and complex shapes;
+portable schema-7 Settings owns append-only simple definitions by role.
+`NoteMetadataCatalog` resolves both once per workspace generation and is the
+sole catalog consumed by Core record validation, Application plans, Search,
+Library filters, Settings, About, and the Metadata editor. It defines
+role-valid fields, value kinds, allowed values, and CreatorList structure
+without owning researcher values.
 `AnalysisSourceTypeProfileCatalog` separately owns Analysis applicability,
 recommendation, and deterministic presentation order.
 
@@ -178,6 +182,7 @@ uncertain-commit outcome. The researcher owns every field value; Scholium owns
 the schema, location, validation, and transaction. No metadata file is a
 writable projection of Markdown or YAML.
 
+`WorkspaceSnapshot` carries the resolved catalog next to its generation;
 `WorkspaceNoteSnapshot` carries the optional validated metadata snapshot next
 to exact source. `ResearchNoteTitleResolver` uses managed Analysis `title`,
 then first H1, then filename; Topic and Work use first H1, then filename. YAML

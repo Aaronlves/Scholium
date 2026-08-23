@@ -8,60 +8,25 @@ struct WorkflowSchemaTests {
     @Test("Registered vault role overrides folder spelling")
     func registeredRoleWins() {
         #expect(WorkflowProfileResolver.resolve(
-            vaultRole: .sourceCorpus,
-            frontmatter: [:],
-            relativePath: "Level 3 - Metaethics/fit.md"
+            vaultRole: .sourceCorpus
         ) == .analysis)
         #expect(WorkflowProfileResolver.resolve(
-            vaultRole: .topicKnowledge,
-            frontmatter: ["note_type": .string("argument_dossier")],
-            relativePath: "output/chapter.md"
+            vaultRole: .topicKnowledge
         ) == .topicMarkdown)
     }
 
     @Test("Unregistered files remain generic regardless of old metadata or folders")
     func unregisteredFilesRemainGeneric() {
         #expect(WorkflowProfileResolver.resolve(
-            vaultRole: .other,
-            frontmatter: ["record_type": .string("paper_analysis")],
-            relativePath: "papers/source.md"
+            vaultRole: .other
         ) == .genericMarkdown)
-    }
-
-    @Test("Nested paper audit remains a structured, filterable read model")
-    func nestedAuditProjection() {
-        let source = """
-        ---
-        record_type: paper_analysis
-        schema_version: paper-analysis-yaml-v1
-        audit:
-          status: pass
-          last_checked_at: '2026-07-09T15:06:30+08:00'
-          checks:
-            structure_complete: true
-            human_reviewed: true
-          notes: Headings and frontmatter complete.
-        ---
-        # Analysis
-        """
-        let document = NoteDocument(relativePath: "Level 3/source.md", rawContent: source)
-
-        guard case .object(let audit) = document.parsedFrontmatter["audit"] else {
-            Issue.record("Expected nested audit mapping")
-            return
-        }
-        let flattened = YAMLValue.object(audit).flattenedScalarValues
-        #expect(flattened["status"] == "pass")
-        #expect(flattened["checks.structure_complete"] == "true")
-        #expect(flattened["checks.human_reviewed"] == "true")
-        #expect(flattened["notes"] == "Headings and frontmatter complete.")
     }
 
     @Test("Default optional machine fields exclude authored YAML and machine state")
     func defaultPropertyVocabulary() throws {
-        let analyses = try #require(TriptychSettings.defaultProperties[.paperAnalysis])
-        let topics = try #require(TriptychSettings.defaultProperties[.topicKnowledge])
-        let works = try #require(TriptychSettings.defaultProperties[.output])
+        let analyses = try #require(TriptychSettings.defaultAbout[.paperAnalysis])
+        let topics = try #require(TriptychSettings.defaultAbout[.topicKnowledge])
+        let works = try #require(TriptychSettings.defaultAbout[.output])
 
         for configuration in [analyses, topics, works] {
             #expect(!configuration.visibleFields.contains("summary"))

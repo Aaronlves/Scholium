@@ -304,6 +304,7 @@ public struct SearchIndexDocument: Sendable {
         document: NoteDocument,
         stableNoteID: String? = nil,
         metadata: NoteMetadataSnapshot? = nil,
+        metadataCatalog: NoteMetadataCatalog = .builtIn,
         semantic: MarkdownSemanticDocument? = nil,
         hasBrokenLink: Bool = false
     ) {
@@ -314,6 +315,7 @@ public struct SearchIndexDocument: Sendable {
             document: document,
             stableNoteID: stableNoteID,
             metadata: metadata,
+            metadataCatalog: metadataCatalog,
             resolvedSemantic: semantic ?? MarkdownSemanticDocument(
                 parsing: document
             ),
@@ -329,6 +331,7 @@ public struct SearchIndexDocument: Sendable {
         document: NoteDocument,
         stableNoteID: String? = nil,
         metadata: NoteMetadataSnapshot? = nil,
+        metadataCatalog: NoteMetadataCatalog,
         semantic: MarkdownSemanticDocument,
         cachedSourceProjection: SearchDocumentProjection,
         hasBrokenLink: Bool = false
@@ -340,6 +343,7 @@ public struct SearchIndexDocument: Sendable {
             document: document,
             stableNoteID: stableNoteID,
             metadata: metadata,
+            metadataCatalog: metadataCatalog,
             resolvedSemantic: semantic,
             sourceProjection: cachedSourceProjection,
             hasBrokenLink: hasBrokenLink
@@ -353,6 +357,7 @@ public struct SearchIndexDocument: Sendable {
         document: NoteDocument,
         stableNoteID: String?,
         metadata: NoteMetadataSnapshot?,
+        metadataCatalog: NoteMetadataCatalog,
         resolvedSemantic: MarkdownSemanticDocument,
         sourceProjection cachedSourceProjection: SearchDocumentProjection?,
         hasBrokenLink: Bool
@@ -364,29 +369,24 @@ public struct SearchIndexDocument: Sendable {
         self.semantic = resolvedSemantic
         relativePath = document.relativePath
         self.stableNoteID = stableNoteID
-        let profile = WorkflowProfileResolver.resolve(
-            vaultRole: vaultRole,
-            frontmatter: document.parsedFrontmatter,
-            relativePath: document.relativePath
-        )
+        let profile = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
         title = ResearchNoteTitleResolver.resolve(
             document: document,
             vaultRole: vaultRole,
             metadata: metadata,
             semantic: self.semantic
         ).title
-        aliases = NoteMetadataContractCatalog.contract(for: "aliases", profile: profile) == nil
-            ? []
-            : metadata?.record.fields["aliases"]?.canonicalStringList ?? []
-        authors = NoteMetadataContractCatalog.contract(for: "authors", profile: profile) == nil
-            ? []
-            : metadata?.record.fields["authors"]
+        aliases = profile == .topicMarkdown
+            ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
+            : []
+        authors = profile == .analysis
+            ? metadata?.record.fields["authors"]
                 .flatMap(PropertyContractCatalog.creatorNames(from:))?
                 .map(\.displayName) ?? []
-        publicationDate = NoteMetadataContractCatalog.contract(
-            for: "publication_date",
-            profile: profile
-        ) == nil ? nil : metadata?.record.fields["publication_date"]?.canonicalSearchText
+            : []
+        publicationDate = profile == .analysis
+            ? metadata?.record.fields["publication_date"]?.canonicalSearchText
+            : nil
         tags = PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
             ? []
             : document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
@@ -406,7 +406,8 @@ public struct SearchIndexDocument: Sendable {
         propertyProjection = SearchPropertyProjection(
             document: document,
             profile: profile,
-            metadata: metadata
+            metadata: metadata,
+            metadataCatalog: metadataCatalog
         )
         evidentialLayer = switch vaultRole {
         case .sourceCorpus: .paperAnalysis

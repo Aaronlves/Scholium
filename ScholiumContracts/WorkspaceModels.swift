@@ -132,11 +132,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         )
     }
     public var schemaProfile: SchemaProfileID {
-        WorkflowProfileResolver.resolve(
-            vaultRole: vaultRole,
-            frontmatter: document.parsedFrontmatter,
-            relativePath: document.relativePath
-        )
+        WorkflowProfileResolver.resolve(vaultRole: vaultRole)
     }
 
     public init(
@@ -554,6 +550,7 @@ public struct WorkspaceSnapshot: Sendable {
     public let mode: WorkspaceConfigurationMode
     public let phase: WorkspaceSnapshotPhase
     public let generatedAt: Date
+    public let metadataCatalog: NoteMetadataCatalog
     public let vaults: [WorkspaceVaultSnapshot]
     public let discovery: WorkspaceDiscoverySnapshot
     public let research: WorkspaceResearchSnapshot
@@ -563,6 +560,7 @@ public struct WorkspaceSnapshot: Sendable {
         mode: WorkspaceConfigurationMode,
         phase: WorkspaceSnapshotPhase = .complete,
         generatedAt: Date,
+        metadataCatalog: NoteMetadataCatalog = .builtIn,
         vaults: [WorkspaceVaultSnapshot],
         discovery: WorkspaceDiscoverySnapshot,
         research: WorkspaceResearchSnapshot
@@ -571,6 +569,7 @@ public struct WorkspaceSnapshot: Sendable {
         self.mode = mode
         self.phase = phase
         self.generatedAt = generatedAt
+        self.metadataCatalog = metadataCatalog
         self.vaults = vaults
         self.discovery = discovery
         self.research = research

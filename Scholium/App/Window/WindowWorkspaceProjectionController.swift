@@ -6,10 +6,13 @@ struct WindowPropertyFilterOptions: Equatable {
     let keys: [String]
     let valuesByKey: [String: [String]]
 
-    init(notes: [WindowDocumentLocation]) {
+    init(
+        notes: [WindowDocumentLocation],
+        catalog: NoteMetadataCatalog
+    ) {
         var accumulated: [String: Set<String>] = [:]
         for note in notes {
-            for (key, values) in note.filterableProperties {
+            for (key, values) in note.filterableProperties(catalog: catalog) {
                 let usableValues = values.filter { !$0.isEmpty && $0.count <= 80 }
                 guard !usableValues.isEmpty else { continue }
                 accumulated[key, default: []].formUnion(usableValues)
@@ -61,6 +64,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
 
     struct State {
         var catalog: WorkspaceCatalogSnapshot?
+        var metadataCatalog: NoteMetadataCatalog = .builtIn
         var vaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] = [:]
         var notes: [WindowDocumentLocation] = []
         var tags: [String] = []
@@ -70,7 +74,10 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var searchGeneration: SearchGenerationID?
         var snapshotPhase: WorkspaceSnapshotPhase?
         var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
-        var propertyFilterOptions = WindowPropertyFilterOptions(notes: [])
+        var propertyFilterOptions = WindowPropertyFilterOptions(
+            notes: [],
+            catalog: .builtIn
+        )
         var isRefreshingCatalog = false
         var catalogError: String?
     }
@@ -104,6 +111,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     }
 
     var catalog: WorkspaceCatalogSnapshot? { state.catalog }
+    var metadataCatalog: NoteMetadataCatalog { state.metadataCatalog }
     var vaultSnapshotsByID: [UUID: WorkspaceVaultSnapshot] { state.vaultSnapshotsByID }
     var notes: [WindowDocumentLocation] { state.notes }
     var tags: [String] { state.tags }
@@ -601,6 +609,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         invalidateCatalogLoad()
         let previousSearchGeneration = state.searchGeneration
         var next = state
+        next.metadataCatalog = snapshot.metadataCatalog
         next.catalog = snapshot.discovery.catalog
         next.vaultSnapshotsByID = Dictionary(
             uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
@@ -653,7 +662,10 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         state.documentRevisions = Dictionary(uniqueKeysWithValues: notes.map {
             ($0.relativePath, $0.document.fingerprint)
         })
-        state.propertyFilterOptions = WindowPropertyFilterOptions(notes: notes)
+        state.propertyFilterOptions = WindowPropertyFilterOptions(
+            notes: notes,
+            catalog: state.metadataCatalog
+        )
     }
 
     private func markDerivedStateStale(

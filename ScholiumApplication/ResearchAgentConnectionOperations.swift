@@ -321,12 +321,10 @@ extension WorkspaceHandle {
             vaultID: analysisVaultID,
             relativePath: relativePath
         )
-        let profile = AnalysisSourceTypeProfileCatalog.profile(
+        let metadataCatalog = NoteMetadataCatalog(settings: settings.settings)
+        let applicable = metadataCatalog.analysisContracts(
             for: request.metadata.sourceType
         )
-        let applicable = profile.applicableFields.compactMap {
-            NoteMetadataContractCatalog.contract(for: $0, profile: .analysis)
-        }
         let preferred = settings.settings.analysisAgentCreation.preferredFields(
             for: request.metadata.sourceType
         )

@@ -104,7 +104,7 @@ public struct AnalysisCreationMetadata: Codable, Hashable, Sendable {
         sourceType: AnalysisSourceType,
         fields: [CanonicalPropertyInput] = []
     ) throws {
-        guard fields.count <= NoteMetadataContractCatalog.analysisCanonicalKeys.count,
+        guard fields.count <= 256,
               Set(fields.map(\.key)).count == fields.count,
               !fields.contains(where: { $0.key == "type" }) else {
             throw DocumentCreationError.invalidMetadata([])

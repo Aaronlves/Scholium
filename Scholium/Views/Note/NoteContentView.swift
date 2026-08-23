@@ -112,7 +112,6 @@ struct DocumentFeatureState {
     let noteIdentityByPath: [String: UUID]
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
-    let propertiesConfiguration: VaultPropertiesConfiguration?
     let activeDiscussions: [PortableResearchDiscussion]
     let requestedDiscussionID: UUID?
     let canComment: Bool
@@ -2672,7 +2671,6 @@ private extension CritiqueFindingDispositionDecision {
         ].compactMapValues { $0 },
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
-        propertiesConfiguration: nil,
         activeDiscussions: [],
         requestedDiscussionID: nil,
         canComment: false,

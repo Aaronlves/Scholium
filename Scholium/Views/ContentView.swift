@@ -373,7 +373,8 @@ struct ContentView: View {
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
                 freshness: researchProjectionFreshness,
-                propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
+                aboutConfiguration: appState.currentDocumentAboutConfiguration,
+                metadataCatalog: workspaceProjectionController.metadataCatalog,
                 zoteroBinding: currentAnalysisZoteroBinding,
                 noteReviewState: currentNoteReviewState,
                 stableNoteID: currentAnalysisStableNoteID
@@ -524,7 +525,6 @@ struct ContentView: View {
             noteIdentityByPath: appState.currentDocumentIdentityByPath,
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
-            propertiesConfiguration: appState.currentDocumentPropertiesConfiguration,
             activeDiscussions: appState.researchController.records?.activeDiscussions ?? [],
             requestedDiscussionID: appState.requestedDiscussionID,
             canComment: appState.canCommentCurrentNote,
@@ -813,6 +813,7 @@ struct ContentView: View {
             if let note = note(at: route.path) {
                 MetadataEditorView(
                     note: note,
+                    metadataCatalog: workspaceProjectionController.metadataCatalog,
                     expectedRevision: note.workspaceSnapshot?.metadata?.revision,
                     onClose: {
                         finishMetadata(route)

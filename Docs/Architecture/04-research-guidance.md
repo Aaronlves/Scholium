@@ -113,9 +113,11 @@ Practice owners; Action Profiles edits only the academic profile document.
 Each editor mutates one owner at a time through an expected-revision
 transaction.
 
-Portable `TriptychSettings` schema 6 is a separate strict owner for role
-Metadata Profiles. It contains About order over optional managed fields and
-per-source-type optional Agent preferences over managed Analysis fields.
+Portable `TriptychSettings` schema 7 is a separate strict owner for role
+Metadata. It contains append-only field definitions by role, About order over
+optional managed fields, and per-source-type optional Agent preferences over
+managed Analysis fields. These are separate subvalues in one transaction;
+adding a definition mutates neither of the other two.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -144,9 +146,12 @@ owners of Research Guidance intellectual configuration; runtime action
 contracts consume those owners without a second template representation.
 
 `PropertyContractCatalog` owns the authored YAML allowlist;
-`NoteMetadataContractCatalog` owns managed shapes;
+`BuiltInNoteMetadataCatalog` owns product-managed shapes;
+`TriptychSettings.metadataFields` owns researcher-defined simple shapes;
+`NoteMetadataCatalog` is the one immutable workspace-scoped resolution of both;
 `AnalysisSourceTypeProfileCatalog` owns applicable/recommended/serialization
-order. Settings owns only optional managed-field selection and preference. A later
+order for built-ins, while custom Analysis fields append to every source type.
+About and Agent settings own only optional selection and preference. A later
 managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 

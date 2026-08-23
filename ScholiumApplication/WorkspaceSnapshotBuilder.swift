@@ -100,9 +100,10 @@ enum WorkspaceSnapshotBuilder {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try Task.checkCancellation()
+        let metadataCatalog = try await dependencies.controlStore.metadataCatalog()
         let noteMetadataByID = Dictionary(
             uniqueKeysWithValues: try await dependencies.controlStore
-                .noteMetadataRecords().map { ($0.record.noteID, $0) }
+                .noteMetadataRecords(catalog: metadataCatalog).map { ($0.record.noteID, $0) }
         )
         guard mode == .live,
               let vault = assignment.vault(for: slot),
@@ -263,6 +264,7 @@ enum WorkspaceSnapshotBuilder {
             mode: mode,
             phase: .opening(availableVault: slot),
             generatedAt: Date(),
+            metadataCatalog: metadataCatalog,
             vaults: [vaultSnapshot],
             discovery: WorkspaceDiscoverySnapshot(
                 catalog: catalog,
@@ -312,9 +314,10 @@ enum WorkspaceSnapshotBuilder {
         let clock = ContinuousClock()
         let totalStart = clock.now
         try Task.checkCancellation()
+        let metadataCatalog = try await dependencies.controlStore.metadataCatalog()
         let noteMetadataByID = Dictionary(
             uniqueKeysWithValues: try await dependencies.controlStore
-                .noteMetadataRecords().map { ($0.record.noteID, $0) }
+                .noteMetadataRecords(catalog: metadataCatalog).map { ($0.record.noteID, $0) }
         )
 
         var loadedVaults: [LoadedVault] = []
@@ -446,11 +449,7 @@ enum WorkspaceSnapshotBuilder {
                 linkCatalog.append(LinkCatalogNote(
                     vaultID: vault.id,
                     document: document,
-                    profile: WorkflowProfileResolver.resolve(
-                        vaultRole: vault.role,
-                        frontmatter: document.parsedFrontmatter,
-                        relativePath: document.relativePath
-                    ),
+                    profile: WorkflowProfileResolver.resolve(vaultRole: vault.role),
                     metadata: metadata,
                     semantic: semantics[document.relativePath]
                 ))
@@ -564,6 +563,7 @@ enum WorkspaceSnapshotBuilder {
                     stableNoteID: stableNoteID,
                     metadata: stableNoteID.flatMap(UUID.init(uuidString:))
                         .flatMap { noteMetadataByID[$0] },
+                    metadataCatalog: metadataCatalog,
                     semantic: semantic,
                     cachedSourceProjection: cachedSourceProjection,
                     hasBrokenLink: brokenNoteIDs.contains(id)
@@ -809,6 +809,7 @@ enum WorkspaceSnapshotBuilder {
             triptych: assignment.triptych,
             mode: mode,
             generatedAt: Date(),
+            metadataCatalog: metadataCatalog,
             vaults: vaultSnapshots,
             discovery: WorkspaceDiscoverySnapshot(
                 catalog: catalog,

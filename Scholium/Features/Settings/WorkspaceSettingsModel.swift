@@ -4,7 +4,7 @@ import Foundation
 
 enum WorkspaceSettingsPane: String, CaseIterable, Identifiable, Sendable {
     case triptychs
-    case propertyProfiles = "property-profiles"
+    case metadata
     case appearance
     case hotkeys
     case attention
@@ -39,7 +39,6 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
     var triptychSettings: TriptychSettings
     var settingsRevision: SettingsRevision?
     var portableSettingsState: WorkspacePortableSettingsState
-    var propertyKeysBySlot: [WorkspaceVaultSlot: Set<String>]
 
     init(
         registeredVaults: [RegisteredVault] = [],
@@ -47,8 +46,7 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
         activeTriptychID: UUID? = nil,
         triptychSettings: TriptychSettings = TriptychSettings(),
         settingsRevision: SettingsRevision? = nil,
-        portableSettingsState: WorkspacePortableSettingsState? = nil,
-        propertyKeysBySlot: [WorkspaceVaultSlot: Set<String>] = [:]
+        portableSettingsState: WorkspacePortableSettingsState? = nil
     ) {
         self.registeredVaults = registeredVaults
         self.registeredTriptychs = registeredTriptychs
@@ -58,7 +56,6 @@ struct WorkspaceSettingsSnapshot: Equatable, Sendable {
         self.portableSettingsState = portableSettingsState
             ?? settingsRevision.map(WorkspacePortableSettingsState.current)
             ?? .unavailable
-        self.propertyKeysBySlot = propertyKeysBySlot
     }
 }
 
@@ -282,10 +279,6 @@ final class WorkspaceSettingsModel: ObservableObject {
         guard let id = snapshot.activeTriptychID else { return nil }
         return snapshot.registeredTriptychs.first { $0.id == id }
     }
-    func propertyKeys(for slot: WorkspaceVaultSlot) -> [String] {
-        Array(snapshot.propertyKeysBySlot[slot, default: []])
-    }
-
     func selectPane(_ pane: WorkspaceSettingsPane) {
         selectedPane = pane
     }
@@ -413,7 +406,7 @@ final class WorkspaceSettingsModel: ObservableObject {
             }
             let warning: String?
             if !targetIsCurrent {
-                warning = String(localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Profiles to show the currently active Triptych.", table: "Localizable", bundle: .module)
+                warning = String(localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.", table: "Localizable", bundle: .module)
             } else if commit.derivedRefreshWarning != nil {
                 warning = String(localized: "Portable settings were saved. Research views will refresh when the workspace is available.", table: "Localizable", bundle: .module)
             } else {
@@ -448,7 +441,7 @@ final class WorkspaceSettingsModel: ObservableObject {
                 return WorkspaceSettingsSaveResult(
                     warning: targetIsCurrent
                         ? String(localized: "Portable settings were reread and the requested save is present.", table: "Localizable", bundle: .module)
-                        : String(localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Profiles to show the currently active Triptych.", table: "Localizable", bundle: .module),
+                        : String(localized: "The settings were saved to the Triptych where the edit began. Reload Metadata Settings to show the currently active Triptych.", table: "Localizable", bundle: .module),
                     targetIsCurrent: targetIsCurrent
                 )
             }

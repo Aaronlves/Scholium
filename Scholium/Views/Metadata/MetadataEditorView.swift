@@ -1,7 +1,7 @@
 import ScholiumContracts
 import SwiftUI
 
-// MARK: - Metadata Editor
+// MARK: - Managed Metadata Editor
 
 private struct CreatorDraft: Identifiable, Hashable {
     enum Kind: String, CaseIterable, Hashable {
@@ -83,6 +83,7 @@ struct MetadataEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     let initialExpectedRevision: DocumentFingerprint?
+    let metadataCatalog: NoteMetadataCatalog
     let onClose: (@MainActor () -> Void)?
     let reload: (@MainActor () async throws -> (
         note: WindowDocumentLocation,
@@ -117,6 +118,7 @@ struct MetadataEditorView: View {
 
     init(
         note: WindowDocumentLocation,
+        metadataCatalog: NoteMetadataCatalog,
         expectedRevision: DocumentFingerprint? = nil,
         onClose: (@MainActor () -> Void)? = nil,
         reload: (@MainActor () async throws -> (
@@ -130,6 +132,7 @@ struct MetadataEditorView: View {
     ) {
         self.note = note
         _note = State(initialValue: note)
+        self.metadataCatalog = metadataCatalog
         self.initialExpectedRevision = expectedRevision
         self.onClose = onClose
         self.reload = reload
@@ -139,6 +142,7 @@ struct MetadataEditorView: View {
     private var editorModel: PropertyEditorModel {
         PropertyEditorModel(
             note: note,
+            metadataCatalog: metadataCatalog,
             analysisSourceTypeOverride: fieldValues["type"].flatMap(AnalysisSourceType.init)
         )
     }
@@ -1116,7 +1120,10 @@ struct MetadataEditorView: View {
             fieldValues[key] = stringValue
             originalFieldValues[key] = stringValue
         }
-        let model = PropertyEditorModel(note: refreshedNote)
+        let model = PropertyEditorModel(
+            note: refreshedNote,
+            metadataCatalog: metadataCatalog
+        )
         for field in model.presentFields where field.valueKind == .creatorList {
             guard case .array(let values)? = refreshedNote.managedMetadataValue(named: field.key) else {
                 continue
@@ -1391,5 +1398,5 @@ struct FlowLayout: Layout {
                 ]),
                 "publication_date": .string("2023"),
             ]
-    )) { _, _ in }
+    ), metadataCatalog: .builtIn) { _, _ in }
 }

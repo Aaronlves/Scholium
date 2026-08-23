@@ -73,13 +73,13 @@ enum ScholiumL10n {
             )
         }
 
-        static var propertyProfiles: LocalizedStringResource {
+        static var metadata: LocalizedStringResource {
             LocalizedStringResource(
-                "settings.tab.propertyProfiles",
-                defaultValue: "Metadata Profiles",
+                "settings.tab.metadata",
+                defaultValue: "Metadata",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for optional Agent-managed fields and About profiles."
+                comment: "Settings tab for managed field definitions, Agent preferences, and About profiles."
             )
         }
 
