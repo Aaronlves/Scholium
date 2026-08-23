@@ -281,25 +281,18 @@ top clearance belongs to the scrolling document.
 
 ### 5.2 Authored YAML and Scholium Metadata
 
-The authored YAML vocabulary is deliberately small. Across Analysis, Topic,
-and Work, Scholium assigns canonical meaning to exactly two optional top-level
-keys: multiline text `summary` and a nonempty text list `keywords`. Every
-managed new Note receives them in fixed order as `summary: null` and
-`keywords: []`; these explicit unfilled values are semantically absent, not
-required content or the literal string `null`. A typed creator may replace
-either placeholder with a valid value in the same creation request. Every
-other existing YAML key is retired or
-custom source: its exact bytes, comments, order, quoting, multiline style,
-newlines, and delimiters remain preserved, but it grants no title, About,
-Search-field, linking, Agent, or creation semantics. There is no alias, dual
-read, automatic migration, or compatibility projection from retired YAML.
+[Appendix A](11-metadata-and-critique.md#shared-authored-yaml) owns the closed
+authored-YAML allowlist, value shapes, and managed-new-note scaffold. Every
+other YAML key is custom source: its exact bytes, comments, order, quoting,
+multiline style, newlines, and delimiters remain preserved, but it grants no
+title, About, Search-field, linking, Agent, or creation semantics. Scholium
+does not alias, reinterpret, or automatically convert noncanonical keys.
 
-`summary` is a short researcher-authored navigation description of the current
-Note. It is not a source abstract, Skill, unified stance, completeness claim,
-Researcher State, acceptance, or writer proof. `keywords` are short
-researcher-authored retrieval terms. Both remain visible and editable in
-Source and may participate in About and Search. Literal `property:` Search
-addressability does not grant any other YAML key canonical meaning.
+`summary` and `keywords` remain visible and editable in Source and may
+participate in About and Search. Their use creates no source abstract, Skill,
+unified stance, completeness claim, Researcher State, acceptance, or writer
+proof. Literal `property:` Search addressability does not grant any other YAML
+key canonical meaning.
 
 All other canonical structured values are **Scholium Metadata**. The
 researcher owns every value; Scholium owns the role-aware schema, storage
@@ -314,57 +307,22 @@ fingerprint to a non-record sibling. A changed record cancels recovery; valid
 neighboring records, source, and the remaining portable-control owner are never
 archived with it.
 
-Analysis uses the citation-ready built-in catalog and source-type profiles in
-Appendix A. It uses string `publication_date`, never numeric `year`; publication
-state belongs to `publication_status`. Creator fields use ordered nonempty
-CreatorLists. Topic manages built-in `aliases`; Work manages built-in
-`work_type` and `coauthors`. In addition, the researcher may define global
-managed-field definitions independently for Analysis, Topic, and Work in This
-Triptych Settings. A definition contains one stable key and supported simple
-value kind, researcher-facing label and optional description, optional ordered
-choices for a controlled text value, and active or archived lifecycle. It
-creates no value, placeholder, default, requiredness, body section, authored
-YAML, About visibility, Agent preference, or integration mapping. An Analysis
-custom field applies to every Analysis source type.
-
-The resolved role catalog is the built-in catalog followed by that role's
-researcher-defined fields. It is one workspace-scoped immutable contract used
-for Metadata validation, editing, Search, Library filters, About selection, and
-Agent field plans. Settings may change label and description, append controlled
-choices, archive a field, or restore it. It never removes or reorders a
-definition, changes its key or value kind, or removes an existing choice.
-Archived fields remain valid, editable when already present, and searchable,
-but are excluded from Add Field, About choices, and Agent preferences. Thus a
-stored value cannot silently lose its schema.
-Scholium validates value shapes and structural safety but never verifies or
-normalizes bibliographic truth, identifiers, URLs, language, dates, names,
-volume/issue/pages, publisher data, or philosophical content.
+[Appendix A](11-metadata-and-critique.md#appendix-a-metadata-catalogs-and-settings)
+owns built-in catalogs, source-type applicability, researcher-defined fields,
+About order, and Agent preferences. The workspace resolves them into one
+role-specific catalog for validation, editing, Search, Library filters, About,
+and Agent field plans. A definition creates no value or authored content.
+Scholium validates shape and structural safety, never bibliographic or
+philosophical truth.
 
 Analysis managed `title` resolves display identity before the first H1 and
 filename. Topic and Work resolve first H1, then filename. YAML `title` never
 resolves identity. Rename never synchronizes managed title or H1. One resolver
 supplies Workspace, Search, Link Graph, and Research Actions.
 
-Defined, applicable, recommended, Agent-preferred, present, and About-visible
-are separate states. Their owners are the resolved managed catalog, Analysis
-source-type profile, that profile's recommendation order, Triptych Agent-
-creation settings, the identity-keyed record, and the About profile. A custom
-Analysis definition is globally applicable but never automatically recommended
-or Agent-preferred. New Note YAML and Zotero binding are separate contracts and
-are never inferred from managed metadata.
-Identity, fingerprints, provenance, bindings, timestamps, permissions, and app
-facts are not researcher-managed fields.
-
-Each Triptych role stores its field definitions and independent About order as
-separate values. Authored `summary` and `keywords` have fixed About placement
-and are not Settings choices. Analysis additionally stores per-source-type
-managed fields to highlight to an Agent; every highlighted field remains
-optional and omission never blocks creation. Adding a definition does not add
-it to About or any Agent preference. Settings uses one explicit schema envelope and
-exact-byte `SettingsRevision`; save is an expected-revision atomic transaction
-with readback. Old, future, damaged, conflicting, and
-current-schema-needs-review states remain distinct and never fall back to
-overwriting defaults.
+New Note YAML and Zotero binding are separate contracts and are never inferred
+from managed Metadata. Identity, fingerprints, provenance, bindings,
+timestamps, permissions, and app facts are not researcher-managed fields.
 
 The **Metadata** sheet edits only the current Note's Scholium-managed record.
 It offers fields from the current resolved role catalog on demand, validates
@@ -397,13 +355,9 @@ non-round-trippable export rather than a new source authority.
 ### 5.3 Create, duplicate, rename, and identity
 
 **New Note** and **New Folder** are immediate, nonmodal actions. The
-Library-header Add menu offers both actions at the current vault root. A
-secondary click in unoccupied Library source-list space offers the same compact
-pair; the header menu remains their primary pointer and accessibility route, so
-secondary click is never required. **File → New Note** and its keyboard
-shortcut directly create the same managed root note. A folder row's **New Note**
-and **New Folder** context actions create inside that exact vault-relative
-folder; the folder row also exposes equivalent accessibility actions.
+Library-header Add menu and **File → New Note** create at the current vault
+root. Folder-row creation targets that exact vault-relative folder. Section
+18.3 owns the equivalent pointer, menu, and accessibility routes.
 
 An ordinary folder context menu is compact and ordered by semantic group:
 
@@ -557,7 +511,7 @@ changed file has no valid envelope, the same alert covers the complete opaque
 store set because narrower participation cannot be established. Cancel changes
 nothing. Confirmation rechecks the exact scoped set, copies the fingerprinted
 bytes into protected machine-local unsupported-data storage, removes only those
-exact originals, disables those old Runs, and retries preparation. It never
+exact originals, disables the affected Runs, and retries preparation. It never
 decodes, migrates, repairs, or rewrites those bytes and changes no research Note
 or portable Research Record.
 

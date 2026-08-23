@@ -12,9 +12,7 @@
 - A **Research Action** is a researcher-selected scholarly transition or
   authority boundary exposed by the Research Inspector's **Actions** mode and
   executed through the shared Application API. The stable default Actions are
-  Discuss, Analyze, Synthesize, Write, Critique, and Check Fidelity. Internal
-  execution mechanisms may retain implementation names such as Develop or
-  Revise, but those names are not public operations.
+  Discuss, Analyze, Synthesize, Write, Critique, and Check Fidelity.
 - An Action's **Origin** is the immutable current Analysis, Topic, or Work from
   which work begins. Its **Target** is the note or passage the Action is meant
   to affect. **Focal Materials** guide attention without defining the complete
@@ -115,8 +113,7 @@ supplement it without granting authority.
 Current bundled methods are usable editable defaults, not best methods,
 philosophy lessons, packages, or certification. The researcher may edit,
 replace, disable, or explicitly restore one. Scholium never silently restores
-or falls back after that choice. Git or the researcher's filesystem tools own
-any Method or Practice history outside the current exact source.
+or falls back after that choice.
 
 ### 2.3 Authorship and provenance
 

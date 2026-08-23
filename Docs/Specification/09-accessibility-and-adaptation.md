@@ -263,8 +263,8 @@
   during later-page failure.
 - Record rows communicate exceptional Attention, Action, focal Note, and date
   in one accessible row value. Reading Lead rows expose the independently
-  operable handled control before the bibliographic destination; handled means
-  processed only, never read, accepted, cited, verified, or endorsed.
+  operable handled control before the bibliographic destination; its accessible
+  value preserves the bounded meaning in §18.5.
 - Selecting detail removes the collection from the active accessibility tree.
   Back restores the retained collection. Evidence Shown/Hidden is a current
   value; hiding removes the rail from the active tree without disturbing the

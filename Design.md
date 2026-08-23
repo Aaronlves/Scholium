@@ -6,14 +6,10 @@ Scholarly Editorialism, visual language, design Variables, reusable component
 and pattern presentation, layout, icon, motion, and interface writing. Sibling
 chapters do not restate those rules.
 
-Product and workflow chapters continue to own research meaning, domain-specific
+Product and workflow chapters own research meaning, domain-specific
 state transitions, action semantics, authorization, conflict, recovery, and
-interface information architecture. This document owns the cross-functional
-state language and presentation contract in §19.9. [Implementation Architecture](Docs/IMPLEMENTATION_ARCHITECTURE.md)
-owns modules and state ownership; [Implementation Status](Docs/IMPLEMENTATION_STATUS.md)
-owns current reachability and evidence. This document may link to those owners
-but never reconstructs their rules or treats target design as implementation
-proof.
+interface information architecture. Section 19.9 owns only the shared
+presentation vocabulary for states supplied by those workflow owners.
 
 ## 19. Scholarly Editorialism and design variables
 
@@ -34,11 +30,6 @@ semantic color establish hierarchy before boundaries or elevation. Native
 controls retain platform behavior. Library and Inspector use the components in
 §19.7, copy follows §19.6, state presentation follows §19.9, and every
 surface carries §20 adaptation requirements.
-
-Exploratory documents retain only unresolved proposals. Once a visual recipe
-enters this specification and becomes reachable, its implementation evidence
-belongs in [Implementation Status](Docs/IMPLEMENTATION_STATUS.md), not in a
-parallel design guide.
 
 ### 19.1 Liquid Glass and material boundary
 
@@ -292,9 +283,8 @@ history surface.
 Document Mode is one native borderless toolbar button, not a segmented control.
 Its direct monochrome SF Symbol reports the current Review, Edit, or Source
 state; concise pointer help names that state and the accessible value agrees.
-Activation switches Review/Edit and returns Source to Review, while Source
-remains selectable only from the menu. AppKit owns hover, press, disabled, and
-focus feedback; Scholium adds no capsule, tint, shadow, or custom animation.
+Behavior follows §18.4. AppKit owns hover, press, disabled, and focus feedback;
+Scholium adds no capsule, tint, shadow, or custom animation.
 
 #### Metrics
 
@@ -366,8 +356,7 @@ Its native titlebar keeps the traffic lights and drag region but hides the
 redundant window-title label. The sidebar begins with native Settings search,
 not another visible Settings heading.
 The sidebar orders Application, This Triptych, and Research Guidance as
-succinct native list sections. Triptych registration and selection remain inside the Triptychs
-detail rather than repeating as a global navigation control. Settings adds no
+succinct native list sections. Settings adds no
 toolbar of peer icons, card grid, bottom action strip, or unrelated General or
 Advanced collection. Every destination retains the shared 17pt primary title;
 scope is visible in navigation and repeated inside a mixed-scope detail only

@@ -112,7 +112,7 @@ The Note provider adds only these structured clauses:
 
 - `property:<key>` is the stable query spelling for one canonical structured
   field. It matches a Scholium Metadata field for the Note's role or one of the
-  authored YAML fields `summary` and `keywords`; unknown or retired YAML keys
+  authored YAML fields `summary` and `keywords`; noncanonical YAML keys
   are never query candidates. `property:<key>=<value>` matches an entire
   normalized string value or one complete string-sequence member. Authored
   YAML matches retain exact key and value source ranges. Managed Metadata
@@ -241,9 +241,9 @@ summary scalar range and opens the current Note, never a summary-only object.
 It is a discovery lead that requires current-body/source inspection before a
 substantive claim. Missing or source-unbounded summary values do not block the
 Note or acquire a machine-generated fallback. Search never writes or
-reconstructs the YAML field. Search contract v9 adds managed Metadata values
-with nullable Markdown source ranges; old disposable index schemas are rebuilt
-instead of entering a compatibility path.
+reconstructs the YAML field. Managed Metadata values use nullable Markdown
+source ranges. A disposable index whose schema does not match the current
+contract is rebuilt.
 
 Future fields or providers require a versioned typed clause, discriminated
 result identity, provider capability-table entry, source/freshness contract,
@@ -291,7 +291,7 @@ Document, HTML, PDF, and DOCX export is deferred, not permanently prohibited.
 For a writable Run, machine-local Agent change evidence retains only each
 modified Note's exact starting and final Agent revisions. It exists solely for
 the Record's exact diff and direct Undo, is bound to that Run and stable Note
-identity, and grants no write authority. Direct Undo follows §10.5 and uses the
+identity, and grants no write authority. Direct Undo follows §8.4 and uses the
 ordinary repository save path rather than a second history system.
 
 Ordinary pre-write recovery state remains invisible and supports exact

@@ -9,8 +9,9 @@
 Evidence order is live source and construction, executable tests, isolated QA
 on disposable fixtures, and dated status. Target prose, previews, and
 compilation alone prove no workflow, accessibility, package, signing, or
-performance result. Acceptance reports link to the owning Specification,
-Architecture, Status, and evidence rather than copying them into another pack.
+performance result. [Implementation Status](../IMPLEMENTATION_STATUS.md) owns
+dated evidence; acceptance reports link to it and the applicable authority
+rather than copying either into another pack.
 
 ### 21.2 Primary acceptance journeys
 
@@ -81,8 +82,7 @@ Usable Core/0.1 require G1–G4, G6, and G8; G9 applies to any distributed
 artifact. G6/G7 baselines and gaps must not be misrepresented as Beta passes.
 Beta requires every applicable gate including G10. No release gate requires
 provider-specific task creation, auto-submission, background Agent execution,
-or **Run with Codex**. Current evidence belongs only in
-[Implementation Status](../IMPLEMENTATION_STATUS.md).
+or provider-specific Agent launch.
 
 ### 21.4 Packaged performance gate
 
@@ -179,8 +179,7 @@ preceding 10-sample span unless both spans are zero. Requiring one incidental
 RSS decrease is not convergence; a monotone sequence can converge, while a
 constant leak fails the deceleration
 condition. These are correctness and stability conditions, not percentile
-results. Current measurements and remaining activation work belong only in
-[Implementation Status](../IMPLEMENTATION_STATUS.md).
+results.
 
 ### 21.5 Source-first Beta distribution
 
@@ -242,21 +241,7 @@ repeat the complete external smoke test; never re-sign an already tested
 artifact or share a certificate private key outside its responsible
 organization.
 
-### 21.6 Change control
-
-Every approved target change updates the affected canonical rule and removes
-the text it replaces in the same patch. Git owns prior versions; this document
-does not preserve supersession chains or compatibility narratives for an
-unreleased product. Architecture records structural consequences, and status
-records current reachability, open work, verification, acceptance, and release
-evidence. Completed migration narratives remain in Git history. Temporary code
-or visuals never become authority accidentally.
-
 ## 22. Unresolved target decisions
-
-Sections 1–21 are the complete current contract. Git history owns replaced
-rules and decision chronology. Implementation and acceptance gaps belong in
-[Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 Only questions that can still change the target remain here:
 

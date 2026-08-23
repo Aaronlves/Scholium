@@ -59,10 +59,8 @@ initial condition is the one-time first-Apparatus-reveal request owned by
 §19.3, after the native split is attached. That request yields to the remaining Document space
 and native bounds; it is not a minimum, maximum, restored divider value, or
 later-reveal preference. After that one transition, the native container and
-direct user resizing remain authoritative. Scholium declares no scene/window
-minimum unless the complete adaptation matrix proves one necessary. The
-specified content constraints are the Library and Apparatus readable-thickness
-metrics owned by §19.3. The
+direct user resizing remain authoritative. The Library and Apparatus readable-
+thickness metrics are owned by §19.3. The
 native split must keep each expanded peripheral plane at or above its boundary;
 Apparatus has no application-defined maximum. These are neither preferred
 widths, restored divider values, nor parallel geometry owners. Library remains
@@ -329,7 +327,7 @@ Menus follow researcher tasks:
   motion. Opening it presents the complete Triptych queue without changing the
   selected workspace, source content, Document, or Sidebar selection.
   Inspector may open the same queue with a current-Note subset. Attention is
-  is not Library navigation.
+  not Library navigation.
 - Refresh preserves the last trustworthy Triptych total. A first load with no
   trustworthy result never claims zero; checking uses the control's bounded
   native progress state. Failure without a trustworthy result presents a
@@ -409,8 +407,7 @@ Menus follow researcher tasks:
   the visible query text. Completion and results
   never expose two simultaneous keyboard selections or turn Search into an
   advanced workspace. **Explain Query** presents the typed explanation carried
-  by the Application Search response and shared with CLI—provider, scope,
-  clauses, direction, normalization, ordering, and limitations. The Search
+  by the Application Search response and shared with CLI under §13. The Search
   surface may present a compact summary with an explicit route to the complete
   explanation or expose the complete explanation on demand; it need not reserve
   a permanent explanation row for every query. Whatever presentation is used

@@ -300,8 +300,8 @@ only that Triptych's machine-local registration, leaves every research folder,
 portable `.scholium` byte, and unrelated registration unchanged, then returns
 through ordinary Bootstrap. Removal never decodes, migrates, or repairs an
 unsupported portable schema and is unavailable while that Triptych has an
-active workspace runtime. If an existing `.scholium` owner is old-schema or
-damaged, registration performs a read-only whole-bundle preflight before any
+active workspace runtime. If an existing `.scholium` owner has an unsupported
+schema or is damaged, registration performs a read-only whole-bundle preflight before any
 machine-local registration write. Bootstrap or Restore Access then offers
 confirmed **Archive and Rebuild…**: Scholium atomically renames the entire
 `.scholium` directory to one unique sibling recovery name, verifies that the
@@ -321,7 +321,7 @@ Never add:
 - permanent LLM chat, project/task management, plugin marketplace, fourth
   vault, or All Notes mode;
 - an embedded agent runtime, agent-reasoning monitor, unrestricted executable
-  Skill system, or Proposal approval layer;
+  Skill system, or second pre-write proposal/approval object;
 - automatic philosophical support, settlement, sufficiency, truth, prose
   authorization, or untraced-premise verdicts;
 - Zotero replacement, embedded PDF reader, proprietary backup export, or
@@ -361,12 +361,9 @@ required only for the GUI-created handoff route.
 File-backed primary Skills, Practices, registrations, and Action Profiles are
 Settings-owned Research Guidance, not packages, a marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
-remains authoritative for Markdown, ordinary Skill-folder contents,
-and attachment bytes. The portable attachment catalog under
-`.scholium/attachments/v1/` records stable identities plus either an imported
-vault-relative path or an indexed absolute path. Machine-local read-only
-bookmark data for an indexed path stays outside the Triptych and cannot repair
-or replace that path. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
+remains authoritative for Markdown, ordinary Skill-folder contents, and
+attachment bytes; §3.3 owns the portable catalog and machine-local bookmark
+boundary. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
 external Agents remain authoritative for optional open-ended work.
 
 Project-level Agent Skill links are nonauthoritative discovery pointers to the

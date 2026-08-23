@@ -18,9 +18,9 @@ The three document sets have distinct jobs:
 
 | Set | May contain | Must not contain |
 | --- | --- | --- |
-| Specification | Stable target behavior, terminology, interface semantics, accessibility, release requirements, and unresolved target decisions | Current reachability, module/type descriptions, migration history, test counts, or operator instructions |
-| Implementation Architecture | Current module, runtime, dependency, state-owner, persistence, and delivery structure | Alternative product rules, superseded designs, migration plans, acceptance results, or release claims |
-| Implementation Status | Dated reachability, open work, verification evidence, and acceptance boundaries | New target rules, structural design authority, completed migration narratives, or decision chronology |
+| Specification | Stable target behavior, terminology, interface semantics, accessibility, release requirements, and unresolved target decisions | Current reachability, module/type descriptions, test counts, or operator instructions |
+| Implementation Architecture | Current module, runtime, dependency, state-owner, persistence, and delivery structure | Alternative product rules, acceptance results, or release claims |
+| Implementation Status | Dated reachability, open work, verification evidence, and acceptance boundaries | New target rules or structural design authority |
 
 Operational guides may explain current tools but create no fourth authority.
 
@@ -56,6 +56,5 @@ copying the same rule into a new summary.
 - Release work reads Release and Open Decisions plus the current verification
   chapter rooted at [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
-Section numbers and meanings remain unique across the closed set. Git owns
-replaced wording and chronology; do not retain a compatibility copy of moved
-specification prose.
+Section numbers and meanings remain unique across the closed set. Each rule
+appears only in its owning canonical location.

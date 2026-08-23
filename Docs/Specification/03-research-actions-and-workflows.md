@@ -17,9 +17,9 @@ Action identity:
 | Topic | **Discuss, Synthesize, Check Fidelity** |
 | Work | **Discuss, Write, Critique, Check Fidelity** |
 
-There is no default mode picker. Analyze Source and Reanalyze are one adaptive
-Analyze Action; reading several Materials is context assembly rather than a
-Multi-note mode; Analyze and Synthesize remain separate scholarly Actions.
+Analyze adapts to creating or updating an Analysis. Reading several Materials
+assembles context without creating another Action mode; Analyze and Synthesize
+remain separate scholarly Actions.
 
 A **Run** is the only working object for one Action. It owns the task, initial
 research object, frozen Method Context, Result Contract, current capability
@@ -117,24 +117,15 @@ response remains untrusted research material. A material conflict between the
 researcher request and method is made visible; it is not silently averaged or
 resolved by the material itself.
 
-The Agent-facing contract has one owner per concern. Core Protocol owns the
-stable workflow sequence; Application owns authorization, adapter eligibility,
-delivery, and execution. Typed contracts own current fields and result forms;
-an Integration Adapter owns integration interpretation; the registered Skill
-and Practices own academic method; CLI help and tool schemas own invocation
-syntax. These owners neither replace nor repeat one another.
-
 ### 8.2 Agent entry, local pairing, layered delivery, and Research Context
 
 GUI preparation and Agent-originated `agent start` share one Run contract. GUI
 offers the one-time Pairing Code below;
 direct start supplies Triptych, Action, target, and all typed Profile inputs,
-then receives a Session directly. The sheet
-keeps Profile **Research Request** visible even when optional; only other
-optional inputs collapse. Both routes use only `scholium agent` and share
+then receives a Session directly. Both routes use only `scholium agent` and share
 Context, writes, Result, continuation, End, conflict, and recovery. A write Result becomes final after its own transaction
-and Result validation converge; it does not enter an **Awaiting Fidelity**
-state and does not prepare or attach a Check Fidelity child. Analyze performs
+and Result validation converge without preparing or attaching a Check Fidelity
+child. Analyze performs
 its bounded source/content fidelity self-check through its registered Method
 before submission. **Check Fidelity** remains a separate read-only Action
 prepared only when the researcher explicitly initiates that Action for an exact
@@ -220,7 +211,7 @@ Delivery is progressive:
 the frozen method, Practices, folder path, Result Contract, and current state.
 Genuine drift returns `stale_run`; an authenticated write uses the Run-owned
 revision and completes without scheduling a Fidelity Action. Reload substitutes
-no later method and replays no old Context response, ranking, availability, or
+no later method and replays no cached Context response, ranking, availability, or
 cache.
 Local absolute paths are delivered only after authentication.
 
@@ -236,8 +227,8 @@ search. Each clause fixes Triptych scope, its legal query or section selector,
 an item limit, and whether the returned material may be proposed for Context
 Use. A query cannot choose a provider, source-kind/purpose cross-product, Run,
 Triptych, or authorization scope. Application binds current Run, Session,
-Triptych, authorized scope, and generation before provider execution. Initial
-Beta composes the one Search capability, exact Note/section read, explicit
+Triptych, authorized scope, and generation before provider execution. Research
+Context composes the one Search capability, exact Note/section read, explicit
 direct Relations, canonical Metadata, Research Records, the current Run's
 selected source binding, and only researcher-state facts whose existing owner
 proves actor, object, action meaning, revision/scope, and text. It creates no
@@ -430,15 +421,12 @@ may supply the public reasons. Structure validation proves only contract
 validity, never method understanding, evidential sufficiency, quality, or task
 success.
 
-One Run has one canonical result payload partitioned into the Record Title,
-Agent academic fields, and Scholium machine fields. The Run owns it until every initiated write and
-recovery duty is determined. Safe finalization creates exactly one portable
-**Research Record**; Records is the only result-processing interface and there
-is no independent Result object or second durable store. The Action row derives
-its state from the Run and Record and opens that exact Record only after an
-explicit researcher action. A crash between commit,
-readback, and finalization may retain overlapping private recovery evidence,
-but startup reconciles it to the same one result and one Record.
+One Run owns one result payload—Record Title, Agent academic fields, and
+Scholium machine fields—until every initiated write and recovery duty is
+determined. Safe finalization creates exactly one portable **Research Record**,
+the sole durable result object. The Action row derives its state from the Run
+and Record and opens that Record only after an explicit researcher action.
+Private interruption evidence reconciles to the same result and Record.
 
 An applicable result may include one bounded **Context Use Report**. The Agent
 identifies only references that actually affected its result; Scholium verifies
@@ -590,7 +578,7 @@ the `continued from` Record relationship.
 Full Access may create the next Run directly; the other policies use the same
 single decision rule and ask only when required. The new Run independently
 resolves current Skill, Practices, Profile, policy, Result Contract, and
-write set. It inherits no old document handles, transaction state, method,
+write set. It does not inherit document handles, transaction state, method,
 permission decision, Research Context response, candidates, rank, cache,
 availability, or future Assembly. Handoff references are re-resolved against
 current owner, revision, scope, and generation. A selected source-Material
@@ -601,11 +589,11 @@ completeness or truth.
 
 Researcher State has a different continuation boundary because it is a
 Run-scoped view rather than a transferable owner object. If a parent handoff
-mentions one of its references, Scholium removes every old Researcher State
+mentions one of its references, Scholium excludes every parent Researcher State
 envelope from the child handoff and reference checks, marks that the child must
 issue `inspect_researcher_state`, and rebuilds the view only when that new Run
 queries current Application-owned objects. The parent request remains
-attributed Agent input in the parent Local Execution record; its old state
+attributed Agent input in the parent Local Execution record; the parent state
 response, content, fingerprint, availability, and provider state do not cross
 the Run boundary. Requery proves neither completeness nor correctness.
 
@@ -772,5 +760,5 @@ Scholium statuses or Work qualification.
 
 Each specific finding records Work identity and fingerprint, heading when
 available, original line, and a short quotation. Selecting it opens the target
-passage; a fingerprint mismatch marks an earlier version. Work overlays remain
+passage; a fingerprint mismatch marks a different revision. Work overlays remain
 deferred until Comment anchoring is reliable.

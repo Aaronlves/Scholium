@@ -230,8 +230,7 @@ figures, without parentheses or a “results” suffix. Reaching the loaded boun
 requests the next slice while preserving collection state. Later-page failure
 retains loaded rows and exposes Retry at that boundary.
 
-Selecting a row enters one route-owned detail and removes the collection from
-the active accessibility tree. The native toolbar owns Back, omits the generic
+Selecting a row enters one route-owned detail. The native toolbar owns Back, omits the generic
 Record title, and retains only meaningful destination titles. Back restores the
 collection state.
 A Record detail contains one dominant reading plane and one narrower
@@ -268,13 +267,9 @@ body values. DOI, Zotero item key, and Discovery Locators are scholarly
 content and use that same Scholarly value treatment rather than technical
 identity typography. Exact Record and revision identity remains monospaced.
 Missing bibliography or locator facts remain explicit.
-Across both Record and Reading Lead detail routes, academic prose and
-content-derived values use Scholarly body. Their long collection ledgers are
-interface indexes and therefore remain Sans: primary row values use Default
-interface, supporting values use Compact interface, and annotations or metadata
-use Small. Supporting explanations and explicit empty or unavailable-state
-descriptions outside a ledger use Compact interface. Visual subordination never
-permits an empty, unavailable, or error state to disappear.
+Record and Reading Lead typography follows §19.2's distinction between
+scholarly content and interface indexes. Visual subordination never permits an
+empty, unavailable, or error state to disappear.
 
 The Record header shows Action and finished time once, one scholarly title, and
 only distinct role, Method, or source metadata. Completed is not repeated there;
@@ -503,14 +498,11 @@ Comments from that one row.
 
 Profiles configure only the closed Platform Actions and do not create a third
 custom-Action group or another visual branch. Availability fails closed while
-checking; an unavailable Action states
-only its first executable repair. Settle remains a quiet direct current-note
-action under one **Judgment** group, and Attention remains in Overview/Library
-rather than becoming completed history.
+checking; §19.6 owns title, explanation, and repair copy. Settle remains a quiet direct current-note
+action under one **Judgment** group; Attention remains in Overview/Library.
 
-Each Action is one native full-row button with a direct symbol, the shortest
-accurate title, explanation only under §19.6, and only when useful a trailing
-chevron. Action launchers have no assigned shortcuts; the menu and Inspector
+Each Action is one native full-row button with a direct symbol and, when useful,
+a trailing chevron. Action launchers have no assigned shortcuts; the menu and Inspector
 remain keyboard-accessible. Its modular sheet shows the necessary scholarly inputs
 and app-owned authority or recovery facts without exposing assembled prompts,
 registration keys, Session secrets, or technical mode names. The active Action and its sheet
@@ -518,11 +510,8 @@ retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
 All Action launchers use one shared visual row recipe with the Action target
 metric owned by §19.3 and no default row or group separator. Availability checking,
 ready, unavailable, running, error, cancellation recovery, Settle, and Settled
-remain distinct states without changing Action routing or ownership. A default
-Action whose title already identifies the task shows no ordinary explanation.
-An unavailable Action shows only its first executable repair. Error and
-recovery information may use the complete required text and is never truncated
-to the ordinary two-line explanation budget.
+remain distinct states without changing Action routing or ownership. Error and
+recovery information remains complete.
 
 A running Action retains that ordinary row structure and minimum rhythm rather
 than becoming a taller state block. Its leading Action symbol yields to one
@@ -532,9 +521,9 @@ title axis; trailing text states **Running**; and a separately named direct
 second line. Larger interface text or localization may grow the row rather
 than clip its title, state, or ending route.
 
-An Action sheet shows Profile **Research Request** uncollapsed, target effect,
-read-only Additional Context, extra-Note approval, collapsed optionals/repair,
-then **Copy Handoff**. The copied instructions contain only
+An Action sheet keeps Profile **Research Request** visible and collapses only
+other optional inputs. It presents target effect, read-only Additional Context,
+extra-Note approval, and repair before **Copy Handoff**. The copied instructions contain only
 Run locator, one-time Pairing Code, local route, and CLI steps; the code is
 never a separate field. Copy freezes when needed but never selects or opens an
 Agent app. Success closes and restores focus to the Action row; failure keeps
@@ -575,30 +564,10 @@ semibold, 0.7pt tracking, and secondary text color. English localization
 supplies uppercase strings; runtime code never forces case, so Chinese and
 other languages retain natural writing.
 
-Inspector layout uses the purpose-named Apparatus content-inset and fact-grid
-metrics owned by §19.3 rather than leaf-view literals. Short facts form one
-section-level two-column grid with a shared, trailing-aligned label column, one
-common leading axis for values, and first-baseline alignment. Ordinary canonical labels therefore remain
-horizontal in **300pt** and **278pt** Inspector scenarios after the content
-insets. If available width, 200% readability, or localized labels cannot fit,
-one container-level adaptation stacks the complete grid; individual rows never
-switch independently. Empty values do not create rows. Summary, Source Basis,
-Limitations, and other long researcher prose always use a reading block: label
-on its own line and Alegreya content on the next line with a 12pt leading
-indent. Labels, diagnostic/state names, and action names remain system sans semibold; field values,
-explanations, and research prose use Alegreya; exact paths and revisions remain
-monospaced. Counts use monospaced digits without changing the surrounding
-face.
-
-Provisional rhythm uses the Apparatus scanning and Action-row metrics owned by
-§19.3, the Scholarly body
-role with approximately 17–18pt reading leading, 4pt label-to-copy gap, 8pt between
-reading blocks, and 16pt between sections. Apparatus sections, ordinary Action
-rows, and relation rows draw no boundary by default. A local boundary must be
-enabled explicitly for a named ownership, consequence, or recovery distinction.
-The native comparison catalog and human review may revise typography, grid,
-indent, and spacing while preserving semantics, interaction, researcher
-control, and accessibility.
+Inspector layout uses the Apparatus metrics and typography owned by §19.3.
+Short facts share one adaptive section-level grid; long researcher prose uses
+reading blocks; exact paths and revisions remain monospaced. Empty values create
+no rows. Section and row boundaries follow §19.3.
 
 Document has no bottom Research Strip or hidden-Inspector duplicate. Action
 handoff remains keyboard/VoiceOver reachable; its sheet survives launch and

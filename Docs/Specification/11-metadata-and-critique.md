@@ -4,19 +4,10 @@
 
 ## Appendix A. Metadata catalogs and settings
 
-Scholium separates two researcher-owned authorities. Authored YAML recognizes
-only optional `summary` and `keywords`. Every other canonical structured value
-uses one identity-keyed Scholium Metadata record. The built-in managed catalog
-defines stable product fields. Each Triptych may append independent Analysis,
-Topic, and Work definitions containing a stable key and supported simple value
-kind, label, optional description, optional controlled choices, and lifecycle.
-The workspace resolves those two sources into one role
-catalog. Analysis source-type profiles define applicability and recommendation
-order for built-ins; custom Analysis fields apply to every source type without
-becoming recommended. About selects optional managed fields; fixed New Note
-YAML owns only authored `summary` and `keywords`; Agent-preferred fields are
-optional guidance for typed Analysis creation. App facts and integrations
-belong to neither authority.
+Appendix A defines the closed authored-YAML allowlist, built-in managed
+catalogs, and Triptych-extensible Analysis, Topic, and Work field definitions.
+The workspace resolves authored and managed authorities into one role catalog;
+app facts and integrations belong to neither.
 
 ### Shared authored YAML
 
@@ -29,8 +20,8 @@ Both keys are optional values in Analysis, Topic, and Work. Managed creation
 always writes `summary: null` and `keywords: []`; these placeholders count as
 absent until populated. They remain authored source and are edited in Source,
 not in the Metadata sheet. Any other YAML is
-losslessly preserved custom source without canonical semantics, managed-field
-aliases, migration, or dual reads.
+losslessly preserved custom source without canonical semantics or managed-field
+aliases.
 
 ### Analyses
 
@@ -133,6 +124,12 @@ YAML**. One resolved workspace catalog owns membership. Metadata and About
 distinguish groups through whitespace while retaining group names for assistive
 technology instead of visible repeated headings. About shows only selected,
 nonempty values. Authored `keywords` render as neutral content capsules.
+
+Defined, applicable, recommended, Agent-preferred, present, and About-visible
+are separate states. Source-type profiles own built-in applicability and
+recommendation order; custom Analysis fields apply to every source type without
+becoming recommended. About selection and Agent preference never create a
+value, and every Agent-preferred field remains optional.
 
 `settings.json` stores three independent values under one exact-byte revision
 and one atomic save: stable managed-field definitions by role, About
