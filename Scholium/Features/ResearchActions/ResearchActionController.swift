@@ -455,7 +455,6 @@ final class ResearchActionController: ObservableObject {
         do {
             request = ResearchActionExecutionRequest(
                 actionID: activeActionID,
-                expectedExecutionKind: presentationAvailability.definition.executionKind,
                 expectedProfileRevision: presentationAvailability.profile.profileRevision,
                 expectedProfileDocumentRevision:
                     presentationAvailability.profile.profileDocumentRevision,
@@ -507,7 +506,7 @@ final class ResearchActionController: ObservableObject {
                     )
                 }
                 return
-            } catch let error as ResearchFunctionContractError {
+            } catch let error as ResearchActionRunContractError {
                 guard accepts(token), self.presentationID == presentationID else {
                     return
                 }
@@ -901,61 +900,5 @@ extension ResearchActionAvailability {
     /// remain reachable even though execution itself is still fail closed.
     var canPresentInInterface: Bool {
         isEnabled || repairReasons.contains { $0.code == .sourceAccessRequired }
-    }
-}
-
-extension ResearchFunctionTargetRole {
-    var actionRole: ResearchActionTargetRole {
-        switch self {
-        case .analysis: .analysis
-        case .topic: .topic
-        case .work: .work
-        }
-    }
-}
-
-extension ResearchActionTargetRole {
-    var functionRole: ResearchFunctionTargetRole {
-        switch self {
-        case .analysis: .analysis
-        case .topic: .topic
-        case .work: .work
-        }
-    }
-}
-
-extension ResearchActionNoteSnapshot {
-    var functionTarget: ResearchFunctionTarget {
-        ResearchFunctionTarget(
-            noteID: noteID,
-            note: note,
-            role: role.functionRole,
-            fingerprint: fingerprint,
-            title: title
-        )
-    }
-}
-
-extension ResearchFunctionMaterial {
-    var actionNote: ResearchActionNoteSnapshot {
-        ResearchActionNoteSnapshot(
-            noteID: noteID,
-            note: note,
-            role: role.actionRole,
-            fingerprint: fingerprint,
-            title: title
-        )
-    }
-}
-
-extension ResearchActionDefinition {
-    var protectedFunction: ResearchFunctionID {
-        switch executionKind {
-        case .discussion: .discuss
-        case .analysis, .synthesis: .develop
-        case .writing: .revise
-        case .critique: .critique
-        case .checkFidelity: .fidelity
-        }
     }
 }

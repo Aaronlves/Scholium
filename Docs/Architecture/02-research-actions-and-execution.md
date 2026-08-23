@@ -13,12 +13,13 @@ ResearchActionsInspectorView / ResearchActionPanelView / CLI
         | immutable values and intents
 ResearchActionController (one Workspace window)
         | ResearchActionUseCases
-ResearchRunCoordinator (Application; one WorkspaceHandle isolation domain)
+ResearchActionRunCoordinator (Application; one WorkspaceHandle isolation domain)
         +-- PlatformActionCatalog
         +-- Research Guidance owners
         +-- ResearchConnectionCoordinator
         +-- ResearchContextUseCases
         +-- LocalResearchExecutionStore
+        +-- AgentAnalysisCreationReservationStore
         +-- PortableResearchRecordStore
         +-- repository / recovery / source / Zotero authorities
 ```
@@ -30,7 +31,12 @@ Envelope, Context Use Report, result/evaluation schemas, structured errors, and
 fingerprints. Contracts contain no SwiftUI layout, absolute path, bookmark,
 socket location, provider implementation, repository, or hidden secret.
 
-`ResearchRunCoordinator` is the sole Action availability, preparation,
+Every Run boundary carries the six-value `ResearchActionID` directly and a
+required `ResearchActionSnapshot`. There is no compressed internal Function
+identity, Action-to-Function mapper, optional snapshot fallback, or decoder for
+the retired shape; unknown Action identities and fields fail closed.
+
+`ResearchActionRunCoordinator` is the sole Action availability, preparation,
 delivery, extension, submission, finalization, cancellation, manual-end,
 continuation, and recovery coordinator. It is one Application component under
 the owning `WorkspaceHandle`, not another runtime or mutable Workspace
@@ -126,10 +132,16 @@ workflow only as a researcher-created existing Analysis target.
 For consequential `new_analysis`, deterministic digests of Triptych ID plus
 the stable `request_id` own the reserved Note and Run identities. A separate
 fingerprint of the logical preflight request detects changed input after the
-first portable creation phase. Agent-Analysis creation-record schema 4 first
-persists a machine-local reservation for both external-Zotero and researcher-
-provided routes; optional binding state exists only for the Zotero route. That
-schema belongs only to exact replay of the deterministic request identity. Its
+first portable creation phase. The wire-level
+`ResearchAgentNewAnalysisRequest` uses schema 4. Independently, machine-local
+creation-reservation schema 1 persists replay state for both external-Zotero
+and researcher-provided routes; optional binding state exists only for the
+Zotero route. Reservation schema 1 is owned by
+`AgentAnalysisCreationReservationStore` in `agent-analysis-creations-v1`, with
+its own lock and validation boundary. It is not a
+`LocalResearchExecutionStore` entry; the latter owns only Run execution and
+deletion authority. The reservation schema belongs only to exact replay of the
+deterministic request identity. Its
 sibling directory is never scanned as Local Execution authority and cannot
 block system-Trash preparation; an unreadable record fails that request identity
 closed rather than being auto-deleted or treated as a Run. A reservation with
@@ -424,6 +436,16 @@ from post-commit uncertainty, and read back before success. Record schemas 1
 through 10 have no decoder or mutation route; their bytes remain
 untouched and nonauthorizing when encountered.
 
+The researcher CLI's `record list` and `record read` adapters consume one
+complete immutable `WorkspaceResearchSnapshot`; they never scan portable JSON
+or construct another Record index. List validates the stable Note UUID against
+the current catalog or the snapshot's historical participants, filters the
+Record-owned `participatingNotes`, and emits the snapshot's complete source
+manifest plus exact Record fingerprints. Read selects one exact Record UUID and
+returns the decoded schema-13 value with its same-snapshot fingerprint. Either
+adapter refuses an incomplete projection or missing fingerprint and exposes no
+Record mutation use case.
+
 `saveResearcherResponse` uses exact Record ID, expected Evaluation revision,
 expected Method Feedback revision, and finalized-result fingerprint. It
 validates all tokens under the same lock and replaces both Response partitions
@@ -614,7 +636,7 @@ attachment relationship or absent source selection uses the external route.
 Zotero
 bibliographic metadata is read once per Run, labelled as metadata, and never
 substitutes for source content; a resumed Run uses its frozen snapshot and a
-new Run reads again. `ResearchFunctionSnapshot` freezes exactly one Analyze
+new Run reads again. The required `ResearchActionSnapshot` freezes exactly one Analyze
 route: current Scholium source, external Zotero, or `researcher_provided`.
 Completion revalidates the first, requires the frozen context for the second,
 and accepts the third only while both source reference and Zotero context remain

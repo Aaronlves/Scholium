@@ -79,7 +79,6 @@ func actionTitle(_ actionID: ResearchActionID) -> String {
         ScholiumL10n.localized(LocalizedStringResource(
             "Check Fidelity", table: "Localizable", bundle: .module
         ))
-    default: actionID.rawValue.replacingOccurrences(of: "-", with: " ").capitalized
     }
 }
 

@@ -1768,11 +1768,10 @@ extension WorkspaceHandle {
         _ execution: LocalResearchExecutionRecord
     ) throws -> ResearchActionSnapshot {
         guard execution.triptychID == self.id,
-              let action = execution.snapshot.actionSnapshot,
               execution.completion == nil else {
             throw ResearchAgentConnectionError.runUnavailable
         }
-        return action
+        return execution.snapshot.actionSnapshot
     }
 
     private func platformAction(

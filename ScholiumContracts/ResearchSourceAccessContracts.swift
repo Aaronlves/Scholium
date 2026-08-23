@@ -322,10 +322,10 @@ public enum ResearchSourceSelection: Hashable, Sendable {
 }
 
 public struct ResearchSourceBindingRequest: Hashable, Sendable {
-    public let target: ResearchFunctionTarget
+    public let target: ResearchActionNoteSnapshot
     public let selection: ResearchSourceSelection
 
-    public init(target: ResearchFunctionTarget, selection: ResearchSourceSelection) {
+    public init(target: ResearchActionNoteSnapshot, selection: ResearchSourceSelection) {
         self.target = target
         self.selection = selection
     }

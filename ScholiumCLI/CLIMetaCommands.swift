@@ -312,6 +312,7 @@ extension ScholiumCLI {
             case .usage: return "usage_error"
             case .invalidUTF8: return "invalid_utf8"
             case .noteNotFound: return "note_not_found"
+            case .recordNotFound: return "record_not_found"
             case .unavailable: return "unavailable"
             case .searchDiagnostic: return "search_query_diagnostic"
             }

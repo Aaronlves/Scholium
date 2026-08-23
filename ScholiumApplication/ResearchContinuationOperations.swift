@@ -174,10 +174,10 @@ extension WorkspaceHandle {
         let parentExecution = try await researchContinuationDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
+        let parentAction = parentExecution.snapshot.actionSnapshot
         guard let parentCompletion = parentExecution.completion,
               [.complete, .unverified].contains(parentCompletion.state),
               parentExecution.resultPayload != nil,
-              let parentAction = parentExecution.snapshot.actionSnapshot,
               let parentPlatform = PlatformActionCatalog.definition(
                 for: parentAction.actionID
               ),
@@ -356,7 +356,7 @@ extension WorkspaceHandle {
                 request.nextActionID,
                 targetRole: request.targetRole
             )
-            let function = try continuationFunction(
+            let actionID = try continuationActionID(
                 request.nextActionID,
                 targetRole: request.targetRole
             )
@@ -373,28 +373,28 @@ extension WorkspaceHandle {
                 requiresResearcherStateRequery:
                     !researcherStateReferences.isEmpty
             )
-            let functionTarget = ResearchFunctionTarget(
+            let actionTarget = ResearchActionNoteSnapshot(
                 noteID: target.noteID,
                 note: target.note,
-                role: Self.functionRole(target.role),
+                role: target.role,
                 fingerprint: target.fingerprint,
                 title: target.title
             )
-            let functionRequest = ResearchFunctionRequest(
-                function: function,
-                target: functionTarget,
+            let actionRequest = ResearchActionRunRequest(
+                actionID: actionID,
+                target: actionTarget,
                 materials: [],
                 instruction: request.academicPurpose,
                 scope: .whole,
-                checks: function == .fidelity
+                checks: actionID == .checkFidelity
                     ? (request.fidelityChecks.isEmpty
                         ? [.content]
                         : Set(request.fidelityChecks))
                     : [],
-                dialogueResponseModules: function == .discuss ? [] : nil
+                dialogueResponseModules: actionID == .discuss ? [] : nil
             )
             let actionContext = try await resolvedDefaultActionContext(
-                for: functionRequest
+                for: actionRequest
             )
             guard actionContext.availability.definition.id
                     == request.nextActionID else {
@@ -409,8 +409,8 @@ extension WorkspaceHandle {
                 requestID: childRunID,
                 kind: .continueResearch
             )
-            _ = try await researchFunctionCoordinator.prepareResearchFunction(
-                functionRequest,
+            _ = try await researchActionRunCoordinator.prepareResearchActionRun(
+                actionRequest,
                 actionContext: actionContext,
                 runIDOverride: childRunID,
                 continuationLineage: lineage,
@@ -585,29 +585,18 @@ extension WorkspaceHandle {
         return platform
     }
 
-    private func continuationFunction(
+    private func continuationActionID(
         _ actionID: ResearchActionID,
         targetRole: ResearchActionTargetRole
-    ) throws -> ResearchFunctionID {
-        let definition: ResearchActionDefinition = switch actionID {
-        case .discuss: .discuss
-        case .analyze: .analyze
-        case .synthesize: .synthesize
-        case .write: .write
-        case .critique: .critique
-        case .checkFidelity: .checkFidelity
-        default:
-            throw ResearchActionExecutionContractError.actionUnavailable(actionID)
-        }
-        return try ResearchActionFunctionMapping.function(
-            for: definition,
-            targetRole: targetRole
-        )
+    ) throws -> ResearchActionID {
+        let definition = actionID.definition
+        try definition.validate(targetRole: targetRole)
+        return actionID
     }
 
     private func continuationReferenceChecks(
         _ references: [SourceReferenceEnvelope],
-        parentSnapshot: ResearchFunctionSnapshot
+        parentSnapshot: ResearchActionRunSnapshot
     ) async throws -> [ResearchContinuationReferenceCheck] {
         var seen: Set<UUID> = []
         var checks: [ResearchContinuationReferenceCheck] = []
@@ -627,7 +616,7 @@ extension WorkspaceHandle {
 
     private func continuationReferenceStatus(
         _ reference: SourceReferenceEnvelope,
-        parentSnapshot: ResearchFunctionSnapshot
+        parentSnapshot: ResearchActionRunSnapshot
     ) async throws -> (
         status: ResearchContinuationReferenceStatus,
         explanation: String
@@ -830,7 +819,7 @@ extension WorkspaceHandle {
 
     private static func functionRole(
         _ role: ResearchActionTargetRole
-    ) -> ResearchFunctionTargetRole {
+    ) -> ResearchActionTargetRole {
         switch role {
         case .analysis: .analysis
         case .topic: .topic

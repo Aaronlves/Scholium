@@ -909,9 +909,9 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
     public let checks: Set<FidelityCheck>
     /// Exact immutable audit objects. These values are read-only context, not
     /// authorization tokens, and the Agent never echoes them in its Result.
-    public let targets: [ResearchFunctionTarget]
-    public let materials: [ResearchFunctionMaterial]
-    public let scope: ResearchFunctionScope?
+    public let targets: [ResearchActionNoteSnapshot]
+    public let materials: [ResearchActionNoteSnapshot]
+    public let scope: ResearchActionScope?
     /// Present only when Scholium can reopen one formal revision-bound source
     /// owner for this audit. Authored Note metadata is never promoted here.
     public let sourceReference: ResearchSourceReference?
@@ -924,9 +924,9 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
 
     public init(
         checks: Set<FidelityCheck>,
-        targets: [ResearchFunctionTarget],
-        materials: [ResearchFunctionMaterial],
-        scope: ResearchFunctionScope?,
+        targets: [ResearchActionNoteSnapshot],
+        materials: [ResearchActionNoteSnapshot],
+        scope: ResearchActionScope?,
         sourceReference: ResearchSourceReference?,
         requiredUnavailableChecks: Set<FidelityCheck> = [],
         evidenceLimitation: String? = nil,
@@ -1022,15 +1022,15 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
         try self.init(
             checks: container.decode(Set<FidelityCheck>.self, forKey: .checks),
             targets: container.decode(
-                [ResearchFunctionTarget].self,
+                [ResearchActionNoteSnapshot].self,
                 forKey: .targets
             ),
             materials: container.decode(
-                [ResearchFunctionMaterial].self,
+                [ResearchActionNoteSnapshot].self,
                 forKey: .materials
             ),
             scope: container.decodeIfPresent(
-                ResearchFunctionScope.self,
+                ResearchActionScope.self,
                 forKey: .scope
             ),
             sourceReference: container.decodeIfPresent(

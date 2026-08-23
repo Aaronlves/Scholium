@@ -162,13 +162,13 @@ public protocol ResearchRecordUseCases: Sendable {
     func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion
     func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion?
     func createDiscussion(
-        target: ResearchFunctionTarget,
-        focalNotes: [ResearchFunctionMaterial],
+        target: ResearchActionNoteSnapshot,
+        focalNotes: [ResearchActionNoteSnapshot],
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion
     func createComment(
-        target: ResearchFunctionTarget,
+        target: ResearchActionNoteSnapshot,
         lineReference: ResearchLineReference,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion
@@ -314,7 +314,7 @@ public protocol ResearchActionUseCases: Sendable {
 
 public protocol ResearchSourceAccessUseCases: Sendable {
     func sourceAccess(
-        for target: ResearchFunctionTarget
+        for target: ResearchActionNoteSnapshot
     ) async throws -> ResearchSourceAccessStatus
 
     func bindSourceAccess(

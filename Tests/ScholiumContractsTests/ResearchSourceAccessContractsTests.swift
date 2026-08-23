@@ -47,11 +47,12 @@ struct ResearchSourceAccessContractsTests {
         #expect(!encoded.contains("/Users/"))
         #expect(!encoded.contains("private source bytes"))
 
-        let snapshot = ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(
-                function: .develop,
+        let snapshot = try ResearchActionRunSnapshot(
+            request: ResearchActionRunRequest(
+                actionID: .analyze,
                 target: target()
             ),
+            actionSnapshot: try actionSnapshot(),
             sourceReference: reference
         )
         let snapshotData = try JSONEncoder().encode(snapshot)
@@ -171,22 +172,23 @@ struct ResearchSourceAccessContractsTests {
         }
     }
 
-    @Test("Function snapshots without a local source route remain decodable")
+    @Test("Action Run snapshots without a local source route remain decodable")
     func snapshotWithoutSourceReferenceDecoding() throws {
-        let snapshot = ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(function: .develop, target: target())
+        let snapshot = try ResearchActionRunSnapshot(
+            request: ResearchActionRunRequest(actionID: .analyze, target: target()),
+            actionSnapshot: try actionSnapshot()
         )
         let encoded = try JSONEncoder().encode(snapshot)
         let decoded = try JSONDecoder().decode(
-            ResearchFunctionSnapshot.self,
+            ResearchActionRunSnapshot.self,
             from: encoded
         )
         #expect(decoded.sourceReference == nil)
         #expect(decoded.request == snapshot.request)
     }
 
-    private func target() -> ResearchFunctionTarget {
-        ResearchFunctionTarget(
+    private func target() -> ResearchActionNoteSnapshot {
+        ResearchActionNoteSnapshot(
             noteID: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
             note: VaultQualifiedNoteID(
                 vaultID: UUID(uuidString: "66666666-7777-8888-9999-AAAAAAAAAAAA")!,
@@ -195,6 +197,52 @@ struct ResearchSourceAccessContractsTests {
             role: .analysis,
             fingerprint: DocumentFingerprint(content: "# Analysis"),
             title: "Analysis"
+        )
+    }
+
+    private func actionSnapshot() throws -> ResearchActionSnapshot {
+        let target = target()
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .analyze
+            }
+        )
+        let profileRevision = try profile.contentRevision()
+        let registration = try ResearchSkillRegistration(
+            key: ResearchSkillRegistrationKey(rawValue: UUID()),
+            actionID: .analyze,
+            displayName: profile.displayName,
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Analyze\n\nExact method.\n"
+        )
+        return try ResearchActionSnapshot(
+            definition: .analyze,
+            target: target,
+            method: method,
+            resolvedProfile: ResearchActionResolvedProfileSnapshot(
+                profile: profile,
+                profileRevision: profileRevision,
+                profileDocumentRevision: DocumentFingerprint(content: "profiles")
+            ),
+            platformInputs: ResearchActionPlatformInputs(),
+            academicInputs: ResearchAcademicFieldValues(
+                values: [:],
+                definitions: profile.academicInputFields
+            ),
+            resultContract: ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: profileRevision
+            ),
+            authority: ResearchAuthorityEnvelope(
+                readableNotes: [target],
+                writableNotes: [target],
+                writeOperations: [.modifyMarkdown],
+                editableMetadataKeys: []
+            )
         )
     }
 }

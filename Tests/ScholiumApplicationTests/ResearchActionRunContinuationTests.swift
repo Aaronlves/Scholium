@@ -3,7 +3,7 @@ import ScholiumContracts
 @testable import ScholiumApplication
 import Testing
 
-extension ResearchFunctionOperationsTests {
+extension ResearchActionRunOperationsTests {
     @Test("Collaboration policy is one Triptych-wide CAS document")
     func collaborationPolicyUsesCurrentOwner() async throws {
         let fixture = try await ResearchFixture.make()
@@ -37,7 +37,7 @@ extension ResearchFunctionOperationsTests {
     }
 
     func actionNote(
-        _ target: ResearchFunctionTarget
+        _ target: ResearchActionNoteSnapshot
     ) -> ResearchActionNoteSnapshot {
         let role: ResearchActionTargetRole = switch target.role {
         case .analysis: .analysis
@@ -56,7 +56,6 @@ extension ResearchFunctionOperationsTests {
     func actionRequest(
         handle: WorkspaceHandle,
         actionID: ResearchActionID,
-        expectedExecutionKind: ResearchActionExecutionKind? = nil,
         target: ResearchActionNoteSnapshot,
         platformInputs: ResearchActionPlatformInputs? = nil,
         academicValues: [ResearchAcademicFieldID: ResearchAcademicFieldValue] = [:]
@@ -65,8 +64,6 @@ extension ResearchFunctionOperationsTests {
         let presented = try #require(availability.first { $0.id == actionID })
         return ResearchActionExecutionRequest(
             actionID: actionID,
-            expectedExecutionKind:
-                expectedExecutionKind ?? presented.definition.executionKind,
             expectedProfileRevision: presented.profile.profileRevision,
             expectedProfileDocumentRevision:
                 presented.profile.profileDocumentRevision,

@@ -546,6 +546,17 @@ bookmarks, absolute paths, method/folder snapshots, prompts, token counts,
 transport logs, window state, and diff hunks. Markdown remains authoritative
 research content; Records never reconstruct writable source.
 
+The read-only CLI exposes the existing ownership directly rather than asking an
+Agent to compose Search providers. `record list --note <stable-note-uuid>`
+binds one Triptych and returns every complete finished Record in which that
+exact identity participates, with one complete-corpus manifest and each
+Record's exact persisted-byte fingerprint. `record read <record-uuid>` returns
+that Triptych's decoded portable Record with the same exact
+fingerprint. Unknown identities, a missing fingerprint, or an incomplete
+portable Record projection fail closed. These routes create no Note dossier,
+duplicate Record, inferred relevance, acceptance, mutation authority, or
+alternative Record owner.
+
 Research Records presentation, collection behavior, Reading Leads, evidence,
 evaluation, and deletion are owned by [§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).
 Those routes never change the portable ownership above. Analyze-only Literature

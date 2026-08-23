@@ -3,26 +3,48 @@ import Foundation
 /// Stable identity for one code-owned Platform Action. Researcher-editable
 /// presentation and academic fields live in the Profile; they cannot create a
 /// second executable Action identity.
-public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
+public enum ResearchActionID: String, Codable, CaseIterable, Hashable, Sendable,
     CustomStringConvertible
 {
-    public let rawValue: String
+    case discuss
+    case analyze
+    case synthesize
+    case write
+    case critique
+    case checkFidelity = "check-fidelity"
 
-    public init?(rawValue: String) {
-        guard Self.supportedRawValues.contains(rawValue) else { return nil }
-        self.rawValue = rawValue
+    public var definition: ResearchActionDefinition {
+        switch self {
+        case .discuss: .discuss
+        case .analyze: .analyze
+        case .synthesize: .synthesize
+        case .write: .write
+        case .critique: .critique
+        case .checkFidelity: .checkFidelity
+        }
     }
 
-    private init(uncheckedRawValue: String) {
-        rawValue = uncheckedRawValue
+    public var allowedTargetRoles: Set<ResearchActionTargetRole> {
+        switch self {
+        case .discuss, .checkFidelity:
+            Set(ResearchActionTargetRole.allCases)
+        case .analyze:
+            [.analysis]
+        case .synthesize:
+            [.topic]
+        case .write, .critique:
+            [.work]
+        }
     }
 
-    public static let discuss = Self(uncheckedRawValue: "discuss")
-    public static let analyze = Self(uncheckedRawValue: "analyze")
-    public static let synthesize = Self(uncheckedRawValue: "synthesize")
-    public static let write = Self(uncheckedRawValue: "write")
-    public static let critique = Self(uncheckedRawValue: "critique")
-    public static let checkFidelity = Self(uncheckedRawValue: "check-fidelity")
+    public var requiresAgentChangeEvidence: Bool {
+        switch self {
+        case .analyze, .synthesize, .write: true
+        case .discuss, .critique, .checkFidelity: false
+        }
+    }
+
+    public var writesTarget: Bool { requiresAgentChangeEvidence }
 
     public var description: String { rawValue }
     public init(from decoder: Decoder) throws {
@@ -42,34 +64,6 @@ public struct ResearchActionID: RawRepresentable, Codable, Hashable, Sendable,
         try container.encode(rawValue)
     }
 
-    private static let supportedRawValues: Set<String> = [
-        "discuss", "analyze", "synthesize", "write", "critique",
-        "check-fidelity",
-    ]
-}
-
-/// Public execution semantics available to the closed Platform Actions.
-/// These values never expose the protected Function used to execute them.
-public enum ResearchActionExecutionKind: String, Codable, CaseIterable, Hashable, Sendable {
-    case discussion
-    case analysis
-    case synthesis
-    case writing
-    case critique
-    case checkFidelity = "check_fidelity"
-
-    public var allowedTargetRoles: Set<ResearchActionTargetRole> {
-        switch self {
-        case .discussion, .checkFidelity:
-            Set(ResearchActionTargetRole.allCases)
-        case .analysis:
-            [.analysis]
-        case .synthesis:
-            [.topic]
-        case .writing, .critique:
-            [.work]
-        }
-    }
 }
 
 /// Researcher-visible role vocabulary for the Action boundary.
@@ -77,61 +71,53 @@ public enum ResearchActionTargetRole: String, Codable, CaseIterable, Hashable, S
     case analysis
     case topic
     case work
+
+    public init?(vaultRole: VaultRole) {
+        switch vaultRole {
+        case .sourceCorpus: self = .analysis
+        case .topicKnowledge: self = .topic
+        case .draftProject: self = .work
+        case .other: return nil
+        }
+    }
+
+    public var vaultRoles: Set<VaultRole> {
+        switch self {
+        case .analysis: [.sourceCorpus]
+        case .topic: [.topicKnowledge]
+        case .work: [.draftProject]
+        }
+    }
 }
 
-/// Identity plus the public execution semantics of one Action.
-/// Role applicability is derived from the execution kind and may be narrowed
-/// later by an Action Profile, but never widened beyond this definition.
+/// The closed public definition of one Action. It wraps the direct Action ID
+/// for presentation and profile APIs without adding another semantic identity.
 public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendable {
     public let id: ResearchActionID
-    public let executionKind: ResearchActionExecutionKind
 
     public var allowedTargetRoles: Set<ResearchActionTargetRole> {
-        executionKind.allowedTargetRoles
+        id.allowedTargetRoles
     }
 
-    init(
-        validatingID id: ResearchActionID,
-        executionKind: ResearchActionExecutionKind
-    ) throws {
-        if let expected = id.reservedExecutionKind, expected != executionKind {
-            throw ResearchActionContractError.reservedExecutionKindMismatch(
-                actionID: id,
-                expected: expected,
-                actual: executionKind
-            )
-        }
+    private init(id: ResearchActionID) {
         self.id = id
-        self.executionKind = executionKind
-    }
-
-    private init(
-        defaultID: ResearchActionID,
-        executionKind: ResearchActionExecutionKind
-    ) {
-        id = defaultID
-        self.executionKind = executionKind
     }
 
     public func validate(targetRole: ResearchActionTargetRole) throws {
         guard allowedTargetRoles.contains(targetRole) else {
             throw ResearchActionContractError.invalidTargetRole(
                 actionID: id,
-                executionKind: executionKind,
                 role: targetRole
             )
         }
     }
 
-    public static let discuss = Self(defaultID: .discuss, executionKind: .discussion)
-    public static let analyze = Self(defaultID: .analyze, executionKind: .analysis)
-    public static let synthesize = Self(defaultID: .synthesize, executionKind: .synthesis)
-    public static let write = Self(defaultID: .write, executionKind: .writing)
-    public static let critique = Self(defaultID: .critique, executionKind: .critique)
-    public static let checkFidelity = Self(
-        defaultID: .checkFidelity,
-        executionKind: .checkFidelity
-    )
+    public static let discuss = Self(id: .discuss)
+    public static let analyze = Self(id: .analyze)
+    public static let synthesize = Self(id: .synthesize)
+    public static let write = Self(id: .write)
+    public static let critique = Self(id: .critique)
+    public static let checkFidelity = Self(id: .checkFidelity)
 
     /// Stable default order before role filtering.
     public static let defaultDefinitions: [Self] = [
@@ -151,35 +137,31 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
 
     private enum CodingKeys: String, CodingKey {
         case id = "action_id"
-        case executionKind = "execution_kind"
     }
 
     public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            validatingID: container.decode(ResearchActionID.self, forKey: .id),
-            executionKind: container.decode(
-                ResearchActionExecutionKind.self,
-                forKey: .executionKind
-            )
+        try ResearchActionExecutionValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: [CodingKeys.id.stringValue]
         )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try container.decode(ResearchActionID.self, forKey: .id))
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
-        try container.encode(executionKind, forKey: .executionKind)
     }
 }
 
 /// Versioned public identity and authority recorded for one Action run.
 ///
-/// Schema v4 is created only after the resolver has frozen the exact Target,
+/// Schema v5 is created only after the resolver has frozen the exact Target,
 /// Skill, academic Profile, protected Platform inputs, academic inputs,
 /// Result Contract, and concrete authority envelope. It
-/// intentionally contains no internal Function ID.
+/// contains no second internal operation identity.
 public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
 
     public let schemaVersion: Int
     public let definition: ResearchActionDefinition
@@ -192,7 +174,6 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
     public let authority: ResearchAuthorityEnvelope
 
     public var actionID: ResearchActionID { definition.id }
-    public var executionKind: ResearchActionExecutionKind { definition.executionKind }
     public var targetRole: ResearchActionTargetRole { target.role }
 
     public init(
@@ -256,7 +237,6 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case actionID = "action_id"
-        case executionKind = "execution_kind"
         case target
         case method
         case resolvedProfile = "resolved_profile"
@@ -276,13 +256,10 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         guard schemaVersion == Self.currentSchemaVersion else {
             throw ResearchActionContractError.unsupportedSchemaVersion(schemaVersion)
         }
-        let definition = try ResearchActionDefinition(
-            validatingID: container.decode(ResearchActionID.self, forKey: .actionID),
-            executionKind: container.decode(
-                ResearchActionExecutionKind.self,
-                forKey: .executionKind
-            )
-        )
+        let definition = try container.decode(
+            ResearchActionID.self,
+            forKey: .actionID
+        ).definition
         try self.init(
             definition: definition,
             target: container.decode(ResearchActionNoteSnapshot.self, forKey: .target),
@@ -311,7 +288,6 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(actionID, forKey: .actionID)
-        try container.encode(executionKind, forKey: .executionKind)
         try container.encode(target, forKey: .target)
         try container.encode(method, forKey: .method)
         try container.encode(resolvedProfile, forKey: .resolvedProfile)
@@ -325,9 +301,9 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
 /// The complete Action projection permitted in a portable Research Record.
 ///
 /// A record identifies what the researcher invoked without persisting the
-/// protected Function selected by the Application or duplicating execution
+/// resolved Action Run selected by the Application or duplicating execution
 /// policy. The portable store adopts this value during its later cutover;
-/// legacy Function-era records remain outside this contract.
+/// legacy pre-Action records remain outside this contract.
 public struct ResearchActionRecordIdentity: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 1
 
@@ -372,14 +348,8 @@ public struct ResearchActionRecordIdentity: Codable, Hashable, Sendable {
 }
 
 public enum ResearchActionContractError: LocalizedError, Hashable, Sendable {
-    case reservedExecutionKindMismatch(
-        actionID: ResearchActionID,
-        expected: ResearchActionExecutionKind,
-        actual: ResearchActionExecutionKind
-    )
     case invalidTargetRole(
         actionID: ResearchActionID,
-        executionKind: ResearchActionExecutionKind,
         role: ResearchActionTargetRole
     )
     case unsupportedSchemaVersion(Int)
@@ -387,28 +357,12 @@ public enum ResearchActionContractError: LocalizedError, Hashable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .reservedExecutionKindMismatch(let actionID, let expected, let actual):
-            "The reserved Action \(actionID.rawValue) requires \(expected.rawValue), not \(actual.rawValue)."
-        case .invalidTargetRole(let actionID, _, let role):
+        case .invalidTargetRole(let actionID, let role):
             "The Action \(actionID.rawValue) is not available for a \(role.rawValue) Target."
         case .unsupportedSchemaVersion(let version):
             "Unsupported Research Action snapshot schema version \(version)."
         case .unsupportedRecordIdentitySchemaVersion(let version):
             "Unsupported Research Action record identity schema version \(version)."
-        }
-    }
-}
-
-private extension ResearchActionID {
-    var reservedExecutionKind: ResearchActionExecutionKind? {
-        switch rawValue {
-        case Self.discuss.rawValue: .discussion
-        case Self.analyze.rawValue: .analysis
-        case Self.synthesize.rawValue: .synthesis
-        case Self.write.rawValue: .writing
-        case Self.critique.rawValue: .critique
-        case Self.checkFidelity.rawValue: .checkFidelity
-        default: nil
         }
     }
 }

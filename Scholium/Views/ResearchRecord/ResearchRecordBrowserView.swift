@@ -3448,8 +3448,8 @@ private struct ResearchRecordEvidenceSection: View {
                 title: fidelityTitle,
                 body: fidelityDetail,
                 identifier: fidelityCompletion == .unverified
-                    ? "scholium.researchRecord.fidelity.unverified"
-                    : "scholium.researchRecord.effects.fidelity"
+                    ? "scholium.researchRecord.checkFidelity.unverified"
+                    : "scholium.researchRecord.effects.checkFidelity"
             )
             ForEach(discrepancies) { discrepancy in
                 ResearchRecordEvidenceEntry(

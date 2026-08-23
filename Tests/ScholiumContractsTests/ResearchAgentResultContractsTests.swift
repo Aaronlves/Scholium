@@ -110,7 +110,7 @@ struct ResearchAgentResultContractsTests {
             vaultID: UUID(),
             relativePath: "Analysis.md"
         )
-        let target = ResearchFunctionTarget(
+        let target = ResearchActionNoteSnapshot(
             noteID: UUID(),
             note: note,
             role: .analysis,

@@ -293,17 +293,17 @@ struct ResearchMethodImprovementOperationsTests {
         handle: WorkspaceHandle,
         fixture: ResearchFixture
     ) async throws -> PortableResearchRecord {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .synthesize,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(

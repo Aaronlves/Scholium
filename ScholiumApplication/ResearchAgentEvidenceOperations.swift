@@ -20,7 +20,7 @@ extension WorkspaceHandle {
                 record.snapshot.zoteroBibliographicContext,
             analysisSourceRoute: record.snapshot.analysisSourceRoute,
             isAnalyzeAction:
-                record.snapshot.actionSnapshot?.actionID == .analyze
+                record.snapshot.actionSnapshot.actionID == .analyze
         )
     }
 }

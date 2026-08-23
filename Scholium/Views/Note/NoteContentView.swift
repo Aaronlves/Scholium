@@ -189,7 +189,7 @@ struct DocumentFeatureActions {
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
 
-enum ResearchFunctionSelectionCapture {
+enum ResearchActionSelectionCapture {
     static func anchor(
         for selection: MarkdownReviewSelection?,
         in source: String,
@@ -2364,7 +2364,7 @@ struct NoteContentView: View {
         }
         guard isEditing else {
             let selection = documentSession.readSelection
-            let anchor = ResearchFunctionSelectionCapture.anchor(
+            let anchor = ResearchActionSelectionCapture.anchor(
                 for: selection,
                 in: note.rawContent,
                 relativePath: note.relativePath
@@ -2388,7 +2388,7 @@ struct NoteContentView: View {
                     for: editorSession.bridgeDocumentID,
                     in: currentSource
                 )
-                let anchor = ResearchFunctionSelectionCapture.anchor(
+                let anchor = ResearchActionSelectionCapture.anchor(
                     for: selection,
                     in: currentSource,
                     relativePath: note.relativePath

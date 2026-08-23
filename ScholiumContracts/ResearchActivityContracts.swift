@@ -35,7 +35,7 @@ public struct ResearchRunWriteNoteReference: Codable, Hashable, Identifiable,
 {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
-    public let role: ResearchFunctionTargetRole
+    public let role: ResearchActionTargetRole
     public let title: String
 
     public var id: UUID { noteID }
@@ -43,7 +43,7 @@ public struct ResearchRunWriteNoteReference: Codable, Hashable, Identifiable,
     public init(
         noteID: UUID,
         note: VaultQualifiedNoteID,
-        role: ResearchFunctionTargetRole,
+        role: ResearchActionTargetRole,
         title: String
     ) throws {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -70,7 +70,7 @@ public struct ResearchRunWriteNoteReference: Codable, Hashable, Identifiable,
         try self.init(
             noteID: container.decode(UUID.self, forKey: .noteID),
             note: container.decode(VaultQualifiedNoteID.self, forKey: .note),
-            role: container.decode(ResearchFunctionTargetRole.self, forKey: .role),
+            role: container.decode(ResearchActionTargetRole.self, forKey: .role),
             title: container.decode(String.self, forKey: .title)
         )
     }

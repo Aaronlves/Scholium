@@ -167,7 +167,7 @@ struct ResearchBoundedWriteOperationsTests {
                 run: connection.handoff.run
             )
             Issue.record("A committed portable binding write must require Result finalization.")
-        } catch let error as ResearchFunctionContractError {
+        } catch let error as ResearchActionRunContractError {
             guard case .committedWritesRequireCompletion(let runID) = error else {
                 Issue.record("Unexpected end error: \(error)")
                 await runtime.shutdown()
@@ -373,7 +373,7 @@ struct ResearchBoundedWriteOperationsTests {
         #expect(finalMetadata.record.fields["title"]
             == .string("Revised Created Analysis"))
         let cancelError = await #expect(
-            throws: ResearchFunctionContractError.self
+            throws: ResearchActionRunContractError.self
         ) {
             try await handle.research.cancelAction(
                 runID: connection.preparation.runID
@@ -388,7 +388,7 @@ struct ResearchBoundedWriteOperationsTests {
             id: connection.preparation.runID
         ).completion == nil)
 
-        let run = try await handle.research.protectedFunctionRun(
+        let run = try await handle.research.actionRunDetails(
             id: connection.preparation.runID
         )
         let submission = try makeTestAgentResultSubmission(
@@ -1837,7 +1837,7 @@ struct ResearchBoundedWriteOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
-        let run = try await handle.research.protectedFunctionRun(
+        let run = try await handle.research.actionRunDetails(
             id: connection.preparation.runID
         )
         let initial = try await handle.documents.load(fixture.analysisID)
@@ -1878,7 +1878,7 @@ struct ResearchBoundedWriteOperationsTests {
         )
         #expect(write.state == .committed)
         let cancelError = await #expect(
-            throws: ResearchFunctionContractError.self
+            throws: ResearchActionRunContractError.self
         ) {
             try await handle.research.cancelAction(
                 runID: connection.preparation.runID
@@ -2300,17 +2300,17 @@ struct ResearchBoundedWriteOperationsTests {
         handoff: ResearchAgentHandoff,
         credential: ResearchConnectionCredential
     ) {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .analyze,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let stored = try await handle.services.localResearchExecutionStore.record(

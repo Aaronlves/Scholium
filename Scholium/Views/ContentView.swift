@@ -10,7 +10,7 @@ enum DiscussionPresentationError: LocalizedError {
 }
 
 private struct ResearchActionAvailabilityRefreshIdentity: Equatable {
-    let target: ResearchFunctionTarget?
+    let target: ResearchActionNoteSnapshot?
     let snapshotPhase: WorkspaceSnapshotPhase?
 }
 
@@ -32,6 +32,7 @@ struct ContentView: View {
         ResearchAgentPermissionWindowController
     @ObservedObject private var cssSnippetStore: CSSSnippetStore
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
+    @ObservedObject private var libraryMutationController: WindowLibraryMutationController
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openSettings) private var openSettings
@@ -65,6 +66,9 @@ struct ContentView: View {
         _cssSnippetStore = ObservedObject(wrappedValue: appState.cssSnippetStore)
         _windowWorkspaceController = ObservedObject(
             wrappedValue: appState.windowWorkspaceController
+        )
+        _libraryMutationController = ObservedObject(
+            wrappedValue: appState.libraryMutationController
         )
     }
 
@@ -242,11 +246,11 @@ struct ContentView: View {
                         "Scholium cannot determine which Notes are covered by older or damaged local Research Action storage (file count: \(preview.items.count)). Archive the exact files inside Scholium and continue preparing Move to Trash? This disables those old Runs but does not change research Notes or portable Research Records."
                     ),
                     primaryButton: .cancel(Text("Cancel")) {
-                        appState.cancelLocalExecutionRecovery(preview)
+                        appState.libraryMutationController.cancelLocalExecutionRecovery(preview)
                     },
                     secondaryButton: .destructive(Text("Archive and Continue")) {
                         Task { @MainActor in
-                            await appState.archiveLocalExecutionsAndRetrySystemTrash(
+                            await appState.libraryMutationController.archiveLocalExecutionsAndRetrySystemTrash(
                                 preview
                             )
                         }
@@ -262,7 +266,7 @@ struct ContentView: View {
     private var researchActionAvailabilityRefreshIdentity:
         ResearchActionAvailabilityRefreshIdentity {
         ResearchActionAvailabilityRefreshIdentity(
-            target: appState.currentResearchFunctionTarget,
+            target: appState.currentResearchActionTarget,
             snapshotPhase: workspaceProjectionController.snapshotPhase
         )
     }
@@ -438,7 +442,7 @@ struct ContentView: View {
                 Task { await appState.retryDerivedRefresh() }
             },
             openZoteroItem: { binding in
-                await appState.zoteroBridge.openInZotero(binding: binding)
+                await appState.zoteroCoordinator.bridge.openInZotero(binding: binding)
             },
             refreshZoteroMetadata: { noteID, binding in
                 appState.presentationRouter.present(.zoteroBinding(
@@ -594,7 +598,7 @@ struct ContentView: View {
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             clearPendingSourceRange: { appState.pendingSourceRange = nil },
             createDiscussion: { anchor, message in
-                guard let target = appState.currentResearchFunctionTarget else {
+                guard let target = appState.currentResearchActionTarget else {
                     throw DiscussionPresentationError.unavailable
                 }
                 let discussion = try await appState.researchController.createDiscussion(
@@ -607,7 +611,7 @@ struct ContentView: View {
                 return discussion
             },
             createComment: { expectedNoteID, expectedPath, lineReference, message in
-                guard let target = appState.currentResearchFunctionTarget,
+                guard let target = appState.currentResearchActionTarget,
                       target.noteID == expectedNoteID,
                       target.note.relativePath == expectedPath,
                       target.fingerprint == lineReference.fingerprint else {
@@ -748,8 +752,8 @@ struct ContentView: View {
             currentVaultRole: appState.currentVaultRole,
             currentWorkspaceSlot: currentWorkspaceSlot,
             canMutateLibrary: appState.currentRegisteredVault != nil
-                && !appState.isCreatingNote
-                && !appState.isMutatingFolder,
+                && !appState.libraryMutationController.isCreatingNote
+                && !appState.libraryMutationController.isMutatingFolder,
             sourceMutationGeneration: appState.sourceMutationGeneration,
             filterOptions: SidebarLibraryFilterOptions(
                 catalogIsAvailable: appState.workspaceCatalog != nil,
@@ -768,21 +772,23 @@ struct ContentView: View {
             },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
             selectTriptychWorkspace: { appState.requestTriptychWorkspace($0) },
-            createUntitledNote: { appState.requestUntitledNoteCreation(in: $0) },
+            createUntitledNote: {
+                appState.libraryMutationController.requestUntitledNoteCreation(in: $0)
+            },
             createUntitledFolder: {
-                appState.requestUntitledFolderCreation(in: $0)
+                appState.libraryMutationController.requestUntitledFolderCreation(in: $0)
             },
             moveNote: { target, destination in
-                try await appState.moveNote(target, to: destination)
+                try await appState.libraryMutationController.moveNote(target, to: destination)
             },
             moveFolder: { target, destination in
-                try await appState.moveFolder(target, to: destination)
+                try await appState.libraryMutationController.moveFolder(target, to: destination)
             },
             requestFolderFileOperation: {
                 appState.folderFileRequest = $0
             },
             requestFolderSystemTrash: {
-                try await appState.prepareFolderSystemTrash($0)
+                try await appState.libraryMutationController.prepareFolderSystemTrash($0)
             },
             copyRelativePath: { path in
                 do {
@@ -799,7 +805,9 @@ struct ContentView: View {
                 }
             },
             revealNote: { appState.showInFinder($0) },
-            requestSystemTrash: { try await appState.prepareNoteSystemTrash($0) },
+            requestSystemTrash: {
+                try await appState.libraryMutationController.prepareNoteSystemTrash($0)
+            },
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },
             selectSortOrder: { appState.noteSortOrder = $0 },
@@ -949,10 +957,16 @@ struct ContentView: View {
                 request: request,
                 actions: NoteFileActions(
                     duplicate: { source, destination in
-                        _ = try await appState.duplicateNote(source, to: destination)
+                        _ = try await appState.libraryMutationController.duplicateNote(
+                            source,
+                            to: destination
+                        )
                     },
                     move: { source, destination in
-                        try await appState.moveNote(source, to: destination)
+                        try await appState.libraryMutationController.moveNote(
+                            source,
+                            to: destination
+                        )
                     }
                 )
             )
@@ -962,7 +976,10 @@ struct ContentView: View {
                 folderRelativePaths: appState.currentLibraryFolders,
                 actions: FolderFileActions(
                     move: { target, destination in
-                        try await appState.moveFolder(target, to: destination)
+                        try await appState.libraryMutationController.moveFolder(
+                            target,
+                            to: destination
+                        )
                     }
                 )
             )
@@ -970,7 +987,7 @@ struct ContentView: View {
             SystemTrashConfirmationView(
                 preview: preview,
                 confirm: { preview in
-                    try await appState.executeSystemTrash(preview)
+                    try await appState.libraryMutationController.executeSystemTrash(preview)
                     appState.presentationRouter.dismissSheet()
                 },
                 cancel: { appState.presentationRouter.dismissSheet() }
@@ -1020,26 +1037,26 @@ struct ContentView: View {
             ZoteroBindingPanelView(
                 route: route,
                 search: { query in
-                    try await appState.zoteroBridge.searchLibrary(query: query)
+                    try await appState.zoteroCoordinator.searchLibrary(query: query)
                 },
                 prepareFill: { hit in
-                    try await appState.prepareZoteroLinkAndFill(
+                    try await appState.zoteroCoordinator.prepareLinkAndFill(
                         noteID: route.noteID,
                         library: hit.library,
                         itemKey: hit.item.key
                     )
                 },
                 prepareRefresh: {
-                    try await appState.prepareZoteroMetadataRefresh(
+                    try await appState.zoteroCoordinator.prepareMetadataRefresh(
                         noteID: route.noteID
                     )
                 },
                 commitPlan: { plan in
-                    try await appState.commitZoteroMetadataPlan(plan)
+                    try await appState.zoteroCoordinator.commitMetadataPlan(plan)
                     appState.presentationRouter.dismissSheet()
                 },
                 clearBinding: {
-                    try await appState.clearZoteroBinding(noteID: route.noteID)
+                    try await appState.zoteroCoordinator.clearBinding(noteID: route.noteID)
                     appState.presentationRouter.dismissSheet()
                 },
                 dismiss: { appState.presentationRouter.dismissSheet() }
@@ -1150,7 +1167,7 @@ struct ContentView: View {
                     )
                 },
                 settle: { rationale in
-                    guard let target = appState.currentResearchFunctionTarget else { return }
+                    guard let target = appState.currentResearchActionTarget else { return }
                     _ = try await appState.researchController.settle(
                         target.note,
                         expectedRevision: target.fingerprint,

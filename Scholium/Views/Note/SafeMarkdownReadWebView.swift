@@ -743,7 +743,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       comment.utf8.count <= 16_384,
                       let selection = reviewSelection(from: payload),
-                      let lineRange = ResearchFunctionSelectionCapture.commentLineRange(
+                      let lineRange = ResearchActionSelectionCapture.commentLineRange(
                           for: selection,
                           in: source,
                           relativePath: documentID

@@ -89,7 +89,7 @@ struct DocumentPathAndCapabilitiesTests {
         )
         #expect(!capabilities.canEditSource)
         #expect(!capabilities.canComment)
-        #expect(!capabilities.canUseResearchFunctions)
+        #expect(!capabilities.canUseResearchActions)
         #expect(!capabilities.isManagedCritique)
         #expect(capabilities.fileActions.isEmpty)
     }
@@ -103,7 +103,7 @@ struct DocumentPathAndCapabilitiesTests {
         )
         #expect(!capabilities.canEditSource)
         #expect(capabilities.canComment)
-        #expect(!capabilities.canUseResearchFunctions)
+        #expect(!capabilities.canUseResearchActions)
         #expect(capabilities.isManagedCritique)
         #expect(!capabilities.allows(.duplicate))
         #expect(capabilities.allows(.moveToSystemTrash))
@@ -143,6 +143,6 @@ struct DocumentPathAndCapabilitiesTests {
         #expect(snapshot.capabilities.isManagedCritique)
         #expect(snapshot.capabilities.canComment)
         #expect(!snapshot.capabilities.canEditSource)
-        #expect(!snapshot.capabilities.canUseResearchFunctions)
+        #expect(!snapshot.capabilities.canUseResearchActions)
     }
 }

@@ -3,14 +3,14 @@ import Foundation
 @testable import ScholiumApplication
 import Testing
 
-extension ResearchFunctionOperationsTests {
+extension ResearchActionRunOperationsTests {
     @Test("Current Methods prepare without package-resource selection")
     func splitMethodsPrepareWithoutResourceSelection() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -18,12 +18,12 @@ extension ResearchFunctionOperationsTests {
         let material = try #require(
             try await handle.research.protectedMaterialCandidates(
                 for: target,
-                function: .develop
+                actionID: .analyze
             ).first { $0.material.note == fixture.topicID }?.material
         )
-        let preflight = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .develop,
+        let preflight = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .analyze,
                 target: target,
                 materials: [material]
             )
@@ -31,7 +31,7 @@ extension ResearchFunctionOperationsTests {
         #expect(preflight.instructions.contains("authenticated Agent CLI"))
         #expect(preflight.instructions.contains("frozen Result Contract"))
         #expect(preflight.instructions.contains("source-grounded literature recommendations"))
-        try await handle.research.cancelProtectedFunction(runID: preflight.runID)
+        try await handle.research.cancelActionRun(runID: preflight.runID)
         await runtime.shutdown()
     }
 
@@ -41,14 +41,14 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
         let candidates = try await handle.research.protectedMaterialCandidates(
             for: target,
-            function: .develop
+            actionID: .analyze
         )
         #expect(!candidates.contains { $0.material.noteID == target.noteID })
         let topic = try #require(candidates.first {
@@ -62,10 +62,10 @@ extension ResearchFunctionOperationsTests {
             changeSet: .exactContent(topicDocument.rawContent + "\nA changed Material.\n"),
             expectedRevision: topicDocument.fingerprint
         )
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(
-                    function: .develop,
+        await #expect(throws: ResearchActionRunContractError.self) {
+            _ = try await handle.research.prepareActionRun(
+                ResearchActionRunRequest(
+                    actionID: .analyze,
                     target: target,
                     materials: [topic]
                 )
@@ -79,9 +79,9 @@ extension ResearchFunctionOperationsTests {
             changeSet: .exactContent(targetDocument.rawContent + "\nA changed Target.\n"),
             expectedRevision: targetDocument.fingerprint
         )
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(function: .develop, target: target)
+        await #expect(throws: ResearchActionRunContractError.self) {
+            _ = try await handle.research.prepareActionRun(
+                ResearchActionRunRequest(actionID: .analyze, target: target)
             )
         }
         #expect(try await handle.services.localResearchExecutionStore.listing().records.count == originalRuns)
@@ -94,14 +94,14 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
         let candidates = try await handle.research.protectedMaterialCandidates(
             for: target,
-            function: .develop
+            actionID: .analyze
         )
 
         let agency = try #require(candidates.first {
@@ -131,13 +131,13 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let valid = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let valid = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         let stored = try await handle.services.localResearchExecutionStore.record(
             id: valid.runID
@@ -145,7 +145,7 @@ extension ResearchFunctionOperationsTests {
         #expect(stored.boundedWriteSet.entries.map(\.noteID) == [
             analysis.noteID,
         ])
-        try await handle.research.cancelProtectedFunction(runID: valid.runID)
+        try await handle.research.cancelActionRun(runID: valid.runID)
         await runtime.shutdown()
     }
 
@@ -155,13 +155,13 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let analyze = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target)
+        let analyze = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: target)
         )
         let original = try await handle.documents.load(fixture.analysisID)
         let write = try await writePreparedResearchDocument(
@@ -171,9 +171,9 @@ extension ResearchFunctionOperationsTests {
         )
         #expect(write.state == .committed)
 
-        let completion = try await completeTestProtectedFunction(
+        let completion = try await completeTestActionRun(
             handle: handle,
-            submission: ResearchFunctionCompletionSubmission(
+            submission: ResearchActionRunCompletionSubmission(
                 runID: analyze.runID,
                 confirmationToken: analyze.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
@@ -186,7 +186,7 @@ extension ResearchFunctionOperationsTests {
 
         let records = try await handle.services.localResearchExecutionStore.listing().records
         #expect(records.filter {
-            $0.snapshot.request.function == .fidelity
+            $0.snapshot.request.actionID == .checkFidelity
         }.isEmpty)
 
         let record = try #require(
@@ -211,14 +211,14 @@ extension ResearchFunctionOperationsTests {
         )
         #expect(status.activeCitationStyle == "apa-7")
 
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let fidelity = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
+        let fidelity = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .checkFidelity,
                 target: target,
                 checks: [.content, .citations]
             )
@@ -226,8 +226,8 @@ extension ResearchFunctionOperationsTests {
         #expect(fidelity.snapshot.citationStyle == "apa-7")
         #expect(fidelity.instructions.contains("Citation style: apa-7"))
 
-        let completion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
+        let completion = try await completeTestActionRun(handle: handle, submission:
+            ResearchActionRunCompletionSubmission(
                 runID: fidelity.runID,
                 confirmationToken: fidelity.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
@@ -242,11 +242,11 @@ extension ResearchFunctionOperationsTests {
         )
         #expect(completion.fidelityEvidenceKey != nil)
 
-        let develop = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: target)
+        let develop = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: target)
         )
         #expect(!develop.instructions.contains("Citation style: apa-7"))
-        try await handle.research.cancelProtectedFunction(runID: develop.runID)
+        try await handle.research.cancelActionRun(runID: develop.runID)
         await runtime.shutdown()
     }
 
@@ -271,7 +271,7 @@ extension ResearchFunctionOperationsTests {
         let registrations = try await handle.research.researchSkillRegistrations()
         #expect(registrations.document.registration(for: .analyze)?.isEnabled == true)
 
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -291,15 +291,15 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let work = try await researchFunctionTarget(
+        let work = try await researchActionTarget(
             fixture.workID,
             role: .work,
             handle: handle
         )
 
-        let critique = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .critique,
+        let critique = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .critique,
                 target: work,
                 scope: .whole
             )
@@ -318,8 +318,8 @@ extension ResearchFunctionOperationsTests {
         #expect(try await handle.services.localResearchExecutionStore.listing().records.contains {
             $0.id == critique.runID
         })
-        _ = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
+        _ = try await completeTestActionRun(handle: handle, submission:
+            ResearchActionRunCompletionSubmission(
                 runID: critique.runID,
                 confirmationToken: critique.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),

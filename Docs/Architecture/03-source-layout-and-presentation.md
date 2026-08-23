@@ -330,9 +330,10 @@ closed Platform Action identity; that fallback cannot prepare a new Run.
 Foreground result banners are transient window-shell overlays and background
 alerts use the application-owned notification adapter. Neither notification
 owns Result state or mutates the current Records selection on arrival.
-Protected Function mapping occurs only in Application composition. The public
-route and controller are Action-owned. Neither leaf receives `WindowModel`,
-Core, or Application authority.
+Protected execution is selected directly from the frozen Action identity and
+required Action snapshot; Application has no second Function mapping. The
+public route and controller are Action-owned. Neither leaf receives
+`WindowModel`, Core, or Application authority.
 
 ### Interface localization
 
@@ -351,7 +352,7 @@ paths, and internal execution IDs never change with locale. Researcher-authored
 prose, note titles, quotations, citations, imported text, exact source, and
 filesystem paths bypass the interface catalog and render verbatim. Purely
 internal vocabulary that has no researcher-facing presentation is not a
-translation surface. App-default and researcher-owned Skill/Practice names
+translation surface. App-default and researcher-owned Skill names
 render verbatim; surrounding application labels and explanations
 remain localizable. Translator comments record interface context without
 becoming product authority.

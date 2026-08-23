@@ -235,7 +235,7 @@ struct ResearchAgentResultOperationsTests {
         )
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -459,7 +459,7 @@ struct ResearchAgentResultOperationsTests {
         let script = ZoteroRequestScript(steps: [
             .response(
                 status: 200,
-                data: Data(ResearchFunctionOperationsTests.zoteroItemJSON.utf8)
+                data: Data(ResearchActionRunOperationsTests.zoteroItemJSON.utf8)
             ),
         ])
         let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: { request in
@@ -581,7 +581,7 @@ struct ResearchAgentResultOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let prepared = try await preparedAnalysis(handle: handle, fixture: fixture)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -611,7 +611,7 @@ struct ResearchAgentResultOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -766,17 +766,17 @@ struct ResearchAgentResultOperationsTests {
         handoff: ResearchAgentHandoff,
         credential: ResearchConnectionCredential
     ) {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .synthesize,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(
@@ -797,17 +797,17 @@ struct ResearchAgentResultOperationsTests {
         handoff: ResearchAgentHandoff,
         credential: ResearchConnectionCredential
     ) {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .analyze,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(

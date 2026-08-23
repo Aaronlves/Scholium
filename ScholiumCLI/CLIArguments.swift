@@ -270,6 +270,19 @@ extension ScholiumCLI {
                     "--delete-associated-records": .flag,
                 ]
             ),
+            "record list": .init(
+                pathLength: 2,
+                options: [
+                    "--note": .value,
+                    "--triptych": .value,
+                    "--format": .value,
+                ]
+            ),
+            "record read": .init(
+                pathLength: 2,
+                positionalCount: 1 ... 1,
+                options: selected
+            ),
             "discuss list": .init(pathLength: 2, options: ["--triptych": .value, "--format": .value]),
             "discuss show": .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
             "discuss reply": .init(

@@ -697,7 +697,6 @@ public enum ResearchAcademicProfileCatalog {
         case .write: ("change-kind", "no-warranted-change")
         case .critique: ("issue-kind", "no-substantive-issue")
         case .discuss, .checkFidelity: nil
-        default: nil
         }
         guard let rule,
               case .multipleChoice(let choices)? = values.values[rule.fieldID]

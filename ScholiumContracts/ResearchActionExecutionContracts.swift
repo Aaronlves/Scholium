@@ -2,14 +2,16 @@ import Foundation
 
 /// Exact note identity and revision at the public Action boundary.
 ///
-/// This deliberately mirrors only the stable note facts needed by an Action;
-/// it contains no protected Function identity or storage locator.
-public struct ResearchActionNoteSnapshot: Codable, Hashable, Sendable {
+/// It contains only the stable note facts needed by an Action and no storage
+/// locator or writable authority.
+public struct ResearchActionNoteSnapshot: Codable, Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let role: ResearchActionTargetRole
     public let fingerprint: DocumentFingerprint
     public let title: String
+
+    public var id: UUID { noteID }
 
     public init(
         noteID: UUID,
@@ -22,7 +24,7 @@ public struct ResearchActionNoteSnapshot: Codable, Hashable, Sendable {
         self.note = note
         self.role = role
         self.fingerprint = fingerprint
-        self.title = title
+        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -328,15 +330,10 @@ public struct ResearchActionAvailability: Codable, Hashable, Identifiable, Senda
 /// Method, current source, and authority again before creating a run.
 public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
     public let actionID: ResearchActionID
-    /// The execution semantics presented to the researcher when the sheet was
-    /// opened. Application resolution must still match this value before a
-    /// run can be created; a changed Profile cannot silently turn a read-only
-    /// sheet into a write-capable preparation.
-    public let expectedExecutionKind: ResearchActionExecutionKind
     /// Exact semantic Profile revision shown by the sheet. This is a
     /// capability digest: changing read/write scope, property authority, or
     /// any other Profile field invalidates the presentation even when the
-    /// execution kind is unchanged.
+    /// Action ID is unchanged.
     public let expectedProfileRevision: DocumentFingerprint
     /// Exact Profile-document revision shown by a researcher-owned Action.
     /// Application defaults have no backing document and therefore use nil.
@@ -347,7 +344,6 @@ public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
 
     public init(
         actionID: ResearchActionID,
-        expectedExecutionKind: ResearchActionExecutionKind,
         expectedProfileRevision: DocumentFingerprint,
         expectedProfileDocumentRevision: DocumentFingerprint?,
         target: ResearchActionNoteSnapshot,
@@ -355,7 +351,6 @@ public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
         academicInputs: ResearchAcademicFieldValues
     ) {
         self.actionID = actionID
-        self.expectedExecutionKind = expectedExecutionKind
         self.expectedProfileRevision = expectedProfileRevision
         self.expectedProfileDocumentRevision = expectedProfileDocumentRevision
         self.target = target
@@ -365,7 +360,6 @@ public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case actionID
-        case expectedExecutionKind
         case expectedProfileRevision
         case expectedProfileDocumentRevision
         case target
@@ -381,10 +375,6 @@ public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             actionID: try container.decode(ResearchActionID.self, forKey: .actionID),
-            expectedExecutionKind: try container.decode(
-                ResearchActionExecutionKind.self,
-                forKey: .expectedExecutionKind
-            ),
             expectedProfileRevision: try container.decode(
                 DocumentFingerprint.self,
                 forKey: .expectedProfileRevision
@@ -409,8 +399,7 @@ public struct ResearchActionExecutionRequest: Codable, Hashable, Sendable {
     }
 }
 
-/// Public preparation result. The protected Function remains an internal
-/// compatibility mechanism and is therefore absent from this value.
+/// Public preparation result for one directly resolved Action Run.
 public enum ResearchActionRunState: String, Codable, Hashable, Sendable {
     case prepared
     case complete

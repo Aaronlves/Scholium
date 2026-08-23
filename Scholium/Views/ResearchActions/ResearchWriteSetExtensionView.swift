@@ -137,7 +137,7 @@ struct ResearchWriteSetExtensionView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .toggleStyle(.checkbox)
-                        .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
+                        .frame(minHeight: ScholiumGrid.Dimension.researchActionTargetHeight)
                         .accessibilityHint("Selects this exact target and operation for this Run.")
                         ScholiumStructuralRule()
                     }

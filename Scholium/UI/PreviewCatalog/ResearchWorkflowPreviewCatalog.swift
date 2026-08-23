@@ -640,7 +640,7 @@ private struct ResearchWorkingMethodProofRow: View {
             .menuStyle(.borderlessButton)
         }
         .font(ScholiumTypography.interface(.compact))
-        .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
+        .frame(minHeight: ScholiumGrid.Dimension.researchActionTargetHeight)
     }
 }
 
@@ -666,7 +666,7 @@ private struct ResearchSkillGroup: View {
                         }
                     }
                     .font(ScholiumTypography.interface(.compact))
-                    .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
+                    .frame(minHeight: ScholiumGrid.Dimension.researchActionTargetHeight)
                     ScholiumStructuralRule()
                 }
             }
@@ -709,7 +709,7 @@ private struct ResearchWriteSetExtensionProof: View {
                     VStack(spacing: 0) {
                         ForEach($notes) { $note in
                             Toggle(note.title, isOn: $note.isSelected)
-                            .frame(minHeight: ScholiumGrid.Dimension.researchFunctionTargetHeight)
+                            .frame(minHeight: ScholiumGrid.Dimension.researchActionTargetHeight)
                             .accessibilityIdentifier("scholium.proofs.request.note.\(note.id)")
                             ScholiumStructuralRule()
                         }

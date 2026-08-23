@@ -834,7 +834,7 @@ struct ResearchRecordV1StoresTests {
             nestedURL.lastPathComponent,
         ])
     }
-    @Test("Bounded write facts and Function completion commit in one record transition")
+    @Test("Bounded write facts and Action completion commit in one record transition")
     func localWriteReportAndCompletionAreAtomic() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -850,9 +850,9 @@ struct ResearchRecordV1StoresTests {
             observedFingerprints: [target.noteID: target.fingerprint],
             completedAt: Date(timeIntervalSince1970: 20)
         )
-        let completion = ResearchFunctionCompletion(
+        let completion = ResearchActionRunCompletion(
             runID: runID,
-            function: .develop,
+            actionID: seed.snapshot.request.actionID,
             state: .complete,
             recordTitle: try ResearchRecordTitle("No change was warranted"),
             targetFingerprint: target.fingerprint,
@@ -866,18 +866,18 @@ struct ResearchRecordV1StoresTests {
         let completed = try await store.setCompletion(
             completion,
             writeReport: report,
-            submissionDigest: "function-submission-digest",
+            submissionDigest: "action-submission-digest",
             runID: runID
         )
         #expect(completed.writeReport == report)
         #expect(completed.completion == completion)
-        #expect(completed.completionSubmissionDigest == "function-submission-digest")
+        #expect(completed.completionSubmissionDigest == "action-submission-digest")
         #expect(try await store.record(id: runID) == completed)
 
         let repeated = try await store.setCompletion(
             completion,
             writeReport: report,
-            submissionDigest: "function-submission-digest",
+            submissionDigest: "action-submission-digest",
             runID: runID
         )
         #expect(repeated == completed)
@@ -899,9 +899,9 @@ struct ResearchRecordV1StoresTests {
             observedFingerprints: [target.noteID: target.fingerprint],
             completedAt: Date(timeIntervalSince1970: 20)
         )
-        let completion = ResearchFunctionCompletion(
+        let completion = ResearchActionRunCompletion(
             runID: runID,
-            function: .develop,
+            actionID: seed.snapshot.request.actionID,
             state: .complete,
             recordTitle: try ResearchRecordTitle("Terminal receipt"),
             targetFingerprint: target.fingerprint,
@@ -1164,19 +1164,19 @@ struct ResearchRecordV1StoresTests {
     func agentAnalysisCreationSchemaIsNotDeletionAuthority() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = try fixture.localStore()
+        let localStore = try fixture.localStore()
+        let store = try fixture.creationReservationStore()
         let runID = UUID()
         let url = store.storageURL
-            .appendingPathComponent("agent-analysis-creations", isDirectory: true)
             .appendingPathComponent(runID.uuidString.lowercased() + ".json")
         try Data("{\"schema_version\":999}".utf8).write(to: url)
 
-        try await store.validateDeletionAuthority()
+        try await localStore.validateDeletionAuthority()
         do {
-            _ = try await store.agentAnalysisCreation(id: runID)
+            _ = try await store.reservation(id: runID)
             Issue.record("Expected the unsupported creation-record schema to fail closed.")
-        } catch LocalResearchExecutionStoreError
-            .unsupportedAgentAnalysisCreationSchemaVersion(let version) {
+        } catch AgentAnalysisCreationReservationStoreError
+            .unsupportedSchemaVersion(let version) {
             #expect(version == 999)
         }
     }
@@ -1185,7 +1185,7 @@ struct ResearchRecordV1StoresTests {
     func agentAnalysisCreationBindingPhases() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let store = try fixture.localStore()
+        let store = try fixture.creationReservationStore()
         let runID = UUID()
         let noteID = UUID()
         let target = VaultQualifiedNoteID(
@@ -1197,7 +1197,7 @@ struct ResearchRecordV1StoresTests {
             library: .user,
             itemKey: "BOUND001"
         )
-        let record = try LocalAgentAnalysisCreationRecord(
+        let record = try AgentAnalysisCreationReservation(
             triptychID: fixture.triptychID,
             runID: runID,
             requestFingerprint: DocumentFingerprint(content: "exact request"),
@@ -1214,9 +1214,9 @@ struct ResearchRecordV1StoresTests {
             academicPurpose: "Exact purpose"
         )
 
-        #expect(try await store.createAgentAnalysisCreation(record) == record)
-        #expect(try await store.createAgentAnalysisCreation(record) == record)
-        let revisedReservation = try LocalAgentAnalysisCreationRecord(
+        #expect(try await store.create(record) == record)
+        #expect(try await store.create(record) == record)
+        let revisedReservation = try AgentAnalysisCreationReservation(
             triptychID: fixture.triptychID,
             runID: runID,
             requestFingerprint: DocumentFingerprint(content: "current Settings request"),
@@ -1230,49 +1230,49 @@ struct ResearchRecordV1StoresTests {
             initialAuthoredYAML: record.initialAuthoredYAML,
             academicPurpose: "Exact purpose"
         )
-        #expect(try await store.reviseAgentAnalysisCreationReservation(
+        #expect(try await store.revisePrecommit(
             expected: record,
             replacement: revisedReservation
         ) == revisedReservation)
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.reviseAgentAnalysisCreationReservation(
+        await #expect(throws: AgentAnalysisCreationReservationStoreError.self) {
+            _ = try await store.revisePrecommit(
                 expected: record,
                 replacement: revisedReservation
             )
         }
         let committedSource = DocumentFingerprint(content: "committed source")
-        #expect(try await store.confirmAgentAnalysisCreationSource(
+        #expect(try await store.confirmSource(
             runID: runID,
             fingerprint: committedSource
         ).committedSourceFingerprint == committedSource)
-        #expect(try await store.confirmAgentAnalysisCreationSource(
+        #expect(try await store.confirmSource(
             runID: runID,
             fingerprint: committedSource
         ).committedSourceFingerprint == committedSource)
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.confirmAgentAnalysisCreationSource(
+        await #expect(throws: AgentAnalysisCreationReservationStoreError.self) {
+            _ = try await store.confirmSource(
                 runID: runID,
                 fingerprint: DocumentFingerprint(content: "different source")
             )
         }
-        #expect(try await store.advanceAgentAnalysisCreationBinding(
+        #expect(try await store.advanceBinding(
             runID: runID,
             to: .writing
         ).bindingState == .writing)
-        #expect(try await store.advanceAgentAnalysisCreationBinding(
+        #expect(try await store.advanceBinding(
             runID: runID,
             to: .retryable
         ).bindingState == .retryable)
-        _ = try await store.advanceAgentAnalysisCreationBinding(
+        _ = try await store.advanceBinding(
             runID: runID,
             to: .writing
         )
-        #expect(try await store.advanceAgentAnalysisCreationBinding(
+        #expect(try await store.advanceBinding(
             runID: runID,
             to: .committed
         ).bindingState == .committed)
-        let committed = try await store.agentAnalysisCreation(id: runID)
-        let forbiddenRevision = try LocalAgentAnalysisCreationRecord(
+        let committed = try await store.reservation(id: runID)
+        let forbiddenRevision = try AgentAnalysisCreationReservation(
             triptychID: fixture.triptychID,
             runID: runID,
             requestFingerprint: DocumentFingerprint(content: "too late"),
@@ -1288,20 +1288,20 @@ struct ResearchRecordV1StoresTests {
             committedSourceFingerprint: committedSource,
             bindingState: .committed
         )
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.reviseAgentAnalysisCreationReservation(
+        await #expect(throws: AgentAnalysisCreationReservationStoreError.self) {
+            _ = try await store.revisePrecommit(
                 expected: committed,
                 replacement: forbiddenRevision
             )
         }
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.advanceAgentAnalysisCreationBinding(
+        await #expect(throws: AgentAnalysisCreationReservationStoreError.self) {
+            _ = try await store.advanceBinding(
                 runID: runID,
                 to: .writing
             )
         }
 
-        let changed = try LocalAgentAnalysisCreationRecord(
+        let changed = try AgentAnalysisCreationReservation(
             triptychID: fixture.triptychID,
             runID: runID,
             requestFingerprint: DocumentFingerprint(content: "changed request"),
@@ -1315,11 +1315,11 @@ struct ResearchRecordV1StoresTests {
             initialAuthoredYAML: record.initialAuthoredYAML,
             academicPurpose: "Changed purpose"
         )
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.createAgentAnalysisCreation(changed)
+        await #expect(throws: AgentAnalysisCreationReservationStoreError.self) {
+            _ = try await store.create(changed)
         }
 
-        let researcherProvided = try LocalAgentAnalysisCreationRecord(
+        let researcherProvided = try AgentAnalysisCreationReservation(
             triptychID: fixture.triptychID,
             runID: UUID(),
             requestFingerprint: DocumentFingerprint(content: "researcher request"),
@@ -1338,14 +1338,14 @@ struct ResearchRecordV1StoresTests {
             initialAuthoredYAML: nil,
             academicPurpose: nil
         )
-        let storedResearcher = try await store.createAgentAnalysisCreation(
+        let storedResearcher = try await store.create(
             researcherProvided
         )
         #expect(storedResearcher == researcherProvided)
-        #expect(storedResearcher.schemaVersion == LocalAgentAnalysisCreationRecord.currentSchemaVersion)
+        #expect(storedResearcher.schemaVersion == AgentAnalysisCreationReservation.currentSchemaVersion)
         #expect(storedResearcher.bindingState == nil)
-        await #expect(throws: LocalResearchExecutionStoreError.self) {
-            _ = try await store.advanceAgentAnalysisCreationBinding(
+        await #expect(throws: AgentAnalysisCreationReservationStoreError.self) {
+            _ = try await store.advanceBinding(
                 runID: researcherProvided.runID,
                 to: .writing
             )
@@ -1414,9 +1414,9 @@ struct ResearchRecordV1StoresTests {
             rawCitation: "Replacement lead",
             reason: "This later payload must not replace the first report."
         )]
-        let awaiting = ResearchFunctionCompletion(
+        let awaiting = ResearchActionRunCompletion(
             runID: runID,
-            function: .develop,
+            actionID: .analyze,
             state: .complete,
             recordTitle: try ResearchRecordTitle("Analyze completion"),
             targetFingerprint: local.snapshot.request.target.fingerprint,
@@ -1443,9 +1443,9 @@ struct ResearchRecordV1StoresTests {
             submissionDigest: "first-submission",
             runID: runID
         )
-        let tamperedTerminal = ResearchFunctionCompletion(
+        let tamperedTerminal = ResearchActionRunCompletion(
             runID: runID,
-            function: .develop,
+            actionID: .analyze,
             state: .complete,
             recordTitle: awaiting.recordTitle,
             targetFingerprint: awaiting.targetFingerprint,
@@ -1934,18 +1934,11 @@ struct ResearchRecordV1StoresTests {
         noteID: UUID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
     ) throws -> LocalResearchExecutionRecord {
         let action = try makeActionSnapshot(noteID: noteID, actionID: actionID)
-        let target = ResearchFunctionTarget(
-            noteID: action.target.noteID,
-            note: action.target.note,
-            role: .topic,
-            fingerprint: action.target.fingerprint,
-            title: action.target.title
+        let request = ResearchActionRunRequest(
+            actionID: actionID,
+            target: action.target
         )
-        let request = ResearchFunctionRequest(
-            function: .develop,
-            target: target
-        )
-        let snapshot = ResearchFunctionSnapshot(
+        let snapshot = try ResearchActionRunSnapshot(
             runID: runID,
             request: request,
             actionSnapshot: action,
@@ -2026,7 +2019,7 @@ struct ResearchRecordV1StoresTests {
     }
 
     private func writeReference(
-        _ target: ResearchFunctionTarget
+        _ target: ResearchActionNoteSnapshot
     ) throws -> ResearchRunWriteNoteReference {
         try ResearchRunWriteNoteReference(
             noteID: target.noteID,
@@ -2126,6 +2119,13 @@ struct ResearchRecordV1StoresTests {
 
         func localStore() throws -> LocalResearchExecutionStore {
             try LocalResearchExecutionStore(
+                applicationSupportURL: support,
+                triptychID: triptychID
+            )
+        }
+
+        func creationReservationStore() throws -> AgentAnalysisCreationReservationStore {
+            try AgentAnalysisCreationReservationStore(
                 applicationSupportURL: support,
                 triptychID: triptychID
             )

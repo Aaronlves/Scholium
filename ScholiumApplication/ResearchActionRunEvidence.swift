@@ -3,13 +3,13 @@ import ScholiumContracts
 import ScholiumCore
 
 // Current source, Material, Target, and repair evidence used by preparation.
-extension ResearchFunctionCoordinator {
+extension ResearchActionRunCoordinator {
     func requiredResearchSourceAccess(
-        for target: ValidatedFunctionObject,
-        function: ResearchFunctionID,
+        for target: ValidatedActionNote,
+        actionID: ResearchActionID,
         allowsResearcherProvidedSource: Bool = false
     ) async throws -> ResolvedResearchSourceAccess? {
-        guard function == .develop, target.note.schemaProfile == .analysis else {
+        guard actionID == .analyze, target.note.schemaProfile == .analysis else {
             return nil
         }
         if allowsResearcherProvidedSource {
@@ -26,11 +26,11 @@ extension ResearchFunctionCoordinator {
         return try await resolveResearchSourceAccess(for: target)
     }
 
-    func hasExternalZoteroBinding<Host: ResearchFunctionCoordinatorHost>(
-        for proposedTarget: ResearchFunctionTarget,
+    func hasExternalZoteroBinding<Host: ResearchActionRunCoordinatorHost>(
+        for proposedTarget: ResearchActionNoteSnapshot,
         host: isolated Host
     ) async throws -> Bool {
-        return try await usesExternalZoteroRoute(for: validateResearchFunctionTarget(
+        return try await usesExternalZoteroRoute(for: validateResearchActionTarget(
             proposedTarget,
             expected: proposedTarget.fingerprint,
             host: host
@@ -38,7 +38,7 @@ extension ResearchFunctionCoordinator {
     }
 
     private func usesExternalZoteroRoute(
-        for target: ValidatedFunctionObject
+        for target: ValidatedActionNote
     ) async throws -> Bool {
         guard try await portableTargetZoteroBinding(target) != nil else {
             return false
@@ -51,7 +51,7 @@ extension ResearchFunctionCoordinator {
     }
 
     func zoteroBibliographicContext(
-        for target: ValidatedFunctionObject,
+        for target: ValidatedActionNote,
         expectedBinding: AnalysisZoteroBinding? = nil
     ) async throws -> ZoteroBibliographicContext? {
         guard target.note.schemaProfile == .analysis else {
@@ -70,7 +70,7 @@ extension ResearchFunctionCoordinator {
             binding = current
         }
         let itemKey = binding.itemKey
-        let capturedAt = researchFunctionRecordTimestamp()
+        let capturedAt = researchActionRunRecordTimestamp()
         do {
             switch try await dependencies.zotero.resolve(binding: binding) {
             case .matched(let metadata, .itemKey):
@@ -123,15 +123,15 @@ extension ResearchFunctionCoordinator {
         }
     }
 
-    func validateResearchFunctionMaterials<
-        Host: ResearchFunctionCoordinatorHost
+    func validateResearchActionMaterials<
+        Host: ResearchActionRunCoordinatorHost
     >(
-        _ materials: [ResearchFunctionMaterial],
+        _ materials: [ResearchActionNoteSnapshot],
         host: isolated Host
-    ) async throws -> [ValidatedFunctionObject] {
-        var result: [ValidatedFunctionObject] = []
+    ) async throws -> [ValidatedActionNote] {
+        var result: [ValidatedActionNote] = []
         for material in materials {
-            result.append(try await validateResearchFunctionMaterial(
+            result.append(try await validateResearchActionMaterial(
                 material,
                 expected: material.fingerprint,
                 host: host
@@ -140,30 +140,30 @@ extension ResearchFunctionCoordinator {
         return result
     }
 
-    func validateResearchFunctionWriteTargets<
-        Host: ResearchFunctionCoordinatorHost
+    func validateResearchActionWriteTargets<
+        Host: ResearchActionRunCoordinatorHost
     >(
-        _ request: ResearchFunctionRequest,
+        _ request: ResearchActionRunRequest,
         host: isolated Host
-    ) async throws -> [ValidatedFunctionObject] {
-        guard [.develop, .revise].contains(request.function) else { return [] }
-        return [try await validateResearchFunctionTarget(
+    ) async throws -> [ValidatedActionNote] {
+        guard request.actionID.writesTarget else { return [] }
+        return [try await validateResearchActionTarget(
             request.target,
             expected: request.target.fingerprint,
             host: host
         )]
     }
 
-    func validateResearchFunctionFidelityTargets<
-        Host: ResearchFunctionCoordinatorHost
+    func validateResearchActionFidelityTargets<
+        Host: ResearchActionRunCoordinatorHost
     >(
-        _ request: ResearchFunctionRequest,
+        _ request: ResearchActionRunRequest,
         host: isolated Host
-    ) async throws -> [ValidatedFunctionObject] {
-        guard request.function == .fidelity else { return [] }
-        var validated: [ValidatedFunctionObject] = []
+    ) async throws -> [ValidatedActionNote] {
+        guard request.actionID == .checkFidelity else { return [] }
+        var validated: [ValidatedActionNote] = []
         for target in request.resolvedFidelityTargets {
-            validated.append(try await validateResearchFunctionTarget(
+            validated.append(try await validateResearchActionTarget(
                 target,
                 expected: target.fingerprint,
                 host: host
@@ -173,20 +173,20 @@ extension ResearchFunctionCoordinator {
     }
 
     func researchSourceAccessStatus<
-        Host: ResearchFunctionCoordinatorHost
+        Host: ResearchActionRunCoordinatorHost
     >(
-        for proposedTarget: ResearchFunctionTarget,
+        for proposedTarget: ResearchActionNoteSnapshot,
         host: isolated Host
     ) async throws -> ResearchSourceAccessStatus {
-        let target = try await validateResearchFunctionTarget(
+        let target = try await validateResearchActionTarget(
             proposedTarget,
             expected: proposedTarget.fingerprint,
             host: host
         )
         guard target.note.schemaProfile == .analysis,
               proposedTarget.role == .analysis else {
-            throw ResearchFunctionContractError.invalidTargetRole(
-                function: .develop,
+            throw ResearchActionRunContractError.invalidTargetRole(
+                actionID: .analyze,
                 role: proposedTarget.role
             )
         }
@@ -194,7 +194,7 @@ extension ResearchFunctionCoordinator {
             return .available(
                 try await resolveResearchSourceAccess(for: target).reference
             )
-        } catch let error as ResearchFunctionContractError {
+        } catch let error as ResearchActionRunContractError {
             if case .sourceAccessUnavailable(let failure) = error {
                 let reference = try? await dependencies.sourceAccessStore.reference(
                     analysisNoteID: proposedTarget.noteID
@@ -205,38 +205,38 @@ extension ResearchFunctionCoordinator {
         }
     }
 
-    func researchFunctionTargetRepairReason<
-        Host: ResearchFunctionCoordinatorHost
+    func researchActionTargetRepairReason<
+        Host: ResearchActionRunCoordinatorHost
     >(
-        _ target: ResearchFunctionTarget,
+        _ target: ResearchActionNoteSnapshot,
         host: isolated Host
-    ) async -> ResearchFunctionRepairReason? {
-        let currentSnapshot = host.researchFunctionCurrentSnapshot()
+    ) async -> ResearchActionRunRepairReason? {
+        let currentSnapshot = host.researchActionCurrentSnapshot()
         guard let note = currentSnapshot.document(id: target.note) else {
-            return ResearchFunctionRepairReason(code: .targetUnavailable)
+            return ResearchActionRunRepairReason(code: .targetUnavailable)
         }
         guard case .resolved(let stableID) = note.stableIdentity,
               stableID == target.noteID else {
-            return ResearchFunctionRepairReason(code: .targetIdentityChanged)
+            return ResearchActionRunRepairReason(code: .targetIdentityChanged)
         }
-        guard ResearchFunctionTargetRole(vaultRole: note.vaultRole) == target.role else {
-            return ResearchFunctionRepairReason(code: .targetIdentityChanged)
+        guard ResearchActionTargetRole(vaultRole: note.vaultRole) == target.role else {
+            return ResearchActionRunRepairReason(code: .targetIdentityChanged)
         }
         do {
             let document = try await repository(vaultID: target.note.vaultID).load(
                 relativePath: target.note.relativePath
             )
             if document.fingerprint != target.fingerprint {
-                return ResearchFunctionRepairReason(code: .targetChanged)
+                return ResearchActionRunRepairReason(code: .targetChanged)
             }
         } catch {
-            return ResearchFunctionRepairReason(code: .targetUnavailable)
+            return ResearchActionRunRepairReason(code: .targetUnavailable)
         }
         return nil
     }
 
 
-    func researchFunctionTitle(for note: WorkspaceNoteSnapshot) -> String {
+    func researchActionTitle(for note: WorkspaceNoteSnapshot) -> String {
         ResearchNoteTitleResolver.resolve(
             document: note.document,
             profile: note.schemaProfile,

@@ -35,7 +35,7 @@ struct DeliverySurfaceParityTests {
             rationale: "Fixture settlement visible to every delivery surface."
         )
         _ = try await appHandle.research.createDiscussion(
-            target: ResearchFunctionTarget(
+            target: ResearchActionNoteSnapshot(
                 noteID: try #require(original.stableIdentity.resolvedID),
                 note: fixture.analysisNoteID,
                 role: .analysis,

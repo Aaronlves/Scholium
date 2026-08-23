@@ -131,7 +131,6 @@ struct ResearchActionExecutionContractsTests {
         )
         let request = ResearchActionExecutionRequest(
             actionID: .write,
-            expectedExecutionKind: .writing,
             expectedProfileRevision: try profile.contentRevision(),
             expectedProfileDocumentRevision: DocumentFingerprint(content: "profiles"),
             target: target,
@@ -146,6 +145,14 @@ struct ResearchActionExecutionContractsTests {
                 as? [String: Any]
         )
         object["unsupported"] = true
+        #expect(throws: ResearchActionExecutionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchActionExecutionRequest.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        object.removeValue(forKey: "unsupported")
+        object["expectedExecutionKind"] = "writing"
         #expect(throws: ResearchActionExecutionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchActionExecutionRequest.self,

@@ -1270,7 +1270,7 @@ enum ScholiumGrid {
         static let libraryHierarchyRowHeight = foundationUnit * 7
         static let accessibilityHierarchyRowHeight = foundationUnit * 11
         static let documentTabStripHeight = foundationUnit * 10
-        static let researchFunctionTargetHeight = foundationUnit * 11
+        static let researchActionTargetHeight = foundationUnit * 11
         static let regionHeaderHeight = foundationUnit * 12
         static let iconTrackWidth = foundationUnit * 4
     }

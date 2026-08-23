@@ -3,52 +3,45 @@ import ScholiumContracts
 import ScholiumCore
 
 // Availability plus the cross-store preparation and rollback transaction for
-// the one per-Workspace Research Function coordinator.
+// the one per-Workspace Research Action Run coordinator.
 
-struct ResolvedFunctionPhase: Sendable {
-    let function: ResearchFunctionID
+struct ResolvedActionRunPhase: Sendable {
+    let actionID: ResearchActionID
     let method: ResearchMethodSnapshot
     let citationStyle: String?
 }
 
-struct ResearchFunctionAuthorityBinding: Encodable {
+struct ResearchActionRunAuthorityBinding: Encodable {
     let noteID: String
     let note: VaultQualifiedNoteID
-    let role: ResearchFunctionTargetRole
+    let role: ResearchActionTargetRole
     let fingerprint: DocumentFingerprint?
 
-    init(_ target: ResearchFunctionTarget, includesFingerprint: Bool) {
-        noteID = target.noteID.uuidString.lowercased()
-        note = target.note
-        role = target.role
-        fingerprint = includesFingerprint ? target.fingerprint : nil
-    }
-
-    init(_ material: ResearchFunctionMaterial, includesFingerprint: Bool) {
-        noteID = material.noteID.uuidString.lowercased()
-        note = material.note
-        role = material.role
-        fingerprint = includesFingerprint ? material.fingerprint : nil
+    init(_ noteSnapshot: ResearchActionNoteSnapshot, includesFingerprint: Bool) {
+        noteID = noteSnapshot.noteID.uuidString.lowercased()
+        note = noteSnapshot.note
+        role = noteSnapshot.role
+        fingerprint = includesFingerprint ? noteSnapshot.fingerprint : nil
     }
 }
 
-struct ResearchFunctionTaskDirective: Encodable {
+struct ResearchActionRunTaskDirective: Encodable {
     let action: ResearchActionID
     let academicInputs: ResearchAcademicFieldValues
     let resultContract: ResearchResultContract
     let triptychID: String
     let runID: String
     let confirmationToken: String
-    let scope: ResearchFunctionScopeKind
+    let scope: ResearchActionScopeKind
     let researcherInstruction: String
     let sourceReference: ResearchSourceReference?
-    let readSet: [ResearchFunctionAuthorityBinding]
-    let writeSet: [ResearchFunctionAuthorityBinding]
+    let readSet: [ResearchActionRunAuthorityBinding]
+    let writeSet: [ResearchActionRunAuthorityBinding]
     let checks: [FidelityCheck]
-    let method: ResearchFunctionMethodAuthorityBinding
+    let method: ResearchActionRunMethodAuthorityBinding
 }
 
-struct ResearchFunctionMethodAuthorityBinding: Encodable {
+struct ResearchActionRunMethodAuthorityBinding: Encodable {
     let registrationKey: String
     let action: ResearchActionID
     let primaryMarkdownRevision: DocumentFingerprint
@@ -62,52 +55,52 @@ struct ResearchFunctionMethodAuthorityBinding: Encodable {
     }
 }
 
-struct ResearchFunctionNamedData: Encodable {
+struct ResearchActionRunNamedData: Encodable {
     let noteID: String
     let title: String
 }
 
-struct ResearchFunctionSourceLocator: Encodable {
+struct ResearchActionRunSourceLocator: Encodable {
     let machineLocalPath: String
 }
 
-struct ResearchFunctionResearchData: Encodable {
-    let target: ResearchFunctionNamedData
+struct ResearchActionRunResearchData: Encodable {
+    let target: ResearchActionRunNamedData
     let source: ResearchSourceReference?
-    let materials: [ResearchFunctionNamedData]
-    let fidelityTargets: [ResearchFunctionNamedData]
+    let materials: [ResearchActionRunNamedData]
+    let fidelityTargets: [ResearchActionRunNamedData]
     let passage: CommentAnchor?
 }
 
-extension ResearchFunctionCoordinator {
+extension ResearchActionRunCoordinator {
     // MARK: Availability and Materials
 
-    func researchFunctionAvailability<Host: ResearchFunctionCoordinatorHost>(
-        for target: ResearchFunctionTarget,
+    func researchActionRunAvailability<Host: ResearchActionRunCoordinatorHost>(
+        for target: ResearchActionNoteSnapshot,
         checkingSourceAccess: Bool = true,
         host: isolated Host
-    ) async throws -> [ResearchFunctionAvailability] {
+    ) async throws -> [ResearchActionRunAvailability] {
         try requireMatchingActiveHost(host)
-        let targetReason = await researchFunctionTargetRepairReason(
+        let targetReason = await researchActionTargetRepairReason(
             target,
             host: host
         )
-        var results: [ResearchFunctionAvailability] = []
-        for function in ResearchFunctionID.allCases {
-            var reasons: [ResearchFunctionRepairReason] = []
+        var results: [ResearchActionRunAvailability] = []
+        for actionID in ResearchActionID.allCases {
+            var reasons: [ResearchActionRunRepairReason] = []
             if let targetReason {
                 reasons.append(targetReason)
-            } else if !function.allowedTargetRoles.contains(target.role) {
-                reasons.append(ResearchFunctionRepairReason(
+            } else if !actionID.allowedTargetRoles.contains(target.role) {
+                reasons.append(ResearchActionRunRepairReason(
                     code: .invalidTargetRole,
-                    function: function,
-                    expectedRoles: Array(function.allowedTargetRoles)
+                    actionID: actionID,
+                    expectedRoles: Array(actionID.allowedTargetRoles)
                 ))
             }
 
             if reasons.isEmpty {
                 if checkingSourceAccess,
-                   function == .develop,
+                   actionID == .analyze,
                    target.role == .analysis {
                     let usesExternalZotero = try await hasExternalZoteroBinding(
                         for: target,
@@ -119,9 +112,9 @@ extension ResearchFunctionCoordinator {
                             host: host
                         )
                         if let failure = sourceStatus.failure {
-                            reasons.append(ResearchFunctionRepairReason(
+                            reasons.append(ResearchActionRunRepairReason(
                                 code: .sourceAccessRequired,
-                                function: function,
+                                actionID: actionID,
                                 sourceAccessFailure: failure
                             ))
                         }
@@ -130,53 +123,51 @@ extension ResearchFunctionCoordinator {
             }
 
             if reasons.isEmpty {
-                let action = try ResearchActionFunctionMapping.definition(
-                    for: function,
-                    targetRole: target.role
-                )
+                let action = actionID.definition
+                try action.validate(targetRole: target.role)
                 do {
                     let method = try await dependencies.researchConfigurationStore
                         .methodSnapshot(for: action.id)
                     if !method.registration.isEnabled {
-                        reasons.append(ResearchFunctionRepairReason(
+                        reasons.append(ResearchActionRunRepairReason(
                             code: .missingWorkflow,
-                            function: function
+                            actionID: actionID
                         ))
                     }
                 } catch {
-                    reasons.append(ResearchFunctionRepairReason(
+                    reasons.append(ResearchActionRunRepairReason(
                         code: .missingWorkflow,
-                        function: function
+                        actionID: actionID
                     ))
                 }
             }
 
-            var fidelityChecks: [ResearchFunctionCheckAvailability] = []
-            if function == .fidelity, reasons.isEmpty {
-                fidelityChecks.append(ResearchFunctionCheckAvailability(
+            var fidelityChecks: [ResearchActionRunCheckAvailability] = []
+            if actionID == .checkFidelity, reasons.isEmpty {
+                fidelityChecks.append(ResearchActionRunCheckAvailability(
                     check: .content,
                     isEnabled: true
                 ))
                 let citation = try await dependencies.researchConfigurationStore
                     .citationMethodSnapshot()
                 if citation?.document.activeCitationStyle == nil {
-                    fidelityChecks.append(ResearchFunctionCheckAvailability(
+                    fidelityChecks.append(ResearchActionRunCheckAvailability(
                         check: .citations,
                         isEnabled: false,
-                        repairReasons: [ResearchFunctionRepairReason(
+                        repairReasons: [ResearchActionRunRepairReason(
                             code: .citationStyleUnavailable,
-                            function: .fidelity
+                            actionID: .checkFidelity
                         )]
                     ))
                 } else {
-                    fidelityChecks.append(ResearchFunctionCheckAvailability(
+                    fidelityChecks.append(ResearchActionRunCheckAvailability(
                         check: .citations,
                         isEnabled: true
                     ))
                 }
             }
-            results.append(ResearchFunctionAvailability(
-                function: function,
+            results.append(ResearchActionRunAvailability(
+                actionID: actionID,
                 isEnabled: reasons.isEmpty,
                 repairReasons: reasons,
                 fidelityChecks: fidelityChecks
@@ -185,25 +176,25 @@ extension ResearchFunctionCoordinator {
         return results
     }
 
-    func researchFunctionMaterialCandidates<Host: ResearchFunctionCoordinatorHost>(
-        for target: ResearchFunctionTarget,
-        function: ResearchFunctionID,
+    func researchActionMaterialCandidates<Host: ResearchActionRunCoordinatorHost>(
+        for target: ResearchActionNoteSnapshot,
+        actionID: ResearchActionID,
         host: isolated Host
-    ) async throws -> [ResearchFunctionMaterialCandidate] {
+    ) async throws -> [ResearchActionMaterialCandidate] {
         try requireMatchingActiveHost(host)
-        _ = try await validateResearchFunctionTarget(
+        _ = try await validateResearchActionTarget(
             target,
             expected: target.fingerprint,
             host: host
         )
-        guard function.allowedTargetRoles.contains(target.role) else {
-            throw ResearchFunctionContractError.invalidTargetRole(
-                function: function,
+        guard actionID.allowedTargetRoles.contains(target.role) else {
+            throw ResearchActionRunContractError.invalidTargetRole(
+                actionID: actionID,
                 role: target.role
             )
         }
 
-        let currentSnapshot = host.researchFunctionCurrentSnapshot()
+        let currentSnapshot = host.researchActionCurrentSnapshot()
         let catalogByLocation = Dictionary(uniqueKeysWithValues:
             currentSnapshot.discovery.catalog.notes.map { note in
                 (
@@ -216,14 +207,14 @@ extension ResearchFunctionCoordinator {
             }
         )
         var suggestionsByLocation: [
-            VaultQualifiedNoteID: Set<ResearchFunctionMaterialSuggestionReason>
+            VaultQualifiedNoteID: Set<ResearchActionMaterialSuggestionReason>
         ] = [:]
         if let graph = currentSnapshot.discovery.catalog.graph {
             for edge in graph.outgoing[target.note, default: []] {
                 guard let destination = edge.destination?.note,
                       destination != target.note else { continue }
                 suggestionsByLocation[destination, default: []].insert(
-                    ResearchFunctionMaterialSuggestionReason(
+                    ResearchActionMaterialSuggestionReason(
                         kind: .linkedFromTarget,
                         sourceNote: target.note,
                         sourceSpan: edge.occurrence.span
@@ -233,7 +224,7 @@ extension ResearchFunctionCoordinator {
             for edge in graph.incoming[target.note, default: []] {
                 guard edge.source != target.note else { continue }
                 suggestionsByLocation[edge.source, default: []].insert(
-                    ResearchFunctionMaterialSuggestionReason(
+                    ResearchActionMaterialSuggestionReason(
                         kind: .linksDirectlyToTarget,
                         sourceNote: edge.source,
                         sourceSpan: edge.occurrence.span
@@ -246,12 +237,12 @@ extension ResearchFunctionCoordinator {
             guard note.id != target.note,
                   !note.capabilities.isManagedCritique,
                   case .resolved(let noteID) = note.stableIdentity,
-                  let role = ResearchFunctionTargetRole(vaultRole: note.vaultRole),
+                  let role = ResearchActionTargetRole(vaultRole: note.vaultRole),
                   let vault = currentSnapshot.vault(id: note.id.vaultID)?.vault else {
                 return nil
             }
-            let title = researchFunctionTitle(for: note)
-            let material = ResearchFunctionMaterial(
+            let title = researchActionTitle(for: note)
+            let material = ResearchActionNoteSnapshot(
                 noteID: noteID,
                 note: note.id,
                 role: role,
@@ -259,7 +250,7 @@ extension ResearchFunctionCoordinator {
                 title: title
             )
             _ = vault // Keeps candidate creation explicitly vault-bound.
-            return ResearchFunctionMaterialCandidate(
+            return ResearchActionMaterialCandidate(
                 material: material,
                 aliases: catalogByLocation[note.id]?.aliases ?? [],
                 suggestionReasons: Array(suggestionsByLocation[note.id] ?? [])
@@ -280,27 +271,27 @@ extension ResearchFunctionCoordinator {
 
     // MARK: Preparation
 
-    func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
-        _ request: ResearchFunctionRequest,
+    func prepareResearchActionRun<Host: ResearchActionRunCoordinatorHost>(
+        _ request: ResearchActionRunRequest,
         host: isolated Host
-    ) async throws -> ResearchFunctionPreparation {
-        try await prepareResearchFunction(
+    ) async throws -> ResearchActionRunPreparation {
+        try await prepareResearchActionRun(
             request,
             allowsResearcherProvidedSource: false,
             host: host
         )
     }
 
-    func researchFunctionRun<Host: ResearchFunctionCoordinatorHost>(
+    func researchActionRun<Host: ResearchActionRunCoordinatorHost>(
         id: UUID,
         host: isolated Host
-    ) async throws -> ResearchFunctionPreparation {
+    ) async throws -> ResearchActionRunPreparation {
         try requireMatchingActiveHost(host)
         let record = try await record(runID: id)
-        if record.snapshot.request.function == .discuss {
+        if record.snapshot.request.actionID == .discuss {
             _ = try await validatedDiscussionStatements(snapshot: record.snapshot)
         }
-        return ResearchFunctionPreparation(
+        return ResearchActionRunPreparation(
             snapshot: record.snapshot,
             instructions: try await deliveryInstructions(for: record, host: host),
             state: record.completion?.state ?? .prepared,
@@ -308,15 +299,15 @@ extension ResearchFunctionCoordinator {
         )
     }
 
-    func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
-        _ proposedRequest: ResearchFunctionRequest,
+    func prepareResearchActionRun<Host: ResearchActionRunCoordinatorHost>(
+        _ proposedRequest: ResearchActionRunRequest,
         allowsResearcherProvidedSource: Bool = false,
         host: isolated Host
-    ) async throws -> ResearchFunctionPreparation {
+    ) async throws -> ResearchActionRunPreparation {
         let actionContext = try await host.resolveDefaultResearchActionContext(
             for: proposedRequest
         )
-        return try await prepareResearchFunction(
+        return try await prepareResearchActionRun(
             proposedRequest,
             actionContext: actionContext,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource,
@@ -324,8 +315,8 @@ extension ResearchFunctionCoordinator {
         )
     }
 
-    func prepareResearchFunction<Host: ResearchFunctionCoordinatorHost>(
-        _ proposedRequest: ResearchFunctionRequest,
+    func prepareResearchActionRun<Host: ResearchActionRunCoordinatorHost>(
+        _ proposedRequest: ResearchActionRunRequest,
         actionContext: ResolvedResearchActionContext,
         runIDOverride: UUID? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
@@ -336,11 +327,11 @@ extension ResearchFunctionCoordinator {
         expectedZoteroBinding: AnalysisZoteroBinding? = nil,
         suppressRefresh: Bool = false,
         host: isolated Host
-    ) async throws -> ResearchFunctionPreparation {
+    ) async throws -> ResearchActionRunPreparation {
         try requireMatchingActiveHost(host)
         guard (continuationLineage?.kind == .resynthesis)
                 == (resynthesisContext != nil) else {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "A Resynthesize child requires its exact revision-bound context."
             )
         }
@@ -351,19 +342,19 @@ extension ResearchFunctionCoordinator {
                 || continuationHandoff == nil else {
             throw ResearchContinuationContractError.invalidHandoff
         }
-        guard actionContext.function == proposedRequest.function,
+        guard actionContext.actionID == proposedRequest.actionID,
               actionContext.availability.definition.id
                 == actionContext.availability.profile.profile.actionID else {
             throw ResearchActionExecutionContractError.staleResolution
         }
         let expandedRequest = proposedRequest
         try expandedRequest.validate()
-        let target = try await validateResearchFunctionTarget(
+        let target = try await validateResearchActionTarget(
             expandedRequest.target,
             expected: expandedRequest.target.fingerprint,
             host: host
         )
-        _ = try await validateResearchFunctionMaterials(
+        _ = try await validateResearchActionMaterials(
             expandedRequest.materials,
             host: host
         )
@@ -371,7 +362,7 @@ extension ResearchFunctionCoordinator {
         try request.validate()
         guard expectedZoteroBinding == nil
                 || (!allowsResearcherProvidedSource
-                    && request.function == .develop
+                    && request.actionID == .analyze
                     && request.target.role == .analysis
                     && expectedZoteroBinding?.noteID == request.target.noteID)
         else {
@@ -383,7 +374,7 @@ extension ResearchFunctionCoordinator {
         }
         let sourceAccess = try await requiredResearchSourceAccess(
             for: target,
-            function: request.function,
+            actionID: request.actionID,
             allowsResearcherProvidedSource: allowsResearcherProvidedSource
         )
         let zoteroContext = allowsResearcherProvidedSource
@@ -392,13 +383,13 @@ extension ResearchFunctionCoordinator {
                 for: target,
                 expectedBinding: expectedZoteroBinding
             )
-        _ = try await validateResearchFunctionWriteTargets(request, host: host)
-        _ = try await validateResearchFunctionFidelityTargets(request, host: host)
+        _ = try await validateResearchActionWriteTargets(request, host: host)
+        _ = try await validateResearchActionFidelityTargets(request, host: host)
         let actionAuthority = try resolvedActionAuthority(
             context: actionContext,
             request: request
         )
-        let phases = try await resolveResearchFunctionPhases(
+        let phases = try await resolveResearchActionRunPhases(
             request,
             actionContext: actionContext,
             includeZoteroIntegration: zoteroContext != nil
@@ -407,11 +398,11 @@ extension ResearchFunctionCoordinator {
         let actionSnapshot = try resolvedActionSnapshot(
             context: actionContext,
             authority: actionAuthority,
-            target: request.target.actionNote
+            target: request.target
         )
 
         let commentOnlyDiscussion: PortableResearchDiscussion?
-        if request.function == .discuss {
+        if request.actionID == .discuss {
             let active = try await dependencies.portableResearchRecordStore.activeDiscussions(
                 noteID: request.target.noteID
             )
@@ -424,7 +415,7 @@ extension ResearchFunctionCoordinator {
                 $0.primaryNoteID == request.target.noteID
             }) {
                 guard existing.action == nil, existing.method == nil else {
-                    throw ResearchFunctionContractError.activeDiscussionExists(existing.id)
+                    throw ResearchActionRunContractError.activeDiscussionExists(existing.id)
                 }
                 commentOnlyDiscussion = existing
             } else {
@@ -440,7 +431,7 @@ extension ResearchFunctionCoordinator {
         // change evidence, not a general version history.
         let capturedChangeEvidence: Bool
         if requiresAgentChangeEvidence,
-           request.function.requiresAgentChangeEvidence {
+           request.actionID.requiresAgentChangeEvidence {
             _ = try await captureAgentChangeStartingRevision(
                 runID: runID,
                 target: request.target
@@ -451,24 +442,24 @@ extension ResearchFunctionCoordinator {
         }
 
         do {
-            _ = try await validateResearchFunctionTarget(
+            _ = try await validateResearchActionTarget(
                 request.target,
                 expected: request.target.fingerprint,
                 host: host
             )
-            _ = try await validateResearchFunctionMaterials(
+            _ = try await validateResearchActionMaterials(
                 request.materials,
                 host: host
             )
-            _ = try await validateResearchFunctionWriteTargets(request, host: host)
-            _ = try await validateResearchFunctionFidelityTargets(request, host: host)
+            _ = try await validateResearchActionWriteTargets(request, host: host)
+            _ = try await validateResearchActionFidelityTargets(request, host: host)
             let revalidatedSource = try await requiredResearchSourceAccess(
                 for: target,
-                function: request.function,
+                actionID: request.actionID,
                 allowsResearcherProvidedSource: allowsResearcherProvidedSource
             )
             guard revalidatedSource?.reference == sourceAccess?.reference else {
-                throw ResearchFunctionContractError.sourceAccessUnavailable(
+                throw ResearchActionRunContractError.sourceAccessUnavailable(
                     ResearchSourceAccessFailure(code: .sourceChanged)
                 )
             }
@@ -487,16 +478,15 @@ extension ResearchFunctionCoordinator {
         }
 
         let confirmationToken = UUID()
-        let preparedAt = researchFunctionRecordTimestamp()
-        let snapshot = ResearchFunctionSnapshot(
+        let preparedAt = researchActionRunRecordTimestamp()
+        let snapshot = try ResearchActionRunSnapshot(
             runID: runID,
             request: request,
             actionSnapshot: actionSnapshot,
             recordID: runID,
             zoteroBibliographicContext: zoteroContext,
             sourceReference: sourceAccess?.reference,
-            analysisSourceRoute: request.function == .develop
-                    && request.target.role == .analysis
+            analysisSourceRoute: request.actionID == .analyze
                 ? (allowsResearcherProvidedSource
                     ? .researcherProvided
                     : (sourceAccess != nil ? .scholiumSource : .externalZotero))
@@ -509,7 +499,7 @@ extension ResearchFunctionCoordinator {
             preparedAt: preparedAt
         )
 
-        if request.function == .fidelity {
+        if request.actionID == .checkFidelity {
             let key = ResearchFidelityEvidenceKey(
                 snapshot: snapshot,
                 finalTargetFingerprint: request.target.fingerprint,
@@ -522,7 +512,7 @@ extension ResearchFunctionCoordinator {
                 for: key,
                 excluding: nil
             ) {
-                return ResearchFunctionPreparation(
+                return ResearchActionRunPreparation(
                     snapshot: snapshot,
                     instructions: "Existing Fidelity evidence matches this exact revision, scope, evidence, checks, and method resources.",
                     state: .complete,
@@ -531,7 +521,7 @@ extension ResearchFunctionCoordinator {
             }
         }
 
-        let functionInstructions = try renderFunctionInstructions(
+        let actionRunInstructions = try renderActionRunInstructions(
             request: request,
             action: actionContext.availability.definition,
             academicInputs: actionContext.academicInputs,
@@ -544,28 +534,28 @@ extension ResearchFunctionCoordinator {
             allowsResearcherProvidedSource: allowsResearcherProvidedSource
         )
         let liveInstructions = try sourceAccessDeliveryInstructions(
-            base: functionInstructions,
+            base: actionRunInstructions,
             sourceAccess: sourceAccess
         )
         let deliveryInstructions = liveInstructions
         do {
             // Close the race opened by method loading and evidence capture.
-            _ = try await validateResearchFunctionTarget(
+            _ = try await validateResearchActionTarget(
                 request.target,
                 expected: request.target.fingerprint,
                 host: host
             )
-            _ = try await validateResearchFunctionMaterials(
+            _ = try await validateResearchActionMaterials(
                 request.materials,
                 host: host
             )
             let finalSource = try await requiredResearchSourceAccess(
                 for: target,
-                function: request.function,
+                actionID: request.actionID,
                 allowsResearcherProvidedSource: allowsResearcherProvidedSource
             )
             guard finalSource?.reference == sourceAccess?.reference else {
-                throw ResearchFunctionContractError.sourceAccessUnavailable(
+                throw ResearchActionRunContractError.sourceAccessUnavailable(
                     ResearchSourceAccessFailure(code: .sourceChanged)
                 )
             }
@@ -573,7 +563,7 @@ extension ResearchFunctionCoordinator {
                try await portableTargetZoteroBinding(target) != expectedZoteroBinding {
                 throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
-            let localDiscussion = request.function == .discuss
+            let localDiscussion = request.actionID == .discuss
                     ? try localDiscussionExecution(
                         snapshot: snapshot,
                         request: request
@@ -583,11 +573,11 @@ extension ResearchFunctionCoordinator {
                     LocalResearchExecutionRecord(
                         triptychID: workspaceID,
                         snapshot: snapshot,
-                        preparedInstructions: functionInstructions,
+                        preparedInstructions: actionRunInstructions,
                         discussion: localDiscussion
                     )
                 )
-            if request.function == .discuss {
+            if request.actionID == .discuss {
                     let resolved = try ResearchDiscussionFactory.make(
                         snapshot: snapshot,
                         triptychID: workspaceID
@@ -596,7 +586,7 @@ extension ResearchFunctionCoordinator {
                         guard let action = resolved.action,
                               let method = resolved.method,
                               let statement = resolved.statements.first else {
-                            throw ResearchFunctionContractError.invalidCompletion(
+                            throw ResearchActionRunContractError.invalidCompletion(
                                 "A Comment-only Discussion requires an exact resolved activation."
                             )
                         }
@@ -628,26 +618,26 @@ extension ResearchFunctionCoordinator {
         let refreshWarning: String?
         if suppressRefresh {
             refreshWarning = nil
-            host.scheduleResearchFunctionRefreshRecovery()
+            host.scheduleResearchActionRefreshRecovery()
         } else {
-            refreshWarning = try await host.publishCommittedResearchFunctionChange(
+            refreshWarning = try await host.publishCommittedResearchActionChange(
                 "The Research Action preparation"
             )
         }
         var returnedInstructions = deliveryInstructions
-        if request.function == .discuss {
+        if request.actionID == .discuss {
             guard let responseContract = try await dependencies.localExecutionStore
                 .record(id: runID).discussion?.responseContract else {
-                throw ResearchFunctionContractError.preparationNotFound(runID)
+                throw ResearchActionRunContractError.preparationNotFound(runID)
             }
-            let discussionInstructions = functionInstructions + "\n\n" + DiscussResponseTransport.locator(
+            let discussionInstructions = actionRunInstructions + "\n\n" + DiscussResponseTransport.locator(
                 discussionID: runID,
                 triptychID: workspaceID,
                 contract: responseContract
             )
             returnedInstructions = discussionInstructions
         }
-        return ResearchFunctionPreparation(
+        return ResearchActionRunPreparation(
             snapshot: snapshot,
             instructions: returnedInstructions,
             derivedRefreshWarning: refreshWarning
@@ -655,8 +645,8 @@ extension ResearchFunctionCoordinator {
     }
 
     private func localDiscussionExecution(
-        snapshot: ResearchFunctionSnapshot,
-        request: ResearchFunctionRequest
+        snapshot: ResearchActionRunSnapshot,
+        request: ResearchActionRunRequest
     ) throws -> ResearchDiscussionExecutionContract {
         let storedProfile = DialogueResponseProfile()
         let effectiveProfile: DialogueResponseProfile

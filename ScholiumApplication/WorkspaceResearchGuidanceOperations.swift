@@ -5,29 +5,29 @@ import ScholiumCore
 // Machine-local source binding and citation settings remain Workspace-owned.
 extension WorkspaceHandle {
     func researchSourceAccessStatus(
-        for proposedTarget: ResearchFunctionTarget
+        for proposedTarget: ResearchActionNoteSnapshot
     ) async throws -> ResearchSourceAccessStatus {
         try requireActive()
-        let target = try await researchFunctionCoordinator
-            .validateResearchFunctionTarget(
+        let target = try await researchActionRunCoordinator
+            .validateResearchActionTarget(
             proposedTarget,
             expected: proposedTarget.fingerprint,
             host: self
         )
         guard target.note.schemaProfile == .analysis,
               proposedTarget.role == .analysis else {
-            throw ResearchFunctionContractError.invalidTargetRole(
-                function: .develop,
+            throw ResearchActionRunContractError.invalidTargetRole(
+                actionID: .analyze,
                 role: proposedTarget.role
             )
         }
         do {
             return .available(
-                try await researchFunctionCoordinator.resolveResearchSourceAccess(
+                try await researchActionRunCoordinator.resolveResearchSourceAccess(
                     for: target
                 ).reference
             )
-        } catch let error as ResearchFunctionContractError {
+        } catch let error as ResearchActionRunContractError {
             if case .sourceAccessUnavailable(let failure) = error {
                 let reference = try? await services.researchSourceAccessStore.reference(
                     analysisNoteID: proposedTarget.noteID
@@ -42,16 +42,16 @@ extension WorkspaceHandle {
         _ request: ResearchSourceBindingRequest
     ) async throws -> ResearchSourceReference {
         try requireActive()
-        let target = try await researchFunctionCoordinator
-            .validateResearchFunctionTarget(
+        let target = try await researchActionRunCoordinator
+            .validateResearchActionTarget(
             request.target,
             expected: request.target.fingerprint,
             host: self
         )
         guard target.note.schemaProfile == .analysis,
               request.target.role == .analysis else {
-            throw ResearchFunctionContractError.invalidTargetRole(
-                function: .develop,
+            throw ResearchActionRunContractError.invalidTargetRole(
+                actionID: .analyze,
                 role: request.target.role
             )
         }
@@ -72,19 +72,19 @@ extension WorkspaceHandle {
                     attachmentKey: attachmentKey
                 )
                 let selectedPath = selectedFileURL.standardizedFileURL
-                let zoteroPath = try researchFunctionCoordinator
+                let zoteroPath = try researchActionRunCoordinator
                     .validatedZoteroAttachmentURL(
                     attachment.fileURL
                 )
                 guard selectedPath.path == zoteroPath.path else {
-                    throw ResearchFunctionContractError.sourceAccessUnavailable(
+                    throw ResearchActionRunContractError.sourceAccessUnavailable(
                         ResearchSourceAccessFailure(code: .zoteroIdentityMismatch)
                     )
                 }
-                let targetBinding = try await researchFunctionCoordinator
+                let targetBinding = try await researchActionRunCoordinator
                     .portableTargetZoteroBinding(target)
                 guard targetBinding == nil || targetBinding?.itemKey == attachment.itemKey else {
-                    throw ResearchFunctionContractError.sourceAccessUnavailable(
+                    throw ResearchActionRunContractError.sourceAccessUnavailable(
                         ResearchSourceAccessFailure(code: .zoteroIdentityMismatch)
                     )
                 }
@@ -98,30 +98,30 @@ extension WorkspaceHandle {
                     )
             }
         } catch let error as ResearchSourceAccessStoreError {
-            throw ResearchFunctionContractError.sourceAccessUnavailable(error.failure)
+            throw ResearchActionRunContractError.sourceAccessUnavailable(error.failure)
         } catch let error as ZoteroUseCaseError {
-            throw ResearchFunctionContractError.sourceAccessUnavailable(
+            throw ResearchActionRunContractError.sourceAccessUnavailable(
                 ResearchSourceAccessFailure(
-                    code: researchFunctionCoordinator.sourceFailureCode(for: error)
+                    code: researchActionRunCoordinator.sourceFailureCode(for: error)
                 )
             )
         }
     }
 
     func removeResearchSourceAccess(
-        for proposedTarget: ResearchFunctionTarget
+        for proposedTarget: ResearchActionNoteSnapshot
     ) async throws {
         try requireActive()
-        let target = try await researchFunctionCoordinator
-            .validateResearchFunctionTarget(
+        let target = try await researchActionRunCoordinator
+            .validateResearchActionTarget(
             proposedTarget,
             expected: proposedTarget.fingerprint,
             host: self
         )
         guard target.note.schemaProfile == .analysis,
               proposedTarget.role == .analysis else {
-            throw ResearchFunctionContractError.invalidTargetRole(
-                function: .develop,
+            throw ResearchActionRunContractError.invalidTargetRole(
+                actionID: .analyze,
                 role: proposedTarget.role
             )
         }
@@ -130,7 +130,7 @@ extension WorkspaceHandle {
                 analysisNoteID: proposedTarget.noteID
             )
         } catch let error as ResearchSourceAccessStoreError {
-            throw ResearchFunctionContractError.sourceAccessUnavailable(error.failure)
+            throw ResearchActionRunContractError.sourceAccessUnavailable(error.failure)
         }
     }
 

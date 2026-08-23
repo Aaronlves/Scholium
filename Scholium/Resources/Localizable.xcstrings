@@ -1515,16 +1515,6 @@
         }
       }
     },
-    "A Practice edit replaces only its exact current revision. It guides research but never grants authority." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑实践只会替换其精确的当前修订。它可以指导研究，但从不授予权限。"
-          }
-        }
-      }
-    },
     "A Search clause cannot be empty." : {
       "localizations" : {
         "en" : {
@@ -4494,16 +4484,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "为每项操作指定一个技能。其 SKILL.md 会路由普通参考文件，包括哲学透镜。"
-          }
-        }
-      }
-    },
-    "Assign one primary Markdown Method to each Action and inspect its linked Practices." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为每项操作指定一个主 Markdown 方法，并检查其链接的实践。"
           }
         }
       }
@@ -8437,16 +8417,6 @@
         }
       }
     },
-    "Configure Action fields and the exact Markdown Practices linked from Methods." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配置操作字段及从方法链接的精确 Markdown 实践。"
-          }
-        }
-      }
-    },
     "Configure New Note YAML, Agent requirements, and About fields by role." : {
       "localizations" : {
         "zh-Hans" : {
@@ -9500,26 +9470,6 @@
         }
       }
     },
-    "Could Not Update Practices" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法更新实践"
-          }
-        }
-      }
-    },
-    "Could Not Update Profiles & Practices" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法更新配置与实践"
-          }
-        }
-      }
-    },
     "Could Not Update Research Method" : {
       "localizations" : {
         "en" : {
@@ -9873,16 +9823,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通过选择分析、议题和写作文件夹创建脉络。"
-          }
-        }
-      }
-    },
-    "Create an exact Markdown Practice, then link it from a Method." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建一份精确的 Markdown 实践，然后从某个方法中链接它。"
           }
         }
       }
@@ -11957,32 +11897,12 @@
         }
       }
     },
-    "Each Action routes to one current primary Markdown method. Practices are derived only from exact Wikilinks in that method; an optional local folder remains ordinary Agent-readable storage, not a package." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每项操作都路由到一个当前主 Markdown 方法。实践仅从该方法中的精确 Wikilink 派生；可选本地文件夹仍是智能体可读取的普通存储，而不是软件包。"
-          }
-        }
-      }
-    },
     "Each Platform Action routes to one current Skill. SKILL.md selects task-relevant ordinary references, including philosophical lenses, from its local folder." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "每项平台操作都路由到一个当前技能。SKILL.md 会从本地文件夹中选择与任务相关的普通参考文件，包括哲学透镜。"
-          }
-        }
-      }
-    },
-    "Each Platform Action routes to one current primary Markdown Method. Exact Wikilinks select Practices; an optional local folder is ordinary Agent-readable storage, not a package." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每项平台操作都路由到一个当前主 Markdown 方法。精确 Wikilink 选择实践；可选本地文件夹是智能体可读取的普通存储，而不是软件包。"
           }
         }
       }
@@ -16885,16 +16805,6 @@
         }
       }
     },
-    "Loading Practices…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在载入实践…"
-          }
-        }
-      }
-    },
     "Loading Profiles…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17267,16 +17177,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "管理 Zotero 关联…"
-          }
-        }
-      }
-    },
-    "Manage each Action’s primary Method and the exact Markdown Practices those Methods link." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "管理每项操作的主要方法，以及这些方法所链接的精确 Markdown 实践。"
           }
         }
       }
@@ -17943,26 +17843,6 @@
         }
       }
     },
-    "Method and Practice prose can guide scholarly work. It cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法与实践文本可以指导学术工作，但无法更改平台操作、会话、协作策略、有界写入、精确修订、冲突或恢复。"
-          }
-        }
-      }
-    },
-    "Method and Practice prose guides scholarly work. It cannot change Platform Action support, Session scope, collaboration policy, write authorization, exact revisions, conflicts, or recovery." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法与实践文本指导学术工作，但无法更改平台操作支持、会话范围、协作策略、写入授权、精确修订、冲突或恢复。"
-          }
-        }
-      }
-    },
     "Method and source not recorded" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17989,62 +17869,12 @@
         }
       }
     },
-    "Methods & Practices" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法与实践"
-          }
-        }
-      }
-    },
     "Methods Unavailable" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法不可用"
-          }
-        }
-      }
-    },
-    "Methods and Practices guide scholarly work; they never grant Agent access or alter Session, revision, conflict, or recovery rules." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法与实践用于指导学术工作；它们不会授予 Agent 访问权限，也不会改变会话、修订、冲突或恢复规则。"
-          }
-        }
-      }
-    },
-    "Methods and Practices guide scholarly work; they never grant permissions or alter Session, revision, conflict, or recovery rules." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法和实践指导学术工作；它们从不授予权限，也不会更改会话、修订、冲突或恢复规则。"
-          }
-        }
-      }
-    },
-    "Methods and Practices section" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法与实践部分"
-          }
-        }
-      }
-    },
-    "Methods opt into Practices only through exact Wikilinks." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法仅通过精确 Wikilink 采用实践。"
           }
         }
       }
@@ -19020,26 +18850,6 @@
         }
       }
     },
-    "New Philosophical Practice" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建哲学实践"
-          }
-        }
-      }
-    },
-    "New Practice…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建实践…"
-          }
-        }
-      }
-    },
     "New Triptych…" : {
       "localizations" : {
         "en" : {
@@ -19494,16 +19304,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无待恢复"
-          }
-        }
-      }
-    },
-    "No Practices" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有实践"
           }
         }
       }
@@ -20001,16 +19801,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前没有需要关注的事项"
-          }
-        }
-      }
-    },
-    "No linked Practices" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有已链接的实践"
           }
         }
       }
@@ -22214,16 +22004,6 @@
         }
       }
     },
-    "PHILOSOPHICAL PRACTICES" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "哲学实践"
-          }
-        }
-      }
-    },
     "PLACEMENT" : {
       "localizations" : {
         "en" : {
@@ -22609,16 +22389,6 @@
         }
       }
     },
-    "Philosophical Practice Markdown" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "哲学实践 Markdown"
-          }
-        }
-      }
-    },
     "Policy for %@" : {
       "localizations" : {
         "en" : {
@@ -22751,42 +22521,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可能的孤立结构、暂定后有更改、断裂或歧义连接、格式错误的元数据，以及未解决的笔记身份。"
-          }
-        }
-      }
-    },
-    "Practice title" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "实践标题"
-          }
-        }
-      }
-    },
-    "Practices" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Practices"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "实践"
-          }
-        }
-      }
-    },
-    "Practices: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "实践：%@"
           }
         }
       }
@@ -23213,52 +22947,12 @@
         }
       }
     },
-    "Profiles & Practices" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配置与实践"
-          }
-        }
-      }
-    },
     "Profiles Unavailable" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "配置不可用"
-          }
-        }
-      }
-    },
-    "Profiles and Practices can shape scholarly work and truthful Result fields. They cannot change Platform Actions, Research Context ownership, Session lifetime, collaboration policy, a Bounded Write Set, exact revisions, conflicts, or recovery." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配置与实践可塑造学术工作和如实的结果字段，但无法更改平台操作、研究上下文的归属、会话期限、协作策略、有界写入集合、精确修订、冲突或恢复。"
-          }
-        }
-      }
-    },
-    "Profiles and Practices shape academic inputs and results; they never grant authority or alter Session, write, revision, conflict, or recovery rules." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配置和实践塑造学术输入与结果；它们从不授予权限，也不会更改会话、写入、修订、冲突或恢复规则。"
-          }
-        }
-      }
-    },
-    "Profiles define each Action's researcher-facing academic fields. Practices are exact Markdown linked from a primary Method; they guide research but never grant authority." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "配置定义每项操作面向研究者的学术字段。实践是由主方法链接的精确 Markdown；它们指导研究，但从不授予权限。"
           }
         }
       }
@@ -31542,16 +31236,6 @@
         }
       }
     },
-    "Starts one local, short-lived Agent Run bounded to the exact Method and Practices used by this Research Record." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "启动一个本机、短期的 Agent Run，其范围仅限于此研究记录所使用的准确方法与实践。"
-          }
-        }
-      }
-    },
     "State" : {
       "localizations" : {
         "en" : {
@@ -34319,16 +34003,6 @@
         }
       }
     },
-    "This edits the current primary Markdown only. Linked Practices and optional folder files keep their own exact bytes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这只会编辑当前主 Markdown。已链接的实践和可选文件夹中的文件各自保留精确字节。"
-          }
-        }
-      }
-    },
     "This field does not apply to the selected Search provider." : {
       "localizations" : {
         "en" : {
@@ -34403,16 +34077,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这是一次独立、短时且与已保存方法反馈绑定的配对运行。"
-          }
-        }
-      }
-    },
-    "This is exact Markdown. Saving replaces only this Practice." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这是精确的 Markdown。保存只会替换此实践。"
           }
         }
       }
@@ -36348,39 +36012,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅在你已检查所有列出的路径并完成任何 Finder 恢复后使用此操作。它只会移除恢复记录，不会更改研究文件。"
-          }
-        }
-      }
-    },
-    "Use this practice with %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Use this practice with %@."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将此做法与 %@ 一起使用。"
-          }
-        }
-      }
-    },
-    "Use this practice with %arg." : {
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Use this practice with %arg."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将此做法与 %arg 一起使用。"
           }
         }
       }

@@ -18,7 +18,7 @@ test results, or release evidence. Target authority is
 | [Runtime and Ownership](Architecture/01-runtime-and-ownership.md) | Compiler/runtime composition, module dependencies, state owners, windows, refresh, Library mutations, tabs, and shell construction. |
 | [Research Actions and Execution](Architecture/02-research-actions-and-execution.md) | Action preparation, protected execution, Research Records, permissions, agent coordination, and completion/recovery. |
 | [Source Layout and Presentation](Architecture/03-source-layout-and-presentation.md) | Repository source layout, native presentation composition, window routes, Attention, Research Inspector, and localization. |
-| [Research Guidance](Architecture/04-research-guidance.md) | Method/Practice registration, academic Profiles, collaboration policy, citation configuration, Settings, and configuration recovery. |
+| [Research Guidance](Architecture/04-research-guidance.md) | Action Method registration and ordinary Skill references, academic Profiles, collaboration policy, citation configuration, Settings, and configuration recovery. |
 | [Source Storage and Read Models](Architecture/05-source-storage-and-read-models.md) | Descriptor-relative source writes, macOS coordination, prewrite recovery, immutable Note snapshots, metadata, and targeted YAML edits. |
 | [Documents and Editor](Architecture/06-documents-and-editor.md) | Document sessions, CodeMirror/WebKit, exact-source mirroring, rendering, interaction, recovery, and performance boundaries. |
 | [Design System and Boundary Enforcement](Architecture/07-design-system-and-boundaries.md) | Semantic design-system implementation, component ownership, import guards, and executable architecture checks. |

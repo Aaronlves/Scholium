@@ -54,8 +54,14 @@ struct AppCompositionRootTests {
 
         #expect(ObjectIdentifier(first.cssSnippetStore) == ObjectIdentifier(workspaceStore.cssSnippetStore))
         #expect(ObjectIdentifier(second.cssSnippetStore) == ObjectIdentifier(workspaceStore.cssSnippetStore))
-        #expect(ObjectIdentifier(first.zoteroBridge) == ObjectIdentifier(workspaceStore.zoteroBridge))
-        #expect(ObjectIdentifier(second.zoteroBridge) == ObjectIdentifier(workspaceStore.zoteroBridge))
+        #expect(
+            ObjectIdentifier(first.zoteroCoordinator.bridge)
+                == ObjectIdentifier(workspaceStore.zoteroBridge)
+        )
+        #expect(
+            ObjectIdentifier(second.zoteroCoordinator.bridge)
+                == ObjectIdentifier(workspaceStore.zoteroBridge)
+        )
         #expect(workspaceStore.applicationSupportURL == isolatedHome.appendingPathComponent(
             "ApplicationSupport",
             isDirectory: true
@@ -873,7 +879,10 @@ struct AppCompositionRootTests {
         let visibleTarget = try #require(NoteMutationTarget(firstWindow!.currentNote!))
         #expect(visibleTarget.documentID.vaultID == topicsVault.id)
         let duplicatePath = "Duplicated Topic.md"
-        _ = try await firstWindow!.duplicateNote(visibleTarget, to: duplicatePath)
+        _ = try await firstWindow!.libraryMutationController.duplicateNote(
+            visibleTarget,
+            to: duplicatePath
+        )
         #expect(!fileManager.fileExists(atPath: analyses.appendingPathComponent(duplicatePath).path))
         #expect(fileManager.fileExists(atPath: topics.appendingPathComponent(duplicatePath).path))
         #expect(firstWindow!.currentDocumentVaultID == topicsVault.id)
@@ -1064,14 +1073,14 @@ struct AppCompositionRootTests {
         await window.refreshWorkspaceAssignment()
 
         #expect(window.workspaceAssignment?.id == assignment.id)
-        #expect(window.workspaceAccessRecovery?.kind == .vault)
+        #expect(window.windowWorkspaceController.state.accessRecovery?.kind == .vault)
         #expect(window.activeTriptychServicesID == nil)
-        #expect(window.canRemoveUnavailableTriptychRegistration)
+        #expect(window.windowWorkspaceController.canRemoveUnavailableTriptychRegistration)
 
-        try await window.removeUnavailableTriptychRegistration()
+        try await window.windowWorkspaceController.removeUnavailableTriptychRegistration()
 
         #expect(window.workspaceAssignment == nil)
-        #expect(window.workspaceAccessRecovery == nil)
+        #expect(window.windowWorkspaceController.state.accessRecovery == nil)
         #expect(window.registeredTriptychs.isEmpty)
         #expect(try await store.registeredTriptychs().isEmpty)
         #expect(try Data(contentsOf: retainedSource) == retainedBytes)

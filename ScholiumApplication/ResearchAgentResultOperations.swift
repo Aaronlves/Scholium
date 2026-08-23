@@ -93,12 +93,12 @@ extension WorkspaceHandle {
                 .isRecordPermanentlyDeleted(id: id) else {
                 throw LocalResearchExecutionStoreError.executionNotFound(id)
             }
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "The Research Record for this Action was permanently deleted and cannot be recreated."
             )
         }
+        let action = stored.snapshot.actionSnapshot
         guard stored.triptychID == self.id,
-              let action = stored.snapshot.actionSnapshot,
               action.actionID != .discuss else {
             throw ResearchAgentConnectionError.runUnavailable
         }
@@ -107,9 +107,9 @@ extension WorkspaceHandle {
                 throw ResearchAgentResultContractError.resultAlreadySubmitted
             }
             if let completion = stored.completion {
-                let reconciled = try await researchFunctionCoordinator
-                    .completeProtectedFunction(
-                        ResearchFunctionCompletionSubmission(
+                let reconciled = try await researchActionRunCoordinator
+                    .completeActionRun(
+                        ResearchActionRunCompletionSubmission(
                             runID: authenticated.runID,
                             confirmationToken: stored.snapshot.confirmationToken,
                             recordTitle: existing.recordTitle,
@@ -180,7 +180,7 @@ extension WorkspaceHandle {
         for material in stored.snapshot.request.materials {
             let current = try await exactCurrentMaterial(material)
             guard current.fingerprint == material.fingerprint else {
-                throw ResearchFunctionContractError.invalidCompletion(
+                throw ResearchActionRunContractError.invalidCompletion(
                     "A frozen Material changed before Result finalization."
                 )
             }
@@ -189,7 +189,7 @@ extension WorkspaceHandle {
         let actuallyUsedMaterialIDs = contextUseReport.map {
             actuallyUsedMaterialIDs(from: $0, in: stored.snapshot.request.materials)
         } ?? []
-        let completionSubmission = ResearchFunctionCompletionSubmission(
+        let completionSubmission = ResearchActionRunCompletionSubmission(
             runID: authenticated.runID,
             confirmationToken: stored.snapshot.confirmationToken,
             recordTitle: submission.recordTitle,
@@ -206,8 +206,8 @@ extension WorkspaceHandle {
             literatureRecommendations: submission.literatureRecommendations,
             submittedAt: submittedAt
         )
-        let completion = try await researchFunctionCoordinator
-            .completeProtectedFunction(
+        let completion = try await researchActionRunCoordinator
+            .completeActionRun(
                 completionSubmission,
                 acceptedSubmissionDigest: submissionFingerprint.sha256,
                 candidateResultPayload: payload,
@@ -351,7 +351,7 @@ extension WorkspaceHandle {
         claims: [ResearchContextUseClaim],
         runID: UUID,
         triptychID: UUID,
-        snapshot: ResearchFunctionSnapshot
+        snapshot: ResearchActionRunSnapshot
     ) async throws -> ContextUseReport? {
         guard !claims.isEmpty else { return nil }
         var entries: [ContextUseEntry] = []
@@ -375,13 +375,10 @@ extension WorkspaceHandle {
                     snapshot: snapshot
                 )
             case .researcherState:
-                guard let action = snapshot.actionSnapshot else {
-                    throw ResearchAgentResultContractError.invalidContextUse
-                }
                 guard try FoundationResearchContextProvider()
                     .isCurrentResearcherStateReference(
                         reference,
-                        action: action,
+                        action: snapshot.actionSnapshot,
                         workspace: currentSnapshot
                     ) else {
                     throw ResearchAgentResultContractError.invalidContextUse
@@ -437,7 +434,7 @@ extension WorkspaceHandle {
 
     private func verifyMaterialReference(
         _ reference: SourceReferenceEnvelope,
-        snapshot: ResearchFunctionSnapshot
+        snapshot: ResearchActionRunSnapshot
     ) async throws -> [ContextUseVerificationFact] {
         guard let frozen = snapshot.sourceReference,
               ResearchContextMaterialProjection.isCurrentReference(
@@ -504,26 +501,26 @@ extension WorkspaceHandle {
         guard let snapshot = currentSnapshot.document(id: target.note),
               snapshot.stableIdentity.resolvedID == target.noteID,
               snapshot.vaultRole == Self.vaultRole(target.role) else {
-            throw ResearchFunctionContractError.targetIdentityChanged
+            throw ResearchActionRunContractError.targetIdentityChanged
         }
         return try await loadDocument(target.note)
     }
 
     private func exactCurrentMaterial(
-        _ material: ResearchFunctionMaterial
+        _ material: ResearchActionNoteSnapshot
     ) async throws -> NoteDocument {
         guard let snapshot = currentSnapshot.document(id: material.note),
               snapshot.stableIdentity.resolvedID == material.noteID,
-              ResearchFunctionTargetRole(vaultRole: snapshot.vaultRole)
+              ResearchActionTargetRole(vaultRole: snapshot.vaultRole)
                 == material.role else {
-            throw ResearchFunctionContractError.targetIdentityChanged
+            throw ResearchActionRunContractError.targetIdentityChanged
         }
         return try await loadDocument(material.note)
     }
 
     private func actuallyUsedMaterialIDs(
         from report: ContextUseReport,
-        in materials: [ResearchFunctionMaterial]
+        in materials: [ResearchActionNoteSnapshot]
     ) -> [UUID] {
         let byStableIdentity = Dictionary(uniqueKeysWithValues: materials.map {
             ($0.noteID.uuidString.lowercased(), $0)
@@ -580,7 +577,7 @@ extension WorkspaceHandle {
 
     private func resultReceipt(
         disposition: ResearchAgentResultDisposition,
-        completion: ResearchFunctionCompletion
+        completion: ResearchActionRunCompletion
     ) throws -> ResearchAgentResultReceipt {
         switch completion.state {
         case .complete:

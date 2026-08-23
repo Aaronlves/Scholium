@@ -69,7 +69,7 @@ extension ResearchConfigurationStore {
                     registration.actionID
                 )
             }
-            let discoveryName = try Self.discoveryName(for: registration.actionID)
+            let discoveryName = Self.discoveryName(for: registration.actionID)
             try Self.validateDiscoveryMetadata(
                 method.primaryMarkdownSource,
                 expectedName: discoveryName,
@@ -91,7 +91,7 @@ extension ResearchConfigurationStore {
         )
     }
 
-    private static func discoveryName(for actionID: ResearchActionID) throws -> String {
+    private static func discoveryName(for actionID: ResearchActionID) -> String {
         switch actionID {
         case .discuss: "scholium-discuss"
         case .analyze: "scholium-analyze"
@@ -99,11 +99,6 @@ extension ResearchConfigurationStore {
         case .write: "scholium-write"
         case .critique: "scholium-critique"
         case .checkFidelity: "scholium-content-fidelity"
-        default:
-            throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
-                actionID: actionID,
-                reason: "The Action has no stable project Skill name."
-            )
         }
     }
 

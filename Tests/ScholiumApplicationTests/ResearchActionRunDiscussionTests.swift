@@ -3,14 +3,14 @@ import Foundation
 @testable import ScholiumApplication
 import Testing
 
-extension ResearchFunctionOperationsTests {
+extension ResearchActionRunOperationsTests {
     @Test("Researcher ending an unfinished Discussion preserves it and rejects later Agent access")
     func researcherEndsActiveDiscussion() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -58,7 +58,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -75,7 +75,7 @@ extension ResearchFunctionOperationsTests {
                 ]
             )
         )
-        let protectedRun = try await handle.research.protectedFunctionRun(id: preparation.runID)
+        let protectedRun = try await handle.research.actionRunDetails(id: preparation.runID)
         #expect(preparation.instructions.contains("Target and Materials are read-only"))
         #expect(preparation.instructions.contains(
             "begin a separately authorized Analyze Action"
@@ -95,7 +95,7 @@ extension ResearchFunctionOperationsTests {
         )
         #expect(unchangedDiscussion == discussion)
 
-        let incomplete = ResearchFunctionCompletionSubmission(
+        let incomplete = ResearchActionRunCompletionSubmission(
             runID: preparation.runID,
             confirmationToken: protectedRun.snapshot.confirmationToken,
             recordTitle: try ResearchRecordTitle("Test research result"),
@@ -103,8 +103,8 @@ extension ResearchFunctionOperationsTests {
             summary: "A reply was allegedly produced.",
             didModifyTarget: false
         )
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission: incomplete)
+        await #expect(throws: ResearchActionRunContractError.self) {
+            _ = try await completeTestActionRun(handle: handle, submission: incomplete)
         }
         _ = try await handle.research.appendDiscussionStatement(
             discussionID: preparation.runID,
@@ -112,7 +112,7 @@ extension ResearchFunctionOperationsTests {
             attribution: "Research Agent",
             text: "The requested change requires a separately authorized Analyze Action."
         )
-        let completed = try await completeTestProtectedFunction(handle: handle, submission: incomplete)
+        let completed = try await completeTestActionRun(handle: handle, submission: incomplete)
         #expect(completed.state == .complete)
         #expect(!completed.didModifyTarget)
         let activeAfterCompletion = try await handle.research.activeDiscussions(noteID: nil)
@@ -158,7 +158,7 @@ extension ResearchFunctionOperationsTests {
                 )
             )
         )
-        try await handle.research.cancelProtectedFunction(runID: fidelity.runID)
+        try await handle.research.cancelActionRun(runID: fidelity.runID)
         let cancelled = try #require(try await handle.services.localResearchExecutionStore.listing().records
             .first { $0.id == fidelity.runID }?.completion)
         #expect(cancelled.state == .cancelled)
@@ -171,7 +171,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -203,7 +203,7 @@ extension ResearchFunctionOperationsTests {
         #expect(context.brief.capabilities.discussionFinish)
         #expect(context.discussionResponseContract != nil)
 
-        await #expect(throws: ResearchFunctionContractError.self) {
+        await #expect(throws: ResearchActionRunContractError.self) {
             _ = try await runtime.finishResearchAgentDiscussion(
                 credential: credential,
                 run: handoff.run
@@ -272,17 +272,17 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let topic = try await researchFunctionTarget(
+        let topic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let focal = ResearchFunctionMaterial(
+        let focal = ResearchActionNoteSnapshot(
             noteID: topic.noteID,
             note: topic.note,
             role: topic.role,
@@ -333,17 +333,17 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let topic = try await researchFunctionTarget(
+        let topic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let focal = ResearchFunctionMaterial(
+        let focal = ResearchActionNoteSnapshot(
             noteID: topic.noteID,
             note: topic.note,
             role: topic.role,
@@ -397,7 +397,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -424,7 +424,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -468,7 +468,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -523,7 +523,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -570,7 +570,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let originalTarget = try await researchFunctionTarget(
+        let originalTarget = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -592,7 +592,7 @@ extension ResearchFunctionOperationsTests {
         // identity commit. Research Actions intentionally reopen only after
         // the complete derived Workspace projection catches up.
         _ = try await handle.discovery.refresh()
-        let movedTarget = try await researchFunctionTarget(
+        let movedTarget = try await researchActionTarget(
             move.destination,
             role: .analysis,
             handle: handle
@@ -620,7 +620,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -663,7 +663,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         var runtime = fixture.runtime()
         var handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -703,7 +703,7 @@ extension ResearchFunctionOperationsTests {
             $0.id == preparation.runID
         })
         #expect((await handle.latestRefreshMeasurement).researchStateDuration > .zero)
-        _ = try await handle.research.protectedFunctionRun(id: preparation.runID)
+        _ = try await handle.research.actionRunDetails(id: preparation.runID)
         await runtime.shutdown()
     }
 
@@ -713,7 +713,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -784,7 +784,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -826,7 +826,7 @@ extension ResearchFunctionOperationsTests {
         let secondRuntime = fixture.runtime()
         let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
         let secondHandle = try await secondRuntime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: firstHandle
@@ -859,7 +859,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -886,9 +886,9 @@ extension ResearchFunctionOperationsTests {
         )
         #expect(finished.primaryNoteID == target.noteID)
 
-        let run = try await handle.research.protectedFunctionRun(id: preparation.runID)
-        let completion = try await completeTestProtectedFunction(handle: handle, submission:
-            ResearchFunctionCompletionSubmission(
+        let run = try await handle.research.actionRunDetails(id: preparation.runID)
+        let completion = try await completeTestActionRun(handle: handle, submission:
+            ResearchActionRunCompletionSubmission(
                 runID: preparation.runID,
                 confirmationToken: run.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
@@ -910,7 +910,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -927,13 +927,13 @@ extension ResearchFunctionOperationsTests {
         let material = try #require(
             try await handle.research.protectedMaterialCandidates(
                 for: target,
-                function: .develop
+                actionID: .synthesize
             ).first { $0.material.note == fixture.analysisID }?.material
         )
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .develop,
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .synthesize,
                 target: target,
                 materials: [material],
                 instruction: "Synthesize only the selected connection.",
@@ -978,7 +978,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.workID,
             role: .work,
             handle: handle
@@ -1009,9 +1009,9 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .critique,
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .critique,
                 target: target,
                 scope: .whole
             )
@@ -1029,7 +1029,7 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.workID,
             role: .work,
             handle: handle
@@ -1056,9 +1056,9 @@ extension ResearchFunctionOperationsTests {
             handle: handle
         )
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .critique,
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .critique,
                 target: target,
                 scope: .passage(passage)
             )

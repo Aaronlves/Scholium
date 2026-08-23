@@ -907,58 +907,6 @@ private enum SecureResearchMethodIO {
         }
     }
 
-    static func create(
-        at url: URL,
-        data: Data
-    ) throws {
-        guard data.count <= maximumMethodByteCount,
-              String(data: data, encoding: .utf8) != nil else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
-        }
-        let parentURL = url.deletingLastPathComponent()
-        let parent = try SecureResearchConfigurationIO.openAbsoluteDirectory(parentURL)
-        defer { Darwin.close(parent) }
-        guard try SecureResearchConfigurationIO.dataFileIfPresent(
-            parentDescriptor: parent,
-            leaf: url.lastPathComponent,
-            path: url.path,
-            maximumByteCount: maximumMethodByteCount
-        ) == nil else {
-            throw ResearchConfigurationStoreError.invalidMethod(
-                "A Practice already exists at \(url.path)."
-            )
-        }
-        var created = false
-        do {
-            try SecureResearchConfigurationIO.createDataFile(
-                parentDescriptor: parent,
-                leaf: url.lastPathComponent,
-                data: data,
-                path: url.path
-            )
-            created = true
-            guard fsync(parent) == 0,
-                  try SecureResearchConfigurationIO.readDataFile(
-                    parentDescriptor: parent,
-                    leaf: url.lastPathComponent,
-                    path: url.path,
-                    maximumByteCount: maximumMethodByteCount
-                  ) == data else {
-                throw ResearchConfigurationStoreError.unsafeStorage
-            }
-        } catch {
-            if created {
-                try? SecureResearchConfigurationIO.removeDataFile(
-                    parentDescriptor: parent,
-                    leaf: url.lastPathComponent,
-                    path: url.path
-                )
-                _ = fsync(parent)
-            }
-            throw error
-        }
-    }
-
     static func directoryIsAvailable(atPath path: String) -> Bool {
         do {
             let descriptor = try SecureResearchConfigurationIO.openAbsoluteDirectory(

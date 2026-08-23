@@ -68,7 +68,7 @@ struct FrontendArchitectureTests {
             ".task(id: researchActionAvailabilityRefreshIdentity)"
         ))
         #expect(!source.contains(
-            ".task(id: appState.currentResearchFunctionTarget)"
+            ".task(id: appState.currentResearchActionTarget)"
         ))
     }
 
@@ -3972,7 +3972,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
         #expect(ScholiumGrid.Dimension.libraryHierarchyRowHeight == 28)
         #expect(ScholiumGrid.Dimension.documentTabStripHeight == 40)
-        #expect(ScholiumGrid.Dimension.researchFunctionTargetHeight == 44)
+        #expect(ScholiumGrid.Dimension.researchActionTargetHeight == 44)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 

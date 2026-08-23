@@ -124,9 +124,9 @@ extension WorkspaceHandle {
             [.complete, .unverified].contains($0.state)
         }) == true,
         parent.resultPayload != nil,
-        parent.snapshot.actionSnapshot?.method.registration.key
+        parent.snapshot.actionSnapshot.method.registration.key
             == methodReference.registrationKey,
-        parent.snapshot.actionSnapshot?.actionID == actionID else {
+        parent.snapshot.actionSnapshot.actionID == actionID else {
             throw ResearchMethodImprovementError.runUnavailable
         }
         let method = try await currentResearchMethod(for: actionID)

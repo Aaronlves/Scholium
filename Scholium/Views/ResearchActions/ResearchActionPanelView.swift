@@ -1119,11 +1119,11 @@ private struct ResearchActionContinuationRecordsView: View {
 
 extension ResearchActionDefinition {
     var interfaceSymbol: String {
-        switch executionKind {
-        case .discussion: "text.bubble"
-        case .analysis: "doc.text.magnifyingglass"
-        case .synthesis: "arrow.triangle.merge"
-        case .writing: "pencil"
+        switch id {
+        case .discuss: "text.bubble"
+        case .analyze: "doc.text.magnifyingglass"
+        case .synthesize: "arrow.triangle.merge"
+        case .write: "pencil"
         case .critique: "text.magnifyingglass"
         case .checkFidelity: "checkmark.shield"
         }

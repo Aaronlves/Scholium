@@ -32,7 +32,7 @@ struct ResearchActionContractsTests {
         let data = try encoder.encode(snapshot)
         let encoded = String(decoding: data, as: UTF8.self)
 
-        #expect(encoded.contains(#""schema_version":4"#))
+        #expect(encoded.contains(#""schema_version":5"#))
         #expect(encoded.contains(#""action_id":"analyze""#))
         #expect(encoded.contains(#""registration""#))
         #expect(encoded.contains(#""result_contract""#))
@@ -88,13 +88,13 @@ struct ResearchActionContractsTests {
                 from: JSONSerialization.data(withJSONObject: methodContextObject)
             )
         }
-        let internalFunctionName = Data(
+        let retiredCompressedIdentity = Data(
             #"{"action_id":"analyze","execution_kind":"develop"}"#.utf8
         )
-        #expect(throws: DecodingError.self) {
+        #expect(throws: ResearchActionExecutionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchActionDefinition.self,
-                from: internalFunctionName
+                from: retiredCompressedIdentity
             )
         }
         #expect(ResearchActionID(rawValue: "custom-research-action") == nil)
@@ -102,7 +102,7 @@ struct ResearchActionContractsTests {
             _ = try JSONDecoder().decode(
                 ResearchActionDefinition.self,
                 from: Data(
-                    #"{"action_id":"custom-research-action","execution_kind":"analysis"}"#.utf8
+                    #"{"action_id":"custom-research-action"}"#.utf8
                 )
             )
         }
@@ -110,7 +110,7 @@ struct ResearchActionContractsTests {
 
     @Test("Reserved identities and Platform roles cannot acquire different semantics")
     func reservedIdentityAndRoleValidation() throws {
-        #expect(throws: ResearchActionContractError.self) {
+        #expect(throws: ResearchActionExecutionContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchActionDefinition.self,
                 from: Data(

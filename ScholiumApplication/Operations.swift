@@ -373,77 +373,78 @@ public actor ResearchOperations:
 {
     public nonisolated let recoveryRecordsURL: URL
     let reference: WorkspaceHandleReference
-    private let functionCoordinator: ResearchFunctionCoordinator
+    private let actionRunCoordinator: ResearchActionRunCoordinator
 
     init(
         reference: WorkspaceHandleReference,
-        functionCoordinator: ResearchFunctionCoordinator,
+        actionRunCoordinator: ResearchActionRunCoordinator,
         recoveryRecordsURL: URL,
     ) {
         self.reference = reference
-        self.functionCoordinator = functionCoordinator
+        self.actionRunCoordinator = actionRunCoordinator
         self.recoveryRecordsURL = recoveryRecordsURL
     }
 
     // Protected execution seams remain internal so owning tests can exercise
     // containment, exact revisions, recovery, and Fidelity without restoring a
-    // public Function API or CLI route.
-    func availableProtectedFunctions(
-        for target: ResearchFunctionTarget
-    ) async throws -> [ResearchFunctionAvailability] {
+    // These internal seams let owning tests exercise Action Run containment,
+    // exact revisions, recovery, and Fidelity without adding a public low-level route.
+    func availableActionOperations(
+        for target: ResearchActionNoteSnapshot
+    ) async throws -> [ResearchActionRunAvailability] {
         let handle = try await reference.requireHandle()
-        return try await functionCoordinator.researchFunctionAvailability(
+        return try await actionRunCoordinator.researchActionRunAvailability(
             for: target,
             host: handle
         )
     }
 
     func protectedMaterialCandidates(
-        for target: ResearchFunctionTarget,
-        function: ResearchFunctionID
-    ) async throws -> [ResearchFunctionMaterialCandidate] {
+        for target: ResearchActionNoteSnapshot,
+        actionID: ResearchActionID
+    ) async throws -> [ResearchActionMaterialCandidate] {
         let handle = try await reference.requireHandle()
-        return try await functionCoordinator.researchFunctionMaterialCandidates(
+        return try await actionRunCoordinator.researchActionMaterialCandidates(
             for: target,
-            function: function,
+            actionID: actionID,
             host: handle
         )
     }
 
-    func prepareProtectedFunction(
-        _ request: ResearchFunctionRequest
-    ) async throws -> ResearchFunctionPreparation {
+    func prepareActionRun(
+        _ request: ResearchActionRunRequest
+    ) async throws -> ResearchActionRunPreparation {
         let handle = try await reference.requireHandle()
-        let preparation = try await functionCoordinator.prepareResearchFunction(
+        let preparation = try await actionRunCoordinator.prepareResearchActionRun(
             request,
             host: handle
         )
-        return try functionCoordinator.attachingAgentActions(to: preparation)
+        return try actionRunCoordinator.attachingAgentActions(to: preparation)
     }
 
-    func protectedFunctionRun(id: UUID) async throws -> ResearchFunctionPreparation {
+    func actionRunDetails(id: UUID) async throws -> ResearchActionRunPreparation {
         let handle = try await reference.requireHandle()
-        let preparation = try await functionCoordinator.researchFunctionRun(
+        let preparation = try await actionRunCoordinator.researchActionRun(
             id: id,
             host: handle
         )
-        return try functionCoordinator.attachingAgentActions(to: preparation)
+        return try actionRunCoordinator.attachingAgentActions(to: preparation)
     }
 
-    func completeProtectedFunction(
-        _ submission: ResearchFunctionCompletionSubmission
-    ) async throws -> ResearchFunctionCompletion {
+    func completeActionRun(
+        _ submission: ResearchActionRunCompletionSubmission
+    ) async throws -> ResearchActionRunCompletion {
         let handle = try await reference.requireHandle()
-        let completion = try await functionCoordinator.completeProtectedFunction(
+        let completion = try await actionRunCoordinator.completeActionRun(
             submission,
             host: handle
         )
-        return functionCoordinator.attachingAgentActions(to: completion)
+        return actionRunCoordinator.attachingAgentActions(to: completion)
     }
 
-    func cancelProtectedFunction(runID: UUID) async throws {
+    func cancelActionRun(runID: UUID) async throws {
         let handle = try await reference.requireHandle()
-        try await functionCoordinator.cancelProtectedFunction(
+        try await actionRunCoordinator.cancelActionRun(
             runID: runID,
             host: handle
         )
@@ -451,14 +452,14 @@ public actor ResearchOperations:
 
     func finishProtectedDiscussion(runID: UUID) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await functionCoordinator.finishProtectedDiscussion(
+        return try await actionRunCoordinator.finishProtectedDiscussion(
             runID: runID,
             host: handle
         )
     }
 
     public func sourceAccess(
-        for target: ResearchFunctionTarget
+        for target: ResearchActionNoteSnapshot
     ) async throws -> ResearchSourceAccessStatus {
         let handle = try await reference.requireHandle()
         return try await handle.researchSourceAccessStatus(for: target)
@@ -472,7 +473,7 @@ public actor ResearchOperations:
     }
 
     public func removeSourceAccess(
-        for target: ResearchFunctionTarget
+        for target: ResearchActionNoteSnapshot
     ) async throws {
         let handle = try await reference.requireHandle()
         try await handle.removeResearchSourceAccess(for: target)
@@ -518,8 +519,8 @@ public actor ResearchOperations:
 
     @discardableResult
     public func createDiscussion(
-        target: ResearchFunctionTarget,
-        focalNotes: [ResearchFunctionMaterial],
+        target: ResearchActionNoteSnapshot,
+        focalNotes: [ResearchActionNoteSnapshot],
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
@@ -534,7 +535,7 @@ public actor ResearchOperations:
 
     @discardableResult
     public func createComment(
-        target: ResearchFunctionTarget,
+        target: ResearchActionNoteSnapshot,
         lineReference: ResearchLineReference,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
@@ -791,7 +792,7 @@ public actor ResearchOperations:
 
     public func cancelAction(runID: UUID) async throws {
         let handle = try await reference.requireHandle()
-        try await functionCoordinator.cancelAction(runID: runID, host: handle)
+        try await actionRunCoordinator.cancelAction(runID: runID, host: handle)
     }
 
     public func prepareResynthesis(

@@ -40,7 +40,7 @@ translation boundary.
 structured errors, and deterministic exact-source parsing and projection.
 `ScholiumCore` is an internal implementation target for repositories,
 registries, SQLite indexes, watchers, coordinated mutations, durable stores,
-exact method/Practice files, and Zotero transport. The headless `ScholiumApplication`
+exact Skill entries and ordinary references, and Zotero transport. The headless `ScholiumApplication`
 target composes Core into delivery-neutral workspace lifetimes and use cases.
 The macOS app and CLI depend only on Contracts and Application; Core is not a
 library product and cannot be imported by either delivery target.
@@ -61,7 +61,10 @@ ApplicationBootstrapController (one app-owned storage gate)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
-            │   ├── WindowWorkspaceController (assignment and capability session)
+            │   ├── WindowWorkspaceController (assignment, capability session,
+            │   │   access recovery, and recovery cancellation)
+            │   ├── WindowLibraryMutationController
+            │   ├── WindowZoteroCoordinator
             │   ├── WindowCommandObservation (focused-command invalidation only)
             │   ├── WindowEditorFlushCoordinator
             │   ├── WindowSessionPersistenceCoordinator
@@ -294,8 +297,8 @@ enters the persisted definition.
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 `DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
-`WindowResearchCapabilities` value composed from the narrow record,
-Skill/Practice/Profile, collaboration, Action/Run, Research
+`WindowResearchCapabilities` value composed from the narrow Record,
+Skill/Profile, collaboration, Action/Run, Research
 Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 Configuration preflights roots and reads the portable manifest before
@@ -345,11 +348,17 @@ appearance choice, transient toast, and shell status. It owns no split geometry,
 Triptych capability, document buffer, or durable research state.
 `WindowWorkspaceController` owns the requested Triptych, selected assignment,
 registered-Triptych projection, access-recovery state, installed capability
-generation, and stable vault-identity resolution.
-`WindowSessionPersistenceCoordinator` owns presentation restore plus
-replaceable and final saves behind its client-owned Store port;
-`WindowModel` does not call session persistence directly.
-`DocumentTransitionCoordinator` owns transition generation.
+generation, identity resolution, initial-restore attempt, and cancellable
+access/control/Metadata recovery. `WindowLibraryMutationController` owns
+Note/Folder exclusion, flush/revision preparation, import cancellation, Trash,
+and local-execution retry. `WindowZoteroCoordinator` owns cancellable
+search/binding tasks and committed messages. `ZoteroBindingPanelMutationOwner`
+owns the cancellable save/clear task and busy state; its view owns local
+error/recovery presentation. `WindowModel` installs capabilities/callbacks but
+proxies no operation. `WindowSessionPersistenceCoordinator` owns restore and
+replaceable/final saves through its Store port.
+`DocumentTransitionCoordinator` owns serialized transition identity and all
+running/queued tasks, cancelling them at teardown.
 `WindowEditorFlushCoordinator` preserves current-editor
 flush-before-capture ordering, supplies the aggregate per-window registration
 used by Triptych-wide operations, and tears both registrations down only after
@@ -376,22 +385,15 @@ borrowing only a checked current document snapshot and navigation/presentation
 effects from the window root;
 consumers observe the two owners independently rather than using the execution
 controller as an invalidation relay.
-`WindowModel` composes these owners, publishes only its own remaining mutable
-facts, and routes cross-feature intents; it does not relay child
-`objectWillChange` or own those state machines. `ScholiumWindowRoot`,
-`ContentView`, Research Record, and toolbar hosts observe their actual bounded
-owners directly. `AttentionPopoverSession` likewise observes the assignment
-and immutable workspace projection directly rather than using the composition
-root as an invalidation bus. The scene root first retains `WindowModel` and
+`WindowModel` composes owners and routes cross-feature intents without relaying
+child `objectWillChange`. Views and `AttentionPopoverSession` observe their
+bounded owners directly. The scene root first retains `WindowModel` and
 `WorkspaceWindowCoordinator` as `StateObject`s, then passes those stable
 instances into `ScholiumWindowObservedRoot`; child `ObservedObject`s are never
 derived from a newly constructed root instance that SwiftUI may discard.
-Direct `WorkspaceStore` use in `WindowModel` is limited to composition and
-event subscription, exact-window intent/external delivery, and cross-owner
-Workspace activation or access recovery. Those calls remain at the composition
-root because moving them into a forwarding gateway would add no owner; an
-executable allowlist requires new call families to receive a fresh ownership
-audit.
+Direct `WorkspaceStore` use in `WindowModel` is limited to composition,
+subscription, exact-window external delivery, and Workspace activation. An
+executable allowlist requires a fresh ownership audit for every new call family.
 `WindowCommandObservation` owns no product state: it advances
 one window-local revision only for the shell, assignment, Library source,
 document/projection, and Research Action facts that affect focused command
@@ -440,9 +442,10 @@ reveal path by a different Note that later occupies its former path.
 
 ### Library projection and source-ahead mutations
 
-Direct New Note requests remain focused-window commands: the Library and File
-menu send a target folder value to `WindowModel`, which flushes the current
-editor and calls the Application-owned untitled-note use case. Application
+The Library and File menus send focused New Note commands to
+`WindowLibraryMutationController`, which owns exclusion, flush ordering, and
+the Application call. `WindowModel` receives only committed projection and
+navigation effects. Application
 atomically advances through occupied default paths; the view never scans or
 writes the vault. After the source and identity commit, the exact window
 installs one `sourceAhead` `WorkspaceNoteSnapshot` for presentation and marks

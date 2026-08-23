@@ -2,8 +2,8 @@ import Foundation
 import ScholiumContracts
 import Testing
 
-@Suite("Research Function boundary contracts")
-struct ResearchFunctionContractsTests {
+@Suite("Research Action Run boundary contracts")
+struct ResearchActionRunContractsTests {
     @Test("Continuation lineage round-trips as strict non-authorizing provenance")
     func continuationLineageRoundTrip() throws {
         let lineage = ResearchContinuationLineage(
@@ -22,7 +22,7 @@ struct ResearchFunctionContractsTests {
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
         object["grant"] = true
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchContinuationLineage.self,
                 from: JSONSerialization.data(withJSONObject: object)
@@ -30,7 +30,7 @@ struct ResearchFunctionContractsTests {
         }
         object.removeValue(forKey: "grant")
         object["schema_version"] = 99
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try JSONDecoder().decode(
                 ResearchContinuationLineage.self,
                 from: JSONSerialization.data(withJSONObject: object)
@@ -53,7 +53,7 @@ struct ResearchFunctionContractsTests {
     func actuallyUsedMaterialTestimonyCompatibility() throws {
         let first = UUID()
         let second = UUID()
-        let submission = ResearchFunctionCompletionSubmission(
+        let submission = ResearchActionRunCompletionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
             recordTitle: try ResearchRecordTitle("Used selected analyses"),
@@ -66,11 +66,11 @@ struct ResearchFunctionContractsTests {
             $0.uuidString < $1.uuidString
         })
         #expect(try JSONDecoder().decode(
-            ResearchFunctionCompletionSubmission.self,
+            ResearchActionRunCompletionSubmission.self,
             from: data
         ) == submission)
 
-        let explicitlyEmpty = ResearchFunctionCompletionSubmission(
+        let explicitlyEmpty = ResearchActionRunCompletionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
             recordTitle: try ResearchRecordTitle("No selected material used"),
@@ -90,74 +90,77 @@ struct ResearchFunctionContractsTests {
         )
         legacy.removeValue(forKey: "actuallyUsedMaterialNoteIDs")
         let decodedLegacy = try JSONDecoder().decode(
-            ResearchFunctionCompletionSubmission.self,
+            ResearchActionRunCompletionSubmission.self,
             from: JSONSerialization.data(withJSONObject: legacy)
         )
         #expect(decodedLegacy.actuallyUsedMaterialNoteIDs == nil)
     }
 
-    @Test("Function roles, write authority, change evidence, and Fidelity requirements are explicit")
-    func functionRoleMatrix() {
-        #expect(ResearchFunctionID.develop.allowedTargetRoles == [.analysis, .topic])
-        #expect(ResearchFunctionID.critique.allowedTargetRoles == [.work])
-        #expect(ResearchFunctionID.revise.allowedTargetRoles == [.work])
-        #expect(ResearchFunctionID.discuss.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
-        #expect(ResearchFunctionID.fidelity.allowedTargetRoles == Set(ResearchFunctionTargetRole.allCases))
+    @Test("Action roles, write authority, change evidence, and Fidelity requirements are explicit")
+    func actionRoleMatrix() {
+        #expect(ResearchActionID.analyze.allowedTargetRoles == [.analysis])
+        #expect(ResearchActionID.synthesize.allowedTargetRoles == [.topic])
+        #expect(ResearchActionID.critique.allowedTargetRoles == [.work])
+        #expect(ResearchActionID.write.allowedTargetRoles == [.work])
+        #expect(ResearchActionID.discuss.allowedTargetRoles == Set(ResearchActionTargetRole.allCases))
+        #expect(ResearchActionID.checkFidelity.allowedTargetRoles == Set(ResearchActionTargetRole.allCases))
 
-        #expect(ResearchFunctionID.develop.writesTarget)
-        #expect(ResearchFunctionID.revise.writesTarget)
-        #expect(!ResearchFunctionID.discuss.writesTarget)
-        #expect(!ResearchFunctionID.fidelity.writesTarget)
-        #expect(!ResearchFunctionID.critique.writesTarget)
+        #expect(ResearchActionID.analyze.writesTarget)
+        #expect(ResearchActionID.synthesize.writesTarget)
+        #expect(ResearchActionID.write.writesTarget)
+        #expect(!ResearchActionID.discuss.writesTarget)
+        #expect(!ResearchActionID.checkFidelity.writesTarget)
+        #expect(!ResearchActionID.critique.writesTarget)
 
-        #expect(ResearchFunctionID.develop.requiresAgentChangeEvidence)
-        #expect(ResearchFunctionID.revise.requiresAgentChangeEvidence)
-        #expect(!ResearchFunctionID.critique.requiresAgentChangeEvidence)
-        #expect(!ResearchFunctionID.discuss.requiresAgentChangeEvidence)
-        #expect(!ResearchFunctionID.fidelity.requiresAgentChangeEvidence)
+        #expect(ResearchActionID.analyze.requiresAgentChangeEvidence)
+        #expect(ResearchActionID.synthesize.requiresAgentChangeEvidence)
+        #expect(ResearchActionID.write.requiresAgentChangeEvidence)
+        #expect(!ResearchActionID.critique.requiresAgentChangeEvidence)
+        #expect(!ResearchActionID.discuss.requiresAgentChangeEvidence)
+        #expect(!ResearchActionID.checkFidelity.requiresAgentChangeEvidence)
     }
 
     @Test("Requests reject duplicate Targets, invalid scopes, checks, and roles")
     func requestValidation() throws {
         let analysis = target(role: .analysis)
         let work = target(role: .work)
-        let material = ResearchFunctionMaterial(
+        let material = ResearchActionNoteSnapshot(
             noteID: analysis.noteID,
             note: analysis.note,
             role: analysis.role,
             fingerprint: analysis.fingerprint,
             title: analysis.title
         )
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .develop,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .analyze,
                 target: analysis,
                 materials: [material]
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .develop,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .analyze,
                 target: work
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .develop,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .analyze,
                 target: analysis,
-                scope: ResearchFunctionScope(kind: .passage)
+                scope: ResearchActionScope(kind: .passage)
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .develop,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .analyze,
                 target: analysis,
                 checks: [.content]
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .fidelity,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .checkFidelity,
                 target: analysis
             ).validate()
         }
@@ -169,11 +172,67 @@ struct ResearchFunctionContractsTests {
             endLine: 1,
             quotation: "claim"
         )
-        try ResearchFunctionRequest(
-            function: .develop,
+        try ResearchActionRunRequest(
+            actionID: .analyze,
             target: analysis,
             scope: .passage(anchor)
         ).validate()
+    }
+
+    @Test("Run snapshots reject contradictory request identity on construction and decode")
+    func runSnapshotIdentityIsSingular() throws {
+        let analysis = target(role: .analysis)
+        let valid = try snapshot(
+            target: analysis,
+            scope: .whole,
+            method: try method(primarySource: "# Fidelity\n")
+        )
+        let contradictory = ResearchActionRunRequest(
+            actionID: .analyze,
+            target: analysis
+        )
+        #expect(throws: ResearchActionRunContractError.self) {
+            _ = try ResearchActionRunSnapshot(
+                request: contradictory,
+                actionSnapshot: valid.actionSnapshot
+            )
+        }
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(valid))
+                as? [String: Any]
+        )
+        var request = try #require(object["request"] as? [String: Any])
+        request["actionID"] = ResearchActionID.analyze.rawValue
+        request.removeValue(forKey: "checks")
+        object["request"] = request
+        #expect(throws: ResearchActionRunContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchActionRunSnapshot.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        let differentTargetRequest = ResearchActionRunRequest(
+            actionID: .checkFidelity,
+            target: target(role: .analysis),
+            checks: [.content]
+        )
+        #expect(throws: ResearchActionRunContractError.self) {
+            _ = try ResearchActionRunSnapshot(
+                request: differentTargetRequest,
+                actionSnapshot: valid.actionSnapshot
+            )
+        }
+        object["request"] = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(differentTargetRequest)
+        )
+        #expect(throws: ResearchActionRunContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchActionRunSnapshot.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
     }
 
     @Test("Retired conditional-resource fields fail closed")
@@ -183,16 +242,16 @@ struct ResearchFunctionContractsTests {
         let decoder = JSONDecoder()
         var retired = try #require(
             JSONSerialization.jsonObject(
-                with: encoder.encode(ResearchFunctionRequest(
-                    function: .develop,
+                with: encoder.encode(ResearchActionRunRequest(
+                    actionID: .analyze,
                     target: target
                 ))
             ) as? [String: Any]
         )
         retired["conditional_resources"] = ["development_synthesis"]
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try decoder.decode(
-                ResearchFunctionRequest.self,
+                ResearchActionRunRequest.self,
                 from: JSONSerialization.data(withJSONObject: retired)
             )
         }
@@ -203,26 +262,25 @@ struct ResearchFunctionContractsTests {
         let encoder = JSONEncoder()
         var retired = try #require(
             JSONSerialization.jsonObject(
-                with: encoder.encode(ResearchFunctionSnapshot(
-                    request: ResearchFunctionRequest(
-                        function: .develop,
-                        target: target(role: .topic)
-                    )
+                with: encoder.encode(try snapshot(
+                    target: target(role: .analysis),
+                    scope: nil,
+                    method: method(primarySource: "# Exact Action")
                 ))
             ) as? [String: Any]
         )
         retired["recordKind"] = "function_envelope"
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try JSONDecoder().decode(
-                ResearchFunctionSnapshot.self,
+                ResearchActionRunSnapshot.self,
                 from: JSONSerialization.data(withJSONObject: retired)
             )
         }
         retired.removeValue(forKey: "recordKind")
         retired["requiredChildFunctions"] = []
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try JSONDecoder().decode(
-                ResearchFunctionSnapshot.self,
+                ResearchActionRunSnapshot.self,
                 from: JSONSerialization.data(withJSONObject: retired)
             )
         }
@@ -231,8 +289,8 @@ struct ResearchFunctionContractsTests {
     @Test("Discuss module selection is ordered and request scoped")
     func discussResponseModuleSelection() throws {
         let analysis = target(role: .analysis)
-        let selected = ResearchFunctionRequest(
-            function: .discuss,
+        let selected = ResearchActionRunRequest(
+            actionID: .discuss,
             target: analysis,
             instruction: "State the bounded academic outcome.",
             dialogueResponseModules: [
@@ -248,8 +306,8 @@ struct ResearchFunctionContractsTests {
         ])
         try selected.validate()
 
-        let academicOutcomeOnly = ResearchFunctionRequest(
-            function: .discuss,
+        let academicOutcomeOnly = ResearchActionRunRequest(
+            actionID: .discuss,
             target: analysis,
             instruction: "State the bounded academic outcome.",
             dialogueResponseModules: []
@@ -257,9 +315,9 @@ struct ResearchFunctionContractsTests {
         #expect(academicOutcomeOnly.dialogueResponseModules == [])
         try academicOutcomeOnly.validate()
 
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .discuss,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .discuss,
                 target: analysis,
                 instruction: "State the bounded academic outcome.",
                 dialogueResponseModules: [
@@ -268,9 +326,9 @@ struct ResearchFunctionContractsTests {
                 ]
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
-            try ResearchFunctionRequest(
-                function: .develop,
+        #expect(throws: ResearchActionRunContractError.self) {
+            try ResearchActionRunRequest(
+                actionID: .analyze,
                 target: analysis,
                 dialogueResponseModules: []
             ).validate()
@@ -279,19 +337,19 @@ struct ResearchFunctionContractsTests {
         let decoder = JSONDecoder()
         let encoder = JSONEncoder()
         let roundTrip = try decoder.decode(
-            ResearchFunctionRequest.self,
+            ResearchActionRunRequest.self,
             from: encoder.encode(selected)
         )
         #expect(roundTrip.dialogueResponseModules == selected.dialogueResponseModules)
 
         let defaultData = try JSONSerialization.data(withJSONObject: [
-            "function": "discuss",
+            "actionID": "discuss",
             "target": try JSONSerialization.jsonObject(with: encoder.encode(analysis)),
             "materials": [],
             "instruction": "State the bounded academic outcome.",
             "checks": [],
         ])
-        let defaults = try decoder.decode(ResearchFunctionRequest.self, from: defaultData)
+        let defaults = try decoder.decode(ResearchActionRunRequest.self, from: defaultData)
         #expect(defaults.dialogueResponseModules == nil)
     }
 
@@ -301,34 +359,33 @@ struct ResearchFunctionContractsTests {
         let decoder = JSONDecoder()
         var request = try #require(
             JSONSerialization.jsonObject(
-                with: encoder.encode(ResearchFunctionRequest(
-                    function: .develop,
+                with: encoder.encode(ResearchActionRunRequest(
+                    actionID: .analyze,
                     target: target(role: .analysis)
                 ))
             ) as? [String: Any]
         )
         request["commentIDs"] = []
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try decoder.decode(
-                ResearchFunctionRequest.self,
+                ResearchActionRunRequest.self,
                 from: JSONSerialization.data(withJSONObject: request)
             )
         }
 
         var snapshot = try #require(
             JSONSerialization.jsonObject(
-                with: encoder.encode(ResearchFunctionSnapshot(
-                    request: ResearchFunctionRequest(
-                        function: .develop,
-                        target: target(role: .analysis)
-                    )
+                with: encoder.encode(try snapshot(
+                    target: target(role: .analysis),
+                    scope: nil,
+                    method: method(primarySource: "# Exact Action")
                 ))
             ) as? [String: Any]
         )
         snapshot["evidenceRevisions"] = []
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try decoder.decode(
-                ResearchFunctionSnapshot.self,
+                ResearchActionRunSnapshot.self,
                 from: JSONSerialization.data(withJSONObject: snapshot)
             )
         }
@@ -338,16 +395,16 @@ struct ResearchFunctionContractsTests {
     func unsupportedDialogueIdentifiersAreRejected() throws {
         let data = Data("\"dialogue\"".utf8)
         #expect(throws: DecodingError.self) {
-            try JSONDecoder().decode(ResearchFunctionID.self, from: data)
+            try JSONDecoder().decode(ResearchActionID.self, from: data)
         }
     }
 
-    @Test("Retired Function write-scope fields fail closed while shared Fidelity targets remain typed")
+    @Test("Retired write-scope fields fail closed while shared Fidelity targets remain typed")
     func retiredWriteScopeFieldsAreRejected() throws {
         let analysis = target(role: .analysis)
         let topic = target(role: .topic)
-        let write = ResearchFunctionRequest(
-            function: .develop,
+        let write = ResearchActionRunRequest(
+            actionID: .analyze,
             target: analysis
         )
         let encoder = JSONEncoder()
@@ -358,22 +415,22 @@ struct ResearchFunctionContractsTests {
         )
         retired["writeScope"] = "selected_notes"
         retired["authorizedWriteTargets"] = []
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             _ = try decoder.decode(
-                ResearchFunctionRequest.self,
+                ResearchActionRunRequest.self,
                 from: JSONSerialization.data(withJSONObject: retired)
             )
         }
 
-        let fidelity = ResearchFunctionRequest(
-            function: .fidelity,
+        let fidelity = ResearchActionRunRequest(
+            actionID: .checkFidelity,
             target: analysis,
             checks: [.content, .citations],
             fidelityTargets: [topic, analysis]
         )
         try fidelity.validate()
         let storedFidelity = try decoder.decode(
-            ResearchFunctionRequest.self,
+            ResearchActionRunRequest.self,
             from: encoder.encode(fidelity)
         )
         #expect(storedFidelity == fidelity)
@@ -399,7 +456,7 @@ struct ResearchFunctionContractsTests {
     @Test("Material candidate metadata is deterministic")
     func materialCandidateMetadata() throws {
         let vaultID = UUID()
-        let material = ResearchFunctionMaterial(
+        let material = ResearchActionNoteSnapshot(
             noteID: UUID(),
             note: VaultQualifiedNoteID(
                 vaultID: vaultID,
@@ -413,7 +470,7 @@ struct ResearchFunctionContractsTests {
             vaultID: vaultID,
             relativePath: "Analyses/Source.md"
         )
-        let candidate = ResearchFunctionMaterialCandidate(
+        let candidate = ResearchActionMaterialCandidate(
             material: material,
             aliases: [" Freedom ", "Agency", "Freedom", ""],
             suggestionReasons: [
@@ -444,7 +501,7 @@ struct ResearchFunctionContractsTests {
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         #expect(try decoder.decode(
-            ResearchFunctionMaterialCandidate.self,
+            ResearchActionMaterialCandidate.self,
             from: encoder.encode(candidate)
         ) == candidate)
 
@@ -492,7 +549,7 @@ struct ResearchFunctionContractsTests {
             method: exactMethod,
             citationStyle: "chicago-author-date"
         )
-        let makeKey: (ResearchFunctionSnapshot) -> ResearchFidelityEvidenceKey = {
+        let makeKey: (ResearchActionRunSnapshot) -> ResearchFidelityEvidenceKey = {
             ResearchFidelityEvidenceKey(
                 snapshot: $0,
                 finalTargetFingerprint: target.fingerprint,
@@ -520,7 +577,7 @@ struct ResearchFunctionContractsTests {
             state: .passed,
             summary: "No fidelity issue found."
         ).validate()
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             try FidelityCheckOutcome(
                 check: .content,
                 state: .passed,
@@ -528,14 +585,14 @@ struct ResearchFunctionContractsTests {
                 findings: ["An unresolved problem"]
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             try FidelityCheckOutcome(
                 check: .citations,
                 state: .issuesFound,
                 summary: "A problem exists."
             ).validate()
         }
-        #expect(throws: ResearchFunctionContractError.self) {
+        #expect(throws: ResearchActionRunContractError.self) {
             try FidelityCheckOutcome(
                 check: .content,
                 state: .unavailable,
@@ -545,8 +602,8 @@ struct ResearchFunctionContractsTests {
     }
 
 
-    private func target(role: ResearchFunctionTargetRole) -> ResearchFunctionTarget {
-        ResearchFunctionTarget(
+    private func target(role: ResearchActionTargetRole) -> ResearchActionNoteSnapshot {
+        ResearchActionNoteSnapshot(
             noteID: UUID(),
             note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
             role: role,
@@ -556,11 +613,11 @@ struct ResearchFunctionContractsTests {
     }
 
     private func snapshot(
-        target: ResearchFunctionTarget,
-        scope: ResearchFunctionScope?,
+        target: ResearchActionNoteSnapshot,
+        scope: ResearchActionScope?,
         method: ResearchMethodSnapshot,
         citationStyle: String? = "apa-7"
-    ) throws -> ResearchFunctionSnapshot {
+    ) throws -> ResearchActionRunSnapshot {
         let actionTarget = ResearchActionNoteSnapshot(
             noteID: target.noteID,
             note: target.note,
@@ -606,9 +663,9 @@ struct ResearchFunctionContractsTests {
                 editableMetadataKeys: []
             )
         )
-        return ResearchFunctionSnapshot(
-            request: ResearchFunctionRequest(
-                function: .fidelity,
+        return try ResearchActionRunSnapshot(
+            request: ResearchActionRunRequest(
+                actionID: .checkFidelity,
                 target: target,
                 scope: scope,
                 checks: [.content]
@@ -636,11 +693,11 @@ struct ResearchFunctionContractsTests {
     }
 
     private func suggestionReason(
-        _ kind: ResearchFunctionMaterialSuggestionReason.Kind,
+        _ kind: ResearchActionMaterialSuggestionReason.Kind,
         source: VaultQualifiedNoteID,
         lowerBound: Int
-    ) -> ResearchFunctionMaterialSuggestionReason {
-        ResearchFunctionMaterialSuggestionReason(
+    ) -> ResearchActionMaterialSuggestionReason {
+        ResearchActionMaterialSuggestionReason(
             kind: kind,
             sourceNote: source,
             sourceSpan: SourceSpan(

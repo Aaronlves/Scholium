@@ -90,6 +90,10 @@ extension ScholiumCLI {
           scholium note move <vault>:<path> <new-path> --expected <sha256>
           scholium note move-to-trash <vault>:<path> --expected <sha256>
               --delete-associated-records
+          scholium record list --note <stable-note-uuid> [--triptych <uuid-or-unique-name>]
+              [--format text|jsonl]
+          scholium record read <record-uuid> [--triptych <uuid-or-unique-name>]
+              [--format json]
           scholium discuss list [--triptych <uuid-or-unique-name>]
               [--format json]
           scholium discuss show <discussion-id> [--triptych <uuid-or-unique-name>] [--format json]
@@ -101,7 +105,7 @@ extension ScholiumCLI {
         \(agentCommandUsage)
         Omitting --triptych requires exactly one configured Triptych.
         Triptych roles: analyses, topics, works
-        Authenticated Agent commands preserve Run, Method, Practice, Research
+        Authenticated Agent commands preserve Run, Method, selected references, Research
         Context, Bounded Write Set, Result, and continuation boundaries. The
         CLI never scans arbitrary Skill folders or grants edit permission.
         Workspace Skill sources reports exact registered project-discovery
@@ -445,6 +449,8 @@ private extension ScholiumCLI {
             "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",
             "note move": "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>",
             "note move-to-trash": "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256> --delete-associated-records\n\nMoves the exact Note to the macOS system Trash and deletes every finished Research Record in which it directly participates. Multi-Note Records are deleted as whole records. Finder owns file restoration; Scholium cannot restore deleted Records.",
+            "record list": "Usage: scholium record list --note <stable-note-uuid> [--triptych <selector>] [--format text|jsonl]\n\nLists every complete finished Research Record in which the exact stable Note identity participates. JSONL begins with one manifest-bound summary and returns one fingerprinted Record summary per following line. It never infers relevance, acceptance, or a primary owner.",
+            "record read": "Usage: scholium record read <record-uuid> [--triptych <selector>] [--format json]\n\nReads one complete decoded portable Research Record together with its exact persisted-byte fingerprint. It fails closed when the complete Record projection or exact identity is unavailable and grants no mutation authority.",
             "discuss list": "Usage: scholium discuss list [--triptych <selector>] [--format text|json]",
             "discuss show": "Usage: scholium discuss show <discussion-id> [--triptych <selector>] [--format text|json]",
             "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis is a researcher-operated manual attribution route. External Agents must use the authenticated scholium agent discuss-reply command.",
@@ -460,6 +466,7 @@ enum CLIError: LocalizedError {
     case usage(String)
     case invalidUTF8(String)
     case noteNotFound(String)
+    case recordNotFound(UUID)
     case unavailable(String)
     case searchDiagnostic(SearchQueryDiagnostic)
 
@@ -468,6 +475,8 @@ enum CLIError: LocalizedError {
         case .usage(let message): return message
         case .invalidUTF8(let path): return "File is not valid UTF-8: \(path)"
         case .noteNotFound(let target): return "The workspace note was not found: \(target)"
+        case .recordNotFound(let id):
+            return "The finished Research Record was not found: \(id.uuidString.lowercased())"
         case .unavailable(let message): return message
         case .searchDiagnostic(let diagnostic): return diagnostic.message
         }

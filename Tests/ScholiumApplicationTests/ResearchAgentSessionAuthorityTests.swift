@@ -11,17 +11,17 @@ struct ResearchAgentSessionAuthorityTests {
         defer { fixture.remove() }
         let firstRuntime = fixture.runtime()
         let firstHandle = try await firstRuntime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: firstHandle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await firstHandle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: firstHandle,
                 actionID: .synthesize,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let firstHandoff = try await firstHandle.research.issueAgentHandoff(
@@ -106,7 +106,7 @@ struct ResearchAgentSessionAuthorityTests {
             expectedRegistrationRevision: registrations.revision
         )
 
-        let functionTarget = try await researchFunctionTarget(
+        let functionTarget = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -128,7 +128,6 @@ struct ResearchAgentSessionAuthorityTests {
         let preparation = try await handle.research.prepareAction(
             ResearchActionExecutionRequest(
                 actionID: .discuss,
-                expectedExecutionKind: available.definition.executionKind,
                 expectedProfileRevision: available.profile.profileRevision,
                 expectedProfileDocumentRevision:
                     available.profile.profileDocumentRevision,
@@ -587,7 +586,7 @@ struct ResearchAgentSessionAuthorityTests {
         let script = ZoteroRequestScript(steps: [
             .response(
                 status: 200,
-                data: Data(ResearchFunctionOperationsTests.zoteroItemJSON.utf8)
+                data: Data(ResearchActionRunOperationsTests.zoteroItemJSON.utf8)
             ),
         ])
         let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
@@ -595,14 +594,14 @@ struct ResearchAgentSessionAuthorityTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let analysisPreparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let analysisPreparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: analysis,
                 instruction: "Discuss the bounded source identity."
             )
@@ -639,14 +638,14 @@ struct ResearchAgentSessionAuthorityTests {
             run: analysisHandoff.run
         )
 
-        let topic = try await researchFunctionTarget(
+        let topic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let topicPreparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let topicPreparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: topic,
                 instruction: "Discuss without Zotero context."
             )
@@ -677,8 +676,8 @@ struct ResearchAgentSessionAuthorityTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let helpers = ResearchFunctionOperationsTests()
-        let target = try await researchFunctionTarget(
+        let helpers = ResearchActionRunOperationsTests()
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -687,7 +686,7 @@ struct ResearchAgentSessionAuthorityTests {
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .discuss,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(

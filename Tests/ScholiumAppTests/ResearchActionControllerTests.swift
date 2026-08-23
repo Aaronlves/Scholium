@@ -65,7 +65,6 @@ struct ResearchActionControllerTests {
         await waitUntil { controller.phase == .failed }
 
         #expect(captured?.actionID == .checkFidelity)
-        #expect(captured?.expectedExecutionKind == action.definition.executionKind)
         #expect(captured?.expectedProfileRevision == action.profile.profileRevision)
         #expect(captured?.expectedProfileDocumentRevision
             == action.profile.profileDocumentRevision)
@@ -990,7 +989,6 @@ struct ResearchActionControllerTests {
         case .write: definition = .write
         case .critique: definition = .critique
         case .checkFidelity: definition = .checkFidelity
-        default: definition = .discuss
         }
         let resultField = try ResearchAcademicFieldDefinition.freeText(
             id: .academicOutcome,

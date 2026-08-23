@@ -201,7 +201,7 @@ public enum DocumentFileAction: String, Codable, CaseIterable, Hashable, Sendabl
 public struct DocumentCapabilities: Codable, Equatable, Sendable {
     public let canEditSource: Bool
     public let canComment: Bool
-    public let canUseResearchFunctions: Bool
+    public let canUseResearchActions: Bool
     public let isManagedCritique: Bool
     public let fileActions: Set<DocumentFileAction>
 
@@ -214,7 +214,7 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
         guard identity == .resolved else {
             canEditSource = false
             canComment = false
-            canUseResearchFunctions = false
+            canUseResearchActions = false
             fileActions = []
             return
         }
@@ -224,7 +224,7 @@ public struct DocumentCapabilities: Codable, Equatable, Sendable {
                 || role == .topicKnowledge
                 || role == .draftProject
         )
-        canUseResearchFunctions = role != .other
+        canUseResearchActions = role != .other
             && !isManagedCritique
         fileActions = isManagedCritique
             ? [.move, .moveToSystemTrash]

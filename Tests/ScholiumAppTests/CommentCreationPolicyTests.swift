@@ -12,7 +12,7 @@ struct CommentCreationPolicyTests {
             rawContent: "# Analysis\n\nA bounded claim.\n"
         )
 
-        #expect(ResearchFunctionSelectionCapture.anchor(
+        #expect(ResearchActionSelectionCapture.anchor(
             for: nil,
             in: note.document.rawContent,
             relativePath: note.relativePath
@@ -37,7 +37,7 @@ struct CommentCreationPolicyTests {
         )
 
         let anchor = try #require(
-            ResearchFunctionSelectionCapture.anchor(
+            ResearchActionSelectionCapture.anchor(
                 for: selection,
                 in: note.document.rawContent,
                 relativePath: note.relativePath
@@ -60,7 +60,7 @@ struct CommentCreationPolicyTests {
             excerpt: "A claim."
         )
 
-        #expect(ResearchFunctionSelectionCapture.anchor(
+        #expect(ResearchActionSelectionCapture.anchor(
             for: selection,
             in: note.document.rawContent,
             relativePath: note.relativePath
@@ -78,7 +78,7 @@ struct CommentCreationPolicyTests {
             contextAfter: ""
         )
 
-        let anchor = try #require(ResearchFunctionSelectionCapture.anchor(
+        let anchor = try #require(ResearchActionSelectionCapture.anchor(
             for: selection,
             in: source,
             relativePath: "Topic.md"
@@ -99,12 +99,12 @@ struct CommentCreationPolicyTests {
             contextAfter: ""
         )
 
-        #expect(ResearchFunctionSelectionCapture.anchor(
+        #expect(ResearchActionSelectionCapture.anchor(
             for: selection,
             in: source,
             relativePath: "Topic.md"
         ) == nil)
-        #expect(ResearchFunctionSelectionCapture.commentLineRange(
+        #expect(ResearchActionSelectionCapture.commentLineRange(
             for: selection,
             in: source,
             relativePath: "Topic.md"
@@ -120,7 +120,7 @@ struct CommentCreationPolicyTests {
             excerpt: "ambiguous"
         )
 
-        #expect(ResearchFunctionSelectionCapture.commentLineRange(
+        #expect(ResearchActionSelectionCapture.commentLineRange(
             for: selection,
             in: source,
             relativePath: "Topic.md"

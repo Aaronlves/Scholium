@@ -17,7 +17,7 @@ struct FixtureSummaryResearchContextProvider: ResearchContextProviding {
     let expectedQuery: String
     let noteID: UUID
     let note: VaultQualifiedNoteID
-    let role: ResearchFunctionTargetRole
+    let role: ResearchActionTargetRole
     let title: String
     let summary: String
     let summaryRange: SearchSourceRange

@@ -1,6 +1,63 @@
 import ScholiumContracts
 import SwiftUI
 
+/// Owns the panel-local save/clear task. WindowZoteroCoordinator owns the
+/// underlying Zotero operation; this owner prevents a disappearing panel from
+/// retrying, refreshing, or publishing presentation state after cancellation.
+@MainActor
+final class ZoteroBindingPanelMutationOwner: ObservableObject {
+    @Published private(set) var isSaving = false
+
+    private var generation: UInt64 = 0
+    private var taskID: UUID?
+    private var task: Task<Void, Never>?
+
+    func perform(
+        operation: @escaping @MainActor () async throws -> Void,
+        didFail: @escaping @MainActor (Error) -> Void,
+        recover: @escaping @MainActor () async -> Void = {}
+    ) {
+        guard task == nil else { return }
+        generation &+= 1
+        let operationGeneration = generation
+        let operationID = UUID()
+        isSaving = true
+        taskID = operationID
+        task = Task { @MainActor [weak self] in
+            defer { self?.finish(operationID, generation: operationGeneration) }
+            do {
+                try await operation()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled,
+                      self?.generation == operationGeneration else { return }
+                didFail(error)
+                await recover()
+            }
+        }
+    }
+
+    func cancelAll() {
+        generation &+= 1
+        task?.cancel()
+        isSaving = false
+    }
+
+    func waitForIdle() async {
+        _ = await task?.value
+    }
+
+    private func finish(_ operationID: UUID, generation operationGeneration: UInt64) {
+        guard taskID == operationID else { return }
+        taskID = nil
+        task = nil
+        if generation == operationGeneration {
+            isSaving = false
+        }
+    }
+}
+
 /// A restrained, document-scoped Link and Fill surface. Search results and the
 /// reviewed proposal are disposable; the Application owner separately commits
 /// the portable relationship and absent managed Metadata fields.
@@ -19,13 +76,16 @@ struct ZoteroBindingPanelView: View {
     @State private var fillPlan: ZoteroMetadataPlan?
     @State private var isSearching = false
     @State private var isPreparingFill = false
-    @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmsClear = false
+    @StateObject private var mutationOwner = ZoteroBindingPanelMutationOwner()
 
     var body: some View {
         routedPanel
-        .interactiveDismissDisabled(isSaving)
+        .interactiveDismissDisabled(mutationOwner.isSaving)
+        .onDisappear {
+            mutationOwner.cancelAll()
+        }
         .confirmationDialog(
             "Clear Zotero Link?",
             isPresented: $confirmsClear,
@@ -359,7 +419,7 @@ struct ZoteroBindingPanelView: View {
         switch route.mode {
         case .manage:
             HStack {
-                if isSaving {
+                if mutationOwner.isSaving {
                     ProgressView("Saving")
                         .controlSize(.small)
                 } else if currentBinding != nil {
@@ -370,31 +430,31 @@ struct ZoteroBindingPanelView: View {
                 Spacer()
                 Button("Cancel", action: dismiss)
                     .keyboardShortcut(.cancelAction)
-                    .disabled(isSaving)
+                    .disabled(mutationOwner.isSaving)
                 Button(currentBinding == nil ? "Link and Fill" : "Rebind and Fill") {
                     performSet()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(fillPlan == nil || isPreparingFill || isSaving)
+                .disabled(fillPlan == nil || isPreparingFill || mutationOwner.isSaving)
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
         case .refresh:
             HStack {
-                if isSaving {
+                if mutationOwner.isSaving {
                     ProgressView("Saving")
                         .controlSize(.small)
                 }
                 Spacer()
                 Button("Cancel", action: dismiss)
                     .keyboardShortcut(.cancelAction)
-                    .disabled(isSaving)
+                    .disabled(mutationOwner.isSaving)
                 if let fillPlan {
                     if fillPlan.hasMetadataChanges {
                         Button("Refresh Metadata") {
                             performSet()
                         }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(isPreparingFill || isSaving)
+                        .disabled(isPreparingFill || mutationOwner.isSaving)
                     } else {
                         Button("Done", action: dismiss)
                             .keyboardShortcut(.defaultAction)
@@ -489,14 +549,15 @@ struct ZoteroBindingPanelView: View {
     }
 
     private func performSet() {
-        guard let fillPlan, !isSaving else { return }
-        isSaving = true
-        Task { @MainActor in
-            defer { isSaving = false }
-            do {
+        guard let fillPlan, !mutationOwner.isSaving else { return }
+        mutationOwner.perform(
+            operation: {
                 try await commitPlan(fillPlan)
-            } catch {
+            },
+            didFail: { error in
                 errorMessage = error.localizedDescription
+            },
+            recover: {
                 switch route.mode {
                 case .manage:
                     await refreshFillPlan()
@@ -504,19 +565,18 @@ struct ZoteroBindingPanelView: View {
                     await refreshBoundPlan()
                 }
             }
-        }
+        )
     }
 
     private func performClear() {
-        guard !isSaving else { return }
-        isSaving = true
-        Task { @MainActor in
-            defer { isSaving = false }
-            do {
+        guard !mutationOwner.isSaving else { return }
+        mutationOwner.perform(
+            operation: {
                 try await clearBinding()
-            } catch {
+            },
+            didFail: { error in
                 errorMessage = error.localizedDescription
             }
-        }
+        )
     }
 }

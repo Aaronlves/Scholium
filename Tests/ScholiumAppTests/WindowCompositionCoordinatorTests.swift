@@ -74,6 +74,82 @@ struct WindowCompositionCoordinatorTests {
         #expect(events == ["prepare", "operation", "failure", "finish"])
     }
 
+    @Test("Window teardown cancels an in-flight document transition")
+    func documentTransitionCancellation() async {
+        let coordinator = DocumentTransitionCoordinator()
+        var events: [String] = []
+
+        coordinator.enqueue(
+            prepare: {},
+            operation: {
+                events.append("started")
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch is CancellationError {
+                    events.append("cancelled")
+                    throw CancellationError()
+                }
+            },
+            didFail: { error in
+                Issue.record("Cancellation surfaced as failure: \(error)")
+            },
+            didSucceed: { events.append("success") },
+            didFinish: { events.append("finish") }
+        )
+        for _ in 0..<100 where !events.contains("started") { await Task.yield() }
+
+        coordinator.cancelAll()
+        for _ in 0..<100 where !events.contains("finish") { await Task.yield() }
+
+        #expect(events == ["started", "cancelled", "finish"])
+    }
+
+    @Test("Window teardown cancels the running and queued document transitions")
+    func documentTransitionQueueCancellation() async {
+        let coordinator = DocumentTransitionCoordinator()
+        var runningStarted = false
+        var runningCancelled = false
+        var runningFinished = false
+        var queuedStarted = false
+        var queuedFinished = false
+
+        coordinator.enqueue(
+            prepare: {},
+            operation: {
+                runningStarted = true
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch is CancellationError {
+                    runningCancelled = true
+                    throw CancellationError()
+                }
+            },
+            didFail: { error in
+                Issue.record("Running cancellation surfaced as failure: \(error)")
+            },
+            didFinish: { runningFinished = true }
+        )
+        for _ in 0..<100 where !runningStarted { await Task.yield() }
+
+        coordinator.enqueue(
+            prepare: { queuedStarted = true },
+            operation: {},
+            didFail: { error in
+                Issue.record("Queued cancellation surfaced as failure: \(error)")
+            },
+            didFinish: { queuedFinished = true }
+        )
+
+        coordinator.cancelAll()
+        await coordinator.waitForIdle()
+
+        #expect(runningStarted)
+        #expect(runningCancelled)
+        #expect(runningFinished)
+        #expect(!queuedStarted)
+        #expect(queuedFinished)
+    }
+
     @Test("A committed old transition cannot present after a newer request")
     func newerRequestSuppressesOldPresentation() async throws {
         let coordinator = DocumentTransitionCoordinator()

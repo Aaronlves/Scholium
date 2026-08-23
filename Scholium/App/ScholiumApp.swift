@@ -893,16 +893,19 @@ private struct ScholiumWindowObservedRoot: View {
             )) { recovery in
                 RestoreWorkspaceAccessView(
                     recovery: recovery,
-                    restore: { try await appState.restoreWorkspaceAccess(using: $0) },
+                    restore: {
+                        try await windowWorkspaceController.restoreWorkspaceAccess(using: $0)
+                    },
                     rebuildPortableControl: {
-                        try await appState.rebuildUnsupportedPortableControl()
+                        try await windowWorkspaceController.rebuildUnsupportedPortableControl()
                     },
                     archiveNoteMetadataRecord: {
-                        try await appState.archiveInvalidNoteMetadataRecord()
+                        try await windowWorkspaceController.archiveInvalidNoteMetadataRecord()
                     },
-                    canRemoveRegistration: appState.canRemoveUnavailableTriptychRegistration,
+                    canRemoveRegistration:
+                        windowWorkspaceController.canRemoveUnavailableTriptychRegistration,
                     removeRegistration: {
-                        try await appState.removeUnavailableTriptychRegistration()
+                        try await windowWorkspaceController.removeUnavailableTriptychRegistration()
                         openOrdinaryBootstrapAfterRegistrationRemoval()
                     },
                     quitApplication: {
@@ -1059,7 +1062,7 @@ private struct ScholiumWindowObservedRoot: View {
                     )
                 )
             ) else { return }
-            appState.requestMarkdownImport(urls)
+            appState.libraryMutationController.requestMarkdownImport(urls)
         } catch is CancellationError {
             return
         } catch {
@@ -1244,13 +1247,13 @@ private struct ScholiumCommands: Commands {
             .disabled(appState?.registeredTriptychs.isEmpty != false)
             Divider()
             Button("New Note") {
-                appState?.requestUntitledNoteCreation(in: nil)
+                appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
             }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(
                     appState?.workspaceAssignment == nil
                         || appState?.noteSourceScope != .library
-                        || appState?.isCreatingNote == true
+                        || appState?.libraryMutationController.isCreatingNote == true
                 )
             Button("Import Markdown…") { appState?.showMarkdownImporter = true }
                 .disabled(appState?.workspaceAssignment == nil)
@@ -1678,36 +1681,6 @@ final class WindowModel: ObservableObject {
         let presentationWarning: String?
     }
 
-    struct MarkdownImportFailure: Sendable {
-        let sourceName: String
-        let reason: String
-    }
-
-    struct MarkdownImportBatchOutcome: Sendable {
-        let destinationName: String
-        let documents: [NoteDocument]
-        let failures: [MarkdownImportFailure]
-        let derivedRefreshWarnings: [String]
-        let identityRecoveryWarnings: [String]
-        let presentationWarning: String?
-
-        init(
-            destinationName: String,
-            documents: [NoteDocument],
-            failures: [MarkdownImportFailure],
-            derivedRefreshWarnings: [String],
-            identityRecoveryWarnings: [String],
-            presentationWarning: String?
-        ) {
-            self.destinationName = destinationName
-            self.documents = documents
-            self.failures = failures
-            self.derivedRefreshWarnings = derivedRefreshWarnings
-            self.identityRecoveryWarnings = identityRecoveryWarnings
-            self.presentationWarning = presentationWarning
-        }
-    }
-
     private enum WindowNavigationError: LocalizedError {
         case noteUnavailable(String)
         case vaultUnavailable(String)
@@ -1718,21 +1691,6 @@ final class WindowModel: ObservableObject {
                 String(localized: "The visited note '\(path)' is no longer available. Scholium kept the current document open.", table: "Localizable", bundle: .module)
             case .vaultUnavailable(let name):
                 String(localized: "The \(name) vault is not available in this Triptych. Scholium kept the current document open.", table: "Localizable", bundle: .module)
-            }
-        }
-    }
-
-    private enum WindowFileTreeMutationError: LocalizedError {
-        case folderMutationInProgress
-
-        var errorDescription: String? {
-            switch self {
-            case .folderMutationInProgress:
-                String(
-                    localized: "Another folder operation is already in progress.",
-                    table: "Localizable",
-                    bundle: .module
-                )
             }
         }
     }
@@ -1752,11 +1710,6 @@ final class WindowModel: ObservableObject {
         let request: DiscoveryLibraryRequest?
     }
 
-    private enum SystemTrashRecoveryTarget {
-        case note(NoteMutationTarget)
-        case folder(FolderMutationTarget)
-    }
-
     private(set) var windowSessionID = UUID()
     let nativeWindowID: UUID
 
@@ -1765,10 +1718,6 @@ final class WindowModel: ObservableObject {
     @Published var currentRegisteredVault: RegisteredVault?
     @Published var currentVaultRole: VaultRole = .other
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
-    @Published private(set) var isCreatingNote = false
-    @Published private(set) var isMutatingFolder = false
-    private var systemTrashRecoveryTarget: SystemTrashRecoveryTarget?
-    private var systemTrashRecoveryPreviewID: UUID?
     @Published var triptychSettings = TriptychSettings()
     @Published private(set) var triptychPropertiesAreAuthoritative = false
     /// One-shot routing from Actions to one portable active Discussion. The
@@ -1852,6 +1801,105 @@ final class WindowModel: ObservableObject {
     lazy var documentController = DocumentController { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
+    lazy var libraryMutationController = WindowLibraryMutationController(
+        documentController: documentController,
+        dependencies: WindowLibraryMutationDependencies(
+            context: { [weak self] in
+                guard let self,
+                      let assignment = self.workspaceAssignment,
+                      let vault = self.currentRegisteredVault else { return nil }
+                return WindowLibraryMutationContext(
+                    assignmentID: assignment.id,
+                    vault: vault,
+                    sourceScope: self.noteSourceScope
+                )
+            },
+            enqueueDocumentTransition: { [weak self] operation, didFail, didFinish in
+                self?.enqueueCurrencyAwareDocumentTransition(
+                    preservingCurrentEditorState: false,
+                    operation,
+                    didFail: didFail,
+                    didFinish: didFinish
+                )
+            },
+            flushEditors: { [weak self] triptychID in
+                guard let self else { throw CancellationError() }
+                try await self.editorFlushCoordinator.flushAllEditors(in: triptychID)
+            },
+            flushActiveTarget: { [weak self] target in
+                guard let self else { throw CancellationError() }
+                try await self.flushRegisteredEditorIfMutatingActiveDocument(target)
+            },
+            expectedRevision: { [weak self] target in
+                guard let self else { throw CancellationError() }
+                return try self.mutationExpectedRevision(for: target)
+            },
+            committedNoteCreated: { [weak self] outcome, isCurrent in
+                await self?.publishCommittedNoteCreation(outcome, isCurrent: isCurrent)
+            },
+            committedFolderCreated: { [weak self] outcome in
+                await self?.publishCommittedFolderCreation(outcome)
+            },
+            committedFolderMoved: { [weak self] outcome in
+                await self?.publishCommittedFolderMove(outcome)
+            },
+            committedNoteDuplicated: { [weak self] outcome, target, destination in
+                await self?.publishCommittedNoteDuplication(
+                    outcome,
+                    target: target,
+                    destination: destination
+                )
+            },
+            committedNoteMoved: { [weak self] outcome, target in
+                await self?.publishCommittedNoteMove(outcome, target: target)
+            },
+            committedSystemTrash: { [weak self] preview, outcome in
+                await self?.publishSystemTrashResult(preview, outcome: outcome)
+            },
+            importedDocumentsCommitted: { [weak self] vault in
+                guard let self else { throw CancellationError() }
+                try await self.refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
+                if self.currentRegisteredVault?.id == vault.id {
+                    try await self.browseRegisteredVault(vault)
+                }
+            },
+            presentImportOutcome: { [weak self] outcome in
+                self?.presentMarkdownImportOutcome(outcome)
+            },
+            presentSystemTrash: { [weak self] preview in
+                self?.presentationRouter.present(.systemTrash(preview))
+            },
+            presentLocalExecutionRecovery: { [weak self] recovery in
+                self?.presentationRouter.alert = .localExecutionRecovery(recovery)
+            },
+            clearPresentedAlert: { [weak self] in
+                self?.presentationRouter.alert = nil
+            },
+            reportError: { [weak self] message in
+                self?.showToast(message, kind: .error)
+            },
+            reportInformation: { [weak self] message in
+                self?.showToast(message, kind: .information)
+            },
+            refreshTransactionRecovery: { [weak self] in
+                await self?.refreshTransactionRecoveryRecords()
+            }
+        )
+    )
+    lazy var zoteroCoordinator = WindowZoteroCoordinator(
+        bridge: workspaceStore.zoteroBridge,
+        dependencies: WindowZoteroDependencies(
+            capability: { [weak self] in
+                (
+                    self?.workspaceAssignment?.id,
+                    self?.activeWorkspaceCapabilities?.zoteroBindings
+                )
+            },
+            reportInformation: { [weak self] message in
+                self?.showToast(message, kind: .information)
+            }
+        )
+    )
     let documentTabController = DocumentTabController()
     let documentNavigationHistoryController = DocumentNavigationHistoryController()
     lazy var researchController = ResearchController(
@@ -1871,6 +1919,7 @@ final class WindowModel: ObservableObject {
     lazy var commandObservation = WindowCommandObservation(
         shellState: shellState,
         workspaceController: windowWorkspaceController,
+        libraryMutationController: libraryMutationController,
         discoveryController: discoveryController,
         documentController: documentController,
         documentNavigationHistoryController: documentNavigationHistoryController,
@@ -1979,16 +2028,6 @@ final class WindowModel: ObservableObject {
     var registeredTriptychs: [TriptychAssignment] {
         get { windowWorkspaceController.state.registeredTriptychs }
         set { windowWorkspaceController.setRegisteredTriptychs(newValue) }
-    }
-
-    var workspaceRecoveryMessage: String? {
-        get { windowWorkspaceController.state.recoveryMessage }
-        set { windowWorkspaceController.setRecoveryMessage(newValue) }
-    }
-
-    var workspaceAccessRecovery: WorkspaceAccessRecovery? {
-        get { windowWorkspaceController.state.accessRecovery }
-        set { windowWorkspaceController.setAccessRecovery(newValue) }
     }
 
     private(set) var activeTriptychServicesID: UUID? {
@@ -2211,7 +2250,6 @@ final class WindowModel: ObservableObject {
         set { windowWorkspaceController.setActiveCapabilities(newValue) }
     }
     let cssSnippetStore: CSSSnippetStore
-    let zoteroBridge: ZoteroBridge
     private var requestedTriptychID: UUID? {
         windowWorkspaceController.requestedTriptychID
     }
@@ -2219,7 +2257,6 @@ final class WindowModel: ObservableObject {
     private var didOpenRequestedInitialDocument = false
     private var presentedOpeningRuntimeIdentity: TriptychRuntimeIdentity?
     private var projectionRefreshToken: UInt64 = 0
-    private var attemptedVaultRestore = false
     private let workspaceStore: WorkspaceStore
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private let documentTransitionCoordinator = DocumentTransitionCoordinator()
@@ -2230,7 +2267,6 @@ final class WindowModel: ObservableObject {
     private var researchActionOpenTask: Task<Void, Never>?
     private var libraryRevealTask: Task<Void, Never>?
     private var requestedWorkspaceSelection: WorkspaceVaultSlot?
-    private var markdownImportTask: Task<Void, Never>?
     private var researchActionOpenRequestID: UUID?
     private var discussionPresentationRequestID: UUID?
     private var isRestoringWindowSession = false
@@ -2276,7 +2312,34 @@ final class WindowModel: ObservableObject {
             ScholiumWebKitProcessPrewarmer.shared.start()
         }
         cssSnippetStore = workspaceStore.cssSnippetStore
-        zoteroBridge = workspaceStore.zoteroBridge
+        windowWorkspaceController.bindRecoveryDependencies(
+            WindowWorkspaceRecoveryDependencies(
+                configureTriptych: { [weak self] analyses, topics, works, portable, id, name in
+                    guard let self else { throw CancellationError() }
+                    try await self.configureTriptych(
+                        paperAnalysisURL: analyses,
+                        topicKnowledgeURL: topics,
+                        outputURL: works,
+                        portableContainerURL: portable,
+                        triptychID: id,
+                        triptychName: name
+                    )
+                },
+                didRemoveRegistration: { [weak self] assignment, vaults, triptychs in
+                    guard let self else { return }
+                    self.registeredVaults = vaults
+                    self.registeredTriptychs = triptychs
+                    let removedVaultIDs = Set(assignment.vaults.values.map(\.id))
+                    if self.currentRegisteredVault.map({ removedVaultIDs.contains($0.id) }) == true {
+                        self.currentRegisteredVault = nil
+                        self.vaultConfig = nil
+                    }
+                },
+                reportInformation: { [weak self] message in
+                    self?.showToast(message)
+                }
+            )
+        )
         workspaceStore.$latestWorkspaceActivation
             .compactMap { $0 }
             .sink { [weak self] activation in
@@ -2331,7 +2394,6 @@ final class WindowModel: ObservableObject {
     deinit {
         researchActionOpenTask?.cancel()
         libraryRevealTask?.cancel()
-        markdownImportTask?.cancel()
         for token in performanceModeNotificationTokens {
             notify_cancel(token)
         }
@@ -2519,15 +2581,15 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var currentResearchFunctionTarget: ResearchFunctionTarget? {
+    var currentResearchActionTarget: ResearchActionNoteSnapshot? {
         guard let descriptor = currentDocumentDescriptor,
               let note = currentNote,
               note.workspaceSnapshot?.derivedProjectionState == .current,
-              currentDocumentCapabilities.canUseResearchFunctions,
-              let role = ResearchFunctionTargetRole(vaultRole: descriptor.reference.vaultRole) else {
+              currentDocumentCapabilities.canUseResearchActions,
+              let role = ResearchActionTargetRole(vaultRole: descriptor.reference.vaultRole) else {
             return nil
         }
-        return ResearchFunctionTarget(
+        return ResearchActionNoteSnapshot(
             noteID: descriptor.sessionKey.noteID,
             note: VaultQualifiedNoteID(
                 vaultID: descriptor.reference.vaultID,
@@ -2539,17 +2601,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var currentResearchActionTarget: ResearchActionNoteSnapshot? {
-        guard let target = currentResearchFunctionTarget else { return nil }
-        return ResearchActionNoteSnapshot(
-            noteID: target.noteID,
-            note: target.note,
-            role: target.role.actionRole,
-            fingerprint: target.fingerprint,
-            title: target.title
-        )
-    }
-
     var hasConfirmedCurrentResearchActionAvailability: Bool {
         guard let target = currentResearchActionTarget else { return false }
         let actions = researchController.actions
@@ -2558,7 +2609,7 @@ final class WindowModel: ObservableObject {
             && actions.availabilityError == nil
     }
 
-    var currentResearchFunctionReference: VaultNoteReference? {
+    var currentResearchActionReference: VaultNoteReference? {
         currentDocumentDescriptor?.reference
     }
 
@@ -2586,7 +2637,7 @@ final class WindowModel: ObservableObject {
 
     func refreshResearchActionAvailability() async {
         let target = currentResearchActionTarget
-        researchController.setActiveDocument(currentResearchFunctionReference)
+        researchController.setActiveDocument(currentResearchActionReference)
         researchController.actions.invalidateIfTargetChanged(target)
         reconcileResearchActionPresentation()
         await researchController.actions.refreshAvailability(for: target)
@@ -2856,8 +2907,10 @@ final class WindowModel: ObservableObject {
     /// preparation therefore cannot surrender this still-open window's save
     /// ownership.
     func finalizeWindowClose() {
-        markdownImportTask?.cancel()
-        markdownImportTask = nil
+        libraryMutationController.cancelAll()
+        zoteroCoordinator.cancelAll()
+        windowWorkspaceController.cancelRecovery()
+        documentTransitionCoordinator.cancelAll()
         libraryRevealTask?.cancel()
         libraryRevealTask = nil
         editorFlushCoordinator.shutdown()
@@ -3004,7 +3057,7 @@ final class WindowModel: ObservableObject {
                 }
             }
         case .presentResearchAction(let route):
-            guard currentResearchFunctionReference == route.target,
+            guard currentResearchActionReference == route.target,
                   researchController.actions.presentationID == route.presentationID,
                   researchController.actions.activeActionID == route.actionID else { return }
             presentationRouter.present(.researchAction(route))
@@ -3253,83 +3306,6 @@ final class WindowModel: ObservableObject {
         requestPresentationMode = mode
     }
 
-    func prepareZoteroLinkAndFill(
-        noteID: UUID,
-        library: ZoteroLibraryMetadata,
-        itemKey: String
-    ) async throws -> ZoteroMetadataPlan {
-        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
-            throw ScholiumApplicationError.workspaceShutDown(
-                workspaceAssignment?.id ?? UUID()
-            )
-        }
-        return try await capability.prepareZoteroLinkAndFill(
-            noteID: noteID,
-            library: library,
-            itemKey: itemKey
-        )
-    }
-
-    func prepareZoteroMetadataRefresh(
-        noteID: UUID
-    ) async throws -> ZoteroMetadataPlan {
-        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
-            throw ScholiumApplicationError.workspaceShutDown(
-                workspaceAssignment?.id ?? UUID()
-            )
-        }
-        return try await capability.prepareZoteroMetadataRefresh(noteID: noteID)
-    }
-
-    func commitZoteroMetadataPlan(
-        _ plan: ZoteroMetadataPlan
-    ) async throws {
-        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
-            throw ScholiumApplicationError.workspaceShutDown(
-                workspaceAssignment?.id ?? UUID()
-            )
-        }
-        let result = try await capability.commitZoteroMetadataPlan(plan)
-        if let warning = result.derivedRefreshWarning {
-            showToast(warning, kind: .information)
-            return
-        }
-        let retained = result.retainedConflictKeys.count
-        let message: String
-        switch plan.mode {
-        case .linkAndFill:
-            if result.filledKeys.isEmpty {
-                message = retained == 0
-                    ? String(localized: "Zotero link saved. No empty supported Metadata fields needed filling.")
-                    : String(localized: "Zotero link saved. Existing Metadata values were kept.")
-            } else if retained == 0 {
-                message = String(localized: "Zotero link saved and \(result.filledKeys.count) Metadata fields filled.")
-            } else {
-                message = String(localized: "Zotero link saved and \(result.filledKeys.count) Metadata fields filled; \(retained) existing values were kept.")
-            }
-        case .refresh:
-            message = String(localized: "Zotero Metadata refreshed: \(result.filledKeys.count) fields filled and \(result.updatedKeys.count) fields updated.")
-        }
-        showToast(message)
-    }
-
-    func clearZoteroBinding(noteID: UUID) async throws {
-        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
-            throw ScholiumApplicationError.workspaceShutDown(
-                workspaceAssignment?.id ?? UUID()
-            )
-        }
-        let snapshot = try await capability.zoteroBindings()
-        guard snapshot.binding(for: noteID) != nil else { return }
-        let result = try await capability.clearZoteroBinding(
-            noteID: noteID,
-            expectedRevision: snapshot.revision
-        )
-        if let warning = result.derivedRefreshWarning {
-            showToast(warning, kind: .information)
-        }
-    }
-
     /// Drives the retained-editor performance scenario through the current
     /// document session instead of a one-shot SwiftUI presentation request.
     /// The editor bridge still performs the real mode transition and reports
@@ -3472,7 +3448,7 @@ final class WindowModel: ObservableObject {
                       self.researchActionOpenRequestID == requestID,
                       let target = self.currentResearchActionTarget,
                       target.noteID == initialNoteID,
-                      let reference = self.currentResearchFunctionReference else { return }
+                      let reference = self.currentResearchActionReference else { return }
                 if actionID == .discuss,
                    let discussion = self.researchController.records?.activeDiscussions.first(where: {
                         $0.primaryNoteID == target.noteID
@@ -3580,7 +3556,7 @@ final class WindowModel: ObservableObject {
     ) {
         guard let target = currentResearchActionTarget,
               target.noteID == activity.targetNoteID,
-              let reference = currentResearchFunctionReference,
+              let reference = currentResearchActionReference,
               !researchController.actions.hasCancellationBarrier else { return }
         let availability = researchController.actions.availability.first {
             $0.id == activity.actionID
@@ -3922,7 +3898,7 @@ final class WindowModel: ObservableObject {
             preferredTriptychID: requestedTriptychID ?? stored.triptychID
         )
         guard let restoredAssignment = workspaceAssignment else {
-            attemptedVaultRestore = true
+            windowWorkspaceController.markInitialRestoreAttempted()
             return
         }
         let requestedWorkspace = requestedInitialDocument.flatMap { requested in
@@ -3935,7 +3911,7 @@ final class WindowModel: ObservableObject {
             guard let vault = restoredAssignment.vault(for: selectedWorkspace) else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
-            attemptedVaultRestore = true
+            windowWorkspaceController.markInitialRestoreAttempted()
             try await openRegisteredVault(vault)
         } catch {
             vaultError = error.localizedDescription
@@ -4184,11 +4160,11 @@ final class WindowModel: ObservableObject {
         case .unavailable(let assignments, let message):
             registeredTriptychs = assignments
             workspaceAssignment = nil
-            workspaceRecoveryMessage = message
+            windowWorkspaceController.setRecoveryMessage(message)
         case .unavailablePreserving(let assignments, let assignment, let message):
             registeredTriptychs = assignments
             workspaceAssignment = assignment
-            workspaceRecoveryMessage = message
+            windowWorkspaceController.setRecoveryMessage(message)
         case .selected(let assignments, let assignment, let repairFailure):
             registeredTriptychs = assignments
             workspaceAssignment = assignment
@@ -4196,7 +4172,9 @@ final class WindowModel: ObservableObject {
                 assignment: assignment
             )
             if activated, let repairFailure {
-                workspaceRecoveryMessage = "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
+                windowWorkspaceController.setRecoveryMessage(
+                    "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
+                )
             }
         }
     }
@@ -4209,14 +4187,12 @@ final class WindowModel: ObservableObject {
             try await activateTriptychServices(assignment: assignment)
             return true
         } catch {
-            if let recovery = workspaceAccessRecoveryRoute(for: error) {
-                workspaceAccessRecovery = recovery
-                workspaceRecoveryMessage = workspaceAccessRecoveryMessage(for: recovery)
+            if windowWorkspaceController.recordRecovery(for: error) {
                 vaultError = nil
                 return false
             }
             let message = "Scholium could not activate this Triptych's shared files, search, and research history. The registered locations remain unchanged. \(error.localizedDescription)"
-            workspaceRecoveryMessage = message
+            windowWorkspaceController.setRecoveryMessage(message)
             vaultError = message
             return false
         }
@@ -4247,7 +4223,7 @@ final class WindowModel: ObservableObject {
         let assignment = capabilities.assignment
         workspaceAssignment = assignment
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
-        workspaceAccessRecovery = nil
+        windowWorkspaceController.setAccessRecovery(nil)
         registeredVaults = try await workspaceStore.registeredVaults()
         registeredTriptychs = try await workspaceStore.registeredTriptychs()
         try await activateTriptychServices(assignment: assignment)
@@ -4300,9 +4276,9 @@ final class WindowModel: ObservableObject {
         }
         let recoveryIssues = try await documentController.recoverInterruptedTransactions()
         if !recoveryIssues.isEmpty {
-            workspaceRecoveryMessage = ([
+            windowWorkspaceController.setRecoveryMessage(([
                 "An interrupted system Trash deletion still requires inspection.",
-            ] + recoveryIssues).joined(separator: "\n")
+            ] + recoveryIssues).joined(separator: "\n"))
         }
         await refreshTransactionRecoveryRecords()
         PerformanceProbe.shared.markStartupSafetyReady()
@@ -4369,13 +4345,13 @@ final class WindowModel: ObservableObject {
             },
             sourceAccess: { target in
                 try await capabilities.research.sourceAccess.sourceAccess(
-                    for: target.functionTarget
+                    for: target
                 )
             },
             bindLocalSource: { target, url in
                 try await capabilities.research.sourceAccess.bindSourceAccess(
                     ResearchSourceBindingRequest(
-                        target: target.functionTarget,
+                        target: target,
                         selection: .localFile(url)
                     )
                 )
@@ -4547,101 +4523,7 @@ final class WindowModel: ObservableObject {
         Task { await openWorkspaceReference(reference, line: line, mode: line == nil ? .read : .source) }
     }
 
-    func requestMarkdownImport(_ urls: [URL]) {
-        guard markdownImportTask == nil else {
-            showToast(
-                String(
-                    localized: "A Markdown import is already in progress.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                kind: .information
-            )
-            return
-        }
-
-        markdownImportTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { self.markdownImportTask = nil }
-            do {
-                let outcome = try await self.importMarkdownFiles(urls)
-                try Task.checkCancellation()
-                self.presentMarkdownImportOutcome(outcome)
-            } catch is CancellationError {
-                // Closing the owning window cancels the remaining batch. Any
-                // files committed before cancellation remain authoritative and
-                // will be discovered by the next bounded workspace refresh.
-            } catch {
-                self.vaultError = error.localizedDescription
-            }
-        }
-    }
-
-    func importMarkdownFiles(_ urls: [URL]) async throws -> MarkdownImportBatchOutcome {
-        guard let vault = currentRegisteredVault,
-              let destinationWorkspaceID = workspaceAssignment?.id else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        var imported: [NoteDocument] = []
-        var failures: [MarkdownImportFailure] = []
-        var derivedRefreshWarnings: [String] = []
-        var identityRecoveryWarnings: [String] = []
-        for url in urls {
-            try Task.checkCancellation()
-            guard workspaceAssignment?.id == destinationWorkspaceID else {
-                throw CancellationError()
-            }
-            do {
-                let outcome = try await documentController.importMarkdown(
-                    at: url,
-                    intoVault: vault.id
-                )
-                imported.append(outcome.committedValue)
-                if let warning = outcome.derivedRefreshWarning {
-                    derivedRefreshWarnings.append(warning)
-                }
-                if let warning = outcome.identityRecoveryWarning {
-                    identityRecoveryWarnings.append(warning)
-                }
-                guard workspaceAssignment?.id == destinationWorkspaceID else {
-                    throw CancellationError()
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                failures.append(MarkdownImportFailure(
-                    sourceName: url.lastPathComponent,
-                    reason: error.localizedDescription
-                ))
-            }
-        }
-
-        var presentationWarning: String?
-        if !imported.isEmpty {
-            guard workspaceAssignment?.id == destinationWorkspaceID else {
-                throw CancellationError()
-            }
-            do {
-                try await refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
-                if currentRegisteredVault?.id == vault.id {
-                    try await browseRegisteredVault(vault)
-                }
-            } catch {
-                presentationWarning = error.localizedDescription
-            }
-        }
-
-        return MarkdownImportBatchOutcome(
-            destinationName: workspaceSlot(for: vault)?.displayName ?? vault.name,
-            documents: imported,
-            failures: failures,
-            derivedRefreshWarnings: derivedRefreshWarnings,
-            identityRecoveryWarnings: identityRecoveryWarnings,
-            presentationWarning: presentationWarning
-        )
-    }
-
-    func presentMarkdownImportOutcome(_ outcome: MarkdownImportBatchOutcome) {
+    func presentMarkdownImportOutcome(_ outcome: WindowMarkdownImportBatchOutcome) {
         let failureDetails = outcome.failures
             .map { "\($0.sourceName): \($0.reason)" }
             .joined(separator: " ")
@@ -4968,8 +4850,9 @@ final class WindowModel: ObservableObject {
     }
 
     func restoreWorkspaceIfNeeded() async {
-        guard !attemptedVaultRestore, vaultConfig == nil else { return }
-        attemptedVaultRestore = true
+        guard windowWorkspaceController.beginInitialRestoreIfNeeded(
+            isConfigured: vaultConfig != nil
+        ) else { return }
         if let root = ScholiumRuntimeIsolation.fixtureRootURL() {
             do {
                 let analysesURL = root.appendingPathComponent(
@@ -5032,9 +4915,7 @@ final class WindowModel: ObservableObject {
             try await openWorkspaceVault(.paperAnalysis)
             openRequestedTestNoteIfNeeded()
         } catch {
-            if let recovery = workspaceAccessRecoveryRoute(for: error) {
-                workspaceAccessRecovery = recovery
-                workspaceRecoveryMessage = workspaceAccessRecoveryMessage(for: recovery)
+            if windowWorkspaceController.recordRecovery(for: error) {
                 vaultError = nil
             } else {
                 vaultError = error.localizedDescription
@@ -5058,210 +4939,6 @@ final class WindowModel: ObservableObject {
             return shellState.selectedWorkspace
         }
         return requested
-    }
-
-    private func workspaceAccessRecoveryRoute(for error: Error) -> WorkspaceAccessRecovery? {
-        if let workspaceError = error as? WorkspaceRegistryError {
-            switch workspaceError {
-            case .vaultAccessUnavailable(let path):
-                return WorkspaceAccessRecovery(kind: .vault, expectedPath: path)
-            case .portableControlAccessUnavailable(let path):
-                return WorkspaceAccessRecovery(kind: .portableControl, expectedPath: path)
-            default:
-                break
-            }
-        }
-        if let applicationError = error as? ScholiumApplicationError,
-           case .portableControlRecoveryRequired(let controlPath, let reason) = applicationError {
-            return WorkspaceAccessRecovery(
-                kind: .unsupportedPortableControl,
-                expectedPath: controlPath,
-                reason: reason
-            )
-        }
-        if let applicationError = error as? ScholiumApplicationError,
-           case .noteMetadataRecoveryRequired(let controlPath, let issue) = applicationError {
-            return WorkspaceAccessRecovery(
-                kind: .invalidNoteMetadataRecord,
-                expectedPath: controlPath,
-                reason: issue.explanation,
-                noteMetadataIssue: issue
-            )
-        }
-        return nil
-    }
-
-    private func workspaceAccessRecoveryMessage(
-        for recovery: WorkspaceAccessRecovery
-    ) -> String {
-        switch recovery.kind {
-        case .vault:
-            "Scholium needs renewed access to '\(recovery.expectedPath)'. Choose that folder again."
-        case .portableControl:
-            "Scholium needs renewed access to '\(recovery.expectedPath)' so it can use the portable .scholium folder beside Works."
-        case .unsupportedPortableControl:
-            "Scholium must archive the unsupported portable control folder at '\(recovery.expectedPath)' before rebuilding current control state."
-        case .invalidNoteMetadataRecord:
-            "Scholium must archive the exact invalid Metadata record before reloading this Triptych."
-        }
-    }
-
-    func restoreWorkspaceAccess(using selectedURL: URL) async throws {
-        guard let recovery = workspaceAccessRecovery,
-              let assignment = workspaceAssignment,
-              let analyses = assignment.vault(for: .paperAnalysis),
-              let topics = assignment.vault(for: .topicKnowledge),
-              let works = assignment.vault(for: .output)
-        else { throw WorkspaceRegistryError.incompleteWorkspace }
-
-        let selected = selectedURL.resolvingSymlinksInPath().standardizedFileURL
-        let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
-        let topicsURL = URL(fileURLWithPath: topics.canonicalPath, isDirectory: true)
-        let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-        let expected = URL(
-            fileURLWithPath: recovery.expectedPath,
-            isDirectory: true
-        ).resolvingSymlinksInPath().standardizedFileURL.path
-
-        let replacementAnalyses = analysesURL.resolvingSymlinksInPath().standardizedFileURL.path
-            == expected ? selected : analysesURL
-        let replacementTopics = topicsURL.resolvingSymlinksInPath().standardizedFileURL.path
-            == expected ? selected : topicsURL
-        let replacementWorks = worksURL.resolvingSymlinksInPath().standardizedFileURL.path
-            == expected ? selected : worksURL
-        let portableURL: URL
-        if recovery.kind == .portableControl {
-            portableURL = selected
-        } else {
-            portableURL = await workspaceStore.portableContainerURL(forWorksURL: replacementWorks)
-                ?? replacementWorks.deletingLastPathComponent()
-        }
-
-        try await configureTriptych(
-            paperAnalysisURL: replacementAnalyses,
-            topicKnowledgeURL: replacementTopics,
-            outputURL: replacementWorks,
-            portableContainerURL: portableURL,
-            triptychID: assignment.id,
-            triptychName: assignment.triptych.name
-        )
-        workspaceAccessRecovery = nil
-        workspaceRecoveryMessage = nil
-    }
-
-    @discardableResult
-    func rebuildUnsupportedPortableControl() async throws -> URL {
-        guard let recovery = workspaceAccessRecovery,
-              recovery.kind == .unsupportedPortableControl,
-              activeTriptychServicesID == nil,
-              let assignment = workspaceAssignment,
-              let analyses = assignment.vault(for: .paperAnalysis),
-              let topics = assignment.vault(for: .topicKnowledge),
-              let works = assignment.vault(for: .output) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
-        let topicsURL = URL(fileURLWithPath: topics.canonicalPath, isDirectory: true)
-        let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-        guard let portableURL = await workspaceStore.portableContainerURL(
-            forWorksURL: worksURL
-        ) else {
-            throw WorkspaceRegistryError.portableControlAccessUnavailable(
-                worksURL.deletingLastPathComponent().path
-            )
-        }
-        let preserved = try await workspaceStore.preserveUnsupportedPortableControl(
-            portableContainerURL: portableURL,
-            worksURL: worksURL,
-            triptychID: assignment.id
-        )
-        try await configureTriptych(
-            paperAnalysisURL: analysesURL,
-            topicKnowledgeURL: topicsURL,
-            outputURL: worksURL,
-            portableContainerURL: portableURL,
-            triptychID: assignment.id,
-            triptychName: assignment.triptych.name
-        )
-        workspaceAccessRecovery = nil
-        workspaceRecoveryMessage = nil
-        showToast("Previous portable control was preserved at \(preserved.path).")
-        return preserved
-    }
-
-    @discardableResult
-    func archiveInvalidNoteMetadataRecord() async throws -> URL {
-        guard let recovery = workspaceAccessRecovery,
-              recovery.kind == .invalidNoteMetadataRecord,
-              let issue = recovery.noteMetadataIssue,
-              activeTriptychServicesID == nil,
-              let assignment = workspaceAssignment,
-              let analyses = assignment.vault(for: .paperAnalysis),
-              let topics = assignment.vault(for: .topicKnowledge),
-              let works = assignment.vault(for: .output) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        let analysesURL = URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
-        let topicsURL = URL(fileURLWithPath: topics.canonicalPath, isDirectory: true)
-        let worksURL = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-        guard let portableURL = await workspaceStore.portableContainerURL(
-            forWorksURL: worksURL
-        ) else {
-            throw WorkspaceRegistryError.portableControlAccessUnavailable(
-                worksURL.deletingLastPathComponent().path
-            )
-        }
-        let preserved = try await workspaceStore.archiveInvalidNoteMetadataRecord(
-            portableContainerURL: portableURL,
-            worksURL: worksURL,
-            issue: issue,
-            triptychID: assignment.id
-        )
-        try await configureTriptych(
-            paperAnalysisURL: analysesURL,
-            topicKnowledgeURL: topicsURL,
-            outputURL: worksURL,
-            portableContainerURL: portableURL,
-            triptychID: assignment.id,
-            triptychName: assignment.triptych.name
-        )
-        workspaceAccessRecovery = nil
-        workspaceRecoveryMessage = nil
-        showToast("Invalid Metadata record preserved at \(preserved.path).")
-        return preserved
-    }
-
-    func removeUnavailableTriptychRegistration() async throws {
-        guard workspaceAccessRecovery != nil,
-              activeTriptychServicesID == nil,
-              let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await workspaceStore.removeLocalTriptychRegistration(id: assignment.id)
-        activeWorkspaceCapabilities = nil
-        workspaceAssignment = nil
-        workspaceAccessRecovery = nil
-        workspaceRecoveryMessage = nil
-        registeredTriptychs.removeAll { $0.id == assignment.id }
-        let remainingVaultIDs = Set(
-            registeredTriptychs.flatMap { $0.vaults.values.map(\.id) }
-        )
-        let removedVaultIDs = Set(assignment.vaults.values.map(\.id))
-        registeredVaults.removeAll {
-            removedVaultIDs.contains($0.id) && !remainingVaultIDs.contains($0.id)
-        }
-        if let refreshedVaults = try? await workspaceStore.registeredVaults() {
-            registeredVaults = refreshedVaults
-        }
-        if let refreshedTriptychs = try? await workspaceStore.registeredTriptychs() {
-            registeredTriptychs = refreshedTriptychs
-        }
-    }
-
-    var canRemoveUnavailableTriptychRegistration: Bool {
-        workspaceAccessRecovery != nil
-            && activeTriptychServicesID == nil
-            && workspaceAssignment != nil
     }
 
     private func openRequestedTestNoteIfNeeded() {
@@ -5399,169 +5076,95 @@ final class WindowModel: ObservableObject {
         return snapshot
     }
 
-    func requestUntitledNoteCreation(in folderRelativePath: String?) {
-        guard !isCreatingNote else { return }
-        isCreatingNote = true
-        enqueueCurrencyAwareDocumentTransition(
-            preservingCurrentEditorState: false,
-            { [weak self] isCurrent in
-                guard let self else { return }
-                guard noteSourceScope == .library,
-                      let vault = currentRegisteredVault else {
-                    throw WorkspaceRegistryError.incompleteWorkspace
-                }
-                let outcome = try await documentController.createUntitledNote(
-                    inVault: vault.id,
-                    folderRelativePath: folderRelativePath
+    private func publishCommittedNoteCreation(
+        _ outcome: WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>,
+        isCurrent: @MainActor () -> Bool
+    ) async {
+        guard let vault = currentRegisteredVault else { return }
+        let commit = outcome.committedValue
+        let document = commit.document
+        do {
+            let sourceAheadSnapshot = commit.sourceAheadSnapshot
+            guard workspaceProjectionController.recordCommittedNote(
+                sourceAheadSnapshot,
+                visibleVaultID: currentRegisteredVault?.id,
+                visibleSourceScope: noteSourceScope
+            ) != nil else {
+                throw WorkspaceRegistryError.incompleteWorkspace
+            }
+            guard isCurrent() else {
+                reportCommittedMutationWarnings(outcome)
+                return
+            }
+            if let noteID = sourceAheadSnapshot.stableIdentity.resolvedID {
+                try await activateWorkspaceReference(
+                    VaultNoteReference(
+                        vaultID: vault.id,
+                        vaultName: vault.name,
+                        vaultRole: vault.role,
+                        relativePath: document.relativePath,
+                        stableNoteID: noteID.uuidString.lowercased()
+                    ),
+                    tabActivation: .place(.replaceSelected),
+                    managedCreationBodyStartUTF16: document.bodyUTF16Offset
                 )
-                let commit = outcome.committedValue
-                let document = commit.document
-                do {
-                    let sourceAheadSnapshot = commit.sourceAheadSnapshot
-                    guard workspaceProjectionController.recordCommittedNote(
-                        sourceAheadSnapshot,
-                        visibleVaultID: currentRegisteredVault?.id,
-                        visibleSourceScope: noteSourceScope
-                    ) != nil else {
-                        throw WorkspaceRegistryError.incompleteWorkspace
-                    }
-                    guard isCurrent() else {
-                        reportCommittedMutationWarnings(outcome)
-                        return
-                    }
-                    if let noteID = sourceAheadSnapshot.stableIdentity.resolvedID {
-                        try await activateWorkspaceReference(
-                            VaultNoteReference(
-                                vaultID: vault.id,
-                                vaultName: vault.name,
-                                vaultRole: vault.role,
-                                relativePath: document.relativePath,
-                                stableNoteID: noteID.uuidString.lowercased()
-                            ),
-                            tabActivation: .place(.replaceSelected),
-                            managedCreationBodyStartUTF16: document.bodyUTF16Offset
-                        )
-                    } else {
-                        PerformanceProbe.shared.beginReadActivation(
-                            documentID: document.relativePath
-                        )
-                        documentController.selectUnavailableDocument(
-                            vaultID: vault.id,
-                            relativePath: document.relativePath
-                        )
-                        synchronizeDocumentTabs(after: .place(.replaceSelected))
-                    }
-                    revealCreatedNoteInLibrary(
-                        document.relativePath,
-                        vaultID: vault.id
-                    )
-                    reportCommittedMutationWarnings(outcome)
-                } catch {
-                    reportCommittedMutationWarnings(
-                        outcome,
-                        presentationWarning: error.localizedDescription
-                    )
-                }
-        }, didFail: { [weak self] error in
-            guard let self else { return }
-            showToast(
-                String(
-                    localized: "Could not create note: \(error.localizedDescription)",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                kind: .error
+            } else {
+                PerformanceProbe.shared.beginReadActivation(
+                    documentID: document.relativePath
+                )
+                documentController.selectUnavailableDocument(
+                    vaultID: vault.id,
+                    relativePath: document.relativePath
+                )
+                synchronizeDocumentTabs(after: .place(.replaceSelected))
+            }
+            revealCreatedNoteInLibrary(document.relativePath, vaultID: vault.id)
+            reportCommittedMutationWarnings(outcome)
+        } catch {
+            reportCommittedMutationWarnings(
+                outcome,
+                presentationWarning: error.localizedDescription
             )
-        }, didFinish: { [weak self] in
-            self?.isCreatingNote = false
-        })
+        }
     }
 
-    func requestUntitledFolderCreation(in parentRelativePath: String?) {
-        guard !isMutatingFolder else { return }
-        guard noteSourceScope == .library,
-              let vault = currentRegisteredVault else {
-            showToast(
-                WorkspaceRegistryError.incompleteWorkspace.localizedDescription,
-                kind: .error
-            )
-            return
-        }
-        isMutatingFolder = true
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { isMutatingFolder = false }
-            do {
-                let outcome = try await documentController.createUntitledFolder(
-                    inVault: vault.id,
-                    parentRelativePath: parentRelativePath
-                )
-                let folder = outcome.committedValue
-                do {
-                    guard workspaceProjectionController.recordCommittedFolder(
-                        folder,
-                        vaultID: vault.id
-                    ) != nil else {
-                        try await refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
-                        try await browseRegisteredVault(vault)
-                        expandFolderAncestors(folder.rawValue, vaultID: vault.id)
-                        reportCommittedMutationWarnings(outcome)
-                        return
-                    }
-                    expandFolderAncestors(folder.rawValue, vaultID: vault.id)
-                    if !reportCommittedMutationWarnings(outcome) {
-                        showToast(
-                            String(
-                                localized: "Folder created: \(folder.rawValue)",
-                                table: "Localizable",
-                                bundle: .module
-                            )
-                        )
-                    }
-                } catch {
-                    reportCommittedMutationWarnings(
-                        outcome,
-                        presentationWarning: error.localizedDescription
-                    )
-                }
-            } catch {
+    private func publishCommittedFolderCreation(
+        _ outcome: WorkspaceMutationOutcome<VaultRelativeFolderPath>
+    ) async {
+        guard let vault = currentRegisteredVault else { return }
+        let folder = outcome.committedValue
+        do {
+            guard workspaceProjectionController.recordCommittedFolder(
+                folder,
+                vaultID: vault.id
+            ) != nil else {
+                try await refreshCachedWorkspaceVaultSnapshot(vaultID: vault.id)
+                try await browseRegisteredVault(vault)
+                expandFolderAncestors(folder.rawValue, vaultID: vault.id)
+                reportCommittedMutationWarnings(outcome)
+                return
+            }
+            expandFolderAncestors(folder.rawValue, vaultID: vault.id)
+            if !reportCommittedMutationWarnings(outcome) {
                 showToast(
                     String(
-                        localized: "Could not create folder: \(error.localizedDescription)",
+                        localized: "Folder created: \(folder.rawValue)",
                         table: "Localizable",
                         bundle: .module
-                    ),
-                    kind: .error
+                    )
                 )
             }
+        } catch {
+            reportCommittedMutationWarnings(
+                outcome,
+                presentationWarning: error.localizedDescription
+            )
         }
     }
 
-    func moveFolder(
-        _ target: FolderMutationTarget,
-        to destinationRelativePath: String
-    ) async throws {
-        guard !isMutatingFolder else {
-            throw WindowFileTreeMutationError.folderMutationInProgress
-        }
-        guard target.vaultID == currentRegisteredVault?.id,
-              let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        isMutatingFolder = true
-        defer { isMutatingFolder = false }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let outcome: WorkspaceMutationOutcome<FolderMoveCommit>
-        do {
-            outcome = try await documentController.moveFolder(
-                inVault: target.vaultID,
-                from: target.relativePath,
-                to: destinationRelativePath
-            )
-        } catch {
-            await refreshTransactionRecoveryRecords()
-            throw error
-        }
+    private func publishCommittedFolderMove(
+        _ outcome: WorkspaceMutationOutcome<FolderMoveCommit>
+    ) async {
         let commit = outcome.committedValue
         projectFolderMove(
             commit,
@@ -5570,7 +5173,7 @@ final class WindowModel: ObservableObject {
         migrateFolderDisclosure(
             from: commit.sourceFolder.rawValue,
             to: commit.destinationFolder.rawValue,
-            vaultID: target.vaultID
+            vaultID: commit.vaultID
         )
         var presentationWarning: String?
         if outcome.identityRecoveryWarning == nil,
@@ -5598,34 +5201,6 @@ final class WindowModel: ObservableObject {
             outcome,
             presentationWarning: presentationWarning
         )
-    }
-
-    func prepareFolderSystemTrash(_ target: FolderMutationTarget) async throws {
-        guard !isMutatingFolder else {
-            throw WindowFileTreeMutationError.folderMutationInProgress
-        }
-        guard let assignment = workspaceAssignment,
-              assignment.vaults.values.contains(where: {
-                  $0.id == target.vaultID
-              }) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        isMutatingFolder = true
-        defer { isMutatingFolder = false }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let preview: SystemTrashDeletionPreview
-        do {
-            preview = try await documentController.prepareFolderSystemTrash(
-                inVault: target.vaultID,
-                relativePath: target.relativePath
-            )
-        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
-            systemTrashRecoveryTarget = .folder(target)
-            systemTrashRecoveryPreviewID = recovery.id
-            presentationRouter.alert = .localExecutionRecovery(recovery)
-            return
-        }
-        presentationRouter.present(.systemTrash(preview))
     }
 
     /// Folder mutations publish a new authoritative snapshot before returning,
@@ -5714,29 +5289,20 @@ final class WindowModel: ObservableObject {
         discoveryController.setExpandedFolders(migrated, in: scope)
     }
 
-    @discardableResult
-    func duplicateNote(
-        _ target: NoteMutationTarget,
-        to requestedPath: String
-    ) async throws -> NoteDocument {
-        try await flushRegisteredEditorIfMutatingActiveDocument(target)
+    private func publishCommittedNoteDuplication(
+        _ outcome: WorkspaceMutationOutcome<NoteDocument>,
+        target: NoteMutationTarget,
+        destination: String
+    ) async {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == target.documentID.vaultID
         }) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
+            reportCommittedMutationWarnings(
+                outcome,
+                presentationWarning: WorkspaceRegistryError.incompleteWorkspace.localizedDescription
+            )
+            return
         }
-        let expected = try mutationExpectedRevision(for: target)
-        let authorizedTarget = NoteMutationTarget(
-            documentID: target.documentID,
-            stableNoteID: target.stableNoteID,
-            revision: expected
-        )
-        let destination = Self.markdownPath(requestedPath)
-        let outcome = try await documentController.duplicate(
-            authorizedTarget,
-            to: destination
-        )
-        let document = outcome.committedValue
         var presentationWarning: String?
         do {
             try await refreshCachedWorkspaceVaultSnapshot(vaultID: target.documentID.vaultID)
@@ -5749,35 +5315,20 @@ final class WindowModel: ObservableObject {
             outcome,
             presentationWarning: presentationWarning
         )
-        return document
     }
 
-    func moveNote(
-        _ target: NoteMutationTarget,
-        to requestedPath: String
-    ) async throws {
-        try await flushRegisteredEditorIfMutatingActiveDocument(target)
+    private func publishCommittedNoteMove(
+        _ outcome: WorkspaceMutationOutcome<TriptychMoveCommit>,
+        target: NoteMutationTarget
+    ) async {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == target.documentID.vaultID
         }) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        let expected = try mutationExpectedRevision(for: target)
-        let authorizedTarget = NoteMutationTarget(
-            documentID: target.documentID,
-            stableNoteID: target.stableNoteID,
-            revision: expected
-        )
-        let requestedDestination = Self.markdownPath(requestedPath)
-        let outcome: WorkspaceMutationOutcome<TriptychMoveCommit>
-        do {
-            outcome = try await documentController.move(
-                authorizedTarget,
-                to: requestedDestination
+            reportCommittedMutationWarnings(
+                outcome,
+                presentationWarning: WorkspaceRegistryError.incompleteWorkspace.localizedDescription
             )
-        } catch {
-            await refreshTransactionRecoveryRecords()
-            throw error
+            return
         }
         let commit = outcome.committedValue
         let destination = commit.destination.relativePath
@@ -5837,64 +5388,6 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    func prepareNoteSystemTrash(_ target: NoteMutationTarget) async throws {
-        guard let assignment = workspaceAssignment else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let expected = try mutationExpectedRevision(for: target)
-        let authorizedTarget = NoteMutationTarget(
-            documentID: target.documentID,
-            stableNoteID: target.stableNoteID,
-            revision: expected
-        )
-        let preview: SystemTrashDeletionPreview
-        do {
-            preview = try await documentController.prepareSystemTrash(authorizedTarget)
-        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
-            systemTrashRecoveryTarget = .note(target)
-            systemTrashRecoveryPreviewID = recovery.id
-            presentationRouter.alert = .localExecutionRecovery(recovery)
-            return
-        }
-        presentationRouter.present(.systemTrash(preview))
-    }
-
-    func cancelLocalExecutionRecovery(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) {
-        guard systemTrashRecoveryPreviewID == preview.id else { return }
-        systemTrashRecoveryTarget = nil
-        systemTrashRecoveryPreviewID = nil
-        presentationRouter.alert = nil
-    }
-
-    func archiveLocalExecutionsAndRetrySystemTrash(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async {
-        guard systemTrashRecoveryPreviewID == preview.id,
-              let retryTarget = systemTrashRecoveryTarget else { return }
-        presentationRouter.alert = nil
-        systemTrashRecoveryTarget = nil
-        systemTrashRecoveryPreviewID = nil
-        do {
-            _ = try await documentController
-                .archiveUnsupportedLocalResearchExecutions(preview)
-            switch retryTarget {
-            case .note(let target):
-                try await prepareNoteSystemTrash(target)
-            case .folder(let target):
-                try await prepareFolderSystemTrash(target)
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            presentationRouter.alert = .actionFailure(
-                message: error.localizedDescription
-            )
-        }
-    }
-
     func requestCurrentNoteSystemTrash() {
         guard let currentNote,
               let target = NoteMutationTarget(currentNote),
@@ -5904,7 +5397,7 @@ final class WindowModel: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await prepareNoteSystemTrash(target)
+                try await libraryMutationController.prepareNoteSystemTrash(target)
             } catch is CancellationError {
                 return
             } catch {
@@ -5913,20 +5406,14 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func executeSystemTrash(_ preview: SystemTrashDeletionPreview) async throws {
-        guard let assignment = workspaceAssignment,
-              preview.sources.first?.vaultID != nil else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await editorFlushCoordinator.flushAllEditors(in: assignment.id)
-        let outcome: WorkspaceMutationOutcome<SystemTrashDeletionCommit>
-        do {
-            outcome = try await documentController.moveToSystemTrash(preview)
-        } catch {
-            await refreshTransactionRecoveryRecords()
+    private func publishSystemTrashResult(
+        _ preview: SystemTrashDeletionPreview,
+        outcome: WorkspaceMutationOutcome<SystemTrashDeletionCommit>?
+    ) async {
+        guard let outcome else {
             _ = try? await discoveryController.refreshWorkspace()
             await synchronizeSystemTrashPresentation(preview)
-            throw error
+            return
         }
         await synchronizeSystemTrashPresentation(preview)
         sourceMutationGeneration &+= 1
@@ -6476,7 +5963,7 @@ final class WindowModel: ObservableObject {
                 placement: placement,
                 in: shellState.selectedWorkspace
             )
-            if !isCreatingNote {
+            if !libraryMutationController.isCreatingNote {
                 scheduleLibraryReveal(for: document)
             }
         case .preserveTabMembership:

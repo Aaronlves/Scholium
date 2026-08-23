@@ -84,6 +84,8 @@ struct ScholiumCLI {
                     try await runRead(Array(arguments.dropFirst()), context: context)
                 case "note":
                     try await runNote(Array(arguments.dropFirst()), context: context)
+                case "record":
+                    try await runRecord(Array(arguments.dropFirst()), context: context)
                 case "discuss":
                     try await runDiscuss(Array(arguments.dropFirst()), context: context)
                 default:

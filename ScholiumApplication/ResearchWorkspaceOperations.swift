@@ -67,12 +67,12 @@ private enum InjectedResearchSettlementReplacementFault: Error {
 
 enum ResearchDiscussionFactory {
     static func make(
-        snapshot: ResearchFunctionSnapshot,
+        snapshot: ResearchActionRunSnapshot,
         triptychID: UUID
     ) throws -> PortableResearchDiscussion {
-        guard let action = snapshot.actionSnapshot,
-              action.executionKind == .discussion else {
-            throw ResearchFunctionContractError.invalidCompletion(
+        let action = snapshot.actionSnapshot
+        guard action.actionID == .discuss else {
+            throw ResearchActionRunContractError.invalidCompletion(
                 "A portable Discussion requires one resolved Discuss Action."
             )
         }
@@ -85,7 +85,7 @@ enum ResearchDiscussionFactory {
         let selected = try selectedIDs.compactMap { noteID -> ResearchActionNoteSnapshot? in
             guard seen.insert(noteID).inserted else { return nil }
             guard let note = readableByID[noteID] else {
-                throw ResearchFunctionContractError.invalidCompletion(
+                throw ResearchActionRunContractError.invalidCompletion(
                     "A selected Discussion participant is outside the frozen read authority."
                 )
             }
@@ -260,8 +260,8 @@ extension WorkspaceHandle {
     }
 
     func createDiscussion(
-        target: ResearchFunctionTarget,
-        focalNotes: [ResearchFunctionMaterial],
+        target: ResearchActionNoteSnapshot,
+        focalNotes: [ResearchActionNoteSnapshot],
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
@@ -275,7 +275,7 @@ extension WorkspaceHandle {
     }
 
     func createComment(
-        target: ResearchFunctionTarget,
+        target: ResearchActionNoteSnapshot,
         lineReference: ResearchLineReference,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
@@ -289,8 +289,8 @@ extension WorkspaceHandle {
     }
 
     private func createResearcherDiscussion(
-        target: ResearchFunctionTarget,
-        focalNotes: [ResearchFunctionMaterial],
+        target: ResearchActionNoteSnapshot,
+        focalNotes: [ResearchActionNoteSnapshot],
         passage: CommentAnchor?,
         lineReference: ResearchLineReference?,
         researcherMessage: String
@@ -298,7 +298,7 @@ extension WorkspaceHandle {
         let targetContext = try await researchContext(
             for: target.note,
             expectedRevision: target.fingerprint,
-            permits: { ResearchFunctionTargetRole(vaultRole: $0) == target.role },
+            permits: { ResearchActionTargetRole(vaultRole: $0) == target.role },
             unavailable: { ResearchOperationError.commentUnavailable($0) }
         )
         guard targetContext.identity.id == target.noteID,
@@ -327,7 +327,7 @@ extension WorkspaceHandle {
             let context = try await researchContext(
                 for: focal.note,
                 expectedRevision: focal.fingerprint,
-                permits: { ResearchFunctionTargetRole(vaultRole: $0) == focal.role },
+                permits: { ResearchActionTargetRole(vaultRole: $0) == focal.role },
                 unavailable: { ResearchOperationError.commentUnavailable($0) }
             )
             guard context.identity.id == focal.noteID else {
@@ -472,7 +472,7 @@ extension WorkspaceHandle {
         if let local = try await researchWorkspaceDependencies.localResearchExecutionStore.recordIfPresent(
             id: discussionID
         ) {
-            guard local.snapshot.request.function == .discuss else {
+            guard local.snapshot.request.actionID == .discuss else {
                 throw ResearchRecordStoreV1Error.discussionFinishConflict(discussionID)
             }
             _ = try await validatedDiscussionStatements(snapshot: local.snapshot)
@@ -501,7 +501,7 @@ extension WorkspaceHandle {
     }
 
     func validatedDiscussionStatements(
-        snapshot: ResearchFunctionSnapshot
+        snapshot: ResearchActionRunSnapshot
     ) async throws -> [PortableResearchStatement] {
         let expected = try ResearchDiscussionFactory.make(
             snapshot: snapshot,
@@ -510,7 +510,7 @@ extension WorkspaceHandle {
         if let active = try await researchWorkspaceDependencies.portableResearchRecordStore
             .activeDiscussionIfPresent(id: snapshot.runID) {
             guard ResearchDiscussionFactory.activeMatches(active, expected: expected) else {
-                throw ResearchFunctionContractError.invalidCompletion(
+                throw ResearchActionRunContractError.invalidCompletion(
                     "The portable Discussion no longer matches its frozen Action run."
                 )
             }
@@ -521,13 +521,13 @@ extension WorkspaceHandle {
                 id: snapshot.runID
             )
             guard ResearchDiscussionFactory.finishedMatches(finished, expected: expected) else {
-                throw ResearchFunctionContractError.invalidCompletion(
+                throw ResearchActionRunContractError.invalidCompletion(
                     "The finished Discussion no longer matches its frozen Action run."
                 )
             }
             return finished.statements
         } catch ResearchRecordStoreV1Error.recordNotFound(_) {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "Record a durable attributed reply before completing Discuss."
             )
         }
@@ -1700,7 +1700,7 @@ extension WorkspaceHandle {
     private func portableDiscussionParticipant(
         noteID: UUID,
         note: VaultQualifiedNoteID,
-        role: ResearchFunctionTargetRole,
+        role: ResearchActionTargetRole,
         title: String,
         fingerprint: DocumentFingerprint
     ) throws -> PortableResearchNoteRevision {
@@ -1742,7 +1742,7 @@ extension WorkspaceHandle {
     }
 
     private func actionRole(
-        _ role: ResearchFunctionTargetRole
+        _ role: ResearchActionTargetRole
     ) -> ResearchActionTargetRole {
         switch role {
         case .analysis: .analysis

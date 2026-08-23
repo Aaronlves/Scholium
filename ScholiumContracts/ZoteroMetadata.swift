@@ -17,9 +17,9 @@ public struct ZoteroLibraryInfo: Codable, Hashable, Sendable {
     }
 }
 
-/// One immutable, task-scoped Zotero read attached to an Analysis Research
-/// Function. It is durable only with that function record: a later function
-/// performs a fresh read, while resuming this function reuses this snapshot.
+/// One immutable, task-scoped Zotero read attached to an Analyze Run. It is
+/// durable only with that Run record: a later Run performs a fresh read, while
+/// resuming this Run reuses this snapshot.
 public struct ZoteroBibliographicContext: Codable, Hashable, Sendable {
     public enum RetrievalState: String, Codable, Hashable, Sendable {
         case resolved

@@ -92,8 +92,7 @@ extension WorkspaceHandle {
             .recordIfPresent(id: authenticated.runID),
               execution.triptychID == self.id,
               execution.completion == nil,
-              let action = execution.snapshot.actionSnapshot,
-              action.actionID == .discuss,
+              execution.snapshot.actionSnapshot.actionID == .discuss,
               execution.discussion?.id == authenticated.runID,
               let discussionContract = execution.discussion?.responseContract,
               discussionContract.validationIssues.isEmpty else {
@@ -112,7 +111,7 @@ extension WorkspaceHandle {
             throw ResearchAgentConnectionError.runUnavailable
         }
         guard ResearchDiscussionFactory.activeMatches(active, expected: expected) else {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "The portable Discussion no longer matches its frozen Discuss Action."
             )
         }
@@ -184,8 +183,7 @@ extension WorkspaceHandle {
             .localResearchExecutionStore.recordIfPresent(id: authenticated.runID),
               execution.triptychID == self.id,
               execution.completion == nil,
-              let action = execution.snapshot.actionSnapshot,
-              action.actionID == .discuss,
+              execution.snapshot.actionSnapshot.actionID == .discuss,
               execution.discussion?.id == authenticated.runID else {
             throw ResearchAgentConnectionError.runUnavailable
         }
@@ -208,12 +206,12 @@ extension WorkspaceHandle {
                       && !$0.attribution.isEmpty
                       && !$0.text.isEmpty
               }) else {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "Record at least one durable attributed Agent turn before finishing Discuss."
             )
         }
 
-        _ = try await researchFunctionCoordinator.finishProtectedDiscussion(
+        _ = try await researchActionRunCoordinator.finishProtectedDiscussion(
             runID: authenticated.runID,
             host: self
         )

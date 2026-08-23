@@ -3,19 +3,19 @@ import Foundation
 @testable import ScholiumApplication
 import Testing
 
-extension ResearchFunctionOperationsTests {
+extension ResearchActionRunOperationsTests {
     @Test("Analyze requires one current explicit source while Synthesize does not")
     func analyzeSourceRequirement() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let topic = try await researchFunctionTarget(
+        let topic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -26,8 +26,8 @@ extension ResearchFunctionOperationsTests {
         #expect(status.state == .repairRequired)
         #expect(status.failure?.code == .missingBinding)
         let analyzeAvailability = try #require(
-            try await handle.research.availableProtectedFunctions(for: analysis).first {
-                $0.function == .develop
+            try await handle.research.availableActionOperations(for: analysis).first {
+                $0.actionID == .analyze
             }
         )
         #expect(!analyzeAvailability.isEnabled)
@@ -35,14 +35,14 @@ extension ResearchFunctionOperationsTests {
             analyzeAvailability.repairReasons.first?.sourceAccessFailure?.code
                 == .missingBinding
         )
-        await #expect(throws: ResearchFunctionContractError.self) {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(function: .develop, target: analysis)
+        await #expect(throws: ResearchActionRunContractError.self) {
+            _ = try await handle.research.prepareActionRun(
+                ResearchActionRunRequest(actionID: .analyze, target: analysis)
             )
         }
 
-        let synthesis = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: topic)
+        let synthesis = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .synthesize, target: topic)
         )
         #expect(synthesis.snapshot.sourceReference == nil)
 
@@ -52,8 +52,8 @@ extension ResearchFunctionOperationsTests {
                 selection: .localFile(fixture.analysisSourceURL)
             )
         )
-        let analyze = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let analyze = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         #expect(analyze.snapshot.sourceReference == reference)
         #expect(analyze.instructions.contains(fixture.analysisSourceURL.path))
@@ -78,22 +78,22 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         try await handle.research.removeSourceAccess(for: analysis)
 
         await expectSourceFailure(.missingBinding) {
-            _ = try await handle.research.protectedFunctionRun(id: preparation.runID)
+            _ = try await handle.research.actionRunDetails(id: preparation.runID)
         }
         await expectSourceFailure(.missingBinding) {
-            _ = try await completeTestProtectedFunction(handle: handle, submission:
-                ResearchFunctionCompletionSubmission(
+            _ = try await completeTestActionRun(handle: handle, submission:
+                ResearchActionRunCompletionSubmission(
                     runID: preparation.runID,
                     confirmationToken: preparation.snapshot.confirmationToken,
                     recordTitle: try ResearchRecordTitle("Test research result"),
@@ -113,13 +113,13 @@ extension ResearchFunctionOperationsTests {
         defer { fixture.remove() }
         var runtime = fixture.runtime()
         var handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         let executionDirectory = await handle.services
             .localResearchExecutionStore.storageURL
@@ -153,7 +153,7 @@ extension ResearchFunctionOperationsTests {
         runtime = fixture.runtime()
         handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         await expectSourceFailure(.missingBinding) {
-            _ = try await handle.research.protectedFunctionRun(id: preparation.runID)
+            _ = try await handle.research.actionRunDetails(id: preparation.runID)
         }
         await runtime.shutdown()
     }
@@ -175,7 +175,7 @@ extension ResearchFunctionOperationsTests {
         try Data("source".utf8).write(to: source, options: .atomic)
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -187,8 +187,8 @@ extension ResearchFunctionOperationsTests {
             )
         )
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         #expect(preparation.instructions.contains("\\n## \(marker)"))
         #expect(!preparation.instructions.contains("\n## \(marker)"))
@@ -209,7 +209,7 @@ extension ResearchFunctionOperationsTests {
         )
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -218,11 +218,11 @@ extension ResearchFunctionOperationsTests {
         let status = try await handle.research.sourceAccess(for: analysis)
         #expect(status.failure?.code == .sourceChanged)
         do {
-            _ = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(function: .develop, target: analysis)
+            _ = try await handle.research.prepareActionRun(
+                ResearchActionRunRequest(actionID: .analyze, target: analysis)
             )
             Issue.record("Changed source bytes must block Analyze.")
-        } catch let error as ResearchFunctionContractError {
+        } catch let error as ResearchActionRunContractError {
             guard case .sourceAccessUnavailable(let failure) = error else {
                 Issue.record("Unexpected Analyze failure: \(error)")
                 return
@@ -266,7 +266,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -282,8 +282,8 @@ extension ResearchFunctionOperationsTests {
             )
         )
         #expect(reference.identity.route == .zoteroAttachment)
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         #expect(preparation.snapshot.sourceReference == nil)
         #expect(preparation.snapshot.zoteroBibliographicContext?.itemKey == "PARENT01")
@@ -318,7 +318,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -335,7 +335,7 @@ extension ResearchFunctionOperationsTests {
                 )
             )
             Issue.record("A different selected file must not satisfy Zotero identity.")
-        } catch let error as ResearchFunctionContractError {
+        } catch let error as ResearchActionRunContractError {
             guard case .sourceAccessUnavailable(let failure) = error else {
                 Issue.record("Unexpected source binding failure: \(error)")
                 return
@@ -379,7 +379,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -430,7 +430,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        var analysis = try await researchFunctionTarget(
+        var analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -454,14 +454,14 @@ extension ResearchFunctionOperationsTests {
             ),
             expectedRevision: bindingSnapshot.revision
         )
-        analysis = try await researchFunctionTarget(
+        analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         #expect(preparation.snapshot.sourceReference == nil)
         #expect(preparation.snapshot.zoteroBibliographicContext?.itemKey == "PARENT99")
@@ -480,7 +480,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -488,15 +488,15 @@ extension ResearchFunctionOperationsTests {
         try await handle.research.removeSourceAccess(for: analysis)
 
         let availability = try #require(
-            try await handle.research.availableProtectedFunctions(for: analysis).first {
-                $0.function == .develop
+            try await handle.research.availableActionOperations(for: analysis).first {
+                $0.actionID == .analyze
             }
         )
         #expect(availability.isEnabled)
         #expect(availability.repairReasons.isEmpty)
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         #expect(preparation.snapshot.sourceReference == nil)
         #expect(preparation.snapshot.zoteroBibliographicContext?.itemKey == "META0001")
@@ -516,16 +516,16 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
         try await handle.research.removeSourceAccess(for: target)
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .develop,
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .analyze,
                 target: target,
                 instruction: "Analyze the paper retrieved through Zotero."
             )
@@ -591,7 +591,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -607,8 +607,8 @@ extension ResearchFunctionOperationsTests {
             )
         )
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(function: .develop, target: analysis)
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(actionID: .analyze, target: analysis)
         )
         #expect(preparation.snapshot.sourceReference?.identity.zoteroItemKey == "PARENT01")
         #expect(await script.requestCount() == 8)
@@ -631,24 +631,24 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let originalTarget = try await researchFunctionTarget(
+        let originalTarget = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let target = ResearchFunctionTarget(
+        let target = ResearchActionNoteSnapshot(
             noteID: originalTarget.noteID,
             note: originalTarget.note,
             role: originalTarget.role,
             fingerprint: originalTarget.fingerprint,
             title: "Analysis\n## \(marker)"
         )
-        let originalMaterial = try await researchFunctionTarget(
+        let originalMaterial = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let material = ResearchFunctionMaterial(
+        let material = ResearchActionNoteSnapshot(
             noteID: originalMaterial.noteID,
             note: originalMaterial.note,
             role: originalMaterial.role,
@@ -657,9 +657,9 @@ extension ResearchFunctionOperationsTests {
         )
         let originalBytes = try await handle.documents.load(fixture.analysisID)
 
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: target,
                 materials: [material],
                 instruction: "Discuss the bounded evidence."
@@ -692,16 +692,16 @@ extension ResearchFunctionOperationsTests {
         })
         let runtime = fixture.runtime(zotero: zotero)
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
         let original = try await handle.documents.load(fixture.analysisID)
 
-        let first = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let first = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: target,
                 instruction: "Discuss the source identity."
             )
@@ -735,14 +735,14 @@ extension ResearchFunctionOperationsTests {
         ))
         #expect(await script.requestCount() == 1)
 
-        let resumed = try await handle.research.protectedFunctionRun(id: first.runID)
+        let resumed = try await handle.research.actionRunDetails(id: first.runID)
         #expect(resumed.snapshot.zoteroBibliographicContext == context)
         #expect(await script.requestCount() == 1)
         _ = try await handle.research.finishDiscussion(discussionID: first.runID)
 
-        let second = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let second = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: target,
                 instruction: "Discuss the source identity again."
             )
@@ -765,27 +765,27 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let work = try await researchFunctionTarget(
+        let work = try await researchActionTarget(
             fixture.workID,
             role: .work,
             handle: handle
         )
 
-        let analysisPreparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let analysisPreparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: analysis,
                 instruction: "Discuss the Analysis."
             )
         )
-        let workPreparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
+        let workPreparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
                 target: work,
                 instruction: "Discuss the Work."
             )
@@ -897,7 +897,7 @@ extension ResearchFunctionOperationsTests {
             try await script.load(request)
         }))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -908,9 +908,9 @@ extension ResearchFunctionOperationsTests {
             .notFound,
             .invalidResponse,
         ] {
-            let preparation = try await handle.research.prepareProtectedFunction(
-                ResearchFunctionRequest(
-                    function: .discuss,
+            let preparation = try await handle.research.prepareActionRun(
+                ResearchActionRunRequest(
+                    actionID: .discuss,
                     target: target,
                     instruction: "Continue despite unavailable bibliography metadata."
                 )

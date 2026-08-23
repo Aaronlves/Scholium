@@ -134,6 +134,59 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
+if rg -n --glob '*.swift' \
+  '\b(ResearchFunction[A-Za-z0-9_]*|ResearchActionFunctionMapping|ResearchActionExecutionKind|expectedExecutionKind)\b|execution_kind|case[[:space:]]+"function"' \
+  "${LEGACY_RESEARCH_ROOTS[@]}"; then
+  echo "Research Action single-model guard failed: retired Function identity remains reachable." >&2
+  exit 1
+fi
+
+python3 - "${ROOT}/Scholium/Resources/Localizable.xcstrings" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+catalog = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+allowed = {
+    "A local connection does not imply a local model. Cloud-provider data practices still apply.",
+}
+retired = sorted(
+    key for key in catalog.get("strings", {})
+    if "practice" in key.lower() and key not in allowed
+)
+if retired:
+    print("Skill reference localization guard failed:", file=sys.stderr)
+    print("\n".join(retired), file=sys.stderr)
+    raise SystemExit(1)
+PY
+
+if [[ -d "${ROOT}/.agents/skills/scholium-research-action-collaboration" ]] \
+  && rg -n '\bPractice(s)?\b' \
+    "${ROOT}/.agents/skills/scholium-research-action-collaboration"; then
+  echo "Developer Skill guard failed: Practice returned as a product-level academic object." >&2
+  exit 1
+fi
+
+if rg -n --glob '*.swift' \
+  '\b(ResearchPractice[A-Za-z0-9_]*|PracticeCatalog|PracticeResolver|PracticeRegistration)\b' \
+  "${LEGACY_RESEARCH_ROOTS[@]}"; then
+  echo "Skill reference guard failed: a retired Practice product owner returned." >&2
+  exit 1
+fi
+
+if rg -n 'AgentAnalysisCreation(Reservation|BindingState)' \
+  "${ROOT}/ScholiumCore/LocalResearchExecutionStore.swift"; then
+  echo "Creation reservation ownership guard failed: Run storage owns creation state again." >&2
+  exit 1
+fi
+
+if rg -n --glob 'ScholiumApp.swift' \
+  'func[[:space:]]+(requestUntitledNoteCreation|requestUntitledFolderCreation|moveFolder|duplicateNote|moveNote|prepareNoteSystemTrash|prepareFolderSystemTrash|executeSystemTrash|requestMarkdownImport|restoreWorkspaceAccess|rebuildUnsupportedPortableControl|archiveInvalidNoteMetadataRecord|removeUnavailableTriptychRegistration|prepareZoteroLinkAndFill|prepareZoteroMetadataRefresh|commitZoteroMetadataPlan|clearZoteroBinding)[[:space:]]*\(' \
+  "${ROOT}/Scholium/App"; then
+  echo "Window ownership guard failed: a split Library, Recovery, or Zotero operation returned to WindowModel." >&2
+  exit 1
+fi
+
 if rg -n --glob '*.swift' --glob '*.sh' \
   'scholium[[:space:]]+skills|skills[[:space:]]+catalog|scholium[[:space:]]+workflow' \
   "${LEGACY_RESEARCH_ROOTS[@]}" \
@@ -146,7 +199,7 @@ if rg -n --hidden \
   --glob '!.git/**' \
   --glob '!.build/**' \
   --glob '!verify.sh' \
-  'skill-registrations-v1|method-edit-recovery-v1|research-execution-v[2-7]|execution-v[2-7]\.lock|Contents/Resources/Skills/catalog\.yaml|Researcher Skills/scholium-philosophical-practices' \
+  'skill-registrations-v1|method-edit-recovery-v1|research-execution-v[2-7]|execution-v[2-7]\.lock|Contents/Resources/Skills/catalog\.yaml|Researcher Skills/scholium-philosophical-practices|A Practice already exists|Method/Practice|Skill/Practice|owning Method or Practice|preserve Run, Method, Practice' \
   "${LEGACY_RESEARCH_ROOTS[@]}" \
   "${ROOT}/Tools" \
   "${ROOT}/Tests"; then

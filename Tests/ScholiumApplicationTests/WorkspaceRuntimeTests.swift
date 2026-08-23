@@ -734,8 +734,8 @@ struct WorkspaceRuntimeTests {
             workspaceRegistryStorageURL: fixture.registryStorageURL
         )
         let seedHandle = try await seedRuntime.openWorkspace(id: fixture.assignment.id)
-        let helpers = ResearchFunctionOperationsTests()
-        let target = try await researchFunctionTarget(
+        let helpers = ResearchActionRunOperationsTests()
+        let target = try await researchActionTarget(
             fixture.analysisNoteID,
             role: .analysis,
             handle: seedHandle
@@ -744,7 +744,7 @@ struct WorkspaceRuntimeTests {
             try await helpers.actionRequest(
                 handle: seedHandle,
                 actionID: .discuss,
-                target: helpers.actionNote(target),
+                target: target,
                 academicValues: [
                     ResearchAcademicFieldID(rawValue: "research-request")!:
                         .freeText("Defer this orphan repair until completion."),

@@ -31,6 +31,8 @@ struct ActionCLIExecutableLifecycleTests {
         )
         #expect(!rootHelp.contains("pairing-code.txt"))
         #expect(!rootHelp.contains("< pairing"))
+        #expect(rootHelp.contains("scholium record list --note <stable-note-uuid>"))
+        #expect(rootHelp.contains("scholium record read <record-uuid>"))
 
         for command in commands {
             #expect(rootHelp.contains("scholium agent \(command)"))
@@ -945,7 +947,7 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(Set(observedBindingIDs.values).count == 1)
     }
 
-    @Test("The real CLI exposes the provider-discriminated Search v9 text and JSONL contracts")
+    @Test("The real CLI exposes Search v9 plus direct fingerprinted Record retrieval")
     func searchV7Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
@@ -1090,6 +1092,83 @@ struct ActionCLIExecutableLifecycleTests {
             recordSummary["availability"] as? [String: Any]
         )
         #expect(recordAvailability["provider"] as? String == SearchProvider.record.rawValue)
+
+        let relatedRecords = try cli.run([
+            "record", "list", "--note", fixture.analysisTarget.noteID.uuidString,
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let relatedRows = try String(decoding: relatedRecords.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .map { line in
+                try #require(
+                    JSONSerialization.jsonObject(with: Data(line.utf8))
+                        as? [String: Any]
+                )
+            }
+        #expect(relatedRows.count == 2)
+        #expect(relatedRows[0]["type"] as? String == "record_list_summary")
+        #expect(relatedRows[0]["record_count"] as? Int == 1)
+        #expect(relatedRows[0]["source_manifest_hash"] as? String != nil)
+        #expect(relatedRows[1]["type"] as? String == "research_record_summary")
+        #expect(
+            (relatedRows[1]["record_id"] as? String)?.lowercased()
+                == fixture.recordID.uuidString.lowercased()
+        )
+        #expect(relatedRows[1]["record_fingerprint"] as? [String: Any] != nil)
+        let participants = try #require(
+            relatedRows[1]["participating_notes"] as? [[String: Any]]
+        )
+        #expect(participants.contains {
+            ($0["note_id"] as? String)?.lowercased()
+                == fixture.analysisTarget.noteID.uuidString.lowercased()
+        })
+
+        let noRelatedRecords = try cli.run([
+            "record", "list", "--note", fixture.workTarget.noteID.uuidString,
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let noRelatedRows = String(decoding: noRelatedRecords.stdout, as: UTF8.self)
+            .split(separator: "\n")
+        #expect(noRelatedRows.count == 1)
+        let noRelatedSummary = try #require(
+            JSONSerialization.jsonObject(with: Data(noRelatedRows[0].utf8))
+                as? [String: Any]
+        )
+        #expect(noRelatedSummary["record_count"] as? Int == 0)
+
+        let exactRecord = try cli.run([
+            "record", "read", fixture.recordID.uuidString,
+            "--triptych", triptych, "--format", "json",
+        ])
+        let recordEnvelope = try #require(
+            JSONSerialization.jsonObject(with: exactRecord.stdout) as? [String: Any]
+        )
+        #expect(recordEnvelope["type"] as? String == "research_record")
+        #expect(recordEnvelope["record_fingerprint"] as? [String: Any] != nil)
+        let completeRecord = try #require(recordEnvelope["record"] as? [String: Any])
+        #expect(
+            (completeRecord["id"] as? String)?.lowercased()
+                == fixture.recordID.uuidString.lowercased()
+        )
+        #expect(completeRecord["statements"] as? [[String: Any]] != nil)
+
+        let missingRecord = try cli.runExpectingFailure([
+            "record", "read", "00000000-0000-0000-0000-000000000001",
+            "--triptych", triptych, "--format", "json",
+        ])
+        let missingRecordReport = try #require(
+            JSONSerialization.jsonObject(with: missingRecord.stderr) as? [String: Any]
+        )
+        #expect(missingRecordReport["code"] as? String == "record_not_found")
+
+        let missingNoteRecords = try cli.runExpectingFailure([
+            "record", "list", "--note", "00000000-0000-0000-0000-000000000002",
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let missingNoteReport = try #require(
+            JSONSerialization.jsonObject(with: missingNoteRecords.stderr) as? [String: Any]
+        )
+        #expect(missingNoteReport["code"] as? String == "note_not_found")
 
         let negativeStructured = try cli.run([
             "search", "-has:broken-link", "--triptych", triptych,
@@ -1662,7 +1741,6 @@ struct ActionCLIExecutableLifecycleTests {
         }
         return ResearchActionExecutionRequest(
             actionID: actionID,
-            expectedExecutionKind: presented.definition.executionKind,
             expectedProfileRevision: presented.profile.profileRevision,
             expectedProfileDocumentRevision:
                 presented.profile.profileDocumentRevision,
@@ -1839,6 +1917,7 @@ private struct ActionCLIFixture {
     let analysisTarget: ResearchActionNoteSnapshot
     let topicTarget: ResearchActionNoteSnapshot
     let workTarget: ResearchActionNoteSnapshot
+    let recordID: UUID
 
     static func make(
         triptychName: String = "Action CLI Fixture"
@@ -1912,7 +1991,7 @@ private struct ActionCLIFixture {
         let analysisTarget = try await target(analysisID, role: .analysis, handle: handle)
         _ = try await handle.research.bindSourceAccess(
             ResearchSourceBindingRequest(
-                target: ResearchFunctionTarget(
+                target: ResearchActionNoteSnapshot(
                     noteID: analysisTarget.noteID,
                     note: analysisTarget.note,
                     role: .analysis,
@@ -1935,6 +2014,27 @@ private struct ActionCLIFixture {
             handle: handle
         )
         let workTarget = try await target(workID, role: .work, handle: handle)
+        let discussion = try await handle.research.createDiscussion(
+            target: ResearchActionNoteSnapshot(
+                noteID: analysisTarget.noteID,
+                note: analysisTarget.note,
+                role: .analysis,
+                fingerprint: analysisTarget.fingerprint,
+                title: analysisTarget.title
+            ),
+            focalNotes: [],
+            passage: nil,
+            researcherMessage: "Inspect the synthetic Analysis Record."
+        )
+        _ = try await handle.research.appendDiscussionStatement(
+            discussionID: discussion.id,
+            author: .agent,
+            attribution: "Research Agent",
+            text: "The synthetic Analysis retains one exact finished Record."
+        )
+        let record = try await handle.research.finishDiscussion(
+            discussionID: discussion.id
+        )
         await runtime.shutdown()
         return Self(
             rootURL: root,
@@ -1942,7 +2042,8 @@ private struct ActionCLIFixture {
             assignment: assignment,
             analysisTarget: analysisTarget,
             topicTarget: topicTarget,
-            workTarget: workTarget
+            workTarget: workTarget,
+            recordID: record.id
         )
     }
 

@@ -988,8 +988,8 @@ enum WorkspaceSnapshotBuilder {
     ) -> [WorkspaceResearchActivity] {
         let recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
         return executions.compactMap { execution in
-            guard let action = execution.snapshot.actionSnapshot,
-                  action.actionID != .discuss else { return nil }
+            let action = execution.snapshot.actionSnapshot
+            guard action.actionID != .discuss else { return nil }
             let record = recordsByID[execution.id]
             if record != nil { return nil }
             let entryStates = execution.boundedWriteSet.entries.map(\.state)
@@ -1106,7 +1106,7 @@ enum WorkspaceSnapshotBuilder {
     ) -> [AttentionQueueItem] {
         var currentByNoteID: [UUID: CurrentAttentionNote] = [:]
         for loaded in loadedVaults {
-            guard let functionRole = ResearchFunctionTargetRole(
+            guard let functionRole = ResearchActionTargetRole(
                 vaultRole: loaded.vault.role
             ) else {
                 continue

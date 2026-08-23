@@ -2,7 +2,7 @@ import Foundation
 import ScholiumContracts
 import ScholiumCore
 
-struct ValidatedFunctionObject: Sendable {
+struct ValidatedActionNote: Sendable {
     let noteID: UUID
     let note: WorkspaceNoteSnapshot
 }
@@ -11,7 +11,7 @@ struct ValidatedFunctionObject: Sendable {
 /// This is intentionally narrower than the Workspace-wide service aggregate:
 /// the coordinator cannot reach search, permission, recovery-policy, or window
 /// state through this bundle.
-struct ResearchFunctionCoordinatorDependencies: Sendable {
+struct ResearchActionRunCoordinatorDependencies: Sendable {
     let repositories: [UUID: VaultRepository]
     let vaults: [UUID: RegisteredVault]
     let controlStore: TriptychControlStore
@@ -29,31 +29,31 @@ struct ResearchFunctionCoordinatorDependencies: Sendable {
 /// the sole ownership of Discussion storage and
 /// disposable snapshot publication; none of those authorities are copied into
 /// the coordinator.
-protocol ResearchFunctionCoordinatorHost: Actor {
+protocol ResearchActionRunCoordinatorHost: Actor {
     var id: UUID { get }
 
     func requireActive() throws
-    func researchFunctionCurrentSnapshot() -> WorkspaceSnapshot
-    func researchFunctionControlledFingerprint(
-        for target: ResearchFunctionTarget
+    func researchActionCurrentSnapshot() -> WorkspaceSnapshot
+    func researchActionControlledFingerprint(
+        for target: ResearchActionNoteSnapshot
     ) async throws -> DocumentFingerprint
     func resolveDefaultResearchActionContext(
-        for request: ResearchFunctionRequest
+        for request: ResearchActionRunRequest
     ) async throws -> ResolvedResearchActionContext
     func revokeResearchAgentRunAccess(runID: UUID) async
     func finalizeResearchAgentRunAccess(runID: UUID) async
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
-    func publishCommittedResearchFunctionChange(
+    func publishCommittedResearchActionChange(
         _ operation: String
     ) async throws -> String?
     func hasPendingResearchWriteRecovery(
         runID: UUID,
         writes: [ResearchDocumentWriteRecord]
     ) async throws -> Bool
-    func scheduleResearchFunctionRefreshRecovery()
+    func scheduleResearchActionRefreshRecovery()
 }
 
-/// One per-workspace owner for protected Research Function preparation,
+/// One per-workspace owner for Research Action Run preparation,
 /// delivery, run records, and terminal lifecycle transitions.
 ///
 /// This component owns availability, immutable preparation and delivery,
@@ -62,10 +62,10 @@ protocol ResearchFunctionCoordinatorHost: Actor {
 /// source-operation exclusion, Discussion storage, or refresh publication. Its
 /// methods execute on the existing Workspace actor through an `isolated` host,
 /// so this extraction adds no actor or actor hop.
-final class ResearchFunctionCoordinator: Sendable {
+final class ResearchActionRunCoordinator: Sendable {
     let workspaceID: UUID
 
-    let dependencies: ResearchFunctionCoordinatorDependencies
+    let dependencies: ResearchActionRunCoordinatorDependencies
 
     private var localExecutionStore: LocalResearchExecutionStore {
         dependencies.localExecutionStore
@@ -73,7 +73,7 @@ final class ResearchFunctionCoordinator: Sendable {
 
     init(
         workspaceID: UUID,
-        dependencies: ResearchFunctionCoordinatorDependencies
+        dependencies: ResearchActionRunCoordinatorDependencies
     ) {
         self.workspaceID = workspaceID
         self.dependencies = dependencies
@@ -81,13 +81,13 @@ final class ResearchFunctionCoordinator: Sendable {
 
     func record(runID: UUID) async throws -> LocalResearchExecutionRecord {
         guard let local = try await localExecutionStore.recordIfPresent(id: runID) else {
-            throw ResearchFunctionContractError.preparationNotFound(runID)
+            throw ResearchActionRunContractError.preparationNotFound(runID)
         }
         return local
     }
 
     func persistCompletion(
-        _ completion: ResearchFunctionCompletion,
+        _ completion: ResearchActionRunCompletion,
         in stored: LocalResearchExecutionRecord,
         resultPayload: ResearchRunResultPayload? = nil,
         writeReport: ResearchRunWriteReport? = nil,
@@ -115,10 +115,10 @@ final class ResearchFunctionCoordinator: Sendable {
 
     func captureAgentChangeStartingRevision(
         runID: UUID,
-        target: ResearchFunctionTarget
+        target: ResearchActionNoteSnapshot
     ) async throws -> AgentChangeEvidence {
         guard let repository = dependencies.repositories[target.note.vaultID] else {
-            throw ResearchFunctionContractError.targetUnavailable
+            throw ResearchActionRunContractError.targetUnavailable
         }
         let document = try await repository.load(
             relativePath: target.note.relativePath
@@ -138,7 +138,7 @@ final class ResearchFunctionCoordinator: Sendable {
             )
     }
 
-    func cancelProtectedFunction<Host: ResearchFunctionCoordinatorHost>(
+    func cancelActionRun<Host: ResearchActionRunCoordinatorHost>(
         runID: UUID,
         host: isolated Host
     ) async throws {
@@ -147,28 +147,25 @@ final class ResearchFunctionCoordinator: Sendable {
         try await cancel(runID: runID, stored: stored, host: host)
     }
 
-    func cancelAction<Host: ResearchFunctionCoordinatorHost>(
+    func cancelAction<Host: ResearchActionRunCoordinatorHost>(
         runID: UUID,
         host: isolated Host
     ) async throws {
         try requireMatchingActiveHost(host)
         let stored = try await record(runID: runID)
-        guard stored.snapshot.actionSnapshot != nil else {
-            throw ResearchActionExecutionContractError.staleResolution
-        }
         try await cancel(runID: runID, stored: stored, host: host)
     }
 
     /// Finish is a record transition, not acceptance of the agent's response
     /// and not a claim that the Discussion reached a true result.
-    func finishProtectedDiscussion<Host: ResearchFunctionCoordinatorHost>(
+    func finishProtectedDiscussion<Host: ResearchActionRunCoordinatorHost>(
         runID: UUID,
         host: isolated Host
     ) async throws -> PortableResearchRecord {
         try requireMatchingActiveHost(host)
         let stored = try await record(runID: runID)
-        guard stored.snapshot.request.function == .discuss else {
-            throw ResearchFunctionContractError.invalidCompletion(
+        guard stored.snapshot.request.actionID == .discuss else {
+            throw ResearchActionRunContractError.invalidCompletion(
                 "Only a current portable Discussion can be finished."
             )
         }
@@ -177,7 +174,7 @@ final class ResearchFunctionCoordinator: Sendable {
         return record
     }
 
-    private func cancel<Host: ResearchFunctionCoordinatorHost>(
+    private func cancel<Host: ResearchActionRunCoordinatorHost>(
         runID: UUID,
         stored: LocalResearchExecutionRecord,
         host: isolated Host
@@ -185,14 +182,14 @@ final class ResearchFunctionCoordinator: Sendable {
         if let existing = stored.completion {
             if existing.state == .cancelled {
                 await host.revokeResearchAgentRunAccess(runID: runID)
-                if stored.snapshot.request.function == .discuss {
+                if stored.snapshot.request.actionID == .discuss {
                     _ = try await host.finishDiscussion(discussionID: runID)
                 }
                 return
             }
             // Any existing completion is already durable evidence for this
             // Run. Cancellation must not overwrite that terminal transition.
-            throw ResearchFunctionContractError.cancellationAfterCompletion(runID)
+            throw ResearchActionRunContractError.cancellationAfterCompletion(runID)
         }
         let hasPendingWriteRecovery = try await host.hasPendingResearchWriteRecovery(
             runID: runID,
@@ -203,7 +200,7 @@ final class ResearchFunctionCoordinator: Sendable {
         }), !stored.zoteroBindingWriteRecords.contains(where: {
             [.writing, .recoveryRequired].contains($0.state)
         }), !hasPendingWriteRecovery else {
-            throw ResearchFunctionContractError.unresolvedWriteRecovery(runID)
+            throw ResearchActionRunContractError.unresolvedWriteRecovery(runID)
         }
         guard !stored.documentWriteRecords.contains(where: {
             $0.state == .committed
@@ -214,14 +211,14 @@ final class ResearchFunctionCoordinator: Sendable {
             // Result payload required by a portable Research Record. Refuse
             // the lossy terminal transition instead of orphaning confirmed
             // source or portable binding changes from their provenance.
-            throw ResearchFunctionContractError.committedWritesRequireCompletion(
+            throw ResearchActionRunContractError.committedWritesRequireCompletion(
                 runID
             )
         }
         let snapshot = stored.snapshot
-        let completion = ResearchFunctionCompletion(
+        let completion = ResearchActionRunCompletion(
             runID: runID,
-            function: snapshot.request.function,
+            actionID: snapshot.request.actionID,
             state: .cancelled,
             recordTitle: try ResearchRecordTitle("Cancelled"),
             targetFingerprint: snapshot.request.target.fingerprint,
@@ -236,15 +233,15 @@ final class ResearchFunctionCoordinator: Sendable {
         )
         try await persistCompletion(completion, in: stored)
         await host.revokeResearchAgentRunAccess(runID: runID)
-        if snapshot.request.function == .discuss {
+        if snapshot.request.actionID == .discuss {
             _ = try await host.finishDiscussion(discussionID: runID)
         }
-        _ = try await host.publishCommittedResearchFunctionChange(
+        _ = try await host.publishCommittedResearchActionChange(
             "The Research Action cancellation"
         )
     }
 
-    func requireMatchingActiveHost<Host: ResearchFunctionCoordinatorHost>(
+    func requireMatchingActiveHost<Host: ResearchActionRunCoordinatorHost>(
         _ host: isolated Host
     ) throws {
         precondition(host.id == workspaceID)
@@ -252,26 +249,26 @@ final class ResearchFunctionCoordinator: Sendable {
     }
 }
 
-extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
-    func researchFunctionCurrentSnapshot() -> WorkspaceSnapshot {
+extension WorkspaceHandle: ResearchActionRunCoordinatorHost {
+    func researchActionCurrentSnapshot() -> WorkspaceSnapshot {
         currentSnapshot
     }
 
-    func researchFunctionControlledFingerprint(
-        for target: ResearchFunctionTarget
+    func researchActionControlledFingerprint(
+        for target: ResearchActionNoteSnapshot
     ) async throws -> DocumentFingerprint {
         let lease = try await beginResearchControlledSourceObservation()
         defer { endResearchControlledSourceObservation(lease) }
-        guard ResearchFunctionTargetRole(
+        guard ResearchActionTargetRole(
                 vaultRole: try vault(id: target.note.vaultID).role
               ) == target.role,
               let identityBefore = try await services.controlStore.identityRecord(
                 vaultID: target.note.vaultID,
                 relativePath: target.note.relativePath
               ), identityBefore.id == target.noteID else {
-            throw ResearchFunctionContractError.targetIdentityChanged
+            throw ResearchActionRunContractError.targetIdentityChanged
         }
-        if let barrier = researchFunctionControlledObservationBarrierForTesting {
+        if let barrier = researchActionControlledObservationBarrierForTesting {
             await barrier()
         }
         let document = try await repository(vaultID: target.note.vaultID).load(
@@ -281,13 +278,13 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
             vaultID: target.note.vaultID,
             relativePath: target.note.relativePath
         ), identityAfter.id == target.noteID else {
-            throw ResearchFunctionContractError.targetIdentityChanged
+            throw ResearchActionRunContractError.targetIdentityChanged
         }
         return document.fingerprint
     }
 
     func resolveDefaultResearchActionContext(
-        for request: ResearchFunctionRequest
+        for request: ResearchActionRunRequest
     ) async throws -> ResolvedResearchActionContext {
         try await resolvedDefaultActionContext(for: request)
     }
@@ -300,7 +297,7 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
         await services.researchAgentSessions?.finalizeRun(runID)
     }
 
-    func publishCommittedResearchFunctionChange(
+    func publishCommittedResearchActionChange(
         _ operation: String
     ) async throws -> String? {
         do {
@@ -311,7 +308,7 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
             return nil
         } catch let error as ScholiumApplicationError
             where error.durableMutationWasCommitted {
-            scheduleResearchFunctionRefreshRecovery()
+            scheduleResearchActionRefreshRecovery()
             return error.localizedDescription
         }
     }
@@ -329,7 +326,7 @@ extension WorkspaceHandle: ResearchFunctionCoordinatorHost {
         }
     }
 
-    func scheduleResearchFunctionRefreshRecovery() {
+    func scheduleResearchActionRefreshRecovery() {
         Task { [weak self] in
             guard let self else { return }
             _ = try? await self.refresh(

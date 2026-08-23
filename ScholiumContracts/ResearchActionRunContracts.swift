@@ -1,140 +1,6 @@
 import Foundation
 
-/// Stable semantic identifiers shared by the app, CLI, and Application layer.
-/// User-facing labels and symbols remain presentation concerns.
-public enum ResearchFunctionID: String, Codable, CaseIterable, Hashable, Sendable {
-    case discuss
-    case develop
-    case fidelity
-    case critique
-    case revise
-
-    public var delivery: ResearchFunctionDelivery {
-        .externalAgent
-    }
-
-    public var requiresAgentChangeEvidence: Bool {
-        switch self {
-        case .develop, .revise: true
-        case .discuss, .fidelity, .critique: false
-        }
-    }
-
-    public var writesTarget: Bool {
-        switch self {
-        case .develop, .revise: true
-        case .discuss, .fidelity, .critique: false
-        }
-    }
-
-    public var allowedTargetRoles: Set<ResearchFunctionTargetRole> {
-        switch self {
-        case .develop:
-            [.analysis, .topic]
-        case .critique, .revise:
-            [.work]
-        case .discuss, .fidelity:
-            Set(ResearchFunctionTargetRole.allCases)
-        }
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
-        if let function = Self(rawValue: value) {
-            self = function
-        } else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unknown Research Function: \(value)"
-            )
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
-}
-
-public enum ResearchFunctionDelivery: String, Codable, Hashable, Sendable {
-    case externalAgent = "external_agent"
-}
-
-public enum ResearchFunctionTargetRole: String, Codable, CaseIterable, Hashable, Sendable {
-    case analysis
-    case topic
-    case work
-
-    public init?(vaultRole: VaultRole) {
-        switch vaultRole {
-        case .sourceCorpus: self = .analysis
-        case .topicKnowledge: self = .topic
-        case .draftProject: self = .work
-        case .other: return nil
-        }
-    }
-
-    public var vaultRoles: Set<VaultRole> {
-        switch self {
-        case .analysis: [.sourceCorpus]
-        case .topic: [.topicKnowledge]
-        case .work: [.draftProject]
-        }
-    }
-}
-
-/// One stable, fingerprint-bound document Target. The fingerprint is a
-/// revision check, never an authorization token.
-public struct ResearchFunctionTarget: Codable, Hashable, Sendable {
-    public let noteID: UUID
-    public let note: VaultQualifiedNoteID
-    public let role: ResearchFunctionTargetRole
-    public let fingerprint: DocumentFingerprint
-    public let title: String
-
-    public init(
-        noteID: UUID,
-        note: VaultQualifiedNoteID,
-        role: ResearchFunctionTargetRole,
-        fingerprint: DocumentFingerprint,
-        title: String
-    ) {
-        self.noteID = noteID
-        self.note = note
-        self.role = role
-        self.fingerprint = fingerprint
-        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-/// Read-only context selected inside a function panel. A Material is never an
-/// implicit additional Target and carries its own revision identity.
-public struct ResearchFunctionMaterial: Codable, Hashable, Identifiable, Sendable {
-    public let noteID: UUID
-    public let note: VaultQualifiedNoteID
-    public let role: ResearchFunctionTargetRole
-    public let fingerprint: DocumentFingerprint
-    public let title: String
-
-    public var id: UUID { noteID }
-
-    public init(
-        noteID: UUID,
-        note: VaultQualifiedNoteID,
-        role: ResearchFunctionTargetRole,
-        fingerprint: DocumentFingerprint,
-        title: String
-    ) {
-        self.noteID = noteID
-        self.note = note
-        self.role = role
-        self.fingerprint = fingerprint
-        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-public enum ResearchFunctionScopeKind: String, Codable, Hashable, Sendable {
+public enum ResearchActionScopeKind: String, Codable, Hashable, Sendable {
     case whole
     case passage
 }
@@ -142,8 +8,8 @@ public enum ResearchFunctionScopeKind: String, Codable, Hashable, Sendable {
 /// Whole/Passage remains a delivery-neutral semantic choice. Passage scope
 /// uses the same exact-source anchor as Comments and never stores rendered
 /// text as writable authority.
-public struct ResearchFunctionScope: Codable, Hashable, Sendable {
-    public let kind: ResearchFunctionScopeKind
+public struct ResearchActionScope: Codable, Hashable, Sendable {
+    public let kind: ResearchActionScopeKind
     public let selection: CommentAnchor?
 
     public static let whole = Self(kind: .whole)
@@ -153,7 +19,7 @@ public struct ResearchFunctionScope: Codable, Hashable, Sendable {
     }
 
     public init(
-        kind: ResearchFunctionScopeKind,
+        kind: ResearchActionScopeKind,
         selection: CommentAnchor? = nil
     ) {
         self.kind = kind
@@ -166,7 +32,7 @@ public enum FidelityCheck: String, Codable, CaseIterable, Hashable, Sendable {
     case citations
 }
 
-public enum ResearchFunctionRepairReasonCode: String, Codable, Hashable, Sendable {
+public enum ResearchActionRunRepairReasonCode: String, Codable, Hashable, Sendable {
     case targetUnavailable = "target_unavailable"
     case targetChanged = "target_changed"
     case targetIdentityChanged = "target_identity_changed"
@@ -181,34 +47,34 @@ public enum ResearchFunctionRepairReasonCode: String, Codable, Hashable, Sendabl
 
 /// A localization-free repair code. Optional associated values identify the
 /// semantic requirement without embedding interface prose in Contracts.
-public struct ResearchFunctionRepairReason: Codable, Hashable, Sendable {
-    public let code: ResearchFunctionRepairReasonCode
-    public let function: ResearchFunctionID?
-    public let expectedRoles: [ResearchFunctionTargetRole]
+public struct ResearchActionRunRepairReason: Codable, Hashable, Sendable {
+    public let code: ResearchActionRunRepairReasonCode
+    public let actionID: ResearchActionID?
+    public let expectedRoles: [ResearchActionTargetRole]
     public let sourceAccessFailure: ResearchSourceAccessFailure?
 
     public init(
-        code: ResearchFunctionRepairReasonCode,
-        function: ResearchFunctionID? = nil,
-        expectedRoles: [ResearchFunctionTargetRole] = [],
+        code: ResearchActionRunRepairReasonCode,
+        actionID: ResearchActionID? = nil,
+        expectedRoles: [ResearchActionTargetRole] = [],
         sourceAccessFailure: ResearchSourceAccessFailure? = nil
     ) {
         self.code = code
-        self.function = function
+        self.actionID = actionID
         self.expectedRoles = Array(Set(expectedRoles)).sorted { $0.rawValue < $1.rawValue }
         self.sourceAccessFailure = sourceAccessFailure
     }
 }
 
-public struct ResearchFunctionCheckAvailability: Codable, Hashable, Sendable {
+public struct ResearchActionRunCheckAvailability: Codable, Hashable, Sendable {
     public let check: FidelityCheck
     public let isEnabled: Bool
-    public let repairReasons: [ResearchFunctionRepairReason]
+    public let repairReasons: [ResearchActionRunRepairReason]
 
     public init(
         check: FidelityCheck,
         isEnabled: Bool,
-        repairReasons: [ResearchFunctionRepairReason] = []
+        repairReasons: [ResearchActionRunRepairReason] = []
     ) {
         self.check = check
         self.isEnabled = isEnabled
@@ -216,24 +82,21 @@ public struct ResearchFunctionCheckAvailability: Codable, Hashable, Sendable {
     }
 }
 
-public struct ResearchFunctionAvailability: Codable, Hashable, Identifiable, Sendable {
-    public let function: ResearchFunctionID
-    public let delivery: ResearchFunctionDelivery
+public struct ResearchActionRunAvailability: Codable, Hashable, Identifiable, Sendable {
+    public let actionID: ResearchActionID
     public let isEnabled: Bool
-    public let repairReasons: [ResearchFunctionRepairReason]
-    public let fidelityChecks: [ResearchFunctionCheckAvailability]
+    public let repairReasons: [ResearchActionRunRepairReason]
+    public let fidelityChecks: [ResearchActionRunCheckAvailability]
 
-    public var id: ResearchFunctionID { function }
+    public var id: ResearchActionID { actionID }
 
     public init(
-        function: ResearchFunctionID,
-        delivery: ResearchFunctionDelivery? = nil,
+        actionID: ResearchActionID,
         isEnabled: Bool,
-        repairReasons: [ResearchFunctionRepairReason] = [],
-        fidelityChecks: [ResearchFunctionCheckAvailability] = []
+        repairReasons: [ResearchActionRunRepairReason] = [],
+        fidelityChecks: [ResearchActionRunCheckAvailability] = []
     ) {
-        self.function = function
-        self.delivery = delivery ?? function.delivery
+        self.actionID = actionID
         self.isEnabled = isEnabled
         self.repairReasons = repairReasons
         self.fidelityChecks = fidelityChecks
@@ -243,7 +106,7 @@ public struct ResearchFunctionAvailability: Codable, Hashable, Identifiable, Sen
 /// A deterministic, explicitly sourced reason that one read-only note may be
 /// useful as Material. Suggestions are navigation aids only: they never imply
 /// evidential support, authorize retrieval, or select the note automatically.
-public struct ResearchFunctionMaterialSuggestionReason: Codable, Hashable, Sendable {
+public struct ResearchActionMaterialSuggestionReason: Codable, Hashable, Sendable {
     public enum Kind: String, Codable, Hashable, Sendable {
         case linkedFromSelectedPassage = "linked_from_selected_passage"
         case linkedFromTarget = "linked_from_target"
@@ -274,23 +137,23 @@ public struct ResearchFunctionMaterialSuggestionReason: Codable, Hashable, Senda
     }
 }
 
-public struct ResearchFunctionMaterialCandidate: Codable, Hashable, Identifiable, Sendable {
-    public let material: ResearchFunctionMaterial
+public struct ResearchActionMaterialCandidate: Codable, Hashable, Identifiable, Sendable {
+    public let material: ResearchActionNoteSnapshot
     /// Search-only aliases projected from the current catalog. They do not
     /// enter a prepared request or become authoritative Material identity.
     public let aliases: [String]
-    public let suggestionReasons: [ResearchFunctionMaterialSuggestionReason]
+    public let suggestionReasons: [ResearchActionMaterialSuggestionReason]
     public let isSelectable: Bool
-    public let repairReasons: [ResearchFunctionRepairReason]
+    public let repairReasons: [ResearchActionRunRepairReason]
 
     public var id: UUID { material.id }
 
     public init(
-        material: ResearchFunctionMaterial,
+        material: ResearchActionNoteSnapshot,
         aliases: [String] = [],
-        suggestionReasons: [ResearchFunctionMaterialSuggestionReason] = [],
+        suggestionReasons: [ResearchActionMaterialSuggestionReason] = [],
         isSelectable: Bool = true,
-        repairReasons: [ResearchFunctionRepairReason] = []
+        repairReasons: [ResearchActionRunRepairReason] = []
     ) {
         self.material = material
         self.aliases = Array(Set(aliases.compactMap { alias in
@@ -319,12 +182,12 @@ public struct ResearchFunctionMaterialCandidate: Codable, Hashable, Identifiable
 
 }
 
-public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
-    public let function: ResearchFunctionID
-    public let target: ResearchFunctionTarget
-    public let materials: [ResearchFunctionMaterial]
+public struct ResearchActionRunRequest: Codable, Hashable, Sendable {
+    public let actionID: ResearchActionID
+    public let target: ResearchActionNoteSnapshot
+    public let materials: [ResearchActionNoteSnapshot]
     public let instruction: String?
-    public let scope: ResearchFunctionScope?
+    public let scope: ResearchActionScope?
     public let checks: Set<FidelityCheck>
     /// Optional request-scoped presentation modules for a read-only Discuss.
     ///
@@ -335,19 +198,19 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     public let dialogueResponseModules: [DialogueResponseModule]?
     /// One shared Fidelity run may audit every Application-confirmed target
     /// from a multi-note Write. Nil preserves the single-target wire shape.
-    public let fidelityTargets: [ResearchFunctionTarget]?
+    public let fidelityTargets: [ResearchActionNoteSnapshot]?
 
     public init(
-        function: ResearchFunctionID,
-        target: ResearchFunctionTarget,
-        materials: [ResearchFunctionMaterial] = [],
+        actionID: ResearchActionID,
+        target: ResearchActionNoteSnapshot,
+        materials: [ResearchActionNoteSnapshot] = [],
         instruction: String? = nil,
-        scope: ResearchFunctionScope? = nil,
+        scope: ResearchActionScope? = nil,
         checks: Set<FidelityCheck> = [],
         dialogueResponseModules: [DialogueResponseModule]? = nil,
-        fidelityTargets: [ResearchFunctionTarget]? = nil
+        fidelityTargets: [ResearchActionNoteSnapshot]? = nil
     ) {
-        self.function = function
+        self.actionID = actionID
         self.target = target
         self.materials = materials
         let normalized = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -361,7 +224,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
                 return lhsIndex < rhsIndex
             }
         }
-        if function == .fidelity {
+        if actionID == .checkFidelity {
             let ordered = fidelityTargets?.sorted { lhs, rhs in
                 if lhs.note.vaultID != rhs.note.vaultID {
                     return lhs.note.vaultID.uuidString < rhs.note.vaultID.uuidString
@@ -375,28 +238,28 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
     }
 
     public func validate() throws {
-        guard function.allowedTargetRoles.contains(target.role) else {
-            throw ResearchFunctionContractError.invalidTargetRole(
-                function: function,
+        guard actionID.allowedTargetRoles.contains(target.role) else {
+            throw ResearchActionRunContractError.invalidTargetRole(
+                actionID: actionID,
                 role: target.role
             )
         }
         guard !target.title.isEmpty else {
-            throw ResearchFunctionContractError.emptyTargetTitle
+            throw ResearchActionRunContractError.emptyTargetTitle
         }
         let materialIDs = materials.map(\.noteID)
         guard Set(materialIDs).count == materialIDs.count else {
-            throw ResearchFunctionContractError.duplicateMaterial
+            throw ResearchActionRunContractError.duplicateMaterial
         }
         guard !materials.contains(where: {
             $0.noteID == target.noteID || $0.note == target.note
         }) else {
-            throw ResearchFunctionContractError.targetRepeatedAsMaterial
+            throw ResearchActionRunContractError.targetRepeatedAsMaterial
         }
         guard materials.allSatisfy({ !$0.title.isEmpty }) else {
-            throw ResearchFunctionContractError.inactiveMaterial
+            throw ResearchActionRunContractError.inactiveMaterial
         }
-        if function == .fidelity {
+        if actionID == .checkFidelity {
             let targets = resolvedFidelityTargets
             let targetIDs = targets.map(\.noteID)
             let locations = targets.map(\.note)
@@ -408,74 +271,74 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
                   }),
                   targets.allSatisfy({
                       !$0.title.isEmpty
-                          && ResearchFunctionID.fidelity.allowedTargetRoles.contains($0.role)
+                          && ResearchActionID.checkFidelity.allowedTargetRoles.contains($0.role)
                   }) else {
-                throw ResearchFunctionContractError.invalidFidelityTargets
+                throw ResearchActionRunContractError.invalidFidelityTargets
             }
         } else if fidelityTargets != nil {
-            throw ResearchFunctionContractError.unexpectedFidelityTargets
+            throw ResearchActionRunContractError.unexpectedFidelityTargets
         }
-        if function == .discuss {
+        if actionID == .discuss {
             if let dialogueResponseModules,
                Set(dialogueResponseModules).count != dialogueResponseModules.count {
-                throw ResearchFunctionContractError.duplicateDialogueResponseModule
+                throw ResearchActionRunContractError.duplicateDialogueResponseModule
             }
         } else if dialogueResponseModules != nil {
-            throw ResearchFunctionContractError.unexpectedDialogueResponseModules
+            throw ResearchActionRunContractError.unexpectedDialogueResponseModules
         }
         if let scope {
             switch scope.kind {
             case .whole:
                 guard scope.selection == nil else {
-                    throw ResearchFunctionContractError.invalidScope
+                    throw ResearchActionRunContractError.invalidScope
                 }
             case .passage:
                 guard let selection = scope.selection,
                       selection.fingerprint == target.fingerprint else {
-                    throw ResearchFunctionContractError.invalidScope
+                    throw ResearchActionRunContractError.invalidScope
                 }
             }
         }
-        if function == .fidelity {
+        if actionID == .checkFidelity {
             guard !checks.isEmpty else {
-                throw ResearchFunctionContractError.missingFidelityCheck
+                throw ResearchActionRunContractError.missingFidelityCheck
             }
         } else if !checks.isEmpty {
-            throw ResearchFunctionContractError.unexpectedFidelityCheck
+            throw ResearchActionRunContractError.unexpectedFidelityCheck
         }
-        if function == .discuss, instruction == nil {
-            throw ResearchFunctionContractError.emptyInstruction(function)
+        if actionID == .discuss, instruction == nil {
+            throw ResearchActionRunContractError.emptyInstruction(actionID)
         }
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case function, target, materials, instruction, scope, checks
+        case actionID, target, materials, instruction, scope, checks
         case dialogueResponseModules
         case fidelityTargets
     }
 
     public init(from decoder: Decoder) throws {
-        try ResearchFunctionContractCoding.rejectUnknownFields(
+        try ResearchActionRunContractCoding.rejectUnknownFields(
             in: decoder,
             allowed: CodingKeys.allCases.map(\.stringValue)
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
-            function: try container.decode(ResearchFunctionID.self, forKey: .function),
-            target: try container.decode(ResearchFunctionTarget.self, forKey: .target),
+            actionID: try container.decode(ResearchActionID.self, forKey: .actionID),
+            target: try container.decode(ResearchActionNoteSnapshot.self, forKey: .target),
             materials: try container.decodeIfPresent(
-                [ResearchFunctionMaterial].self,
+                [ResearchActionNoteSnapshot].self,
                 forKey: .materials
             ) ?? [],
             instruction: try container.decodeIfPresent(String.self, forKey: .instruction),
-            scope: try container.decodeIfPresent(ResearchFunctionScope.self, forKey: .scope),
+            scope: try container.decodeIfPresent(ResearchActionScope.self, forKey: .scope),
             checks: try container.decodeIfPresent(Set<FidelityCheck>.self, forKey: .checks) ?? [],
             dialogueResponseModules: try container.decodeIfPresent(
                 [DialogueResponseModule].self,
                 forKey: .dialogueResponseModules
             ),
             fidelityTargets: try container.decodeIfPresent(
-                [ResearchFunctionTarget].self,
+                [ResearchActionNoteSnapshot].self,
                 forKey: .fidelityTargets
             )
         )
@@ -483,7 +346,7 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(function, forKey: .function)
+        try container.encode(actionID, forKey: .actionID)
         try container.encode(target, forKey: .target)
         if !materials.isEmpty { try container.encode(materials, forKey: .materials) }
         try container.encodeIfPresent(instruction, forKey: .instruction)
@@ -493,17 +356,9 @@ public struct ResearchFunctionRequest: Codable, Hashable, Sendable {
         try container.encodeIfPresent(fidelityTargets, forKey: .fidelityTargets)
     }
 
-    public var resolvedFidelityTargets: [ResearchFunctionTarget] {
-        function == .fidelity ? (fidelityTargets ?? [target]) : []
+    public var resolvedFidelityTargets: [ResearchActionNoteSnapshot] {
+        actionID == .checkFidelity ? (fidelityTargets ?? [target]) : []
     }
-}
-
-public enum ResearchFunctionRunState: String, Codable, Hashable, Sendable {
-    case prepared
-    case complete
-    case unverified
-    case stale
-    case cancelled
 }
 
 /// Correlation identity for one current Action-to-Action continuation.
@@ -552,14 +407,14 @@ public struct ResearchContinuationLineage: Codable, Hashable, Sendable {
         let allowed = Set(CodingKeys.allCases.map(\.stringValue))
         if let unknown = raw.allKeys.map(\.stringValue).sorted()
             .first(where: { !allowed.contains($0) }) {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "Unsupported continuation-lineage field \(unknown)."
             )
         }
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let version = try container.decode(Int.self, forKey: .schemaVersion)
         guard version == Self.currentSchemaVersion else {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "Unsupported continuation-lineage schema version \(version)."
             )
         }
@@ -602,11 +457,11 @@ public enum ResearchAnalysisSourceRoute: String, Codable, Hashable, Sendable {
     case researcherProvided = "researcher_provided"
 }
 
-public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
+public struct ResearchActionRunSnapshot: Codable, Hashable, Sendable {
     public let runID: UUID
-    public let request: ResearchFunctionRequest
+    public let request: ResearchActionRunRequest
     /// Public Action identity and frozen authority when the run is resolved.
-    public let actionSnapshot: ResearchActionSnapshot?
+    public let actionSnapshot: ResearchActionSnapshot
     public let recordID: UUID?
     /// Analysis-only, task-scoped bibliographic context. This projection is
     /// never written back to Markdown and is not a source-evidence claim.
@@ -648,15 +503,15 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        try ResearchFunctionContractCoding.rejectUnknownFields(
+        try ResearchActionRunContractCoding.rejectUnknownFields(
             in: decoder,
             allowed: CodingKeys.allCases.map(\.stringValue)
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
+        try self.init(
             runID: try container.decode(UUID.self, forKey: .runID),
-            request: try container.decode(ResearchFunctionRequest.self, forKey: .request),
-            actionSnapshot: try container.decodeIfPresent(
+            request: try container.decode(ResearchActionRunRequest.self, forKey: .request),
+            actionSnapshot: try container.decode(
                 ResearchActionSnapshot.self,
                 forKey: .actionSnapshot
             ),
@@ -699,8 +554,8 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
 
     public init(
         runID: UUID = UUID(),
-        request: ResearchFunctionRequest,
-        actionSnapshot: ResearchActionSnapshot? = nil,
+        request: ResearchActionRunRequest,
+        actionSnapshot: ResearchActionSnapshot,
         recordID: UUID? = nil,
         zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
         sourceReference: ResearchSourceReference? = nil,
@@ -711,7 +566,17 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
         resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
         confirmationToken: UUID = UUID(),
         preparedAt: Date = Date()
-    ) {
+    ) throws {
+        try request.validate()
+        guard request.actionID == actionSnapshot.actionID else {
+            throw ResearchActionRunContractError.inconsistentActionSnapshot(
+                requestActionID: request.actionID,
+                snapshotActionID: actionSnapshot.actionID
+            )
+        }
+        guard request.target == actionSnapshot.target else {
+            throw ResearchActionRunContractError.inconsistentActionTarget
+        }
         self.runID = runID
         self.request = request
         self.actionSnapshot = actionSnapshot
@@ -728,24 +593,24 @@ public struct ResearchFunctionSnapshot: Codable, Hashable, Sendable {
     }
 }
 
-public struct ResearchFunctionPreparation: Codable, Hashable, Sendable {
-    public let snapshot: ResearchFunctionSnapshot
+public struct ResearchActionRunPreparation: Codable, Hashable, Sendable {
+    public let snapshot: ResearchActionRunSnapshot
     public let instructions: String
-    public let state: ResearchFunctionRunState
-    public let reusedCompletion: ResearchFunctionCompletion?
+    public let state: ResearchActionRunState
+    public let reusedCompletion: ResearchActionRunCompletion?
     /// The authoritative preparation committed, but a disposable workspace
     /// projection did not refresh. Callers must retain this preparation and
-    /// retry only refresh, never the function mutation.
+    /// retry only refresh, never the actionID mutation.
     public let derivedRefreshWarning: String?
     public let nextActions: [AgentCommandAction]?
 
     public var runID: UUID { snapshot.runID }
 
     public init(
-        snapshot: ResearchFunctionSnapshot,
+        snapshot: ResearchActionRunSnapshot,
         instructions: String,
-        state: ResearchFunctionRunState = .prepared,
-        reusedCompletion: ResearchFunctionCompletion? = nil,
+        state: ResearchActionRunState = .prepared,
+        reusedCompletion: ResearchActionRunCompletion? = nil,
         derivedRefreshWarning: String? = nil,
         nextActions: [AgentCommandAction] = []
     ) {
@@ -786,20 +651,20 @@ public struct FidelityCheckOutcome: Codable, Hashable, Sendable {
 
     public func validate() throws {
         guard !summary.isEmpty else {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "Every Fidelity outcome requires an attributed summary."
             )
         }
         switch state {
         case .passed:
             guard findings.isEmpty else {
-                throw ResearchFunctionContractError.invalidCompletion(
+                throw ResearchActionRunContractError.invalidCompletion(
                     "A passed Fidelity check cannot also report unresolved findings."
                 )
             }
         case .issuesFound:
             guard !findings.isEmpty else {
-                throw ResearchFunctionContractError.invalidCompletion(
+                throw ResearchActionRunContractError.invalidCompletion(
                     "An issues-found Fidelity outcome requires at least one finding."
                 )
             }
@@ -811,7 +676,7 @@ public struct FidelityCheckOutcome: Codable, Hashable, Sendable {
 
 /// Per-note agent submission for one shared Fidelity run. The Application
 /// verifies both identity and the exact revision before accepting outcomes.
-public struct ResearchFunctionFidelityTargetSubmission: Codable, Hashable, Sendable {
+public struct ResearchActionFidelityTargetSubmission: Codable, Hashable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let fingerprint: DocumentFingerprint
@@ -832,12 +697,12 @@ public struct ResearchFunctionFidelityTargetSubmission: Codable, Hashable, Senda
 
 /// Durable, independently revision-bound result for one note inside a shared
 /// Fidelity run. A stale peer never invalidates another target's result.
-public struct ResearchFunctionFidelityTargetResult: Codable, Hashable, Sendable {
-    public let target: ResearchFunctionTarget
+public struct ResearchActionFidelityTargetResult: Codable, Hashable, Sendable {
+    public let target: ResearchActionNoteSnapshot
     public let outcomes: [FidelityCheckOutcome]
 
     public init(
-        target: ResearchFunctionTarget,
+        target: ResearchActionNoteSnapshot,
         outcomes: [FidelityCheckOutcome]
     ) {
         self.target = target
@@ -845,7 +710,7 @@ public struct ResearchFunctionFidelityTargetResult: Codable, Hashable, Sendable 
     }
 }
 
-public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable {
+public struct ResearchActionRunCompletionSubmission: Codable, Hashable, Sendable {
     public let runID: UUID
     public let confirmationToken: UUID
     public let recordTitle: ResearchRecordTitle
@@ -862,7 +727,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
     public let fidelityOutcomes: [FidelityCheckOutcome]
     /// Present for a shared multi-note Fidelity run. A single-target run may
     /// continue using `fidelityOutcomes` for wire compatibility.
-    public let fidelityTargetSubmissions: [ResearchFunctionFidelityTargetSubmission]?
+    public let fidelityTargetSubmissions: [ResearchActionFidelityTargetSubmission]?
     public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
     public let submittedAt: Date
     public let childRunIDs: [UUID]?
@@ -877,7 +742,7 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
         summary: String,
         didModifyTarget: Bool,
         fidelityOutcomes: [FidelityCheckOutcome] = [],
-        fidelityTargetSubmissions: [ResearchFunctionFidelityTargetSubmission] = [],
+        fidelityTargetSubmissions: [ResearchActionFidelityTargetSubmission] = [],
         literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil,
         childRunIDs: [UUID] = [],
         submittedAt: Date = Date()
@@ -904,10 +769,10 @@ public struct ResearchFunctionCompletionSubmission: Codable, Hashable, Sendable 
 
 /// Durable completion evidence. Fidelity remains attributed structured output,
 /// not a hidden app judgment or a replacement for researcher acceptance or Critique.
-public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
+public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
     public let runID: UUID
-    public let function: ResearchFunctionID
-    public let state: ResearchFunctionRunState
+    public let actionID: ResearchActionID
+    public let state: ResearchActionRunState
     public let recordTitle: ResearchRecordTitle
     public let targetFingerprint: DocumentFingerprint
     public let materialFingerprints: [UUID: DocumentFingerprint]
@@ -915,7 +780,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
     public let summary: String
     public let didModifyTarget: Bool
     public let fidelityOutcomes: [FidelityCheckOutcome]
-    public let fidelityTargetResults: [ResearchFunctionFidelityTargetResult]?
+    public let fidelityTargetResults: [ResearchActionFidelityTargetResult]?
     public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
     /// Deterministic identity of the exact final revision, evidence, checks,
     /// and resolved skill resources audited by this completion.
@@ -932,8 +797,8 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
 
     public init(
         runID: UUID,
-        function: ResearchFunctionID,
-        state: ResearchFunctionRunState,
+        actionID: ResearchActionID,
+        state: ResearchActionRunState,
         recordTitle: ResearchRecordTitle,
         targetFingerprint: DocumentFingerprint,
         materialFingerprints: [UUID: DocumentFingerprint],
@@ -941,7 +806,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         summary: String,
         didModifyTarget: Bool,
         fidelityOutcomes: [FidelityCheckOutcome],
-        fidelityTargetResults: [ResearchFunctionFidelityTargetResult] = [],
+        fidelityTargetResults: [ResearchActionFidelityTargetResult] = [],
         literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil,
         fidelityEvidenceKey: ResearchFidelityEvidenceKey? = nil,
         reusedFidelityRunID: UUID? = nil,
@@ -951,7 +816,7 @@ public struct ResearchFunctionCompletion: Codable, Hashable, Sendable {
         nextActions: [AgentCommandAction] = []
     ) {
         self.runID = runID
-        self.function = function
+        self.actionID = actionID
         self.state = state
         self.recordTitle = recordTitle
         self.targetFingerprint = targetFingerprint
@@ -982,7 +847,7 @@ public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
     public let revision: DocumentFingerprint
 
     public init(
-        snapshot: ResearchFunctionSnapshot,
+        snapshot: ResearchActionRunSnapshot,
         finalTargetFingerprint: DocumentFingerprint,
         finalMaterialFingerprints: [UUID: DocumentFingerprint],
         checks: Set<FidelityCheck>
@@ -1025,20 +890,19 @@ public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
         if let style = snapshot.citationStyle {
             lines.append("citation-style:\(style)")
         }
-        if let method = snapshot.actionSnapshot?.method {
-            lines.append(
-                "method:\(method.registration.key.description):\(method.primaryMarkdownRevision.sha256):\(method.primaryMarkdownRevision.byteCount)"
-            )
-        }
+        let method = snapshot.actionSnapshot.method
+        lines.append(
+            "method:\(method.registration.key.description):\(method.primaryMarkdownRevision.sha256):\(method.primaryMarkdownRevision.byteCount)"
+        )
         revision = DocumentFingerprint(content: lines.joined(separator: "\n"))
     }
 }
 
 /// Read-only record projection kept separate from Dialogue, Critique, Human
 /// Review, Comments, and Fidelity findings even when storage is shared.
-public struct ResearchFunctionRecordProjection: Codable, Hashable, Identifiable, Sendable {
-    public let snapshot: ResearchFunctionSnapshot
-    public let completion: ResearchFunctionCompletion?
+public struct ResearchActionRunRecordProjection: Codable, Hashable, Identifiable, Sendable {
+    public let snapshot: ResearchActionRunSnapshot
+    public let completion: ResearchActionRunCompletion?
     /// Exact agent handoff persisted for the run. A method-unresolved
     /// preflight may be replaced once by its finalized immutable execution
     /// packet; unresolved preflight records may omit it.
@@ -1047,8 +911,8 @@ public struct ResearchFunctionRecordProjection: Codable, Hashable, Identifiable,
     public var id: UUID { snapshot.runID }
 
     public init(
-        snapshot: ResearchFunctionSnapshot,
-        completion: ResearchFunctionCompletion? = nil,
+        snapshot: ResearchActionRunSnapshot,
+        completion: ResearchActionRunCompletion? = nil,
         preparedInstructions: String? = nil
     ) {
         self.snapshot = snapshot
@@ -1060,12 +924,17 @@ public struct ResearchFunctionRecordProjection: Codable, Hashable, Identifiable,
     }
 }
 
-public enum ResearchFunctionContractError: LocalizedError, Sendable {
+public enum ResearchActionRunContractError: LocalizedError, Sendable {
     case targetUnavailable
     case targetChanged
     case targetIdentityChanged
     case inactiveTarget
-    case invalidTargetRole(function: ResearchFunctionID, role: ResearchFunctionTargetRole)
+    case invalidTargetRole(actionID: ResearchActionID, role: ResearchActionTargetRole)
+    case inconsistentActionSnapshot(
+        requestActionID: ResearchActionID,
+        snapshotActionID: ResearchActionID
+    )
+    case inconsistentActionTarget
     case emptyTargetTitle
     case duplicateMaterial
     case targetRepeatedAsMaterial
@@ -1084,7 +953,7 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     case duplicateDialogueResponseModule
     case unexpectedDialogueResponseModules
     case citationStyleUnavailable
-    case emptyInstruction(ResearchFunctionID)
+    case emptyInstruction(ResearchActionID)
     case preparationNotFound(UUID)
     case activeDiscussionExists(UUID)
     case confirmationMismatch
@@ -1106,6 +975,10 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
             "The Action Target is not available for this operation."
         case .invalidTargetRole(_, let role):
             "This Action is not available for a \(role.rawValue) Target."
+        case .inconsistentActionSnapshot(let requestActionID, let snapshotActionID):
+            "The Run request Action \(requestActionID.rawValue) does not match the frozen Action \(snapshotActionID.rawValue)."
+        case .inconsistentActionTarget:
+            "The Run request Target does not match the exact frozen Action Target."
         case .emptyTargetTitle:
             "The Action Target must have a nonempty title projection."
         case .duplicateMaterial:
@@ -1135,11 +1008,11 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
         case .missingFidelityCheck:
             "Fidelity requires Content, Citations, or both."
         case .unexpectedFidelityCheck:
-            "Fidelity checks belong only to the Fidelity function."
+            "Fidelity checks belong only to the Fidelity actionID."
         case .duplicateDialogueResponseModule:
             "Each optional Discuss response module may be selected only once."
         case .unexpectedDialogueResponseModules:
-            "Discuss response modules belong only to the Discuss function."
+            "Discuss response modules belong only to the Discuss actionID."
         case .citationStyleUnavailable:
             "Citation checking requires an active citation style in Research Guidance."
         case .emptyInstruction:
@@ -1164,25 +1037,25 @@ public enum ResearchFunctionContractError: LocalizedError, Sendable {
     }
 }
 
-private enum ResearchFunctionContractCoding {
+private enum ResearchActionRunContractCoding {
     static func rejectUnknownFields(
         in decoder: Decoder,
         allowed: some Sequence<String>
     ) throws {
         let container = try decoder.container(
-            keyedBy: ResearchFunctionContractCodingKey.self
+            keyedBy: ResearchActionRunContractCodingKey.self
         )
         let allowed = Set(allowed)
         guard container.allKeys.allSatisfy({ allowed.contains($0.stringValue) })
         else {
-            throw ResearchFunctionContractError.invalidCompletion(
+            throw ResearchActionRunContractError.invalidCompletion(
                 "The contract contains an unknown field."
             )
         }
     }
 }
 
-private struct ResearchFunctionContractCodingKey: CodingKey {
+private struct ResearchActionRunContractCodingKey: CodingKey {
     let stringValue: String
     let intValue: Int?
 

@@ -98,7 +98,7 @@ struct ResearchOperationsMutationTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -153,13 +153,13 @@ struct ResearchOperationsMutationTests {
 }
 
 
-@Suite("Application Research Function orchestration")
-struct ResearchFunctionOperationsTests {}
+@Suite("Application Research Action orchestration")
+struct ResearchActionRunOperationsTests {}
 
 struct LocalExecutionTestProjection: Decodable {
-    let snapshot: ResearchFunctionSnapshot
+    let snapshot: ResearchActionRunSnapshot
     let preparedInstructions: String
-    let completion: ResearchFunctionCompletion?
+    let completion: ResearchActionRunCompletion?
 
     private enum CodingKeys: String, CodingKey {
         case snapshot
@@ -302,7 +302,7 @@ struct ResearchFixture: Sendable {
             fields: ["aliases": .array([.string("Freedom")])],
             expectedRevision: nil
         )
-        let sourceTarget = try await researchFunctionTarget(
+        let sourceTarget = try await researchActionTarget(
             analysisID,
             role: .analysis,
             handle: handle
@@ -370,13 +370,13 @@ struct ResearchFixture: Sendable {
     }
 }
 
-func researchFunctionTarget(
+func researchActionTarget(
     _ id: VaultQualifiedNoteID,
-    role: ResearchFunctionTargetRole,
+    role: ResearchActionTargetRole,
     handle: WorkspaceHandle
-) async throws -> ResearchFunctionTarget {
+) async throws -> ResearchActionNoteSnapshot {
     let note = try #require(try await handle.snapshot().document(id: id))
-    return ResearchFunctionTarget(
+    return ResearchActionNoteSnapshot(
         noteID: try #require(note.stableIdentity.resolvedID),
         note: id,
         role: role,
@@ -392,9 +392,9 @@ func expectSourceFailure(
     do {
         try await operation()
         Issue.record("Expected source access failure \(expected.rawValue).")
-    } catch let error as ResearchFunctionContractError {
+    } catch let error as ResearchActionRunContractError {
         guard case .sourceAccessUnavailable(let failure) = error else {
-            Issue.record("Unexpected Research Function failure: \(error)")
+            Issue.record("Unexpected Research Action failure: \(error)")
             return
         }
         #expect(failure.code == expected)
@@ -448,7 +448,7 @@ func commentAnchor(
 }
 
 func createCommentExchange(
-    for target: ResearchFunctionTarget,
+    for target: ResearchActionNoteSnapshot,
     anchor: CommentAnchor,
     researcherText: String,
     agentText: String,
@@ -474,7 +474,7 @@ func createCommentExchange(
 }
 
 func writePreparedResearchDocument(
-    for preparation: ResearchFunctionPreparation,
+    for preparation: ResearchActionRunPreparation,
     body: String,
     handle: WorkspaceHandle,
     requestID: UUID = UUID()
@@ -510,7 +510,7 @@ struct TestResearchAgentClient {
 }
 
 func connectTestResearchAgent(
-    to preparation: ResearchFunctionPreparation,
+    to preparation: ResearchActionRunPreparation,
     handle: WorkspaceHandle
 ) async throws -> TestResearchAgentClient {
     let handoff = try await handle.research.issueAgentHandoff(
@@ -551,13 +551,13 @@ func testAcademicResults(
 }
 
 func makeTestAgentResultSubmission(
-    for preparation: ResearchFunctionPreparation,
+    for preparation: ResearchActionRunPreparation,
     disposition: ResearchAgentResultDisposition = .completed,
     contextUseClaims: [ResearchContextUseClaim] = [],
     fidelityOutcomes: [FidelityCheckOutcome] = [],
     literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil
 ) throws -> ResearchAgentResultSubmission {
-    let action = try #require(preparation.snapshot.actionSnapshot)
+    let action = preparation.snapshot.actionSnapshot
     let defaultFidelityFields = ResearchAcademicProfileCatalog.defaultProfiles
         .first { $0.actionID == .checkFidelity }?.academicResultFields ?? []
     let academicResults = if action.actionID == .checkFidelity,
@@ -589,7 +589,7 @@ func submitTestAgentResult(
 }
 
 func submitTestAgentResult(
-    for preparation: ResearchFunctionPreparation,
+    for preparation: ResearchActionRunPreparation,
     handle: WorkspaceHandle,
     disposition: ResearchAgentResultDisposition = .completed,
     contextUseClaims: [ResearchContextUseClaim] = [],
@@ -617,18 +617,18 @@ func submitTestAgentResult(
 /// directly. Current production runs first stage one strict Agent Result, so
 /// this helper retries only the otherwise-valid missing-Result boundary after
 /// installing a canonical test payload in the real Local Execution store.
-func completeTestProtectedFunction(
+func completeTestActionRun(
     handle: WorkspaceHandle,
-    submission: ResearchFunctionCompletionSubmission
-) async throws -> ResearchFunctionCompletion {
+    submission: ResearchActionRunCompletionSubmission
+) async throws -> ResearchActionRunCompletion {
     do {
-        return try await handle.research.completeProtectedFunction(submission)
-    } catch ResearchFunctionContractError.invalidCompletion(let reason)
+        return try await handle.research.completeActionRun(submission)
+    } catch ResearchActionRunContractError.invalidCompletion(let reason)
         where reason.contains("canonical Result payload") {
         let local = try await handle.services.localResearchExecutionStore.record(
             id: submission.runID
         )
-        let action = try #require(local.snapshot.actionSnapshot)
+        let action = local.snapshot.actionSnapshot
         let academicResults = try testAcademicResults(for: action)
         let payload = try ResearchRunResultPayload(
             runID: submission.runID,
@@ -645,7 +645,7 @@ func completeTestProtectedFunction(
         )
         _ = try await handle.services.localResearchExecutionStore
             .stageResultPayload(payload)
-        return try await handle.research.completeProtectedFunction(submission)
+        return try await handle.research.completeActionRun(submission)
     }
 }
 

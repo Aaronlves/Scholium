@@ -13,6 +13,7 @@ final class WindowCommandObservation: ObservableObject {
     init(
         shellState: WindowShellState,
         workspaceController: WindowWorkspaceController,
+        libraryMutationController: WindowLibraryMutationController,
         discoveryController: DiscoveryController,
         documentController: DocumentController,
         documentNavigationHistoryController: DocumentNavigationHistoryController,
@@ -48,6 +49,8 @@ final class WindowCommandObservation: ObservableObject {
                 }
                 .map { _ in () }
                 .eraseToAnyPublisher(),
+            changes(libraryMutationController.$isCreatingNote),
+            changes(libraryMutationController.$isMutatingFolder),
             discoveryChanges,
             documentNavigationChanges,
             changes(documentController.$selectedDocument),

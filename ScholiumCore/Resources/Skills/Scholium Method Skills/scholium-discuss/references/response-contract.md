@@ -1,6 +1,6 @@
 # Discuss response contract
 
-Use only the immutable response contract in the exact Discussion record. A Triptych default may seed a future Discussion but never replaces an existing snapshot. A missing or unsupported snapshot fails closed; do not infer modules from the question, a Practice, or a newer default.
+Use only the immutable response contract in the exact Discussion record. A Triptych default may seed a future Discussion but never replaces an existing snapshot. A missing or unsupported snapshot fails closed; do not infer modules from the question, an ordinary reference, or a newer default.
 
 ## Required outcome
 

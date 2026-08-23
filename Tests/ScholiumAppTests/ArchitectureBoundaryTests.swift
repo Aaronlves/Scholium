@@ -495,6 +495,12 @@ struct ArchitectureBoundaryTests {
                 .appendingPathComponent("LocalResearchExecutionStore.swift"),
             encoding: .utf8
         )
+        let creationStoreSource = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("ScholiumCore")
+                .appendingPathComponent("AgentAnalysisCreationReservationStore.swift"),
+            encoding: .utf8
+        )
 
         for retiredLocalSymbol in [
             "LocalResearchExecutionRecord",
@@ -521,13 +527,25 @@ struct ArchitectureBoundaryTests {
         #expect(localStoreSource.contains("archiveUnsupportedExecutions"))
         #expect(!localStoreSource.contains("ResearchRecordStoreV1Error"))
         #expect(!localStoreSource.contains("PortableResearchRecordError"))
-        #expect(!localStoreSource.contains("ResearchFunctionRecordStoreError"))
+        #expect(!localStoreSource.contains("ResearchActionRecordStoreError"))
         #expect(localStoreSource.contains(
             "public let issues: [LocalResearchExecutionStoreIssue]"
         ))
+        #expect(!localStoreSource.contains("AgentAnalysisCreationReservation"))
+        #expect(!localStoreSource.contains("agent-analysis-creations-v1"))
+        #expect(creationStoreSource.contains(
+            "public actor AgentAnalysisCreationReservationStore"
+        ))
+        #expect(creationStoreSource.contains(
+            "storageDirectoryName = \"agent-analysis-creations-v1\""
+        ))
+        #expect(creationStoreSource.contains(
+            "coordinationLockName = \"agent-analysis-creations-v1.lock\""
+        ))
+        #expect(!creationStoreSource.contains("validateDeletionAuthority"))
     }
 
-    @Test("Research function execution uses the local execution record directly")
+    @Test("Research Action execution uses the local execution record directly")
     func localResearchExecutionRecordBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -538,16 +556,64 @@ struct ArchitectureBoundaryTests {
             isDirectory: true
         )
         for fileName in [
-            "ResearchFunctionCoordinator.swift",
-            "ResearchFunctionDelivery.swift",
-            "ResearchFunctionCompletion.swift",
+            "ResearchActionRunCoordinator.swift",
+            "ResearchActionRunDelivery.swift",
+            "ResearchActionRunCompletion.swift",
         ] {
             let source = try String(
                 contentsOf: applicationRoot.appendingPathComponent(fileName),
                 encoding: .utf8
             )
-            #expect(!source.contains("StoredFunctionRecord"))
+            #expect(!source.contains("StoredActionRunRecord"))
         }
+    }
+
+    @Test("Research Action execution has no second Function identity")
+    func researchActionSingleModelBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let actionContracts = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/ResearchActionContracts.swift"
+            ),
+            encoding: .utf8
+        )
+        let runContracts = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/ResearchActionRunContracts.swift"
+            ),
+            encoding: .utf8
+        )
+        let applicationRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumApplication",
+            isDirectory: true
+        )
+
+        #expect(actionContracts.contains("public enum ResearchActionID:"))
+        for actionCase in [
+            "case discuss",
+            "case analyze",
+            "case synthesize",
+            "case write",
+            "case critique",
+            "case checkFidelity",
+        ] {
+            #expect(actionContracts.contains(actionCase))
+        }
+        #expect(runContracts.contains("public let actionID: ResearchActionID"))
+        #expect(runContracts.contains("public let actionSnapshot: ResearchActionSnapshot"))
+        #expect(!runContracts.contains("let actionSnapshot: ResearchActionSnapshot?"))
+        #expect(!runContracts.contains("let function:"))
+        #expect(!actionContracts.contains("ResearchActionExecutionKind"))
+        #expect(!runContracts.contains("expectedExecutionKind"))
+        #expect(!runContracts.contains("execution_kind"))
+        #expect(!FileManager.default.fileExists(
+            atPath: applicationRoot.appendingPathComponent(
+                "ResearchActionFunctionMapping.swift"
+            ).path
+        ))
     }
 
     @Test("Research continuation does not borrow the full workspace service aggregate")
@@ -701,7 +767,7 @@ struct ArchitectureBoundaryTests {
     }
 
     @Test("Research execution lifecycle has one Workspace coordinator")
-    func researchFunctionCoordinatorBoundary() throws {
+    func researchActionCoordinatorBoundary() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -712,25 +778,25 @@ struct ArchitectureBoundaryTests {
         )
         let coordinator = try String(
             contentsOf: applicationRoot.appendingPathComponent(
-                "ResearchFunctionCoordinator.swift"
+                "ResearchActionRunCoordinator.swift"
             ),
             encoding: .utf8
         )
         let preparation = try String(
             contentsOf: applicationRoot.appendingPathComponent(
-                "ResearchFunctionPreparation.swift"
+                "ResearchActionRunPreparation.swift"
             ),
             encoding: .utf8
         )
         let delivery = try String(
             contentsOf: applicationRoot.appendingPathComponent(
-                "ResearchFunctionDelivery.swift"
+                "ResearchActionRunDelivery.swift"
             ),
             encoding: .utf8
         )
         let evidence = try String(
             contentsOf: applicationRoot.appendingPathComponent(
-                "ResearchFunctionEvidence.swift"
+                "ResearchActionRunEvidence.swift"
             ),
             encoding: .utf8
         )
@@ -742,7 +808,7 @@ struct ArchitectureBoundaryTests {
         )
         let completion = try String(
             contentsOf: applicationRoot.appendingPathComponent(
-                "ResearchFunctionCompletion.swift"
+                "ResearchActionRunCompletion.swift"
             ),
             encoding: .utf8
         )
@@ -778,13 +844,13 @@ struct ArchitectureBoundaryTests {
         )
 
         #expect(coordinator.contains(
-            "final class ResearchFunctionCoordinator: Sendable"
+            "final class ResearchActionRunCoordinator: Sendable"
         ))
         #expect(coordinator.contains(
-            "protocol ResearchFunctionCoordinatorHost: Actor"
+            "protocol ResearchActionRunCoordinatorHost: Actor"
         ))
         #expect(coordinator.contains("host: isolated Host"))
-        #expect(coordinator.contains("func cancelProtectedFunction"))
+        #expect(coordinator.contains("func cancelActionRun"))
         #expect(coordinator.contains("func finishProtectedDiscussion"))
         #expect(!coordinator.contains("WorkspaceServices"))
         #expect(!completion.contains("WorkspaceServices"))
@@ -794,25 +860,25 @@ struct ArchitectureBoundaryTests {
         #expect(!preparation.contains("extension WorkspaceHandle"))
         #expect(!delivery.contains("extension WorkspaceHandle"))
         #expect(!evidence.contains("extension WorkspaceHandle"))
-        #expect(!coordinator.contains("actor ResearchFunctionCoordinator"))
-        #expect(completion.contains("func completeProtectedFunction"))
+        #expect(!coordinator.contains("actor ResearchActionRunCoordinator"))
+        #expect(completion.contains("func completeActionRun"))
         #expect(completion.contains("func ensurePortableResearchRecord"))
         #expect(completion.contains("func validateResearchContinuation"))
         #expect(!completion.contains("func confirmWriteActivity"))
         #expect(completion.contains("func validateSnapshotResearchSourceAccess"))
-        #expect(preparation.contains("func researchFunctionAvailability"))
-        #expect(preparation.contains("func prepareResearchFunction"))
+        #expect(preparation.contains("func researchActionRunAvailability"))
+        #expect(preparation.contains("func prepareResearchActionRun"))
         #expect(!preparation.contains("func prepareAutomaticFidelity"))
-        #expect(preparation.contains("func researchFunctionRun"))
+        #expect(preparation.contains("func researchActionRun"))
         #expect(preparation.contains("host: isolated Host"))
         #expect(delivery.contains("func deliveryInstructions"))
         #expect(delivery.contains("func attachingAgentActions"))
         #expect(delivery.contains("host: isolated Host"))
         #expect(evidence.contains("func requiredResearchSourceAccess"))
-        #expect(evidence.contains("func researchFunctionTargetRepairReason"))
+        #expect(evidence.contains("func researchActionTargetRepairReason"))
         #expect(evidence.contains("host: isolated Host"))
         #expect(handle.contains(
-            "let researchFunctionCoordinator: ResearchFunctionCoordinator"
+            "let researchActionRunCoordinator: ResearchActionRunCoordinator"
         ))
         #expect(handle.contains(
             "localExecutionStore: services.localResearchExecutionStore"
@@ -821,21 +887,21 @@ struct ArchitectureBoundaryTests {
             "critiqueRegistry: services.critiqueRegistry"
         ))
         #expect(operations.contains(
-            "functionCoordinator.cancelProtectedFunction("
+            "actionRunCoordinator.cancelActionRun("
         ))
-        #expect(operations.contains("functionCoordinator.cancelAction("))
+        #expect(operations.contains("actionRunCoordinator.cancelAction("))
         #expect(operations.contains(
-            "functionCoordinator.completeProtectedFunction("
-        ))
-        #expect(operations.contains(
-            "functionCoordinator.prepareResearchFunction("
+            "actionRunCoordinator.completeActionRun("
         ))
         #expect(operations.contains(
-            "functionCoordinator.researchFunctionAvailability("
+            "actionRunCoordinator.prepareResearchActionRun("
         ))
-        #expect(!actionResolver.contains(".completeProtectedFunction("))
+        #expect(operations.contains(
+            "actionRunCoordinator.researchActionRunAvailability("
+        ))
+        #expect(!actionResolver.contains(".completeActionRun("))
         #expect(agentResults.contains("func submitResearchAgentResult("))
-        #expect(agentResults.contains(".completeProtectedFunction("))
+        #expect(agentResults.contains(".completeActionRun("))
         #expect(agentResults.contains(
             "struct WorkspaceResearchAgentResultDependencies"
         ))
@@ -859,7 +925,7 @@ struct ArchitectureBoundaryTests {
             "services.researchActionResolverDependencies"
         ))
         #expect(actionResolver.contains(
-            "researchFunctionCoordinator.prepareResearchFunction("
+            "researchActionRunCoordinator.prepareResearchActionRun("
         ))
         #expect(boundedWrites.contains("func extendResearchWriteSet("))
         #expect(boundedWrites.contains("func writeResearchDocument("))
@@ -877,11 +943,11 @@ struct ArchitectureBoundaryTests {
         #expect(!boundedWrites.contains("activeResearchActivityKeys["))
         #expect(!boundedWrites.contains("raw_session_secret"))
         for retiredPath in [
-            "func completeResearchFunction",
-            "func cancelResearchFunction",
+            "func completeResearchAction",
+            "func cancelResearchAction",
             "func finishResearchDiscussion",
-            "func storedFunctionRecord",
-            "func persistFunctionCompletion",
+            "func storedActionRunRecord",
+            "func persistActionRunCompletion",
             "recoverableResearchRefreshWarning",
             "func ensurePortableResearchRecord",
             "func validateResearchContinuation",
@@ -893,13 +959,13 @@ struct ArchitectureBoundaryTests {
             )
         }
         for retiredPreparationOwner in [
-            "func researchFunctionAvailability",
-            "func researchFunctionMaterialCandidates",
-            "func prepareResearchFunction",
+            "func researchActionRunAvailability",
+            "func researchActionMaterialCandidates",
+            "func prepareResearchActionRun",
             "func prepareAutomaticFidelity",
-            "func researchFunctionRun",
+            "func researchActionRun",
             "func attachingAgentActions",
-            "func researchFunctionTargetRepairReason",
+            "func researchActionTargetRepairReason",
         ] {
             #expect(
                 !guidance.contains(retiredPreparationOwner),
@@ -911,7 +977,7 @@ struct ArchitectureBoundaryTests {
         #expect(guidance.contains("func researchSourceAccessStatus"))
         #expect(guidance.contains("func researchCitationMethodStatus"))
         #expect(!FileManager.default.fileExists(atPath: applicationRoot
-            .appendingPathComponent("WorkspaceResearchFunctionOperations.swift")
+            .appendingPathComponent("WorkspaceResearchActionOperations.swift")
             .path))
         #expect(!actionResolver.contains("func cancelResearchAction"))
     }
@@ -1076,11 +1142,11 @@ struct ArchitectureBoundaryTests {
         #expect(!guidanceRoot.contains("private struct ResearchActionProfileEditorView"))
 
         for fileName in [
-            "ResearchFunctionSourceAccessTests.swift",
-            "ResearchFunctionDiscussionTests.swift",
-            "ResearchFunctionPreparationTests.swift",
-            "ResearchFunctionActionRecordTests.swift",
-            "ResearchFunctionContinuationTests.swift",
+            "ResearchActionRunSourceAccessTests.swift",
+            "ResearchActionRunDiscussionTests.swift",
+            "ResearchActionRunPreparationTests.swift",
+            "ResearchActionRunRecordTests.swift",
+            "ResearchActionRunContinuationTests.swift",
         ] {
             let source = try String(
                 contentsOf: repositoryRoot.appendingPathComponent(
@@ -1088,7 +1154,7 @@ struct ArchitectureBoundaryTests {
                 ),
                 encoding: .utf8
             )
-            #expect(source.contains("extension ResearchFunctionOperationsTests"))
+            #expect(source.contains("extension ResearchActionRunOperationsTests"))
         }
 
         let uiTestFiles = [

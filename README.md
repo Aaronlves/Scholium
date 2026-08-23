@@ -323,8 +323,11 @@ scholium help agent start
 The CLI shares Application capabilities for registered Triptychs, Search,
 links and graph traces, workspace catalog and Attention, exact reads,
 Discussion replies, resumable Actions with structured Analyze recommendations,
-and revision-checked Note operations. Existing-note mutations require the current
-SHA-256 returned by `scholium read --format json`.
+explicit `record list --note <stable-note-uuid>` and `record read <record-uuid>`
+retrieval, and revision-checked Note operations. Record retrieval returns the
+portable Record owner and its exact fingerprint without creating a Note
+dossier. Existing-note mutations require the current SHA-256 returned by
+`scholium read --format json`.
 
 `Tools/Scripts/package-app.sh` emits the independent
 `Scholium-CLI-macos.zip`, whose provenance reports the verified architecture.

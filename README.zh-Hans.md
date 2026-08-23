@@ -260,7 +260,9 @@ scholium help agent start
 ```
 
 CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关注、准确读取、Discussion
-回复、可恢复 Actions、推荐文献和带修订检查的笔记操作。修改已有笔记时必须提供
+回复、可恢复 Actions、推荐文献、按稳定 Note UUID 执行的 `record list`、按 Record
+UUID 执行的 `record read`，以及带修订检查的笔记操作。Record 读取返回便携式
+Record owner 及其准确指纹，不创建 Note dossier。修改已有笔记时必须提供
 `scholium read --format json` 返回的当前 SHA-256。
 
 `Tools/Scripts/package-app.sh` 会生成独立的 `Scholium-CLI-macos.zip`；其中的

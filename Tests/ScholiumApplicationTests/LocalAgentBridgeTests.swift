@@ -149,11 +149,11 @@ struct LocalAgentBridgeTests {
         #expect(staleRun.code == .staleRun)
         #expect(staleRun.message.contains("start a new Action"))
         #expect(LocalAgentBridgeWireCoding.errorPayload(
-            ResearchFunctionContractError.materialChanged("Material")
+            ResearchActionRunContractError.materialChanged("Material")
         ).code == .staleRun)
 
         let missingSource = LocalAgentBridgeWireCoding.errorPayload(
-            ResearchFunctionContractError.sourceAccessUnavailable(
+            ResearchActionRunContractError.sourceAccessUnavailable(
                 ResearchSourceAccessFailure(code: .missingBinding)
             )
         )
@@ -944,7 +944,7 @@ private func testCredential() throws -> ResearchConnectionCredential {
 private func testFidelityContext(
     run: ResearchRunLocator
 ) throws -> ResearchAuthenticatedRunContext {
-    let target = ResearchFunctionTarget(
+    let target = ResearchActionNoteSnapshot(
         noteID: UUID(),
         note: VaultQualifiedNoteID(
             vaultID: UUID(),

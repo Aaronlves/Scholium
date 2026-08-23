@@ -3,8 +3,8 @@ import ScholiumContracts
 import Testing
 @testable import ScholiumApplication
 
-@Suite("Research Function coordinator ownership")
-struct ResearchFunctionCoordinatorTests {
+@Suite("Research Action Run coordinator ownership")
+struct ResearchActionCoordinatorTests {
     private func preflightStart(
         runtime: WorkspaceRuntime,
         triptychID: UUID,
@@ -385,7 +385,7 @@ struct ResearchFunctionCoordinatorTests {
             == sameStarted.receipt.target.noteID)
         let executions = try await handle.services.localResearchExecutionStore
             .listing().records.filter {
-                $0.snapshot.actionSnapshot?.target.note == prepared.target
+                $0.snapshot.actionSnapshot.target.note == prepared.target
             }
         #expect(executions.count == 1)
         let source = try await handle.documents.load(prepared.target)
@@ -1008,33 +1008,33 @@ struct ResearchFunctionCoordinatorTests {
             assignments: [fixture.assignment]
         )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let coordinator = await handle.researchFunctionCoordinator
+        let coordinator = await handle.researchActionRunCoordinator
 
         let snapshot = try await handle.snapshot()
         let note = try #require(snapshot.document(id: fixture.analysisNoteID))
         let noteID = try #require(note.stableIdentity.resolvedID)
-        let target = ResearchFunctionTarget(
+        let target = ResearchActionNoteSnapshot(
             noteID: noteID,
             note: fixture.analysisNoteID,
             role: .analysis,
             fingerprint: note.fingerprint,
             title: "Analysis"
         )
-        let availability = try await coordinator.researchFunctionAvailability(
+        let availability = try await coordinator.researchActionRunAvailability(
             for: target,
             checkingSourceAccess: false,
             host: handle
         )
-        #expect(availability.first { $0.function == .fidelity }?.isEnabled == true)
-        let preparation = try await coordinator.prepareResearchFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
+        #expect(availability.first { $0.actionID == .checkFidelity }?.isEnabled == true)
+        let preparation = try await coordinator.prepareResearchActionRun(
+            ResearchActionRunRequest(
+                actionID: .checkFidelity,
                 target: target,
                 checks: [.content]
             ),
             host: handle
         )
-        let recovered = try await coordinator.researchFunctionRun(
+        let recovered = try await coordinator.researchActionRun(
             id: preparation.runID,
             host: handle
         )
@@ -1042,7 +1042,7 @@ struct ResearchFunctionCoordinatorTests {
         #expect(try coordinator.attachingAgentActions(
             to: recovered
         ).nextActions == nil)
-        let submission = ResearchFunctionCompletionSubmission(
+        let submission = ResearchActionRunCompletionSubmission(
             runID: preparation.runID,
             confirmationToken: preparation.snapshot.confirmationToken,
             recordTitle: try ResearchRecordTitle("Test research result"),
@@ -1055,7 +1055,7 @@ struct ResearchFunctionCoordinatorTests {
                 summary: "The fixture found no unresolved content-fidelity issue."
             )]
         )
-        let action = try #require(preparation.snapshot.actionSnapshot)
+        let action = preparation.snapshot.actionSnapshot
         _ = try await handle.services.localResearchExecutionStore.stageResultPayload(
             ResearchRunResultPayload(
                 runID: preparation.runID,
@@ -1072,7 +1072,7 @@ struct ResearchFunctionCoordinatorTests {
             )
         )
 
-        let completed = try await coordinator.completeProtectedFunction(
+        let completed = try await coordinator.completeActionRun(
             submission,
             host: handle
         )
@@ -1081,19 +1081,19 @@ struct ResearchFunctionCoordinatorTests {
         #expect(try await coordinator.record(
             runID: preparation.runID
         ).completion == completed)
-        #expect(try await coordinator.completeProtectedFunction(
+        #expect(try await coordinator.completeActionRun(
             submission,
             host: handle
         ) == completed)
         await runtime.shutdown()
         await #expect(throws: ScholiumApplicationError.self) {
-            _ = try await coordinator.researchFunctionRun(
+            _ = try await coordinator.researchActionRun(
                 id: preparation.runID,
                 host: handle
             )
         }
         await #expect(throws: ScholiumApplicationError.self) {
-            _ = try await coordinator.completeProtectedFunction(
+            _ = try await coordinator.completeActionRun(
                 submission,
                 host: handle
             )
@@ -1109,8 +1109,8 @@ struct ResearchFunctionCoordinatorTests {
             assignments: [fixture.assignment]
         )))
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let coordinator = await handle.researchFunctionCoordinator
-        let repeatedLookup = await handle.researchFunctionCoordinator
+        let coordinator = await handle.researchActionRunCoordinator
+        let repeatedLookup = await handle.researchActionRunCoordinator
         #expect(coordinator === repeatedLookup)
         #expect(coordinator.workspaceID == handle.id)
 
@@ -1121,30 +1121,30 @@ struct ResearchFunctionCoordinatorTests {
             await runtime.shutdown()
             return
         }
-        let target = ResearchFunctionTarget(
+        let target = ResearchActionNoteSnapshot(
             noteID: noteID,
             note: fixture.analysisNoteID,
             role: .analysis,
             fingerprint: note.fingerprint,
             title: "Analysis"
         )
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .fidelity,
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .checkFidelity,
                 target: target,
                 checks: [.content]
             )
         )
 
-        try await handle.research.cancelProtectedFunction(runID: preparation.runID)
-        try await handle.research.cancelProtectedFunction(runID: preparation.runID)
+        try await handle.research.cancelActionRun(runID: preparation.runID)
+        try await handle.research.cancelActionRun(runID: preparation.runID)
         #expect(try await coordinator.record(
             runID: preparation.runID
         ).completion?.state == .cancelled)
 
         await runtime.shutdown()
         await #expect(throws: ScholiumApplicationError.self) {
-            try await coordinator.cancelProtectedFunction(
+            try await coordinator.cancelActionRun(
                 runID: preparation.runID,
                 host: handle
             )

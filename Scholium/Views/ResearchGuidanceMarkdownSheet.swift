@@ -38,7 +38,7 @@ struct ResearchGuidanceMarkdownCreationDraft: Equatable {
 }
 
 /// The shared sheet lifecycle for editing one existing Research Guidance
-/// Markdown source. The owning Method or Practice operation still validates
+/// Markdown source. The owning Method operation still validates
 /// the expected revision and commits the exact proposed String.
 struct ResearchGuidanceMarkdownEditSheet: View {
     let title: Text

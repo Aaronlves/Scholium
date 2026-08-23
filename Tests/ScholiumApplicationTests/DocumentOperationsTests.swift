@@ -1270,7 +1270,7 @@ struct DocumentOperationsTests {
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
         let discussion = try await handle.research.createDiscussion(
-            target: ResearchFunctionTarget(
+            target: ResearchActionNoteSnapshot(
                 noteID: stableID,
                 note: fixture.targetID,
                 role: .analysis,
@@ -1316,10 +1316,10 @@ struct DocumentOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
-        let preparation = try await handle.research.prepareProtectedFunction(
-            ResearchFunctionRequest(
-                function: .discuss,
-                target: ResearchFunctionTarget(
+        let preparation = try await handle.research.prepareActionRun(
+            ResearchActionRunRequest(
+                actionID: .discuss,
+                target: ResearchActionNoteSnapshot(
                     noteID: stableID,
                     note: fixture.targetID,
                     role: .analysis,
@@ -1342,7 +1342,7 @@ struct DocumentOperationsTests {
             .appendingPathComponent("Target.md").path))
         #expect(try await handle.research.activeDiscussion(id: preparation.runID).id
             == preparation.runID)
-        try await handle.research.cancelProtectedFunction(runID: preparation.runID)
+        try await handle.research.cancelActionRun(runID: preparation.runID)
         await runtime.shutdown()
     }
 

@@ -212,8 +212,8 @@ final class ResearchController: ObservableObject {
 
     @discardableResult
     func createDiscussion(
-        target: ResearchFunctionTarget,
-        focalNotes: [ResearchFunctionMaterial] = [],
+        target: ResearchActionNoteSnapshot,
+        focalNotes: [ResearchActionNoteSnapshot] = [],
         passage: CommentAnchor?,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {
@@ -227,7 +227,7 @@ final class ResearchController: ObservableObject {
 
     @discardableResult
     func createComment(
-        target: ResearchFunctionTarget,
+        target: ResearchActionNoteSnapshot,
         lineReference: ResearchLineReference,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion {

@@ -50,7 +50,7 @@ enum WorkspaceResearchStateReconciler {
         if activeDiscussionListing.issues.isEmpty,
            finishedResearchRecordListing.issues.isEmpty {
             for local in localExecutionListing.records
-                where local.snapshot.request.function == .discuss {
+                where local.snapshot.request.actionID == .discuss {
                 do {
                     let expected = try ResearchDiscussionFactory.make(
                         snapshot: local.snapshot,
@@ -63,7 +63,7 @@ enum WorkspaceResearchStateReconciler {
                             active,
                             expected: expected
                         ) else {
-                            throw ResearchFunctionContractError.invalidCompletion(
+                            throw ResearchActionRunContractError.invalidCompletion(
                                 "The active Discussion does not match its current Run."
                             )
                         }
@@ -72,7 +72,7 @@ enum WorkspaceResearchStateReconciler {
                             finished,
                             expected: expected
                         ) else {
-                            throw ResearchFunctionContractError.invalidCompletion(
+                            throw ResearchActionRunContractError.invalidCompletion(
                                 "The finished Discussion does not match its current Run."
                             )
                         }
@@ -83,7 +83,7 @@ enum WorkspaceResearchStateReconciler {
                         _ = try await dependencies.portableResearchRecordStore
                             .createActiveDiscussion(expected)
                     } else {
-                        throw ResearchFunctionContractError.invalidCompletion(
+                        throw ResearchActionRunContractError.invalidCompletion(
                             "The current Discuss Run has no exact portable Discussion pair."
                         )
                     }

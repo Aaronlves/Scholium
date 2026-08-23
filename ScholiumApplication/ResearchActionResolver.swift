@@ -19,7 +19,7 @@ extension WorkspaceServices {
 
 struct ResolvedResearchActionContext: Sendable {
     let availability: ResearchActionAvailability
-    let function: ResearchFunctionID
+    let actionID: ResearchActionID
     let method: ResearchMethodSnapshot
     let platformInputs: ResearchActionPlatformInputs
     let academicInputs: ResearchAcademicFieldValues
@@ -29,7 +29,7 @@ struct ResolvedResearchActionContext: Sendable {
 
 private struct ResolvedResearchActionCandidate: Sendable {
     let availability: ResearchActionAvailability
-    let function: ResearchFunctionID
+    let actionID: ResearchActionID
     let method: ResearchMethodSnapshot?
 }
 
@@ -39,9 +39,9 @@ extension WorkspaceHandle {
         checkingSourceAccess: Bool = true
     ) async throws -> [ResearchActionAvailability] {
         try requireCompleteWorkspace()
-        let functionTarget = target.functionTarget
+        let actionTarget = target
         return try await resolvedResearchActions(
-            for: functionTarget,
+            for: actionTarget,
             checkingSourceAccess: checkingSourceAccess
         )
             .map(\.availability)
@@ -55,7 +55,7 @@ extension WorkspaceHandle {
     ) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
         let resolved = try await resolvedResearchActionExecution(request)
-        let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
+        let prepared = try await researchActionRunCoordinator.prepareResearchActionRun(
             resolved.request,
             actionContext: resolved.context,
             runIDOverride: runIDOverride,
@@ -65,17 +65,15 @@ extension WorkspaceHandle {
             expectedZoteroBinding: expectedZoteroBinding,
             host: self
         )
-        let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(
+        let functionPreparation = try researchActionRunCoordinator.attachingAgentActions(
             to: prepared
         )
-        guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
-            throw ResearchActionExecutionContractError.staleResolution
-        }
+        let snapshot = functionPreparation.snapshot.actionSnapshot
         return ResearchActionPreparation(
             snapshot: snapshot,
             runID: functionPreparation.runID,
             instructions: functionPreparation.instructions,
-            state: ResearchActionRunState(functionPreparation.state),
+            state: functionPreparation.state,
             derivedRefreshWarning: functionPreparation.derivedRefreshWarning,
             nextActions: functionPreparation.nextActions ?? []
         )
@@ -87,7 +85,7 @@ extension WorkspaceHandle {
     ) async throws -> [ResearchActionNoteSnapshot] {
         try requireCompleteWorkspace()
         let candidates = try await resolvedResearchActions(
-            for: target.functionTarget,
+            for: target,
             checkingSourceAccess: false
         )
         guard let candidate = candidates.first(where: {
@@ -95,17 +93,17 @@ extension WorkspaceHandle {
         }) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        return try await researchFunctionCoordinator.researchFunctionMaterialCandidates(
-            for: target.functionTarget,
-            function: candidate.function,
+        return try await researchActionRunCoordinator.researchActionMaterialCandidates(
+            for: target,
+            actionID: candidate.actionID,
             host: self
-        ).map { $0.material.actionNote }
+        ).map { $0.material }
     }
 
     func researchActionRun(id: UUID) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
         return try await publicActionPreparation(
-            from: researchFunctionCoordinator.researchFunctionRun(
+            from: researchActionRunCoordinator.researchActionRun(
                 id: id,
                 host: self
             )
@@ -118,7 +116,6 @@ extension WorkspaceHandle {
     ) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
         guard request.actionID == .synthesize,
-              request.expectedExecutionKind == .synthesis,
               context.triptychID == self.id,
               context.recordedRevision != context.currentRevision,
               context.material.stableNoteID.flatMap(UUID.init(uuidString:))
@@ -174,7 +171,7 @@ extension WorkspaceHandle {
             requestID: runID,
             kind: .resynthesis
         )
-        let prepared = try await researchFunctionCoordinator.prepareResearchFunction(
+        let prepared = try await researchActionRunCoordinator.prepareResearchActionRun(
             resolved.request,
             actionContext: resolved.context,
             runIDOverride: runID,
@@ -183,36 +180,32 @@ extension WorkspaceHandle {
             requiresAgentChangeEvidence: true,
             host: self
         )
-        let functionPreparation = try researchFunctionCoordinator.attachingAgentActions(
+        let functionPreparation = try researchActionRunCoordinator.attachingAgentActions(
             to: prepared
         )
-        guard let snapshot = functionPreparation.snapshot.actionSnapshot else {
-            throw ResearchActionExecutionContractError.staleResolution
-        }
+        let snapshot = functionPreparation.snapshot.actionSnapshot
         return ResearchActionPreparation(
             snapshot: snapshot,
             runID: functionPreparation.runID,
             instructions: functionPreparation.instructions,
-            state: ResearchActionRunState(functionPreparation.state),
+            state: functionPreparation.state,
             derivedRefreshWarning: functionPreparation.derivedRefreshWarning,
             nextActions: functionPreparation.nextActions ?? []
         )
     }
 
     private func publicActionPreparation(
-        from preparation: ResearchFunctionPreparation
+        from preparation: ResearchActionRunPreparation
     ) async throws -> ResearchActionPreparation {
-        guard let snapshot = preparation.snapshot.actionSnapshot else {
-            throw ResearchActionExecutionContractError.staleResolution
-        }
-        let attached = try researchFunctionCoordinator.attachingAgentActions(
+        let snapshot = preparation.snapshot.actionSnapshot
+        let attached = try researchActionRunCoordinator.attachingAgentActions(
             to: preparation
         )
         return ResearchActionPreparation(
             snapshot: snapshot,
             runID: attached.runID,
             instructions: attached.instructions,
-            state: ResearchActionRunState(attached.state),
+            state: attached.state,
             derivedRefreshWarning: attached.derivedRefreshWarning,
             nextActions: attached.nextActions ?? []
         )
@@ -221,11 +214,11 @@ extension WorkspaceHandle {
     func resolvedResearchActionExecution(
         _ request: ResearchActionExecutionRequest
     ) async throws -> (
-        request: ResearchFunctionRequest,
+        request: ResearchActionRunRequest,
         context: ResolvedResearchActionContext
     ) {
         try requireActive()
-        let target = request.target.functionTarget
+        let target = request.target
         let candidates = try await resolvedResearchActions(
             for: target,
             checkingSourceAccess: false
@@ -238,9 +231,7 @@ extension WorkspaceHandle {
                 request.actionID
             )
         }
-        guard candidate.availability.definition.executionKind
-                == request.expectedExecutionKind,
-              candidate.availability.profile.profileRevision
+        guard candidate.availability.profile.profileRevision
                 == request.expectedProfileRevision,
               candidate.availability.profile.profileDocumentRevision
                 == request.expectedProfileDocumentRevision else {
@@ -257,9 +248,9 @@ extension WorkspaceHandle {
         }
         let platformInputs = try request.platformInputs.validated(
             for: platform,
-            target: target.actionNote
+            target: target
         )
-        let prepared = try makeFunctionRequest(
+        let prepared = try makeActionRunRequest(
             definition: candidate.availability.definition,
             target: target,
             platform: platform,
@@ -273,7 +264,7 @@ extension WorkspaceHandle {
         )
         let context = ResolvedResearchActionContext(
             availability: candidate.availability,
-            function: candidate.function,
+            actionID: candidate.actionID,
             method: method,
             platformInputs: platformInputs,
             academicInputs: academicInputs,
@@ -284,19 +275,17 @@ extension WorkspaceHandle {
     }
 
     func resolvedDefaultActionContext(
-        for request: ResearchFunctionRequest
+        for request: ResearchActionRunRequest
     ) async throws -> ResolvedResearchActionContext {
         try request.validate()
-        let definition = try ResearchActionFunctionMapping.definition(
-            for: request.function,
-            targetRole: request.target.role
-        )
+        let definition = request.actionID.definition
+        try definition.validate(targetRole: request.target.role)
         guard let profileSnapshot = try await researchActionResolverDependencies
             .researchConfigurationStore
             .profileSnapshot(),
               let profile = profileSnapshot.document.profile(for: definition.id),
               profile.isEnabled,
-              profile.applicableRoles.contains(request.target.role.actionRole),
+              profile.applicableRoles.contains(request.target.role),
               let platform = PlatformActionCatalog.definition(for: definition.id) else {
             throw ResearchActionExecutionContractError.actionUnavailable(definition.id)
         }
@@ -315,12 +304,12 @@ extension WorkspaceHandle {
             )
         }
         let platformInputs = try ResearchActionPlatformInputs(
-            focalNotes: request.materials.map(\.actionNote),
+            focalNotes: request.materials,
             passage: request.scope?.selection,
             fidelityChecks: request.checks
         ).validated(
             for: platform,
-            target: request.target.actionNote
+            target: request.target
         )
         var rawAcademicInputs: [String: ResearchAcademicFieldValue] = [:]
         if let instruction = request.instruction,
@@ -335,8 +324,8 @@ extension WorkspaceHandle {
             definitions: profile.academicInputFields
         )
         let authority = try Self.authority(
-            target: request.target.actionNote,
-            additionalReads: request.materials.map(\.actionNote),
+            target: request.target,
+            additionalReads: request.materials,
             platform: platform
         )
         let resultContract = try ResearchResultContract(
@@ -352,7 +341,7 @@ extension WorkspaceHandle {
                 profile: resolvedProfile,
                 isEnabled: true
             ),
-            function: request.function,
+            actionID: request.actionID,
             method: method,
             platformInputs: platformInputs,
             academicInputs: academicInputs,
@@ -362,16 +351,16 @@ extension WorkspaceHandle {
     }
 
     private func resolvedResearchActions(
-        for target: ResearchFunctionTarget,
+        for target: ResearchActionNoteSnapshot,
         checkingSourceAccess: Bool
     ) async throws -> [ResolvedResearchActionCandidate] {
-        let functionAvailability = Dictionary(uniqueKeysWithValues:
-            try await researchFunctionCoordinator.researchFunctionAvailability(
+        let runAvailability = Dictionary(uniqueKeysWithValues:
+            try await researchActionRunCoordinator.researchActionRunAvailability(
                 for: target,
                 checkingSourceAccess: checkingSourceAccess,
                 host: self
             ).map {
-                ($0.function, $0)
+                ($0.actionID, $0)
             }
         )
         guard let profileSnapshot = try await researchActionResolverDependencies
@@ -384,16 +373,14 @@ extension WorkspaceHandle {
         }
         var resolved: [ResolvedResearchActionCandidate] = []
         for profile in profileSnapshot.document.profiles where
-            profile.applicableRoles.contains(target.role.actionRole)
+            profile.applicableRoles.contains(target.role)
         {
-            guard let definition = Self.actionDefinition(for: profile.actionID),
-                  let platform = PlatformActionCatalog.definition(for: profile.actionID) else {
+            guard let platform = PlatformActionCatalog.definition(for: profile.actionID) else {
                 continue
             }
-            let function = try ResearchActionFunctionMapping.function(
-                for: definition,
-                targetRole: target.role.actionRole
-            )
+            let definition = profile.actionID.definition
+            try definition.validate(targetRole: target.role)
+            let actionID = definition.id
             let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
                 profile: profile,
                 profileRevision: profile.contentRevision(),
@@ -406,13 +393,13 @@ extension WorkspaceHandle {
                 .researchConfigurationStore.methodSnapshot(
                 for: definition.id
             )
-            let functionState = functionAvailability[function]
-            var reasons = (functionState?.repairReasons ?? []).map(
+            let runState = runAvailability[actionID]
+            var reasons = (runState?.repairReasons ?? []).map(
                 Self.actionRepairReason
             )
             reasons += await baseActionRepairReasons(
                 target: target,
-                function: function,
+                actionID: actionID,
                 profile: profile
             )
             if registration == nil {
@@ -434,12 +421,12 @@ extension WorkspaceHandle {
                     order: profile.order,
                     profile: resolvedProfile,
                     isEnabled: profile.isEnabled
-                        && functionState?.isEnabled == true
+                        && runState?.isEnabled == true
                         && reasons.isEmpty
                         && method != nil,
                     repairReasons: Self.unique(reasons)
                 ),
-                function: function,
+                actionID: actionID,
                 method: method
             ))
         }
@@ -452,59 +439,57 @@ extension WorkspaceHandle {
     }
 
     private func baseActionRepairReasons(
-        target: ResearchFunctionTarget,
-        function: ResearchFunctionID,
+        target: ResearchActionNoteSnapshot,
+        actionID: ResearchActionID,
         profile: ResearchAcademicActionProfile
     ) async -> [ResearchActionRepairReason] {
         var reasons: [ResearchActionRepairReason] = []
-        if let reason = await researchFunctionCoordinator
-            .researchFunctionTargetRepairReason(target, host: self) {
+        if let reason = await researchActionRunCoordinator
+            .researchActionTargetRepairReason(target, host: self) {
             reasons.append(Self.actionRepairReason(reason))
         }
-        if !function.allowedTargetRoles.contains(target.role)
-            || !profile.applicableRoles.contains(target.role.actionRole) {
+        if !actionID.allowedTargetRoles.contains(target.role)
+            || !profile.applicableRoles.contains(target.role) {
             reasons.append(ResearchActionRepairReason(code: .invalidTargetRole))
         }
         return Self.unique(reasons)
     }
 
-    private func makeFunctionRequest(
+    private func makeActionRunRequest(
         definition: ResearchActionDefinition,
-        target: ResearchFunctionTarget,
+        target: ResearchActionNoteSnapshot,
         platform: PlatformActionDefinition,
         platformInputs: ResearchActionPlatformInputs,
         academicInputs: ResearchAcademicFieldValues
-    ) throws -> (request: ResearchFunctionRequest, authority: ResearchAuthorityEnvelope) {
-        let function = try ResearchActionFunctionMapping.function(
-            for: definition,
-            targetRole: target.role.actionRole
-        )
+    ) throws -> (request: ResearchActionRunRequest, authority: ResearchAuthorityEnvelope) {
+        try definition.validate(targetRole: target.role)
+        let actionID = definition.id
         var seen: Set<UUID> = []
         let additionalReads = platformInputs.focalNotes.filter {
             $0.noteID != target.noteID && seen.insert($0.noteID).inserted
         }
-        let materials = additionalReads.map(\.functionMaterial)
+        let materials = additionalReads
         let authority = try Self.authority(
-            target: target.actionNote,
+            target: target,
             additionalReads: additionalReads,
             platform: platform
         )
         let instruction: String? = if case .freeText(let text)? =
             academicInputs.values["research-request"] { text } else { nil }
-        let request = ResearchFunctionRequest(
-            function: function,
+        let request = ResearchActionRunRequest(
+            actionID: actionID,
             target: target,
             materials: materials,
-            instruction: function == .discuss
+            instruction: actionID == .discuss
                 ? (instruction ?? "Discuss the current Target using the declared Action parameters.")
                 : instruction,
-            scope: platformInputs.passage.map(ResearchFunctionScope.passage),
-            checks: function == .fidelity
+            scope: platformInputs.passage.map(ResearchActionScope.passage),
+            checks: actionID == .checkFidelity
                 ? (platformInputs.fidelityChecks.isEmpty
                     ? [.content]
                     : Set(platformInputs.fidelityChecks))
                 : [],
-            dialogueResponseModules: function == .discuss ? [] : nil
+            dialogueResponseModules: actionID == .discuss ? [] : nil
         )
         try request.validate()
         return (request, authority)
@@ -524,22 +509,8 @@ extension WorkspaceHandle {
         )
     }
 
-    private static func actionDefinition(
-        for actionID: ResearchActionID
-    ) -> ResearchActionDefinition? {
-        switch actionID {
-        case .discuss: .discuss
-        case .analyze: .analyze
-        case .synthesize: .synthesize
-        case .write: .write
-        case .critique: .critique
-        case .checkFidelity: .checkFidelity
-        default: nil
-        }
-    }
-
     private static func actionRepairReason(
-        _ reason: ResearchFunctionRepairReason
+        _ reason: ResearchActionRunRepairReason
     ) -> ResearchActionRepairReason {
         let code: ResearchActionRepairReasonCode = switch reason.code {
         case .targetUnavailable: .targetUnavailable
@@ -566,82 +537,4 @@ extension WorkspaceHandle {
         return reasons.filter { seen.insert($0).inserted }
     }
 
-}
-
-private extension ResearchActionRunState {
-    init(_ state: ResearchFunctionRunState) {
-        switch state {
-        case .prepared: self = .prepared
-        case .complete: self = .complete
-        case .unverified: self = .unverified
-        case .stale: self = .stale
-        case .cancelled: self = .cancelled
-        }
-    }
-}
-
-extension ResearchFunctionTarget {
-    var actionNote: ResearchActionNoteSnapshot {
-        ResearchActionNoteSnapshot(
-            noteID: noteID,
-            note: note,
-            role: role.actionRole,
-            fingerprint: fingerprint,
-            title: title
-        )
-    }
-}
-
-extension ResearchFunctionMaterial {
-    var actionNote: ResearchActionNoteSnapshot {
-        ResearchActionNoteSnapshot(
-            noteID: noteID,
-            note: note,
-            role: role.actionRole,
-            fingerprint: fingerprint,
-            title: title
-        )
-    }
-}
-
-private extension ResearchActionNoteSnapshot {
-    var functionTarget: ResearchFunctionTarget {
-        ResearchFunctionTarget(
-            noteID: noteID,
-            note: note,
-            role: role.functionRole,
-            fingerprint: fingerprint,
-            title: title
-        )
-    }
-
-    var functionMaterial: ResearchFunctionMaterial {
-        ResearchFunctionMaterial(
-            noteID: noteID,
-            note: note,
-            role: role.functionRole,
-            fingerprint: fingerprint,
-            title: title
-        )
-    }
-}
-
-private extension ResearchFunctionTargetRole {
-    var actionRole: ResearchActionTargetRole {
-        switch self {
-        case .analysis: .analysis
-        case .topic: .topic
-        case .work: .work
-        }
-    }
-}
-
-private extension ResearchActionTargetRole {
-    var functionRole: ResearchFunctionTargetRole {
-        switch self {
-        case .analysis: .analysis
-        case .topic: .topic
-        case .work: .work
-        }
-    }
 }

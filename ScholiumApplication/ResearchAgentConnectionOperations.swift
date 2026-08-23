@@ -5,6 +5,7 @@ import ScholiumCore
 
 struct WorkspaceResearchAgentConnectionDependencies: Sendable {
     let localResearchExecutionStore: LocalResearchExecutionStore
+    let creationReservationStore: AgentAnalysisCreationReservationStore
     let researchAgentSessions: ResearchAgentSessionAuthority?
     let controlStore: TriptychControlStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
@@ -15,6 +16,7 @@ extension WorkspaceServices {
         WorkspaceResearchAgentConnectionDependencies {
         WorkspaceResearchAgentConnectionDependencies(
             localResearchExecutionStore: localResearchExecutionStore,
+            creationReservationStore: agentAnalysisCreationReservationStore,
             researchAgentSessions: researchAgentSessions,
             controlStore: controlStore,
             transactionRecoveryStore: transactionRecoveryStore
@@ -247,7 +249,7 @@ extension WorkspaceHandle {
               note.id.vaultID == requestedTarget.vaultID,
               note.id.relativePath == requestedTarget.relativePath,
               let stableID = note.stableIdentity.resolvedID,
-              let functionRole = ResearchFunctionTargetRole(vaultRole: note.vaultRole) else {
+              let functionRole = ResearchActionTargetRole(vaultRole: note.vaultRole) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
         let allowsResearcherProvidedSource =
@@ -266,7 +268,7 @@ extension WorkspaceHandle {
             note: note.id,
             role: role,
             fingerprint: note.fingerprint,
-            title: researchFunctionCoordinator.researchFunctionTitle(for: note)
+            title: researchActionRunCoordinator.researchActionTitle(for: note)
         )
         let available = try await researchActionAvailability(
             for: target,
@@ -285,7 +287,6 @@ extension WorkspaceHandle {
         )
         let execution = ResearchActionExecutionRequest(
             actionID: request.actionID,
-            expectedExecutionKind: action.definition.executionKind,
             expectedProfileRevision: action.profile.profileRevision,
             expectedProfileDocumentRevision: action.profile.profileDocumentRevision,
             target: target,
@@ -346,7 +347,7 @@ extension WorkspaceHandle {
         }
         let fingerprint = try Self.agentAnalysisCreationRequestFingerprint(request)
         let storedCreation = try await researchAgentConnectionDependencies
-            .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID)
+            .creationReservationStore.reservationIfPresent(id: runID)
         if let storedCreation,
            storedCreation.target != target
                 || storedCreation.reservedIdentityID != reservedIdentity
@@ -517,7 +518,7 @@ extension WorkspaceHandle {
                     )
                 }
                 if observed.fingerprint
-                    != execution.snapshot.actionSnapshot?.target.fingerprint {
+                    != execution.snapshot.actionSnapshot.target.fingerprint {
                     return try await makeAgentAnalysisPreflight(
                         request: request,
                         analysisVaultID: analysisVaultID,
@@ -811,7 +812,7 @@ extension WorkspaceHandle {
                 ? .researcherProvided
                 : .externalZotero
             guard let storedCreation = try await researchAgentConnectionDependencies
-                .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID),
+                .creationReservationStore.reservationIfPresent(id: runID),
                   storedCreation.requestFingerprint == requestFingerprint,
                   storedCreation.creationPayloadFingerprint
                     == creationPayloadFingerprint,
@@ -820,11 +821,11 @@ extension WorkspaceHandle {
                   storedCreation.reservedIdentityID == reservedIdentity else {
                 throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
+            let snapshotTarget = existingRun.snapshot.actionSnapshot.target
             guard existingRun.snapshot.runID == runID,
-                  existingRun.snapshot.actionSnapshot?.actionID == .analyze,
+                  existingRun.snapshot.actionSnapshot.actionID == .analyze,
                   existingRun.snapshot.request.target.note == target,
-                  existingRun.snapshot.analysisSourceRoute == expectedRoute,
-                  let snapshotTarget = existingRun.snapshot.actionSnapshot?.target else {
+                  existingRun.snapshot.analysisSourceRoute == expectedRoute else {
                 throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
             let observed = await inspectAgentAnalysisCreationTarget(
@@ -865,7 +866,7 @@ extension WorkspaceHandle {
             }
             return (preparation, snapshotTarget)
         }
-        let expectedCreation = try LocalAgentAnalysisCreationRecord(
+        let expectedCreation = try AgentAnalysisCreationReservation(
             triptychID: id,
             runID: runID,
             requestFingerprint: requestFingerprint,
@@ -880,7 +881,7 @@ extension WorkspaceHandle {
             academicPurpose: request.researchRequestText
         )
         var storedCreation = try await researchAgentConnectionDependencies
-            .localResearchExecutionStore.agentAnalysisCreationIfPresent(id: runID)
+            .creationReservationStore.reservationIfPresent(id: runID)
         var hasCommittedSourceAndIdentity = false
         if let storedCreation {
             guard Self.matchesAgentAnalysisCreationReservation(
@@ -948,14 +949,14 @@ extension WorkspaceHandle {
             if storedCreation == nil {
                 do {
                     storedCreation = try await researchAgentConnectionDependencies
-                        .localResearchExecutionStore.createAgentAnalysisCreation(
+                        .creationReservationStore.create(
                             expectedCreation
                         )
-                } catch LocalResearchExecutionStoreError
-                    .agentAnalysisCreationAlreadyExists {
+                } catch AgentAnalysisCreationReservationStoreError
+                    .reservationAlreadyExists {
                     throw ResearchAgentConnectionError.newAnalysisReplayConflict
-                } catch LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch {
+                } catch AgentAnalysisCreationReservationStoreError
+                    .reservationMismatch {
                     throw ResearchAgentConnectionError.newAnalysisReplayConflict
                 }
             } else if let currentReservation = storedCreation,
@@ -964,7 +965,7 @@ extension WorkspaceHandle {
                             != creationPayloadFingerprint
                         || currentReservation.startRequestFingerprint
                             != startRequestFingerprint {
-                let replacement = try LocalAgentAnalysisCreationRecord(
+                let replacement = try AgentAnalysisCreationReservation(
                     triptychID: expectedCreation.triptychID,
                     runID: expectedCreation.runID,
                     requestFingerprint: expectedCreation.requestFingerprint,
@@ -980,12 +981,12 @@ extension WorkspaceHandle {
                 )
                 do {
                     storedCreation = try await researchAgentConnectionDependencies
-                        .localResearchExecutionStore.reviseAgentAnalysisCreationReservation(
+                        .creationReservationStore.revisePrecommit(
                             expected: currentReservation,
                             replacement: replacement
                         )
-                } catch LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch {
+                } catch AgentAnalysisCreationReservationStoreError
+                    .reservationMismatch {
                     throw ResearchAgentConnectionError.newAnalysisReplayConflict
                 }
             }
@@ -1033,8 +1034,8 @@ extension WorkspaceHandle {
               commit.stableIdentity.resolvedID == reservedIdentity else {
             throw ResearchActionExecutionContractError.staleResolution
         }
-        _ = try await researchAgentConnectionDependencies.localResearchExecutionStore
-            .confirmAgentAnalysisCreationSource(
+        _ = try await researchAgentConnectionDependencies.creationReservationStore
+            .confirmSource(
                 runID: runID,
                 fingerprint: commit.document.fingerprint
             )
@@ -1261,8 +1262,8 @@ extension WorkspaceHandle {
         runID: UUID,
         expected: AnalysisZoteroBinding
     ) async throws {
-        let store = researchAgentConnectionDependencies.localResearchExecutionStore
-        let record = try await store.agentAnalysisCreation(id: runID)
+        let store = researchAgentConnectionDependencies.creationReservationStore
+        let record = try await store.reservation(id: runID)
         guard record.requestedBinding == expected else {
             throw ResearchAgentConnectionError.newAnalysisReplayConflict
         }
@@ -1278,12 +1279,12 @@ extension WorkspaceHandle {
                 guard current == expected else {
                     throw ResearchAgentConnectionError.newAnalysisReplayConflict
                 }
-                _ = try await store.advanceAgentAnalysisCreationBinding(
+                _ = try await store.advanceBinding(
                     runID: runID,
                     to: .committed
                 )
             } else {
-                _ = try await store.advanceAgentAnalysisCreationBinding(
+                _ = try await store.advanceBinding(
                     runID: runID,
                     to: .writing
                 )
@@ -1295,12 +1296,12 @@ extension WorkspaceHandle {
                     guard result.snapshot.binding(for: expected.noteID) == expected else {
                         throw ResearchAgentConnectionError.newAnalysisReplayConflict
                     }
-                    _ = try await store.advanceAgentAnalysisCreationBinding(
+                    _ = try await store.advanceBinding(
                         runID: runID,
                         to: .committed
                     )
                 } catch TriptychControlError.zoteroBindingsRevisionConflict {
-                    _ = try? await store.advanceAgentAnalysisCreationBinding(
+                    _ = try? await store.advanceBinding(
                         runID: runID,
                         to: .retryable
                     )
@@ -1312,7 +1313,7 @@ extension WorkspaceHandle {
                 throw ResearchAgentConnectionError.newAnalysisReplayConflict
             }
             if bindingState == .writing {
-                _ = try await store.advanceAgentAnalysisCreationBinding(
+                _ = try await store.advanceBinding(
                     runID: runID,
                     to: .committed
                 )
@@ -1329,7 +1330,7 @@ extension WorkspaceHandle {
         expected: AnalysisZoteroBinding
     ) async throws {
         let record = try await researchAgentConnectionDependencies
-            .localResearchExecutionStore.agentAnalysisCreation(id: runID)
+            .creationReservationStore.reservation(id: runID)
         let current = try await researchAgentConnectionDependencies.controlStore
             .zoteroBindings().binding(for: expected.noteID)
         guard record.requestedBinding == expected,
@@ -1340,8 +1341,8 @@ extension WorkspaceHandle {
     }
 
     private static func matchesAgentAnalysisCreationReservation(
-        _ existing: LocalAgentAnalysisCreationRecord,
-        expected: LocalAgentAnalysisCreationRecord
+        _ existing: AgentAnalysisCreationReservation,
+        expected: AgentAnalysisCreationReservation
     ) -> Bool {
         existing.triptychID == expected.triptychID
             && existing.runID == expected.runID
@@ -1542,7 +1543,7 @@ extension WorkspaceHandle {
     func authenticatedFidelityContract(
         for record: LocalResearchExecutionRecord
     ) async throws -> ResearchFidelityRunContract? {
-        guard record.snapshot.request.function == .fidelity else { return nil }
+        guard record.snapshot.request.actionID == .checkFidelity else { return nil }
         let evidence = try await effectiveResearchAgentEvidence(for: record)
         var requiredUnavailable: Set<FidelityCheck> = []
         var limitation: String?
@@ -1648,24 +1649,24 @@ extension WorkspaceHandle {
             ?? record.completion?.targetFingerprint
             ?? request.target.fingerprint
         do {
-            _ = try await researchFunctionCoordinator.validateResearchFunctionTarget(
+            _ = try await researchActionRunCoordinator.validateResearchActionTarget(
                 request.target,
                 expected: expectedTarget,
                 host: self
             )
-        } catch ResearchFunctionContractError.targetChanged {
+        } catch ResearchActionRunContractError.targetChanged {
             throw ResearchAgentConnectionError.runStale(.targetChanged)
-        } catch ResearchFunctionContractError.targetUnavailable {
+        } catch ResearchActionRunContractError.targetUnavailable {
             throw ResearchAgentConnectionError.runStale(.targetUnavailable)
-        } catch ResearchFunctionContractError.targetIdentityChanged {
+        } catch ResearchActionRunContractError.targetIdentityChanged {
             throw ResearchAgentConnectionError.runStale(.targetIdentityChanged)
         } catch {
             throw error
         }
         for material in request.materials {
             do {
-                _ = try await researchFunctionCoordinator
-                    .validateResearchFunctionMaterial(
+                _ = try await researchActionRunCoordinator
+                    .validateResearchActionMaterial(
                         material,
                         expected: material.fingerprint,
                         host: self
@@ -1980,7 +1981,7 @@ extension WorkspaceHandle {
     }
 
     private static func agentRunState(
-        _ state: ResearchFunctionRunState
+        _ state: ResearchActionRunState
     ) -> ResearchActionRunState {
         switch state {
         case .prepared: .prepared
@@ -2053,7 +2054,7 @@ extension WorkspaceHandle {
                 message: "The Run retains an unresolved write recovery. Its Session access ended without recording cancellation; resolve the exact transaction before finalization."
             )
         }
-        try await researchFunctionCoordinator.cancelAction(
+        try await researchActionRunCoordinator.cancelAction(
             runID: authenticated.runID,
             host: self
         )
@@ -2069,10 +2070,10 @@ extension WorkspaceHandle {
     private func activeAction(
         in record: LocalResearchExecutionRecord
     ) throws -> ResearchActionSnapshot {
-        guard record.triptychID == self.id,
-              let action = record.snapshot.actionSnapshot else {
+        guard record.triptychID == self.id else {
             throw ResearchAgentConnectionError.runUnavailable
         }
+        let action = record.snapshot.actionSnapshot
         if let completion = record.completion,
            [.complete, .unverified, .stale, .cancelled].contains(completion.state) {
             throw ResearchAgentConnectionError.runUnavailable

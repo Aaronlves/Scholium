@@ -1,12 +1,12 @@
 import Foundation
 import ScholiumContracts
 
-/// Machine-local execution evidence. Protected Function identity and assembled
+/// Machine-local Action Run execution evidence. Frozen Action identity and assembled
 /// instructions are allowed here and are never projected into the portable
 /// record type.
 public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sendable {
     public let triptychID: UUID
-    public let snapshot: ResearchFunctionSnapshot
+    public let snapshot: ResearchActionRunSnapshot
     public var preparedInstructions: String
     public var isCompacted: Bool
     public var discussion: ResearchDiscussionExecutionContract?
@@ -19,14 +19,14 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
     public var methodImprovementRun: ResearchMethodImprovementRun?
     public var resultPayload: ResearchRunResultPayload?
     public var writeReport: ResearchRunWriteReport?
-    public var completion: ResearchFunctionCompletion?
+    public var completion: ResearchActionRunCompletion?
     public var completionSubmissionDigest: String?
 
     public var id: UUID { snapshot.runID }
 
     public init(
         triptychID: UUID,
-        snapshot: ResearchFunctionSnapshot,
+        snapshot: ResearchActionRunSnapshot,
         preparedInstructions: String,
         isCompacted: Bool = false,
         discussion: ResearchDiscussionExecutionContract? = nil,
@@ -39,12 +39,12 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         methodImprovementRun: ResearchMethodImprovementRun? = nil,
         resultPayload: ResearchRunResultPayload? = nil,
         writeReport: ResearchRunWriteReport? = nil,
-        completion: ResearchFunctionCompletion? = nil,
+        completion: ResearchActionRunCompletion? = nil,
         completionSubmissionDigest: String? = nil
     ) throws {
         let completionRecommendationShapeMatches: Bool
         if let completion {
-            if snapshot.actionSnapshot?.actionID == .analyze {
+            if snapshot.actionSnapshot.actionID == .analyze {
                 switch completion.state {
                 case .complete, .unverified, .stale:
                     completionRecommendationShapeMatches = completion
@@ -86,21 +86,21 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && (isCompacted
                     || Set(resolvedWriteSet.entries.map(\.noteID))
                         .isSuperset(of: Set(
-                            snapshot.actionSnapshot?.authority.writableNotes
-                                .map(\.noteID) ?? []
+                            snapshot.actionSnapshot.authority.writableNotes
+                                .map(\.noteID)
                         )))
         }
         let initialWritableIDs = Set(
-            snapshot.actionSnapshot?.authority.writableNotes.map(\.noteID) ?? []
+            snapshot.actionSnapshot.authority.writableNotes.map(\.noteID)
         )
         let writeSetIDs = Set(resolvedWriteSet.entries.map(\.noteID))
         let methodImprovementMatches = methodImprovementRun.map { improvement in
             improvement.parentRecordID == snapshot.runID
                 && improvement.triptychID == triptychID
                 && improvement.registrationKey
-                    == snapshot.actionSnapshot?.method.registration.key
+                    == snapshot.actionSnapshot.method.registration.key
                 && improvement.actionID
-                    == snapshot.actionSnapshot?.actionID
+                    == snapshot.actionSnapshot.actionID
         } ?? true
         let operationalShapeMatches = isCompacted
             ? preparedInstructions.isEmpty
@@ -111,7 +111,9 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 && writeConflictResolutionRecords.isEmpty
                 && completion.map({ [.complete, .unverified].contains($0.state) }) == true
             : initialWritableIDs.isSubset(of: writeSetIDs)
-        guard snapshot.actionSnapshot != nil,
+        try snapshot.request.validate()
+        guard snapshot.request.actionID == snapshot.actionSnapshot.actionID,
+              snapshot.request.target == snapshot.actionSnapshot.target,
               snapshot.runID == snapshot.recordID,
               preparedInstructions.utf8.count <= 2 * 1024 * 1024,
               discussion?.id == snapshot.runID || discussion == nil,
@@ -165,7 +167,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                     .filter { !$0.expectsAbsence }.map(\.noteID))
               }) ?? true,
               completion?.runID == snapshot.runID || completion == nil,
-              completion?.function == snapshot.request.function || completion == nil,
+              completion?.actionID == snapshot.request.actionID || completion == nil,
               completionRecommendationShapeMatches,
               writeReport == nil || completion != nil else {
             throw LocalResearchExecutionStoreError.unsafeStore(
@@ -218,7 +220,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
             triptychID: container.decode(UUID.self, forKey: .triptychID),
-            snapshot: container.decode(ResearchFunctionSnapshot.self, forKey: .snapshot),
+            snapshot: container.decode(ResearchActionRunSnapshot.self, forKey: .snapshot),
             preparedInstructions: container.decode(
                 String.self,
                 forKey: .preparedInstructions
@@ -265,7 +267,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 forKey: .writeReport
             ),
             completion: container.decodeIfPresent(
-                ResearchFunctionCompletion.self,
+                ResearchActionRunCompletion.self,
                 forKey: .completion
             ),
             completionSubmissionDigest: container.decodeIfPresent(
@@ -277,13 +279,9 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
 
     private static func initialBoundedWriteSet(
         triptychID: UUID,
-        snapshot: ResearchFunctionSnapshot
+        snapshot: ResearchActionRunSnapshot
     ) throws -> ResearchBoundedWriteSet {
-        guard let action = snapshot.actionSnapshot else {
-            throw LocalResearchExecutionStoreError.unsafeStore(
-                "A local execution has no frozen Action for its bounded write set."
-            )
-        }
+        let action = snapshot.actionSnapshot
         let entries = try action.authority.writableNotes.map { note in
             try ResearchBoundedWriteSetEntry(
                 handle: ResearchWriteTargetHandle(
@@ -402,11 +400,7 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
     case executionAlreadyCompleted(UUID)
     case executionIdentityMismatch(UUID)
     case completionMismatch(UUID)
-    case agentAnalysisCreationAlreadyExists(UUID)
-    case agentAnalysisCreationNotFound(UUID)
-    case agentAnalysisCreationMismatch(UUID)
     case unsupportedField(String)
-    case unsupportedAgentAnalysisCreationSchemaVersion(Int)
     case unsupportedPayloadRevision(Int)
 
     public var errorDescription: String? {
@@ -423,16 +417,8 @@ public enum LocalResearchExecutionStoreError: LocalizedError, Sendable {
             "Research execution \(id.uuidString) does not match its file identity."
         case .completionMismatch(let id):
             "Action completion does not match its prepared run: \(id.uuidString)"
-        case .agentAnalysisCreationAlreadyExists(let id):
-            "Agent Analysis creation \(id.uuidString) already exists with different evidence."
-        case .agentAnalysisCreationNotFound(let id):
-            "Agent Analysis creation \(id.uuidString) was not found."
-        case .agentAnalysisCreationMismatch(let id):
-            "Agent Analysis creation \(id.uuidString) does not match its request-owned evidence."
         case .unsupportedField(let field):
             "The Local Research Execution contains unsupported field \(field)."
-        case .unsupportedAgentAnalysisCreationSchemaVersion(let version):
-            "The Agent Analysis creation-record schema version \(version) is unsupported."
         case .unsupportedPayloadRevision(let revision):
             "The Local Research Execution payload revision \(revision) is unsupported."
         }
@@ -478,167 +464,6 @@ private struct LocalResearchExecutionStoreSnapshot: Sendable {
     }
 }
 
-public enum LocalAgentAnalysisCreationBindingState: String, Codable, Hashable, Sendable {
-    /// The request is durable, but no Zotero binding mutation has begun.
-    case reserved
-    /// A binding mutation crossed its invocation boundary. Replay must inspect
-    /// the authoritative binding and may never issue another write by inference.
-    case writing
-    /// The binding owner proved that the attempted mutation did not commit, so
-    /// an exact retry may begin again after re-reading current authority.
-    case retryable
-    /// The requested binding was read back exactly.
-    case committed
-}
-
-/// Machine-local idempotency evidence for the source-ahead portion of one
-/// Agent-originated Analysis creation. It is not a Run, portable relationship,
-/// write authority, or system-Trash participant; the portable binding and Note
-/// remain independently authoritative. Its schema belongs only to replay of
-/// this creation request and is not nested Local Execution payload authority.
-public struct LocalAgentAnalysisCreationRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 4
-
-    public let schemaVersion: Int
-    public let triptychID: UUID
-    public let runID: UUID
-    public let requestFingerprint: DocumentFingerprint
-    public let creationPayloadFingerprint: DocumentFingerprint
-    public let startRequestFingerprint: DocumentFingerprint
-    public let target: VaultQualifiedNoteID
-    public let reservedIdentityID: UUID
-    public let requestedBinding: AnalysisZoteroBinding?
-    public let sourceRoute: ResearchAgentSourceRoute?
-    /// The exact authored and managed values supplied at the first
-    /// consequential start. Later replay may not replace either authority.
-    public let initialMetadata: AnalysisCreationMetadata
-    public let initialAuthoredYAML: AuthoredNoteYAML?
-    public let academicPurpose: String?
-    public var committedSourceFingerprint: DocumentFingerprint?
-    public var bindingState: LocalAgentAnalysisCreationBindingState?
-
-    public var id: UUID { runID }
-
-    public init(
-        triptychID: UUID,
-        runID: UUID,
-        requestFingerprint: DocumentFingerprint,
-        creationPayloadFingerprint: DocumentFingerprint,
-        startRequestFingerprint: DocumentFingerprint,
-        target: VaultQualifiedNoteID,
-        reservedIdentityID: UUID,
-        requestedBinding: AnalysisZoteroBinding?,
-        sourceRoute: ResearchAgentSourceRoute?,
-        initialMetadata: AnalysisCreationMetadata,
-        initialAuthoredYAML: AuthoredNoteYAML?,
-        academicPurpose: String?,
-        committedSourceFingerprint: DocumentFingerprint? = nil,
-        bindingState: LocalAgentAnalysisCreationBindingState? = nil
-    ) throws {
-        guard (requestedBinding == nil) != (sourceRoute == nil),
-              requestedBinding?.noteID == reservedIdentityID || requestedBinding == nil,
-              requestedBinding != nil
-                ? sourceRoute == nil
-                : (sourceRoute == .researcherProvided && bindingState == nil) else {
-            throw LocalResearchExecutionStoreError.agentAnalysisCreationMismatch(runID)
-        }
-        schemaVersion = Self.currentSchemaVersion
-        self.triptychID = triptychID
-        self.runID = runID
-        self.requestFingerprint = requestFingerprint
-        self.creationPayloadFingerprint = creationPayloadFingerprint
-        self.startRequestFingerprint = startRequestFingerprint
-        self.target = target
-        self.reservedIdentityID = reservedIdentityID
-        self.requestedBinding = requestedBinding
-        self.sourceRoute = sourceRoute
-        self.initialMetadata = initialMetadata
-        self.initialAuthoredYAML = initialAuthoredYAML
-        self.academicPurpose = academicPurpose
-        self.committedSourceFingerprint = committedSourceFingerprint
-        self.bindingState = requestedBinding == nil ? nil : (bindingState ?? .reserved)
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion = "schema_version"
-        case triptychID = "triptych_id"
-        case runID = "run_id"
-        case requestFingerprint = "request_fingerprint"
-        case creationPayloadFingerprint = "creation_payload_fingerprint"
-        case startRequestFingerprint = "start_request_fingerprint"
-        case target
-        case reservedIdentityID = "reserved_identity_id"
-        case requestedBinding = "requested_binding"
-        case sourceRoute = "source_route"
-        case initialMetadata = "initial_metadata"
-        case initialAuthoredYAML = "initial_authored_yaml"
-        case academicPurpose = "academic_purpose"
-        case committedSourceFingerprint = "committed_source_fingerprint"
-        case bindingState = "binding_state"
-    }
-
-    public init(from decoder: Decoder) throws {
-        try ResearchStoreCodingValidation.rejectUnknownFields(
-            in: decoder,
-            allowed: CodingKeys.allCases.map(\.stringValue),
-            onUnknownField: LocalResearchExecutionStoreError.unsupportedField
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        guard schemaVersion == Self.currentSchemaVersion else {
-            throw LocalResearchExecutionStoreError
-                .unsupportedAgentAnalysisCreationSchemaVersion(schemaVersion)
-        }
-        try self.init(
-            triptychID: container.decode(UUID.self, forKey: .triptychID),
-            runID: container.decode(UUID.self, forKey: .runID),
-            requestFingerprint: container.decode(
-                DocumentFingerprint.self,
-                forKey: .requestFingerprint
-            ),
-            creationPayloadFingerprint: container.decode(
-                DocumentFingerprint.self,
-                forKey: .creationPayloadFingerprint
-            ),
-            startRequestFingerprint: container.decode(
-                DocumentFingerprint.self,
-                forKey: .startRequestFingerprint
-            ),
-            target: container.decode(VaultQualifiedNoteID.self, forKey: .target),
-            reservedIdentityID: container.decode(UUID.self, forKey: .reservedIdentityID),
-            requestedBinding: container.decodeIfPresent(
-                AnalysisZoteroBinding.self,
-                forKey: .requestedBinding
-            ),
-            sourceRoute: container.decodeIfPresent(
-                ResearchAgentSourceRoute.self,
-                forKey: .sourceRoute
-            ),
-            initialMetadata: container.decode(
-                AnalysisCreationMetadata.self,
-                forKey: .initialMetadata
-            ),
-            initialAuthoredYAML: container.decodeIfPresent(
-                AuthoredNoteYAML.self,
-                forKey: .initialAuthoredYAML
-            ),
-            academicPurpose: container.decodeIfPresent(
-                String.self,
-                forKey: .academicPurpose
-            ),
-            committedSourceFingerprint: container.decodeIfPresent(
-                DocumentFingerprint.self,
-                forKey: .committedSourceFingerprint
-            ),
-            bindingState: container.decodeIfPresent(
-                LocalAgentAnalysisCreationBindingState.self,
-                forKey: .bindingState
-            )
-        )
-    }
-}
-
-
 /// Private per-run execution storage. Each run is isolated so one malformed or
 /// partially synchronized file cannot make unrelated completion state usable.
 public actor LocalResearchExecutionStore {
@@ -651,7 +476,6 @@ public actor LocalResearchExecutionStore {
     private static let storageLayoutEpoch = "v10"
     private static let storageDirectoryName = "research-execution-\(storageLayoutEpoch)"
     private static let coordinationLockName = "execution-\(storageLayoutEpoch).lock"
-    private static let agentAnalysisCreationDirectory = "agent-analysis-creations"
     private static let unsupportedExecutionDirectory = "unsupported-executions"
 
     public nonisolated let storageURL: URL
@@ -678,7 +502,6 @@ public actor LocalResearchExecutionStore {
         )
         try storage.ensureDirectories([
             "critique-handoffs",
-            Self.agentAnalysisCreationDirectory,
             Self.unsupportedExecutionDirectory,
         ])
         do {
@@ -693,197 +516,8 @@ public actor LocalResearchExecutionStore {
             try storage.removeAbandonedStagingFiles(in: [
                 nil,
                 "critique-handoffs",
-                Self.agentAnalysisCreationDirectory,
                 Self.unsupportedExecutionDirectory,
             ])
-        }
-    }
-
-    @discardableResult
-    public func createAgentAnalysisCreation(
-        _ record: LocalAgentAnalysisCreationRecord
-    ) throws -> LocalAgentAnalysisCreationRecord {
-        guard record.triptychID == triptychID else {
-            throw LocalResearchExecutionStoreError.agentAnalysisCreationMismatch(record.id)
-        }
-        return try lock.withExclusiveLock {
-            let (canonicalRecord, data) = try Self.canonicalized(record)
-            do {
-                let readback = try storage.createExclusive(
-                    data,
-                    directory: Self.agentAnalysisCreationDirectory,
-                    fileName: Self.fileName(record.id)
-                )
-                let stored = try Self.decode(
-                    LocalAgentAnalysisCreationRecord.self,
-                    from: readback
-                )
-                guard stored == canonicalRecord else {
-                    throw LocalResearchExecutionStoreError
-                        .agentAnalysisCreationMismatch(record.id)
-                }
-                return stored
-            } catch let error as SecureRecordDirectoryError {
-                if case .alreadyExists = error {
-                    let existing = try readAgentAnalysisCreation(id: record.id)
-                    if existing == canonicalRecord { return existing }
-                    throw LocalResearchExecutionStoreError
-                        .agentAnalysisCreationAlreadyExists(record.id)
-                }
-                throw LocalResearchExecutionStoreError.unsafeStore(
-                    error.localizedDescription
-                )
-            }
-        }
-    }
-
-    public func agentAnalysisCreation(
-        id: UUID
-    ) throws -> LocalAgentAnalysisCreationRecord {
-        try lock.withSharedLock { try readAgentAnalysisCreation(id: id) }
-    }
-
-    public func agentAnalysisCreationIfPresent(
-        id: UUID
-    ) throws -> LocalAgentAnalysisCreationRecord? {
-        try lock.withSharedLock {
-            do { return try readAgentAnalysisCreation(id: id) }
-            catch LocalResearchExecutionStoreError.agentAnalysisCreationNotFound {
-                return nil
-            }
-        }
-    }
-
-    /// Replaces only the Settings-dependent request fingerprints of a creation
-    /// reservation after Application has proved that no portable identity,
-    /// source, or Run exists. Immutable purpose and routing fields must still
-    /// match. This is not a recovery path for committed work.
-    @discardableResult
-    public func reviseAgentAnalysisCreationReservation(
-        expected: LocalAgentAnalysisCreationRecord,
-        replacement: LocalAgentAnalysisCreationRecord
-    ) throws -> LocalAgentAnalysisCreationRecord {
-        guard expected.triptychID == triptychID,
-              replacement.triptychID == triptychID,
-              expected.runID == replacement.runID,
-              expected.target == replacement.target,
-              expected.reservedIdentityID == replacement.reservedIdentityID,
-              expected.requestedBinding == replacement.requestedBinding,
-              expected.sourceRoute == replacement.sourceRoute,
-              expected.initialMetadata == replacement.initialMetadata,
-              expected.academicPurpose == replacement.academicPurpose,
-              expected.committedSourceFingerprint == nil,
-              replacement.committedSourceFingerprint == nil,
-              expected.bindingState == replacement.bindingState,
-              expected.bindingState == nil || expected.bindingState == .reserved else {
-            throw LocalResearchExecutionStoreError
-                .agentAnalysisCreationMismatch(expected.runID)
-        }
-        return try lock.withExclusiveLock {
-            let current = try readAgentAnalysisCreation(id: expected.runID)
-            guard current == expected else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(expected.runID)
-            }
-            let (canonicalRecord, data) = try Self.canonicalized(replacement)
-            let readback = try storage.replace(
-                data,
-                directory: Self.agentAnalysisCreationDirectory,
-                fileName: Self.fileName(expected.runID)
-            )
-            let stored = try Self.decode(
-                LocalAgentAnalysisCreationRecord.self,
-                from: readback
-            )
-            guard stored == canonicalRecord else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(expected.runID)
-            }
-            return stored
-        }
-    }
-
-    /// Freezes the authoritative source revision before derived projection or
-    /// optional relationship work. Exact replay may confirm the same revision;
-    /// a different revision is a conflict.
-    @discardableResult
-    public func confirmAgentAnalysisCreationSource(
-        runID: UUID,
-        fingerprint: DocumentFingerprint
-    ) throws -> LocalAgentAnalysisCreationRecord {
-        try lock.withExclusiveLock {
-            var record = try readAgentAnalysisCreation(id: runID)
-            if let committed = record.committedSourceFingerprint {
-                guard committed == fingerprint else {
-                    throw LocalResearchExecutionStoreError
-                        .agentAnalysisCreationMismatch(runID)
-                }
-                return record
-            }
-            record.committedSourceFingerprint = fingerprint
-            let (canonicalRecord, data) = try Self.canonicalized(record)
-            let readback = try storage.replace(
-                data,
-                directory: Self.agentAnalysisCreationDirectory,
-                fileName: Self.fileName(runID)
-            )
-            let stored = try Self.decode(
-                LocalAgentAnalysisCreationRecord.self,
-                from: readback
-            )
-            guard stored == canonicalRecord else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(runID)
-            }
-            return stored
-        }
-    }
-
-    @discardableResult
-    public func advanceAgentAnalysisCreationBinding(
-        runID: UUID,
-        to state: LocalAgentAnalysisCreationBindingState
-    ) throws -> LocalAgentAnalysisCreationRecord {
-        try lock.withExclusiveLock {
-            var record = try readAgentAnalysisCreation(id: runID)
-            guard record.requestedBinding != nil,
-                  record.sourceRoute == nil,
-                  record.committedSourceFingerprint != nil,
-                  let currentState = record.bindingState else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(runID)
-            }
-            let allowed = switch (currentState, state) {
-            case (.reserved, .reserved), (.reserved, .writing),
-                 (.writing, .writing), (.writing, .retryable),
-                 (.writing, .committed),
-                 (.retryable, .retryable), (.retryable, .writing),
-                 (.committed, .committed):
-                true
-            default:
-                false
-            }
-            guard allowed else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(runID)
-            }
-            if currentState == state { return record }
-            record.bindingState = state
-            let (canonicalRecord, data) = try Self.canonicalized(record)
-            let readback = try storage.replace(
-                data,
-                directory: Self.agentAnalysisCreationDirectory,
-                fileName: Self.fileName(runID)
-            )
-            let stored = try Self.decode(
-                LocalAgentAnalysisCreationRecord.self,
-                from: readback
-            )
-            guard stored == canonicalRecord else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(runID)
-            }
-            return stored
         }
     }
 
@@ -1917,7 +1551,7 @@ public actor LocalResearchExecutionStore {
 
     @discardableResult
     public func setCompletion(
-        _ completion: ResearchFunctionCompletion,
+        _ completion: ResearchActionRunCompletion,
         resultPayload: ResearchRunResultPayload? = nil,
         writeReport: ResearchRunWriteReport? = nil,
         submissionDigest: String?,
@@ -1925,15 +1559,14 @@ public actor LocalResearchExecutionStore {
     ) throws -> LocalResearchExecutionRecord {
         try update(runID) { record in
             guard completion.runID == runID,
-                  completion.function == record.snapshot.request.function,
+                  completion.actionID == record.snapshot.request.actionID,
                   resultPayload?.runID == runID || resultPayload == nil,
                   record.resultPayload == nil
                     || resultPayload == nil
                     || record.resultPayload == resultPayload,
                   writeReport?.runID == runID || writeReport == nil,
                   completion.state == .cancelled
-                    || ([.develop, .revise].contains(completion.function)
-                        == (writeReport != nil)),
+                    || (completion.actionID.writesTarget == (writeReport != nil)),
                   record.writeReport == nil || record.writeReport == writeReport else {
                 throw LocalResearchExecutionStoreError.completionMismatch(runID)
             }
@@ -2002,34 +1635,6 @@ public actor LocalResearchExecutionStore {
                 throw LocalResearchExecutionStoreError.executionNotFound(id)
             }
             throw LocalResearchExecutionStoreError.unsafeStore(error.localizedDescription)
-        }
-    }
-
-    private func readAgentAnalysisCreation(
-        id: UUID
-    ) throws -> LocalAgentAnalysisCreationRecord {
-        do {
-            let data = try storage.read(
-                directory: Self.agentAnalysisCreationDirectory,
-                fileName: Self.fileName(id)
-            )
-            let record = try Self.decode(
-                LocalAgentAnalysisCreationRecord.self,
-                from: data
-            )
-            guard record.id == id, record.triptychID == triptychID else {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationMismatch(id)
-            }
-            return record
-        } catch let error as SecureRecordDirectoryError {
-            if case .notFound = error {
-                throw LocalResearchExecutionStoreError
-                    .agentAnalysisCreationNotFound(id)
-            }
-            throw LocalResearchExecutionStoreError.unsafeStore(
-                error.localizedDescription
-            )
         }
     }
 
@@ -2154,9 +1759,9 @@ public actor LocalResearchExecutionStore {
     }
 
     private nonisolated static func canAdvance(
-        _ existing: ResearchFunctionCompletion,
-        to replacement: ResearchFunctionCompletion,
-        snapshot: ResearchFunctionSnapshot
+        _ existing: ResearchActionRunCompletion,
+        to replacement: ResearchActionRunCompletion,
+        snapshot: ResearchActionRunSnapshot
     ) -> Bool {
         let stateAdvances: Bool
         switch (existing.state, replacement.state) {
@@ -2168,7 +1773,7 @@ public actor LocalResearchExecutionStore {
         }
         guard stateAdvances,
               existing.runID == replacement.runID,
-              existing.function == replacement.function,
+              existing.actionID == replacement.actionID,
               existing.targetFingerprint == replacement.targetFingerprint,
               existing.materialFingerprints == replacement.materialFingerprints,
               existing.summary == replacement.summary,
@@ -2205,12 +1810,11 @@ public actor LocalResearchExecutionStore {
         noteIDs.formUnion(request.materials.map(\.noteID))
         noteIDs.formUnion(request.fidelityTargets?.map(\.noteID) ?? [])
 
-        if let action = record.snapshot.actionSnapshot {
-            noteIDs.insert(action.target.noteID)
-            noteIDs.formUnion(action.authority.readableNotes.map(\.noteID))
-            noteIDs.formUnion(action.authority.writableNotes.map(\.noteID))
-            noteIDs.formUnion(action.platformInputs.focalNotes.map(\.noteID))
-        }
+        let action = record.snapshot.actionSnapshot
+        noteIDs.insert(action.target.noteID)
+        noteIDs.formUnion(action.authority.readableNotes.map(\.noteID))
+        noteIDs.formUnion(action.authority.writableNotes.map(\.noteID))
+        noteIDs.formUnion(action.platformInputs.focalNotes.map(\.noteID))
         noteIDs.formUnion(record.boundedWriteSet.entries.map(\.noteID))
         if let report = record.writeReport {
             noteIDs.formUnion(report.confirmedModifiedNotes.map(\.noteID))
@@ -2344,9 +1948,4 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    private static func canonicalized<T: Codable>(_ value: T) throws -> (T, Data) {
-        let first = try makeEncoder().encode(value)
-        let canonical = try makeDecoder().decode(T.self, from: first)
-        return (canonical, try makeEncoder().encode(canonical))
-    }
 }

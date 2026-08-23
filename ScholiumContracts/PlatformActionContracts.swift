@@ -25,7 +25,6 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
     public var id: ResearchActionID { actionID }
 
     public let actionID: ResearchActionID
-    public let executionKind: ResearchActionExecutionKind
     public let allowedTargetRoles: [ResearchActionTargetRole]
     public let requiredSelectors: [PlatformActionSelector]
     public let optionalSelectors: [PlatformActionSelector]
@@ -51,7 +50,6 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
 
     public init(
         actionID: ResearchActionID,
-        executionKind: ResearchActionExecutionKind,
         allowedTargetRoles: [ResearchActionTargetRole],
         requiredSelectors: [PlatformActionSelector] = [],
         optionalSelectors: [PlatformActionSelector] = [],
@@ -59,7 +57,7 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
     ) throws {
         guard !allowedTargetRoles.isEmpty,
               Set(allowedTargetRoles).count == allowedTargetRoles.count,
-              Set(allowedTargetRoles).isSubset(of: executionKind.allowedTargetRoles),
+              Set(allowedTargetRoles).isSubset(of: actionID.allowedTargetRoles),
               Set(requiredSelectors).count == requiredSelectors.count,
               Set(optionalSelectors).count == optionalSelectors.count,
               Set(requiredSelectors).isDisjoint(with: Set(optionalSelectors)),
@@ -67,12 +65,7 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
               Set(operations).count == operations.count else {
             throw PlatformActionContractError.invalidDefinition
         }
-        if let reserved = Self.reservedExecutionKind(for: actionID),
-           reserved != executionKind {
-            throw PlatformActionContractError.invalidDefinition
-        }
         self.actionID = actionID
-        self.executionKind = executionKind
         self.allowedTargetRoles = ResearchActionTargetRole.allCases.filter(
             Set(allowedTargetRoles).contains
         )
@@ -87,20 +80,6 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
         )
     }
 
-    private static func reservedExecutionKind(
-        for actionID: ResearchActionID
-    ) -> ResearchActionExecutionKind? {
-        switch actionID {
-        case .discuss: .discussion
-        case .analyze: .analysis
-        case .synthesize: .synthesis
-        case .write: .writing
-        case .critique: .critique
-        case .checkFidelity: .checkFidelity
-        default: nil
-        }
-    }
-
     public func validate(profile: ResearchAcademicActionProfile) throws {
         guard profile.actionID == actionID,
               Set(profile.applicableRoles).isSubset(of: Set(allowedTargetRoles)) else {
@@ -113,14 +92,12 @@ public enum PlatformActionCatalog {
     public static let definitions: [PlatformActionDefinition] = [
         try! PlatformActionDefinition(
             actionID: .discuss,
-            executionKind: .discussion,
             allowedTargetRoles: ResearchActionTargetRole.allCases,
             optionalSelectors: [.focalNotes, .passage],
             operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .discuss, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .analyze,
-            executionKind: .analysis,
             allowedTargetRoles: [.analysis],
             requiredSelectors: [.source],
             optionalSelectors: [.focalNotes],
@@ -128,28 +105,24 @@ public enum PlatformActionCatalog {
         ),
         try! PlatformActionDefinition(
             actionID: .synthesize,
-            executionKind: .synthesis,
             allowedTargetRoles: [.topic],
             optionalSelectors: [.focalNotes, .passage],
             operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .write,
-            executionKind: .writing,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes, .passage],
             operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .critique,
-            executionKind: .critique,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes, .passage],
             operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .checkFidelity,
-            executionKind: .checkFidelity,
             allowedTargetRoles: ResearchActionTargetRole.allCases,
             optionalSelectors: [.focalNotes, .passage, .fidelityChecks],
             operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .checkFidelity, .continueResearch]

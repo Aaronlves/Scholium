@@ -21,6 +21,7 @@ struct WorkspaceServices: Sendable {
     let zotero: ZoteroOperations
     let portableResearchRecordStore: PortableResearchRecordStore
     let localResearchExecutionStore: LocalResearchExecutionStore
+    let agentAnalysisCreationReservationStore: AgentAnalysisCreationReservationStore
     let agentChangeEvidenceStore: AgentChangeEvidenceStore
     let critiqueRegistry: CritiqueRegistry
     let transactionRecoveryStore: TriptychMutationRecoveryStore
@@ -424,7 +425,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         WorkspaceResearchAgentResultDependencies
     let researchActionResolverDependencies:
         WorkspaceResearchActionResolverDependencies
-    let researchFunctionCoordinator: ResearchFunctionCoordinator
+    let researchActionRunCoordinator: ResearchActionRunCoordinator
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
     private(set) var latestRefreshMeasurement: WorkspaceRefreshMeasurement
@@ -458,7 +459,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         (@Sendable () async -> Void)?
     private var researchDocumentSavePreflightBarrierForTesting:
         (@Sendable () async -> Void)?
-    var researchFunctionControlledObservationBarrierForTesting:
+    var researchActionControlledObservationBarrierForTesting:
         (@Sendable () async -> Void)?
     private var progressiveActivationReconciliationBarrierForTesting:
         (@Sendable () async -> Void)?
@@ -492,10 +493,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         researchDocumentSavePreflightBarrierForTesting = barrier
     }
 
-    func setResearchFunctionControlledObservationBarrierForTesting(
+    func setResearchActionControlledObservationBarrierForTesting(
         _ barrier: (@Sendable () async -> Void)?
     ) {
-        researchFunctionControlledObservationBarrierForTesting = barrier
+        researchActionControlledObservationBarrierForTesting = barrier
     }
 
     func setProgressiveActivationReconciliationBarrierForTesting(
@@ -524,7 +525,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         initialRefreshMeasurement: WorkspaceRefreshMeasurement,
         initialWorkspaceGeneration: UInt64,
         reference: WorkspaceHandleReference,
-        researchFunctionCoordinator: ResearchFunctionCoordinator,
+        researchActionRunCoordinator: ResearchActionRunCoordinator,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations,
@@ -546,7 +547,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.researchAgentConnectionDependencies = services.researchAgentConnectionDependencies
         self.researchAgentResultDependencies = services.researchAgentResultDependencies
         self.researchActionResolverDependencies = services.researchActionResolverDependencies
-        self.researchFunctionCoordinator = researchFunctionCoordinator
+        self.researchActionRunCoordinator = researchActionRunCoordinator
         self.leases = leases
         currentSnapshot = initialSnapshot
         latestRefreshMeasurement = initialRefreshMeasurement
@@ -732,6 +733,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
+            let agentAnalysisCreationReservationStore = try
+                AgentAnalysisCreationReservationStore(
+                    applicationSupportURL: applicationSupportURL,
+                    triptychID: manifest.id
+                )
             let agentChangeEvidenceStore = try AgentChangeEvidenceStore(
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
@@ -764,6 +770,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 zotero: zotero,
                 portableResearchRecordStore: portableResearchRecordStore,
                 localResearchExecutionStore: localResearchExecutionStore,
+                agentAnalysisCreationReservationStore:
+                    agentAnalysisCreationReservationStore,
                 agentChangeEvidenceStore: agentChangeEvidenceStore,
                 critiqueRegistry: critiqueRegistry,
                 transactionRecoveryStore: transactionRecoveryStore,
@@ -824,9 +832,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let reference = WorkspaceHandleReference(workspaceID: assignment.id)
             let documentOperations = DocumentOperations(reference: reference)
             let discoveryOperations = DiscoveryOperations(reference: reference)
-            let researchFunctionCoordinator = ResearchFunctionCoordinator(
+            let researchActionRunCoordinator = ResearchActionRunCoordinator(
                 workspaceID: assignment.id,
-                dependencies: ResearchFunctionCoordinatorDependencies(
+                dependencies: ResearchActionRunCoordinatorDependencies(
                     repositories: services.repositories,
                     vaults: Dictionary(uniqueKeysWithValues: assignment.vaults.values.map {
                         ($0.id, $0)
@@ -842,7 +850,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let researchOperations = ResearchOperations(
                 reference: reference,
-                functionCoordinator: researchFunctionCoordinator,
+                actionRunCoordinator: researchActionRunCoordinator,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
             let zoteroBindingOperations = ZoteroBindingOperations(
@@ -857,7 +865,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 initialRefreshMeasurement: repairedInitialBuild.measurement,
                 initialWorkspaceGeneration: initialWorkspaceGeneration,
                 reference: reference,
-                researchFunctionCoordinator: researchFunctionCoordinator,
+                researchActionRunCoordinator: researchActionRunCoordinator,
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations,

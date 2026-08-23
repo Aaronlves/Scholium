@@ -36,6 +36,14 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, the explicit Record retrieval CLI facade passed the Debug CLI
+  build, documentation-authority validator, and all 11 signed executable CLI
+  lifecycles. The disposable fixture proves stable-Note `record list`, complete
+  Record `record read`, complete-corpus manifest and exact persisted-byte
+  fingerprints, multi-provider Search coexistence, and structured missing-Note
+  and missing-Record errors. This is local automated evidence, not a packaged
+  external-Agent journey or large-Record-corpus performance acceptance.
+
 - On 2026-08-23, the Practice-to-reference cutover passed the complete gate:
   all guards; 199 Web, 455 Core, 3 performance,
   147 Contract, 269 Application, 16 bridge, and 645 App tests; 11 signed CLI
@@ -43,15 +51,6 @@ override.
   Skill owns its lenses; no Practice catalog, resolver, Settings surface,
   snapshot, Record field, or improvement target remains. No XCUITest or human
   acceptance.
-
-- On 2026-08-23, the external-Agent Action simplification passed
-  six-Action, Core, Query, interface, localization, and 11 signed-CLI owners.
-  The complete gate passed documentation, 199 Web tests, bundles, RDF-1, 455
-  Core, 3 performance, and 147 Contract tests; all 269 Application tests ran,
-  with three stale deleted-file assertions corrected by their four-test
-  owner. Later stages were not rerun. XCUITest stopped prelaunch because
-  nonprivate `Desktop/TestVaults` was absent. This is not visual, packaged, or
-  external-account acceptance.
 
 - On 2026-08-23, the Metadata lifecycle and recovery integration passed its
   focused Contracts, Core, Application, Settings, presentation, Search,

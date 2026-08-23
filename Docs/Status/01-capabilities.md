@@ -72,6 +72,11 @@
   native system-Trash deletion are reachable through shared Application
   capabilities. Stable Note identity follows confirmed moves, remains after
   system-Trash deletion, and reconciles external renames or Finder restoration.
+- Per-window Library mutation state, import cancellation, Trash retry, Workspace
+  access recovery, and Zotero operations now have separate bounded owners.
+  `WindowModel` composes their capabilities and publishes committed
+  cross-feature effects; it no longer proxies their operation APIs or recovery
+  state.
 - Note and Folder deletion prepare exact source/folder inventories, associated
   Critiques, active Discussions, and whole finished Records before confirmation.
   All source items move first; durable recovery then resumes Discussion, exact-
@@ -138,6 +143,9 @@
   the target, request, source and focal material,
   Skill entry, reference-folder path, Profile, Result Contract, collaboration policy, read scope,
   and initial Bounded Write Set member.
+- Run requests, completions, and required snapshots use that same exact Action
+  identity. No compressed Function enum, mapping adapter, optional snapshot
+  fallback, or old-shape decoder remains reachable.
 - GUI Copy Handoff and Copy New Handoff deliver one Run locator and one-use
   Pairing Code for the installed CLI. `scholium agent` is the only external-
   Agent Action lifecycle; the prior public `action` preparation family is no
@@ -178,7 +186,8 @@
   destination, route/binding, authored YAML, source type, managed values, and
   typed academic inputs remain frozen. Settings preference changes grant no
   authority. That reservation exists for both Zotero and researcher-
-  provided creation. Exact
+  provided creation in its own machine-local store and lock, independently of
+  the Run-only Local Execution store and system-Trash authority. Exact
   replay resumes the frozen confirmed source/identity revision and same Run;
   it also requires the complete frozen start payload, including academic
   inputs. Concurrent identical starts coalesce, while
@@ -306,6 +315,10 @@
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
+- The standalone CLI can list every finished Record related to one exact stable
+  Note UUID and read one complete Record by UUID. Both routes use one complete
+  immutable Record projection, return exact portable-byte fingerprints, and
+  fail closed instead of scanning `.scholium` or returning a partial corpus.
 - Research Guidance supports Skill registration and exact expected-revision
   `SKILL.md` editing, bundled Skill-routed lens references, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external

@@ -13,23 +13,31 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+        let ownerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowLibraryMutationController.swift"
+            ),
+            encoding: .utf8
+        )
         let appSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/App/ScholiumApp.swift"
             ),
             encoding: .utf8
         )
-        #expect(appSource.contains("func prepareNoteSystemTrash("))
-        #expect(appSource.contains("editorFlushCoordinator.flushAllEditors"))
-        #expect(appSource.contains("presentationRouter.present(.systemTrash(preview))"))
-        #expect(appSource.contains(
+        #expect(ownerSource.contains("func prepareNoteSystemTrash("))
+        #expect(ownerSource.contains("dependencies.flushEditors"))
+        #expect(ownerSource.contains("dependencies.presentSystemTrash("))
+        #expect(ownerSource.contains(
             "catch SystemTrashPreparationError.localExecutionRecoveryRequired"
         ))
-        #expect(appSource.contains("archiveLocalExecutionsAndRetrySystemTrash"))
-        #expect(appSource.contains("archiveUnsupportedLocalResearchExecutions"))
-        #expect(appSource.contains("func executeSystemTrash("))
-        #expect(appSource.contains("documentController.moveToSystemTrash(preview)"))
+        #expect(ownerSource.contains("archiveLocalExecutionsAndRetrySystemTrash"))
+        #expect(ownerSource.contains("archiveUnsupportedLocalResearchExecutions"))
+        #expect(ownerSource.contains("func executeSystemTrash("))
+        #expect(ownerSource.contains("documentController.moveToSystemTrash(preview)"))
         #expect(appSource.contains("synchronizeSystemTrashPresentation(preview)"))
+        #expect(!appSource.contains("func prepareNoteSystemTrash("))
+        #expect(!appSource.contains("func executeSystemTrash("))
     }
 
     @Test("Folder commands fail explicitly while another folder mutation owns the window")
@@ -38,36 +46,36 @@ struct WindowControllerArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appSource = try String(
+        let ownerSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
+                "Scholium/App/Window/WindowLibraryMutationController.swift"
             ),
             encoding: .utf8
         )
-        let moveStart = try #require(appSource.range(
+        let moveStart = try #require(ownerSource.range(
             of: "func moveFolder(\n        _ target: FolderMutationTarget,"
         ))
-        let trashStart = try #require(appSource.range(
+        let trashStart = try #require(ownerSource.range(
             of: "func prepareFolderSystemTrash(_ target: FolderMutationTarget)",
-            range: moveStart.upperBound ..< appSource.endIndex
+            range: moveStart.upperBound ..< ownerSource.endIndex
         ))
-        let refreshStart = try #require(appSource.range(
-            of: "private func refreshCachedWorkspaceVaultSnapshot(",
-            range: trashStart.upperBound ..< appSource.endIndex
+        let duplicateStart = try #require(ownerSource.range(
+            of: "func duplicateNote(",
+            range: trashStart.upperBound ..< ownerSource.endIndex
         ))
-        let moveSource = appSource[moveStart.lowerBound ..< trashStart.lowerBound]
-        let trashSource = appSource[trashStart.lowerBound ..< refreshStart.lowerBound]
+        let moveSource = ownerSource[moveStart.lowerBound ..< trashStart.lowerBound]
+        let trashSource = ownerSource[trashStart.lowerBound ..< duplicateStart.lowerBound]
 
         for source in [moveSource, trashSource] {
             #expect(source.contains("guard !isMutatingFolder else"))
             #expect(source.contains(
-                "throw WindowFileTreeMutationError.folderMutationInProgress"
+                "throw WindowLibraryMutationError.folderMutationInProgress"
             ))
             #expect(!source.contains("guard !isMutatingFolder else { return }"))
         }
         #expect(trashSource.contains("relativePath: target.relativePath"))
-        #expect(trashSource.contains("editorFlushCoordinator.flushAllEditors"))
-        #expect(trashSource.contains("presentationRouter.present(.systemTrash(preview))"))
+        #expect(trashSource.contains("dependencies.flushEditors"))
+        #expect(trashSource.contains("dependencies.presentSystemTrash("))
     }
 
     @Test("Attention observes only its exact workspace projections")
@@ -1567,6 +1575,12 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let libraryMutationSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowLibraryMutationController.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(source.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(source.range(
             of: "private enum ClipboardWorkflowError",
@@ -1595,51 +1609,30 @@ struct WindowControllerArchitectureTests {
                 Comment(rawValue: "WindowModel still executes \(prohibited) directly")
             )
         }
-        #expect(windowModelSource.contains("documentController.createUntitledNote("))
-        let creationStart = try #require(windowModelSource.range(
-            of: "func requestUntitledNoteCreation(in folderRelativePath: String?)"
+        for movedOperation in [
+            "documentController.createUntitledNote(",
+            "documentController.createUntitledFolder(",
+            "documentController.importMarkdown(",
+            "documentController.moveToSystemTrash(",
+            "func requestUntitledNoteCreation(",
+            "func moveFolder(",
+            "func moveNote(",
+            "func prepareNoteSystemTrash(",
+        ] {
+            #expect(!windowModelSource.contains(movedOperation))
+            #expect(libraryMutationSource.contains(movedOperation))
+        }
+        #expect(libraryMutationSource.contains("enqueueDocumentTransition"))
+        #expect(libraryMutationSource.contains("try Task.checkCancellation()"))
+        #expect(libraryMutationSource.contains("systemTrashRecoveryTarget"))
+        #expect(libraryMutationSource.contains("mutationTaskCancellations"))
+        #expect(libraryMutationSource.contains("withOwnedMutation"))
+        #expect(libraryMutationSource.contains(
+            "mutationTaskCancellations.values.forEach { $0() }"
         ))
-        let creationEnd = try #require(windowModelSource.range(
-            of: "func requestUntitledFolderCreation(in parentRelativePath: String?)",
-            range: creationStart.upperBound..<windowModelSource.endIndex
-        ))
-        let creationSource = String(
-            windowModelSource[creationStart.lowerBound..<creationEnd.lowerBound]
-        )
-        let create = try #require(creationSource.range(
-            of: "documentController.createUntitledNote("
-        ))
-        let sourceAhead = try #require(creationSource.range(
-            of: "let sourceAheadSnapshot = commit.sourceAheadSnapshot",
-            range: create.upperBound..<creationSource.endIndex
-        ))
-        let install = try #require(creationSource.range(
-            of: "workspaceProjectionController.recordCommittedNote(",
-            range: sourceAhead.upperBound..<creationSource.endIndex
-        ))
-        let activate = try #require(creationSource.range(
-            of: "activateWorkspaceReference(",
-            range: install.upperBound..<creationSource.endIndex
-        ))
-        _ = try #require(creationSource.range(
-            of: "revealCreatedNoteInLibrary(",
-            range: activate.upperBound..<creationSource.endIndex
-        ))
-        #expect(creationSource.contains("document.relativePath,"))
-        #expect(creationSource.contains("vaultID: vault.id"))
-        #expect(creationSource.contains("let commit = outcome.committedValue"))
-        #expect(creationSource.contains(
-            "enqueueCurrencyAwareDocumentTransition("
-        ))
-        #expect(creationSource.contains("guard isCurrent() else"))
-        #expect(creationSource.contains("let document = commit.document"))
-        #expect(creationSource.contains(
-            "managedCreationBodyStartUTF16: document.bodyUTF16Offset"
-        ))
-        #expect(!creationSource.contains("requestPresentationMode"))
-        #expect(!creationSource.contains("refreshCachedWorkspaceVaultSnapshot"))
-        #expect(!creationSource.contains("browseRegisteredVault"))
-        #expect(creationSource.contains("reportCommittedMutationWarnings(outcome)"))
+        #expect(windowModelSource.contains("private func publishCommittedNoteCreation("))
+        #expect(windowModelSource.contains("guard isCurrent() else"))
+        #expect(windowModelSource.contains("managedCreationBodyStartUTF16:"))
 
         let searchSelectionStart = try #require(windowModelSource.range(
             of: "private func openSearchSelection("
@@ -1671,80 +1664,36 @@ struct WindowControllerArchitectureTests {
         #expect(selectedActivationSource.contains(
             "PerformanceProbe.shared.beginReadActivation("
         ))
-        let folderCreationStart = try #require(windowModelSource.range(
-            of: "func requestUntitledFolderCreation(in parentRelativePath: String?)"
-        ))
-        let folderCreationEnd = try #require(windowModelSource.range(
-            of: "func moveFolder(",
-            range: folderCreationStart.upperBound..<windowModelSource.endIndex
-        ))
-        let folderCreationSource = windowModelSource[
-            folderCreationStart.lowerBound..<folderCreationEnd.lowerBound
-        ]
-        let committedFolder = try #require(folderCreationSource.range(
-            of: "workspaceProjectionController.recordCommittedFolder("
-        ))
-        let recoveryRefresh = try #require(folderCreationSource.range(
-            of: "refreshCachedWorkspaceVaultSnapshot",
-            range: committedFolder.upperBound..<folderCreationSource.endIndex
-        ))
-        #expect(committedFolder.lowerBound < recoveryRefresh.lowerBound)
         #expect(windowModelSource.contains(
             "private func synchronizeSystemTrashPresentation("
         ))
         #expect(windowModelSource.contains(
             "workspaceProjectionController.recordCommittedNoteMove("
         ))
-        let moveStart = try #require(windowModelSource.range(
-            of: "func moveNote("
-        ))
-        let moveEnd = try #require(windowModelSource.range(
-            of: "func prepareNoteSystemTrash(",
-            range: moveStart.upperBound..<windowModelSource.endIndex
-        ))
-        let moveSource = windowModelSource[
-            moveStart.lowerBound..<moveEnd.lowerBound
-        ]
-        let moveProjection = try #require(moveSource.range(
-            of: "workspaceProjectionController.recordCommittedNoteMove("
-        ))
-        let moveFallbackRefresh = try #require(moveSource.range(
-            of: "refreshCachedWorkspaceVaultSnapshot(",
-            range: moveProjection.upperBound..<moveSource.endIndex
-        ))
-        #expect(moveProjection.lowerBound < moveFallbackRefresh.lowerBound)
-        #expect(moveSource.contains("if outcome.identityRecoveryWarning == nil"))
-        #expect(moveSource.contains("documentController.recordCommittedSnapshot("))
-        #expect(moveSource.contains("revealCreatedNoteInLibrary("))
+        #expect(windowModelSource.contains("private func publishCommittedNoteMove("))
+        #expect(windowModelSource.contains("if outcome.identityRecoveryWarning == nil"))
+        #expect(windowModelSource.contains("documentController.recordCommittedSnapshot("))
+        #expect(windowModelSource.contains("revealCreatedNoteInLibrary("))
         #expect(windowModelSource.contains("currentDocumentCapabilities"))
-        #expect(windowModelSource.contains(
-            "func importMarkdownFiles(_ urls: [URL]) async throws -> MarkdownImportBatchOutcome"
+        #expect(libraryMutationSource.contains(
+            "func importMarkdownFiles("
         ))
-        #expect(source.contains("appState.requestMarkdownImport(urls)"))
-        #expect(windowModelSource.contains(
+        #expect(source.contains(
+            "appState.libraryMutationController.requestMarkdownImport(urls)"
+        ))
+        #expect(libraryMutationSource.contains(
             "private var markdownImportTask: Task<Void, Never>?"
         ))
-        #expect(windowModelSource.contains("func requestMarkdownImport(_ urls: [URL])"))
-        #expect(windowModelSource.contains("try Task.checkCancellation()"))
-        #expect(windowModelSource.contains("failures.append(MarkdownImportFailure("))
-        #expect(windowModelSource.contains(
+        #expect(libraryMutationSource.contains("func requestMarkdownImport(_ urls: [URL])"))
+        #expect(libraryMutationSource.contains("failures.append(WindowMarkdownImportFailure("))
+        #expect(libraryMutationSource.contains(
             "identityRecoveryWarnings.append(warning)"
         ))
-        #expect(windowModelSource.contains(
-            "let destinationWorkspaceID = workspaceAssignment?.id"
-        ))
-        #expect(windowModelSource.contains(
-            "guard workspaceAssignment?.id == destinationWorkspaceID"
-        ))
-        #expect(windowModelSource.contains("catch is CancellationError"))
-        #expect(windowModelSource.contains(
-            "if currentRegisteredVault?.id == vault.id"
-        ))
+        #expect(libraryMutationSource.contains("let context = dependencies.context()"))
+        #expect(libraryMutationSource.contains("guard dependencies.context()?.assignmentID"))
+        #expect(libraryMutationSource.contains("catch is CancellationError"))
         #expect(windowModelSource.contains(
             "The imported files are already committed; do not import them again."
-        ))
-        #expect(!windowModelSource.contains(
-            "func importMarkdownFiles(_ urls: [URL]) async throws -> [NoteDocument]"
         ))
         #expect(!windowModelSource.contains("committedButRefreshFailed"))
         #expect(windowModelSource.contains(
@@ -1892,6 +1841,18 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let libraryMutationSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowLibraryMutationController.swift"
+            ),
+            encoding: .utf8
+        )
+        let zoteroCoordinatorSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowZoteroCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(appSource.range(
             of: "private enum ClipboardWorkflowError",
@@ -1903,7 +1864,8 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("workspaceStore: WorkspaceStore?"))
         #expect(!windowModelSource.contains("workspaceStore ?? WorkspaceStore()"))
         #expect(!windowModelSource.contains("DocumentSessionStore("))
-        #expect(windowModelSource.contains("documentController.moveToSystemTrash("))
+        #expect(!windowModelSource.contains("documentController.moveToSystemTrash("))
+        #expect(libraryMutationSource.contains("documentController.moveToSystemTrash("))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
         #expect(!windowModelSource.contains("cssSnippetStore.objectWillChange"))
 
@@ -1935,6 +1897,12 @@ struct WindowControllerArchitectureTests {
         #expect(workspaceControllerSource.contains(
             "private(set) var activeCapabilities: WindowWorkspaceCapabilities?"
         ))
+        #expect(workspaceControllerSource.contains("func restoreWorkspaceAccess("))
+        #expect(workspaceControllerSource.contains("func cancelRecovery()"))
+        #expect(!windowModelSource.contains("func restoreWorkspaceAccess("))
+        #expect(zoteroCoordinatorSource.contains("final class WindowZoteroCoordinator"))
+        #expect(zoteroCoordinatorSource.contains("func cancelAll()"))
+        #expect(!windowModelSource.contains("func prepareZoteroLinkAndFill("))
 
         for documentOwnedState in [
             "@Published private(set) var sourceMutationGeneration",
@@ -2114,8 +2082,10 @@ struct WindowControllerArchitectureTests {
                 closeFinalizationStart.lowerBound..<closeFinalizationEnd.lowerBound
             ]
         )
-        #expect(closeFinalizationSource.contains("markdownImportTask?.cancel()"))
-        #expect(closeFinalizationSource.contains("markdownImportTask = nil"))
+        #expect(closeFinalizationSource.contains("libraryMutationController.cancelAll()"))
+        #expect(closeFinalizationSource.contains("zoteroCoordinator.cancelAll()"))
+        #expect(closeFinalizationSource.contains("windowWorkspaceController.cancelRecovery()"))
+        #expect(closeFinalizationSource.contains("documentTransitionCoordinator.cancelAll()"))
         #expect(closeFinalizationSource.contains("editorFlushCoordinator.shutdown()"))
         #expect(storeSource.contains(
             "WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry"
@@ -2180,12 +2150,9 @@ struct WindowControllerArchitectureTests {
         ]
         let workspaceActivationAndRecovery = [
             "configureTriptychCapabilities": 1,
-            "removeLocalTriptychRegistration": 1,
-            "registeredVaults": 3,
-            "registeredTriptychs": 3,
-            "portableContainerURL": 4,
-            "preserveUnsupportedPortableControl": 1,
-            "archiveInvalidNoteMetadataRecord": 1,
+            "registeredVaults": 2,
+            "registeredTriptychs": 2,
+            "portableContainerURL": 1,
             "workspaceCapabilities": 2,
             "refreshPendingResearchAgentPermissions": 1,
             "vaultConfig": 2,
@@ -2204,7 +2171,7 @@ struct WindowControllerArchitectureTests {
 
         #expect(compositionAndSubscription.values.reduce(0, +) == 12)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
-        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 21)
+        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))
@@ -2306,6 +2273,7 @@ struct WindowControllerArchitectureTests {
             "@ObservedObject private var shellState: WindowShellState",
             "@ObservedObject private var documentController: DocumentController",
             "@ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController",
+            "@ObservedObject private var libraryMutationController: WindowLibraryMutationController",
         ] {
             #expect(contentSource.contains(boundedOwner))
         }

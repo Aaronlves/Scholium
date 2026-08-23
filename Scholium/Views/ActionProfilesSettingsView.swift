@@ -10,7 +10,7 @@ private struct ResearchAcademicProfileEditorContext: Identifiable {
 }
 
 /// Edits only the academic input and result shape of Actions. Permission and
-/// Method/Practice source remain with their existing owners.
+/// Skill entry and ordinary reference sources remain with their existing owners.
 struct ActionProfilesSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var loadedTriptychID: UUID?

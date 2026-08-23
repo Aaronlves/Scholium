@@ -7,6 +7,8 @@ import Foundation
 final class DocumentTransitionCoordinator {
     typealias Currency = @MainActor () -> Bool
     private var generation: UInt64 = 0
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var tailID: UUID?
     private var tail: Task<Void, Never>?
 
     func enqueue(
@@ -35,17 +37,24 @@ final class DocumentTransitionCoordinator {
         generation &+= 1
         let requestedGeneration = generation
         let previous = tail
-        tail = Task { [weak self] in
-            defer { didFinish() }
-            _ = await previous?.value
-            guard let self, requestedGeneration == generation else { return }
+        let taskID = UUID()
+        let task = Task { [weak self] in
+            defer {
+                didFinish()
+                self?.taskDidFinish(taskID)
+            }
             do {
+                _ = await previous?.value
+                try Task.checkCancellation()
+                guard let self, requestedGeneration == generation else { return }
                 try await prepare()
+                try Task.checkCancellation()
                 guard requestedGeneration == generation else { return }
                 let isCurrent: Currency = { [weak self] in
                     self?.generation == requestedGeneration
                 }
                 try await operation(isCurrent)
+                try Task.checkCancellation()
                 guard requestedGeneration == generation else { return }
                 didSucceed()
             } catch is CancellationError {
@@ -54,13 +63,29 @@ final class DocumentTransitionCoordinator {
                 didFail(error)
             }
         }
+        tasks[taskID] = task
+        tailID = taskID
+        tail = task
     }
 
-    func invalidate() {
+    func cancelAll() {
         generation &+= 1
+        tasks.values.forEach { $0.cancel() }
     }
 
     func waitForIdle() async {
-        _ = await tail?.value
+        while !tasks.isEmpty {
+            let outstanding = Array(tasks.values)
+            for task in outstanding {
+                _ = await task.value
+            }
+        }
+    }
+
+    private func taskDidFinish(_ taskID: UUID) {
+        tasks[taskID] = nil
+        guard tailID == taskID else { return }
+        tailID = nil
+        tail = nil
     }
 }

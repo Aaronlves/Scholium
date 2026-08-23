@@ -1417,12 +1417,12 @@ enum LocalAgentBridgeWireCoding {
              ScholiumApplicationError.workspaceStillLoading:
             code = .staleProjection
         case ResearchAgentConnectionError.runStale,
-             ResearchFunctionContractError.targetUnavailable,
-             ResearchFunctionContractError.targetChanged,
-             ResearchFunctionContractError.targetIdentityChanged,
-             ResearchFunctionContractError.materialChanged:
+             ResearchActionRunContractError.targetUnavailable,
+             ResearchActionRunContractError.targetChanged,
+             ResearchActionRunContractError.targetIdentityChanged,
+             ResearchActionRunContractError.materialChanged:
             code = .staleRun
-        case ResearchFunctionContractError.sourceAccessUnavailable(let failure)
+        case ResearchActionRunContractError.sourceAccessUnavailable(let failure)
             where failure.code == .missingBinding:
             code = .missingSourceEvidence
         case ResearchAgentConnectionError.analysisPathOccupied,
@@ -1437,9 +1437,9 @@ enum LocalAgentBridgeWireCoding {
         case ResearchAgentConnectionError.analysisSourceUnreadable:
             code = .sourceUnreadable
         case ResearchAgentConnectionError.newAnalysisReplayConflict,
-             LocalResearchExecutionStoreError.agentAnalysisCreationAlreadyExists,
-             LocalResearchExecutionStoreError.agentAnalysisCreationNotFound,
-             LocalResearchExecutionStoreError.agentAnalysisCreationMismatch:
+             AgentAnalysisCreationReservationStoreError.reservationAlreadyExists,
+             AgentAnalysisCreationReservationStoreError.reservationNotFound,
+             AgentAnalysisCreationReservationStoreError.reservationMismatch:
             code = .replayConflict
         case LocalAgentBridgeError.timeout: code = .timeout
         case LocalAgentBridgeError.outcomeUnknown: code = .outcomeUnknown

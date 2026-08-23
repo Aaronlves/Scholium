@@ -114,17 +114,17 @@ struct ResearchContinuationOperationsTests {
         #expect(child.completion == nil)
         #expect(child.boundedWriteSet.entries.map(\.note.relativePath) == ["Agency.md"])
 
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
         let currentAction = try #require(
             try await handle.research.availableActions(
-                for: ResearchFunctionOperationsTests().actionNote(target)
+                for: target
             ).first { $0.id == .synthesize }
         )
-        #expect(child.snapshot.actionSnapshot?.resolvedProfile.profileRevision
+        #expect(child.snapshot.actionSnapshot.resolvedProfile.profileRevision
             == currentAction.profile.profileRevision)
 
         policy = try await handle.research.saveCollaborationPolicy(
@@ -233,7 +233,7 @@ struct ResearchContinuationOperationsTests {
             fixture: fixture
         )
 
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -455,7 +455,7 @@ struct ResearchContinuationOperationsTests {
         let changed = try await result(for: "Changed Material owner check.")
         #expect(changed.handoffContext?.referenceChecks.first?.status == .changed)
 
-        let analysis = try await researchFunctionTarget(
+        let analysis = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
@@ -566,17 +566,17 @@ struct ResearchContinuationOperationsTests {
         credential: ResearchConnectionCredential,
         contextReference: SourceReferenceEnvelope
     ) {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .synthesize,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(
@@ -629,17 +629,17 @@ struct ResearchContinuationOperationsTests {
         credential: ResearchConnectionCredential,
         materialReference: SourceReferenceEnvelope
     ) {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.analysisID,
             role: .analysis,
             handle: handle
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .analyze,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(
@@ -698,7 +698,7 @@ struct ResearchContinuationOperationsTests {
         credential: ResearchConnectionCredential,
         researcherStateReference: SourceReferenceEnvelope
     ) {
-        let target = try await researchFunctionTarget(
+        let target = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
             handle: handle
@@ -708,12 +708,12 @@ struct ResearchContinuationOperationsTests {
             expectedRevision: target.fingerprint,
             rationale: "The parent Run saw this earlier researcher judgment."
         )
-        let helpers = ResearchFunctionOperationsTests()
+        let helpers = ResearchActionRunOperationsTests()
         let preparation = try await handle.research.prepareAction(
             try await helpers.actionRequest(
                 handle: handle,
                 actionID: .synthesize,
-                target: helpers.actionNote(target)
+                target: target
             )
         )
         let handoff = try await handle.research.issueAgentHandoff(

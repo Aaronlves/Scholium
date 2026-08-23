@@ -72,7 +72,7 @@ struct CLIApplicationDelegationTests {
         #expect(sources.agent.contains("operations.continueResearch("))
         #expect(sources.agent.contains("operations.end("))
         #expect(!sources.agent.contains("import " + "ScholiumCore"))
-        #expect(!sources.agent.contains("ResearchFunction"))
+        #expect(!sources.agent.contains("ResearchAction"))
         #expect(!sources.agent.contains("packageID"))
         #expect(!sources.agent.contains("createCheckpoint"))
     }
@@ -93,7 +93,6 @@ struct CLIApplicationDelegationTests {
         )
         let request = ResearchActionExecutionRequest(
             actionID: .write,
-            expectedExecutionKind: .writing,
             expectedProfileRevision: DocumentFingerprint(content: "profile"),
             expectedProfileDocumentRevision: nil,
             target: target,
