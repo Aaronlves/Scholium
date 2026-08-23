@@ -95,9 +95,11 @@
   No Document Selected state instead of a blank plane or stale origin content.
 - Every current Analysis Overview exposes **Link Zotero Item…** or **Manage
   Zotero Link…**; a bound Analysis also exposes **Open in Zotero**. The central
-  binding sheet searches local user and group libraries, keeps exact library
-  identity visible during selection, supports Rebind, and confirms Clear while
-  changing neither Markdown nor Zotero data.
+  sheet accepts an exact item key or bibliographic search, keeps exact library
+  identity visible during selection, previews empty fields to fill and existing
+  conflicts to retain, exposes **Link and Fill** or **Rebind and Fill**, and
+  confirms Clear while changing neither Markdown nor Zotero data. Clear retains
+  previously filled managed Metadata.
 - Action sheets expose academic inputs, target and mutation consequence,
   handoff, active Run state, continuation, cancellation, and recovery without
   exposing credentials, registration keys, protocol internals, or

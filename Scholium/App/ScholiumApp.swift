@@ -3249,29 +3249,48 @@ final class WindowModel: ObservableObject {
         requestPresentationMode = mode
     }
 
-    func setZoteroBinding(
+    func prepareZoteroLinkAndFill(
         noteID: UUID,
-        library: ZoteroLibraryIdentity,
+        library: ZoteroLibraryMetadata,
         itemKey: String
+    ) async throws -> ZoteroMetadataFillPlan {
+        guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
+            throw ScholiumApplicationError.workspaceShutDown(
+                workspaceAssignment?.id ?? UUID()
+            )
+        }
+        return try await capability.prepareZoteroLinkAndFill(
+            noteID: noteID,
+            library: library,
+            itemKey: itemKey
+        )
+    }
+
+    func commitZoteroLinkAndFill(
+        _ plan: ZoteroMetadataFillPlan
     ) async throws {
         guard let capability = activeWorkspaceCapabilities?.zoteroBindings else {
             throw ScholiumApplicationError.workspaceShutDown(
                 workspaceAssignment?.id ?? UUID()
             )
         }
-        let snapshot = try await capability.zoteroBindings()
-        let binding = try AnalysisZoteroBinding(
-            noteID: noteID,
-            library: library,
-            itemKey: itemKey
-        )
-        let result = try await capability.setZoteroBinding(
-            binding,
-            expectedRevision: snapshot.revision
-        )
+        let result = try await capability.commitZoteroLinkAndFill(plan)
         if let warning = result.derivedRefreshWarning {
             showToast(warning, kind: .information)
+            return
         }
+        let retained = result.retainedConflictKeys.count
+        let message: String
+        if result.filledKeys.isEmpty {
+            message = retained == 0
+                ? "Zotero link saved. No empty supported Metadata fields needed filling."
+                : "Zotero link saved. Existing Metadata values were kept."
+        } else if retained == 0 {
+            message = "Zotero link saved and \(result.filledKeys.count) Metadata fields filled."
+        } else {
+            message = "Zotero link saved and \(result.filledKeys.count) Metadata fields filled; \(retained) existing values were kept."
+        }
+        showToast(message)
     }
 
     func clearZoteroBinding(noteID: UUID) async throws {

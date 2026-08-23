@@ -184,6 +184,18 @@
   Complete Metadata. The complete fact grid preserves row/column
   association under enlargement and reflow. Keywords are individually readable
   neutral tokens in source order, not color-coded status or unlabeled chips.
+- The Zotero Link and Fill sheet exposes one named search field, exact item key,
+  title, author/date context, library identity, result selection, current read
+  progress, proposed empty Metadata fields, retained conflicts with current and
+  Zotero values, and its single completion consequence in linear keyboard and
+  accessibility order. Same-key results in different libraries remain distinct.
+  Loading never removes Cancel; unavailable, no-result, changed-server,
+  changed-item, source-revision, binding-revision, Metadata-revision, partial-
+  commit, and retry states remain textually distinct and persistent. Abstract,
+  tags, `summary`, `keywords`, Markdown, and Zotero non-write boundaries are
+  visible before commit. Clear Link states that any previously filled Metadata
+  is retained. Native list selection, default/cancel actions, sheet dismissal, and
+  initiating-focus return remain platform-owned.
 
 ### Search, Inspector, and Research Actions
 

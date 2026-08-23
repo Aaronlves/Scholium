@@ -388,6 +388,11 @@ public protocol ZoteroUseCases: Sendable {
     func clearConnectionHistory() async throws
     func libraries() async throws -> [ZoteroLibraryMetadata]
     func searchLibrary(query: String, limit: Int) async throws -> [ZoteroSearchHit]
+    func exactItem(
+        library: ZoteroLibraryMetadata,
+        itemKey: String,
+        expectedServerID: String?
+    ) async throws -> ZoteroExactItemRead
 }
 
 /// Revision-checked portable Analysis-to-Zotero relationship mutations. This
@@ -395,6 +400,14 @@ public protocol ZoteroUseCases: Sendable {
 /// Markdown document writes.
 public protocol ZoteroBindingUseCases: Sendable {
     func zoteroBindings() async throws -> AnalysisZoteroBindingsSnapshot
+    func prepareZoteroLinkAndFill(
+        noteID: UUID,
+        library: ZoteroLibraryMetadata,
+        itemKey: String
+    ) async throws -> ZoteroMetadataFillPlan
+    func commitZoteroLinkAndFill(
+        _ plan: ZoteroMetadataFillPlan
+    ) async throws -> ZoteroLinkAndFillResult
     func setZoteroBinding(
         _ binding: AnalysisZoteroBinding,
         expectedRevision: DocumentFingerprint

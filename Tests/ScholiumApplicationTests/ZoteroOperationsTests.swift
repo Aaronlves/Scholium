@@ -172,6 +172,42 @@ struct ZoteroOperationsTests {
         ])
     }
 
+    @Test("An exact item key present in user and group libraries requires library selection")
+    func exactKeyAcrossLibraries() async throws {
+        let groups = Data("""
+        [{"id":42,"name":"Shared Ethics"}]
+        """.utf8)
+        let item = Data("""
+        {
+          "key": "SHARED01",
+          "data": {
+            "key": "SHARED01",
+            "itemType": "journalArticle",
+            "title": "Library-specific item",
+            "creators": []
+          }
+        }
+        """.utf8)
+        let script = AttachmentRequestScript(responses: [
+            (200, groups),
+            (200, item),
+            (200, item),
+        ])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+
+        let hits = try await operations.searchLibrary(query: "shared01")
+
+        #expect(hits.map(\.item.key) == ["SHARED01", "SHARED01"])
+        #expect(Set(hits.map(\.library.identity)) == [.user, .group(42)])
+        #expect(await script.paths() == [
+            "/api/users/0/groups",
+            "/api/users/0/items/SHARED01",
+            "/api/groups/42/items/SHARED01",
+        ])
+    }
+
     @Test("A Zotero attachment from another parent fails before file lookup")
     func attachmentParentMismatch() async throws {
         let envelope = """

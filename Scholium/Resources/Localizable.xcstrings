@@ -6728,12 +6728,12 @@
         }
       }
     },
-    "Choose one exact item from a local Zotero library." : {
+    "Choose one exact item, then review the empty Scholium Metadata fields it can fill." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从本地 Zotero 文库中选择一个确切条目。"
+            "value" : "选择一个确切条目，然后检查它可以填入的空白 Scholium 元数据字段。"
           }
         }
       }
@@ -9124,6 +9124,16 @@
         }
       }
     },
+    "Could Not Link and Fill from Zotero" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法从 Zotero 关联并填充"
+          }
+        }
+      }
+    },
     "Could Not Load Attention" : {
       "localizations" : {
         "en" : {
@@ -9420,16 +9430,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法更新研究方法"
-          }
-        }
-      }
-    },
-    "Could Not Update Zotero Link" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法更新 Zotero 关联"
           }
         }
       }
@@ -10123,6 +10123,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前状态"
+          }
+        }
+      }
+    },
+    "Current: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前：%@"
           }
         }
       }
@@ -12866,6 +12876,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "执行"
+          }
+        }
+      }
+    },
+    "Existing Values Kept" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留现有值"
           }
         }
       }
@@ -16469,6 +16489,16 @@
         }
       }
     },
+    "Link and Fill" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关联并填充"
+          }
+        }
+      }
+    },
     "Linked notes may be recommended, but Scholium never selects them automatically. Materials remain read-only and cannot also be Write targets." : {
       "localizations" : {
         "en" : {
@@ -19685,6 +19715,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有符合条件的笔记。"
+          }
+        }
+      }
+    },
+    "No empty supported Metadata fields need filling." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有需要填充的空白受支持元数据字段。"
           }
         }
       }
@@ -22969,6 +23009,16 @@
         }
       }
     },
+    "Preview Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "预览不可用"
+          }
+        }
+      }
+    },
     "Preview width" : {
       "localizations" : {
         "en" : {
@@ -23923,6 +23973,16 @@
         }
       }
     },
+    "Reading exact Zotero item and current Metadata…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取确切的 Zotero 条目和当前元数据…"
+          }
+        }
+      }
+    },
     "Ready to install" : {
       "localizations" : {
         "en" : {
@@ -23971,12 +24031,12 @@
         }
       }
     },
-    "Rebind" : {
+    "Rebind and Fill" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "重新关联"
+            "value" : "重新关联并填充"
           }
         }
       }
@@ -29952,6 +30012,16 @@
         }
       }
     },
+    "Select an Exact Item" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个确切条目"
+          }
+        }
+      }
+    },
     "Select an available vault before searching This Vault." : {
       "localizations" : {
         "en" : {
@@ -34569,12 +34639,12 @@
         }
       }
     },
-    "This removes only Scholium’s portable relationship. It does not change the Analysis note or the Zotero item." : {
+    "This removes only Scholium’s portable relationship. It does not remove Metadata already filled in Scholium or change the Zotero item." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此操作仅移除 Scholium 的可移植关联，不会更改分析笔记或 Zotero 条目。"
+            "value" : "此操作仅移除 Scholium 的可移植关联，不会移除已填入 Scholium 的元数据，也不会更改 Zotero 条目。"
           }
         }
       }
@@ -35024,16 +35094,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标题，从 Z 到 A"
-          }
-        }
-      }
-    },
-    "Title, author, DOI, or citation key" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "标题、作者、DOI 或引文键"
           }
         }
       }
@@ -35773,6 +35833,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不支持的形式"
+          }
+        }
+      }
+    },
+    "Untitled Zotero Item" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无标题 Zotero 条目"
           }
         }
       }
@@ -36828,6 +36898,16 @@
         }
       }
     },
+    "Will Fill" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将填充"
+          }
+        }
+      }
+    },
     "Window → Attention" : {
       "localizations" : {
         "zh-Hans" : {
@@ -37299,12 +37379,42 @@
         }
       }
     },
+    "Zotero abstract, tags, citation key, collections, summary, keywords, and the Markdown body are not imported." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不会导入 Zotero 摘要、标签、引用键、分类、summary、keywords 或 Markdown 正文。"
+          }
+        }
+      }
+    },
     "Zotero item key" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zotero 条目键"
+          }
+        }
+      }
+    },
+    "Zotero item key %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 条目键 %@"
+          }
+        }
+      }
+    },
+    "Zotero item key, title, author, or DOI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 条目键、标题、作者或 DOI"
           }
         }
       }
@@ -37337,6 +37447,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zotero 来源不可用"
+          }
+        }
+      }
+    },
+    "Zotero: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero：%@"
           }
         }
       }

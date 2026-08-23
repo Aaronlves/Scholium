@@ -37,11 +37,29 @@ interrupted-save recovery change Markdown only and leave it unchanged.
 Overview gives every current Analysis one quiet **Link Zotero Item…** or
 **Manage Zotero Link…** action. Its central sheet searches the local user and
 group libraries, displays enough bibliographic and library context for an
-exact researcher selection, and persists only stable library identity plus the
-normalized item key. A bound Analysis also exposes quiet **Open in Zotero**;
-Manage supports explicit Rebind and confirmed Clear. The Inspector displays
-neither the key nor fetched metadata, and no binding action changes Markdown or
-Zotero data.
+exact researcher selection, and treats an entered eight-character item key as
+an exact lookup before metadata search. If the same key resolves in more than
+one accessible library, every library-qualified result remains distinct and
+the researcher chooses one. Selecting a result performs a fresh exact read and
+shows the managed Metadata fields that would be filled plus every conflicting
+existing value that will be retained. **Link and Fill** or **Rebind and Fill**
+is the single explicit completion action. A bound Analysis also exposes quiet
+**Open in Zotero**; Manage supports confirmed Clear. The Inspector displays
+neither the key nor fetched metadata, and no integration action changes
+Markdown, authored YAML, or Zotero data.
+
+Link and Fill is one Application-owned operation over two separate portable
+transactions. It first revision-checks and writes the stable library identity
+plus normalized item key, then uses the current Metadata-record revision to add
+only absent, catalogued fields applicable to the effective Analysis source
+type. It never replaces an existing managed value. Matching values remain
+unchanged; conflicts remain researcher-owned and are named before commit. A
+binding that committed before a Metadata conflict is retained and the partial
+outcome is reported truthfully rather than rolled back across participants.
+The proposal and commit both resolve the same stable Analysis identity and
+exact source revision. Commit rereads the exact item and requires the same
+local `Zotero-Server-ID`, library identity, item key, and item metadata that the
+researcher reviewed. Any drift fails closed and requires a new preview.
 
 When Analyze or another eligible Analysis Action begins preparation with a
 binding, Application performs one exact local item read and automatically
@@ -74,12 +92,16 @@ PDFs, and full text never enter Scholium's automatic context, but an Agent may
 retrieve them directly from Zotero when the selected Analyze task requires
 paper data. Scholium never caches, proxies, or automatically transfers that
 external content into the vault or a Record. Built-in integration never changes
-Zotero data, files, or live SQLite. Binding never creates a bibliographic
-snapshot: connection, binding, opening, and Action preparation never write,
-refresh, reconcile, or override Analysis Metadata. A future fill operation
-requires a separate explicit, field-bounded Metadata transaction at the
-current portable-record revision. It never derives writable source from
-fetched bibliographic data.
+Zotero data, files, or live SQLite. Connection, opening, and Action preparation
+never write, refresh, reconcile, or override Analysis Metadata. Link and Fill
+maps only bounded bibliographic fields into Scholium Metadata: source type,
+title, supported structured creator roles, publication date, language,
+container, series, volume, issue, pages, edition, publisher and place, DOI,
+ISBN, ISSN, and URL where applicable. Zotero abstract, tags, citation key,
+Collections, and modification time never become managed Metadata; in
+particular abstract never becomes authored `summary` and tags never become
+authored `keywords`. There is no continuous sync or automatic refresh. A later
+refresh requires another explicit preview and current-revision transaction.
 
 ### 15.3 Literature Recommendations and the Zotero boundary
 

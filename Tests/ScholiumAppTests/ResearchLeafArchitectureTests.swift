@@ -84,10 +84,14 @@ struct ResearchLeafArchitectureTests {
         let bindingPanel = try #require(sources[relativePaths[4]])
         #expect(bindingPanel.contains("struct ZoteroBindingPanelView: View"))
         #expect(bindingPanel.contains("let search: (String) async throws"))
-        #expect(bindingPanel.contains("let setBinding: (ZoteroSearchHit)"))
+        #expect(bindingPanel.contains("let prepareFill: (ZoteroSearchHit)"))
+        #expect(bindingPanel.contains("let commitFill: (ZoteroMetadataFillPlan)"))
         #expect(bindingPanel.contains("let clearBinding: () async throws"))
+        #expect(bindingPanel.contains("Link and Fill"))
+        #expect(bindingPanel.contains("Existing Values Kept"))
+        #expect(bindingPanel.contains("summary, keywords"))
         #expect(bindingPanel.contains("Clear Zotero Link?"))
-        #expect(!bindingPanel.contains("ZoteroItemMetadata?"))
+        #expect(!bindingPanel.contains("setBinding:"))
     }
 
     @Test("Relationships navigation emits a typed document route with its source locator")

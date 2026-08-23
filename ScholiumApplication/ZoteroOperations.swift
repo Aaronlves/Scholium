@@ -27,6 +27,11 @@ public actor ZoteroOperations: ZoteroUseCases {
     private let loadRequest: RequestLoader
     private var lastSuccessfulConnection: Date?
 
+    private struct LocalReadResponse: Sendable {
+        let data: Data
+        let serverID: String?
+    }
+
     struct ResolvedAttachment: Hashable, Sendable {
         let itemKey: String
         let attachmentKey: String
@@ -198,8 +203,33 @@ public actor ZoteroOperations: ZoteroUseCases {
               (1...25).contains(limit) else {
             throw ZoteroUseCaseError.invalidResponse
         }
+        let libraries = try await libraries()
         var hits: [ZoteroSearchHit] = []
-        for library in try await libraries() {
+        if let exactKey = normalizedSearchItemKey(query) {
+            for library in libraries {
+                do {
+                    let response = try await requestResponse(
+                        library: library.identity,
+                        path: "items/\(exactKey)",
+                        query: [URLQueryItem(name: "format", value: "json")]
+                    )
+                    let items = try decodedParentItems(response.data).filter {
+                        normalizedItemKey($0.key) == exactKey
+                    }
+                    hits.append(contentsOf: items.map {
+                        ZoteroSearchHit(library: library, item: $0)
+                    })
+                } catch ZoteroUseCaseError.itemMissing {
+                    continue
+                } catch is DecodingError {
+                    throw ZoteroUseCaseError.invalidResponse
+                }
+            }
+            if !hits.isEmpty {
+                return sortedSearchHits(hits, limit: limit)
+            }
+        }
+        for library in libraries {
             let data = try await request(
                 library: library.identity,
                 path: "items",
@@ -221,7 +251,51 @@ public actor ZoteroOperations: ZoteroUseCases {
                 ZoteroSearchHit(library: library, item: $0)
             })
         }
-        hits.sort { lhs, rhs in
+        return sortedSearchHits(hits, limit: limit)
+    }
+
+    public func exactItem(
+        library: ZoteroLibraryMetadata,
+        itemKey rawItemKey: String,
+        expectedServerID: String? = nil
+    ) async throws -> ZoteroExactItemRead {
+        guard let itemKey = normalizedObjectKey(rawItemKey) else {
+            throw ZoteroUseCaseError.invalidItemKey
+        }
+        let response = try await requestResponse(
+            library: library.identity,
+            path: "items/\(itemKey)",
+            query: [URLQueryItem(name: "format", value: "json")]
+        )
+        guard let serverID = response.serverID else {
+            throw ZoteroUseCaseError.serverIdentityUnavailable
+        }
+        if let expectedServerID, expectedServerID != serverID {
+            throw ZoteroUseCaseError.serverIdentityChanged
+        }
+        let items: [ZoteroItemMetadata]
+        do {
+            items = try decodedParentItems(response.data).filter {
+                normalizedItemKey($0.key) == itemKey
+            }
+        } catch {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+        guard items.count == 1, let item = items.first else {
+            throw ZoteroUseCaseError.invalidResponse
+        }
+        return ZoteroExactItemRead(
+            library: library,
+            item: item,
+            serverID: serverID
+        )
+    }
+
+    private func sortedSearchHits(
+        _ hits: [ZoteroSearchHit],
+        limit: Int
+    ) -> [ZoteroSearchHit] {
+        hits.sorted { lhs, rhs in
             let titleOrder = lhs.item.title.localizedStandardCompare(rhs.item.title)
             if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
             if lhs.library.name != rhs.library.name {
@@ -230,7 +304,8 @@ public actor ZoteroOperations: ZoteroUseCases {
             }
             return lhs.item.key < rhs.item.key
         }
-        return Array(hits.prefix(limit))
+        .prefix(limit)
+        .map { $0 }
     }
 
     public func resolve(source: ZoteroSourceIdentity) async throws -> ZoteroMatchResult {
@@ -435,6 +510,18 @@ public actor ZoteroOperations: ZoteroUseCases {
         path: String,
         query: [URLQueryItem]
     ) async throws -> Data {
+        try await requestResponse(
+            library: library,
+            path: path,
+            query: query
+        ).data
+    }
+
+    private func requestResponse(
+        library: ZoteroLibraryIdentity = .user,
+        path: String,
+        query: [URLQueryItem]
+    ) async throws -> LocalReadResponse {
         guard let request = ZoteroLocalRequestPolicy.makeReadRequest(
             library: library,
             path: path,
@@ -456,7 +543,12 @@ public actor ZoteroOperations: ZoteroUseCases {
         switch http.statusCode {
         case 200..<300:
             lastSuccessfulConnection = Date()
-            return data
+            return LocalReadResponse(
+                data: data,
+                serverID: normalizedServerID(
+                    http.value(forHTTPHeaderField: "Zotero-Server-ID")
+                )
+            )
         case 401, 403:
             throw ZoteroUseCaseError.apiDisabled
         case 404:
@@ -468,6 +560,31 @@ public actor ZoteroOperations: ZoteroUseCases {
 
     private func normalizedItemKey(_ key: String?) -> String? {
         nonempty(key)?.uppercased()
+    }
+
+    private func normalizedObjectKey(_ key: String?) -> String? {
+        guard let key = normalizedItemKey(key),
+              key.utf8.count <= 128,
+              key.unicodeScalars.allSatisfy({ scalar in
+                  CharacterSet.alphanumerics.contains(scalar)
+                      || scalar == "-" || scalar == "_"
+              }) else { return nil }
+        return key
+    }
+
+    private func normalizedSearchItemKey(_ key: String?) -> String? {
+        guard let key = normalizedObjectKey(key), key.utf8.count == 8 else {
+            return nil
+        }
+        return key
+    }
+
+    private func normalizedServerID(_ value: String?) -> String? {
+        guard let value = nonempty(value), value.utf8.count <= 256,
+              value.unicodeScalars.allSatisfy({
+                  !CharacterSet.controlCharacters.contains($0)
+              }) else { return nil }
+        return value
     }
 
     private func nonempty(_ value: String?) -> String? {

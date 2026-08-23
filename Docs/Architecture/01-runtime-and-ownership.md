@@ -692,16 +692,16 @@ The Inspector has exactly three current-note modes: Overview, Connect, and
 Actions. Overview presents a current-Note Attention summary whose one button
 routes to the exact Workspace's Attention popover, followed by role-aware About fields;
 About keeps selectable values and routes editing through its heading button.
-For a current Analysis only, `WorkspaceSnapshotBuilder` joins a portable typed
-Zotero binding through the resolved stable Note UUID. The window root supplies
-its exact user/group library identity and item key as one immutable navigation
-value plus the existing `ZoteroBridge` presentation effect. About renders
-**Link Zotero Item…** or **Manage Zotero Link…**, and a bound value also renders
-**Open in Zotero**, without exposing key or fetched metadata in Inspector. The
-central `ZoteroBindingPanelView` searches disposable local metadata while
-`ZoteroBindingOperations` alone revision-checks set/clear against the stable
-Analysis identity and republishes derived state. Frontmatter never participates
-in this projection. Connect
+For an Analysis, `WorkspaceSnapshotBuilder` joins a portable typed
+Zotero binding only by stable Note UUID; the window supplies its exact
+library/key and `ZoteroBridge`. About renders **Link Zotero Item…** or **Manage
+Zotero Link…**, plus **Open in Zotero** when bound, without exposing identity or
+fetched metadata. `ZoteroBindingPanelView` searches disposable local data and
+renders one immutable Link and Fill plan. `ZoteroBindingOperations` alone
+revalidates stable Analysis/source, exact server/library/item, binding, and
+Metadata revisions; writes the binding then absent applicable Metadata; reports
+a binding-only partial commit; and refreshes once. The view owns no mapping or
+write sequence, and frontmatter is excluded. Connect
 projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source

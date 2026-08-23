@@ -41,7 +41,7 @@ struct DocumentPreviewCatalogTests {
         #expect(preview.graphGeneration == 7)
         #expect(preview.links.count == 1)
         #expect(preview.links[0].target == targetID)
-        #expect(preview.links[0].title == "Target B")
+        #expect(preview.links[0].title == "Claim")
         #expect(preview.links[0].syntax == .vectorWikilink)
         #expect(preview.links[0].relationship == .supports)
         #expect(preview.links[0].fragment == "Claim")

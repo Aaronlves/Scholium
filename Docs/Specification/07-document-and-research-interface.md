@@ -384,7 +384,7 @@ moves into Document. The Research menu opens an Action without revealing or
 changing the Inspector.
 
 An Inspector without a Document shows **No Document Selected**, never stale
-content or automatic collapse. Selecting a Note restores its retained mode.
+content. Selecting a Note restores its retained mode.
 
 Overview presents only compact current-note projections, in this order:
 
@@ -400,9 +400,10 @@ Overview presents only compact current-note projections, in this order:
    Metadata** heading opens the shared sheet; values remain static and
    selectable. Analysis adds **Link Zotero
    Item…** or **Manage Zotero Link…**; a bound Analysis also adds **Open in
-   Zotero**. The sheet owns selection, Rebind, and confirmed
-   Clear without exposing identity or metadata in Inspector. Research Status, Key Metadata,
-   Provenance, Derived State, and a Zotero section remain absent.
+   Zotero**. The sheet owns exact library selection, fill/conflict preview,
+   **Link/Rebind and Fill**, and Clear; Inspector exposes neither identity nor
+   fetched metadata. Research Status, Provenance, Derived State, and Zotero
+   sections remain absent.
 
 A pending activity set automatically presents a once-announced, focus-neutral
 Document task bar with **View Changes** and **Mark Current Note Reviewed**. Its

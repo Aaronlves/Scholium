@@ -61,6 +61,8 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
     case attachmentMissing(String)
     case attachmentIdentityMismatch
     case invalidAttachmentURL
+    case serverIdentityUnavailable
+    case serverIdentityChanged
 
     public var errorDescription: String? {
         switch self {
@@ -82,6 +84,10 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
             "The selected Zotero attachment does not belong to the expected item."
         case .invalidAttachmentURL:
             "Zotero did not return a readable local file URL for the attachment."
+        case .serverIdentityUnavailable:
+            "Zotero did not provide the local server identity required to fill Scholium Metadata. Update Zotero and try again."
+        case .serverIdentityChanged:
+            "The local Zotero server changed after this item was reviewed. Search again before linking and filling Metadata."
         }
     }
 }
@@ -236,10 +242,41 @@ public struct ZoteroSourceIdentity: Codable, Hashable, Sendable {
 public struct ZoteroCreatorMetadata: Codable, Hashable, Sendable {
     public let role: String
     public let name: String
+    public let givenName: String?
+    public let familyName: String?
+    public let literalName: String?
 
-    public init(role: String, name: String) {
+    public init(
+        role: String,
+        name: String,
+        givenName: String? = nil,
+        familyName: String? = nil,
+        literalName: String? = nil
+    ) {
         self.role = role
         self.name = name
+        self.givenName = givenName
+        self.familyName = familyName
+        self.literalName = literalName
+    }
+}
+
+/// One exact, bounded read from the selected Zotero library. The local server
+/// identity is retained so a later Link and Fill commit can reject a different
+/// Zotero database or process rather than applying newly substituted data.
+public struct ZoteroExactItemRead: Codable, Hashable, Sendable {
+    public let library: ZoteroLibraryMetadata
+    public let item: ZoteroItemMetadata
+    public let serverID: String
+
+    public init(
+        library: ZoteroLibraryMetadata,
+        item: ZoteroItemMetadata,
+        serverID: String
+    ) {
+        self.library = library
+        self.item = item
+        self.serverID = serverID
     }
 }
 
@@ -591,16 +628,23 @@ public enum ZoteroMetadataDecoder {
         let creatorObjects = item["creators"] as? [[String: Any]] ?? []
         let creators = creatorObjects.compactMap { creator -> ZoteroCreatorMetadata? in
             let role = nonempty(creator["creatorType"] as? String) ?? "creator"
-            let name: String?
             if let literalName = nonempty(creator["name"] as? String) {
-                name = literalName
-            } else {
-                let first = nonempty(creator["firstName"] as? String)
-                let last = nonempty(creator["lastName"] as? String)
-                name = nonempty([first, last].compactMap { $0 }.joined(separator: " "))
+                return ZoteroCreatorMetadata(
+                    role: role,
+                    name: literalName,
+                    literalName: literalName
+                )
             }
+            let first = nonempty(creator["firstName"] as? String)
+            let last = nonempty(creator["lastName"] as? String)
+            let name = nonempty([first, last].compactMap { $0 }.joined(separator: " "))
             guard let name else { return nil }
-            return ZoteroCreatorMetadata(role: role, name: name)
+            return ZoteroCreatorMetadata(
+                role: role,
+                name: name,
+                givenName: first,
+                familyName: last
+            )
         }
         let authors = creators.compactMap { creator -> String? in
             let creatorType = creator.role.lowercased()
@@ -628,7 +672,7 @@ public enum ZoteroMetadataDecoder {
         return ZoteroItemMetadata(
             key: key,
             itemType: nonempty(item["itemType"] as? String),
-            title: nonempty(item["title"] as? String) ?? "Untitled Zotero Item",
+            title: nonempty(item["title"] as? String) ?? "",
             creators: creators,
             authors: authors,
             date: date,

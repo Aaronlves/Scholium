@@ -981,12 +981,15 @@ struct ContentView: View {
                 search: { query in
                     try await appState.zoteroBridge.searchLibrary(query: query)
                 },
-                setBinding: { hit in
-                    try await appState.setZoteroBinding(
+                prepareFill: { hit in
+                    try await appState.prepareZoteroLinkAndFill(
                         noteID: route.noteID,
-                        library: hit.library.identity,
+                        library: hit.library,
                         itemKey: hit.item.key
                     )
+                },
+                commitFill: { plan in
+                    try await appState.commitZoteroLinkAndFill(plan)
                     appState.presentationRouter.dismissSheet()
                 },
                 clearBinding: {

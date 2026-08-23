@@ -15,6 +15,24 @@ public actor ZoteroBindingOperations: ZoteroBindingUseCases {
         try await reference.requireHandle().zoteroBindingsSnapshot()
     }
 
+    public func prepareZoteroLinkAndFill(
+        noteID: UUID,
+        library: ZoteroLibraryMetadata,
+        itemKey: String
+    ) async throws -> ZoteroMetadataFillPlan {
+        try await reference.requireHandle().preparePortableZoteroLinkAndFill(
+            noteID: noteID,
+            library: library,
+            itemKey: itemKey
+        )
+    }
+
+    public func commitZoteroLinkAndFill(
+        _ plan: ZoteroMetadataFillPlan
+    ) async throws -> ZoteroLinkAndFillResult {
+        try await reference.requireHandle().commitPortableZoteroLinkAndFill(plan)
+    }
+
     public func setZoteroBinding(
         _ binding: AnalysisZoteroBinding,
         expectedRevision: DocumentFingerprint
@@ -40,6 +58,134 @@ extension WorkspaceHandle {
     func zoteroBindingsSnapshot() async throws -> AnalysisZoteroBindingsSnapshot {
         try requireActive()
         return try await services.controlStore.zoteroBindings()
+    }
+
+    func preparePortableZoteroLinkAndFill(
+        noteID: UUID,
+        library: ZoteroLibraryMetadata,
+        itemKey: String
+    ) async throws -> ZoteroMetadataFillPlan {
+        try requireActive()
+        let (identity, document) = try await currentAnalysisIdentity(noteID)
+        let availableLibraries = try await services.zotero.libraries()
+        guard let currentLibrary = availableLibraries.first(where: {
+            $0.identity == library.identity
+        }) else {
+            throw ZoteroUseCaseError.itemMissing(itemKey)
+        }
+        let source = try await services.zotero.exactItem(
+            library: currentLibrary,
+            itemKey: itemKey,
+            expectedServerID: nil
+        )
+        let bindingSnapshot = try await services.controlStore.zoteroBindings()
+        let metadataSnapshot = try await services.controlStore.noteMetadata(
+            noteID: identity.id
+        )
+        return try ZoteroMetadataFillPlanner.plan(
+            noteID: noteID,
+            sourceRevision: document.fingerprint,
+            bindingSnapshot: bindingSnapshot,
+            metadataSnapshot: metadataSnapshot,
+            source: source
+        )
+    }
+
+    func commitPortableZoteroLinkAndFill(
+        _ plan: ZoteroMetadataFillPlan
+    ) async throws -> ZoteroLinkAndFillResult {
+        try requireActive()
+        let source = try await services.zotero.exactItem(
+            library: plan.source.library,
+            itemKey: plan.source.item.key,
+            expectedServerID: plan.source.serverID
+        )
+        guard source.item == plan.source.item,
+              source.library.identity == plan.source.library.identity else {
+            throw ZoteroLinkAndFillError.zoteroItemChanged
+        }
+
+        let mutationLease = try await beginSourceMutation()
+        var ownsMutation = true
+        defer {
+            if ownsMutation { endSourceMutation(mutationLease) }
+        }
+        let (_, document) = try await currentAnalysisIdentity(plan.noteID)
+        guard document.fingerprint == plan.sourceRevision else {
+            throw ZoteroLinkAndFillError.analysisSourceChanged
+        }
+        let currentBindings = try await services.controlStore.zoteroBindings()
+        guard currentBindings.revision == plan.expectedBindingsRevision,
+              currentBindings.binding(for: plan.noteID) == plan.currentBinding else {
+            throw TriptychControlError.zoteroBindingsRevisionConflict
+        }
+        let currentMetadata = try await services.controlStore.noteMetadata(
+            noteID: plan.noteID
+        )
+        guard currentMetadata?.revision == plan.expectedMetadataRevision else {
+            throw NoteMetadataError.revisionConflict(plan.noteID)
+        }
+
+        let bindingChanged = plan.currentBinding != plan.intendedBinding
+        let bindingSnapshot: AnalysisZoteroBindingsSnapshot
+        if bindingChanged {
+            bindingSnapshot = try await services.controlStore.setZoteroBinding(
+                plan.intendedBinding,
+                expectedRevision: plan.expectedBindingsRevision
+            )
+        } else {
+            bindingSnapshot = currentBindings
+        }
+
+        let metadata: NoteMetadataSnapshot?
+        if plan.fieldsToFill.isEmpty {
+            metadata = currentMetadata
+        } else {
+            do {
+                metadata = try await services.controlStore.saveNoteMetadata(
+                    noteID: plan.noteID,
+                    fields: plan.resultFields,
+                    expectedRevision: plan.expectedMetadataRevision
+                )
+            } catch {
+                endSourceMutation(mutationLease)
+                ownsMutation = false
+                if bindingChanged {
+                    _ = try? await refreshAfterCommittedOperation(
+                        "The Zotero link",
+                        publication: .explicit
+                    )
+                    throw ZoteroLinkAndFillError.metadataNotFilledAfterBinding(
+                        error.localizedDescription
+                    )
+                }
+                throw error
+            }
+        }
+        guard bindingSnapshot.binding(for: plan.noteID) == plan.intendedBinding else {
+            throw TriptychControlError.invalidZoteroBindings
+        }
+        endSourceMutation(mutationLease)
+        ownsMutation = false
+
+        let warning: String?
+        do {
+            try await refreshAfterCommittedOperation(
+                "The Zotero Link and Fill operation",
+                publication: .explicit
+            )
+            warning = nil
+        } catch let error as ScholiumApplicationError
+            where error.durableMutationWasCommitted {
+            warning = error.refreshFailureReason ?? error.localizedDescription
+        }
+        return ZoteroLinkAndFillResult(
+            binding: plan.intendedBinding,
+            metadata: metadata,
+            filledKeys: plan.fieldsToFill.map(\.key),
+            retainedConflictKeys: plan.retainedConflicts.map(\.key),
+            derivedRefreshWarning: warning
+        )
     }
 
     func setPortableZoteroBinding(
@@ -73,6 +219,22 @@ extension WorkspaceHandle {
               services.manifest.vaultIDs[.paperAnalysis] == identity.vaultID else {
             throw ZoteroUseCaseError.invalidAnalysisReference
         }
+    }
+
+    private func currentAnalysisIdentity(
+        _ noteID: UUID
+    ) async throws -> (NoteIdentityRecord, NoteDocument) {
+        guard let identity = try await services.controlStore.identityRecord(id: noteID),
+              services.manifest.vaultIDs[.paperAnalysis] == identity.vaultID else {
+            throw ZoteroUseCaseError.invalidAnalysisReference
+        }
+        let document = try await repository(vaultID: identity.vaultID).load(
+            relativePath: identity.relativePath
+        )
+        guard document.fingerprint == identity.fingerprint else {
+            throw ZoteroLinkAndFillError.analysisSourceChanged
+        }
+        return (identity, document)
     }
 
     private func mutatePortableZoteroBinding(

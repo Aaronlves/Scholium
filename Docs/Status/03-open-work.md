@@ -29,8 +29,10 @@
   CreatorList editor, first-record creation, removal/Undo, and Source routes for
   authored `summary` and `keywords`.
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
-  error, conflict, set, rebind, confirmed-clear, and minimum-width acceptance
-  for the Analysis Overview Zotero relationship sheet.
+  same-key multi-library, proposed-fill, retained-conflict, changed-server/item,
+  source/binding/Metadata revision, partial-commit, set, rebind,
+  confirmed-clear, enlarged-text, and minimum-width acceptance for the Analysis
+  Overview Zotero Link and Fill sheet.
 - Complete direct keyboard, VoiceOver, Full Keyboard Access, relaunch, menu
   update, conflict, reserved-shortcut, clear/default, Settings-search, and
   minimum-width acceptance for the grouped Settings navigation and Hotkey

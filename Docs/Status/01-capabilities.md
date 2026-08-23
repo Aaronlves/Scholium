@@ -285,8 +285,14 @@
 - Invalid machine-local Method locators expose an exact archive-and-reset
   operation; portable research configuration and vault files remain unchanged.
 - Built-in Zotero access reads local bibliographic metadata, searches exact
-  user/group library items for researcher selection, revision-checks portable
-  Analysis set/rebind/clear, and opens a keyed Analysis in Zotero. An eligible authenticated Analysis Run with frozen Zotero
+  user/group library items for researcher selection, keeps same-key libraries
+  distinct, and opens a keyed Analysis in Zotero. Its explicit Link and Fill
+  operation binds one reviewed local server/library/item read, source revision,
+  binding revision, and Metadata revision; it writes the portable relationship,
+  then fills only absent applicable managed fields while retaining conflicts.
+  Abstract and tags never become authored `summary` or `keywords`, and the
+  operation writes neither Markdown nor Zotero. Set/rebind/clear remain
+  independently revision-checked. An eligible authenticated Analysis Run with frozen Zotero
   context receives the exact release-managed Zotero Integration Adapter; Runs
   without that context receive none, and adapter delivery grants no capability
   or write authority. Separately authorized Agent

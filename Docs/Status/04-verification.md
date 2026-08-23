@@ -36,6 +36,21 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, Zotero Link and Fill passed 33 focused tests across exact
+  local decoding/matching, same-key user/group selection, pure Metadata mapping,
+  Application commit, server substitution, Metadata revision conflict, exact
+  Markdown/YAML preservation, and interface ownership. Documentation authority
+  and Interface, Localizable, and WebKitInterface localization validation also
+  passed. The task's single complete `verify.sh` run passed documentation and
+  shipped-Skill guards, all 199 Web-editor tests, reproducible bundles, RDF-1,
+  450 Core tests, and 3 Core performance tests. It then completed 144 of 145
+  Contract tests before one stale post-YAML-cutover Document Preview assertion
+  expected retired YAML `title` instead of the current H1 title; later targets
+  did not run. The assertion was corrected without restoring YAML semantics and
+  its complete two-test owner suite passed. Per the one-complete-gate rule, the
+  complete gate was not rerun. This is local automated evidence, not live-Zotero,
+  packaged, assistive-technology, visual, or researcher acceptance.
+
 - On 2026-08-23, the fixed-authored-YAML and optional-machine-field cutover
   passed 207 focused tests: authored-YAML and managed-Metadata contracts,
   Triptych settings and persistence, Workflow profiles, Agent-start wire,

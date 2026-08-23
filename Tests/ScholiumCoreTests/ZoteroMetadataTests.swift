@@ -178,8 +178,18 @@ struct ZoteroMetadataTests {
         #expect(result.itemType == "journalArticle")
         #expect(result.title == "Fittingness")
         #expect(result.creators == [
-            ZoteroCreatorMetadata(role: "author", name: "Richard Chappell"),
-            ZoteroCreatorMetadata(role: "editor", name: "Ignored Editor"),
+            ZoteroCreatorMetadata(
+                role: "author",
+                name: "Richard Chappell",
+                givenName: "Richard",
+                familyName: "Chappell"
+            ),
+            ZoteroCreatorMetadata(
+                role: "editor",
+                name: "Ignored Editor",
+                givenName: "Ignored",
+                familyName: "Editor"
+            ),
         ])
         #expect(result.authors == ["Richard Chappell"])
         #expect(result.date == "2012")
