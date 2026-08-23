@@ -972,7 +972,9 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(propertyRows.dropFirst().contains {
             $0["relative_path"] as? String == "Analysis.md"
                 && $0["match_reasons"] != nil
-        })
+        }, Comment(
+            rawValue: String(decoding: propertySearch.stdout, as: UTF8.self)
+        ))
 
         let summarySearch = try cli.run([
             "search", "summary:inheritance",
@@ -1808,12 +1810,12 @@ private struct ActionCLIFixture {
         )
         let analysisURL = analyses.appendingPathComponent("Analysis.md")
         try Data(
-            "---\ntitle: Analysis\nsummary: inheritance-handoff map\nlanguage: Greek\n---\n# Analysis\n\nA synthetic analysis claim.\n\n+[[Topic]]\n".utf8
+            "---\nsummary: inheritance-handoff map\n---\n# Analysis\n\nA synthetic analysis claim.\n\n+[[Topic]]\n".utf8
         )
             .write(to: analysisURL, options: .atomic)
-        try Data("---\ntitle: Topic\n---\n# Topic\n\nA synthetic topic.\n".utf8)
+        try Data("# Topic\n\nA synthetic topic.\n".utf8)
             .write(to: topics.appendingPathComponent("Topic.md"), options: .atomic)
-        try Data("---\ntitle: Draft Argument\nkind: chapter\n---\n# Draft Argument\n\nA synthetic work claim.\n".utf8)
+        try Data("# Draft Argument\n\nA synthetic work claim.\n".utf8)
             .write(to: works.appendingPathComponent("Draft Argument.md"), options: .atomic)
         let analysisSourceURL = root.appendingPathComponent("Synthetic Source.md")
         try Data(
@@ -1843,6 +1845,12 @@ private struct ActionCLIFixture {
             vaultID: workVault.id,
             relativePath: "Draft Argument.md"
         )
+        _ = try await handle.documents.saveMetadata(
+            analysisID,
+            fields: ["language": .string("Greek")],
+            expectedRevision: nil
+        )
+        _ = try await handle.refresh()
         let analysisTarget = try await target(analysisID, role: .analysis, handle: handle)
         _ = try await handle.research.bindSourceAccess(
             ResearchSourceBindingRequest(
@@ -1891,8 +1899,11 @@ private struct ActionCLIFixture {
             note: id,
             role: role,
             fingerprint: note.fingerprint,
-            title: note.document.parsedFrontmatter["title"]?.scalarString
-                ?? id.relativePath
+            title: ResearchNoteTitleResolver.resolve(
+                document: note.document,
+                vaultRole: note.vaultRole,
+                metadata: note.metadata
+            ).title
         )
     }
 

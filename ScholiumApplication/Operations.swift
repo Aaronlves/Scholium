@@ -132,12 +132,12 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
-    public func create(
-        _ id: VaultQualifiedNoteID,
-        content: String
+    public func importMarkdownSource(
+        _ source: String,
+        at id: VaultQualifiedNoteID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         let handle = try await reference.requireHandle()
-        return try await handle.createDocument(id, content: content)
+        return try await handle.importMarkdownSource(source, at: id)
     }
 
     public func createManagedNote(

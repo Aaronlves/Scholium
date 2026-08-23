@@ -29,9 +29,11 @@ public protocol DocumentUseCases: Sendable {
     func rollbackImageAttachment(
         _ preparation: PreparedImageAttachment
     ) async throws
-    func create(
-        _ id: VaultQualifiedNoteID,
-        content: String
+    /// Imports complete authored Markdown at one exact Note path without
+    /// applying managed New Note YAML.
+    func importMarkdownSource(
+        _ source: String,
+        at id: VaultQualifiedNoteID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
     /// Creates one note through the sole role-seed and typed-metadata owner.
     func createManagedNote(

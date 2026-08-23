@@ -1300,13 +1300,13 @@ struct ResearchBoundedWriteOperationsTests {
             vaultID: fixture.topicID.vaultID,
             relativePath: "Metadata Malformed.md"
         )
-        let plain = try await handle.documents.create(
-            plainID,
-            content: "# Plain\n"
+        let plain = try await handle.documents.importMarkdownSource(
+            "# Plain\n",
+            at: plainID
         ).committedValue
-        _ = try await handle.documents.create(
-            malformedID,
-            content: "---\nsummary: incomplete\n"
+        _ = try await handle.documents.importMarkdownSource(
+            "---\nsummary: incomplete\n",
+            at: malformedID
         )
         _ = try await handle.refresh()
         let extensionResult = try await handle.research.extendAgentWriteSet(
@@ -1480,13 +1480,13 @@ struct ResearchBoundedWriteOperationsTests {
             vaultID: fixture.topicID.vaultID,
             relativePath: "Malformed.md"
         )
-        _ = try await handle.documents.create(
-            plainID,
-            content: "# Plain\n\nBody only.\n"
+        _ = try await handle.documents.importMarkdownSource(
+            "# Plain\n\nBody only.\n",
+            at: plainID
         )
-        _ = try await handle.documents.create(
-            malformedID,
-            content: "---\nkey: value\n"
+        _ = try await handle.documents.importMarkdownSource(
+            "---\nkey: value\n",
+            at: malformedID
         )
         _ = try await handle.refresh()
 

@@ -1282,9 +1282,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return unavailable.sorted()
     }
 
-    func createDocument(
-        _ id: VaultQualifiedNoteID,
-        content: String
+    func importMarkdownSource(
+        _ source: String,
+        at id: VaultQualifiedNoteID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -1301,7 +1301,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
         let document = try await repository.create(
             relativePath: id.relativePath,
-            content: content
+            content: source
         )
         var committedDocument = document
         var identityRecoveryWarning: String?

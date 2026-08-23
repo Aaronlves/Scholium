@@ -39,7 +39,7 @@ struct CLIApplicationDelegationTests {
         #expect(sources.workspace.contains("research.activeDiscussion(id: id)"))
         #expect(sources.workspace.contains("research.appendDiscussionStatement("))
         #expect(sources.document.contains("handle.documents.load("))
-        #expect(sources.document.contains("handle.documents.create("))
+        #expect(sources.document.contains("handle.documents.importMarkdownSource("))
         #expect(sources.document.contains("handle.documents.save("))
         #expect(sources.document.contains("handle.documents.move("))
         #expect(sources.document.contains("handle.documents.prepareSystemTrash("))

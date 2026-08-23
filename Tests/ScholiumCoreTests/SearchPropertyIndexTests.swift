@@ -66,23 +66,37 @@ struct SearchPropertyIndexTests {
         ).noteResults.isEmpty)
     }
 
-    @Test("Managed metadata changes converge with a clean rebuild")
+    @Test("Managed property-only metadata changes converge with a clean rebuild")
     func metadataIncrementalCleanRebuildParity() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let incremental = try fixture.index()
         let source = "---\nsummary: Agency map\nkeywords: [concept]\n---\nBody"
+        let metadataCatalog = NoteMetadataCatalog(customFieldsByRole: [
+            .topicKnowledge: [
+                MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
+            ],
+        ])
         _ = try await incremental.synchronize([fixture.item(
             "Topic.md",
             source,
-            metadataFields: ["aliases": .array([.string("Greek")])]
+            metadataFields: [
+                "aliases": .array([.string("Practical agency")]),
+                "argument_stage": .string("Greek"),
+            ],
+            metadataCatalog: metadataCatalog
         )])
         let edited = fixture.item(
             "Topic.md",
             source,
-            metadataFields: ["aliases": .array([.string("Latin")])]
+            metadataFields: [
+                "aliases": .array([.string("Practical agency")]),
+                "argument_stage": .string("Latin"),
+            ],
+            metadataCatalog: metadataCatalog
         )
-        _ = try await incremental.synchronize([edited])
+        let updated = try await incremental.synchronize([edited])
+        #expect(updated.disposition == .incrementallyUpdated)
 
         let clean = try fixture.index(
             at: fixture.root.appendingPathComponent("clean-search-v9.sqlite")
@@ -90,8 +104,8 @@ struct SearchPropertyIndexTests {
         _ = try await clean.synchronize([edited])
         for query in [
             "property:aliases",
-            "property:aliases=Greek",
-            "property:aliases=Latin",
+            "property:argument_stage=Greek",
+            "property:argument_stage=Latin",
             "summary:agency",
         ] {
             let incrementalResults = try await incremental.testSearch(fixture.request(query))
@@ -232,7 +246,8 @@ struct SearchPropertyIndexTests {
         func item(
             _ path: String,
             _ source: String,
-            metadataFields: [String: YAMLValue]? = nil
+            metadataFields: [String: YAMLValue]? = nil,
+            metadataCatalog: NoteMetadataCatalog = .builtIn
         ) -> SearchIndexDocument {
             let metadata: NoteMetadataSnapshot? = metadataFields.map { fields in
                 let record = NoteMetadataRecord(noteID: UUID(), fields: fields)
@@ -248,7 +263,8 @@ struct SearchPropertyIndexTests {
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 document: NoteDocument(relativePath: path, rawContent: source),
-                metadata: metadata
+                metadata: metadata,
+                metadataCatalog: metadataCatalog
             )
         }
 

@@ -92,9 +92,9 @@ extension ScholiumCLI {
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
-            let outcome = try await handle.documents.create(
-                VaultQualifiedNoteID(vaultID: vault.id, relativePath: path),
-                content: try sourceContent(from: input)
+            let outcome = try await handle.documents.importMarkdownSource(
+                try sourceContent(from: input),
+                at: VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
             )
             let document = outcome.committedValue
             write("Imported \(vault.name):\(path)\nSHA-256: \(document.fingerprint.sha256)\n")

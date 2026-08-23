@@ -105,18 +105,18 @@ struct DocumentOperationsTests {
             vaultID: works.id,
             relativePath: "Alias Reference.md"
         )
-        let topic = try await handle.documents.create(
-            topicID,
-            content: "---\naliases: [YAML Alias]\n---\n# Alias Target\n"
+        let topic = try await handle.documents.importMarkdownSource(
+            "---\naliases: [YAML Alias]\n---\n# Alias Target\n",
+            at: topicID
         ).committedValue
         _ = try await handle.documents.saveMetadata(
             topicID,
             fields: ["aliases": .array([.string("Managed Alias")])],
             expectedRevision: nil
         ).committedValue
-        _ = try await handle.documents.create(
-            referenceID,
-            content: "# Reference\n\n[[Managed Alias]] [[YAML Alias]]\n"
+        _ = try await handle.documents.importMarkdownSource(
+            "# Reference\n\n[[Managed Alias]] [[YAML Alias]]\n",
+            at: referenceID
         ).committedValue
         _ = try await handle.refresh()
 
@@ -183,9 +183,9 @@ struct DocumentOperationsTests {
             relativePath: "New/Created.md"
         )
 
-        let created = try await handle.documents.create(
-            createdID,
-            content: "# Created\n\nApplication-owned creation.\n"
+        let created = try await handle.documents.importMarkdownSource(
+            "# Created\n\nApplication-owned creation.\n",
+            at: createdID
         ).committedValue
 
         let projected = try #require(try await handle.snapshot().document(id: createdID))
@@ -214,7 +214,7 @@ struct DocumentOperationsTests {
             relativePath: "Managed Metadata.md"
         )
         let exactSource = "\u{FEFF}---\r\ntitle: Retired YAML title\r\nsummary: Exact source summary\r\nkeywords: [one, two]\r\ncustom: 'keep'\r\n---\r\n# Authored heading\r\n"
-        _ = try await handle.documents.create(id, content: exactSource)
+        _ = try await handle.documents.importMarkdownSource(exactSource, at: id)
 
         let first = try await handle.documents.saveMetadata(
             id,
@@ -267,9 +267,9 @@ struct DocumentOperationsTests {
             relativePath: "Metadata Original.md"
         )
         let exactSource = "---\nsummary: Authored summary\nkeywords: [copy]\nlegacy: keep\n---\n# Exact body\n"
-        let source = try await handle.documents.create(
-            sourceID,
-            content: exactSource
+        let source = try await handle.documents.importMarkdownSource(
+            exactSource,
+            at: sourceID
         ).committedValue
         let metadata = try await handle.documents.saveMetadata(
             sourceID,
@@ -385,9 +385,9 @@ struct DocumentOperationsTests {
         let vaultID = fixture.targetID.vaultID
 
         for relativePath in ["Sources/Untitled.md", "Sources/Untitled 2.md"] {
-            _ = try await handle.documents.create(
-                VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath),
-                content: "Existing source at \(relativePath)\n"
+            _ = try await handle.documents.importMarkdownSource(
+                "Existing source at \(relativePath)\n",
+                at: VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
             )
         }
         let events = await handle.events.events()
@@ -632,9 +632,9 @@ struct DocumentOperationsTests {
             vaultID: vaultID,
             relativePath: "YAML-free.md"
         )
-        let plain = try await handle.documents.create(
-            id,
-            content: "# Existing body\n\nExact prose.\n"
+        let plain = try await handle.documents.importMarkdownSource(
+            "# Existing body\n\nExact prose.\n",
+            at: id
         ).committedValue
 
         await #expect(throws: VaultRepositoryError.self) {
@@ -679,9 +679,9 @@ struct DocumentOperationsTests {
                 vaultID: vaultID,
                 relativePath: "Malformed-\(index).md"
             )
-            let created = try await handle.documents.create(
-                id,
-                content: source
+            let created = try await handle.documents.importMarkdownSource(
+                source,
+                at: id
             ).committedValue
             await #expect(throws: VaultRepositoryError.self) {
                 _ = try await handle.documents.save(
@@ -1166,14 +1166,14 @@ struct DocumentOperationsTests {
             vaultID: vaultID,
             relativePath: "Folder Reference.md"
         )
-        let first = try await handle.documents.create(
-            firstID,
-            content: "# First\n\nSee [[Untitled Folder/Nested/Second]].\n"
+        let first = try await handle.documents.importMarkdownSource(
+            "# First\n\nSee [[Untitled Folder/Nested/Second]].\n",
+            at: firstID
         ).committedValue
-        _ = try await handle.documents.create(secondID, content: "# Second\n")
-        _ = try await handle.documents.create(
-            referenceID,
-            content: "# Reference\n\nSee [[Untitled Folder/First]].\n"
+        _ = try await handle.documents.importMarkdownSource("# Second\n", at: secondID)
+        _ = try await handle.documents.importMarkdownSource(
+            "# Reference\n\nSee [[Untitled Folder/First]].\n",
+            at: referenceID
         )
         _ = try await handle.documents.save(
             firstID,

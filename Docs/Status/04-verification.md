@@ -36,6 +36,24 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, managed New Note creation removed the generic complete-source
+  `create` port and duplicate Untitled-request construction. GUI, researcher
+  CLI, and authenticated Agent creation retain one `createManagedNote` owner;
+  exact-path Import alone exposes `importMarkdownSource`. The focused creation,
+  Import, Agent-write, CLI-delegation, and window-architecture owners passed 130
+  tests. The task's single complete `verify.sh` attempt then passed
+  documentation and shipped-Skill guards, all 199 Web-editor tests,
+  reproducible bundles, RDF-1, 454 Core tests, 3 Core performance tests, 147
+  Contract tests, 265 Application tests, 15 bridge tests, the serialized
+  architecture measurement, all 643 App tests, and the Debug/symbol stages. It
+  stopped in the 10-test executable CLI lifecycle because a property-only
+  Metadata change was absent from the incremental Search projection hash. The
+  index now fingerprints both lexical and structured projections; a regression
+  test proves Metadata-only incremental/clean-rebuild parity, and all 5 Search
+  property plus 10 executable CLI lifecycle tests passed. Per the one-complete-
+  gate rule, the sandbox bridge, Release stage, and complete gate were not
+  rerun. This is local automated evidence, not packaged or human acceptance.
+
 - On 2026-08-23, the resolved YAML/Metadata boundary passed its focused
   Contract, Core, Application, App, Search, Link, Agent, Zotero, Settings, and
   source-fidelity owners. The task's single complete `verify.sh` attempt passed

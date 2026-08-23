@@ -307,9 +307,9 @@ struct DerivedRefreshStatusTests {
             vaultID: fixture.analysisNoteID.vaultID,
             relativePath: "Postcommit Created.md"
         )
-        let created = try await handle.documents.create(
-            createdID,
-            content: ""
+        let created = try await handle.documents.importMarkdownSource(
+            "",
+            at: createdID
         )
         #expect(created.committedValue.rawContent.isEmpty)
         #expect(created.derivedRefreshWarning?.isEmpty == false)

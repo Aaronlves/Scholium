@@ -355,21 +355,14 @@ final class DocumentController: ObservableObject {
         )
     }
 
-    func create(
-        _ id: VaultQualifiedNoteID,
-        content: String
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
-        try await requireOperations().create(id, content: content)
-    }
-
     func createUntitledNote(
         inVault vaultID: UUID,
         folderRelativePath: String?
     ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
-        try await requireOperations().createManagedNote(try ManagedNoteCreationRequest(
-            vaultID: vaultID,
-            destination: .untitled(folderRelativePath: folderRelativePath)
-        ))
+        try await requireOperations().createUntitledNote(
+            inVault: vaultID,
+            folderRelativePath: folderRelativePath
+        )
     }
 
     func createUntitledFolder(

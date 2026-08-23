@@ -241,16 +241,17 @@ public actor TriptychSearchIndex {
         let manifestHash = Self.manifestHash(for: Array(desired.values))
         let previous = try generation()
         let stored = try Self.indexedProjectionState(in: database)
-        let desiredState = Dictionary(uniqueKeysWithValues: desired.map { key, value in
-            (key, IndexedProjectionState(
+        var desiredState: [String: IndexedProjectionState] = [:]
+        for (key, value) in desired {
+            desiredState[key] = IndexedProjectionState(
                 fingerprint: value.document.fingerprint,
-                projectionHash: value.projection.projectionHash,
+                projectionHash: try Self.indexedProjectionHash(value),
                 vaultName: value.vaultName,
                 vaultRole: value.vaultRole,
                 stableNoteID: value.stableNoteID,
                 evidentialLayer: value.evidentialLayer
-            ))
-        })
+            )
+        }
         let changedKeys = desired.keys.filter { stored[$0] != desiredState[$0] }
         let removedKeys = Set(stored.keys).subtracting(desired.keys)
         let delta = SearchIndexDelta(
@@ -1188,6 +1189,23 @@ public actor TriptychSearchIndex {
         let evidentialLayer: EvidentialLayer
     }
 
+    /// Covers every value persisted for one indexed Note. The source-derived
+    /// projection hash alone cannot detect a managed-Metadata-only property
+    /// change because those fields deliberately have no Markdown range.
+    private nonisolated static func indexedProjectionHash(
+        _ document: SearchIndexDocument
+    ) throws -> String {
+        let propertyData = try JSONEncoder.searchIndex.encode(
+            document.propertyProjection.entries
+        )
+        var material = Data(document.projection.projectionHash.utf8)
+        material.append(0)
+        material.append(propertyData)
+        return SHA256.hash(data: material)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
     private nonisolated static func indexedProjectionState(
         in database: SearchSQLiteDatabase
     ) throws -> [String: IndexedProjectionState] {
@@ -1276,7 +1294,8 @@ public actor TriptychSearchIndex {
                 .text(item.document.fingerprint.sha256), .int(item.document.fingerprint.byteCount),
                 .text(item.evidentialLayer.rawValue),
                 .text(" " + projection.calloutRoles.sorted().joined(separator: " ") + " "),
-                .int(projection.hasBrokenLink ? 1 : 0), .text(projection.projectionHash),
+                .int(projection.hasBrokenLink ? 1 : 0),
+                .text(try indexedProjectionHash(item)),
                 .text(lineStarts),
             ]
         )
