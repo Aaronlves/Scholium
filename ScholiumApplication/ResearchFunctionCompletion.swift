@@ -1440,8 +1440,7 @@ extension ResearchFunctionCoordinator {
         case .itemMissing, .attachmentMissing:
             .zoteroAttachmentMissing
         case .invalidResponse, .invalidItemKey, .invalidAnalysisReference,
-             .attachmentIdentityMismatch, .invalidAttachmentURL,
-             .serverIdentityUnavailable, .serverIdentityChanged:
+             .attachmentIdentityMismatch, .invalidAttachmentURL:
             .zoteroIdentityMismatch
         }
     }

@@ -176,7 +176,7 @@ public actor ZoteroOperations: ZoteroUseCases {
         lastSuccessfulConnection = nil
     }
 
-    public func libraries() async throws -> [ZoteroLibraryMetadata] {
+    private func libraries() async throws -> [ZoteroLibraryMetadata] {
         let data = try await request(path: "groups", query: [])
         let groups: [GroupEnvelope]
         do {
@@ -254,7 +254,7 @@ public actor ZoteroOperations: ZoteroUseCases {
         return sortedSearchHits(hits, limit: limit)
     }
 
-    public func exactItem(
+    func exactItem(
         library: ZoteroLibraryMetadata,
         itemKey rawItemKey: String,
         expectedServerID: String? = nil
@@ -268,10 +268,10 @@ public actor ZoteroOperations: ZoteroUseCases {
             query: [URLQueryItem(name: "format", value: "json")]
         )
         guard let serverID = response.serverID else {
-            throw ZoteroUseCaseError.serverIdentityUnavailable
+            throw ZoteroLinkAndFillError.serverIdentityUnavailable
         }
         if let expectedServerID, expectedServerID != serverID {
-            throw ZoteroUseCaseError.serverIdentityChanged
+            throw ZoteroLinkAndFillError.serverIdentityChanged
         }
         let items: [ZoteroItemMetadata]
         do {

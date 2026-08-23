@@ -50,6 +50,18 @@ override.
   its complete two-test owner suite passed. Per the one-complete-gate rule, the
   complete gate was not rerun. This is local automated evidence, not live-Zotero,
   packaged, assistive-technology, visual, or researcher acceptance.
+  A subsequent residue-cleanup pass removed the superseded researcher-facing
+  set-binding API, redundant library enumeration, unused transient result
+  state and conformances, and generic Research error cases that belonged only
+  to Link and Fill. Its 16 focused Zotero and portable-binding tests passed.
+  Its single complete `verify.sh` run passed the documentation and shipped-Skill
+  guards, 199 Web-editor tests, reproducible bundles, RDF-1, 450 Core tests,
+  3 Core performance tests, and all 145 Contract tests, then found six stale
+  Application assertions across four owners: five still treated retired YAML
+  aliases/properties as managed Metadata, and one expected pre-structured
+  Zotero creators. Those fixtures were corrected without restoring YAML
+  semantics, and all 39 tests in their owning suites passed. The complete gate
+  was not rerun.
 
 - On 2026-08-23, the fixed-authored-YAML and optional-machine-field cutover
   passed 207 focused tests: authored-YAML and managed-Metadata contracts,

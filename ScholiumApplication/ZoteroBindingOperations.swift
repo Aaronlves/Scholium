@@ -1,8 +1,9 @@
 import ScholiumContracts
 import Foundation
 
-/// Narrow delivery-neutral capability for portable Analysis-to-Zotero
-/// relationships. The concrete Workspace handle and control store remain
+/// Narrow delivery-neutral capability for researcher-facing Zotero binding,
+/// guarded empty-field fill, and clear. Agent binding writes retain their
+/// separate Research authorization path; the concrete Workspace owners remain
 /// hidden behind the activated runtime reference.
 public actor ZoteroBindingOperations: ZoteroBindingUseCases {
     private let reference: WorkspaceHandleReference
@@ -33,16 +34,6 @@ public actor ZoteroBindingOperations: ZoteroBindingUseCases {
         try await reference.requireHandle().commitPortableZoteroLinkAndFill(plan)
     }
 
-    public func setZoteroBinding(
-        _ binding: AnalysisZoteroBinding,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> AnalysisZoteroBindingMutationResult {
-        try await reference.requireHandle().setPortableZoteroBinding(
-            binding,
-            expectedRevision: expectedRevision
-        )
-    }
-
     public func clearZoteroBinding(
         noteID: UUID,
         expectedRevision: DocumentFingerprint
@@ -67,14 +58,8 @@ extension WorkspaceHandle {
     ) async throws -> ZoteroMetadataFillPlan {
         try requireActive()
         let (identity, document) = try await currentAnalysisIdentity(noteID)
-        let availableLibraries = try await services.zotero.libraries()
-        guard let currentLibrary = availableLibraries.first(where: {
-            $0.identity == library.identity
-        }) else {
-            throw ZoteroUseCaseError.itemMissing(itemKey)
-        }
         let source = try await services.zotero.exactItem(
-            library: currentLibrary,
+            library: library,
             itemKey: itemKey,
             expectedServerID: nil
         )
@@ -137,12 +122,9 @@ extension WorkspaceHandle {
             bindingSnapshot = currentBindings
         }
 
-        let metadata: NoteMetadataSnapshot?
-        if plan.fieldsToFill.isEmpty {
-            metadata = currentMetadata
-        } else {
+        if !plan.fieldsToFill.isEmpty {
             do {
-                metadata = try await services.controlStore.saveNoteMetadata(
+                _ = try await services.controlStore.saveNoteMetadata(
                     noteID: plan.noteID,
                     fields: plan.resultFields,
                     expectedRevision: plan.expectedMetadataRevision
@@ -180,8 +162,6 @@ extension WorkspaceHandle {
             warning = error.refreshFailureReason ?? error.localizedDescription
         }
         return ZoteroLinkAndFillResult(
-            binding: plan.intendedBinding,
-            metadata: metadata,
             filledKeys: plan.fieldsToFill.map(\.key),
             retainedConflictKeys: plan.retainedConflicts.map(\.key),
             derivedRefreshWarning: warning

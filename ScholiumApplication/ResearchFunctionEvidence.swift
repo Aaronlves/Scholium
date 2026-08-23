@@ -100,8 +100,7 @@ extension ResearchFunctionCoordinator {
             case .itemMissing:
                 .notFound
             case .invalidResponse, .invalidItemKey, .invalidAnalysisReference,
-                 .attachmentIdentityMismatch, .invalidAttachmentURL,
-                 .serverIdentityUnavailable, .serverIdentityChanged:
+                 .attachmentIdentityMismatch, .invalidAttachmentURL:
                 .invalidResponse
             case .attachmentMissing:
                 .notFound

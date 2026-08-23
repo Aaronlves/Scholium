@@ -251,7 +251,7 @@ struct ResearchFixture: Sendable {
             to: analyses.appendingPathComponent("Analysis.md"),
             options: .atomic
         )
-        try Data("---\ntitle: Agency\naliases:\n  - Freedom\n---\n# Agency\n\nSee [[Nested Topic]].\n".utf8).write(
+        try Data("# Agency\n\nSee [[Nested Topic]].\n".utf8).write(
             to: topics.appendingPathComponent("Agency.md"),
             options: .atomic
         )
@@ -289,6 +289,19 @@ struct ResearchFixture: Sendable {
             vaultID: analysisVaultID,
             relativePath: "Analysis.md"
         )
+        let topicID = VaultQualifiedNoteID(
+            vaultID: topicVaultID,
+            relativePath: "Agency.md"
+        )
+        let workID = VaultQualifiedNoteID(
+            vaultID: workVaultID,
+            relativePath: "Draft Argument.md"
+        )
+        _ = try await handle.documents.saveMetadata(
+            topicID,
+            fields: ["aliases": .array([.string("Freedom")])],
+            expectedRevision: nil
+        )
         let sourceTarget = try await researchFunctionTarget(
             analysisID,
             role: .analysis,
@@ -318,14 +331,8 @@ struct ResearchFixture: Sendable {
             analysisSourceURL: analysisSourceFile,
             assignment: assignment,
             analysisID: analysisID,
-            topicID: VaultQualifiedNoteID(
-                vaultID: topicVaultID,
-                relativePath: "Agency.md"
-            ),
-            workID: VaultQualifiedNoteID(
-                vaultID: workVaultID,
-                relativePath: "Draft Argument.md"
-            )
+            topicID: topicID,
+            workID: workID
         )
     }
 

@@ -1,11 +1,30 @@
 import Foundation
 
-public struct ZoteroMetadataFillField: Codable, Hashable, Identifiable, Sendable {
+/// One exact, bounded read from the selected Zotero library. The local server
+/// identity is retained so a later Link and Fill commit can reject a different
+/// Zotero database or process rather than applying substituted data.
+public struct ZoteroExactItemRead: Sendable {
+    public let library: ZoteroLibraryMetadata
+    public let item: ZoteroItemMetadata
+    public let serverID: String
+
+    public init(
+        library: ZoteroLibraryMetadata,
+        item: ZoteroItemMetadata,
+        serverID: String
+    ) {
+        self.library = library
+        self.item = item
+        self.serverID = serverID
+    }
+}
+
+public struct ZoteroMetadataFillField: Identifiable, Sendable {
     public var id: String { key }
     public let key: String
     public let value: YAMLValue
 
-    public init(key: String, value: YAMLValue) {
+    init(key: String, value: YAMLValue) {
         self.key = key
         self.value = value
     }
@@ -14,7 +33,7 @@ public struct ZoteroMetadataFillField: Codable, Hashable, Identifiable, Sendable
 /// One researcher-reviewed proposal. It binds the exact Zotero item and local
 /// server to the current portable binding and Metadata revisions. Markdown and
 /// authored YAML never participate in this value or its commit.
-public struct ZoteroMetadataFillPlan: Codable, Hashable, Sendable {
+public struct ZoteroMetadataFillPlan: Sendable {
     public let noteID: UUID
     public let sourceRevision: DocumentFingerprint
     public let source: ZoteroExactItemRead
@@ -25,9 +44,8 @@ public struct ZoteroMetadataFillPlan: Codable, Hashable, Sendable {
     public let resultFields: [String: YAMLValue]
     public let fieldsToFill: [ZoteroMetadataFillField]
     public let retainedConflicts: [ZoteroMetadataFillField]
-    public let matchingFields: [ZoteroMetadataFillField]
 
-    public init(
+    init(
         noteID: UUID,
         sourceRevision: DocumentFingerprint,
         source: ZoteroExactItemRead,
@@ -37,8 +55,7 @@ public struct ZoteroMetadataFillPlan: Codable, Hashable, Sendable {
         expectedMetadataRevision: DocumentFingerprint?,
         resultFields: [String: YAMLValue],
         fieldsToFill: [ZoteroMetadataFillField],
-        retainedConflicts: [ZoteroMetadataFillField],
-        matchingFields: [ZoteroMetadataFillField]
+        retainedConflicts: [ZoteroMetadataFillField]
     ) {
         self.noteID = noteID
         self.sourceRevision = sourceRevision
@@ -50,34 +67,29 @@ public struct ZoteroMetadataFillPlan: Codable, Hashable, Sendable {
         self.resultFields = resultFields
         self.fieldsToFill = fieldsToFill
         self.retainedConflicts = retainedConflicts
-        self.matchingFields = matchingFields
     }
 }
 
-public struct ZoteroLinkAndFillResult: Codable, Hashable, Sendable {
-    public let binding: AnalysisZoteroBinding
-    public let metadata: NoteMetadataSnapshot?
+public struct ZoteroLinkAndFillResult: Sendable {
     public let filledKeys: [String]
     public let retainedConflictKeys: [String]
     public let derivedRefreshWarning: String?
 
     public init(
-        binding: AnalysisZoteroBinding,
-        metadata: NoteMetadataSnapshot?,
         filledKeys: [String],
         retainedConflictKeys: [String],
         derivedRefreshWarning: String? = nil
     ) {
-        self.binding = binding
-        self.metadata = metadata
         self.filledKeys = filledKeys
         self.retainedConflictKeys = retainedConflictKeys
         self.derivedRefreshWarning = derivedRefreshWarning
     }
 }
 
-public enum ZoteroLinkAndFillError: LocalizedError, Equatable, Sendable {
+public enum ZoteroLinkAndFillError: LocalizedError, Sendable {
     case invalidMetadataProposal
+    case serverIdentityUnavailable
+    case serverIdentityChanged
     case zoteroItemChanged
     case analysisSourceChanged
     case metadataNotFilledAfterBinding(String)
@@ -86,6 +98,10 @@ public enum ZoteroLinkAndFillError: LocalizedError, Equatable, Sendable {
         switch self {
         case .invalidMetadataProposal:
             "Zotero metadata could not be represented safely in this Analysis profile. No link or Metadata was changed."
+        case .serverIdentityUnavailable:
+            "Zotero did not provide the local server identity required to fill Scholium Metadata. Update Zotero and try again."
+        case .serverIdentityChanged:
+            "The local Zotero server changed after this item was reviewed. Search again before linking and filling Metadata."
         case .zoteroItemChanged:
             "The Zotero item changed after it was reviewed. Search again before linking and filling Metadata."
         case .analysisSourceChanged:
@@ -128,22 +144,17 @@ public enum ZoteroMetadataFillPlanner {
         let applicable = Set(
             AnalysisSourceTypeProfileCatalog.profile(for: effectiveType).applicableFields
         )
-        let proposed = mappedFields(item: source.item, sourceType: importedType)
-            .filter { applicable.contains($0.key) }
-        let proposedByKey = Dictionary(
-            proposed.map { ($0.key, $0.value) },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let proposedByKey = mappedFields(
+            item: source.item,
+            sourceType: importedType
+        ).filter { applicable.contains($0.key) }
 
         var resultFields = existing
         var toFill: [ZoteroMetadataFillField] = []
         var conflicts: [ZoteroMetadataFillField] = []
-        var matching: [ZoteroMetadataFillField] = []
         for field in ordered(proposedByKey, sourceType: effectiveType) {
             if let retained = existing[field.key] {
-                if retained == field.value {
-                    matching.append(field)
-                } else {
+                if retained != field.value {
                     conflicts.append(field)
                 }
             } else {
@@ -167,12 +178,11 @@ public enum ZoteroMetadataFillPlanner {
             expectedMetadataRevision: metadataSnapshot?.revision,
             resultFields: resultFields,
             fieldsToFill: toFill,
-            retainedConflicts: conflicts,
-            matchingFields: matching
+            retainedConflicts: conflicts
         )
     }
 
-    public static func sourceType(for zoteroItemType: String?) -> AnalysisSourceType {
+    private static func sourceType(for zoteroItemType: String?) -> AnalysisSourceType {
         switch zoteroItemType?.lowercased() {
         case "journalarticle": .journalArticle
         case "book": .book
@@ -198,7 +208,7 @@ public enum ZoteroMetadataFillPlanner {
     private static func mappedFields(
         item: ZoteroItemMetadata,
         sourceType: AnalysisSourceType
-    ) -> [ZoteroMetadataFillField] {
+    ) -> [String: YAMLValue] {
         var values: [String: YAMLValue] = [
             "type": .string(sourceType.rawValue),
         ]
@@ -218,14 +228,18 @@ public enum ZoteroMetadataFillPlanner {
         insert(item.issn, as: "issn", into: &values)
         insert(item.url, as: "url", into: &values)
 
-        let creators = Dictionary(grouping: item.creators) { creatorKey(for: $0.role) }
-        for (key, entries) in creators where key != nil {
+        var creatorsByKey: [String: [ZoteroCreatorMetadata]] = [:]
+        for creator in item.creators {
+            guard let key = creatorKey(for: creator.role) else { continue }
+            creatorsByKey[key, default: []].append(creator)
+        }
+        for (key, entries) in creatorsByKey {
             let mapped = entries.compactMap(creatorValue)
-            if !mapped.isEmpty, let key {
+            if !mapped.isEmpty {
                 values[key] = .array(mapped)
             }
         }
-        return values.map { ZoteroMetadataFillField(key: $0.key, value: $0.value) }
+        return values
     }
 
     private static func insert(

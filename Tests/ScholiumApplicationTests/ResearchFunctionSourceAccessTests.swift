@@ -712,8 +712,18 @@ extension ResearchFunctionOperationsTests {
         #expect(context.warning == nil)
         #expect(context.metadata?.title == "Fittingness")
         #expect(context.metadata?.creators == [
-            ZoteroCreatorMetadata(role: "author", name: "Richard Chappell"),
-            ZoteroCreatorMetadata(role: "editor", name: "Example Editor"),
+            ZoteroCreatorMetadata(
+                role: "author",
+                name: "Richard Chappell",
+                givenName: "Richard",
+                familyName: "Chappell"
+            ),
+            ZoteroCreatorMetadata(
+                role: "editor",
+                name: "Example Editor",
+                givenName: "Example",
+                familyName: "Editor"
+            ),
         ])
         #expect(context.metadata?.tags == ["fittingness", "value"])
         #expect(first.instructions.contains("## Zotero bibliographic metadata"))

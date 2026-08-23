@@ -228,6 +228,8 @@ private extension NoteRelationSearchResolverTests {
             VaultQualifiedNoteID(vaultID: secondaryVault.id, relativePath: "Other Anchor.md")
         }
 
+        let anchorNoteID = UUID(uuidString: "d5f95945-59fb-4f95-a286-95633c44ad64")!
+
         init(includeDuplicateAnchor: Bool = false) {
             self.includeDuplicateAnchor = includeDuplicateAnchor
         }
@@ -237,7 +239,7 @@ private extension NoteRelationSearchResolverTests {
                 primaryVault.id: [
                     NoteDocument(
                         relativePath: anchorID.relativePath,
-                        rawContent: "---\ntitle: Anchor\naliases: [Anchor Alias]\n---\n# Anchor\n"
+                        rawContent: "# Anchor\n"
                     ),
                     NoteDocument(relativePath: targetID.relativePath, rawContent: "# Target\n"),
                     NoteDocument(relativePath: rivalID.relativePath, rawContent: "# Rival\n"),
@@ -246,9 +248,13 @@ private extension NoteRelationSearchResolverTests {
             if includeDuplicateAnchor {
                 documents[secondaryVault.id] = [NoteDocument(
                     relativePath: duplicateAnchorID.relativePath,
-                    rawContent: "---\ntitle: Anchor\n---\n# Other Anchor\n"
+                    rawContent: "# Anchor\n"
                 )]
             }
+            let anchorMetadata = NoteMetadataRecord(
+                noteID: anchorNoteID,
+                fields: ["aliases": .array([.string("Anchor Alias")])]
+            )
             return WorkspaceCatalogBuilder.build(
                 vaults: includeDuplicateAnchor
                     ? [primaryVault, secondaryVault]
@@ -262,7 +268,14 @@ private extension NoteRelationSearchResolverTests {
                     incoming: [:],
                     diagnostics: [],
                     relationships: relationships
-                )
+                ),
+                stableNoteIDs: [anchorID: anchorNoteID],
+                noteMetadataByID: [
+                    anchorNoteID: NoteMetadataSnapshot(
+                        record: anchorMetadata,
+                        revision: DocumentFingerprint(content: "anchor metadata")
+                    ),
+                ]
             )
         }
 

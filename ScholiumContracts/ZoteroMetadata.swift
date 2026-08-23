@@ -61,8 +61,6 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
     case attachmentMissing(String)
     case attachmentIdentityMismatch
     case invalidAttachmentURL
-    case serverIdentityUnavailable
-    case serverIdentityChanged
 
     public var errorDescription: String? {
         switch self {
@@ -84,10 +82,6 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
             "The selected Zotero attachment does not belong to the expected item."
         case .invalidAttachmentURL:
             "Zotero did not return a readable local file URL for the attachment."
-        case .serverIdentityUnavailable:
-            "Zotero did not provide the local server identity required to fill Scholium Metadata. Update Zotero and try again."
-        case .serverIdentityChanged:
-            "The local Zotero server changed after this item was reviewed. Search again before linking and filling Metadata."
         }
     }
 }
@@ -258,25 +252,6 @@ public struct ZoteroCreatorMetadata: Codable, Hashable, Sendable {
         self.givenName = givenName
         self.familyName = familyName
         self.literalName = literalName
-    }
-}
-
-/// One exact, bounded read from the selected Zotero library. The local server
-/// identity is retained so a later Link and Fill commit can reject a different
-/// Zotero database or process rather than applying newly substituted data.
-public struct ZoteroExactItemRead: Codable, Hashable, Sendable {
-    public let library: ZoteroLibraryMetadata
-    public let item: ZoteroItemMetadata
-    public let serverID: String
-
-    public init(
-        library: ZoteroLibraryMetadata,
-        item: ZoteroItemMetadata,
-        serverID: String
-    ) {
-        self.library = library
-        self.item = item
-        self.serverID = serverID
     }
 }
 

@@ -15,7 +15,6 @@ struct ZoteroLinkAndFillOperationsTests {
         )
         let item = Self.itemData
         let script = LinkAndFillRequestScript(steps: [
-            .init(status: 200, data: Data("[]".utf8)),
             .init(status: 200, data: item, serverID: "server-a"),
             .init(status: 200, data: item, serverID: "server-a"),
         ])
@@ -46,20 +45,22 @@ struct ZoteroLinkAndFillOperationsTests {
         #expect(plan.resultFields["keywords"] == nil)
 
         let result = try await handle.zoteroBindings.commitZoteroLinkAndFill(plan)
-        #expect(result.binding.itemKey == "ITEM0001")
         #expect(result.retainedConflictKeys == ["title"])
-        #expect(result.metadata?.record.fields["title"] == .string("Researcher title"))
-        #expect(result.metadata?.record.fields["doi"] == .string("10.1000/example"))
-        #expect(result.metadata?.record.fields["authors"] == .array([
+        let metadata = try #require(
+            try await handle.services.controlStore.noteMetadata(noteID: noteID)
+        )
+        #expect(metadata.record.fields["type"] == .string("journal_article"))
+        #expect(metadata.record.fields["title"] == .string("Researcher title"))
+        #expect(metadata.record.fields["doi"] == .string("10.1000/example"))
+        #expect(metadata.record.fields["authors"] == .array([
             .object(["given": .string("Philippa"), "family": .string("Foot")]),
         ]))
         #expect(sourceBefore.rawContent == exactSource)
         #expect(try await handle.documents.load(fixture.analysisNoteID).rawContent
             == exactSource)
         #expect(try await handle.services.controlStore.zoteroBindings()
-            .binding(for: noteID) == result.binding)
+            .binding(for: noteID)?.itemKey == "ITEM0001")
         #expect(await script.paths() == [
-            "/api/users/0/groups",
             "/api/users/0/items/ITEM0001",
             "/api/users/0/items/ITEM0001",
         ])
@@ -71,7 +72,6 @@ struct ZoteroLinkAndFillOperationsTests {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let script = LinkAndFillRequestScript(steps: [
-            .init(status: 200, data: Data("[]".utf8)),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-b"),
         ])
@@ -89,7 +89,7 @@ struct ZoteroLinkAndFillOperationsTests {
             itemKey: "ITEM0001"
         )
 
-        await #expect(throws: ZoteroUseCaseError.self) {
+        await #expect(throws: ZoteroLinkAndFillError.self) {
             _ = try await handle.zoteroBindings.commitZoteroLinkAndFill(plan)
         }
         #expect(try await handle.services.controlStore.zoteroBindings()
@@ -103,7 +103,6 @@ struct ZoteroLinkAndFillOperationsTests {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let script = LinkAndFillRequestScript(steps: [
-            .init(status: 200, data: Data("[]".utf8)),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
         ])
@@ -146,7 +145,6 @@ struct ZoteroLinkAndFillOperationsTests {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let script = LinkAndFillRequestScript(steps: [
-            .init(status: 200, data: Data("[]".utf8)),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
             .init(status: 200, data: Self.itemData, serverID: "server-a"),
         ])

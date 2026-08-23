@@ -28,7 +28,7 @@ struct WorkspaceRuntimeTests {
             library: .user,
             itemKey: "QAITEM01"
         )
-        _ = try await firstHandle.zoteroBindings.setZoteroBinding(
+        _ = try await firstHandle.setPortableZoteroBinding(
             expected,
             expectedRevision: original.revision
         )

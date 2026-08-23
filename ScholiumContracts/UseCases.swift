@@ -386,18 +386,13 @@ public protocol ZoteroUseCases: Sendable {
     func libraryInfo() async -> ZoteroLibraryInfo
     func refreshLibraryInfo() async throws -> ZoteroLibraryInfo
     func clearConnectionHistory() async throws
-    func libraries() async throws -> [ZoteroLibraryMetadata]
     func searchLibrary(query: String, limit: Int) async throws -> [ZoteroSearchHit]
-    func exactItem(
-        library: ZoteroLibraryMetadata,
-        itemKey: String,
-        expectedServerID: String?
-    ) async throws -> ZoteroExactItemRead
 }
 
-/// Revision-checked portable Analysis-to-Zotero relationship mutations. This
-/// authority is separate from Zotero's read-only metadata transport and from
-/// Markdown document writes.
+/// Researcher-facing Analysis-to-Zotero binding, guarded empty-field fill, and
+/// clear operations. Application owns the combined transaction; Agent binding
+/// writes use their separately authorized Research path. Neither can write
+/// Markdown or Zotero.
 public protocol ZoteroBindingUseCases: Sendable {
     func zoteroBindings() async throws -> AnalysisZoteroBindingsSnapshot
     func prepareZoteroLinkAndFill(
@@ -408,10 +403,6 @@ public protocol ZoteroBindingUseCases: Sendable {
     func commitZoteroLinkAndFill(
         _ plan: ZoteroMetadataFillPlan
     ) async throws -> ZoteroLinkAndFillResult
-    func setZoteroBinding(
-        _ binding: AnalysisZoteroBinding,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> AnalysisZoteroBindingMutationResult
     func clearZoteroBinding(
         noteID: UUID,
         expectedRevision: DocumentFingerprint

@@ -77,8 +77,7 @@ struct ResearchAgentSessionAuthorityTests {
                 repeating: "精确分页 😀 العربية  \r\n",
                 count: 7_000
             )
-        let agencySource = "---\r\ntitle: Agency\r\naliases:\r\n  - Freedom\r\n---\r\n"
-            + expectedSection
+        let agencySource = expectedSection
         try Data(agencySource.utf8).write(
             to: fixture.rootURL
                 .appendingPathComponent("Topics", isDirectory: true)
