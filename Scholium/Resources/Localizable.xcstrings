@@ -9198,6 +9198,16 @@
         }
       }
     },
+    "Could Not Refresh Zotero Metadata" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法刷新 Zotero 元数据"
+          }
+        }
+      }
+    },
     "Could Not Replace Method" : {
       "localizations" : {
         "en" : {
@@ -18479,6 +18489,16 @@
         }
       }
     },
+    "My Library" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的文库"
+          }
+        }
+      }
+    },
     "NEEDS ATTENTION" : {
       "localizations" : {
         "en" : {
@@ -23889,6 +23909,16 @@
         }
       }
     },
+    "Read only the currently linked Zotero item, then review every Metadata field it can fill or update." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅读取当前关联的 Zotero 条目，然后检查它可以填充或更新的每个元数据字段。"
+          }
+        }
+      }
+    },
     "Read-Only Zotero Access" : {
       "localizations" : {
         "en" : {
@@ -24668,6 +24698,16 @@
         }
       }
     },
+    "Refresh Metadata" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新元数据"
+          }
+        }
+      }
+    },
     "Refresh Needed" : {
       "localizations" : {
         "en" : {
@@ -24696,6 +24736,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法刷新"
+          }
+        }
+      }
+    },
+    "Refresh Zotero Metadata" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新 Zotero 元数据"
+          }
+        }
+      }
+    },
+    "Refresh Zotero Metadata…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新 Zotero 元数据…"
           }
         }
       }
@@ -25059,6 +25119,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从磁盘重新加载"
+          }
+        }
+      }
+    },
+    "Reload the Zotero Metadata preview to reread the exact item and current Scholium Metadata." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新载入 Zotero 元数据预览，以再次读取该准确条目和当前的 Scholium 元数据。"
           }
         }
       }
@@ -36908,6 +36978,16 @@
         }
       }
     },
+    "Will Update" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将更新"
+          }
+        }
+      }
+    },
     "Window → Attention" : {
       "localizations" : {
         "zh-Hans" : {
@@ -37363,6 +37443,42 @@
         }
       }
     },
+    "Zotero Group %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 群组 %lld"
+          }
+        }
+      }
+    },
+    "Zotero Metadata is current for every supported mapped field." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有受支持的映射字段均已是最新状态。"
+          }
+        }
+      }
+    },
+    "Zotero Metadata refreshed: %lld fields filled and %lld fields updated." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Zotero Metadata refreshed: %1$lld fields filled and %2$lld fields updated."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 元数据已刷新：填充了 %1$lld 个字段，更新了 %2$lld 个字段。"
+          }
+        }
+      }
+    },
     "Zotero Not Available" : {
       "localizations" : {
         "en" : {
@@ -37415,6 +37531,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zotero 条目键、标题、作者或 DOI"
+          }
+        }
+      }
+    },
+    "Zotero link saved and %lld Metadata fields filled." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 关联已保存，并填充了 %lld 个元数据字段。"
+          }
+        }
+      }
+    },
+    "Zotero link saved and %lld Metadata fields filled; %lld existing values were kept." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Zotero link saved and %1$lld Metadata fields filled; %2$lld existing values were kept."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 关联已保存，并填充了 %1$lld 个元数据字段；保留了 %2$lld 个现有值。"
+          }
+        }
+      }
+    },
+    "Zotero link saved. Existing Metadata values were kept." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 关联已保存。保留了现有元数据值。"
+          }
+        }
+      }
+    },
+    "Zotero link saved. No empty supported Metadata fields needed filling." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zotero 关联已保存。没有需要填充的空白受支持元数据字段。"
           }
         }
       }

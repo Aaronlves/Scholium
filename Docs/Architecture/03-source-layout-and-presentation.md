@@ -271,7 +271,10 @@ item and one `ResearchInspectorMode` per Triptych workspace; switching workspace
 restores its value without reconstructing the native Inspector. Mode changes and
 note/tab changes never reconstruct the retained Document host. `ResearchOverviewPresentation`
 contains at most one typed user/group-library plus item-key binding for the current Analysis;
-the view neither derives nor displays protected machine data.
+the view neither derives nor displays protected machine data. Its explicit
+refresh closure opens the Zotero sheet in bound-item mode; the leaf owns only
+loading, preview, no-change, and action presentation while Application owns
+the exact read and revision-checked mutation.
 When the split item remains visible without a selected Document, the composition
 root installs a read-only Apparatus content-state projection instead of an empty
 host or stale Inspector leaf; the split controller remains the sole visibility

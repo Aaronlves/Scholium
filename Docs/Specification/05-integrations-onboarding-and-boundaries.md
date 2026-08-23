@@ -38,15 +38,19 @@ Overview gives every current Analysis one quiet **Link Zotero Item…** or
 **Manage Zotero Link…** action. Its central sheet searches the local user and
 group libraries, displays enough bibliographic and library context for an
 exact researcher selection, and treats an entered eight-character item key as
-an exact lookup before metadata search. If the same key resolves in more than
-one accessible library, every library-qualified result remains distinct and
-the researcher chooses one. Selecting a result performs a fresh exact read and
+an exact lookup rather than a metadata search. It uses only the exact-item
+endpoint for each accessible library identity needed to preserve ambiguity;
+a missing key never falls through to an item-collection query. If the same key
+resolves in more than one accessible library, every library-qualified result
+remains distinct and the researcher chooses one. Once a library is selected,
+preparation and commit read only that exact library/item endpoint. Selecting a
+result performs a fresh exact read and
 shows the managed Metadata fields that would be filled plus every conflicting
 existing value that will be retained. **Link and Fill** or **Rebind and Fill**
 is the single explicit completion action. A bound Analysis also exposes quiet
-**Open in Zotero**; Manage supports confirmed Clear. The Inspector displays
-neither the key nor fetched metadata, and no integration action changes
-Markdown, authored YAML, or Zotero data.
+**Open in Zotero** and **Refresh Zotero Metadata…**; Manage supports confirmed
+Clear. The Inspector displays neither the key nor fetched metadata inline, and
+no integration action changes Markdown, authored YAML, or Zotero data.
 
 Link and Fill is one Application-owned operation over two separate portable
 transactions. It first revision-checks and writes the stable library identity
@@ -101,7 +105,18 @@ ISBN, ISSN, and URL where applicable. Zotero abstract, tags, citation key,
 Collections, and modification time never become managed Metadata; in
 particular abstract never becomes authored `summary` and tags never become
 authored `keywords`. There is no continuous sync or automatic refresh. A later
-refresh requires another explicit preview and current-revision transaction.
+refresh begins only from the bound Analysis, reads only its exact library/item
+endpoint, and requires another explicit preview and current-revision
+transaction. The preview names every absent field to fill and every nonempty
+mapped Zotero value that differs from current managed Metadata. **Refresh
+Metadata** adds the absent values and replaces only those displayed differing
+mapped values after confirmation. It never deletes a managed field merely
+because Zotero omits it or returns an empty value, and it leaves every
+unmapped, inapplicable, authored, or custom value unchanged. An existing
+managed source type remains the effective profile and is not replaced by
+refresh. Commit rereads
+only the same exact item and revalidates the local server, item, source,
+binding, and Metadata revisions.
 
 ### 15.3 Literature Recommendations and the Zotero boundary
 

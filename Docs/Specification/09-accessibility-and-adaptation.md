@@ -194,7 +194,10 @@
   commit, and retry states remain textually distinct and persistent. Abstract,
   tags, `summary`, `keywords`, Markdown, and Zotero non-write boundaries are
   visible before commit. Clear Link states that any previously filled Metadata
-  is retained. Native list selection, default/cancel actions, sheet dismissal, and
+  is retained. A bound-item refresh names its exact one-item scope, current
+  value, proposed Zotero value, fill/update consequence, and no-change state;
+  it never depends on a spinner or color to communicate progress or completion.
+  Native list selection, default/cancel actions, sheet dismissal, and
   initiating-focus return remain platform-owned.
 
 ### Search, Inspector, and Research Actions

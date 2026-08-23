@@ -286,12 +286,17 @@
   operation; portable research configuration and vault files remain unchanged.
 - Built-in Zotero access reads local bibliographic metadata, searches exact
   user/group library items for researcher selection, keeps same-key libraries
-  distinct, and opens a keyed Analysis in Zotero. Its explicit Link and Fill
+  distinct, and opens a keyed Analysis in Zotero. A complete item-key query
+  uses only exact item endpoints and never falls through to item-collection
+  search. Its explicit Link and Fill
   operation binds one reviewed local server/library/item read, source revision,
   binding revision, and Metadata revision; it writes the portable relationship,
   then fills only absent applicable managed fields while retaining conflicts.
   Abstract and tags never become authored `summary` or `keywords`, and the
-  operation writes neither Markdown nor Zotero. Set/rebind/clear remain
+  operation writes neither Markdown nor Zotero. A bound-item refresh reads
+  only its exact user/group item, previews absent and differing mapped fields,
+  then fills or updates only those displayed nonempty values without deleting
+  omitted fields or replacing the effective source type. Set/rebind/clear remain
   independently revision-checked. An eligible authenticated Analysis Run with frozen Zotero
   context receives the exact release-managed Zotero Integration Adapter; Runs
   without that context receive none, and adapter delivery grants no capability

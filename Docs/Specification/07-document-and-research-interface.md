@@ -388,22 +388,23 @@ content. Selecting a Note restores its retained mode.
 
 Overview presents only compact current-note projections, in this order:
 
-1. **Needs Attention:** current-note count and distinct actionable kinds form
-   one full-row native button that opens the Workspace Attention popover filtered
-   to that exact Note. It has no nested **Show All** row. At zero it retains the
-   heading and `0` but no reassurance sentence or decorative verdict.
+1. **Needs Attention:** count and distinct actionable kinds form a full-row
+   native button opening Workspace Attention for that Note. It has no nested
+   **Show All** row. At zero it retains heading and `0`, without reassurance or
+   a decorative verdict.
 2. **Review:** distinct from Attention. It states **No Agent changes to review**,
-   **Needs Review · N Agent activities** as one full-row route, or
+   **Needs Review · N Agent activities** as a full-row route, or
    **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** nonempty fields use spacing-only groups with accessible names.
-   Research fields use reading blocks and Keywords use neutral capsules. Its **Edit
-   Metadata** heading opens the shared sheet; values remain static and
-   selectable. Analysis adds **Link Zotero
-   Item…** or **Manage Zotero Link…**; a bound Analysis also adds **Open in
-   Zotero**. The sheet owns exact library selection, fill/conflict preview,
-   **Link/Rebind and Fill**, and Clear; Inspector exposes neither identity nor
-   fetched metadata. Research Status, Provenance, Derived State, and Zotero
-   sections remain absent.
+3. **About:** nonempty fields use accessible spacing groups.
+   Research fields use reading blocks; Keywords use neutral capsules. **Edit
+   Metadata** opens the shared sheet; values stay static and selectable.
+   Analysis adds **Link Zotero Item…** or **Manage Zotero Link…**; a binding
+   adds **Open in Zotero** and **Refresh Zotero Metadata…**. Refresh
+   reads only its exact binding and previews mapped fills/updates before
+   **Refresh Metadata**. Manage owns exact selection, conflict
+   preview, **Link/Rebind and Fill**, and Clear. Inspector shows no identity or
+   fetched metadata inline. No Research Status, Provenance,
+   Derived State, or Zotero sections appear.
 
 A pending activity set automatically presents a once-announced, focus-neutral
 Document task bar with **View Changes** and **Mark Current Note Reviewed**. Its

@@ -72,9 +72,13 @@ struct ResearchLeafArchitectureTests {
             "let openZoteroItem: (AnalysisZoteroBinding) async -> Void"
         ))
         #expect(overview.contains(
+            "let refreshZoteroMetadata: (UUID, AnalysisZoteroBinding) -> Void"
+        ))
+        #expect(overview.contains(
             "let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void"
         ))
         #expect(overview.contains("Open in Zotero"))
+        #expect(overview.contains("Refresh Zotero Metadata…"))
         #expect(overview.contains("Link Zotero Item…"))
         #expect(overview.contains("Manage Zotero Link…"))
         #expect(!overview.contains("resolveSource:"))
@@ -85,10 +89,13 @@ struct ResearchLeafArchitectureTests {
         #expect(bindingPanel.contains("struct ZoteroBindingPanelView: View"))
         #expect(bindingPanel.contains("let search: (String) async throws"))
         #expect(bindingPanel.contains("let prepareFill: (ZoteroSearchHit)"))
-        #expect(bindingPanel.contains("let commitFill: (ZoteroMetadataFillPlan)"))
+        #expect(bindingPanel.contains("let prepareRefresh: () async throws"))
+        #expect(bindingPanel.contains("let commitPlan: (ZoteroMetadataPlan)"))
         #expect(bindingPanel.contains("let clearBinding: () async throws"))
         #expect(bindingPanel.contains("Link and Fill"))
         #expect(bindingPanel.contains("Existing Values Kept"))
+        #expect(bindingPanel.contains("Will Update"))
+        #expect(bindingPanel.contains("Refresh Metadata"))
         #expect(bindingPanel.contains("summary, keywords"))
         #expect(bindingPanel.contains("Clear Zotero Link?"))
         #expect(!bindingPanel.contains("setBinding:"))
@@ -166,6 +173,8 @@ struct ResearchLeafArchitectureTests {
         #expect(!content.contains("ZoteroBridge.normalizedItemKey("))
         #expect(content.contains("openZoteroItem: { binding in"))
         #expect(content.contains("openInZotero(binding: binding)"))
+        #expect(content.contains("mode: .refresh"))
+        #expect(content.contains("appState.prepareZoteroMetadataRefresh("))
         #expect(controller.contains("func requestOpen("))
         #expect(controller.contains("intentHandler(.openDocument(WindowDocumentRoute("))
     }

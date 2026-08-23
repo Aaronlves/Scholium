@@ -208,6 +208,30 @@ struct ZoteroOperationsTests {
         ])
     }
 
+    @Test("A missing exact key never falls through to an item-collection search")
+    func missingExactKeyDoesNotSearchCollections() async throws {
+        let groups = Data("""
+        [{"id":42,"name":"Shared Ethics"}]
+        """.utf8)
+        let script = AttachmentRequestScript(responses: [
+            (200, groups),
+            (404, Data()),
+            (404, Data()),
+        ])
+        let operations = ZoteroOperations(requestLoader: { request in
+            try await script.load(request)
+        })
+
+        let hits = try await operations.searchLibrary(query: "missing1")
+
+        #expect(hits.isEmpty)
+        #expect(await script.paths() == [
+            "/api/users/0/groups",
+            "/api/users/0/items/MISSING1",
+            "/api/groups/42/items/MISSING1",
+        ])
+    }
+
     @Test("A Zotero attachment from another parent fails before file lookup")
     func attachmentParentMismatch() async throws {
         let envelope = """

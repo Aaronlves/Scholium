@@ -95,6 +95,7 @@ struct ResearchInspectorContentContext {
     let openNoteReview: () -> Void
     let retryRefresh: () -> Void
     let openZoteroItem: (AnalysisZoteroBinding) async -> Void
+    let refreshZoteroMetadata: (UUID, AnalysisZoteroBinding) -> Void
     let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
 
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
@@ -325,6 +326,27 @@ struct ResearchOverviewView: View {
                 .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
                 .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
                 .accessibilityIdentifier("scholium.researchOverview.openInZotero")
+
+                if let noteID = context.stableNoteID {
+                    Button {
+                        context.refreshZoteroMetadata(noteID, binding)
+                    } label: {
+                        ScholiumApparatusActionRowContent(
+                            title: Text("Refresh Zotero Metadata…"),
+                            systemImage: "arrow.clockwise",
+                            showsChevron: true
+                        )
+                    }
+                    .buttonStyle(ScholiumQuietRowButtonStyle(
+                        minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                        verticalInset: 0
+                    ))
+                    .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
+                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+                    .accessibilityIdentifier(
+                        "scholium.researchOverview.refreshZoteroMetadata"
+                    )
+                }
             }
 
             if let noteID = context.stableNoteID {
@@ -523,6 +545,7 @@ private struct AboutTagsView: View {
             openNoteReview: {},
             retryRefresh: {},
             openZoteroItem: { _ in },
+            refreshZoteroMetadata: { _, _ in },
             manageZoteroBinding: { _, _ in }
         )
     )

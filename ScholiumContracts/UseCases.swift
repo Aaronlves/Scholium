@@ -399,10 +399,13 @@ public protocol ZoteroBindingUseCases: Sendable {
         noteID: UUID,
         library: ZoteroLibraryMetadata,
         itemKey: String
-    ) async throws -> ZoteroMetadataFillPlan
-    func commitZoteroLinkAndFill(
-        _ plan: ZoteroMetadataFillPlan
-    ) async throws -> ZoteroLinkAndFillResult
+    ) async throws -> ZoteroMetadataPlan
+    func prepareZoteroMetadataRefresh(
+        noteID: UUID
+    ) async throws -> ZoteroMetadataPlan
+    func commitZoteroMetadataPlan(
+        _ plan: ZoteroMetadataPlan
+    ) async throws -> ZoteroMetadataCommitResult
     func clearZoteroBinding(
         noteID: UUID,
         expectedRevision: DocumentFingerprint

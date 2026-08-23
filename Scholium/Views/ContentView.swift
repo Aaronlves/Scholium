@@ -408,6 +408,15 @@ struct ContentView: View {
             openZoteroItem: { binding in
                 await appState.zoteroBridge.openInZotero(binding: binding)
             },
+            refreshZoteroMetadata: { noteID, binding in
+                appState.presentationRouter.present(.zoteroBinding(
+                    ZoteroBindingPanelRoute(
+                        noteID: noteID,
+                        currentBinding: binding,
+                        mode: .refresh
+                    )
+                ))
+            },
             manageZoteroBinding: { noteID, binding in
                 appState.presentationRouter.present(.zoteroBinding(
                     ZoteroBindingPanelRoute(
@@ -988,8 +997,13 @@ struct ContentView: View {
                         itemKey: hit.item.key
                     )
                 },
-                commitFill: { plan in
-                    try await appState.commitZoteroLinkAndFill(plan)
+                prepareRefresh: {
+                    try await appState.prepareZoteroMetadataRefresh(
+                        noteID: route.noteID
+                    )
+                },
+                commitPlan: { plan in
+                    try await appState.commitZoteroMetadataPlan(plan)
                     appState.presentationRouter.dismissSheet()
                 },
                 clearBinding: {

@@ -36,6 +36,23 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-23, exact-key Zotero retrieval and bound-item refresh passed 21
+  focused Contract, Application, and App architecture tests. They cover no
+  item-collection fallback for a missing complete key, distinct exact
+  user/group identities, bound preview plus commit reads limited to the exact
+  item route, mapped fill/update planning, source-type retention, exact
+  Markdown preservation, and the Inspector refresh owner. Documentation
+  authority and Interface, Localizable, and WebKitInterface localization
+  validation passed. The task's single complete `verify.sh` run passed
+  documentation and shipped-Skill guards, 199 Web-editor tests, reproducible
+  bundles, RDF-1, 450 Core tests, 3 Core performance tests, and all 146
+  Contract tests. It then stopped after 262 of 264 Application tests: two
+  unrelated bounded-write owner tests deterministically failed with an existing
+  Metadata revision conflict and body-operation authorization rejection; each
+  remained failing when isolated, so later targets did not run and the complete
+  gate was not repeated. This is local automated evidence, not live-Zotero,
+  visual, assistive-technology, packaged, or researcher acceptance.
+
 - On 2026-08-23, Zotero Link and Fill passed 33 focused tests across exact
   local decoding/matching, same-key user/group selection, pure Metadata mapping,
   Application commit, server substitution, Metadata revision conflict, exact

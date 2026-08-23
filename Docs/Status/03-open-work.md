@@ -31,8 +31,9 @@
 - Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
   same-key multi-library, proposed-fill, retained-conflict, changed-server/item,
   source/binding/Metadata revision, partial-commit, set, rebind,
-  confirmed-clear, enlarged-text, and minimum-width acceptance for the Analysis
-  Overview Zotero Link and Fill sheet.
+  bound-item fill/update/no-change refresh, confirmed-clear, enlarged-text, and
+  minimum-width acceptance for the Analysis Overview Zotero Link and Fill
+  sheet.
 - Complete direct keyboard, VoiceOver, Full Keyboard Access, relaunch, menu
   update, conflict, reserved-shortcut, clear/default, Settings-search, and
   minimum-width acceptance for the grouped Settings navigation and Hotkey

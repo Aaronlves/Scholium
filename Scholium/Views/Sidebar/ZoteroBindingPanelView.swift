@@ -7,15 +7,16 @@ import SwiftUI
 struct ZoteroBindingPanelView: View {
     let route: ZoteroBindingPanelRoute
     let search: (String) async throws -> [ZoteroSearchHit]
-    let prepareFill: (ZoteroSearchHit) async throws -> ZoteroMetadataFillPlan
-    let commitFill: (ZoteroMetadataFillPlan) async throws -> Void
+    let prepareFill: (ZoteroSearchHit) async throws -> ZoteroMetadataPlan
+    let prepareRefresh: () async throws -> ZoteroMetadataPlan
+    let commitPlan: (ZoteroMetadataPlan) async throws -> Void
     let clearBinding: () async throws -> Void
     let dismiss: () -> Void
 
     @State private var query = ""
     @State private var hits: [ZoteroSearchHit] = []
     @State private var selectedID: ZoteroSearchHit.ID?
-    @State private var fillPlan: ZoteroMetadataFillPlan?
+    @State private var fillPlan: ZoteroMetadataPlan?
     @State private var isSearching = false
     @State private var isPreparingFill = false
     @State private var isSaving = false
@@ -23,25 +24,7 @@ struct ZoteroBindingPanelView: View {
     @State private var confirmsClear = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            resultContent
-            Divider()
-            footer
-        }
-        .frame(minWidth: 540, minHeight: 500)
-        .searchable(
-            text: $query,
-            placement: .toolbar,
-            prompt: "Zotero item key, title, author, or DOI"
-        )
-        .task(id: query) {
-            await refreshSearch()
-        }
-        .task(id: selectedID) {
-            await refreshFillPlan()
-        }
+        routedPanel
         .interactiveDismissDisabled(isSaving)
         .confirmationDialog(
             "Clear Zotero Link?",
@@ -56,7 +39,7 @@ struct ZoteroBindingPanelView: View {
             Text("This removes only Scholium’s portable relationship. It does not remove Metadata already filled in Scholium or change the Zotero item.")
         }
         .alert(
-            "Could Not Link and Fill from Zotero",
+            errorTitle,
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -68,12 +51,47 @@ struct ZoteroBindingPanelView: View {
         }
     }
 
+    private var panel: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            resultContent
+            Divider()
+            footer
+        }
+        .frame(minWidth: 540, minHeight: 500)
+    }
+
+    @ViewBuilder
+    private var routedPanel: some View {
+        switch route.mode {
+        case .manage:
+            panel
+                .searchable(
+                    text: $query,
+                    placement: .toolbar,
+                    prompt: "Zotero item key, title, author, or DOI"
+                )
+                .task(id: query) {
+                    await refreshSearch()
+                }
+                .task(id: selectedID) {
+                    await refreshFillPlan()
+                }
+        case .refresh:
+            panel
+                .task(id: route.id) {
+                    await refreshBoundPlan()
+                }
+        }
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text(currentBinding == nil ? "Link Zotero Item" : "Manage Zotero Link")
+                Text(headerTitle)
                     .font(ScholiumTypography.interface(.sectionTitle, emphasis: .strong))
-                Text("Choose one exact item, then review the empty Scholium Metadata fields it can fill.")
+                Text(headerDetail)
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
             }
@@ -82,9 +100,35 @@ struct ZoteroBindingPanelView: View {
         .padding(ScholiumGrid.Spacing.regionContentInset)
     }
 
+    private var headerTitle: LocalizedStringKey {
+        switch route.mode {
+        case .manage:
+            currentBinding == nil ? "Link Zotero Item" : "Manage Zotero Link"
+        case .refresh:
+            "Refresh Zotero Metadata"
+        }
+    }
+
+    private var headerDetail: LocalizedStringKey {
+        switch route.mode {
+        case .manage:
+            "Choose one exact item, then review the empty Scholium Metadata fields it can fill."
+        case .refresh:
+            "Read only the currently linked Zotero item, then review every Metadata field it can fill or update."
+        }
+    }
+
+    private var errorTitle: LocalizedStringKey {
+        route.mode == .refresh
+            ? "Could Not Refresh Zotero Metadata"
+            : "Could Not Link and Fill from Zotero"
+    }
+
     @ViewBuilder
     private var resultContent: some View {
-        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if route.mode == .refresh {
+            fillPreview
+        } else if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             ScholiumApparatusStateView(
                 "Search Zotero",
                 detail: "Paste a Zotero item key for an exact lookup, or search by recognizable bibliographic metadata.",
@@ -149,7 +193,7 @@ struct ZoteroBindingPanelView: View {
 
     @ViewBuilder
     private var fillPreview: some View {
-        if selectedHit == nil {
+        if route.mode == .manage, selectedHit == nil {
             ScholiumApparatusStateView(
                 "Select an Exact Item",
                 detail: "The selected library and item key define the Zotero identity. Scholium will show every proposed Metadata change before enabling Link and Fill.",
@@ -158,7 +202,8 @@ struct ZoteroBindingPanelView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(ScholiumGrid.Spacing.regionContentInset)
-        } else if isPreparingFill {
+        } else if isPreparingFill
+            || (route.mode == .refresh && fillPlan == nil && errorMessage == nil) {
             ProgressView("Reading exact Zotero item and current Metadata…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let fillPlan {
@@ -167,14 +212,26 @@ struct ZoteroBindingPanelView: View {
                     alignment: .leading,
                     spacing: ScholiumGrid.Spacing.regionContentInset
                 ) {
+                    if route.mode == .refresh {
+                        refreshIdentity(plan: fillPlan)
+                    }
                     if fillPlan.fieldsToFill.isEmpty {
-                        Text("No empty supported Metadata fields need filling.")
-                            .font(ScholiumTypography.interface(.body))
+                        if fillPlan.fieldsToUpdate.isEmpty {
+                            Text("Zotero Metadata is current for every supported mapped field.")
+                                .font(ScholiumTypography.interface(.body))
+                        }
                     } else {
                         metadataSection(
                             title: "Will Fill",
                             fields: fillPlan.fieldsToFill,
                             conflictPlan: nil
+                        )
+                    }
+                    if !fillPlan.fieldsToUpdate.isEmpty {
+                        metadataSection(
+                            title: "Will Update",
+                            fields: fillPlan.fieldsToUpdate,
+                            conflictPlan: fillPlan
                         )
                     }
                     if !fillPlan.retainedConflicts.isEmpty {
@@ -195,7 +252,7 @@ struct ZoteroBindingPanelView: View {
         } else {
             ScholiumApparatusStateView(
                 "Preview Unavailable",
-                detail: "Select the item again to reread Zotero and current Scholium Metadata.",
+                detail: String(localized: "Reload the Zotero Metadata preview to reread the exact item and current Scholium Metadata."),
                 systemImage: "exclamationmark.triangle",
                 density: .block
             )
@@ -204,10 +261,40 @@ struct ZoteroBindingPanelView: View {
         }
     }
 
+    private func refreshIdentity(plan: ZoteroMetadataPlan) -> some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Text(plan.source.item.title.isEmpty
+                ? String(localized: "Untitled Zotero Item")
+                : plan.source.item.title)
+                .font(ScholiumTypography.scholarly(.emphasis))
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text(libraryLabel(plan.source.library))
+                Text(plan.source.item.key)
+                    .font(.system(.caption, design: .monospaced))
+            }
+            .font(ScholiumTypography.interface(.small))
+            .scholiumForeground(.secondaryText)
+        }
+        .textSelection(.enabled)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("scholium.zoteroBinding.refreshIdentity")
+    }
+
+    private func libraryLabel(_ library: ZoteroLibraryMetadata) -> String {
+        switch library.identity {
+        case .user:
+            String(localized: "My Library")
+        case .group(let groupID):
+            library.name == String(groupID)
+                ? String(localized: "Zotero Group \(groupID)")
+                : library.name
+        }
+    }
+
     private func metadataSection(
         title: LocalizedStringKey,
         fields: [ZoteroMetadataFillField],
-        conflictPlan: ZoteroMetadataFillPlan?
+        conflictPlan: ZoteroMetadataPlan?
     ) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text(title)
@@ -217,7 +304,7 @@ struct ZoteroBindingPanelView: View {
                     Text(fieldLabel(field.key))
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     if let conflictPlan,
-                       let retained = conflictPlan.resultFields[field.key] {
+                       let retained = conflictPlan.originalFields[field.key] {
                         Text("Current: \(displayValue(retained, key: field.key))")
                         Text("Zotero: \(displayValue(field.value, key: field.key))")
                             .scholiumForeground(.secondaryText)
@@ -260,27 +347,55 @@ struct ZoteroBindingPanelView: View {
         }
     }
 
+    @ViewBuilder
     private var footer: some View {
-        HStack {
-            if isSaving {
-                ProgressView("Saving")
-                    .controlSize(.small)
-            } else if currentBinding != nil {
-                Button("Clear Link…", role: .destructive) {
-                    confirmsClear = true
+        switch route.mode {
+        case .manage:
+            HStack {
+                if isSaving {
+                    ProgressView("Saving")
+                        .controlSize(.small)
+                } else if currentBinding != nil {
+                    Button("Clear Link…", role: .destructive) {
+                        confirmsClear = true
+                    }
+                }
+                Spacer()
+                Button("Cancel", action: dismiss)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isSaving)
+                Button(currentBinding == nil ? "Link and Fill" : "Rebind and Fill") {
+                    performSet()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(fillPlan == nil || isPreparingFill || isSaving)
+            }
+            .padding(ScholiumGrid.Spacing.regionContentInset)
+        case .refresh:
+            HStack {
+                if isSaving {
+                    ProgressView("Saving")
+                        .controlSize(.small)
+                }
+                Spacer()
+                Button("Cancel", action: dismiss)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isSaving)
+                if let fillPlan {
+                    if fillPlan.hasMetadataChanges {
+                        Button("Refresh Metadata") {
+                            performSet()
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(isPreparingFill || isSaving)
+                    } else {
+                        Button("Done", action: dismiss)
+                            .keyboardShortcut(.defaultAction)
+                    }
                 }
             }
-            Spacer()
-            Button("Cancel", action: dismiss)
-                .keyboardShortcut(.cancelAction)
-                .disabled(isSaving)
-            Button(currentBinding == nil ? "Link and Fill" : "Rebind and Fill") {
-                performSet()
-            }
-            .keyboardShortcut(.defaultAction)
-            .disabled(fillPlan == nil || isPreparingFill || isSaving)
+            .padding(ScholiumGrid.Spacing.regionContentInset)
         }
-        .padding(ScholiumGrid.Spacing.regionContentInset)
     }
 
     private var selectedHit: ZoteroSearchHit? {
@@ -349,16 +464,38 @@ struct ZoteroBindingPanelView: View {
         }
     }
 
+    @MainActor
+    private func refreshBoundPlan() async {
+        isPreparingFill = true
+        fillPlan = nil
+        defer { isPreparingFill = false }
+        do {
+            let plan = try await prepareRefresh()
+            guard !Task.isCancelled else { return }
+            fillPlan = plan
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func performSet() {
         guard let fillPlan, !isSaving else { return }
         isSaving = true
         Task { @MainActor in
             defer { isSaving = false }
             do {
-                try await commitFill(fillPlan)
+                try await commitPlan(fillPlan)
             } catch {
                 errorMessage = error.localizedDescription
-                await refreshFillPlan()
+                switch route.mode {
+                case .manage:
+                    await refreshFillPlan()
+                case .refresh:
+                    await refreshBoundPlan()
+                }
             }
         }
     }

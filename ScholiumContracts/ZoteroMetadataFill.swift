@@ -30,10 +30,16 @@ public struct ZoteroMetadataFillField: Identifiable, Sendable {
     }
 }
 
+public enum ZoteroMetadataFillMode: Sendable {
+    case linkAndFill
+    case refresh
+}
+
 /// One researcher-reviewed proposal. It binds the exact Zotero item and local
 /// server to the current portable binding and Metadata revisions. Markdown and
 /// authored YAML never participate in this value or its commit.
-public struct ZoteroMetadataFillPlan: Sendable {
+public struct ZoteroMetadataPlan: Sendable {
+    public let mode: ZoteroMetadataFillMode
     public let noteID: UUID
     public let sourceRevision: DocumentFingerprint
     public let source: ZoteroExactItemRead
@@ -41,11 +47,18 @@ public struct ZoteroMetadataFillPlan: Sendable {
     public let currentBinding: AnalysisZoteroBinding?
     public let expectedBindingsRevision: DocumentFingerprint
     public let expectedMetadataRevision: DocumentFingerprint?
+    public let originalFields: [String: YAMLValue]
     public let resultFields: [String: YAMLValue]
     public let fieldsToFill: [ZoteroMetadataFillField]
+    public let fieldsToUpdate: [ZoteroMetadataFillField]
     public let retainedConflicts: [ZoteroMetadataFillField]
 
+    public var hasMetadataChanges: Bool {
+        !fieldsToFill.isEmpty || !fieldsToUpdate.isEmpty
+    }
+
     init(
+        mode: ZoteroMetadataFillMode,
         noteID: UUID,
         sourceRevision: DocumentFingerprint,
         source: ZoteroExactItemRead,
@@ -53,10 +66,13 @@ public struct ZoteroMetadataFillPlan: Sendable {
         currentBinding: AnalysisZoteroBinding?,
         expectedBindingsRevision: DocumentFingerprint,
         expectedMetadataRevision: DocumentFingerprint?,
+        originalFields: [String: YAMLValue],
         resultFields: [String: YAMLValue],
         fieldsToFill: [ZoteroMetadataFillField],
+        fieldsToUpdate: [ZoteroMetadataFillField],
         retainedConflicts: [ZoteroMetadataFillField]
     ) {
+        self.mode = mode
         self.noteID = noteID
         self.sourceRevision = sourceRevision
         self.source = source
@@ -64,30 +80,36 @@ public struct ZoteroMetadataFillPlan: Sendable {
         self.currentBinding = currentBinding
         self.expectedBindingsRevision = expectedBindingsRevision
         self.expectedMetadataRevision = expectedMetadataRevision
+        self.originalFields = originalFields
         self.resultFields = resultFields
         self.fieldsToFill = fieldsToFill
+        self.fieldsToUpdate = fieldsToUpdate
         self.retainedConflicts = retainedConflicts
     }
 }
 
-public struct ZoteroLinkAndFillResult: Sendable {
+public struct ZoteroMetadataCommitResult: Sendable {
     public let filledKeys: [String]
+    public let updatedKeys: [String]
     public let retainedConflictKeys: [String]
     public let derivedRefreshWarning: String?
 
     public init(
         filledKeys: [String],
+        updatedKeys: [String] = [],
         retainedConflictKeys: [String],
         derivedRefreshWarning: String? = nil
     ) {
         self.filledKeys = filledKeys
+        self.updatedKeys = updatedKeys
         self.retainedConflictKeys = retainedConflictKeys
         self.derivedRefreshWarning = derivedRefreshWarning
     }
 }
 
-public enum ZoteroLinkAndFillError: LocalizedError, Sendable {
+public enum ZoteroMetadataOperationError: LocalizedError, Sendable {
     case invalidMetadataProposal
+    case bindingMissing
     case serverIdentityUnavailable
     case serverIdentityChanged
     case zoteroItemChanged
@@ -98,14 +120,16 @@ public enum ZoteroLinkAndFillError: LocalizedError, Sendable {
         switch self {
         case .invalidMetadataProposal:
             "Zotero metadata could not be represented safely in this Analysis profile. No link or Metadata was changed."
+        case .bindingMissing:
+            "This Analysis is not linked to a Zotero item. Link an exact item before refreshing Metadata."
         case .serverIdentityUnavailable:
-            "Zotero did not provide the local server identity required to fill Scholium Metadata. Update Zotero and try again."
+            "Zotero did not provide the local server identity required for this Metadata operation. Update Zotero and try again."
         case .serverIdentityChanged:
-            "The local Zotero server changed after this item was reviewed. Search again before linking and filling Metadata."
+            "The local Zotero server changed after this item was reviewed. Reload the Zotero Metadata preview before continuing."
         case .zoteroItemChanged:
-            "The Zotero item changed after it was reviewed. Search again before linking and filling Metadata."
+            "The Zotero item changed after it was reviewed. Reload the Zotero Metadata preview before continuing."
         case .analysisSourceChanged:
-            "The Analysis source changed after Zotero Metadata was reviewed. Reopen Link and Fill from the current Analysis before retrying."
+            "The Analysis source changed after Zotero Metadata was reviewed. Reopen the Zotero Metadata preview from the current Analysis before retrying."
         case .metadataNotFilledAfterBinding(let reason):
             "The Zotero link was saved, but Metadata was not filled because its current revision could not be replaced safely. Reload and try again. \(reason)"
         }
@@ -113,19 +137,21 @@ public enum ZoteroLinkAndFillError: LocalizedError, Sendable {
 }
 
 /// The sole deterministic Zotero-to-Scholium Metadata mapping. It proposes
-/// only catalog fields applicable to the effective Analysis source type,
-/// fills absent keys, and retains every existing researcher value.
-public enum ZoteroMetadataFillPlanner {
+/// only catalog fields applicable to the effective Analysis source type.
+/// Link and Fill retains existing values; an explicit bound-item refresh may
+/// replace only differing nonempty mapped values shown in its preview.
+public enum ZoteroMetadataPlanner {
     public static func plan(
         noteID: UUID,
         sourceRevision: DocumentFingerprint,
         bindingSnapshot: AnalysisZoteroBindingsSnapshot,
         metadataSnapshot: NoteMetadataSnapshot?,
-        source: ZoteroExactItemRead
-    ) throws -> ZoteroMetadataFillPlan {
+        source: ZoteroExactItemRead,
+        mode: ZoteroMetadataFillMode = .linkAndFill
+    ) throws -> ZoteroMetadataPlan {
         if let metadataSnapshot,
            metadataSnapshot.record.noteID != noteID {
-            throw ZoteroLinkAndFillError.invalidMetadataProposal
+            throw ZoteroMetadataOperationError.invalidMetadataProposal
         }
         let intendedBinding = try AnalysisZoteroBinding(
             noteID: noteID,
@@ -144,18 +170,28 @@ public enum ZoteroMetadataFillPlanner {
         let applicable = Set(
             AnalysisSourceTypeProfileCatalog.profile(for: effectiveType).applicableFields
         )
-        let proposedByKey = mappedFields(
+        var proposedByKey = mappedFields(
             item: source.item,
             sourceType: importedType
         ).filter { applicable.contains($0.key) }
+        if case .refresh = mode, let retainedType = existing["type"] {
+            proposedByKey["type"] = retainedType
+        }
 
         var resultFields = existing
         var toFill: [ZoteroMetadataFillField] = []
+        var toUpdate: [ZoteroMetadataFillField] = []
         var conflicts: [ZoteroMetadataFillField] = []
         for field in ordered(proposedByKey, sourceType: effectiveType) {
             if let retained = existing[field.key] {
                 if retained != field.value {
-                    conflicts.append(field)
+                    switch mode {
+                    case .linkAndFill:
+                        conflicts.append(field)
+                    case .refresh:
+                        resultFields[field.key] = field.value
+                        toUpdate.append(field)
+                    }
                 }
             } else {
                 resultFields[field.key] = field.value
@@ -166,9 +202,10 @@ public enum ZoteroMetadataFillPlanner {
             fields: resultFields,
             profile: .analysis
         ).isEmpty else {
-            throw ZoteroLinkAndFillError.invalidMetadataProposal
+            throw ZoteroMetadataOperationError.invalidMetadataProposal
         }
-        return ZoteroMetadataFillPlan(
+        return ZoteroMetadataPlan(
+            mode: mode,
             noteID: noteID,
             sourceRevision: sourceRevision,
             source: source,
@@ -176,8 +213,10 @@ public enum ZoteroMetadataFillPlanner {
             currentBinding: bindingSnapshot.binding(for: noteID),
             expectedBindingsRevision: bindingSnapshot.revision,
             expectedMetadataRevision: metadataSnapshot?.revision,
+            originalFields: existing,
             resultFields: resultFields,
             fieldsToFill: toFill,
+            fieldsToUpdate: toUpdate,
             retainedConflicts: conflicts
         )
     }

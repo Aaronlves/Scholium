@@ -44,7 +44,7 @@ struct ZoteroLinkAndFillOperationsTests {
         #expect(plan.resultFields["summary"] == nil)
         #expect(plan.resultFields["keywords"] == nil)
 
-        let result = try await handle.zoteroBindings.commitZoteroLinkAndFill(plan)
+        let result = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         #expect(result.retainedConflictKeys == ["title"])
         let metadata = try #require(
             try await handle.services.controlStore.noteMetadata(noteID: noteID)
@@ -60,6 +60,69 @@ struct ZoteroLinkAndFillOperationsTests {
             == exactSource)
         #expect(try await handle.services.controlStore.zoteroBindings()
             .binding(for: noteID)?.itemKey == "ITEM0001")
+        #expect(await script.paths() == [
+            "/api/users/0/items/ITEM0001",
+            "/api/users/0/items/ITEM0001",
+        ])
+        await runtime.shutdown()
+    }
+
+    @Test("A bound-item refresh reads only that exact item and updates its reviewed mapped fields")
+    func refreshBoundItemOnly() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let sourceBefore = try Data(
+            contentsOf: fixture.analysesURL.appendingPathComponent("Agency.md")
+        )
+        let script = LinkAndFillRequestScript(steps: [
+            .init(status: 200, data: Self.itemData, serverID: "server-a"),
+            .init(status: 200, data: Self.itemData, serverID: "server-a"),
+        ])
+        let runtime = fixture.runtime(zotero: ZoteroOperations(requestLoader: {
+            try await script.load($0)
+        }))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let note = try #require(
+            try await handle.snapshot().document(id: fixture.analysisNoteID)
+        )
+        let noteID = try #require(note.stableIdentity.resolvedID)
+        _ = try await handle.documents.saveMetadata(
+            fixture.analysisNoteID,
+            fields: [
+                "type": .string("journal_article"),
+                "title": .string("Earlier title"),
+                "doi": .string("10.1000/earlier"),
+                "language": .string("fr"),
+            ],
+            expectedRevision: nil
+        )
+        let bindings = try await handle.services.controlStore.zoteroBindings()
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            AnalysisZoteroBinding(
+                noteID: noteID,
+                library: .user,
+                itemKey: "ITEM0001"
+            ),
+            expectedRevision: bindings.revision
+        )
+
+        let plan = try await handle.zoteroBindings.prepareZoteroMetadataRefresh(
+            noteID: noteID
+        )
+        #expect(plan.fieldsToUpdate.map(\.key) == ["title", "doi"])
+        #expect(plan.fieldsToFill.map(\.key).contains("authors"))
+
+        let result = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
+        #expect(result.updatedKeys == ["title", "doi"])
+        let metadata = try #require(
+            try await handle.services.controlStore.noteMetadata(noteID: noteID)
+        )
+        #expect(metadata.record.fields["title"] == .string("Zotero title"))
+        #expect(metadata.record.fields["doi"] == .string("10.1000/example"))
+        #expect(metadata.record.fields["language"] == .string("fr"))
+        #expect(try Data(
+            contentsOf: fixture.analysesURL.appendingPathComponent("Agency.md")
+        ) == sourceBefore)
         #expect(await script.paths() == [
             "/api/users/0/items/ITEM0001",
             "/api/users/0/items/ITEM0001",
@@ -89,8 +152,8 @@ struct ZoteroLinkAndFillOperationsTests {
             itemKey: "ITEM0001"
         )
 
-        await #expect(throws: ZoteroLinkAndFillError.self) {
-            _ = try await handle.zoteroBindings.commitZoteroLinkAndFill(plan)
+        await #expect(throws: ZoteroMetadataOperationError.self) {
+            _ = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         }
         #expect(try await handle.services.controlStore.zoteroBindings()
             .binding(for: noteID) == nil)
@@ -131,7 +194,7 @@ struct ZoteroLinkAndFillOperationsTests {
         ).committedValue
 
         await #expect(throws: NoteMetadataError.self) {
-            _ = try await handle.zoteroBindings.commitZoteroLinkAndFill(plan)
+            _ = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         }
         #expect(try await handle.services.controlStore.zoteroBindings()
             .binding(for: noteID) == nil)
@@ -165,8 +228,8 @@ struct ZoteroLinkAndFillOperationsTests {
             to: fixture.analysesURL.appendingPathComponent("Agency.md")
         )
 
-        await #expect(throws: ZoteroLinkAndFillError.self) {
-            _ = try await handle.zoteroBindings.commitZoteroLinkAndFill(plan)
+        await #expect(throws: ZoteroMetadataOperationError.self) {
+            _ = try await handle.zoteroBindings.commitZoteroMetadataPlan(plan)
         }
         #expect(try await handle.services.controlStore.zoteroBindings()
             .binding(for: noteID) == nil)

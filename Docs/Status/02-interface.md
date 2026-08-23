@@ -99,7 +99,10 @@
   identity visible during selection, previews empty fields to fill and existing
   conflicts to retain, exposes **Link and Fill** or **Rebind and Fill**, and
   confirms Clear while changing neither Markdown nor Zotero data. Clear retains
-  previously filled managed Metadata.
+  previously filled managed Metadata. A bound Analysis additionally exposes
+  **Refresh Zotero Metadata…**. Its direct sheet reads only the linked item,
+  presents fields to fill or update with current and Zotero values, retains
+  Cancel while reading, and presents **Done** when every mapped value is current.
 - Action sheets expose academic inputs, target and mutation consequence,
   handoff, active Run state, continuation, cancellation, and recovery without
   exposing credentials, registration keys, protocol internals, or

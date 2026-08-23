@@ -30,11 +30,29 @@ enum WindowSheetRoute: Identifiable {
     }
 }
 
+enum ZoteroBindingPanelMode: String, Hashable {
+    case manage
+    case refresh
+}
+
 struct ZoteroBindingPanelRoute: Identifiable, Hashable {
     let noteID: UUID
     let currentBinding: AnalysisZoteroBinding?
+    let mode: ZoteroBindingPanelMode
 
-    var id: String { "zotero-binding:\(noteID.uuidString.lowercased())" }
+    init(
+        noteID: UUID,
+        currentBinding: AnalysisZoteroBinding?,
+        mode: ZoteroBindingPanelMode = .manage
+    ) {
+        self.noteID = noteID
+        self.currentBinding = currentBinding
+        self.mode = mode
+    }
+
+    var id: String {
+        "zotero-binding:\(mode.rawValue):\(noteID.uuidString.lowercased())"
+    }
 }
 
 struct WindowOverlayRoute: OptionSet, Sendable {

@@ -226,11 +226,12 @@ that revision, atomically replace, and readback. `WorkspaceSnapshotBuilder`
 joins bindings only through resolved portable identities. The catalog and
 Overview never derive a binding from frontmatter or bibliographic similarity.
 
-`ZoteroMetadataFillPlanner` is the sole pure mapping from one exact local item
+`ZoteroMetadataPlanner` is the sole pure mapping from one exact local item
 read into catalogued Analysis Metadata. It selects the effective source-type
 profile, preserves structured creator components, filters inapplicable fields,
-and partitions absent, matching, and conflicting keys without adding abstract,
-tags, citation key, Collections, `summary`, or `keywords`. Its immutable plan
+and partitions absent, differing, and conflicting keys according to explicit
+Link-and-Fill or Refresh mode without adding abstract, tags, citation key,
+Collections, `summary`, or `keywords`. Its immutable plan
 binds the exact source, binding, Metadata, server, library, key, and item state;
 `ZoteroBindingOperations` revalidates those inputs and owns the ordered
 binding-then-Metadata commit. Neither the read model nor the UI reconstructs a

@@ -225,9 +225,7 @@ public actor ZoteroOperations: ZoteroUseCases {
                     throw ZoteroUseCaseError.invalidResponse
                 }
             }
-            if !hits.isEmpty {
-                return sortedSearchHits(hits, limit: limit)
-            }
+            return sortedSearchHits(hits, limit: limit)
         }
         for library in libraries {
             let data = try await request(
@@ -268,10 +266,10 @@ public actor ZoteroOperations: ZoteroUseCases {
             query: [URLQueryItem(name: "format", value: "json")]
         )
         guard let serverID = response.serverID else {
-            throw ZoteroLinkAndFillError.serverIdentityUnavailable
+            throw ZoteroMetadataOperationError.serverIdentityUnavailable
         }
         if let expectedServerID, expectedServerID != serverID {
-            throw ZoteroLinkAndFillError.serverIdentityChanged
+            throw ZoteroMetadataOperationError.serverIdentityChanged
         }
         let items: [ZoteroItemMetadata]
         do {
