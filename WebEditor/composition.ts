@@ -8,6 +8,10 @@ export type CompositionRequestPolicy = "allow" | "defer" | "reject";
 export function compositionRequestPolicy(operationType: string): CompositionRequestPolicy {
   if (operationType === "initialize") return "reject";
   if ([
+    "queryText",
+    "querySelection",
+    "captureRecovery",
+    "markClean",
     "setMode",
     "setPresentationCSS",
     "setUserCSS",

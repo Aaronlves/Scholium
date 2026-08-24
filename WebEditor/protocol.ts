@@ -203,6 +203,39 @@ export function recoveryGenerationCanReplaceCurrent(
     && Number.isSafeInteger(currentGeneration)
     && snapshotGeneration >= currentGeneration;
 }
+
+const forwardReadableOperationTypes = new Set([
+  "queryText",
+  "querySelection",
+  "queryContext",
+  "queryScrollAnchor",
+  "queryPerformance",
+  "captureRecovery",
+  "acknowledgeCommittedSnapshot",
+  "announceStatus",
+  "focus",
+  "blur",
+]);
+
+/**
+ * Source, selection, mode, and projection mutations execute only against the
+ * exact CodeMirror generation captured by native code. Snapshot reads and the
+ * save acknowledgement may observe a newer generation, but no request may
+ * claim a generation the Web editor has not reached.
+ */
+export function generationCanExecuteEditorRequest(
+  operationType: string,
+  knownGeneration: number,
+  currentGeneration: number,
+) {
+  if (!Number.isSafeInteger(knownGeneration)
+      || !Number.isSafeInteger(currentGeneration)
+      || knownGeneration < 0
+      || currentGeneration < 0
+      || knownGeneration > currentGeneration) return false;
+  return knownGeneration === currentGeneration
+    || forwardReadableOperationTypes.has(operationType);
+}
 function validDialect(value: unknown): value is MarkdownEditingDialect {
   if (!value || typeof value !== "object") return false;
   const dialect = value as Partial<MarkdownEditingDialect>;

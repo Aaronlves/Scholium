@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {
   EDITOR_PROTOCOL_VERSION, MAX_INBOUND_BYTES, encodedByteLength, isEditorRequest,
-  recoveryGenerationCanReplaceCurrent, rejected,
+  generationCanExecuteEditorRequest, recoveryGenerationCanReplaceCurrent, rejected,
 } from "../protocol";
 
 const request = {
@@ -179,5 +179,19 @@ describe("editor protocol", () => {
     expect(recoveryGenerationCanReplaceCurrent(3, 4)).toBe(false);
     expect(recoveryGenerationCanReplaceCurrent(4, 4)).toBe(true);
     expect(recoveryGenerationCanReplaceCurrent(5, 4)).toBe(true);
+  });
+
+  it("authorizes mutations only at their exact document generation", () => {
+    expect(generationCanExecuteEditorRequest("command", 4, 4)).toBe(true);
+    expect(generationCanExecuteEditorRequest("command", 4, 5)).toBe(false);
+    expect(generationCanExecuteEditorRequest("setMode", 4, 5)).toBe(false);
+    expect(generationCanExecuteEditorRequest("documentFind", 4, 5)).toBe(false);
+  });
+
+  it("allows bounded snapshot reads to observe a newer generation", () => {
+    expect(generationCanExecuteEditorRequest("queryText", 4, 5)).toBe(true);
+    expect(generationCanExecuteEditorRequest("captureRecovery", 4, 5)).toBe(true);
+    expect(generationCanExecuteEditorRequest("acknowledgeCommittedSnapshot", 4, 5)).toBe(true);
+    expect(generationCanExecuteEditorRequest("queryText", 6, 5)).toBe(false);
   });
 });

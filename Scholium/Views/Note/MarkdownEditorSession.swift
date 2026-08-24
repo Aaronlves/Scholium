@@ -177,6 +177,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var sourceChangeHandler: (() -> Void)?
     private let checkedSourceBuffer = EditorExactSourceBuffer()
     var checkedSource: String { checkedSourceBuffer.snapshot() }
+    var isComposing: Bool { context?.composing == true }
     private var checkedEditorUTF16Length = 0
     private var sourceOffsetMap = EditorSourceOffsetMap(source: "")
     private var recoverySnapshot: MarkdownEditorRecoverySnapshot?

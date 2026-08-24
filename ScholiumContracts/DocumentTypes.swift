@@ -252,6 +252,12 @@ public struct NoteDocument: Sendable {
     }
 
     private func rebuild(body newBody: String, edits: [String: FrontmatterEditValue]) throws -> String {
+        guard rawFrontmatter != nil
+                || !Self.hasFrontmatterOpeningDelimiter(rawContent) else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                "The existing YAML frontmatter is incomplete or malformed."
+            )
+        }
         guard !edits.isEmpty else {
             if rawFrontmatter == nil { return newBody }
             return prefix + (rawFrontmatter ?? "") + closingDelimiter + newBody

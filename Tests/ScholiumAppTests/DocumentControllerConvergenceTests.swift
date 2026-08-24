@@ -155,6 +155,148 @@ struct DocumentControllerConvergenceTests {
         #expect(cleanSession.conflict == nil)
     }
 
+    @Test("External source cannot reload a clean editor during marked-text composition")
+    func compositionProtectsEditorFromExternalReload() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let originalSource = "# Argument\n\nOriginal.\n"
+        let externalSource = "# Argument\n\nExternal revision.\n"
+        let original = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Argument.md",
+            source: originalSource
+        )
+        let external = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Argument.md",
+            source: externalSource
+        )
+        let controller = DocumentController()
+        controller.installOpenedDocument(
+            original,
+            vaultName: "Works",
+            vaultRole: .draftProject
+        )
+        let document = try #require(controller.activeDocument)
+        let session = controller.session(for: document)
+        let target = DocumentEditingTarget.workspace(.init(
+            vaultID: vaultID,
+            noteID: noteID
+        ))
+        controller.beginEditing(
+            session: session,
+            target: target,
+            source: originalSource,
+            revision: original.fingerprint,
+            mode: .livePreview
+        )
+        session.editorSession.loadDocument(
+            originalSource,
+            documentID: session.editorSession.bridgeDocumentID,
+            mode: .livePreview
+        )
+        let selection = MarkdownEditorSelectionRange(anchor: 0, head: 0)
+        session.editorSession.updateInteraction(
+            selections: [selection],
+            line: 1,
+            column: 1,
+            lineCount: 1,
+            documentVersion: session.editorSession.generation,
+            context: MarkdownEditorContext(
+                selections: [selection],
+                activeInlineConstructs: [],
+                activeBlockConstructs: [],
+                tablePosition: nil,
+                composing: true,
+                availableCommands: [],
+                undoLabel: nil,
+                redoLabel: nil
+            )
+        )
+        #expect(!session.hasUnsavedChanges)
+        #expect(session.editorSession.isComposing)
+
+        controller.installOpenedDocument(
+            external,
+            vaultName: "Works",
+            vaultRole: .draftProject
+        )
+
+        #expect(session.editingSource == originalSource)
+        #expect(session.editorSession.checkedSource == originalSource)
+        #expect(session.editingRevision == original.fingerprint)
+        #expect(session.conflict?.editorSource == originalSource)
+        #expect(session.conflict?.diskSource == externalSource)
+    }
+
+    @Test("The latest workspace snapshot observed during a save converges after acknowledgement")
+    func saveDefersAndConvergesLatestWorkspaceSnapshot() throws {
+        let vaultID = UUID()
+        let noteID = UUID()
+        let originalSource = "Original\n"
+        let savedSource = "Saved by this session\n"
+        let latestExternalSource = "Latest external source\n"
+        let original = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Race.md",
+            source: originalSource
+        )
+        let saved = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Race.md",
+            source: savedSource
+        )
+        let latestExternal = note(
+            vaultID: vaultID,
+            noteID: noteID,
+            path: "Race.md",
+            source: latestExternalSource
+        )
+        let controller = DocumentController()
+        controller.installOpenedDocument(
+            original,
+            vaultName: "Works",
+            vaultRole: .draftProject
+        )
+        let key = DocumentSessionKey(vaultID: vaultID, noteID: noteID)
+        let session = try #require(controller.retainedSession(for: key))
+        session.isSavingEdit = true
+
+        controller.installOpenedDocument(
+            saved,
+            vaultName: "Works",
+            vaultRole: .draftProject
+        )
+        controller.installOpenedDocument(
+            latestExternal,
+            vaultName: "Works",
+            vaultRole: .draftProject
+        )
+
+        #expect(session.editingSource == originalSource)
+        #expect(session.editingRevision == original.fingerprint)
+
+        // Model the exact save acknowledgement that precedes release of the
+        // in-flight owner. The deferred workspace publication must then win.
+        session.editingSource = savedSource
+        session.originalEditingSource = savedSource
+        session.editingRevision = saved.fingerprint
+        session.isSavingEdit = false
+        let conflict = controller.reconcileLatestDeferredWorkspaceSnapshot(
+            for: session
+        )
+
+        #expect(conflict == nil)
+        #expect(session.editingSource == latestExternalSource)
+        #expect(session.originalEditingSource == latestExternalSource)
+        #expect(session.editingRevision == latestExternal.fingerprint)
+        #expect(session.conflict == nil)
+    }
+
     @Test("Resolved rename updates each path projection without replacing sessions")
     func renamePreservesSessionIdentity() throws {
         let vaultID = UUID()

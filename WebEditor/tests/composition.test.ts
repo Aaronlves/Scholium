@@ -8,13 +8,13 @@ describe("CompositionRequestGate synthetic bridge policy", () => {
   it("gates every source, selection, mode, and projection mutation", () => {
     expect(compositionRequestPolicy("initialize")).toBe("reject");
     for (const operation of [
+      "queryText", "querySelection", "captureRecovery", "markClean",
       "setMode", "goToLine", "restoreRecovery", "acknowledgeCommittedSnapshot", "command",
       "setPresentationCSS", "setUserCSS", "setLinkPreviews",
     ]) {
       expect(compositionRequestPolicy(operation)).toBe("defer");
     }
     expect(compositionRequestPolicy("queryContext")).toBe("allow");
-    expect(compositionRequestPolicy("markClean")).toBe("allow");
   });
   it("releases queued requests once and in order after composition", async () => {
     const gate = new CompositionRequestGate<Request, Result>();

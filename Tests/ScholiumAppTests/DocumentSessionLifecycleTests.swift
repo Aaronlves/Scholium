@@ -211,6 +211,7 @@ struct DocumentSessionLifecycleTests {
         "Every safety state pins a zero-lease session",
         arguments: [
             DocumentSessionStore.PinReason.dirty,
+            .composition,
             .conflict,
             .saveInFlight,
             .retryableRecovery,
@@ -225,6 +226,30 @@ struct DocumentSessionLifecycleTests {
         switch reason {
         case .dirty:
             session.editingSource = "dirty"
+        case .composition:
+            session.editorSession.loadDocument(
+                "clean",
+                documentID: session.editorSession.bridgeDocumentID,
+                mode: .livePreview
+            )
+            let selection = MarkdownEditorSelectionRange(anchor: 0, head: 0)
+            session.editorSession.updateInteraction(
+                selections: [selection],
+                line: 1,
+                column: 1,
+                lineCount: 1,
+                documentVersion: session.editorSession.generation,
+                context: MarkdownEditorContext(
+                    selections: [selection],
+                    activeInlineConstructs: [],
+                    activeBlockConstructs: [],
+                    tablePosition: nil,
+                    composing: true,
+                    availableCommands: [],
+                    undoLabel: nil,
+                    redoLabel: nil
+                )
+            )
         case .conflict:
             session.conflict = DocumentConflictSnapshot(
                 relativePath: "Pinned.md",

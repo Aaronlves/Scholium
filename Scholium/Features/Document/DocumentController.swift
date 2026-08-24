@@ -153,6 +153,12 @@ final class DocumentController: ObservableObject {
     private let readProjectionCache = DocumentReadProjectionCache()
     private let linkCompletionIndex = EditorLinkCompletionIndex()
     private var retainedReferences: [DocumentSessionKey: VaultNoteReference] = [:]
+    /// Workspace publications are invalidations, not a second source owner.
+    /// While one session is saving, retain only its latest complete snapshot
+    /// and reconcile it immediately after the save releases ownership.
+    private var deferredWorkspaceSnapshotsDuringSave: [
+        DocumentSessionKey: WorkspaceNoteSnapshot
+    ] = [:]
     private var restoredScrollPositionsByVault: [UUID: [String: Double]] = [:]
     private var restoredUnqualifiedScrollPositions: [String: Double] = [:]
     private var activeWorkspace: WorkspaceVaultSlot = .paperAnalysis
@@ -689,13 +695,15 @@ final class DocumentController: ObservableObject {
                 // actor, however, and must not accidentally reuse the
                 // completed old-path task as the destination save. The token
                 // check prevents clearing any newer save.
-                if session.activeSaveToken == supersededToken {
-                    session.activeSaveTask = nil
-                    session.activeSaveToken = nil
-                    session.isSavingEdit = false
+                if let supersededToken {
+                    _ = self.finishSaveAttempt(
+                        token: supersededToken,
+                        session: session
+                    )
                 }
             }
             guard !Task.isCancelled,
+                  session.conflict == nil,
                   self.relativePath(for: .workspace(descriptor.sessionKey))
                     == descriptor.reference.relativePath,
                   session.hasUnsavedChanges else { return }
@@ -874,6 +882,7 @@ final class DocumentController: ObservableObject {
         if !retainingSessions {
             sessions.removeAll()
             retainedReferences.removeAll()
+            deferredWorkspaceSnapshotsDuringSave.removeAll()
             restoredScrollPositionsByVault = [:]
             restoredUnqualifiedScrollPositions = [:]
             closedPresentations.removeAll(keepingCapacity: false)
@@ -897,6 +906,9 @@ final class DocumentController: ObservableObject {
         sessionCancellables = sessionCancellables.filter { retained.contains($0.key) }
         pendingChromeRefreshes.formIntersection(retained)
         retainedReferences = retainedReferences.filter {
+            sessions.retainedSession(for: .workspace($0.key)) != nil
+        }
+        deferredWorkspaceSnapshotsDuringSave = deferredWorkspaceSnapshotsDuringSave.filter {
             sessions.retainedSession(for: .workspace($0.key)) != nil
         }
         snapshots = snapshots.filter {
@@ -1122,6 +1134,7 @@ final class DocumentController: ObservableObject {
     ) {
         guard session.isEditing,
               !session.suppressAutosave,
+              session.conflict == nil,
               session.hasUnsavedChanges else { return }
         let path = relativePath(for: target)
         guard !path.isEmpty else { return }
@@ -1300,20 +1313,55 @@ final class DocumentController: ObservableObject {
 
         do {
             let outcome = try await task.value
-            if session.activeSaveToken == token {
-                session.activeSaveTask = nil
-                session.activeSaveToken = nil
-                session.isSavingEdit = false
+            if let conflict = finishSaveAttempt(token: token, session: session) {
+                throw conflict
             }
             return outcome
         } catch {
-            if session.activeSaveToken == token {
-                session.activeSaveTask = nil
-                session.activeSaveToken = nil
-                session.isSavingEdit = false
+            if let conflict = finishSaveAttempt(token: token, session: session) {
+                throw conflict
             }
             throw error
         }
+    }
+
+    @discardableResult
+    private func finishSaveAttempt(
+        token: UUID,
+        session: DocumentSessionModel
+    ) -> VaultRepositoryError? {
+        guard session.activeSaveToken == token else {
+            return repositoryConflict(for: session)
+        }
+        session.activeSaveTask = nil
+        session.activeSaveToken = nil
+        session.isSavingEdit = false
+        return reconcileLatestDeferredWorkspaceSnapshot(for: session)
+    }
+
+    private func repositoryConflict(
+        for session: DocumentSessionModel
+    ) -> VaultRepositoryError? {
+        guard let conflict = session.conflict else { return nil }
+        return VaultRepositoryError.conflict(
+            expected: conflict.baseRevision,
+            current: conflict.diskRevision
+        )
+    }
+
+    /// Drains one session's latest complete workspace publication after its
+    /// save is no longer the exact-source owner. Internal visibility keeps the
+    /// save/event race deterministic under model-level tests.
+    @discardableResult
+    func reconcileLatestDeferredWorkspaceSnapshot(
+        for session: DocumentSessionModel
+    ) -> VaultRepositoryError? {
+        guard let key = session.key,
+              let snapshot = deferredWorkspaceSnapshotsDuringSave.removeValue(
+                forKey: key
+              ) else { return nil }
+        reconcile(session: session, with: snapshot)
+        return repositoryConflict(for: session)
     }
 
     private func performEditingSave(
@@ -1634,6 +1682,7 @@ final class DocumentController: ObservableObject {
             if let key = document.sessionKey {
                 snapshots[key] = nil
                 retainedReferences[key] = nil
+                deferredWorkspaceSnapshotsDuringSave[key] = nil
             }
             guard let session = sessions.retainedSession(
                 for: document.editingTarget
@@ -1672,9 +1721,12 @@ final class DocumentController: ObservableObject {
         // resumes on the main actor. Let the in-flight save install the exact
         // returned bytes; if it fails, conflict recovery reloads the then
         // current disk revision through the same Application capability.
-        guard !session.isSavingEdit else { return }
+        if session.isSavingEdit, let key = session.key {
+            deferredWorkspaceSnapshotsDuringSave[key] = snapshot
+            return
+        }
 
-        if session.hasUnsavedChanges {
+        if session.hasUnsavedChanges || session.editorSession.isComposing {
             session.cancelAutosave()
             let editorSource = session.editorSession.isLoaded
                 ? session.editorSession.checkedSource

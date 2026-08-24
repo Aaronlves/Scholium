@@ -289,6 +289,7 @@ final class DocumentSessionModel: ObservableObject {
 final class DocumentSessionStore {
     enum PinReason: Hashable, Sendable {
         case dirty
+        case composition
         case conflict
         case saveInFlight
         case retryableRecovery
@@ -350,6 +351,7 @@ final class DocumentSessionStore {
     func pinReasons(for session: DocumentSessionModel) -> Set<PinReason> {
         var reasons: Set<PinReason> = []
         if session.hasUnsavedChanges { reasons.insert(.dirty) }
+        if session.editorSession.isComposing { reasons.insert(.composition) }
         if session.conflict != nil { reasons.insert(.conflict) }
         if session.isSavingEdit || session.activeSaveTask != nil { reasons.insert(.saveInFlight) }
         if session.canRetrySave { reasons.insert(.retryableRecovery) }

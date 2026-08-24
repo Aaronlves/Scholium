@@ -17,6 +17,34 @@ private final class WorkspaceFSEventCallbackContext: Sendable {
     }
 }
 
+/// One pending native invalidation is sufficient: authoritative filesystem
+/// state is always reread before publication. If the callback queue outruns the
+/// pooled consumer, replace the newest slot with a reconciliation requirement
+/// rather than retaining an incomplete path delta.
+enum WorkspaceWatchEventBuffer {
+    static func makeStream() -> (
+        stream: AsyncStream<VaultWatchEvent>,
+        continuation: AsyncStream<VaultWatchEvent>.Continuation
+    ) {
+        AsyncStream<VaultWatchEvent>.makeStream(
+            bufferingPolicy: .bufferingNewest(1)
+        )
+    }
+
+    static func yield(
+        _ event: VaultWatchEvent,
+        to continuation: AsyncStream<VaultWatchEvent>.Continuation
+    ) {
+        guard case .dropped(let displaced) = continuation.yield(event) else {
+            return
+        }
+        continuation.yield(.reconciliationRequired(
+            sequence: max(displaced.sequence, event.sequence),
+            rootChanged: displaced.rootChanged || event.rootChanged
+        ))
+    }
+}
+
 enum WorkspaceFileEventWatcherError: LocalizedError, Sendable {
     case rootUnavailable(String)
     case streamUnavailable(String)
@@ -61,9 +89,7 @@ actor WorkspaceFileEventWatcher {
             throw WorkspaceFileEventWatcherError.rootUnavailable(rootURL.path)
         }
 
-        let pair = AsyncStream<VaultWatchEvent>.makeStream(
-            bufferingPolicy: .bufferingNewest(64)
-        )
+        let pair = WorkspaceWatchEventBuffer.makeStream()
         let contextOwner = WorkspaceFSEventCallbackContext(
             rootURL: rootURL,
             continuation: pair.continuation
@@ -170,14 +196,14 @@ actor WorkspaceFileEventWatcher {
 
                 guard !added.isEmpty || !modified.isEmpty || !deleted.isEmpty
                         || requiresFullRescan || rootChanged else { return }
-                owner.continuation.yield(VaultWatchEvent(
+                WorkspaceWatchEventBuffer.yield(VaultWatchEvent(
                     added: added,
                     modified: modified,
                     deleted: deleted,
                     sequence: latestEventID,
                     requiresFullRescan: requiresFullRescan,
                     rootChanged: rootChanged
-                ))
+                ), to: owner.continuation)
             },
             &context,
             [rootURL.path] as CFArray,

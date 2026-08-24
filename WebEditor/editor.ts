@@ -60,6 +60,7 @@ import {
   type MarkdownEditingDialect,
   type RecoverySnapshot,
   encodedByteLength,
+  generationCanExecuteEditorRequest,
   isEditorRequest,
   recoveryGenerationCanReplaceCurrent,
   rejected,
@@ -1649,6 +1650,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID
       || request.startingFingerprint !== bridgeFingerprint) {
     return rejected(request.requestID, documentVersion, "stale editor identity");
+  }
+  if (!generationCanExecuteEditorRequest(
+    operation.type,
+    request.knownGeneration,
+    documentVersion,
+  )) {
+    return rejected(request.requestID, documentVersion, "stale editor generation");
   }
   switch (operation.type) {
   case "setMode": await editorOperations.setMode(operation.mode); break;

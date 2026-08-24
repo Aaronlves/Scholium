@@ -21140,6 +21140,22 @@
   function recoveryGenerationCanReplaceCurrent(snapshotGeneration, currentGeneration) {
     return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
   }
+  var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
+    "queryText",
+    "querySelection",
+    "queryContext",
+    "queryScrollAnchor",
+    "queryPerformance",
+    "captureRecovery",
+    "acknowledgeCommittedSnapshot",
+    "announceStatus",
+    "focus",
+    "blur"
+  ]);
+  function generationCanExecuteEditorRequest(operationType, knownGeneration, currentGeneration) {
+    if (!Number.isSafeInteger(knownGeneration) || !Number.isSafeInteger(currentGeneration) || knownGeneration < 0 || currentGeneration < 0 || knownGeneration > currentGeneration) return false;
+    return knownGeneration === currentGeneration || forwardReadableOperationTypes.has(operationType);
+  }
   function validDialect(value) {
     if (!value || typeof value !== "object") return false;
     const dialect = value;
@@ -30882,6 +30898,10 @@ ${fence}
   function compositionRequestPolicy(operationType) {
     if (operationType === "initialize") return "reject";
     if ([
+      "queryText",
+      "querySelection",
+      "captureRecovery",
+      "markClean",
       "setMode",
       "setPresentationCSS",
       "setUserCSS",
@@ -37352,6 +37372,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     if (request.sessionID !== bridgeSessionID || request.documentID !== bridgeDocumentID || request.startingFingerprint !== bridgeFingerprint) {
       return rejected(request.requestID, documentVersion, "stale editor identity");
+    }
+    if (!generationCanExecuteEditorRequest(
+      operation.type,
+      request.knownGeneration,
+      documentVersion
+    )) {
+      return rejected(request.requestID, documentVersion, "stale editor generation");
     }
     switch (operation.type) {
       case "setMode":

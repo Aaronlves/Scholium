@@ -714,6 +714,36 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Targeted body saves refuse an unclosed frontmatter boundary without changing bytes")
+    func bodySavePreservesUnclosedFrontmatterSource() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let source = "\u{FEFF}---\r\ntitle: Unclosed\r\n# Not a proven body\r\n"
+        let id = VaultQualifiedNoteID(
+            vaultID: fixture.targetID.vaultID,
+            relativePath: "Unclosed-body.md"
+        )
+        let created = try await handle.documents.importMarkdownSource(
+            source,
+            at: id
+        ).committedValue
+
+        await #expect(throws: VaultRepositoryError.self) {
+            _ = try await handle.documents.commit(
+                id,
+                changeSet: .body("Replacement\r\n"),
+                expectedRevision: created.fingerprint
+            )
+        }
+
+        let loaded = try await handle.documents.load(id)
+        #expect(loaded.rawContent == source)
+        #expect(loaded.sourceBytes == Data(source.utf8))
+        await runtime.shutdown()
+    }
+
     @Test("Fixed managed creation does not use invalid optional Settings as authority")
     func managedCreationIgnoresInvalidOptionalSettings() async throws {
         let fixture = try await LifecycleFixture.make()

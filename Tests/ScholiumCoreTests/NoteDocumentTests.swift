@@ -154,6 +154,46 @@ struct NoteDocumentTests {
         }
     }
 
+    @Test("An unclosed frontmatter boundary refuses every targeted body replacement")
+    func unclosedFrontmatterRefusesTargetedBodyReplacement() {
+        let source = "\u{FEFF}---\r\ntitle: Unclosed\r\n# Not a proven body\r\n"
+        let document = NoteDocument(
+            relativePath: "topics/unclosed.md",
+            rawContent: source
+        )
+
+        #expect(throws: VaultRepositoryError.self) {
+            try document.applying(
+                .body("Replacement\r\n"),
+                timestampKey: nil
+            )
+        }
+        #expect(throws: VaultRepositoryError.self) {
+            try document.applying(
+                .composite(body: "Replacement\r\n", frontmatter: [:]),
+                timestampKey: nil
+            )
+        }
+        #expect(document.rawContent == source)
+        #expect(document.sourceBytes == Data(source.utf8))
+    }
+
+    @Test("A closed malformed envelope still permits an exact body-only replacement")
+    func closedMalformedFrontmatterPreservesEnvelopeDuringBodyReplacement() throws {
+        let source = "---\ntags: [unfinished\n---\nOld body\n"
+        let document = NoteDocument(
+            relativePath: "topics/closed-malformed.md",
+            rawContent: source
+        )
+
+        let result = try document.applying(
+            .body("New body\n"),
+            timestampKey: nil
+        )
+
+        #expect(result == "---\ntags: [unfinished\n---\nNew body\n")
+    }
+
     @Test("No-frontmatter body edits do not introduce frontmatter")
     func plainMarkdown() throws {
         let document = NoteDocument(relativePath: "output/plain.md", rawContent: "# Original\n")
