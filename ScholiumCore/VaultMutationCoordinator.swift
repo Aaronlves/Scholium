@@ -60,9 +60,19 @@ final class VaultMutationCoordinator {
     private let descriptorAccess: VaultDescriptorAccess
     private let hooks: VaultMutationHooks
 
-    init(resolver: VaultPathResolver, hooks: VaultMutationHooks = .none) {
+    init(
+        resolver: VaultPathResolver,
+        hooks: VaultMutationHooks = .none,
+        descriptorAccess: VaultDescriptorAccess? = nil
+    ) throws {
         self.resolver = resolver
-        self.descriptorAccess = VaultDescriptorAccess(rootURL: resolver.canonicalRoot)
+        if let descriptorAccess {
+            self.descriptorAccess = descriptorAccess
+        } else {
+            self.descriptorAccess = try VaultDescriptorAccess(
+                rootURL: resolver.canonicalRoot
+            )
+        }
         self.hooks = hooks
     }
 

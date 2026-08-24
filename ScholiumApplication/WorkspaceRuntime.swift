@@ -604,9 +604,11 @@ public actor WorkspaceRuntime {
             portableControlAccess: portableAccess
         )
         let registryReady = clock.now
+        let invalidRootVaultIDs = await vaultPool.invalidRootVaultIDs()
         let prepared = await prepareChangedReplacements(
             registry: registry,
-            remappingWorkspaceIDs: remappedWorkspaceIDs
+            remappingWorkspaceIDs: remappedWorkspaceIDs,
+            forcingVaultIDs: invalidRootVaultIDs
         )
         let detachedVaults = await detachVaultAuthorities(prepared.invalidatedVaultIDs)
         let replacements = try await completeReplacements(
@@ -1034,7 +1036,8 @@ public actor WorkspaceRuntime {
     private func prepareChangedReplacements(
         registry: WorkspaceRegistry,
         remappingWorkspaceIDs remappedIDs: [UUID: UUID] = [:],
-        forcing forcedIDs: Set<UUID> = []
+        forcing forcedIDs: Set<UUID> = [],
+        forcingVaultIDs: Set<UUID> = []
     ) async -> (replacements: [Replacement], invalidatedVaultIDs: Set<UUID>) {
         var mappings: [(cacheID: UUID, workspaceID: UUID)] = []
         var invalidatedVaultIDs: Set<UUID> = []
@@ -1043,13 +1046,18 @@ public actor WorkspaceRuntime {
             guard let current = try? await registry.triptych(id: workspaceID) else {
                 continue
             }
-            guard forcedIDs.contains(cacheID) || handle.assignment != current else {
+            let handleVaultIDs = Set(handle.assignment.vaults.values.map(\.id))
+            let invalidRootsInHandle = handleVaultIDs.intersection(forcingVaultIDs)
+            guard forcedIDs.contains(cacheID)
+                    || !invalidRootsInHandle.isEmpty
+                    || handle.assignment != current else {
                 continue
             }
             mappings.append((cacheID, workspaceID))
             invalidatedVaultIDs.formUnion(
                 changedVaultIDs(from: handle.assignment, to: current)
             )
+            invalidatedVaultIDs.formUnion(invalidRootsInHandle)
         }
         let replacements = await detachReplacements(mappings)
         return (replacements, invalidatedVaultIDs)
@@ -1088,5 +1096,15 @@ public actor WorkspaceRuntime {
     func pooledVaultOwnsNativeWatcher(vaultID: UUID) async -> Bool? {
         guard let runtime = await vaultPool.runtime(vaultID: vaultID) else { return nil }
         return await runtime.ownsNativeWatcher
+    }
+
+    func deliverPooledVaultEventForTesting(
+        _ event: VaultWatchEvent,
+        vaultID: UUID
+    ) async throws {
+        guard let runtime = await vaultPool.runtime(vaultID: vaultID) else {
+            throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
+        }
+        await runtime.receiveForTesting(event)
     }
 }

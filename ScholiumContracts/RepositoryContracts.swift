@@ -3,6 +3,7 @@ import Foundation
 public enum VaultRepositoryError: LocalizedError, Sendable {
     case invalidRelativePath(String)
     case outsideVault(String)
+    case rootUnavailable(String)
     case fileDoesNotExist(String)
     case fileAlreadyExists(String)
     case notRegularFile(String)
@@ -23,6 +24,8 @@ public enum VaultRepositoryError: LocalizedError, Sendable {
         switch self {
         case .invalidRelativePath(let path): return "Invalid vault-relative path: \(path)"
         case .outsideVault(let path): return "The path escapes the selected vault: \(path)"
+        case .rootUnavailable(let path):
+            return "The selected vault root is no longer the authorized filesystem object: \(path)"
         case .fileDoesNotExist(let path): return "The note no longer exists: \(path)"
         case .fileAlreadyExists(let path): return "A note already exists at: \(path)"
         case .notRegularFile(let path): return "The path is not a regular file: \(path)"

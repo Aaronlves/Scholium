@@ -326,6 +326,10 @@ final class WindowWorkspaceController: ObservableObject {
                 break
             }
         }
+        if let repositoryError = error as? VaultRepositoryError,
+           case .rootUnavailable(let path) = repositoryError {
+            return WorkspaceAccessRecovery(kind: .vault, expectedPath: path)
+        }
         if let applicationError = error as? ScholiumApplicationError,
            case .portableControlRecoveryRequired(let controlPath, let reason) = applicationError {
             return WorkspaceAccessRecovery(

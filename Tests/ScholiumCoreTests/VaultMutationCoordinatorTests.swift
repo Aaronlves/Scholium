@@ -27,7 +27,7 @@ struct VaultMutationCoordinatorTests {
     func failureBeforeReplacement() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
                 if phase == .replacing { throw InjectedFailure() }
@@ -49,7 +49,7 @@ struct VaultMutationCoordinatorTests {
     func failureAfterReplacement() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
                 if phase == .replaced { throw InjectedFailure() }
@@ -72,7 +72,7 @@ struct VaultMutationCoordinatorTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let external = Data("external".utf8)
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
                 if phase == .staged {
@@ -101,7 +101,7 @@ struct VaultMutationCoordinatorTests {
         let outsideBytes = Data("outside".utf8)
         try outsideBytes.write(to: outside)
         defer { try? FileManager.default.removeItem(at: outside) }
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
                 guard phase == .staged else { return }
@@ -146,7 +146,7 @@ struct VaultMutationCoordinatorTests {
         try original.write(to: parent.appendingPathComponent("Note.md"))
         try outsideBytes.write(to: outside.appendingPathComponent("Note.md"))
         let path = try MarkdownRelativePath("Folder/Note.md")
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: VaultPathResolver(
                 rootURL: root,
                 caseSensitive: true,
@@ -178,7 +178,7 @@ struct VaultMutationCoordinatorTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let external = Data("external-readback".utf8)
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
                 if phase == .readback {
@@ -203,7 +203,7 @@ struct VaultMutationCoordinatorTests {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let attributeName = "com.scholium.metadata-test"
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(didReach: { phase in
                 guard phase == .replaced else { return }
@@ -234,7 +234,7 @@ struct VaultMutationCoordinatorTests {
     func successfulOperations() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let coordinator = VaultMutationCoordinator(resolver: fixture.resolver)
+        let coordinator = try VaultMutationCoordinator(resolver: fixture.resolver)
         try coordinator.updateExisting(
             path: fixture.path,
             expected: fixture.original,
@@ -260,7 +260,7 @@ struct VaultMutationCoordinatorTests {
     func deletionPresenceErrorIsUncertain() throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
-        let coordinator = VaultMutationCoordinator(
+        let coordinator = try VaultMutationCoordinator(
             resolver: fixture.resolver,
             hooks: VaultMutationHooks(
                 presenceOverride: { _ in .inaccessible(EACCES) }

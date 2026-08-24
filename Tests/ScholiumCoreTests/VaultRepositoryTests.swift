@@ -276,6 +276,60 @@ struct VaultRepositoryTests {
         await #expect(throws: VaultRepositoryError.self) { try await repository.load(relativePath: "topics/link.md") }
     }
 
+    @Test("A same-path root replacement cannot reuse an authorized repository")
+    func samePathRootReplacementIsRejected() async throws {
+        let f = try fixture()
+        let base = f.root.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(
+                id: UUID(),
+                canonicalPath: f.root.path,
+                bookmarkData: nil
+            ),
+            applicationSupportURL: f.support
+        )
+        let original = try await repository.load(relativePath: "topics/note.md")
+        let detached = base.appendingPathComponent("authorized-root", isDirectory: true)
+        try FileManager.default.moveItem(at: f.root, to: detached)
+        try FileManager.default.createDirectory(
+            at: f.note.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let replacementBytes = Data(original.rawContent.utf8)
+        try replacementBytes.write(to: f.note)
+
+        func isRootUnavailable(_ error: any Error) -> Bool {
+            guard let repositoryError = error as? VaultRepositoryError else {
+                return false
+            }
+            if case .rootUnavailable = repositoryError { return true }
+            return false
+        }
+
+        await #expect {
+            _ = try await repository.load(relativePath: original.relativePath)
+        } throws: { isRootUnavailable($0) }
+        await #expect {
+            _ = try await repository.markdownRelativePaths()
+        } throws: { isRootUnavailable($0) }
+        await #expect {
+            _ = try await repository.save(
+                relativePath: original.relativePath,
+                changeSet: .body("# Must not reach the replacement root\n"),
+                expectedRevision: original.fingerprint
+            )
+        } throws: { isRootUnavailable($0) }
+
+        #expect(await repository.rootAuthorityIsInvalid)
+        #expect(try Data(contentsOf: f.note) == replacementBytes)
+        #expect(
+            try Data(contentsOf: detached.appendingPathComponent("topics/note.md"))
+                == Data(original.rawContent.utf8)
+        )
+    }
+
     @Test("Unsupported pre-use recovery data is ignored without mutation")
     func unsupportedRecoveryDataIsIgnored() async throws {
         let f = try fixture()

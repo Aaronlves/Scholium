@@ -538,6 +538,48 @@ struct WorkspaceRuntimeTests {
         await runtime.shutdown()
     }
 
+    @Test("Vault access invalidation stays latest until runtime replacement")
+    func vaultAccessInvalidationIsSticky() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let snapshot = try await handle.snapshot()
+        let source = WorkspaceEventSource(initialSnapshot: snapshot)
+        let firstStream = await source.events()
+        var firstIterator = firstStream.makeAsyncIterator()
+        _ = try #require(await firstIterator.next())
+
+        await source.publishVaultAccessInvalidated(
+            snapshot: snapshot,
+            unavailableVaultPaths: [
+                fixture.analysisNoteID.vaultID: fixture.analysesURL.path,
+            ]
+        )
+        await source.publishDerivedStateChanged(snapshot: snapshot)
+
+        guard case .vaultAccessInvalidated = try #require(await firstIterator.next()) else {
+            Issue.record("The active subscriber lost the sticky access event.")
+            await runtime.shutdown()
+            return
+        }
+        let lateStream = await source.events()
+        var lateIterator = lateStream.makeAsyncIterator()
+        guard case .vaultAccessInvalidated(let late) = try #require(
+            await lateIterator.next()
+        ) else {
+            Issue.record("A late subscriber received a current snapshot after invalidation.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(late.unavailableVaultPaths[fixture.analysisNoteID.vaultID]
+            == fixture.analysesURL.path)
+        await runtime.shutdown()
+    }
+
     @Test("Live mode owns refresh tasks while snapshot mode owns none")
     func liveWatcherLifecycle() async throws {
         let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
@@ -852,6 +894,166 @@ struct WorkspaceRuntimeTests {
         #expect(await firstIterator.next() == nil)
         #expect(await secondIterator.next() == nil)
         #expect(await firstWindow.ownedBackgroundTaskCount == 0)
+    }
+
+    @Test("A root discontinuity stays unavailable until Restore Access replaces the runtime")
+    func rootDiscontinuityRequiresRuntimeReplacement() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let original = try await handle.documents.load(fixture.analysisNoteID)
+        let stream = await handle.events.events()
+        var iterator = stream.makeAsyncIterator()
+        _ = try #require(await iterator.next())
+
+        try await runtime.deliverPooledVaultEventForTesting(
+            .reconciliationRequired(sequence: 80, rootChanged: true),
+            vaultID: fixture.analysisNoteID.vaultID
+        )
+        let invalidation = try #require(await iterator.next())
+        guard case .vaultAccessInvalidated(let access) = invalidation else {
+            Issue.record("Root discontinuity did not publish typed access recovery.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(
+            access.unavailableVaultPaths[fixture.analysisNoteID.vaultID]
+                == fixture.analysesURL.path
+        )
+        for _ in 0..<100 where await runtime.pooledVaultOwnsNativeWatcher(
+            vaultID: fixture.analysisNoteID.vaultID
+        ) != false {
+            await Task.yield()
+        }
+        #expect(await runtime.pooledVaultOwnsNativeWatcher(
+            vaultID: fixture.analysisNoteID.vaultID
+        ) == false)
+
+        let detached = fixture.rootURL.appendingPathComponent(
+            "Detached Analyses",
+            isDirectory: true
+        )
+        try FileManager.default.moveItem(at: fixture.analysesURL, to: detached)
+        try FileManager.default.createDirectory(
+            at: fixture.analysesURL,
+            withIntermediateDirectories: true
+        )
+        let replacementURL = fixture.analysesURL.appendingPathComponent("Agency.md")
+        let replacementBytes = Data(original.rawContent.utf8)
+        try replacementBytes.write(to: replacementURL)
+
+        func isAccessUnavailable(_ error: any Error) -> Bool {
+            guard let registryError = error as? WorkspaceRegistryError else {
+                return false
+            }
+            if case .vaultAccessUnavailable(let path) = registryError {
+                return path == fixture.analysesURL.path
+            }
+            return false
+        }
+
+        await #expect {
+            _ = try await handle.documents.load(fixture.analysisNoteID)
+        } throws: { isAccessUnavailable($0) }
+        await #expect {
+            _ = try await handle.documents.save(
+                fixture.analysisNoteID,
+                changeSet: .body("Must not reach a replacement root.\n"),
+                expectedRevision: original.fingerprint
+            )
+        } throws: { isAccessUnavailable($0) }
+        await #expect {
+            _ = try await handle.discovery.refresh()
+        } throws: { isAccessUnavailable($0) }
+        #expect(try Data(contentsOf: replacementURL) == replacementBytes)
+
+        let invalidGeneration = await handle.events.publishedGeneration
+        try await runtime.deliverPooledVaultEventForTesting(VaultWatchEvent(
+            added: ["Later.md"],
+            modified: [],
+            deleted: [],
+            sequence: 81,
+            requiresFullRescan: false,
+            rootChanged: false
+        ), vaultID: fixture.analysisNoteID.vaultID)
+        await Task.yield()
+        #expect(await handle.events.publishedGeneration == invalidGeneration)
+        await #expect {
+            _ = try await handle.discovery.refresh()
+        } throws: { isAccessUnavailable($0) }
+
+        let replacement = try await runtime.configureTriptych(
+            paperAnalysisURL: fixture.analysesURL,
+            topicKnowledgeURL: fixture.topicsURL,
+            outputURL: fixture.worksURL,
+            portableContainerURL: fixture.rootURL,
+            triptychID: fixture.assignment.id,
+            triptychName: fixture.assignment.triptych.name
+        )
+        #expect(replacement !== handle)
+        #expect(replacement.runtimeIdentity != handle.runtimeIdentity)
+        #expect(
+            try await replacement.documents.load(fixture.analysisNoteID).rawContent
+                == original.rawContent
+        )
+        await runtime.shutdown()
+    }
+
+    @Test("Repository root identity failure also forces explicit runtime replacement")
+    func repositoryRootFailureForcesRuntimeReplacement() async throws {
+        let fixture = try await ApplicationFixture.make(registerLiveAccess: true)
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let original = try await handle.documents.load(fixture.analysisNoteID)
+        let detached = fixture.rootURL.appendingPathComponent(
+            "Detached Before Event",
+            isDirectory: true
+        )
+        try FileManager.default.moveItem(at: fixture.analysesURL, to: detached)
+        try FileManager.default.createDirectory(
+            at: fixture.analysesURL,
+            withIntermediateDirectories: true
+        )
+        try Data(original.rawContent.utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Agency.md")
+        )
+
+        await #expect {
+            _ = try await handle.documents.load(fixture.analysisNoteID)
+        } throws: { error in
+            if let repositoryError = error as? VaultRepositoryError,
+               case .rootUnavailable(let path) = repositoryError {
+                return path == fixture.analysesURL.path
+            }
+            if let registryError = error as? WorkspaceRegistryError,
+               case .vaultAccessUnavailable(let path) = registryError {
+                return path == fixture.analysesURL.path
+            }
+            return false
+        }
+        let replacement = try await runtime.configureTriptych(
+            paperAnalysisURL: fixture.analysesURL,
+            topicKnowledgeURL: fixture.topicsURL,
+            outputURL: fixture.worksURL,
+            portableContainerURL: fixture.rootURL,
+            triptychID: fixture.assignment.id,
+            triptychName: fixture.assignment.triptych.name
+        )
+
+        #expect(replacement !== handle)
+        #expect(
+            try await replacement.documents.load(fixture.analysisNoteID).rawContent
+                == original.rawContent
+        )
+        await runtime.shutdown()
     }
 
     @Test("Snapshot runtime preserves the persisted default Triptych")

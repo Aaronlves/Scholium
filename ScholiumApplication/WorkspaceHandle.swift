@@ -444,6 +444,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var liveIndexRefreshTask: OwnedRefreshTask?
     private var sourceCommitRefreshTask: Task<Void, Never>?
     private var pendingSourceCommitRefreshes: [WorkspaceRefreshPayload] = []
+    /// A root-discontinuity projection from the process-owned pooled vaults.
+    /// It is cleared only by replacing this complete Workspace activation.
+    private var unavailableRootVaultIDs: Set<UUID> = []
     /// Exact identity records from durable source moves whose complete
     /// Workspace generation has not arrived yet. This is a bounded authority
     /// bridge for a second revision-checked operation, not a derived cache.
@@ -3142,6 +3145,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func receiveLiveEvent(_ event: VaultWatchEvent, vaultID: UUID) {
         guard !isShutDown else { return }
+        if event.rootChanged {
+            unavailableRootVaultIDs.insert(vaultID)
+        } else if !unavailableRootVaultIDs.isEmpty {
+            // The replacement runtime performs a complete initial reconcile.
+            // No delta from this invalid activation may refresh its snapshot.
+            return
+        }
         var journal = pendingLiveEvents[vaultID] ?? VaultWatchEventJournal(capacity: 256)
         journal.append(event)
         pendingLiveEvents[vaultID] = journal
@@ -3150,11 +3160,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func beginSourceMutation() async throws -> WorkspaceSourceOperationLease {
         try requireActive()
+        try requireRootAuthoritiesAvailable()
         do {
             let lease = try await acquireWorkspaceSourceOperation(.sourceMutation)
             do {
                 try Task.checkCancellation()
                 try requireActive()
+                try requireRootAuthoritiesAvailable()
                 return lease
             } catch {
                 releaseWorkspaceSourceOperation(lease)
@@ -3200,11 +3212,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     private func beginRefreshCycle() async throws -> WorkspaceSourceOperationLease {
         try requireActive()
+        try requireRootAuthoritiesAvailable()
         do {
             let lease = try await acquireWorkspaceSourceOperation(.refreshCycle)
             do {
                 try Task.checkCancellation()
                 try requireActive()
+                try requireRootAuthoritiesAvailable()
                 return lease
             } catch {
                 releaseWorkspaceSourceOperation(lease)
@@ -3350,16 +3364,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             // A root discontinuity invalidates the authority path itself. Do
             // not let an unrelated vault event clear that stale status by
             // rebuilding against a missing or relocated root.
-            if !rootChangedVaultIDs.isEmpty {
-                let evidence = WorkspaceDerivedRefreshEvidence(snapshot: currentSnapshot)
+            if !rootChangedVaultIDs.isEmpty || !unavailableRootVaultIDs.isEmpty {
+                unavailableRootVaultIDs.formUnion(rootChangedVaultIDs)
                 derivedStateRequiresRefresh = true
-                await events.publishDerivedStateChanged(
+                await events.publishVaultAccessInvalidated(
                     snapshot: currentSnapshot,
-                    status: .stale(WorkspaceDerivedRefreshIssue(
-                        reason: "Native observation reported that a vault root changed. The last complete derived snapshot remains available until access is restored and a refresh succeeds.",
-                        affectedVaultIDs: rootChangedVaultIDs,
-                        lastKnownGood: evidence
-                    ))
+                    unavailableVaultPaths: unavailableRootPaths()
                 )
                 continue
             }
@@ -4381,6 +4391,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     func repository(vaultID: UUID) throws -> VaultRepository {
+        if unavailableRootVaultIDs.contains(vaultID) {
+            throw WorkspaceRegistryError.vaultAccessUnavailable(
+                try vault(id: vaultID).canonicalPath
+            )
+        }
         guard let repository = services.repositories[vaultID] else {
             throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
         }
@@ -4391,8 +4406,28 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if isShutDown { throw ScholiumApplicationError.workspaceShutDown(id) }
     }
 
+    private func requireRootAuthoritiesAvailable() throws {
+        guard let vaultID = WorkspaceVaultSlot.allCases.compactMap({ slot in
+            assignment.vault(for: slot)?.id
+        }).first(where: unavailableRootVaultIDs.contains) else {
+            return
+        }
+        throw WorkspaceRegistryError.vaultAccessUnavailable(
+            try vault(id: vaultID).canonicalPath
+        )
+    }
+
+    private func unavailableRootPaths() -> [UUID: String] {
+        Dictionary(uniqueKeysWithValues: unavailableRootVaultIDs.compactMap { vaultID in
+            assignment.vaults.values.first(where: { $0.id == vaultID }).map {
+                (vaultID, $0.canonicalPath)
+            }
+        })
+    }
+
     func requireCompleteWorkspace() throws {
         try requireActive()
+        try requireRootAuthoritiesAvailable()
         guard currentSnapshot.phase.isComplete else {
             throw ScholiumApplicationError.workspaceStillLoading(id)
         }

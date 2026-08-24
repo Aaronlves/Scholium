@@ -6474,6 +6474,18 @@ final class WindowModel: ObservableObject {
             runtimeIdentity: capabilities.runtimeIdentity
         ) else { return }
 
+        if case .vaultAccessInvalidated(let invalidation) = event,
+           let path = WorkspaceVaultSlot.allCases.compactMap({ slot -> String? in
+               guard let vaultID = workspaceAssignment?.vault(for: slot)?.id else {
+                   return nil
+               }
+               return invalidation.unavailableVaultPaths[vaultID]
+           }).first {
+            _ = windowWorkspaceController.recordRecovery(
+                for: WorkspaceRegistryError.vaultAccessUnavailable(path)
+            )
+        }
+
         if case .researchConfigurationInvalidated = event {
             Task { [weak self] in
                 await self?.refreshResearchActionAvailability()

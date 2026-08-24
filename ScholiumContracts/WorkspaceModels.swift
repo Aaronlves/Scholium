@@ -761,6 +761,25 @@ public struct WorkspaceResearchConfigurationInvalidatedEvent: Sendable {
     }
 }
 
+/// A terminal authority discontinuity for the current Workspace activation.
+/// The last complete snapshot remains readable, but no source or derived-state
+/// operation may resume until Restore Access installs a replacement runtime.
+public struct WorkspaceVaultAccessInvalidatedEvent: Sendable {
+    public let generation: UInt64
+    public let unavailableVaultPaths: [UUID: String]
+    public let snapshot: WorkspaceSnapshot
+
+    public init(
+        generation: UInt64,
+        unavailableVaultPaths: [UUID: String],
+        snapshot: WorkspaceSnapshot
+    ) {
+        self.generation = generation
+        self.unavailableVaultPaths = unavailableVaultPaths
+        self.snapshot = snapshot
+    }
+}
+
 public struct WorkspaceRuntimeReloadedEvent: Sendable {
     public let generation: UInt64
     public let runtimeIdentity: TriptychRuntimeIdentity
@@ -798,6 +817,7 @@ public enum WorkspaceEvent: Sendable {
     case researchConfigurationInvalidated(
         WorkspaceResearchConfigurationInvalidatedEvent
     )
+    case vaultAccessInvalidated(WorkspaceVaultAccessInvalidatedEvent)
     case runtimeReloaded(WorkspaceRuntimeReloadedEvent)
 
     public var generation: UInt64 {
@@ -808,6 +828,7 @@ public enum WorkspaceEvent: Sendable {
         case .derivedStateChanged(let event): event.generation
         case .researchRecordsChanged(let event): event.generation
         case .researchConfigurationInvalidated(let event): event.generation
+        case .vaultAccessInvalidated(let event): event.generation
         case .runtimeReloaded(let event): event.generation
         }
     }
@@ -820,6 +841,7 @@ public enum WorkspaceEvent: Sendable {
         case .derivedStateChanged(let event): event.snapshot
         case .researchRecordsChanged(let event): event.snapshot
         case .researchConfigurationInvalidated(let event): event.snapshot
+        case .vaultAccessInvalidated(let event): event.snapshot
         case .runtimeReloaded(let event): event.snapshot
         }
     }
@@ -831,6 +853,12 @@ public enum WorkspaceEvent: Sendable {
         switch self {
         case .derivedStateChanged(let event):
             event.status
+        case .vaultAccessInvalidated(let event):
+            .stale(WorkspaceDerivedRefreshIssue(
+                reason: "A vault root changed identity. Restore access before Scholium reads, refreshes, or changes that vault again.",
+                affectedVaultIDs: Set(event.unavailableVaultPaths.keys),
+                lastKnownGood: WorkspaceDerivedRefreshEvidence(snapshot: event.snapshot)
+            ))
         case .snapshot,
              .sourceCommitted,
              .inventoryChanged,

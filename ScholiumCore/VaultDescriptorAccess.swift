@@ -25,9 +25,21 @@ final class VaultDescriptorAccess {
     }
 
     private let rootURL: URL
+    private let authorizedRootIdentity: FileIdentity
+    private(set) var rootAuthorityIsInvalid = false
 
-    init(rootURL: URL) {
+    init(rootURL: URL) throws {
         self.rootURL = rootURL.standardizedFileURL
+        let descriptor = try Self.openDirectory(rootURL: self.rootURL)
+        defer { close(descriptor) }
+        authorizedRootIdentity = try Self.directoryIdentity(descriptor: descriptor)
+    }
+
+    /// Proves that the registered path still names the exact directory object
+    /// authorized when this access boundary was created.
+    func verifyRootIdentity() throws {
+        let descriptor = try openAuthorizedRoot()
+        close(descriptor)
     }
 
     func read(_ path: MarkdownRelativePath) throws -> Data {
@@ -69,11 +81,12 @@ final class VaultDescriptorAccess {
         guard let name = components.last else {
             throw VaultRepositoryError.invalidRelativePath(path.rawValue)
         }
-        let rootDescriptor = open(
-            rootURL.path,
-            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
-        )
-        guard rootDescriptor >= 0 else { return .inaccessible(errno) }
+        let rootDescriptor: Int32
+        do {
+            rootDescriptor = try openAuthorizedRoot()
+        } catch let error as POSIXError {
+            return .inaccessible(error.code.rawValue)
+        }
         defer { close(rootDescriptor) }
 
         var currentDescriptor = rootDescriptor
@@ -153,13 +166,7 @@ final class VaultDescriptorAccess {
         guard let name = components.last else {
             throw VaultRepositoryError.invalidRelativePath(rawValue)
         }
-        let rootDescriptor = open(
-            rootURL.path,
-            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
-        )
-        guard rootDescriptor >= 0 else {
-            throw Self.openError(code: errno, path: rawValue)
-        }
+        let rootDescriptor = try openAuthorizedRoot()
         defer { close(rootDescriptor) }
 
         var currentDescriptor = rootDescriptor
@@ -226,6 +233,51 @@ final class VaultDescriptorAccess {
         var status = stat()
         guard fstat(descriptor, &status) == 0 else {
             throw POSIXError(posixCode(errno))
+        }
+        return FileIdentity(status)
+    }
+
+    private func openAuthorizedRoot() throws -> Int32 {
+        guard !rootAuthorityIsInvalid else {
+            throw VaultRepositoryError.rootUnavailable(rootURL.path)
+        }
+        let descriptor: Int32
+        do {
+            descriptor = try Self.openDirectory(rootURL: rootURL)
+        } catch {
+            rootAuthorityIsInvalid = true
+            throw error
+        }
+        do {
+            guard try Self.directoryIdentity(descriptor: descriptor)
+                    == authorizedRootIdentity else {
+                rootAuthorityIsInvalid = true
+                throw VaultRepositoryError.rootUnavailable(rootURL.path)
+            }
+            return descriptor
+        } catch {
+            rootAuthorityIsInvalid = true
+            close(descriptor)
+            throw error
+        }
+    }
+
+    private static func openDirectory(rootURL: URL) throws -> Int32 {
+        let descriptor = open(
+            rootURL.path,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        )
+        guard descriptor >= 0 else {
+            throw VaultRepositoryError.rootUnavailable(rootURL.path)
+        }
+        return descriptor
+    }
+
+    private static func directoryIdentity(descriptor: Int32) throws -> FileIdentity {
+        var status = stat()
+        guard fstat(descriptor, &status) == 0,
+              (status.st_mode & S_IFMT) == S_IFDIR else {
+            throw VaultRepositoryError.rootUnavailable("authorized root")
         }
         return FileIdentity(status)
     }

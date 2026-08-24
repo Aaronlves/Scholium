@@ -7,6 +7,7 @@ public actor WorkspaceEventSource {
     private var currentSnapshot: WorkspaceSnapshot
     private var generation: UInt64 = 0
     private var continuations: [UUID: AsyncStream<WorkspaceEvent>.Continuation] = [:]
+    private var vaultAccessInvalidation: WorkspaceVaultAccessInvalidatedEvent?
     private var isFinished = false
 
     init(initialSnapshot: WorkspaceSnapshot) {
@@ -23,10 +24,14 @@ public actor WorkspaceEventSource {
             // resynchronize without replaying obsolete intermediate work.
             bufferingPolicy: .bufferingNewest(1)
         )
-        pair.continuation.yield(.snapshot(WorkspaceSnapshotEvent(
-            generation: generation,
-            snapshot: currentSnapshot
-        )))
+        if let vaultAccessInvalidation {
+            pair.continuation.yield(.vaultAccessInvalidated(vaultAccessInvalidation))
+        } else {
+            pair.continuation.yield(.snapshot(WorkspaceSnapshotEvent(
+                generation: generation,
+                snapshot: currentSnapshot
+            )))
+        }
         guard !isFinished else {
             pair.continuation.finish()
             return pair.stream
@@ -103,6 +108,23 @@ public actor WorkspaceEventSource {
         ), snapshot: snapshot)
     }
 
+    func publishVaultAccessInvalidated(
+        snapshot: WorkspaceSnapshot,
+        unavailableVaultPaths: [UUID: String]
+    ) {
+        let event = WorkspaceVaultAccessInvalidatedEvent(
+            generation: nextGeneration(),
+            unavailableVaultPaths: unavailableVaultPaths,
+            snapshot: snapshot
+        )
+        vaultAccessInvalidation = event
+        publish(
+            .vaultAccessInvalidated(event),
+            snapshot: snapshot,
+            allowedDuringVaultAccessInvalidation: true
+        )
+    }
+
     func publishRuntimeReloaded(
         runtimeIdentity: TriptychRuntimeIdentity,
         snapshot: WorkspaceSnapshot
@@ -111,7 +133,7 @@ public actor WorkspaceEventSource {
             generation: nextGeneration(),
             runtimeIdentity: runtimeIdentity,
             snapshot: snapshot
-        )), snapshot: snapshot)
+        )), snapshot: snapshot, allowedDuringVaultAccessInvalidation: true)
     }
 
     func finish(finalSnapshot: WorkspaceSnapshot) {
@@ -131,8 +153,15 @@ public actor WorkspaceEventSource {
         return generation
     }
 
-    private func publish(_ event: WorkspaceEvent, snapshot: WorkspaceSnapshot) {
-        guard !isFinished else { return }
+    private func publish(
+        _ event: WorkspaceEvent,
+        snapshot: WorkspaceSnapshot,
+        allowedDuringVaultAccessInvalidation: Bool = false
+    ) {
+        guard !isFinished,
+              allowedDuringVaultAccessInvalidation || vaultAccessInvalidation == nil else {
+            return
+        }
         currentSnapshot = snapshot
         for continuation in continuations.values {
             continuation.yield(event)

@@ -24,7 +24,9 @@ actor PooledWorkspaceVault {
     private let securityScopeURL: URL?
     private let watcher: WorkspaceFileEventWatcher?
     private var watcherTask: Task<Void, Never>?
+    private var watcherTaskToken: UUID?
     private var subscribers: [UUID: Subscriber] = [:]
+    private var rootAuthorityIsInvalid = false
     private var isShutDown = false
 
     init(
@@ -44,22 +46,25 @@ actor PooledWorkspaceVault {
     }
 
     func start() async throws {
-        guard !isShutDown, watcherTask == nil, let watcher else { return }
+        guard !isShutDown,
+              !rootAuthorityIsInvalid,
+              watcherTask == nil,
+              let watcher else { return }
         let events = try await watcher.start()
+        let token = UUID()
+        watcherTaskToken = token
         watcherTask = Task { [weak self] in
             for await event in events {
                 guard !Task.isCancelled, let self else { return }
                 await self.receive(event)
             }
             guard !Task.isCancelled, let self else { return }
-            await self.reportUnexpectedWatcherTermination()
+            await self.watcherDidTerminate(token: token)
         }
     }
 
     func events() -> AsyncStream<VaultWatchEvent> {
-        let pair = AsyncStream<VaultWatchEvent>.makeStream(
-            bufferingPolicy: .bufferingNewest(64)
-        )
+        let pair = WorkspaceWatchEventBuffer.makeStream()
         guard !isShutDown else {
             pair.continuation.finish()
             return pair.stream
@@ -69,7 +74,13 @@ actor PooledWorkspaceVault {
         subscribers[id] = Subscriber(token: token, continuation: pair.continuation)
         // A new borrower begins from its own complete snapshot and needs only
         // a full-reconciliation hint, never replay of an incomplete raw batch.
-        pair.continuation.yield(.reconciliationRequired(sequence: 0))
+        WorkspaceWatchEventBuffer.yield(
+            .reconciliationRequired(
+                sequence: 0,
+                rootChanged: rootAuthorityIsInvalid
+            ),
+            to: pair.continuation
+        )
         pair.continuation.onTermination = { [weak self] _ in
             guard let self else { return }
             Task { await self.removeSubscriber(id: id, token: token) }
@@ -82,6 +93,7 @@ actor PooledWorkspaceVault {
         isShutDown = true
         let task = watcherTask
         watcherTask = nil
+        watcherTaskToken = nil
         task?.cancel()
         if let watcher { await watcher.stop() }
         await task?.value
@@ -93,21 +105,19 @@ actor PooledWorkspaceVault {
 
     private func publish(_ event: VaultWatchEvent) {
         for subscriber in subscribers.values {
-            let result = subscriber.continuation.yield(event)
-            if case .dropped = result {
-                // Each borrower owns an independently bounded queue. If that
-                // queue loses an event, replace the newest slot with an
-                // explicit reconcile request rather than pretending the
-                // remaining path delta is complete.
-                subscriber.continuation.yield(.reconciliationRequired(
-                    sequence: event.sequence,
-                    rootChanged: event.rootChanged
-                ))
-            }
+            WorkspaceWatchEventBuffer.yield(
+                event,
+                to: subscriber.continuation
+            )
         }
     }
 
     private func receive(_ event: VaultWatchEvent) async {
+        if event.rootChanged {
+            await invalidateRootAuthority(sequence: event.sequence)
+            return
+        }
+        guard !rootAuthorityIsInvalid else { return }
         do {
             try await sourceCatalog.apply(event)
             publish(event)
@@ -120,12 +130,26 @@ actor PooledWorkspaceVault {
         }
     }
 
-    private func reportUnexpectedWatcherTermination() {
-        guard !isShutDown else { return }
+    private func watcherDidTerminate(token: UUID) async {
+        guard watcherTaskToken == token else { return }
+        watcherTaskToken = nil
+        watcherTask = nil
+        guard !isShutDown, !rootAuthorityIsInvalid else { return }
         // The raw watcher stream is intentionally not exposed as a generic
         // error bus. A root-change reconciliation hint lets each borrowing
         // WorkspaceHandle publish its own typed stale derived-state event.
-        publish(.reconciliationRequired(sequence: 0, rootChanged: true))
+        await invalidateRootAuthority(sequence: 0)
+    }
+
+    private func invalidateRootAuthority(sequence: UInt64) async {
+        guard !isShutDown, !rootAuthorityIsInvalid else { return }
+        rootAuthorityIsInvalid = true
+        await sourceCatalog.requireFullReconcile()
+        publish(.reconciliationRequired(
+            sequence: sequence,
+            rootChanged: true
+        ))
+        if let watcher { await watcher.stop() }
     }
 
     private func removeSubscriber(id: UUID, token: UUID) {
@@ -135,6 +159,17 @@ actor PooledWorkspaceVault {
 
     var subscriberCount: Int { subscribers.count }
     var ownsNativeWatcher: Bool { watcherTask != nil }
+    var hasInvalidRootAuthority: Bool {
+        get async {
+            if rootAuthorityIsInvalid { return true }
+            return await repository.rootAuthorityIsInvalid
+        }
+    }
+
+    // Internal deterministic seam for root-discontinuity integration tests.
+    func receiveForTesting(_ event: VaultWatchEvent) async {
+        await receive(event)
+    }
 }
 
 /// Runtime-owned pool keyed by stable vault UUID and guarded by canonical
@@ -257,6 +292,14 @@ actor WorkspaceVaultPool {
     var runtimeCount: Int { vaults.count }
 
     func runtime(vaultID: UUID) -> PooledWorkspaceVault? { vaults[vaultID] }
+
+    func invalidRootVaultIDs() async -> Set<UUID> {
+        var invalid: Set<UUID> = []
+        for (vaultID, vault) in vaults where await vault.hasInvalidRootAuthority {
+            invalid.insert(vaultID)
+        }
+        return invalid
+    }
 
     private nonisolated static func makeVault(
         _ registeredVault: RegisteredVault,

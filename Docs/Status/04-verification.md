@@ -352,8 +352,8 @@ override.
   that reconciliation. A controlled barrier proved the Workspace remains
   Opening while reconciliation is paused; both progressive-opening tests passed
   together, and the same parallel Application batch passed 223/223. The latest
-  complete current-tree coverage above now includes that repair. Real packaged
-  File Provider acceptance remains open.
+  current-tree coverage above now includes that repair. 2026-08-25 root-authority
+  passed; File Provider acceptance remains open.
 - On 2026-08-13, the progressive-opening Application contract test proved that
   one selected live Vault publishes first, its Note remains loadable, Search
   fails closed with `workspaceStillLoading`, and the same handle later publishes

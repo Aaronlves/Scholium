@@ -12,9 +12,13 @@ rejects absolute paths, empty or dot components, NUL, and non-Markdown targets.
 volume-sensitive `VaultPathComparisonKey` only for case/Unicode collision
 decisions; neither rewrites Markdown or stored display paths.
 
-`VaultDescriptorAccess` opens one root descriptor for each top-level operation,
-walks every parent with `openat` plus `O_NOFOLLOW`, and opens leaves with
-`O_NOFOLLOW | O_NONBLOCK`. Immediate `fstat` accepts regular files only.
+`VaultDescriptorAccess` captures the authorized root's device and inode when a
+repository opens, then verifies that exact directory identity whenever it opens
+the registered root path. A moved, replaced, inaccessible, or symlinked root is
+latched unavailable and cannot be reused merely because a directory later
+appears at the same path. Each authorized operation walks every parent with
+`openat` plus `O_NOFOLLOW`, and opens leaves with `O_NOFOLLOW | O_NONBLOCK`.
+Immediate `fstat` accepts regular files only.
 Enumeration supplies candidates, never final authorization. Vault loads,
 fingerprints, precommit checks, postcommit readback, and recovery verification
 all use this descriptor-relative boundary. `FilePresence` distinguishes

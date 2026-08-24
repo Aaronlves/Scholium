@@ -186,10 +186,10 @@ documents, without a second source read, before any complete Triptych Search
 generation may publish.
 Projection construction advances monotonic UTF-16 cursors, preserving exact
 source mapping without repeatedly rescanning an accumulated String.
-Watchers start before the initial
-reconcile; precise add/edit/delete/rename events update affected entries, while
-event loss, root replacement, or explicit rebuild requests force a full
-stat/reconcile. `WorkspaceSnapshotBuilder` consumes three immutable catalog
+Watchers start before initial reconcile; precise events update entries. Event
+loss or rebuilds reconcile fully; root replacement
+invalidates the pool until Restore Access replaces it. `WorkspaceSnapshotBuilder`
+consumes three immutable catalog
 generations and still rebuilds the complete in-memory graph. The three
 independent catalog actors may prepare concurrently inside one refresh cycle;
 Graph construction, Search synchronization, snapshot publication, failure, and

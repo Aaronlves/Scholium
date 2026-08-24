@@ -46,10 +46,14 @@ public actor VaultRepository {
         self.canonicalRoot = vaultURL.resolvingSymlinksInPath().standardizedFileURL
         let pathResolver = try VaultPathResolver(rootURL: vaultURL)
         self.pathResolver = pathResolver
-        self.descriptorAccess = VaultDescriptorAccess(rootURL: pathResolver.canonicalRoot)
-        self.mutationCoordinator = VaultMutationCoordinator(
+        let descriptorAccess = try VaultDescriptorAccess(
+            rootURL: pathResolver.canonicalRoot
+        )
+        self.descriptorAccess = descriptorAccess
+        self.mutationCoordinator = try VaultMutationCoordinator(
             resolver: pathResolver,
-            hooks: mutationHooks
+            hooks: mutationHooks,
+            descriptorAccess: descriptorAccess
         )
         self.storageURL = applicationSupportURL
             .appendingPathComponent("Vaults", isDirectory: true)
@@ -62,6 +66,10 @@ public actor VaultRepository {
 
     public func recoveryLedgerHealthDiagnostic() -> String? {
         recoveryLedger.healthDiagnostic
+    }
+
+    package var rootAuthorityIsInvalid: Bool {
+        descriptorAccess.rootAuthorityIsInvalid
     }
 
     /// Read-only filename comparison facts for this exact mounted vault root.
@@ -200,6 +208,7 @@ public actor VaultRepository {
     /// Returns every ordinary Markdown path in the selected vault. Folder names
     /// have no hidden-location meaning and are never filtered by repository policy.
     public func markdownRelativePaths() throws -> [String] {
+        try descriptorAccess.verifyRootIdentity()
         var enumerationError: (any Error)?
         guard let enumerator = fileManager.enumerator(
             at: canonicalRoot,
@@ -229,6 +238,7 @@ public actor VaultRepository {
             paths.append(relativePath)
         }
         if let enumerationError { throw enumerationError }
+        try descriptorAccess.verifyRootIdentity()
         return paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
@@ -238,6 +248,7 @@ public actor VaultRepository {
     public func folderRelativePaths() throws
         -> [VaultRelativeFolderPath]
     {
+        try descriptorAccess.verifyRootIdentity()
         var enumerationError: (any Error)?
         guard let enumerator = fileManager.enumerator(
             at: canonicalRoot,
@@ -265,6 +276,7 @@ public actor VaultRepository {
             paths.append(path)
         }
         if let enumerationError { throw enumerationError }
+        try descriptorAccess.verifyRootIdentity()
         return paths.sorted {
             $0.rawValue.localizedStandardCompare($1.rawValue) == .orderedAscending
         }
@@ -1026,6 +1038,7 @@ public actor VaultRepository {
             return .notWritten(.invalidFrontmatter(reason))
         case .invalidRelativePath,
              .outsideVault,
+             .rootUnavailable,
              .fileDoesNotExist,
              .fileAlreadyExists,
              .notRegularFile,

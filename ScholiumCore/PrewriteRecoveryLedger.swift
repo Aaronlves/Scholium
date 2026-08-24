@@ -63,7 +63,7 @@ final class PrewriteRecoveryLedger {
             fileMode: 0o600,
             maximumByteCount: .max
         )
-        byteAccess = VaultDescriptorAccess(rootURL: rootURL)
+        byteAccess = try VaultDescriptorAccess(rootURL: rootURL)
         do {
             lock = try AdvisoryFileLock(directory: storage, fileName: ".transactions.lock")
             try lock.withExclusiveLock {
@@ -186,9 +186,15 @@ final class PrewriteRecoveryLedger {
     }
 
     private func replayMutationTransactions(vaultURL: URL) {
-        let access = VaultDescriptorAccess(
-            rootURL: vaultURL.resolvingSymlinksInPath().standardizedFileURL
-        )
+        let access: VaultDescriptorAccess
+        do {
+            access = try VaultDescriptorAccess(
+                rootURL: vaultURL.resolvingSymlinksInPath().standardizedFileURL
+            )
+        } catch {
+            healthDiagnostic = "Interrupted saves remain retained because the authorized vault root is unavailable."
+            return
+        }
         do {
             try locked {
                 for transaction in try pendingMutationsLocked() {

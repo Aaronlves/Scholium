@@ -1029,6 +1029,96 @@ struct AppCompositionRootTests {
         }
     }
 
+    @Test("A live root discontinuity enters Restore Access without replacing a dirty document")
+    func liveRootDiscontinuityPreservesDirtyDocument() async throws {
+        let fileManager = FileManager.default
+        let isolatedHome = fileManager.temporaryDirectory.appendingPathComponent(
+            "Scholium-RootRecovery-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let fixtureRoot = isolatedHome.appendingPathComponent("Fixture", isDirectory: true)
+        let analyses = fixtureRoot.appendingPathComponent("Analyses", isDirectory: true)
+        let topics = fixtureRoot.appendingPathComponent("Topics", isDirectory: true)
+        let works = fixtureRoot.appendingPathComponent("Works", isDirectory: true)
+        for directory in [isolatedHome, fixtureRoot, analyses, topics, works] {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        try Data("# Shared\n\nOriginal source.\n".utf8).write(
+            to: analyses.appendingPathComponent("Shared.md")
+        )
+        try Data("# Topic\n".utf8).write(
+            to: topics.appendingPathComponent("Topic.md")
+        )
+        try Data("# Work\n".utf8).write(
+            to: works.appendingPathComponent("Work.md")
+        )
+
+        let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
+        setenv("SCHOLIUM_HOME", isolatedHome.path, 1)
+        defer {
+            if let previousHome {
+                setenv("SCHOLIUM_HOME", previousHome, 1)
+            } else {
+                unsetenv("SCHOLIUM_HOME")
+            }
+            try? fileManager.removeItem(at: isolatedHome)
+        }
+
+        let store = makeTestWorkspaceStore()
+        let configured = try await store.configureTriptychCapabilities(
+            paperAnalysisURL: analyses,
+            topicKnowledgeURL: topics,
+            outputURL: works,
+            portableContainerURL: fixtureRoot,
+            triptychName: "Root Recovery"
+        )
+        let window = WindowModel(
+            workspaceStore: store,
+            requestedTriptychID: configured.id
+        )
+        await window.refreshWorkspaceAssignment(preferredTriptychID: configured.id)
+        try await window.openWorkspaceVault(.paperAnalysis)
+        let analysesVault = try #require(configured.assignment.vault(for: .paperAnalysis))
+        let noteID = VaultQualifiedNoteID(
+            vaultID: analysesVault.id,
+            relativePath: "Shared.md"
+        )
+        let note = try #require(try await window.documentController.noteSnapshot(noteID))
+        window.documentController.installOpenedDocument(
+            note,
+            vaultName: analysesVault.name,
+            vaultRole: analysesVault.role
+        )
+        let selected = try #require(window.documentController.selectedDocument)
+        let session = window.documentController.session(for: selected.editingTarget)
+        window.documentController.beginEditing(
+            session: session,
+            target: selected.editingTarget,
+            source: note.document.rawContent,
+            revision: note.fingerprint,
+            mode: .source
+        )
+        session.suppressAutosave = true
+        let exactDirtyBuffer = "\u{FEFF}# Shared\r\n\r\nUncommitted exact source.\r\n"
+        session.editingSource = exactDirtyBuffer
+
+        try await store.applicationRuntime.deliverPooledVaultEventForTesting(
+            .reconciliationRequired(sequence: 90, rootChanged: true),
+            vaultID: analysesVault.id
+        )
+        try await waitUntil("the window entered bounded Vault access recovery") {
+            window.windowWorkspaceController.state.accessRecovery?.expectedPath
+                == analyses.path
+        }
+
+        #expect(window.workspaceAssignment?.id == configured.id)
+        #expect(window.documentController.selectedDocument == selected)
+        #expect(session.editingSource == exactDirtyBuffer)
+        #expect(session.hasUnsavedChanges)
+        #expect(window.windowWorkspaceController.state.accessRecovery?.kind == .vault)
+        await store.shutdownApplicationRuntime()
+    }
+
     @Test("Restore Access can remove an unavailable registration and return to unconfigured state")
     func restoreAccessRemovesUnavailableRegistration() async throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
