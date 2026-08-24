@@ -72,6 +72,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var documentRevisions: [String: DocumentFingerprint] = [:]
         var relationshipGraph: GraphSnapshot?
         var searchGeneration: SearchGenerationID?
+        var recordSearchGeneration: RecordSearchGenerationID?
         var snapshotPhase: WorkspaceSnapshotPhase?
         var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
         var propertyFilterOptions = WindowPropertyFilterOptions(
@@ -119,6 +120,9 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     var documentRevisions: [String: DocumentFingerprint] { state.documentRevisions }
     var relationshipGraph: GraphSnapshot? { state.relationshipGraph }
     var searchGeneration: SearchGenerationID? { state.searchGeneration }
+    var recordSearchGeneration: RecordSearchGenerationID? {
+        state.recordSearchGeneration
+    }
     var snapshotPhase: WorkspaceSnapshotPhase? { state.snapshotPhase }
     var derivedRefreshStatus: WorkspaceDerivedRefreshStatus? {
         state.derivedRefreshStatus
@@ -608,6 +612,16 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     ) -> WindowWorkspaceProjectionCommit {
         invalidateCatalogLoad()
         let previousSearchGeneration = state.searchGeneration
+        let previousRecordSearchGeneration = state.recordSearchGeneration
+        let hadPreviousSnapshot = state.snapshotPhase != nil
+        let recordSearchGeneration = snapshot.phase.isComplete
+            && snapshot.research.finishedResearchRecordProjectionIsComplete
+            ? RecordSearchGenerationID(
+                triptychID: snapshot.triptych.id,
+                sourceManifestHash:
+                    snapshot.research.finishedResearchRecordSourceManifestHash
+            )
+            : nil
         var next = state
         next.metadataCatalog = snapshot.metadataCatalog
         next.catalog = snapshot.discovery.catalog
@@ -616,6 +630,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         )
         next.relationshipGraph = snapshot.discovery.catalog.graph
         next.searchGeneration = snapshot.discovery.searchGeneration
+        next.recordSearchGeneration = recordSearchGeneration
         next.snapshotPhase = snapshot.phase
         next.derivedRefreshStatus = status
         next.catalogError = switch status {
@@ -643,9 +658,13 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             installVisibleNotes(notes, in: &next)
         }
         state = next
+        let noteSearchGenerationChanged = previousSearchGeneration != nil
+            && previousSearchGeneration != snapshot.discovery.searchGeneration
+        let recordSearchGenerationChanged = hadPreviousSnapshot
+            && previousRecordSearchGeneration != recordSearchGeneration
         return WindowWorkspaceProjectionCommit(
-            searchGenerationChanged: previousSearchGeneration != nil
-                && previousSearchGeneration != snapshot.discovery.searchGeneration,
+            searchGenerationChanged: noteSearchGenerationChanged
+                || recordSearchGenerationChanged,
             retainedDeletedDocumentPath: retainedDeletedDocumentPath,
             snapshotPhase: snapshot.phase,
             derivedRefreshStatus: status

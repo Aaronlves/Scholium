@@ -66,6 +66,44 @@ struct SearchPropertyIndexTests {
         ).noteResults.isEmpty)
     }
 
+    @Test("Keyword lexical hits retain their exact YAML member range")
+    func keywordLexicalRangeDoesNotDependOnTextUniqueness() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        let source = """
+        ---
+        summary: Ethics
+        keywords: [Ethics, Ethics]
+        ---
+        Body
+        """
+        _ = try await index.synchronize([fixture.item("Topic.md", source)])
+
+        let response = try await index.testSearch(fixture.request("keyword:ethics"))
+        let range = try #require(response.noteResults.first?.sourceRange)
+        #expect(range.line == 3)
+        #expect(sourceText(source, range: range) == "Ethics")
+    }
+
+    @Test("Escaped YAML keywords fall back to the complete authored scalar range")
+    func escapedKeywordLexicalRangeIsComplete() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        let source = """
+        ---
+        keywords: ["\\u0041gency"]
+        ---
+        Body
+        """
+        _ = try await index.synchronize([fixture.item("Topic.md", source)])
+
+        let response = try await index.testSearch(fixture.request("keyword:agency"))
+        let range = try #require(response.noteResults.first?.sourceRange)
+        #expect(sourceText(source, range: range) == "\"\\u0041gency\"")
+    }
+
     @Test("Managed property-only metadata changes converge with a clean rebuild")
     func metadataIncrementalCleanRebuildParity() async throws {
         let fixture = try Fixture()

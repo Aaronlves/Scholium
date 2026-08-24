@@ -243,12 +243,14 @@ struct SearchProtocolContractsTests {
         #expect(
             SearchCapabilities.current.completions(
                 for: "property:lan",
+                scope: .triptych,
                 context: scoped
             ).first?.replacementText == "property:language"
         )
         #expect(
             SearchCapabilities.current.completions(
                 for: "from-note:Crit",
+                scope: .triptych,
                 context: scoped
             ).first?.replacementText
                 == #"from-note:"Critique of Practical Reason""#
@@ -256,12 +258,14 @@ struct SearchProtocolContractsTests {
         #expect(
             SearchCapabilities.current.completions(
                 for: "property:language=Gr",
+                scope: .triptych,
                 context: scoped
             ).first?.replacementText == "property:language=Greek"
         )
         #expect(
             SearchCapabilities.current.completions(
                 for: "kind:record prop",
+                scope: .triptych,
                 context: scoped
             ).isEmpty
         )
@@ -337,32 +341,56 @@ struct SearchProtocolContractsTests {
     @Test("Case pack: dynamic candidates require authorized scope context")
     func casePackDynamicCandidateBoundary() throws {
         #expect(
-            SearchCapabilities.current.completions(for: "property:lan").isEmpty
+            SearchCapabilities.current.completions(
+                for: "property:lan",
+                scope: .triptych
+            ).isEmpty
         )
         #expect(
             SearchCapabilities.current.completions(
                 for: "property:lan",
+                scope: .triptych,
                 context: SearchCompletionContext(propertyKeys: ["language"])
             ).first?.replacementText == "property:language"
         )
         #expect(
-            SearchCapabilities.current.completions(for: "from-note:Anch").isEmpty
+            SearchCapabilities.current.completions(
+                for: "from-note:Anch",
+                scope: .triptych
+            ).isEmpty
         )
         #expect(
             SearchCapabilities.current.completions(
                 for: "from-note:Anch",
+                scope: .triptych,
                 context: SearchCompletionContext(noteIdentities: ["Anchor"])
             ).first?.replacementText == "from-note:Anchor"
         )
         #expect(
             SearchCapabilities.current.completions(
                 for: "property:stage=d",
+                scope: .triptych,
                 context: SearchCompletionContext(
                     propertyKeys: ["stage"],
                     propertyValues: ["stage": ["draft", "review"]]
                 )
             ).first?.replacementText == "property:stage=draft"
         )
+        #expect(
+            SearchCapabilities.current.completions(
+                for: "property:lan",
+                scope: .thisNote,
+                context: SearchCompletionContext(propertyKeys: ["language"])
+            ).isEmpty
+        )
+        #expect(SearchCapabilities.current.completions(
+            for: "call",
+            scope: .thisNote
+        ).isEmpty)
+        #expect(SearchCapabilities.current.completions(
+            for: "bod",
+            scope: .thisNote
+        ).first?.replacementText == "body:")
     }
 
     @Test("Unsupported and malformed syntax returns stable diagnostics")
@@ -393,6 +421,22 @@ struct SearchProtocolContractsTests {
         let empty = SearchQueryParser.parse("   ")
         #expect(empty.diagnostics.isEmpty)
         #expect(empty.ast?.clauses.isEmpty == true)
+    }
+
+    @Test("Quoted exact phrases retain literal operator punctuation")
+    func quotedOperatorPunctuationIsLiteral() throws {
+        for query in [
+            #"title:"Reasons (Internalism)""#,
+            #""Agency | Autonomy""#,
+            #"publication_date:"1990..2000""#,
+            #"body:"A / B""#,
+        ] {
+            let parsed = SearchQueryParser.parse(query)
+            #expect(parsed.diagnostics.isEmpty, "Unexpected diagnostic for \(query)")
+            #expect(try #require(parsed.ast).clauses.count == 1)
+        }
+        #expect(SearchQueryParser.parse("title:/agency/").diagnostics.first?.code
+            == .unsupportedSyntax)
     }
 
     @Test("CJK uses symmetric character and bigram rules without prefix syntax")

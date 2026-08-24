@@ -985,8 +985,16 @@ public actor TriptychSearchIndex {
             let properties = includingProperties
                 ? try self.properties(documentID: rowID)
                 : []
-            let lineStarts = (row.text(at: 16).flatMap { $0.data(using: .utf8) })
-                .flatMap { try? JSONDecoder().decode([Int].self, from: $0) } ?? [0]
+            let lineStarts = try Self.decodeGeneratedJSON(
+                [Int].self,
+                from: row.text(at: 16)
+            )
+            guard lineStarts.first == 0,
+                  zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
+                      previous < next
+                  }) else {
+                throw SearchIndexError.corruptDatabase
+            }
             document = StoredSearchDocument(
                 rowID: rowID,
                 vaultID: vaultID,
@@ -1051,8 +1059,16 @@ public actor TriptychSearchIndex {
                     endColumn: row.int(at: 9)
                 )
             }
-            let offsets = (row.text(at: 10).flatMap { $0.data(using: .utf8) })
-                .flatMap { try? JSONDecoder().decode([SearchSegmentOffset].self, from: $0) } ?? []
+            let offsets = try Self.decodeGeneratedJSON(
+                [SearchSegmentOffset].self,
+                from: row.text(at: 10)
+            )
+            guard Self.valid(
+                offsets: offsets,
+                normalizedUTF16Count: normalized.utf16.count
+            ) else {
+                throw SearchIndexError.corruptDatabase
+            }
             result.append(SearchTextSegment(
                 field: field,
                 ordinal: row.int(at: 1),
@@ -1543,6 +1559,8 @@ public actor TriptychSearchIndex {
                     values = (id, row.int(at: 1), row.int(at: 2), row.int(at: 3), row.int(at: 4))
                 }
             }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw SearchIndexError.incompatibleSchema
         }
@@ -1560,6 +1578,88 @@ public actor TriptychSearchIndex {
         guard definition?.contains("USING FTS5") == true,
               definition?.contains("CONTENT=") == false else {
             throw SearchIndexError.incompatibleSchema
+        }
+        do {
+            try validateGeneratedJSON(in: database)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as SearchIndexError {
+            switch error {
+            case .corruptDatabase:
+                throw error
+            case .incompatibleSchema, .invalidDocuments, .sqlite:
+                throw SearchIndexError.incompatibleSchema
+            }
+        } catch {
+            throw SearchIndexError.incompatibleSchema
+        }
+    }
+
+    private static func validateGeneratedJSON(
+        in database: SearchSQLiteDatabase
+    ) throws {
+        try Task.checkCancellation()
+        try database.query(
+            "SELECT line_starts FROM search_documents;"
+        ) { row in
+            try Task.checkCancellation()
+            let lineStarts = try decodeGeneratedJSON(
+                [Int].self,
+                from: row.text(at: 0)
+            )
+            guard lineStarts.first == 0,
+                  zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
+                      previous < next
+                  }) else {
+                throw SearchIndexError.corruptDatabase
+            }
+        }
+        try database.query(
+            "SELECT normalized_text, offset_map FROM search_segments;"
+        ) { row in
+            try Task.checkCancellation()
+            let normalized = row.text(at: 0) ?? ""
+            let offsets = try decodeGeneratedJSON(
+                [SearchSegmentOffset].self,
+                from: row.text(at: 1)
+            )
+            guard valid(
+                offsets: offsets,
+                normalizedUTF16Count: normalized.utf16.count
+            ) else {
+                throw SearchIndexError.corruptDatabase
+            }
+        }
+    }
+
+    private static func decodeGeneratedJSON<Value: Decodable>(
+        _ type: Value.Type,
+        from text: String?
+    ) throws -> Value {
+        guard let text, let data = text.data(using: .utf8) else {
+            throw SearchIndexError.corruptDatabase
+        }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw SearchIndexError.corruptDatabase
+        }
+    }
+
+    private static func valid(
+        offsets: [SearchSegmentOffset],
+        normalizedUTF16Count: Int
+    ) -> Bool {
+        guard offsets.allSatisfy({ offset in
+            offset.normalizedUTF16LowerBound >= 0
+                && offset.normalizedUTF16UpperBound >= offset.normalizedUTF16LowerBound
+                && offset.normalizedUTF16UpperBound <= normalizedUTF16Count
+                && offset.sourceUTF16LowerBound >= 0
+                && offset.sourceUTF16UpperBound >= offset.sourceUTF16LowerBound
+        }) else { return false }
+        return zip(offsets, offsets.dropFirst()).allSatisfy { previous, next in
+            previous.normalizedUTF16LowerBound <= next.normalizedUTF16LowerBound
+                && previous.sourceUTF16LowerBound <= next.sourceUTF16LowerBound
         }
     }
 
@@ -2077,6 +2177,12 @@ private enum NoteSearchResultBuilder {
         if !ast.positiveLexicalClauses.isEmpty { reasons.append(.lexical) }
         for clause in ast.clauses {
             switch clause {
+            case .structured(let value):
+                reasons.append(.structured(SearchStructuredMatch(
+                    field: value.field,
+                    value: value.value,
+                    excluded: value.excluded
+                )))
             case .property(let value):
                 if let match = SearchMatcher.propertyMatch(value, in: document) {
                     reasons.append(.property(match))
@@ -2085,7 +2191,7 @@ private enum NoteSearchResultBuilder {
                 if let relationshipMatch {
                     reasons.append(.relationship(relationshipMatch))
                 }
-            case .lexical, .structured, .record:
+            case .lexical, .record:
                 continue
             }
         }

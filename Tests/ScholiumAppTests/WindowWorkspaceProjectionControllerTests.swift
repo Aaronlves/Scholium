@@ -69,6 +69,93 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(commit.retainedDeletedDocumentPath == nil)
     }
 
+    @Test("Record-only corpus changes invalidate an open Search")
+    func recordOnlySearchGenerationInvalidation() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(
+            activeSource: "# Active\n",
+            searchSequence: 1,
+            recordManifestHash: "records-a"
+        )
+        let controller = WindowWorkspaceProjectionController {
+            initial.discovery.catalog
+        }
+        _ = controller.activate(
+            snapshot: initial,
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library)
+        )
+
+        let recordsChanged = fixture.snapshot(
+            activeSource: "# Active\n",
+            searchSequence: 1,
+            recordManifestHash: "records-b"
+        )
+        let commit = controller.receive(
+            .snapshot(WorkspaceSnapshotEvent(
+                generation: 1,
+                snapshot: recordsChanged
+            )),
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library)
+        )
+
+        #expect(commit?.searchGenerationChanged == true)
+        #expect(controller.searchGeneration?.sequence == 1)
+        #expect(controller.recordSearchGeneration?.sourceManifestHash == "records-b")
+    }
+
+    @Test("Record completeness changes invalidate Search with an unchanged manifest")
+    func recordCompletenessInvalidation() throws {
+        let fixture = try Fixture()
+        let initial = fixture.snapshot(
+            activeSource: "# Active\n",
+            searchSequence: 1,
+            recordManifestHash: "records-a"
+        )
+        let controller = WindowWorkspaceProjectionController {
+            initial.discovery.catalog
+        }
+        _ = controller.activate(
+            snapshot: initial,
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library)
+        )
+
+        let incomplete = fixture.snapshot(
+            activeSource: "# Active\n",
+            searchSequence: 1,
+            recordManifestHash: "records-a",
+            recordProjectionIsComplete: false
+        )
+        let unavailableCommit = controller.receive(
+            .snapshot(WorkspaceSnapshotEvent(
+                generation: 1,
+                snapshot: incomplete
+            )),
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library)
+        )
+        #expect(unavailableCommit?.searchGenerationChanged == true)
+        #expect(controller.recordSearchGeneration == nil)
+
+        let currentAgain = fixture.snapshot(
+            activeSource: "# Active\n",
+            searchSequence: 1,
+            recordManifestHash: "records-a"
+        )
+        let currentCommit = controller.receive(
+            .snapshot(WorkspaceSnapshotEvent(
+                generation: 2,
+                snapshot: currentAgain
+            )),
+            runtimeIdentity: fixture.runtimeIdentity,
+            context: fixture.context(sourceScope: .library)
+        )
+        #expect(currentCommit?.searchGenerationChanged == true)
+        #expect(controller.recordSearchGeneration?.sourceManifestHash == "records-a")
+    }
+
     @Test("Opening phase keeps the available Library and advances to complete")
     func openingPhaseProjection() throws {
         let fixture = try Fixture()
@@ -682,6 +769,8 @@ struct WindowWorkspaceProjectionControllerTests {
             activePath: String = "Active.md",
             folders: [VaultRelativeFolderPath] = [],
             searchSequence: Int,
+            recordManifestHash: String = "",
+            recordProjectionIsComplete: Bool = true,
             phase: WorkspaceSnapshotPhase = .complete
         ) -> WorkspaceSnapshot {
             var documents: [WorkspaceNoteSnapshot] = []
@@ -736,6 +825,9 @@ struct WindowWorkspaceProjectionControllerTests {
                         : nil
                 ),
                 research: WorkspaceResearchSnapshot(
+                    finishedResearchRecordSourceManifestHash: recordManifestHash,
+                    finishedResearchRecordProjectionIsComplete:
+                        recordProjectionIsComplete,
                     critiques: [],
                     healthIssues: []
                 )

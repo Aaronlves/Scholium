@@ -1209,18 +1209,22 @@ public enum SearchQueryParser {
         raw: String,
         token: Token
     ) -> SearchQueryDiagnostic? {
-        if raw.caseInsensitiveCompare("OR") == .orderedSame
-            || raw.caseInsensitiveCompare("NEAR") == .orderedSame
-            || raw.contains("(") || raw.contains(")") || raw.contains("|") {
+        let syntax = syntaxOutsideQuotedValue(raw)
+        if syntax.caseInsensitiveCompare("OR") == .orderedSame
+            || syntax.caseInsensitiveCompare("NEAR") == .orderedSame
+            || syntax.contains("(") || syntax.contains(")") || syntax.contains("|") {
             return diagnostic(
                 .unsupportedSyntax,
                 "OR, NEAR, grouping, and alternate-expression syntax are not supported.",
                 token
             )
         }
-        if raw.hasSuffix("~")
-            || raw.contains("..")
-            || (raw.count > 1 && raw.hasPrefix("/") && raw.hasSuffix("/")) {
+        let candidate = splitField(syntax).value
+        if syntax.hasSuffix("~")
+            || syntax.contains("..")
+            || (candidate.count > 1
+                && candidate.hasPrefix("/")
+                && candidate.hasSuffix("/")) {
             return diagnostic(
                 .unsupportedSyntax,
                 "Regular-expression, fuzzy, and range syntax are not supported.",
@@ -1228,6 +1232,30 @@ public enum SearchQueryParser {
             )
         }
         return nil
+    }
+
+    private static func syntaxOutsideQuotedValue(_ raw: String) -> String {
+        var result = ""
+        var quoted = false
+        var escaped = false
+        for character in raw {
+            if quoted {
+                if escaped {
+                    escaped = false
+                } else if character == "\\" {
+                    escaped = true
+                } else if character == "\"" {
+                    quoted = false
+                }
+                result.append(" ")
+            } else if character == "\"" {
+                quoted = true
+                result.append(" ")
+            } else {
+                result.append(character)
+            }
+        }
+        return result
     }
 
     private static func isKindToken(_ token: Token) -> Bool {

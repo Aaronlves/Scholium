@@ -367,11 +367,17 @@ struct WindowSearchControllerTests {
     func completionContract() throws {
         let capabilities = SearchCapabilities.current
         let recordCompletion = try #require(
-            capabilities.completions(for: "kind:record part").first
+            capabilities.completions(
+                for: "kind:record part",
+                scope: .triptych
+            ).first
         )
         #expect(recordCompletion.replacementText == "kind:record participant:")
         #expect(
-            capabilities.completions(for: "kind:record prop").isEmpty
+            capabilities.completions(
+                for: "kind:record prop",
+                scope: .triptych
+            ).isEmpty
         )
         #expect(
             capabilities.capability(for: .record)?.fields.contains {
@@ -391,7 +397,8 @@ struct WindowSearchControllerTests {
 
         let valueCompletion = try #require(
             capabilities.completions(
-                for: "kind:record participant:r"
+                for: "kind:record participant:r",
+                scope: .triptych
             ).first
         )
         #expect(

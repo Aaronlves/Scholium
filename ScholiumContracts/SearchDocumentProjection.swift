@@ -116,9 +116,14 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         summary = summaryMember?.value
         authors = []
         publicationDate = nil
-        tags = PropertyContractCatalog.contract(for: "keywords", profile: profile) == nil
-            ? []
-            : document.parsedFrontmatter["keywords"]?.canonicalStringList ?? []
+        let keywordMembers: [SearchPropertyProjection.StringMember] = PropertyContractCatalog.contract(
+            for: "keywords",
+            profile: profile
+        ) == nil ? [] : propertyProjection.entry(forExactKey: "keywords")
+            .flatMap { entry in
+                entry.valueKind == .stringSequence ? entry.stringMembers : nil
+            } ?? []
+        tags = keywordMembers.map(\.value)
         path = document.relativePath
         self.hasBrokenLink = hasBrokenLink
         calloutRoles = Set(semantic.callouts.map { $0.role.rawValue })
@@ -126,27 +131,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let sourceLocator = SearchSourceLocator(source: document.rawContent)
         sourceLineStartsUTF16 = sourceLocator.lineStartsUTF16
         var builtSegments: [SearchTextSegment] = []
-        func appendMetadata(
-            _ values: [String],
-            field: SearchMatchedField,
-            preferredRange: Range<Int>?
-        ) {
-            for value in values where !value.isEmpty {
-                let exact = sourceLocator.uniqueRange(of: value, within: preferredRange)
-                builtSegments.append(SearchProjectionBuilder.segment(
-                    field: field,
-                    ordinal: builtSegments.count,
-                    text: value,
-                    sourceRange: exact,
-                    source: document.rawContent,
-                    sourceLocator: sourceLocator
-                ))
-            }
-        }
-
-        let frontmatterRange = document.frontmatterByteRange.flatMap {
-            sourceLocator.utf16Range(forUTF8Range: $0)
-        }
         if titleResolution.source == .firstLevelOneHeading,
                   let heading = semantic.headings.first(where: { $0.level == 1 }) {
             let range = heading.span.utf16Range
@@ -173,7 +157,26 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 sourceLocator: sourceLocator
             ))
         }
-        appendMetadata(tags, field: .tag, preferredRange: frontmatterRange)
+        for member in keywordMembers where !member.value.isEmpty {
+            let range = member.sourceRange.map {
+                $0.utf16LowerBound..<$0.utf16UpperBound
+            }
+            builtSegments.append(SearchProjectionBuilder.segment(
+                field: .tag,
+                ordinal: builtSegments.count,
+                text: member.value,
+                sourceRange: range,
+                source: document.rawContent,
+                sourceLocator: sourceLocator,
+                explicitMap: range.map {
+                    SearchProjectionBuilder.alignedFragments(
+                        text: member.value,
+                        sourceRange: $0,
+                        source: document.rawContent
+                    )
+                }
+            ))
+        }
         builtSegments.append(SearchProjectionBuilder.segment(
             field: .path,
             ordinal: builtSegments.count,
@@ -428,9 +431,14 @@ private enum SearchProjectionBuilder {
         sourceRange: Range<Int>,
         source: String
     ) -> [SearchVisibleFragment] {
+        let fallback = [SearchVisibleFragment(
+            textRange: 0..<text.utf16.count,
+            sourceRange: sourceRange,
+            exact: false
+        )]
         let nsSource = source as NSString
         guard sourceRange.lowerBound >= 0,
-              sourceRange.upperBound <= nsSource.length else { return [] }
+              sourceRange.upperBound <= nsSource.length else { return fallback }
         var fragments: [SearchVisibleFragment] = []
         var sourceCursor = sourceRange.lowerBound
         var textCursor = 0
@@ -442,14 +450,13 @@ private enum SearchProjectionBuilder {
                 length: max(0, sourceRange.upperBound - sourceCursor)
             )
             let match = nsSource.range(of: value, options: [], range: remaining)
-            if match.location != NSNotFound {
-                fragments.append(SearchVisibleFragment(
-                    textRange: textCursor..<(textCursor + textLength),
-                    sourceRange: match.location..<NSMaxRange(match),
-                    exact: true
-                ))
-                sourceCursor = NSMaxRange(match)
-            }
+            guard match.location != NSNotFound else { return fallback }
+            fragments.append(SearchVisibleFragment(
+                textRange: textCursor..<(textCursor + textLength),
+                sourceRange: match.location..<NSMaxRange(match),
+                exact: true
+            ))
+            sourceCursor = NSMaxRange(match)
             textCursor += textLength
         }
         return fragments
@@ -593,24 +600,6 @@ private struct SearchSourceLocator {
             endLine: end.line,
             endColumn: end.column
         )
-    }
-
-    func uniqueRange(of value: String, within preferred: Range<Int>?) -> Range<Int>? {
-        guard !value.isEmpty else { return nil }
-        let searchRange = preferred.map {
-            NSRange(location: $0.lowerBound, length: $0.count)
-        } ?? NSRange(location: 0, length: nsSource.length)
-        let first = nsSource.range(of: value, options: [], range: searchRange)
-        guard first.location != NSNotFound else { return nil }
-        let tailStart = NSMaxRange(first)
-        let tail = NSRange(
-            location: tailStart,
-            length: max(0, NSMaxRange(searchRange) - tailStart)
-        )
-        guard nsSource.range(of: value, options: [], range: tail).location == NSNotFound else {
-            return nil
-        }
-        return first.location..<NSMaxRange(first)
     }
 
     func utf16Range(forUTF8Range range: Range<Int>) -> Range<Int>? {

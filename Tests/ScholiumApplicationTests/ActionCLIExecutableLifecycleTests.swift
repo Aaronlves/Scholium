@@ -1203,6 +1203,22 @@ struct ActionCLIExecutableLifecycleTests {
         )
         #expect(negativeRecord["type"] as? String == "search_summary")
         #expect(negativeRecord["contract_version"] as? Int == SearchContract.currentVersion)
+        let negativeResultLine = try #require(
+            String(decoding: negativeStructured.stdout, as: UTF8.self)
+                .split(separator: "\n")
+                .dropFirst()
+                .first
+        )
+        let negativeResult = try #require(
+            JSONSerialization.jsonObject(with: Data(negativeResultLine.utf8))
+                as? [String: Any]
+        )
+        let matchReasons = try #require(negativeResult["match_reasons"] as? [[String: Any]])
+        #expect(matchReasons.first?["kind"] as? String == "structured")
+        let structured = try #require(matchReasons.first?["structured"] as? [String: Any])
+        #expect(structured["field"] as? String == "has")
+        #expect(structured["value"] as? String == "broken-link")
+        #expect(structured["excluded"] as? Bool == true)
 
         let typedFailure = try cli.runExpectingFailure([
             "search", "review:reviewed", "--triptych", triptych,

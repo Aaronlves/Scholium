@@ -79,8 +79,25 @@ public struct SearchRelationshipMatch: Codable, Hashable, Sendable {
     }
 }
 
+public struct SearchStructuredMatch: Codable, Hashable, Sendable {
+    public let field: SearchStructuredField
+    public let value: String
+    public let excluded: Bool
+
+    public init(
+        field: SearchStructuredField,
+        value: String,
+        excluded: Bool
+    ) {
+        self.field = field
+        self.value = value
+        self.excluded = excluded
+    }
+}
+
 public enum NoteSearchMatchReason: Codable, Hashable, Sendable {
     case lexical
+    case structured(SearchStructuredMatch)
     case property(SearchPropertyMatch)
     case relationship(SearchRelationshipMatch)
 }

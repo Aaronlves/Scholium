@@ -3535,8 +3535,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if case .currentNote = request.executionScope,
                ast.clauses.contains(where: { clause in
                    switch clause {
-                   case .property, .relation: true
-                   case .lexical, .structured, .record: false
+                   case .structured, .property, .relation: true
+                   case .lexical, .record: false
                    }
                }) {
                 return await searchDiagnosticResponse(
@@ -3547,7 +3547,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                         ast: ast,
                         diagnostics: [SearchQueryDiagnostic(
                             code: .notApplicable,
-                            message: "Metadata and direct relation clauses are not applicable to This Note occurrence Search.",
+                            message: "Structured fields, Metadata, and direct relation clauses are not applicable to This Note occurrence Search.",
                             utf16LowerBound: 0,
                             utf16UpperBound: request.query.utf16.count
                         )]

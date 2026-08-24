@@ -40,6 +40,7 @@ public extension SearchCapabilities {
     /// table. It edits plain query text and never creates hidden query state.
     func completions(
         for rawQuery: String,
+        scope: SearchPresentationScope,
         context: SearchCompletionContext = .empty,
         limit: Int = 8
     ) -> [SearchCompletion] {
@@ -53,13 +54,14 @@ public extension SearchCapabilities {
         let provider: SearchProvider = Self.completedTokens(in: prefix).contains {
             $0.caseInsensitiveCompare("kind:record") == .orderedSame
         } ? .record : .note
-        guard let capability = capability(for: provider) else { return [] }
+        let fields = fields(for: provider, scope: scope)
+        guard !fields.isEmpty else { return [] }
 
         let candidates: [(replacement: String, display: String, detail: String)]
         if let colon = token.firstIndex(of: ":") {
             let rawField = String(token[..<colon]).lowercased()
             let partialValue = String(token[token.index(after: colon)...]).lowercased()
-            guard let field = capability.fields.first(where: {
+            guard let field = fields.first(where: {
                 $0.name == rawField
             }) else { return [] }
             if field.valueKind == .property,
@@ -97,7 +99,7 @@ public extension SearchCapabilities {
             }
         } else {
             let partial = token.lowercased()
-            candidates = capability.fields.filter {
+            candidates = fields.filter {
                 $0.name.hasPrefix(partial)
             }.map {
                 ("\($0.name):", "\($0.name):", Self.detail(for: $0))

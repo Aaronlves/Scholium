@@ -236,6 +236,18 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 limitations: response.diagnostics.map(\.message)
             )
         }
+        if response.explanation.clauses.contains(where: { clause in
+            if case .structured = clause.kind { return true }
+            return false
+        }) {
+            return ProviderOutcome(
+                availability: .invalidQuery,
+                items: [],
+                limitations: [
+                    "Structured Search filters are unavailable in Research Context schema 4."
+                ]
+            )
+        }
         let availability = contextAvailability(response.availability)
         let currentness = contextCurrentness(availability)
         var items: [ResearchContextResponseItem] = []
@@ -279,7 +291,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             let locator = try note.sourceRange.map {
                 try ResearchContextSourceLocator.sourceRange($0)
             } ?? .wholeObject
-            let reason = retrievalReason(note, clause: clause)
+            let reason = try retrievalReason(note, clause: clause)
             guard let role = objectRole(note.vaultRole) else {
                 limitations.append(
                     "A Note outside the three Triptych research roles was omitted."
@@ -1040,25 +1052,27 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
 
     private func retrievalReason(
         _ result: NoteSearchResult
-    ) -> ResearchContextRetrievalReason {
+    ) throws -> ResearchContextRetrievalReason {
         switch result.primaryMatchReason {
         case .property: .propertyPresence
         case .relationship: .directRelation
         case .lexical:
             result.matchedField == .summary ? .canonicalSummary : .lexical
+        case .structured:
+            throw ResearchContextContractError.invalidResponse
         }
     }
 
     private func retrievalReason(
         _ result: NoteSearchResult,
         clause: ResearchContextClause
-    ) -> ResearchContextRetrievalReason {
+    ) throws -> ResearchContextRetrievalReason {
         switch clause.kind {
         case .inspectRelations: .directRelation
         case .inspectMetadata: .propertyPresence
         case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
                 .inspectResearcherState:
-            retrievalReason(result)
+            try retrievalReason(result)
         }
     }
 

@@ -379,7 +379,7 @@ struct ContentView: View {
         case .currentVault:
             profiles = [NoteMetadataCatalog.profile(for: shellState.selectedWorkspace)]
         case .thisNote:
-            profiles = appState.currentNote.map { [$0.schemaProfile] } ?? []
+            profiles = []
         case .triptych:
             profiles = [.analysis, .topicMarkdown, .draftProject]
         }

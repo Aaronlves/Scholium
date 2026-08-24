@@ -64,6 +64,20 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
         providers.first { $0.provider == provider }
     }
 
+    public func fields(
+        for provider: SearchProvider,
+        scope: SearchPresentationScope
+    ) -> [SearchFieldCapability] {
+        guard let capability = capability(for: provider),
+              capability.scopes.contains(scope) else { return [] }
+        guard provider == .note, scope == .thisNote else {
+            return capability.fields
+        }
+        return capability.fields.filter {
+            $0.name == "kind" || SearchLexicalField(rawValue: $0.name) != nil
+        }
+    }
+
     public static let current = SearchCapabilities(
         contractVersion: SearchContract.currentVersion,
         providers: [

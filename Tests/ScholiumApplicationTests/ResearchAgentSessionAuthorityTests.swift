@@ -203,6 +203,23 @@ struct ResearchAgentSessionAuthorityTests {
                 && $0.sourceReference.owner.triptychID == fixture.assignment.id
         })
 
+        let structured = try await handle.research.queryAgentResearchContext(
+            credential: credential,
+            run: handoff.run,
+            request: try ResearchContextRequest(
+                clauses: [try ResearchContextClause(
+                    kind: .discoverNote,
+                    query: "has:broken-link",
+                    useEligibility: .referenceOnly
+                )]
+            )
+        )
+        #expect(structured.availability == .invalidQuery)
+        #expect(structured.items.isEmpty)
+        #expect(structured.outcomes.first?.limitations.contains {
+            $0.contains("Research Context schema 4")
+        } == true)
+
         let properties = try await handle.research.queryAgentResearchContext(
             credential: credential,
             run: handoff.run,

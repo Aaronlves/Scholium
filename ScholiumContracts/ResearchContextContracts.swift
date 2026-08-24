@@ -1216,6 +1216,10 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
         } ?? false
         guard noteMatchReasons.count <= Self.maximumNoteMatchReasons,
               sourceReference.sourceKind == .note || noteMatchReasons.isEmpty,
+              !noteMatchReasons.contains(where: { reason in
+                  if case .structured = reason { return true }
+                  return false
+              }),
               (expectsExact && semanticContent == nil && exactSource != nil
                   && materialContent == nil
                   && sourceReference.locator.kind == .sourceRange)

@@ -298,6 +298,15 @@ struct SearchIndexTests {
         let brokenOnly = try await index.testSearch(fixture.request("has:broken-link"))
         #expect(brokenOnly.noteResults.first?.matchedFields == [.brokenLink])
         #expect(brokenOnly.noteResults.first?.rankReason == .structuredFilter)
+        guard case .structured(let structuredMatch) = try #require(
+            brokenOnly.noteResults.first?.primaryMatchReason
+        ) else {
+            Issue.record("Structured filter-only Search did not retain its typed reason.")
+            return
+        }
+        #expect(structuredMatch.field == .has)
+        #expect(structuredMatch.value == "broken-link")
+        #expect(!structuredMatch.excluded)
         let second = try await index.synchronize([repaired])
         #expect(second.generation.sequence > first.generation.sequence)
         #expect(try await index.testSearch(fixture.request("Alpha has:broken-link")).noteResults.isEmpty)
@@ -340,6 +349,114 @@ struct SearchIndexTests {
         let result = try await opened.index.synchronize([source])
         #expect(result.generation.schemaVersion == SearchContract.schemaVersion)
         #expect(source.document.rawContent.contains("exact source remains external"))
+    }
+
+    @Test("Malformed generated JSON is staged and rebuilt")
+    func malformedGeneratedJSONRecoveryIsVisibleAndComplete() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        var index: TriptychSearchIndex? = try fixture.index()
+        let source = fixture.item(
+            fixture.analyses,
+            "Preserved.md",
+            "# Preserved\n\nexact source remains external"
+        )
+        _ = try await index?.synchronize([source])
+        index = nil
+        try execute(
+            "UPDATE search_segments SET offset_map = 'malformed-json' WHERE ordinal = 0;",
+            in: fixture.databaseURL
+        )
+
+        let opened = try TriptychSearchIndex.openRecovering(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID
+        )
+        #expect(opened.recoveredCorruption)
+        let result = try await opened.index.synchronize([source])
+        #expect(result.disposition == .recoveredAndRebuilt)
+        #expect(try await opened.index.testSearch(
+            fixture.request("preserved")
+        ).noteResults.first?.sourceLine == 1)
+        #expect(source.document.rawContent.contains("exact source remains external"))
+    }
+
+    @Test("Typed and semantic generated JSON corruption is staged and rebuilt")
+    func typedGeneratedJSONCorruptionIsVisibleAndComplete() async throws {
+        let mutations = [
+            "UPDATE search_documents SET line_starts = '[0,\"bad\"]';",
+            "UPDATE search_documents SET line_starts = '[0,8,4]';",
+            """
+            UPDATE search_segments SET offset_map =
+            '[{"normalizedUTF16LowerBound":"bad","normalizedUTF16UpperBound":1,"sourceUTF16LowerBound":0,"sourceUTF16UpperBound":1}]'
+            WHERE ordinal = 0;
+            """,
+            """
+            UPDATE search_segments SET offset_map =
+            '[{"normalizedUTF16LowerBound":0,"normalizedUTF16UpperBound":999999,"sourceUTF16LowerBound":0,"sourceUTF16UpperBound":1}]'
+            WHERE ordinal = 0;
+            """,
+        ]
+
+        for mutation in mutations {
+            let fixture = try Fixture()
+            defer { fixture.remove() }
+            var index: TriptychSearchIndex? = try fixture.index()
+            let source = fixture.item(
+                fixture.analyses,
+                "Preserved.md",
+                "# Preserved\n\nexact source remains external"
+            )
+            _ = try await index?.synchronize([source])
+            index = nil
+            try execute(mutation, in: fixture.databaseURL)
+
+            let opened = try TriptychSearchIndex.openRecovering(
+                databaseURL: fixture.databaseURL,
+                triptychID: fixture.triptychID
+            )
+            #expect(opened.recoveredCorruption, Comment(rawValue: mutation))
+            let result = try await opened.index.synchronize([source])
+            #expect(result.disposition == .recoveredAndRebuilt)
+            #expect(try await opened.index.testSearch(
+                fixture.request("preserved")
+            ).noteResults.map(\.relativePath) == ["Preserved.md"])
+            #expect(source.document.rawContent.contains("exact source remains external"))
+        }
+    }
+
+    @Test("Cancelled opening preserves the last-good generated database")
+    func cancelledOpeningDoesNotRecoverValidDatabase() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        var index: TriptychSearchIndex? = try fixture.index()
+        let source = fixture.item(
+            fixture.analyses,
+            "Preserved.md",
+            "# Preserved\n\nlast good generated state"
+        )
+        let generation = try await index?.synchronize([source]).generation
+        index = nil
+
+        let opening = Task {
+            try TriptychSearchIndex.openRecovering(
+                databaseURL: fixture.databaseURL,
+                triptychID: fixture.triptychID
+            )
+        }
+        opening.cancel()
+        await #expect(throws: CancellationError.self) {
+            _ = try await opening.value
+        }
+
+        let reopened = try TriptychSearchIndex.openRecovering(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID
+        )
+        #expect(!reopened.recoveredCorruption)
+        #expect(try await reopened.index.generation() == generation)
+        #expect(try await reopened.index.testSearch(
+            fixture.request("last good")
+        ).noteResults.map(\.relativePath) == ["Preserved.md"])
     }
 
     @Test("Identical paths in different vaults remain scope-isolated")
@@ -444,6 +561,13 @@ struct SearchIndexTests {
     }
 
     private func setSchemaVersion(_ version: Int, in databaseURL: URL) throws {
+        try execute(
+            "UPDATE search_index_state SET schema_version = \(version) WHERE singleton = 1;",
+            in: databaseURL
+        )
+    }
+
+    private func execute(_ sql: String, in databaseURL: URL) throws {
         var database: OpaquePointer?
         guard sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
             throw FixtureError.couldNotOpenDatabase
@@ -451,16 +575,16 @@ struct SearchIndexTests {
         defer { sqlite3_close(database) }
         guard sqlite3_exec(
             database,
-            "UPDATE search_index_state SET schema_version = \(version) WHERE singleton = 1;",
+            sql,
             nil,
             nil,
             nil
         ) == SQLITE_OK else {
-            throw FixtureError.couldNotSetSchemaVersion
+            throw FixtureError.couldNotExecuteSQL
         }
     }
 
-    private enum FixtureError: Error { case couldNotOpenDatabase, couldNotSetSchemaVersion }
+    private enum FixtureError: Error { case couldNotOpenDatabase, couldNotExecuteSQL }
 }
 
 private extension SearchExecutionScope {

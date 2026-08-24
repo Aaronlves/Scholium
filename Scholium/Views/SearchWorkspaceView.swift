@@ -489,6 +489,7 @@ struct SpotlightSearchPanelView: View {
               !searchFieldHasMarkedText else { return [] }
         return SearchCapabilities.current.completions(
             for: queryDraft,
+            scope: controller.search.criteria.scope,
             context: context.completionContext
         )
     }
@@ -1151,6 +1152,9 @@ private extension NoteSearchResult {
             switch reason {
             case .lexical:
                 continue
+            case .structured(let structured):
+                let exclusion = structured.excluded ? "-" : ""
+                return "\(exclusion)\(structured.field.rawValue):\(structured.value)"
             case .property(let property):
                 if let value = property.normalizedValue {
                     return "property:\(property.key)=\(value)"

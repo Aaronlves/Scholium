@@ -1047,6 +1047,23 @@ struct WorkspaceRuntimeTests {
         ))
         #expect(noteResponse.results.isEmpty)
         #expect(noteResponse.diagnostics.map(\.code) == [.notApplicable])
+
+        let authorizedNote = try #require(
+            await handle.snapshot().document(id: fixture.analysisNoteID)
+        )
+        let structuredResponse = try await handle.discovery.search(SearchRequest(
+            query: "callout:state",
+            presentationScope: .thisNote,
+            executionScope: .currentNote(SearchSourceSnapshot(
+                noteID: authorizedNote.id,
+                editorSessionID: UUID(),
+                source: authorizedNote.document.rawContent,
+                editorRevision: 1
+            )),
+            limit: 20
+        ))
+        #expect(structuredResponse.results.isEmpty)
+        #expect(structuredResponse.diagnostics.map(\.code) == [.notApplicable])
         await runtime.shutdown()
     }
 

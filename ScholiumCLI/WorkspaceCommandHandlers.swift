@@ -436,6 +436,7 @@ extension ScholiumCLI {
 
     private struct SearchMatchReasonRecord: Encodable {
         let kind: String
+        let structured: SearchStructuredMatch?
         let property: SearchPropertyMatch?
         let relationship: SearchRelationshipMatch?
 
@@ -443,14 +444,22 @@ extension ScholiumCLI {
             switch reason {
             case .lexical:
                 kind = "lexical"
+                structured = nil
+                property = nil
+                relationship = nil
+            case .structured(let value):
+                kind = "structured"
+                structured = value
                 property = nil
                 relationship = nil
             case .property(let value):
                 kind = "property"
+                structured = nil
                 property = value
                 relationship = nil
             case .relationship(let value):
                 kind = "relationship"
+                structured = nil
                 property = nil
                 relationship = value
             }
@@ -458,6 +467,10 @@ extension ScholiumCLI {
 
         var textDescription: String {
             switch kind {
+            case "structured":
+                guard let structured else { return kind }
+                let exclusion = structured.excluded ? "-" : ""
+                return "\(exclusion)\(structured.field.rawValue):\(structured.value)"
             case "property":
                 guard let property else { return kind }
                 if let value = property.normalizedValue {

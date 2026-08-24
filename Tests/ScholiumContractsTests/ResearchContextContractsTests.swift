@@ -250,6 +250,26 @@ struct ResearchContextContractsTests {
         #expect(try roundTrip(response).availability == .invalidQuery)
     }
 
+    @Test("Research Context schema 4 rejects Search structured match reasons")
+    func structuredSearchReasonsFailClosed() throws {
+        let fixture = Fixture()
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try ResearchContextResponseItem(
+                clauseID: UUID(),
+                sourceReference: fixture.noteEnvelope(locator: .wholeObject),
+                title: "Inheritance",
+                contentKind: .searchSnippet,
+                semanticContent: "A structured discovery lead.",
+                contextUseEligibility: .referenceOnly,
+                noteMatchReasons: [.structured(SearchStructuredMatch(
+                    field: .has,
+                    value: "broken-link",
+                    excluded: false
+                ))]
+            )
+        }
+    }
+
     @Test("Material content is path-free typed Run evidence and matches its source envelope")
     func sourceMaterialContentRoundTrips() throws {
         let fixture = Fixture()
