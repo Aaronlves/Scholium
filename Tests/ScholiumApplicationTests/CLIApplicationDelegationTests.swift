@@ -71,8 +71,18 @@ struct CLIApplicationDelegationTests {
         #expect(sources.agent.contains("operations.submitResult("))
         #expect(sources.agent.contains("operations.continueResearch("))
         #expect(sources.agent.contains("operations.end("))
+        #expect(sources.agent.contains("ResearchAgentStartRequest.self"))
+        #expect(sources.agent.contains("ResearchActionTargetRole"))
         #expect(!sources.agent.contains("import " + "ScholiumCore"))
-        #expect(!sources.agent.contains("ResearchAction"))
+        for parallelActionOwner in [
+            "ResearchFunction",
+            "ResearchActionUseCases",
+            "ResearchActionRunCoordinator",
+            "ResearchActionExecutionRequest",
+            "prepareResearchAction",
+        ] {
+            #expect(!sources.agent.contains(parallelActionOwner))
+        }
         #expect(!sources.agent.contains("packageID"))
         #expect(!sources.agent.contains("createCheckpoint"))
     }
