@@ -650,7 +650,7 @@ struct TriptychSearchIndexTests {
         var statement: OpaquePointer?
         #expect(sqlite3_prepare_v2(
             database,
-            "SELECT sql FROM sqlite_master WHERE name IN ('search_documents', 'search_fts') ORDER BY name;",
+            "SELECT sql FROM sqlite_master WHERE name IN ('search_documents', 'search_fts', 'search_segments') ORDER BY name;",
             -1,
             &statement,
             nil
@@ -662,6 +662,8 @@ struct TriptychSearchIndexTests {
         }
         #expect(!schema.lowercased().contains("raw_source"))
         #expect(!schema.lowercased().contains(" source "))
+        #expect(schema.lowercased().contains("offset_map blob not null"))
+        #expect(schema.lowercased().contains("source_utf16_count integer not null"))
 
         let destination = try await index.testSearch(fixture.request("secret.example", scope: .triptych))
         #expect(destination.noteResults.isEmpty)

@@ -703,11 +703,11 @@ span, and the final-tail medians grew 0.236%. Under the corrected bounded,
 decelerating convergence rule this is a pass. These diagnostics validate the
 repair paths but do not replace the cooled, clean, exact-tagged packaged rerun.
 
-On 2026-08-23 the focused Search v9 microbenchmark passed on the deterministic
-2,056-Note mixed-script fixture after the Metadata cutover: cold rebuild
-545.373 ms, warm-query p95 0.102 ms, incremental-publication p95 17.603 ms,
-36,442,080 database bytes, and 129,187,840 process peak RSS bytes. This is
-local regression evidence, not packaged G7 or researcher acceptance.
+On 2026-08-24 Search corrected its stale benchmark to canonical `keywords`,
+managed Metadata, and 50 ordered nonzero results. Schema 11 compacted checked
+offsets and pushed canonical filters into the existing query. On 2,056 Notes,
+database size fell 49.37 to 23.43 MB and property-only p95 285.6 to 56.6 ms.
+This is local regression evidence, not packaged G7 or researcher acceptance.
 
 ## Upgrade and distribution evidence
 

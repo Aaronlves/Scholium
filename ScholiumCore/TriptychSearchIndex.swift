@@ -646,10 +646,10 @@ public actor TriptychSearchIndex {
                 let page: [SearchCandidate]
                 if ast.positiveLexicalClauses.isEmpty {
                     page = try documentCandidates(
+                        ast: ast,
                         vaultID: vaultID,
                         limit: pageSize,
-                        offset: offset,
-                        includingProperties: ast.hasPropertyClause
+                        offset: offset
                     )
                 } else {
                     page = try lexicalCandidates(
@@ -868,6 +868,9 @@ public actor TriptychSearchIndex {
             sql += " AND search_fts MATCH ?"
             bindings.append(.text(lexicalExpression))
         }
+        let filters = Self.candidateFilters(for: ast)
+        sql += filters.sql
+        bindings.append(contentsOf: filters.bindings)
         if let vaultID {
             sql += " AND d.vault_id = ?"
             bindings.append(.text(vaultID.uuidString.lowercased()))
@@ -905,6 +908,9 @@ public actor TriptychSearchIndex {
         WHERE search_fts MATCH ?
         """
         var bindings: [SearchSQLiteBinding] = [.text(expression)]
+        let filters = Self.candidateFilters(for: ast)
+        sql += filters.sql
+        bindings.append(contentsOf: filters.bindings)
         if let vaultID {
             sql += " AND d.vault_id = ?"
             bindings.append(.text(vaultID.uuidString.lowercased()))
@@ -928,25 +934,27 @@ public actor TriptychSearchIndex {
     }
 
     private func documentCandidates(
+        ast: SearchQueryAST,
         vaultID: UUID?,
         limit: Int,
-        offset: Int,
-        includingProperties: Bool
+        offset: Int
     ) throws -> [SearchCandidate] {
-        var sql = "SELECT id FROM search_documents"
-        var bindings: [SearchSQLiteBinding] = []
+        var sql = "SELECT d.id FROM search_documents d WHERE 1 = 1"
+        let filters = Self.candidateFilters(for: ast)
+        sql += filters.sql
+        var bindings = filters.bindings
         if let vaultID {
-            sql += " WHERE vault_id = ?"
+            sql += " AND d.vault_id = ?"
             bindings.append(.text(vaultID.uuidString.lowercased()))
         }
-        sql += " ORDER BY normalized_title, role_order, path_key, relative_path LIMIT ? OFFSET ?;"
+        sql += " ORDER BY d.normalized_title, d.role_order, d.path_key, d.relative_path LIMIT ? OFFSET ?;"
         bindings.append(.int(limit))
         bindings.append(.int(offset))
         var result: [SearchCandidate] = []
         try database.query(sql, bindings: bindings) { row in
             guard let document = try self.loadDocument(
                 rowID: row.int(at: 0),
-                includingProperties: includingProperties
+                includingProperties: ast.hasPropertyClause
             ) else { return }
             result.append(SearchCandidate(
                 document: document,
@@ -955,6 +963,41 @@ public actor TriptychSearchIndex {
             ))
         }
         return result
+    }
+
+    private static func candidateFilters(
+        for ast: SearchQueryAST
+    ) -> (sql: String, bindings: [SearchSQLiteBinding]) {
+        var sql = ""
+        var bindings: [SearchSQLiteBinding] = []
+        for clause in ast.clauses {
+            switch clause {
+            case .property(let property):
+                sql += " AND EXISTS(SELECT 1 FROM search_properties p WHERE p.document_id = d.id AND p.property_key = ?"
+                bindings.append(.text(property.key))
+                if let value = property.value {
+                    sql += " AND p.normalized_value = ?"
+                    bindings.append(.text(value))
+                }
+                sql += ")"
+            case .structured(let structured):
+                let condition: String
+                switch structured.field {
+                case .callout:
+                    condition = "instr(d.callout_roles, ?) > 0"
+                    bindings.append(.text(" \(structured.value) "))
+                case .has:
+                    guard structured.value == "broken-link" else { continue }
+                    condition = "d.has_broken_link = 1"
+                }
+                sql += structured.excluded
+                    ? " AND NOT (\(condition))"
+                    : " AND \(condition)"
+            case .lexical, .relation, .record:
+                break
+            }
+        }
+        return (sql, bindings)
     }
 
     private func loadDocument(
@@ -967,7 +1010,7 @@ public actor TriptychSearchIndex {
             SELECT vault_id, vault_name, role, relative_path, stable_note_id, title,
                    normalized_title, title_key, filename_key, path_key, callout_roles,
                    has_broken_link, fingerprint_sha256, fingerprint_byte_count,
-                   evidential_layer, role_order, line_starts
+                   evidential_layer, role_order, line_starts, source_utf16_count
             FROM search_documents WHERE id = ?;
             """,
             bindings: [.int(rowID)]
@@ -980,21 +1023,27 @@ public actor TriptychSearchIndex {
                   let pathKey = row.text(at: 9), let sha = row.text(at: 12),
                   let layerText = row.text(at: 14),
                   let layer = EvidentialLayer(rawValue: layerText) else { return }
-            let aliases = try self.aliases(documentID: rowID)
-            let segments = try self.segments(documentID: rowID)
-            let properties = includingProperties
-                ? try self.properties(documentID: rowID)
-                : []
+            let sourceUTF16Count = row.int(at: 17)
             let lineStarts = try Self.decodeGeneratedJSON(
                 [Int].self,
                 from: row.text(at: 16)
             )
-            guard lineStarts.first == 0,
+            guard sourceUTF16Count >= 0,
+                  lineStarts.first == 0,
+                  lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
                   zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
                       previous < next
                   }) else {
                 throw SearchIndexError.corruptDatabase
             }
+            let aliases = try self.aliases(documentID: rowID)
+            let segments = try self.segments(
+                documentID: rowID,
+                sourceUTF16Count: sourceUTF16Count
+            )
+            let properties = includingProperties
+                ? try self.properties(documentID: rowID)
+                : []
             document = StoredSearchDocument(
                 rowID: rowID,
                 vaultID: vaultID,
@@ -1033,7 +1082,10 @@ public actor TriptychSearchIndex {
         return result
     }
 
-    private func segments(documentID: Int) throws -> [SearchTextSegment] {
+    private func segments(
+        documentID: Int,
+        sourceUTF16Count: Int
+    ) throws -> [SearchTextSegment] {
         var result: [SearchTextSegment] = []
         try database.query(
             """
@@ -1059,13 +1111,14 @@ public actor TriptychSearchIndex {
                     endColumn: row.int(at: 9)
                 )
             }
-            let offsets = try Self.decodeGeneratedJSON(
-                [SearchSegmentOffset].self,
-                from: row.text(at: 10)
-            )
+            let offsets = try SearchOffsetMapCodec.decode(row.data(at: 10))
             guard Self.valid(
                 offsets: offsets,
-                normalizedUTF16Count: normalized.utf16.count
+                normalizedUTF16Count: normalized.utf16.count,
+                sourceUTF16Bounds: sourceRange.map {
+                    (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound)
+                },
+                sourceUTF16Count: sourceUTF16Count
             ) else {
                 throw SearchIndexError.corruptDatabase
             }
@@ -1291,8 +1344,9 @@ public actor TriptychSearchIndex {
                 document_key, vault_id, vault_name, role, role_order, relative_path,
                 stable_note_id, title, normalized_title, title_key, filename_key, path_key,
                 fingerprint_sha256, fingerprint_byte_count, evidential_layer,
-                callout_roles, has_broken_link, projection_hash, line_starts
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                callout_roles, has_broken_link, projection_hash, line_starts,
+                source_utf16_count
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             bindings: [
                 .text(documentKey(vaultID: item.vaultID, path: item.relativePath)),
@@ -1313,6 +1367,7 @@ public actor TriptychSearchIndex {
                 .int(projection.hasBrokenLink ? 1 : 0),
                 .text(try indexedProjectionHash(item)),
                 .text(lineStarts),
+                .int(item.document.rawContent.utf16.count),
             ]
         )
         let documentID = database.lastInsertRowID
@@ -1326,10 +1381,19 @@ public actor TriptychSearchIndex {
             )
         }
         for segment in projection.segments {
-            let offsets = String(
-                data: try JSONEncoder.searchIndex.encode(segment.offsetMap),
-                encoding: .utf8
-            ) ?? "[]"
+            guard valid(
+                offsets: segment.offsetMap,
+                normalizedUTF16Count: segment.normalizedText.utf16.count,
+                sourceUTF16Bounds: segment.sourceRange.map {
+                    (lower: $0.utf16LowerBound, upper: $0.utf16UpperBound)
+                },
+                sourceUTF16Count: item.document.rawContent.utf16.count
+            ) else {
+                throw SearchIndexError.invalidDocuments(
+                    "Search projection contains an invalid generated offset map."
+                )
+            }
+            let offsets = try SearchOffsetMapCodec.encode(segment.offsetMap)
             try database.execute(
                 """
                 INSERT INTO search_segments(
@@ -1347,7 +1411,7 @@ public actor TriptychSearchIndex {
                     .optionalInt(segment.sourceRange?.column),
                     .optionalInt(segment.sourceRange?.endLine),
                     .optionalInt(segment.sourceRange?.endColumn),
-                    .text(offsets),
+                    .blob(offsets),
                 ]
             )
         }
@@ -1475,7 +1539,8 @@ public actor TriptychSearchIndex {
             callout_roles TEXT NOT NULL,
             has_broken_link INTEGER NOT NULL,
             projection_hash TEXT NOT NULL,
-            line_starts TEXT NOT NULL
+            line_starts TEXT NOT NULL,
+            source_utf16_count INTEGER NOT NULL
         );
         CREATE INDEX search_documents_vault ON search_documents(vault_id);
         CREATE INDEX search_documents_title_key ON search_documents(title_key);
@@ -1527,7 +1592,7 @@ public actor TriptychSearchIndex {
             source_column INTEGER,
             source_end_line INTEGER,
             source_end_column INTEGER,
-            offset_map TEXT NOT NULL,
+            offset_map BLOB NOT NULL,
             PRIMARY KEY(document_id, ordinal),
             FOREIGN KEY(document_id) REFERENCES search_documents(id) ON DELETE CASCADE
         );
@@ -1600,14 +1665,17 @@ public actor TriptychSearchIndex {
     ) throws {
         try Task.checkCancellation()
         try database.query(
-            "SELECT line_starts FROM search_documents;"
+            "SELECT line_starts, source_utf16_count FROM search_documents;"
         ) { row in
             try Task.checkCancellation()
             let lineStarts = try decodeGeneratedJSON(
                 [Int].self,
                 from: row.text(at: 0)
             )
-            guard lineStarts.first == 0,
+            let sourceUTF16Count = row.int(at: 1)
+            guard sourceUTF16Count >= 0,
+                  lineStarts.first == 0,
+                  lineStarts.last.map({ $0 <= sourceUTF16Count }) == true,
                   zip(lineStarts, lineStarts.dropFirst()).allSatisfy({ previous, next in
                       previous < next
                   }) else {
@@ -1615,17 +1683,33 @@ public actor TriptychSearchIndex {
             }
         }
         try database.query(
-            "SELECT normalized_text, offset_map FROM search_segments;"
+            """
+            SELECT s.normalized_text, s.source_lower, s.source_upper, s.offset_map,
+                   d.source_utf16_count
+            FROM search_segments s
+            JOIN search_documents d ON d.id = s.document_id;
+            """
         ) { row in
             try Task.checkCancellation()
             let normalized = row.text(at: 0) ?? ""
-            let offsets = try decodeGeneratedJSON(
-                [SearchSegmentOffset].self,
-                from: row.text(at: 1)
-            )
+            let sourceBounds: (lower: Int, upper: Int)?
+            if row.isNull(at: 1) {
+                guard row.isNull(at: 2) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+                sourceBounds = nil
+            } else {
+                guard !row.isNull(at: 2) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+                sourceBounds = (lower: row.int(at: 1), upper: row.int(at: 2))
+            }
+            let offsets = try SearchOffsetMapCodec.decode(row.data(at: 3))
             guard valid(
                 offsets: offsets,
-                normalizedUTF16Count: normalized.utf16.count
+                normalizedUTF16Count: normalized.utf16.count,
+                sourceUTF16Bounds: sourceBounds,
+                sourceUTF16Count: row.int(at: 4)
             ) else {
                 throw SearchIndexError.corruptDatabase
             }
@@ -1648,14 +1732,25 @@ public actor TriptychSearchIndex {
 
     private static func valid(
         offsets: [SearchSegmentOffset],
-        normalizedUTF16Count: Int
+        normalizedUTF16Count: Int,
+        sourceUTF16Bounds: (lower: Int, upper: Int)?,
+        sourceUTF16Count: Int? = nil
     ) -> Bool {
+        guard normalizedUTF16Count >= 0 else { return false }
+        guard let sourceUTF16Bounds else { return offsets.isEmpty }
+        guard sourceUTF16Bounds.lower >= 0,
+              sourceUTF16Bounds.upper >= sourceUTF16Bounds.lower,
+              sourceUTF16Count.map({ sourceUTF16Bounds.upper <= $0 }) ?? true else {
+            return false
+        }
         guard offsets.allSatisfy({ offset in
             offset.normalizedUTF16LowerBound >= 0
                 && offset.normalizedUTF16UpperBound >= offset.normalizedUTF16LowerBound
                 && offset.normalizedUTF16UpperBound <= normalizedUTF16Count
                 && offset.sourceUTF16LowerBound >= 0
                 && offset.sourceUTF16UpperBound >= offset.sourceUTF16LowerBound
+                && offset.sourceUTF16LowerBound >= sourceUTF16Bounds.lower
+                && offset.sourceUTF16UpperBound <= sourceUTF16Bounds.upper
         }) else { return false }
         return zip(offsets, offsets.dropFirst()).allSatisfy { previous, next in
             previous.normalizedUTF16LowerBound <= next.normalizedUTF16LowerBound
@@ -2387,11 +2482,103 @@ private extension JSONEncoder {
     }
 }
 
+/// A compact, private representation of exact normalized-to-source UTF-16
+/// spans. Search schema changes rebuild this disposable state instead of
+/// retaining a second decoder for older encodings.
+private enum SearchOffsetMapCodec {
+    private static let magic = Data([0x53, 0x4f, 0x4d, 0x31]) // SOM1
+    private static let headerByteCount = 8
+    private static let entryByteCount = 32
+
+    static func encode(_ offsets: [SearchSegmentOffset]) throws -> Data {
+        guard let count = UInt32(exactly: offsets.count),
+              offsets.allSatisfy({ offset in
+                  offset.normalizedUTF16LowerBound >= 0
+                      && offset.normalizedUTF16UpperBound >= 0
+                      && offset.sourceUTF16LowerBound >= 0
+                      && offset.sourceUTF16UpperBound >= 0
+              }) else {
+            throw SearchIndexError.invalidDocuments(
+                "Search offset map contains an invalid generated range."
+            )
+        }
+        var data = Data(capacity: headerByteCount + offsets.count * entryByteCount)
+        data.append(magic)
+        append(count, to: &data)
+        for offset in offsets {
+            append(UInt64(offset.normalizedUTF16LowerBound), to: &data)
+            append(UInt64(offset.normalizedUTF16UpperBound), to: &data)
+            append(UInt64(offset.sourceUTF16LowerBound), to: &data)
+            append(UInt64(offset.sourceUTF16UpperBound), to: &data)
+        }
+        return data
+    }
+
+    static func decode(_ data: Data?) throws -> [SearchSegmentOffset] {
+        guard let data,
+              data.count >= headerByteCount,
+              data.prefix(magic.count) == magic else {
+            throw SearchIndexError.corruptDatabase
+        }
+        return try data.withUnsafeBytes { bytes in
+            let count = Int(UInt32(littleEndian: bytes.loadUnaligned(
+                fromByteOffset: 4,
+                as: UInt32.self
+            )))
+            guard count <= (data.count - headerByteCount) / entryByteCount,
+                  data.count == headerByteCount + count * entryByteCount else {
+                throw SearchIndexError.corruptDatabase
+            }
+            var offsets: [SearchSegmentOffset] = []
+            offsets.reserveCapacity(count)
+            var cursor = headerByteCount
+            for _ in 0..<count {
+                func value(_ component: Int) -> UInt64 {
+                    UInt64(littleEndian: bytes.loadUnaligned(
+                        fromByteOffset: cursor + component * 8,
+                        as: UInt64.self
+                    ))
+                }
+                let normalizedLower = value(0)
+                let normalizedUpper = value(1)
+                let sourceLower = value(2)
+                let sourceUpper = value(3)
+                let maximum = max(
+                    max(normalizedLower, normalizedUpper),
+                    max(sourceLower, sourceUpper)
+                )
+                guard maximum <= UInt64(Int.max) else {
+                    throw SearchIndexError.corruptDatabase
+                }
+                offsets.append(SearchSegmentOffset(
+                    normalizedUTF16LowerBound: Int(normalizedLower),
+                    normalizedUTF16UpperBound: Int(normalizedUpper),
+                    sourceUTF16LowerBound: Int(sourceLower),
+                    sourceUTF16UpperBound: Int(sourceUpper)
+                ))
+                cursor += entryByteCount
+            }
+            return offsets
+        }
+    }
+
+    private static func append<Value: FixedWidthInteger>(
+        _ value: Value,
+        to data: inout Data
+    ) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { bytes in
+            data.append(contentsOf: bytes)
+        }
+    }
+}
+
 private enum SearchSQLiteBinding {
     case text(String)
     case optionalText(String?)
     case int(Int)
     case optionalInt(Int?)
+    case blob(Data)
 }
 
 private final class SearchSQLiteDatabase: @unchecked Sendable {
@@ -2545,6 +2732,16 @@ private struct SearchSQLiteStatement {
                 } else {
                     sqlite3_bind_null(handle, index)
                 }
+            case .blob(let data):
+                data.withUnsafeBytes { bytes in
+                    sqlite3_bind_blob64(
+                        handle,
+                        index,
+                        bytes.baseAddress,
+                        sqlite3_uint64(data.count),
+                        searchSQLiteTransient
+                    )
+                }
             }
             guard result == SQLITE_OK else {
                 throw SearchIndexError.sqlite("could not bind a Search v9 parameter")
@@ -2555,6 +2752,14 @@ private struct SearchSQLiteStatement {
     func text(at column: Int32) -> String? {
         guard let value = sqlite3_column_text(handle, column) else { return nil }
         return String(cString: value)
+    }
+
+    func data(at column: Int32) -> Data? {
+        guard sqlite3_column_type(handle, column) != SQLITE_NULL else { return nil }
+        let count = Int(sqlite3_column_bytes(handle, column))
+        guard count > 0 else { return Data() }
+        guard let bytes = sqlite3_column_blob(handle, column) else { return nil }
+        return Data(bytes: bytes, count: count)
     }
 
     func int(at column: Int32) -> Int { Int(sqlite3_column_int64(handle, column)) }

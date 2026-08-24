@@ -351,7 +351,7 @@ struct SearchIndexTests {
         #expect(source.document.rawContent.contains("exact source remains external"))
     }
 
-    @Test("Malformed generated JSON is staged and rebuilt")
+    @Test("Malformed generated offset state is staged and rebuilt")
     func malformedGeneratedJSONRecoveryIsVisibleAndComplete() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         var index: TriptychSearchIndex? = try fixture.index()
@@ -363,7 +363,7 @@ struct SearchIndexTests {
         _ = try await index?.synchronize([source])
         index = nil
         try execute(
-            "UPDATE search_segments SET offset_map = 'malformed-json' WHERE ordinal = 0;",
+            "UPDATE search_segments SET offset_map = X'00' WHERE ordinal = 0;",
             in: fixture.databaseURL
         )
 
@@ -380,21 +380,15 @@ struct SearchIndexTests {
         #expect(source.document.rawContent.contains("exact source remains external"))
     }
 
-    @Test("Typed and semantic generated JSON corruption is staged and rebuilt")
+    @Test("Typed generated state corruption is staged and rebuilt")
     func typedGeneratedJSONCorruptionIsVisibleAndComplete() async throws {
         let mutations = [
             "UPDATE search_documents SET line_starts = '[0,\"bad\"]';",
             "UPDATE search_documents SET line_starts = '[0,8,4]';",
-            """
-            UPDATE search_segments SET offset_map =
-            '[{"normalizedUTF16LowerBound":"bad","normalizedUTF16UpperBound":1,"sourceUTF16LowerBound":0,"sourceUTF16UpperBound":1}]'
-            WHERE ordinal = 0;
-            """,
-            """
-            UPDATE search_segments SET offset_map =
-            '[{"normalizedUTF16LowerBound":0,"normalizedUTF16UpperBound":999999,"sourceUTF16LowerBound":0,"sourceUTF16UpperBound":1}]'
-            WHERE ordinal = 0;
-            """,
+            "UPDATE search_segments SET offset_map = X'534F4D3101000000' WHERE ordinal = 0;",
+            "UPDATE search_segments SET offset_map = X'534F4D310100000000000000000000003F420F000000000000000000000000000100000000000000' WHERE ordinal = 0;",
+            "UPDATE search_segments SET offset_map = X'534F4D3101000000000000000000000001000000000000003F420F000000000040420F0000000000' WHERE ordinal = 0;",
+            "UPDATE search_segments SET source_upper = 999999 WHERE source_lower IS NOT NULL;",
         ]
 
         for mutation in mutations {
@@ -421,6 +415,26 @@ struct SearchIndexTests {
                 fixture.request("preserved")
             ).noteResults.map(\.relativePath) == ["Preserved.md"])
             #expect(source.document.rawContent.contains("exact source remains external"))
+        }
+    }
+
+    @Test("An open index rejects source bounds corrupted after validation")
+    func liveSourceBoundCorruptionFailsClosed() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let index = try fixture.index()
+        let source = fixture.item(
+            fixture.analyses,
+            "Preserved.md",
+            "# Preserved\n\nsearchable exact source"
+        )
+        _ = try await index.synchronize([source])
+        try execute(
+            "UPDATE search_segments SET source_upper = 999999 WHERE source_lower IS NOT NULL;",
+            in: fixture.databaseURL
+        )
+
+        await #expect(throws: SearchIndexError.self) {
+            _ = try await index.testSearch(fixture.request("searchable"))
         }
     }
 

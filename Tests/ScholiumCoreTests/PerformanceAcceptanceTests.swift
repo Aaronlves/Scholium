@@ -80,19 +80,35 @@ struct PerformanceRegressionMicrobenchmarkTests {
                 limit: 50
             )
         }
+        let warmQueries = [
+            (label: "lexical_keyword", query: "deliberative keyword:cluster-3"),
+            (label: "mixed_script_author", query: "哲学 author:Researcher"),
+            (label: "property_only", query: "property:keywords=cluster-3"),
+        ]
+        var expectedResultIDs: [String: [String]] = [:]
+        for scenario in warmQueries {
+            let response = try await index.testSearch(request(scenario.query))
+            #expect(response.results.count == 50)
+            #expect(response.hasMore)
+            expectedResultIDs[scenario.label] = response.results.map(\.id)
+        }
         for _ in 0..<5 {
-            _ = try await index.testSearch(request("deliberative keyword:normativity"))
+            for scenario in warmQueries {
+                let response = try await index.testSearch(request(scenario.query))
+                #expect(response.results.map(\.id) == expectedResultIDs[scenario.label])
+            }
         }
 
         var samples: [Double] = []
+        var samplesByScenario: [String: [Double]] = [:]
         for iteration in 0..<40 {
+            let scenario = warmQueries[iteration % warmQueries.count]
             let started = ContinuousClock.now
-            _ = try await index.testSearch(
-                request(iteration.isMultiple(of: 2)
-                    ? "deliberative keyword:cluster-3"
-                    : "哲学 author:Researcher")
-            )
-            samples.append(seconds(started.duration(to: .now)))
+            let response = try await index.testSearch(request(scenario.query))
+            let elapsed = seconds(started.duration(to: .now))
+            samples.append(elapsed)
+            samplesByScenario[scenario.label, default: []].append(elapsed)
+            #expect(response.results.map(\.id) == expectedResultIDs[scenario.label])
         }
         let warmQueryP95 = p95(samples)
 
@@ -114,7 +130,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
         let incrementalP95 = p95(incrementalSamples)
         let generation = try #require(await index.generation())
         let report: [String: Any] = [
-            "artifact_schema": "scholium-search-v9-performance-v1",
+            "artifact_schema": "scholium-search-v9-performance-v2",
             "fixture": "synthetic-mixed-script-2056",
             "fixture_note_count": documents.count,
             "fixture_manifest": generation.sourceManifestHash,
@@ -129,6 +145,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
             "ranking_policy_version": SearchContract.rankingPolicyVersion,
             "cold_rebuild_ms": coldRebuild * 1_000,
             "warm_query_p95_ms": warmQueryP95 * 1_000,
+            "warm_query_p95_ms_by_scenario": samplesByScenario.mapValues {
+                p95($0) * 1_000
+            },
+            "warm_query_result_count": 50,
             "incremental_publication_p95_ms": incrementalP95 * 1_000,
             "database_bytes": databaseFootprint(at: databaseURL),
             "process_peak_rss_bytes": processPeakResidentBytes(),
@@ -177,25 +197,41 @@ struct PerformanceRegressionMicrobenchmarkTests {
     ) -> SearchIndexDocument {
         let content = """
         ---
-        title: Philosophical Note \(number)
-        authors:
-          - family: Researcher \(number % 17)
-        publication_date: "\(1950 + number % 77)"
-        tags: [normativity, cluster-\(number % 9)]
+        summary: Synthetic fixture note \(number)
+        keywords: [normativity, cluster-\(number % 9)]
         ---
         # Argument \(number)
         Deliberative control and normative reasons appear in note \(number). 哲学概念需要精确分析。
         Revision \(revision).
         """
+        let noteID = fixtureNoteID(number)
+        let metadata: NoteMetadataSnapshot? = vault.role == .sourceCorpus
+            ? NoteMetadataSnapshot(
+                record: NoteMetadataRecord(
+                    noteID: noteID,
+                    fields: [
+                        "title": .string("Philosophical Note \(number)"),
+                        "authors": .array([.object([
+                            "family": .string("Researcher \(number % 17)"),
+                        ])]),
+                        "publication_date": .string("\(1950 + number % 77)"),
+                    ]
+                ),
+                revision: DocumentFingerprint(content: "fixture-metadata-\(number)")
+            )
+            : nil
         return SearchIndexDocument(
             vaultID: vault.id,
             vaultName: vault.name,
             vaultRole: vault.role,
-            document: NoteDocument(
-                relativePath: "Papers/Note-\(number).md",
-                rawContent: content
-            )
+            document: NoteDocument(relativePath: "Papers/Note-\(number).md", rawContent: content),
+            stableNoteID: noteID.uuidString.lowercased(),
+            metadata: metadata
         )
+    }
+
+    private func fixtureNoteID(_ number: Int) -> UUID {
+        UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", number))!
     }
 
     private func p95(_ samples: [Double]) -> Double {
