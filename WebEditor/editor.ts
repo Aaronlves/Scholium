@@ -71,13 +71,6 @@ import {
 } from "./transformations";
 import {continueCallout, continueList, indentList} from "./interaction";
 import {tableTabAction} from "./tables";
-import {
-  type TablePresentation,
-} from "./table-presentation";
-import {
-  type FootnotePresentation,
-  type FootnoteReferencePresentation,
-} from "./footnote-presentation";
 import {decodeClipboardPayload, isSingleSafeURL, pasteAsMarkdown} from "./clipboard";
 import {linkTargetAt} from "./projection";
 import {scholiumNoteLanguage} from "./language";
@@ -85,7 +78,6 @@ import {
   boundedProjectionRanges,
   boundedLinePrefix,
   rangeKey,
-  type SemanticBlockProjection,
   type SemanticInlineProjection,
 } from "./semantic-projection";
 import {
@@ -141,14 +133,12 @@ import {
   projectionSelectionOverlaps,
 } from "./projection-index";
 import type {MathProjection} from "./math";
+import {localized, localizedTemplate} from "./localization";
 import {
-  mermaidPresentation,
-  type MermaidPresentation,
-} from "./mermaid-presentation";
-import {localized, localizedCallout, localizedTemplate} from "./localization";
+  calloutDefinition as resolveCalloutDefinition,
+  calloutHeader,
+} from "./callout-presentation";
 import {
-  appendMarkdownBlocks,
-  createTableDOM,
   vectorLinkSemantics,
 } from "./markdown-fragment";
 import {validatedLinkPreviews, type LinkPreview, type VectorLinkKind} from "./previews";
@@ -156,11 +146,15 @@ import {
   createLiveSelectionController,
   textSelectionPresentation,
 } from "./live-selection";
+import {createLiveSemanticLayout} from "./live-semantic-layout";
+import {createProjectedWidgetRegistry} from "./projected-widget-registry";
+import {createLiveMermaidProjection} from "./live-mermaid-projection";
+import {createLiveStructuredBlockProjections} from "./live-structured-block-projections";
+import {createLiveDisplayMathProjection} from "./live-display-math-projection";
+import {createLiveFootnoteProjection} from "./live-footnote-projection";
 import {sourceTextDirection} from "./source-direction";
 import {
   createLiveProjectionIndexController,
-  type CalloutPresentation,
-  type LiveProjectionIndex,
   type SemanticCodeBlockRange,
 } from "./live-projection-index";
 import {
@@ -289,24 +283,8 @@ function overlaps(ranges: {from: number; to: number}[], from: number, to: number
   return ranges.some((range) => range.from < to && range.to > from);
 }
 
-const neutralCallout = {
-  identifier: "neutral",
-  aliases: [] as string[],
-  label: localized("Note"),
-  meaning: localized("Preserves an unsupported callout without assigning a research role."),
-};
-
 function calloutDefinition(rawKind: string) {
-  const kind = rawKind.toLowerCase().replace(/:+$/, "").trim();
-  const definition = editingDialect?.callouts.find((callout) =>
-    callout.identifier === kind || callout.aliases.includes(kind),
-  ) ?? neutralCallout;
-  return {...definition, ...localizedCallout(definition.identifier, definition)};
-}
-
-/** @param {string} text */
-function calloutHeader(text: string): RegExpExecArray | null {
-  return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
+  return resolveCalloutDefinition(editingDialect, rawKind);
 }
 
 class ListMarkerWidget extends WidgetType {
@@ -674,84 +652,6 @@ function wikilinkPresentation(
   };
 }
 
-interface LiveBlockProjectionState {
-  decorations: DecorationSet;
-  hasConstructs: boolean;
-}
-
-interface LiveTableProjectionState extends LiveBlockProjectionState {
-  presentations: readonly TablePresentation[];
-}
-
-function projectedSourceOffsetAt(
-  event: MouseEvent,
-  root: HTMLElement,
-  fallback: number,
-  upperBound: number,
-) {
-  const caretDocument = document as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => globalThis.Range | null;
-  };
-  const caret = caretDocument.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
-  const caretElement = caret?.startContainer instanceof Element
-    ? caret.startContainer
-    : caret?.startContainer.parentElement;
-  const pointMapped = document.elementsFromPoint(event.clientX, event.clientY)
-    .flatMap((element) => {
-      const candidate = element.closest<HTMLElement>("[data-source-offset]");
-      return candidate && root.contains(candidate) ? [candidate] : [];
-    })[0] ?? null;
-  const mapped = caretElement?.closest<HTMLElement>("[data-source-offset]")
-    ?? pointMapped
-    ?? (event.target instanceof Element
-      ? event.target.closest<HTMLElement>("[data-source-offset]")
-      : null)
-    ?? root;
-  const base = Number(mapped.dataset.sourceOffset);
-  if (!Number.isSafeInteger(base)) return fallback;
-  let visibleOffset = 0;
-  if (caret && mapped.contains(caret.startContainer)) {
-    const range = document.createRange();
-    range.setStart(mapped, 0);
-    range.setEnd(caret.startContainer, caret.startOffset);
-    visibleOffset = range.toString().length;
-  } else if (mapped !== root || pointMapped) {
-    const walker = document.createTreeWalker(mapped, NodeFilter.SHOW_TEXT);
-    let textOffset = 0;
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestOffset = 0;
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-      const content = node.textContent ?? "";
-      for (let index = 0; index < content.length; index += 1) {
-        const range = document.createRange();
-        range.setStart(node, index);
-        range.setEnd(node, index + 1);
-        const rect = range.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0) continue;
-        const verticalDistance = event.clientY < rect.top
-          ? rect.top - event.clientY
-          : event.clientY > rect.bottom
-            ? event.clientY - rect.bottom
-            : 0;
-        const horizontalDistance = event.clientX < rect.left
-          ? rect.left - event.clientX
-          : event.clientX > rect.right
-            ? event.clientX - rect.right
-            : 0;
-        const score = verticalDistance * 1_000 + horizontalDistance;
-        if (score < bestScore) {
-          bestScore = score;
-          bestOffset = textOffset + index + (event.clientX > (rect.left + rect.right) / 2 ? 1 : 0);
-        }
-      }
-      textOffset += content.length;
-    }
-    visibleOffset = bestOffset;
-  }
-  return Math.max(fallback, Math.min(upperBound - 1, base + visibleOffset));
-}
-
 function dispatchProjectedPointerSelection(
   view: EditorView,
   event: MouseEvent,
@@ -780,43 +680,10 @@ function modifiedProjectedLink(view: EditorView, event: MouseEvent) {
   return true;
 }
 
+const projectedWidgets = createProjectedWidgetRegistry();
+
 function projectedWidgetSourceOffset(event: MouseEvent) {
-  const target = event.target instanceof Element ? event.target : null;
-  if (!target || target.closest(".scholium-callout-fold-mark")) return null;
-
-  const projectedLink = target.closest<HTMLElement>("[data-scholium-source-caret]");
-  const requestedLinkCaret = Number(projectedLink?.dataset.scholiumSourceCaret);
-  if (Number.isSafeInteger(requestedLinkCaret)) return requestedLinkCaret;
-
-  const calloutSlot = target.closest<HTMLElement>(".cm-live-callout-slot");
-  const callout = calloutSlot ? calloutWidgetPresentations.get(calloutSlot) : undefined;
-  if (callout) {
-    return callout.to;
-  }
-
-  const table = target.closest<HTMLElement>(".cm-live-table-widget");
-  const tablePresentation = table ? tableWidgetPresentations.get(table) : undefined;
-  if (table && tablePresentation) {
-    return projectedSourceOffsetAt(
-      event,
-      table,
-      tablePresentation.from,
-      tablePresentation.to,
-    );
-  }
-
-  const mermaid = target.closest<HTMLElement>(".cm-live-mermaid-widget");
-  const mermaidPresentation = mermaid ? mermaidWidgetPresentations.get(mermaid) : undefined;
-  if (mermaid && mermaidPresentation) {
-    return mermaidPresentation.contentFrom;
-  }
-
-  const footnote = target.closest<HTMLElement>(".cm-live-footnote-reference-widget");
-  const reference = footnote ? footnoteReferencePresentations.get(footnote) : undefined;
-  if (reference?.definitionContentFrom !== null && reference?.definitionContentFrom !== undefined) {
-    return reference.definitionContentFrom;
-  }
-  return null;
+  return projectedWidgets.sourceOffset(event);
 }
 
 function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
@@ -832,675 +699,31 @@ const liveSelection = createLiveSelectionController({
   handleProjectedPointerStart: projectedWidgetPointerStart,
 });
 
-const tableWidgetPresentations = new WeakMap<HTMLElement, TablePresentation>();
-const mermaidWidgetPresentations = new WeakMap<HTMLElement, MermaidPresentation>();
-const mermaidWidgetAbortControllers = new WeakMap<HTMLElement, AbortController>();
-
-function appendMermaidDiagnostic(wrapper: HTMLElement, message: string) {
-  const diagnostic = document.createElement("p");
-  diagnostic.className = "scholium-mermaid-diagnostic";
-  diagnostic.textContent = message;
-  wrapper.append(diagnostic);
-}
-
-class MermaidWidget extends WidgetType {
-  constructor(
-    readonly presentation: MermaidPresentation,
-    readonly themeRevision: number,
-  ) { super(); }
-
-  eq(other: MermaidWidget) {
-    return other.presentation.source === this.presentation.source
-      && other.themeRevision === this.themeRevision;
-  }
-
-  toDOM(view: EditorView) {
-    const slot = document.createElement("div");
-    slot.className = "cm-live-mermaid-slot cm-live-mermaid-widget";
-    mermaidWidgetPresentations.set(slot, this.presentation);
-    const wrapper = document.createElement("figure");
-    wrapper.className = "scholium-mermaid";
-    wrapper.dataset.scholiumProtected = "mermaid";
-    const fallback = document.createElement("pre");
-    fallback.className = "scholium-mermaid-source";
-    const code = document.createElement("code");
-    code.textContent = this.presentation.source;
-    fallback.append(code);
-    wrapper.append(fallback);
-    slot.append(wrapper);
-    const abortController = new AbortController();
-    mermaidWidgetAbortControllers.set(slot, abortController);
-
-    void ensureMermaidRuntime().then(async (runtime) => {
-      if (abortController.signal.aborted || !slot.isConnected) return;
-      if (!runtime) {
-        wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(
-          wrapper,
-          localized("Diagram rendering is unavailable. Mermaid source is shown."),
-        );
-        view.requestMeasure();
-        return;
-      }
-      const result = await runtime.render({
-        source: this.presentation.content,
-        themeRoot: document.documentElement,
-        signal: abortController.signal,
-      });
-      if (abortController.signal.aborted
-          || !slot.isConnected
-          || (!result.ok && result.reason === "cancelled")) return;
-      if (!result.ok) {
-        wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(
-          wrapper,
-          localized("This Mermaid diagram is unsupported or could not be rendered. Source is shown."),
-        );
-        view.requestMeasure();
-        return;
-      }
-      const output = document.createElement("div");
-      output.className = "scholium-mermaid-output";
-      if (!runtime.mount(output, result.svg)) {
-        wrapper.classList.add("scholium-mermaid-error");
-        appendMermaidDiagnostic(
-          wrapper,
-          localized("This Mermaid diagram could not be isolated safely. Source is shown."),
-        );
-        view.requestMeasure();
-        return;
-      }
-      wrapper.prepend(output);
-      wrapper.classList.add("scholium-mermaid-rendered");
-      if (result.accessibilityWarning) {
-        const accessibleSource = document.createElement("span");
-        accessibleSource.className = "scholium-mermaid-accessible-source";
-        accessibleSource.textContent = localizedTemplate(
-          "Mermaid source: {source}",
-          {source: this.presentation.content},
-        );
-        wrapper.append(accessibleSource);
-        appendMermaidDiagnostic(
-          wrapper,
-          localized("Add accTitle and accDescr to provide a concise nonvisual account of this diagram."),
-        );
-      }
-      view.requestMeasure();
-    }).catch(() => {
-      if (abortController.signal.aborted || !slot.isConnected) return;
-      wrapper.classList.add("scholium-mermaid-error");
-      appendMermaidDiagnostic(
-        wrapper,
-        localized("This Mermaid diagram could not be rendered. Source is shown."),
-      );
-      view.requestMeasure();
-    });
-    return slot;
-  }
-
-  destroy(dom: HTMLElement) {
-    mermaidWidgetAbortControllers.get(dom)?.abort();
-    mermaidWidgetAbortControllers.delete(dom);
-  }
-
-  ignoreEvent(event: Event) { return event.type !== "mousedown"; }
-}
-
-interface LiveMermaidProjectionState extends LiveBlockProjectionState {
-  readonly presentations: readonly MermaidPresentation[];
-  readonly themeRevision: number;
-}
-
-function liveMermaidDecorations(
-  state: EditorState,
-  presentations: readonly MermaidPresentation[],
-  themeRevision: number,
-) {
-  return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
-    const active = liveSelection.selection(state).ranges.some((range) =>
-      selectionIntersectsProjection(range, presentation));
-    if (active) return [];
-    return [Decoration.replace({
-      widget: new MermaidWidget(presentation, themeRevision),
-      block: true,
-    }).range(presentation.from, presentation.to)];
-  }), true);
-}
-
-function buildLiveMermaidDecorations(
-  state: EditorState,
-  themeRevision = mermaidThemeRevision,
-): LiveMermaidProjectionState {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    return {decorations: Decoration.none, hasConstructs: true, presentations: [], themeRevision};
-  }
-  const presentations = index.literals.codeBlocks.flatMap((block) => {
-    const presentation = mermaidPresentation(state.doc, block);
-    return presentation ? [presentation] : [];
-  });
-  return {
-    decorations: liveMermaidDecorations(state, presentations, themeRevision),
-    hasConstructs: presentations.length > 0,
-    presentations,
-    themeRevision,
-  };
-}
-
-const liveMermaidField = StateField.define<LiveMermaidProjectionState>({
-  create: buildLiveMermaidDecorations,
-  update(previous, transaction) {
-    const refreshedTheme = transaction.effects.find((effect) => effect.is(refreshMermaidThemeEffect));
-    if (transaction.docChanged || transactionChangedSyntaxTree(transaction) || refreshedTheme) {
-      return buildLiveMermaidDecorations(
-        transaction.state,
-        refreshedTheme?.value ?? mermaidThemeRevision,
-      );
-    }
-    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
-    if (activeProjectionSignature(liveSelection.selection(transaction.startState).ranges, previous.presentations)
-        === activeProjectionSignature(liveSelection.selection(transaction.state).ranges, previous.presentations)) {
-      return previous;
-    }
-    return {
-      ...previous,
-      decorations: liveMermaidDecorations(
-        transaction.state,
-        previous.presentations,
-        previous.themeRevision,
-      ),
-    };
-  },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-  ],
+const liveMermaidProjection = createLiveMermaidProjection({
+  selection: liveSelection,
+  projections: liveProjectionIndex,
+  widgets: projectedWidgets,
+  ensureRuntime: ensureMermaidRuntime,
+  currentThemeRevision: () => mermaidThemeRevision,
+  refreshThemeEffect: refreshMermaidThemeEffect,
 });
-
-class TableWidget extends WidgetType {
-  constructor(readonly presentation: TablePresentation) { super(); }
-
-  eq(other: TableWidget) {
-    const equal = other.presentation.from === this.presentation.from
-      && other.presentation.to === this.presentation.to
-      && other.presentation.source === this.presentation.source;
-    if (equal) liveWidgetReuseCounts.table += 1;
-    return equal;
-  }
-
-  toDOM() {
-    const scroller = createTableDOM(this.presentation, document, {
-      mathematics: editingDialect?.mathematics,
-      resolveCallout: calloutDefinition,
-      resolveVectorLink: (marker) => editingDialect?.vectorLinkOperators.find(
-        (candidate) => candidate.marker === marker,
-      )?.kind ?? "neutral",
-    });
-    scroller.classList.add("cm-live-table-widget");
-    tableWidgetPresentations.set(scroller, this.presentation);
-    return scroller;
-  }
-
-  updateDOM(dom: HTMLElement) {
-    const previous = tableWidgetPresentations.get(dom);
-    if (!previous || previous.source !== this.presentation.source) return false;
-    const elements = [...dom.querySelectorAll<HTMLElement>("[data-source-offset]")];
-    const previousOffsets = [...previous.header, ...previous.body.flat()].map((cell) => cell.sourceOffset);
-    const nextOffsets = [...this.presentation.header, ...this.presentation.body.flat()].map((cell) => cell.sourceOffset);
-    if (elements.length !== previousOffsets.length || elements.length !== nextOffsets.length) return false;
-    elements.forEach((element, index) => {
-      element.dataset.sourceOffset = String(nextOffsets[index]);
-    });
-    tableWidgetPresentations.set(dom, this.presentation);
-    liveWidgetReuseCounts.table += 1;
-    return true;
-  }
-
-  ignoreEvent(event: Event) { return event.type !== "mousedown"; }
-}
-
-function liveTableDecorations(
-  state: EditorState,
-  presentations: readonly TablePresentation[],
-) {
-  const decorations = presentations.flatMap((presentation): Range<Decoration>[] => {
-    const active = liveSelection.selection(state).ranges.some((range) =>
-      selectionIntersectsProjection(range, presentation),
-    );
-    if (active) return [];
-    return [Decoration.replace({
-      widget: new TableWidget(presentation),
-      block: true,
-    }).range(presentation.from, presentation.to)];
-  });
-  return Decoration.set(decorations, true);
-}
-
-function buildLiveTableDecorations(state: EditorState): LiveTableProjectionState {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    return {decorations: Decoration.none, hasConstructs: true, presentations: []};
-  }
-  const presentations = index.tables;
-  return {
-    decorations: liveTableDecorations(state, presentations),
-    hasConstructs: presentations.length > 0,
-    presentations,
-  };
-}
-
-const liveTableField = StateField.define<LiveTableProjectionState>({
-  create: buildLiveTableDecorations,
-  update(previous, transaction) {
-    if (transaction.docChanged) return buildLiveTableDecorations(transaction.state);
-    const syntaxTreeChanged = transactionChangedSyntaxTree(transaction);
-    if (syntaxTreeChanged) {
-      return buildLiveTableDecorations(transaction.state);
-    }
-    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
-    if (activeProjectionSignature(liveSelection.selection(transaction.startState).ranges, previous.presentations)
-        === activeProjectionSignature(liveSelection.selection(transaction.state).ranges, previous.presentations)) {
-      return previous;
-    }
-    return {
-      ...previous,
-      decorations: liveTableDecorations(transaction.state, previous.presentations),
-    };
-  },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-  ],
+const liveStructuredBlockProjections = createLiveStructuredBlockProjections({
+  selection: liveSelection,
+  projections: liveProjectionIndex,
+  widgets: projectedWidgets,
+  editingDialect: () => editingDialect,
+  reuseCounts: liveWidgetReuseCounts,
 });
-
-interface LiveDisplayMathProjectionState extends LiveBlockProjectionState {
-  presentations: readonly MathProjection[];
-}
-
-function liveDisplayMathDecorations(
-  state: EditorState,
-  presentations: readonly MathProjection[],
-) {
-  return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
-    const active = liveSelection.selection(state).ranges.some((range) =>
-      selectionIntersectsProjection(range, presentation));
-    if (active) return [];
-    return [Decoration.replace({
-      widget: new MathWidget(presentation),
-      block: true,
-    }).range(presentation.from, presentation.to)];
-  }), true);
-}
-
-function buildLiveDisplayMathDecorations(state: EditorState): LiveDisplayMathProjectionState {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    return {decorations: Decoration.none, hasConstructs: true, presentations: []};
-  }
-  const presentations = index.mathExpressions.filter((expression) => expression.kind === "display");
-  return {
-    decorations: liveDisplayMathDecorations(state, presentations),
-    hasConstructs: presentations.length > 0,
-    presentations,
-  };
-}
-
-const liveDisplayMathField = StateField.define<LiveDisplayMathProjectionState>({
-  create: buildLiveDisplayMathDecorations,
-  update(previous, transaction) {
-    if (transaction.docChanged) return buildLiveDisplayMathDecorations(transaction.state);
-    const syntaxTreeChanged = transactionChangedSyntaxTree(transaction);
-    if (syntaxTreeChanged) {
-      return buildLiveDisplayMathDecorations(transaction.state);
-    }
-    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
-    if (activeProjectionSignature(liveSelection.selection(transaction.startState).ranges, previous.presentations)
-        === activeProjectionSignature(liveSelection.selection(transaction.state).ranges, previous.presentations)) {
-      return previous;
-    }
-    return {
-      ...previous,
-      decorations: liveDisplayMathDecorations(transaction.state, previous.presentations),
-    };
-  },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-  ],
+const liveDisplayMathProjection = createLiveDisplayMathProjection({
+  selection: liveSelection,
+  projections: liveProjectionIndex,
+  widget: (expression) => new MathWidget(expression),
 });
-
-interface RawHTMLPresentation extends ProjectionSourceRange {
-  readonly source: string;
-}
-
-interface LiveRawHTMLProjectionState extends LiveBlockProjectionState {
-  readonly presentations: readonly RawHTMLPresentation[];
-}
-
-class RawHTMLWidget extends WidgetType {
-  constructor(readonly presentation: RawHTMLPresentation) { super(); }
-  eq(other: RawHTMLWidget) { return other.presentation.source === this.presentation.source; }
-  toDOM() {
-    const pre = document.createElement("pre");
-    pre.className = [
-      "raw-html",
-      "cm-live-raw-html",
-      "cm-live-raw-html-start",
-      "cm-live-raw-html-end",
-      "cm-live-raw-html-widget",
-    ].join(" ");
-    pre.dataset.scholiumProtected = "raw-html";
-    pre.textContent = this.presentation.source;
-    return pre;
-  }
-  ignoreEvent() { return false; }
-}
-
-function liveRawHTMLDecorations(
-  state: EditorState,
-  presentations: readonly RawHTMLPresentation[],
-) {
-  return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
-    const active = liveSelection.selection(state).ranges.some((range) =>
-      selectionIntersectsProjection(range, presentation));
-    if (active) return [];
-    return [Decoration.replace({
-      widget: new RawHTMLWidget(presentation),
-      block: true,
-    }).range(presentation.from, presentation.to)];
-  }), true);
-}
-
-function buildLiveRawHTMLDecorations(state: EditorState): LiveRawHTMLProjectionState {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    return {decorations: Decoration.none, hasConstructs: true, presentations: []};
-  }
-  const presentations = index.syntax.blocks
-    .filter((block) => block.kind === "html")
-    .map((block): RawHTMLPresentation => ({
-      from: block.from,
-      to: block.to,
-      source: state.doc.sliceString(block.from, block.to),
-    }));
-  return {
-    decorations: liveRawHTMLDecorations(state, presentations),
-    hasConstructs: presentations.length > 0,
-    presentations,
-  };
-}
-
-const liveRawHTMLField = StateField.define<LiveRawHTMLProjectionState>({
-  create: buildLiveRawHTMLDecorations,
-  update(previous, transaction) {
-    if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
-      return buildLiveRawHTMLDecorations(transaction.state);
-    }
-    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
-    if (activeProjectionSignature(liveSelection.selection(transaction.startState).ranges, previous.presentations)
-        === activeProjectionSignature(liveSelection.selection(transaction.state).ranges, previous.presentations)) {
-      return previous;
-    }
-    return {
-      ...previous,
-      decorations: liveRawHTMLDecorations(transaction.state, previous.presentations),
-    };
-  },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-  ],
-});
-
-interface LiveCalloutProjectionState extends LiveBlockProjectionState {
-  presentations: readonly CalloutPresentation[];
-  active: boolean;
-}
-
-const calloutWidgetPresentations = new WeakMap<HTMLElement, CalloutPresentation>();
-
-class CalloutWidget extends WidgetType {
-  constructor(readonly presentation: CalloutPresentation) { super(); }
-
-  eq(other: CalloutWidget) {
-    const equal = other.presentation.from === this.presentation.from
-      && other.presentation.to === this.presentation.to
-      && other.presentation.source === this.presentation.source;
-    if (equal) liveWidgetReuseCounts.callout += 1;
-    return equal;
-  }
-
-  toDOM(view: EditorView) {
-    const slot = document.createElement("div");
-    slot.className = "cm-live-callout-slot";
-    appendMarkdownBlocks(this.presentation.source, slot, {
-      mathematics: editingDialect?.mathematics,
-      resolveCallout: calloutDefinition,
-      resolveVectorLink: (marker) => editingDialect?.vectorLinkOperators.find(
-        (candidate) => candidate.marker === marker,
-      )?.kind ?? "neutral",
-      sourceOffset: (offset) => this.presentation.from + offset,
-    });
-    const callout = slot.firstElementChild;
-    if (!(callout instanceof HTMLElement) || !callout.classList.contains("scholium-callout")) {
-      const fallback = document.createElement("pre");
-      fallback.className = "cm-live-callout-widget cm-live-callout-widget-fallback";
-      fallback.textContent = this.presentation.source;
-      slot.replaceChildren(fallback);
-      return slot;
-    }
-    // The fragment renderer appends its terminal newline as a text node.
-    // Inside a CodeMirror block widget that whitespace creates an otherwise
-    // invisible 24px line box after every Callout, so retain only the single
-    // semantic component owned by this projection.
-    slot.replaceChildren(callout);
-    callout.classList.add("cm-live-callout-widget");
-    calloutWidgetPresentations.set(slot, this.presentation);
-    if (callout instanceof HTMLDetailsElement) {
-      let measurePending = false;
-      callout.addEventListener("toggle", () => {
-        if (measurePending) return;
-        measurePending = true;
-        queueMicrotask(() => {
-          measurePending = false;
-          view.requestMeasure();
-        });
-      });
-    }
-    return slot;
-  }
-
-  updateDOM(dom: HTMLElement) {
-    const previous = calloutWidgetPresentations.get(dom);
-    if (!previous || previous.source !== this.presentation.source) return false;
-    calloutWidgetPresentations.set(dom, this.presentation);
-    liveWidgetReuseCounts.callout += 1;
-    return true;
-  }
-
-  ignoreEvent(event: Event) {
-    const foldMark = event.target instanceof Element
-      && event.target.closest(".scholium-callout-fold-mark");
-    return foldMark !== null || event.type !== "mousedown";
-  }
-}
-
-function liveCalloutDecorations(
-  state: EditorState,
-  presentations: readonly CalloutPresentation[],
-) {
-  const selections = liveSelection.selection(state).ranges;
-  const decorations = presentations.flatMap((presentation): Range<Decoration>[] => {
-    const active = selections.some((range) => selectionActivatesCallout(range, presentation));
-    if (active) return [];
-    return [Decoration.replace({
-      widget: new CalloutWidget(presentation),
-      block: true,
-    }).range(presentation.from, presentation.to)];
-  });
-  return Decoration.set(decorations, true);
-}
-
-function buildLiveCalloutDecorations(state: EditorState): LiveCalloutProjectionState {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    return {decorations: Decoration.none, hasConstructs: true, presentations: [], active: false};
-  }
-  const presentations = index.callouts;
-  const active = presentations.some((presentation) =>
-    liveSelection.selection(state).ranges.some((range) =>
-      selectionActivatesCallout(range, presentation)));
-  return {
-    decorations: liveCalloutDecorations(state, presentations),
-    hasConstructs: presentations.length > 0,
-    presentations,
-    active,
-  };
-}
-
-const liveCalloutField = StateField.define<LiveCalloutProjectionState>({
-  create: buildLiveCalloutDecorations,
-  update(previous, transaction) {
-    if (transaction.docChanged) return buildLiveCalloutDecorations(transaction.state);
-    const syntaxTreeChanged = transactionChangedSyntaxTree(transaction);
-    if (syntaxTreeChanged) {
-      return buildLiveCalloutDecorations(transaction.state);
-    }
-    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
-    return buildLiveCalloutDecorations(transaction.state);
-  },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-    EditorView.editorAttributes.from(field, (value): Record<string, string> => value.active
-      ? {"data-scholium-active-live-block": "callout"}
-      : {}),
-  ],
-});
-
-const footnoteReferencePresentations = new WeakMap<HTMLElement, FootnoteReferencePresentation>();
-
-class FootnoteReferenceWidget extends WidgetType {
-  constructor(readonly reference: FootnoteReferencePresentation) { super(); }
-
-  eq(other: FootnoteReferenceWidget) {
-    const equal = other.reference.identifier === this.reference.identifier
-      && other.reference.ordinal === this.reference.ordinal
-      && other.reference.occurrence === this.reference.occurrence
-      && other.reference.from === this.reference.from
-      && other.reference.definitionFrom === this.reference.definitionFrom
-      && other.reference.definitionContentFrom === this.reference.definitionContentFrom;
-    if (equal) liveWidgetReuseCounts.footnote += 1;
-    return equal;
-  }
-
-  toDOM() {
-    const wrapper = document.createElement("sup");
-    wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
-    wrapper.dataset.scholiumProtected = "footnote";
-    const marker = document.createElement("span");
-    marker.className = "footnote-reference";
-    marker.dataset.footnote = String(this.reference.ordinal);
-    marker.dataset.scholiumProtected = "footnote-marker";
-    marker.setAttribute(
-      "aria-label",
-      localizedTemplate("Footnote {ordinal}", {ordinal: this.reference.ordinal}),
-    );
-    marker.textContent = String(this.reference.ordinal);
-    if (this.reference.definitionFrom === null) {
-      marker.setAttribute("aria-disabled", "true");
-      marker.classList.add("footnote-reference-missing");
-    }
-    footnoteReferencePresentations.set(wrapper, this.reference);
-    wrapper.append(marker);
-    return wrapper;
-  }
-
-  updateDOM(dom: HTMLElement) {
-    const previous = footnoteReferencePresentations.get(dom);
-    const sameContent = previous
-      && previous.identifier === this.reference.identifier
-      && previous.ordinal === this.reference.ordinal
-      && previous.occurrence === this.reference.occurrence
-      && previous.definitionFrom === this.reference.definitionFrom
-      && previous.definitionContentFrom === this.reference.definitionContentFrom;
-    if (!sameContent) return false;
-    footnoteReferencePresentations.set(dom, this.reference);
-    liveWidgetReuseCounts.footnote += 1;
-    return true;
-  }
-
-  ignoreEvent(event: Event) { return event.type !== "mousedown"; }
-}
-
-interface LiveFootnoteReferenceState {
-  decorations: DecorationSet;
-  hasConstructs: boolean;
-  presentation: FootnotePresentation;
-  ranges: readonly Readonly<ProjectionSourceRange>[];
-}
-
-function liveFootnoteReferenceDecorations(
-  state: EditorState,
-  presentation: FootnotePresentation,
-) {
-  const decorations: Range<Decoration>[] = [];
-  const active = (from: number, to: number) => liveSelection.selection(state).ranges.some((range) =>
-    selectionIntersectsProjection(range, {from, to}),
-  );
-  for (const reference of presentation.references) {
-    const containedByDefinition = presentation.definitions.some((definition) =>
-      !definition.isInline && definition.from <= reference.from && definition.to >= reference.to,
-    );
-    if (containedByDefinition || active(reference.from, reference.to)) continue;
-    decorations.push(Decoration.replace({
-      widget: new FootnoteReferenceWidget(reference),
-    }).range(reference.from, reference.to));
-  }
-  return Decoration.set(decorations, true);
-}
-
-function buildLiveFootnoteReferenceState(state: EditorState): LiveFootnoteReferenceState {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    return {
-      decorations: Decoration.none,
-      hasConstructs: true,
-      presentation: {definitions: [], references: []},
-      ranges: [],
-    };
-  }
-  const presentation = index.footnotes;
-  return {
-    decorations: liveFootnoteReferenceDecorations(state, presentation),
-    hasConstructs: presentation.definitions.length > 0 || presentation.references.length > 0,
-    presentation,
-    ranges: index.footnoteRanges,
-  };
-}
-
-const liveFootnoteReferenceField = StateField.define<LiveFootnoteReferenceState>({
-  create: buildLiveFootnoteReferenceState,
-  update(previous, transaction) {
-    if (transaction.docChanged) return buildLiveFootnoteReferenceState(transaction.state);
-    const syntaxTreeChanged = transactionChangedSyntaxTree(transaction);
-    if (syntaxTreeChanged) {
-      return buildLiveFootnoteReferenceState(transaction.state);
-    }
-    if (!liveSelection.changed(transaction.startState, transaction.state)) return previous;
-    if (activeProjectionSignature(liveSelection.selection(transaction.startState).ranges, previous.ranges)
-        === activeProjectionSignature(liveSelection.selection(transaction.state).ranges, previous.ranges)) {
-      return previous;
-    }
-    return {
-      ...previous,
-      decorations: liveFootnoteReferenceDecorations(transaction.state, previous.presentation),
-    };
-  },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-  ],
+const liveFootnoteProjection = createLiveFootnoteProjection({
+  selection: liveSelection,
+  projections: liveProjectionIndex,
+  widgets: projectedWidgets,
+  reuseCounts: liveWidgetReuseCounts,
 });
 
 interface LiveInlineProjectionState {
@@ -1509,465 +732,10 @@ interface LiveInlineProjectionState {
   coveredRanges: readonly ProjectionSourceRange[];
 }
 
-interface SemanticPhysicalLine {
-  readonly from: number;
-  readonly to: number;
-  readonly length: number;
-  readonly number: number;
-  readonly text: string;
-}
-
-interface SemanticLinePresentation {
-  readonly active: boolean;
-  readonly classes: readonly string[];
-  readonly codeBlock: Readonly<SemanticCodeBlockRange> | null;
-  readonly heading: SemanticBlockProjection | null;
-  readonly headingLevel: number | null;
-  readonly headingMarkers: readonly {from: number; to: number}[];
-  readonly paragraph: SemanticBlockProjection | null;
-  readonly callout: SemanticBlockProjection | null;
-  readonly calloutPresentation: CalloutPresentation | null;
-  readonly quote: SemanticBlockProjection | null;
-  readonly quoteMarkers: readonly {from: number; to: number}[];
-  readonly rule: SemanticBlockProjection | null;
-  readonly html: SemanticBlockProjection | null;
-  readonly comment: SemanticBlockProjection | null;
-  readonly list: SemanticBlockProjection | null;
-  readonly listMarker: {from: number; to: number} | null;
-}
-
-function semanticLinePresentation(
-  state: EditorState,
-  line: SemanticPhysicalLine,
-  index: LiveProjectionIndex,
-): SemanticLinePresentation {
-  const lineQueryTo = Math.min(state.doc.length, line.to + 1);
-  const active = liveSelection.selection(state).ranges.some((range) =>
-    range.head >= line.from && range.head <= line.to
-      || !range.empty && range.from < lineQueryTo && range.to >= line.from);
-  const ownsCollapsedCaret = liveSelection.selection(state).ranges.some((range) =>
-    range.empty && range.head >= line.from && range.head <= line.to);
-  const blocks = rangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
-  const codeBlock = rangesIntersecting(index.literals.codeBlocks, line.from, lineQueryTo)[0] ?? null;
-  const codeBlockActive = codeBlock !== null && liveSelection.selection(state).ranges.some((range) =>
-    selectionIntersectsProjection(range, codeBlock));
-  const heading = blocks.find((block) => block.kind === "heading") ?? null;
-  const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-  // Lezer deliberately leaves a content-free ATX prefix incomplete. For the
-  // active source line, the Markdown delimiter is nevertheless complete as
-  // soon as its required separator is typed, so publish the intended heading
-  // typography without waiting for a body character.
-  const pendingATXHeading = ownsCollapsedCaret && outsideFrontmatter && !codeBlock
-    ? /^ {0,3}(#{1,6})[ \t]+$/.exec(line.text)
-    : null;
-  const headingLevel = heading?.headingLevel ?? pendingATXHeading?.[1].length ?? null;
-  const headingMarkers = heading?.markerRanges.filter((range) =>
-    range.from < lineQueryTo && range.to > line.from) ?? [];
-  const headingMarkerOnly = line.length > 0 && headingMarkers.some((range) =>
-    range.from <= line.from && range.to >= line.to);
-  const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
-  const callout = blocks.find((block) => block.kind === "callout") ?? null;
-  const calloutPresentation = rangesIntersecting(index.callouts, line.from, lineQueryTo)[0] ?? null;
-  const calloutActive = calloutPresentation !== null
-    && liveSelection.selection(state).ranges.some((range) =>
-      selectionActivatesCallout(range, calloutPresentation));
-  const calloutOpening = calloutPresentation
-    ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "")
-    : null;
-  const calloutIdentifier = calloutOpening ? calloutDefinition(calloutOpening[2]).identifier : null;
-  const quote = calloutPresentation
-    ? null
-    : blocks.find((block) => block.kind === "blockQuote") ?? null;
-  const quoteMarkers = quote?.markerRanges.filter((range) =>
-    range.from < lineQueryTo && range.to > line.from) ?? [];
-  const rule = blocks.find((block) => block.kind === "thematicBreak") ?? null;
-  const html = blocks.find((block) => block.kind === "html") ?? null;
-  const blockComment = blocks.find((block) => block.kind === "comment") ?? null;
-  const inlineComment = rangesIntersecting(index.syntax.inlines, line.from, lineQueryTo)
-    .find((inline) => inline.kind === "comment") ?? null;
-  const comment = blockComment ?? (inlineComment ? {
-    kind: "comment" as const,
-    nodeName: inlineComment.nodeName,
-    from: inlineComment.from,
-    to: inlineComment.to,
-    depth: 0,
-    parent: null,
-    headingLevel: null,
-    listDepth: null,
-    markerRanges: inlineComment.markerRanges,
-    taskMarkerRange: null,
-  } : null);
-  const list = blocks
-    .filter((block) => block.kind === "listItem")
-    .filter((block) => block.markerRanges.some((range) =>
-      range.from >= line.from && range.from <= line.to))
-    .sort((left, right) => (right.listDepth ?? 0) - (left.listDepth ?? 0))[0] ?? null;
-  const listMarker = list?.markerRanges.find((range) =>
-    range.from >= line.from
-      && range.from <= line.to
-      && !state.doc.sliceString(range.from, range.to).startsWith("[")) ?? null;
-  const classes = new Set<string>();
-  if (/^\s*$/.test(state.doc.sliceString(line.from, line.to))
-      && outsideFrontmatter && !codeBlock) {
-    classes.add("cm-live-blank-line");
-    if (ownsCollapsedCaret) classes.add("cm-live-blank-line-active");
-  }
-  if (calloutPresentation && calloutActive) {
-    classes.add("cm-live-callout");
-    classes.add("cm-live-callout-source");
-    classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
-    if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
-      classes.add("cm-live-callout-start");
-      classes.add("cm-live-callout-header");
-      classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
-    } else {
-      classes.add("cm-live-callout-body-line");
-    }
-    if (state.doc.lineAt(calloutPresentation.to).number === line.number) {
-      classes.add("cm-live-callout-end");
-    }
-    if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
-  }
-  if (codeBlock) {
-    classes.add("cm-live-codeblock");
-    if (codeBlockActive) classes.add("cm-live-codeblock-active");
-    if (!codeBlockActive && isFencedDelimiterLine(state.doc, codeBlock, line.from)) {
-      classes.add("cm-live-code-fence-line");
-    } else {
-      const firstContentLine = codeBlock.fenced && codeBlock.markerRanges.length > 0
-        ? Math.min(
-            state.doc.lines,
-            state.doc.lineAt(codeBlock.markerRanges[0].from).number + 1,
-          )
-        : state.doc.lineAt(codeBlock.from).number;
-      const lastContentLine = codeBlock.fenced && codeBlock.markerRanges.length > 1
-        ? Math.max(
-            firstContentLine,
-            state.doc.lineAt(codeBlock.markerRanges.at(-1)!.from).number - 1,
-          )
-        : state.doc.lineAt(codeBlock.to).number;
-      const firstStyledLine = codeBlockActive && codeBlock.fenced
-        ? state.doc.lineAt(codeBlock.markerRanges[0].from).number
-        : firstContentLine;
-      const lastStyledLine = codeBlockActive && codeBlock.fenced && codeBlock.markerRanges.length > 1
-        ? state.doc.lineAt(codeBlock.markerRanges.at(-1)!.from).number
-        : lastContentLine;
-      if (line.number === firstStyledLine) classes.add("cm-live-codeblock-start");
-      if (line.number === lastStyledLine) classes.add("cm-live-codeblock-end");
-    }
-  } else if (comment) {
-    classes.add("cm-live-paragraph");
-    classes.add("cm-live-paragraph-start");
-    classes.add("cm-live-paragraph-end");
-  } else if (html) {
-    classes.add("cm-live-raw-html");
-    if (line.from <= html.from) classes.add("cm-live-raw-html-start");
-    if (line.to >= html.to) classes.add("cm-live-raw-html-end");
-  } else {
-    if (headingLevel !== null) {
-      if (headingMarkerOnly && !active) {
-        classes.add("cm-live-heading-marker-line");
-      } else {
-        classes.add("cm-live-heading");
-        classes.add(`cm-live-h${headingLevel}`);
-        if (headingLevel === 1) classes.add("cm-live-document-title");
-      }
-    }
-    if (paragraph && !callout && headingLevel === null) {
-      classes.add("cm-live-paragraph");
-      if (line.from <= paragraph.from) classes.add("cm-live-paragraph-start");
-      if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
-    }
-    if (quote) classes.add("cm-live-quote");
-    if (rule && !active) classes.add("cm-live-rule");
-    if (list && listMarker) {
-      classes.add("cm-live-list");
-      if ((list.listDepth ?? 0) > 0) classes.add("cm-live-list-nested");
-      if (list.taskMarkerRange) classes.add("cm-live-task-list");
-    }
-  }
-  return {
-    active,
-    classes: [...classes],
-    codeBlock,
-    heading,
-    headingLevel,
-    headingMarkers,
-    paragraph,
-    callout,
-    calloutPresentation,
-    quote,
-    quoteMarkers,
-    rule,
-    html,
-    comment,
-    list,
-    listMarker,
-  };
-}
-
-interface LiveSemanticLineState {
-  readonly decorations: DecorationSet;
-}
-
-function semanticLineDecorationRanges(
-  state: EditorState,
-  from = 0,
-  to = state.doc.length,
-): Range<Decoration>[] {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) return [];
-  const ranges: Range<Decoration>[] = [];
-  const scanFrom = Math.max(0, Math.min(from, state.doc.length));
-  const scanTo = Math.max(scanFrom, Math.min(to, state.doc.length));
-  let line = state.doc.lineAt(scanFrom);
-  while (line.from <= scanTo) {
-    const presentation = semanticLinePresentation(state, line, index);
-    const direction = presentation.codeBlock || presentation.html
-      ? "ltr"
-      : presentation.headingLevel !== null
-          || presentation.paragraph
-          || presentation.calloutPresentation
-          || presentation.quote
-          || presentation.list
-          || presentation.comment
-        ? "auto"
-        : null;
-    if (presentation.classes.length > 0 || direction) {
-      const attributes: Record<string, string> = {};
-      if (presentation.classes.length > 0) {
-        attributes.class = presentation.classes.join(" ");
-      }
-      if (direction) attributes.dir = direction;
-      ranges.push(Decoration.line({
-        attributes,
-      }).range(line.from));
-    }
-    if (line.number >= state.doc.lines) break;
-    line = state.doc.line(line.number + 1);
-  }
-  return ranges;
-}
-
-function expandedPhysicalLineRanges(
-  state: EditorState,
-  sourceRanges: readonly ProjectionSourceRange[],
-) {
-  const expanded = sourceRanges.map((range) => {
-    const from = Math.max(0, Math.min(range.from, state.doc.length));
-    const to = Math.max(from, Math.min(range.to, state.doc.length));
-    return {
-      from: state.doc.lineAt(from).from,
-      to: state.doc.lineAt(to).to,
-    };
-  }).sort((left, right) => left.from - right.from || left.to - right.to);
-  const merged: ProjectionSourceRange[] = [];
-  for (const range of expanded) {
-    const previous = merged.at(-1);
-    if (previous && range.from <= previous.to + 1) previous.to = Math.max(previous.to, range.to);
-    else merged.push({...range});
-  }
-  return merged;
-}
-
-function replacingLineDecorationsInRanges(
-  existing: DecorationSet,
-  state: EditorState,
-  affected: readonly ProjectionSourceRange[],
-) {
-  let decorations = existing;
-  for (const range of expandedPhysicalLineRanges(state, affected)) {
-    decorations = decorations.update({
-      filter: (from) => from < range.from || from > range.to,
-      add: semanticLineDecorationRanges(state, range.from, range.to),
-      sort: true,
-    });
-  }
-  return decorations;
-}
-
-function buildLiveSemanticLineState(state: EditorState): LiveSemanticLineState {
-  return {
-    decorations: Decoration.set(semanticLineDecorationRanges(state), true),
-  };
-}
-
-const liveSemanticLineField = StateField.define<LiveSemanticLineState>({
-  create: buildLiveSemanticLineState,
-  update(previous, transaction) {
-    if (transactionChangedSyntaxTree(transaction)) {
-      return buildLiveSemanticLineState(transaction.state);
-    }
-    if (transaction.docChanged) {
-      if (!liveProjectionIndex.topologyWasMapped(transaction)) {
-        return buildLiveSemanticLineState(transaction.state);
-      }
-      const mapped = previous.decorations.map(transaction.changes);
-      const affected = mergedChangedLineRanges(transaction);
-      return {
-        decorations: replacingLineDecorationsInRanges(mapped, transaction.state, affected),
-      };
-    }
-    if (liveSelection.changed(transaction.startState, transaction.state)) {
-      const affected = selectionAffectedProjectionAndCodeBlockRanges(
-        transaction.state,
-        liveSelection.selection(transaction.startState).ranges,
-        liveSelection.selection(transaction.state).ranges,
-      );
-      return {
-        decorations: replacingLineDecorationsInRanges(
-          previous.decorations,
-          transaction.state,
-          affected,
-        ),
-      };
-    }
-    return previous;
-  },
-  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
-});
-
-type SemanticBlockSpacing = "none" | "half" | "paragraph" | "standard" | "callout";
-
-function semanticBlockSpacing(block: SemanticBlockProjection): SemanticBlockSpacing {
-  switch (block.kind) {
-  case "unorderedList":
-  case "orderedList":
-  case "blockQuote":
-  case "code":
-  case "html": return "standard";
-  case "table":
-  case "displayMath": return "paragraph";
-  case "callout": return "callout";
-  case "thematicBreak": return "half";
-  default: return "none";
-  }
-}
-
-class SemanticBlockGapWidget extends WidgetType {
-  readonly previous: SemanticBlockSpacing;
-  readonly next: SemanticBlockSpacing;
-  constructor(previous: SemanticBlockSpacing, next: SemanticBlockSpacing) {
-    super();
-    this.previous = previous;
-    this.next = next;
-  }
-  eq(other: SemanticBlockGapWidget) {
-    return other.previous === this.previous && other.next === this.next;
-  }
-  toDOM() {
-    const gap = document.createElement("div");
-    gap.className = [
-      "cm-live-semantic-gap",
-      `cm-live-semantic-gap-after-${this.previous}`,
-      `cm-live-semantic-gap-before-${this.next}`,
-    ].join(" ");
-    gap.setAttribute("aria-hidden", "true");
-    return gap;
-  }
-  ignoreEvent() { return true; }
-}
-
-interface LiveSemanticBlockSpacingState {
-  readonly decorations: DecorationSet;
-}
-
-function semanticBlockGapRanges(state: EditorState): Range<Decoration>[] {
-  const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) return [];
-  const spacingPriority: Partial<Record<SemanticBlockProjection["kind"], number>> = {
-    callout: 100,
-    displayMath: 90,
-    table: 80,
-    code: 70,
-    html: 60,
-    orderedList: 50,
-    unorderedList: 50,
-    blockQuote: 40,
-    thematicBreak: 30,
-    heading: 20,
-    paragraph: 10,
-  };
-  const rawTopLevelBlocks = index.syntax.blocks
-    .filter((block) => block.parent === null)
-    .filter((block) => block.to > (index.frontmatterRange?.to ?? 0));
-  const topLevelBlocks = rawTopLevelBlocks
-    .filter((candidate) => !rawTopLevelBlocks.some((owner) =>
-      owner !== candidate
-        && owner.from <= candidate.from
-        && owner.to >= candidate.to
-        && (spacingPriority[owner.kind] ?? 0) > (spacingPriority[candidate.kind] ?? 0)))
-    .sort((left, right) => left.from - right.from || left.to - right.to);
-  const ranges: Range<Decoration>[] = [];
-  let previous: SemanticBlockProjection | null = null;
-  for (const current of topLevelBlocks) {
-    const previousSpacing = previous ? semanticBlockSpacing(previous) : "none";
-    const nextSpacing = semanticBlockSpacing(current);
-    if (previousSpacing !== "none" || nextSpacing !== "none") {
-      const previousLineNumber = previous
-        ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number
-        : 0;
-      const currentLineNumber = state.doc.lineAt(current.from).number;
-      let authoredSeparatorLine: number | null = null;
-      for (let number = currentLineNumber - 1; number > previousLineNumber; number -= 1) {
-        const line = state.doc.line(number);
-        if (/^\s*$/.test(line.text)) {
-          authoredSeparatorLine = line.from;
-          break;
-        }
-      }
-      if (authoredSeparatorLine !== null) {
-        // The exact Markdown separator line is the pointer, keyboard, and
-        // geometry owner. Let it absorb any larger object-local boundary
-        // rhythm instead of inserting a second, source-less hit region.
-        ranges.push(Decoration.line({
-          attributes: {
-            class: [
-              "cm-live-semantic-blank-gap",
-              `cm-live-semantic-gap-after-${previousSpacing}`,
-              `cm-live-semantic-gap-before-${nextSpacing}`,
-            ].join(" "),
-          },
-        }).range(authoredSeparatorLine));
-      } else {
-        ranges.push(Decoration.widget({
-          widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
-          block: true,
-          side: -1,
-        }).range(current.from));
-      }
-    }
-    previous = current;
-  }
-  if (previous) {
-    const spacing = semanticBlockSpacing(previous);
-    if (spacing !== "none") {
-      ranges.push(Decoration.widget({
-        widget: new SemanticBlockGapWidget(spacing, "none"),
-        block: true,
-        side: 1,
-      }).range(previous.to));
-    }
-  }
-  return ranges;
-}
-
-function buildLiveSemanticBlockSpacingState(state: EditorState): LiveSemanticBlockSpacingState {
-  return {decorations: Decoration.set(semanticBlockGapRanges(state), true)};
-}
-
-const liveSemanticBlockSpacingField = StateField.define<LiveSemanticBlockSpacingState>({
-  create: buildLiveSemanticBlockSpacingState,
-  update(previous, transaction) {
-    if (!transaction.docChanged && !transactionChangedSyntaxTree(transaction)) return previous;
-    if (transactionChangedSyntaxTree(transaction)) {
-      return buildLiveSemanticBlockSpacingState(transaction.state);
-    }
-    return liveProjectionIndex.topologyWasMapped(transaction)
-      ? {decorations: previous.decorations.map(transaction.changes)}
-      : buildLiveSemanticBlockSpacingState(transaction.state);
-  },
-  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+const liveSemanticLayout = createLiveSemanticLayout({
+  selection: liveSelection,
+  projections: liveProjectionIndex,
+  editingDialect: () => editingDialect,
 });
 
 function bufferedVisibleRanges(view: EditorView, margin = 2_000) {
@@ -2606,25 +1374,6 @@ const liveFrontmatterGuardField = StateField.define<LiveFrontmatterProjectionSta
   ],
 });
 
-function mergedChangedLineRanges(transaction: Transaction) {
-  const ranges: ProjectionSourceRange[] = [];
-  transaction.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
-    const startLine = transaction.state.doc.lineAt(Math.min(fromB, transaction.state.doc.length));
-    const endLine = transaction.state.doc.lineAt(Math.min(toB, transaction.state.doc.length));
-    const expandedStart = transaction.state.doc.line(Math.max(1, startLine.number - 1)).from;
-    const expandedEnd = transaction.state.doc.line(
-      Math.min(transaction.state.doc.lines, endLine.number + 1),
-    ).to;
-    const previous = ranges.at(-1);
-    if (previous && expandedStart <= previous.to) {
-      previous.to = Math.max(previous.to, expandedEnd);
-    } else {
-      ranges.push({from: expandedStart, to: expandedEnd});
-    }
-  });
-  return ranges;
-}
-
 let dirty = false;
 let pendingKeyDownStartedAt: number | null = null;
 let pendingCommittedKeyStartedAt: number | null = null;
@@ -2638,7 +1387,6 @@ const interactionReporter = new AnimationFrameCoalescer(
   (identifier) => window.clearTimeout(identifier),
 );
 /** @type {number | null} */
-let idleTimer: number | null = null;
 
 const stateReporter = EditorView.updateListener.of((update) => {
   const isProgrammatic = update.transactions.some(
@@ -2745,10 +1493,6 @@ const stateReporter = EditorView.updateListener.of((update) => {
 
   scheduleEditorInteractionReport();
 
-  if (update.docChanged) {
-    if (idleTimer !== null) window.clearTimeout(idleTimer);
-    idleTimer = window.setTimeout(() => post({ type: "idle", dirty }), 500);
-  }
 });
 
 const linkActivation = EditorView.domEventHandlers({
@@ -2882,7 +1626,7 @@ const structuralInteractionKeymap = keymap.of([
 function liveNavigationBlockRanges(state: EditorState) {
   return [
     ...liveProjectionIndex.index(state).blockRanges,
-    ...state.field(liveMermaidField).presentations.map(({from, to}) => ({
+    ...liveMermaidProjection.presentations(state).map(({from, to}) => ({
       from,
       to,
       kind: "mermaid" as const,
@@ -2904,7 +1648,7 @@ function liveHorizontalNavigationRangeAt(
     boundary,
   );
   const mermaidRange = projectionRangeAtBoundary(
-    state.field(liveMermaidField).presentations,
+    liveMermaidProjection.presentations(state),
     offset,
     boundary,
   );
@@ -3124,15 +1868,14 @@ const livePreviewMode = [
   Prec.high(liveSelection.extension),
   liveProjectionIndex.extension,
   inputSuggestions.extension,
-  liveSemanticLineField,
-  liveSemanticBlockSpacingField,
+  liveSemanticLayout.extension,
   liveFrontmatterGuardField,
-  liveMermaidField,
-  liveTableField,
-  liveDisplayMathField,
-  liveRawHTMLField,
-  liveCalloutField,
-  liveFootnoteReferenceField,
+  liveMermaidProjection.extension,
+  liveStructuredBlockProjections.tableExtension,
+  liveDisplayMathProjection.extension,
+  liveStructuredBlockProjections.rawHTMLExtension,
+  liveStructuredBlockProjections.calloutExtension,
+  liveFootnoteProjection.extension,
   livePreview,
   Prec.high(liveProjectionNavigationKeymap),
   selectionActions.extension,
@@ -3628,7 +2371,6 @@ function pasteTransfer(
       post({type: "requestImagePaste"});
       return true;
     }
-    post({type: "failure", message: unsupportedFilePasteMessage()});
     announceEditorMessage(editor.contentDOM, unsupportedFilePasteMessage());
     return true;
   }

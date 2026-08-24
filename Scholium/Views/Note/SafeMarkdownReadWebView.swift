@@ -186,28 +186,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        private struct ScrollRestoreIdentity: Equatable {
-            let id: UInt64
-            let fingerprint: String
-        }
-
-        private struct ScrollRestoreClaim {
-            let token: UInt64
-            let request: ScrollRestoreRequest
-            let ownership: ScrollRestoreOwnership
-        }
-
-        private enum ScrollRestoreOwnership {
-            case caller
-            case coordinator
-        }
+        private typealias ScrollRestoreClaim = SafeMarkdownReadScrollRestoration.Claim
 
         static let messageHandlerName = "scholiumRead"
         private static let maximumSelectionLength = 2_000
-        /// SwiftUI can briefly replay an acknowledged value after a newer
-        /// WebView-rebuild request has completed. Keep a small, fixed history
-        /// so that old one-shot IDs cannot become restoration commands again.
-        private static let consumedScrollRestoreHistoryLimit = 64
         private static let vectorSymbolDataURIs: [String: String] = [
             "neutral": ScholiumWebSymbolAssets.dataURI(for: .link),
             "supports": ScholiumWebSymbolAssets.dataURI(for: .plus),
@@ -220,26 +202,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
         private var onCommentSelection: ((PassageCommentSubmission) -> Void)?
-        private var commentComposerRequestID: UUID?
-        private var commentResolution: PassageCommentResolution?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
-        private var selectionSurfaceIsActive: Bool
-        private var appliedSelectionSurfaceIsActive: Bool?
+        private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
+        private let findCoordinator = SafeMarkdownReadFindCoordinator()
+        private let runtimeCoordinator = SafeMarkdownReadRuntimeCoordinator()
         private var renderingReadinessIsAcknowledged: Bool
         private var onRenderingFailure: ((String) -> Void)?
         private var onRenderingLoading: (() -> Void)?
         private var onRenderingReady: (() -> Void)?
-        private var findRequest: DocumentFindPresentationRequest?
-        private var onFindResult: ((UInt64, Result<DocumentFindResult, any Error>) -> Void)?
-        private var appliedFindRequestID: UInt64?
-        private var scrollRestoreRequest: ScrollRestoreRequest?
-        private var scrollRestoreOwnership: ScrollRestoreOwnership?
-        private var observedScrollPosition: ObservedScrollPosition
-        private var onScrollRestoreConsumed: ((UInt64, String) -> Void)?
-        private var consumedScrollRestoreRequests: [ScrollRestoreIdentity] = []
-        private var inFlightScrollRestoreClaim: ScrollRestoreClaim?
-        private var nextScrollRestoreClaimToken: UInt64 = 0
-        private var nextInternalScrollRestoreRequestID = UInt64.max
+        private var scrollRestoration: SafeMarkdownReadScrollRestoration
         private var hasLoadedPage = false
         private var loadGeneration: UInt64 = 0
         private var activeLoadSignature: String?
@@ -247,10 +218,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadFinalizationTask: Task<Void, Never>?
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var linkPreviewUpdateTask: Task<Void, Never>?
-        private var selectionSurfaceUpdateTask: Task<Void, Never>?
-        private var findUpdateTask: Task<Void, Never>?
-        private var mermaidRuntimeLoadTask: Task<Void, Never>?
-        private var mermaidRuntimeLoadID: UUID?
         private var desiredLinkPreviewRevision = ""
         private var appliedLinkPreviewRevision = ""
         private var loadingLinkPreviewRevision = ""
@@ -302,20 +269,22 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
-            self.commentComposerRequestID = commentComposerRequestID
-            self.commentResolution = commentResolution
             self.onSelectionChange = onSelectionChange
-            self.selectionSurfaceIsActive = selectionSurfaceIsActive
+            selectionCoordinator = SafeMarkdownReadSelectionCoordinator(
+                composerRequestID: commentComposerRequestID,
+                resolution: commentResolution,
+                isActive: selectionSurfaceIsActive
+            )
             self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
-            self.findRequest = findRequest
-            self.onFindResult = onFindResult
-            self.scrollRestoreRequest = scrollRestoreRequest
-            scrollRestoreOwnership = scrollRestoreRequest == nil ? nil : .caller
-            self.observedScrollPosition = observedScrollPosition
-            self.onScrollRestoreConsumed = onScrollRestoreConsumed
+            findCoordinator.update(request: findRequest, report: onFindResult)
+            scrollRestoration = SafeMarkdownReadScrollRestoration(
+                observedPosition: observedScrollPosition,
+                request: scrollRestoreRequest,
+                onCallerRequestConsumed: onScrollRestoreConsumed
+            )
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             self.targetSourceLine = targetSourceLine
@@ -355,8 +324,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 loadingLinkPreviewRevision = ""
                 lastReachedSourceLine = nil
                 pageIsReady = false
-                appliedSelectionSurfaceIsActive = nil
-                appliedFindRequestID = nil
+                selectionCoordinator.resetForDocumentChange()
+                findCoordinator.resetForDocumentChange()
                 hasLoadedPage = false
                 cancelPendingPageWork()
                 webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
@@ -368,84 +337,32 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
             self.onSelectionChange = onSelectionChange
-            self.selectionSurfaceIsActive = selectionSurfaceIsActive
             self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
             self.onRenderingReady = onRenderingReady
-            self.findRequest = findRequest
-            self.onFindResult = onFindResult
-            self.observedScrollPosition = observedScrollPosition
-            if self.observedScrollPosition.anchor?.sourceFingerprint != fingerprint {
-                self.observedScrollPosition.anchor = nil
+            findCoordinator.update(request: findRequest, report: onFindResult)
+            var observedScrollPosition = observedScrollPosition
+            if observedScrollPosition.anchor?.sourceFingerprint != fingerprint {
+                observedScrollPosition.anchor = nil
             }
-            self.onScrollRestoreConsumed = onScrollRestoreConsumed
-            adoptCallerScrollRestoreRequest(scrollRestoreRequest)
+            scrollRestoration.update(
+                observedPosition: observedScrollPosition,
+                onCallerRequestConsumed: onScrollRestoreConsumed
+            )
+            scrollRestoration.adoptCallerRequest(scrollRestoreRequest)
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
+            selectionCoordinator.update(
+                composerRequestID: commentComposerRequestID,
+                resolution: commentResolution,
+                isActive: selectionSurfaceIsActive
+            )
             schedulePostLoadPositioningIfNeeded(in: webView)
-            applySelectionSurfaceActivityIfNeeded(in: webView)
+            applySelectionCommandsIfNeeded(in: webView)
             applyFindRequestIfNeeded(in: webView)
-            requestCommentComposerIfNeeded(commentComposerRequestID, in: webView)
-            resolveCommentIfNeeded(commentResolution, in: webView)
-        }
-
-        private func requestCommentComposerIfNeeded(_ requestID: UUID?, in webView: WKWebView) {
-            guard let requestID, requestID != commentComposerRequestID else { return }
-            commentComposerRequestID = requestID
-            Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView, self.activeWebView === webView else { return }
-                _ = try? await webView.callAsyncJavaScript(
-                    "return window.scholiumShowCommentComposer?.() === true",
-                    arguments: [:],
-                    in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                )
-            }
-        }
-
-        private func resolveCommentIfNeeded(
-            _ resolution: PassageCommentResolution?,
-            in webView: WKWebView
-        ) {
-            guard let resolution, resolution != commentResolution else { return }
-            commentResolution = resolution
-            Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView, self.activeWebView === webView else { return }
-                _ = try? await webView.callAsyncJavaScript(
-                    "return window.scholiumResolveCommentSubmission?.(requestID, succeeded) === true",
-                    arguments: [
-                        "requestID": resolution.requestID,
-                        "succeeded": resolution.succeeded,
-                    ],
-                    in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                )
-            }
-        }
-
-        private func adoptCallerScrollRestoreRequest(_ request: ScrollRestoreRequest?) {
-            guard let request else {
-                guard scrollRestoreOwnership == .caller else { return }
-                if inFlightScrollRestoreClaim?.ownership == .caller {
-                    inFlightScrollRestoreClaim = nil
-                }
-                scrollRestoreRequest = nil
-                scrollRestoreOwnership = nil
-                return
-            }
-            guard !hasConsumedScrollRestoreRequest(request) else {
-                if scrollRestoreOwnership == .caller,
-                   scrollRestoreRequest.map({ sameScrollRestoreIdentity($0, request) }) == true {
-                    scrollRestoreRequest = nil
-                    scrollRestoreOwnership = nil
-                }
-                return
-            }
-            scrollRestoreRequest = request
-            scrollRestoreOwnership = .caller
         }
 
         func loadIfNeeded(
@@ -479,7 +396,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     in: webView
                 )
                 applyLinkPreviewsIfNeeded(in: webView)
-                applySelectionSurfaceActivityIfNeeded(in: webView)
+                applySelectionCommandsIfNeeded(in: webView)
                 applyFindRequestIfNeeded(in: webView)
                 return
             }
@@ -488,7 +405,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceUTF8Length = source.utf8.count
             let publishesLoadingTransition = hasLoadedPage
                 || renderingReadinessIsAcknowledged
-            ensureScrollRestoreRequest(
+            scrollRestoration.ensureRequest(
+                fingerprint: fingerprint,
                 reason: hasLoadedPage ? .webViewRebuild : .documentLoad
             )
             hasLoadedPage = true
@@ -502,8 +420,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             renderingReadinessIsAcknowledged = false
             loadingLinkPreviewRevision = previewRevision
             pageIsReady = false
-            appliedSelectionSurfaceIsActive = nil
-            appliedFindRequestID = nil
+            selectionCoordinator.resetForDocumentChange()
+            findCoordinator.resetForDocumentChange()
             activeWebView = webView
             let includesMathRuntime = Self.requiresMathRuntime(
                 body: body,
@@ -558,7 +476,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         }
 
-        /// Installs the app-owned math runtime and the Read bridge into the
+        /// Installs the app-owned math runtime and generated Read bundle into the
         /// named content world before the next page load. The page world
         /// receives no scripts, so research text and CSS can never reach a
         /// script boundary.
@@ -581,6 +499,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     in: SafeMarkdownReadWebView.bridgeContentWorld
                 ))
             }
+            if let readerScript = Self.readerScript {
+                contentController.addUserScript(WKUserScript(
+                    source: readerScript,
+                    injectionTime: .atDocumentEnd,
+                    forMainFrameOnly: true,
+                    in: SafeMarkdownReadWebView.bridgeContentWorld
+                ))
+            }
             contentController.addUserScript(WKUserScript(
                 source: Self.bridgeScript(
                     documentID: documentID,
@@ -597,68 +523,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 forMainFrameOnly: true,
                 in: SafeMarkdownReadWebView.bridgeContentWorld
             ))
-            contentController.addUserScript(WKUserScript(
-                source: SafeMarkdownReadWebView.reviewFindScript,
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: true,
-                in: SafeMarkdownReadWebView.bridgeContentWorld
-            ))
         }
 
         private func applyFindRequestIfNeeded(in webView: WKWebView) {
-            guard pageIsReady,
-                  activeWebView === webView,
-                  let findRequest,
-                  findRequest.id != appliedFindRequestID else { return }
-            appliedFindRequestID = findRequest.id
-            let requestedGeneration = loadGeneration
-            let arguments: [String: Any]
-            switch findRequest.operation {
-            case .clear:
-                arguments = ["operation": "clear"]
-            case .execute(let action):
-                arguments = [
-                    "operation": "execute",
-                    "action": action.rawValue,
-                    "query": findRequest.query,
-                    "replacement": findRequest.replacement,
-                    "caseSensitive": findRequest.caseSensitive,
-                    "wholeWord": findRequest.wholeWord,
-                ]
-            }
-            findUpdateTask?.cancel()
-            findUpdateTask = Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView else { return }
-                do {
-                    let raw = try await webView.callAsyncJavaScript(
-                        "return window.scholiumReviewFind?.perform(request)",
-                        arguments: ["request": arguments],
-                        in: nil,
-                        contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                    )
-                    guard !Task.isCancelled,
-                          self.activeWebView === webView,
-                          self.pageIsReady,
-                          self.loadGeneration == requestedGeneration,
-                          self.findRequest?.id == findRequest.id,
-                          let payload = raw as? [String: Any],
-                          let current = (payload["current"] as? NSNumber)?.intValue,
-                          let total = (payload["total"] as? NSNumber)?.intValue,
-                          current >= 0,
-                          total >= 0,
-                          current <= total else { return }
-                    self.onFindResult?(
-                        findRequest.id,
-                        .success(DocumentFindResult(current: current, total: total))
-                    )
-                } catch {
-                    guard !Task.isCancelled,
-                          self.activeWebView === webView,
-                          self.loadGeneration == requestedGeneration,
-                          self.findRequest?.id == findRequest.id else { return }
-                    self.onFindResult?(findRequest.id, .failure(error))
+            let generation = loadGeneration
+            findCoordinator.applyIfNeeded(
+                pageIsReady: pageIsReady,
+                in: webView,
+                isCurrent: { [weak self, weak webView] in
+                    guard let self, let webView else { return false }
+                    return self.activeWebView === webView
+                        && self.pageIsReady
+                        && self.loadGeneration == generation
                 }
-            }
+            )
         }
 
         private func applyLinkPreviewsIfNeeded(in webView: WKWebView) {
@@ -684,35 +562,29 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         }
 
-        private func applySelectionSurfaceActivityIfNeeded(in webView: WKWebView) {
-            guard pageIsReady,
-                  appliedSelectionSurfaceIsActive != selectionSurfaceIsActive,
-                  activeWebView === webView,
-                  let signature = activeLoadSignature else { return }
-            let requestedActive = selectionSurfaceIsActive
-            let requestedGeneration = loadGeneration
-            selectionSurfaceUpdateTask?.cancel()
-            selectionSurfaceUpdateTask = Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView else { return }
-                let result = try? await webView.callAsyncJavaScript(
-                    """
-                    if (window.scholiumReadReady) await window.scholiumReadReady;
-                    return window.scholiumSetReviewSelectionSurfaceActive?.(active) === true;
-                    """,
-                    arguments: ["active": requestedActive],
-                    in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                )
-                guard !Task.isCancelled,
-                      result as? Bool == true,
-                      self.isCurrentLoad(
-                          generation: requestedGeneration,
-                          signature: signature,
-                          in: webView
-                      ),
-                      self.selectionSurfaceIsActive == requestedActive else { return }
-                self.appliedSelectionSurfaceIsActive = requestedActive
-            }
+        private func applySelectionCommandsIfNeeded(in webView: WKWebView) {
+            guard let signature = activeLoadSignature else { return }
+            let generation = loadGeneration
+            selectionCoordinator.applyIfNeeded(
+                pageIsReady: pageIsReady,
+                in: webView,
+                isCurrent: { [weak self, weak webView] in
+                    guard let self, let webView else { return false }
+                    return self.isCurrentLoad(
+                        generation: generation,
+                        signature: signature,
+                        in: webView
+                    )
+                }
+            )
+        }
+
+        private func resolveComment(
+            _ resolution: PassageCommentResolution,
+            in webView: WKWebView
+        ) {
+            selectionCoordinator.updateResolution(resolution)
+            applySelectionCommandsIfNeeded(in: webView)
         }
 
         func userContentController(
@@ -749,7 +621,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                           relativePath: documentID
                       ) else {
                     if let activeWebView {
-                        resolveCommentIfNeeded(
+                        resolveComment(
                             PassageCommentResolution(
                                 requestID: requestID,
                                 succeeded: false
@@ -787,25 +659,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         }
 
         private func requestMermaidRuntime(in webView: WKWebView) {
-            guard mermaidRuntimeLoadTask == nil else { return }
-            let loadID = UUID()
-            mermaidRuntimeLoadID = loadID
-            mermaidRuntimeLoadTask = Task { @MainActor [weak self, weak webView] in
-                guard let self else { return }
-                defer {
-                    if self.mermaidRuntimeLoadID == loadID {
-                        self.mermaidRuntimeLoadTask = nil
-                        self.mermaidRuntimeLoadID = nil
-                    }
+            runtimeCoordinator.requestMermaid(
+                in: webView,
+                isCurrent: { [weak self, weak webView] in
+                    guard let self, let webView else { return false }
+                    return self.activeWebView === webView
                 }
-                guard let webView,
-                      self.activeWebView === webView,
-                      !Task.isCancelled else { return }
-                await ScholiumMermaidRuntimeLoader.installAndNotify(
-                    in: webView,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                )
-            }
+            )
         }
 
         private func reviewSelection(
@@ -840,9 +700,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
             applyLinkPreviewsIfNeeded(in: webView)
-            applySelectionSurfaceActivityIfNeeded(in: webView)
+            applySelectionCommandsIfNeeded(in: webView)
             applyFindRequestIfNeeded(in: webView)
-            let restoreClaim = claimScrollRestoreRequest()
+            let restoreClaim = scrollRestoration.claimIfReady(
+                pageIsReady: pageIsReady,
+                fingerprint: fingerprint
+            )
             let expectedDocumentID = documentID
             let expectedFingerprint = fingerprint
             loadFinalizationTask?.cancel()
@@ -851,7 +714,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 var claimWasFinished = false
                 defer {
                     if let restoreClaim, !claimWasFinished {
-                        self.finishScrollRestoreClaim(restoreClaim, consumed: false)
+                        self.scrollRestoration.finish(restoreClaim, consumed: false)
                     }
                 }
                 do {
@@ -908,7 +771,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         in: webView
                     ) else { return }
                     if let restoreClaim {
-                        self.finishScrollRestoreClaim(
+                        self.scrollRestoration.finish(
                             restoreClaim,
                             consumed: restoreSucceeded
                         )
@@ -957,7 +820,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             ) else { return }
             sourceLineNavigationTask?.cancel()
             sourceLineNavigationTask = nil
-            inFlightScrollRestoreClaim = nil
+            scrollRestoration.cancelClaim()
             loadFinalizationTask = nil
             pageIsReady = false
             // Keep the failed signature installed. Restoration reports can
@@ -1015,7 +878,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         ) async -> Bool {
             let request = claim.request
             guard request.fingerprint == fingerprint,
-                  inFlightScrollRestoreClaim?.token == claim.token,
+                  scrollRestoration.owns(claim),
                   isCurrentLoad(
                       generation: generation,
                       signature: signature,
@@ -1068,7 +931,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard activeWebView === webView,
                   loadGeneration == generation,
                   activeLoadSignature == signature,
-                  inFlightScrollRestoreClaim?.token == claim.token,
+                  scrollRestoration.owns(claim),
                   documentID == expectedDocumentID,
                   fingerprint == expectedFingerprint,
                   let payload = result as? [String: Any] else { return false }
@@ -1087,107 +950,13 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             return true
         }
 
-        private func ensureScrollRestoreRequest(reason: ScrollRestoreReason) {
-            if let request = scrollRestoreRequest,
-               request.fingerprint == fingerprint,
-               !hasConsumedScrollRestoreRequest(request) {
-                return
-            }
-            let matchingAnchor = observedScrollPosition.anchor.flatMap { anchor in
-                anchor.sourceFingerprint == fingerprint ? anchor : nil
-            }
-            scrollRestoreRequest = ScrollRestoreRequest(
-                id: nextInternalScrollRestoreRequestID,
-                fingerprint: fingerprint,
-                position: ObservedScrollPosition(
-                    fraction: observedScrollPosition.fraction,
-                    anchor: matchingAnchor
-                ),
-                reason: reason
-            )
-            scrollRestoreOwnership = .coordinator
-            nextInternalScrollRestoreRequestID &-= 1
-        }
-
-        private func claimScrollRestoreRequest() -> ScrollRestoreClaim? {
-            guard pageIsReady,
-                  let request = scrollRestoreRequest,
-                  let ownership = scrollRestoreOwnership,
-                  request.fingerprint == fingerprint,
-                  !hasConsumedScrollRestoreRequest(request),
-                  (inFlightScrollRestoreClaim?.request.id != request.id
-                      || inFlightScrollRestoreClaim?.request.fingerprint != request.fingerprint) else {
-                return nil
-            }
-            nextScrollRestoreClaimToken &+= 1
-            let claim = ScrollRestoreClaim(
-                token: nextScrollRestoreClaimToken,
-                request: request,
-                ownership: ownership
-            )
-            inFlightScrollRestoreClaim = claim
-            return claim
-        }
-
-        private func finishScrollRestoreClaim(
-            _ claim: ScrollRestoreClaim,
-            consumed: Bool
-        ) {
-            guard inFlightScrollRestoreClaim?.token == claim.token else { return }
-            inFlightScrollRestoreClaim = nil
-            guard consumed else { return }
-            recordConsumedScrollRestoreRequest(claim.request)
-            if scrollRestoreRequest.map({ sameScrollRestoreIdentity($0, claim.request) }) == true {
-                scrollRestoreRequest = nil
-                scrollRestoreOwnership = nil
-            }
-            if claim.ownership == .caller {
-                onScrollRestoreConsumed?(
-                    claim.request.id,
-                    claim.request.fingerprint
-                )
-            }
-        }
-
-        private func sameScrollRestoreIdentity(
-            _ lhs: ScrollRestoreRequest,
-            _ rhs: ScrollRestoreRequest
-        ) -> Bool {
-            lhs.id == rhs.id && lhs.fingerprint == rhs.fingerprint
-        }
-
-        private func hasConsumedScrollRestoreRequest(_ request: ScrollRestoreRequest) -> Bool {
-            let identity = ScrollRestoreIdentity(
-                id: request.id,
-                fingerprint: request.fingerprint
-            )
-            return consumedScrollRestoreRequests.contains(identity)
-        }
-
-        private func recordConsumedScrollRestoreRequest(_ request: ScrollRestoreRequest) {
-            let identity = ScrollRestoreIdentity(
-                id: request.id,
-                fingerprint: request.fingerprint
-            )
-            guard !consumedScrollRestoreRequests.contains(identity) else { return }
-            consumedScrollRestoreRequests.append(identity)
-            let overflow = consumedScrollRestoreRequests.count
-                - Self.consumedScrollRestoreHistoryLimit
-            if overflow > 0 {
-                consumedScrollRestoreRequests.removeFirst(overflow)
-            }
-        }
-
         private func schedulePostLoadPositioningIfNeeded(in webView: WKWebView) {
             guard pageIsReady,
                   let navigation = activeNavigation,
                   let signature = activeLoadSignature else { return }
-            let hasPendingRequest = scrollRestoreRequest.map { request in
-                request.fingerprint == fingerprint
-                    && !hasConsumedScrollRestoreRequest(request)
-                    && (inFlightScrollRestoreClaim?.request.id != request.id
-                        || inFlightScrollRestoreClaim?.request.fingerprint != request.fingerprint)
-            } == true
+            let hasPendingRequest = scrollRestoration.hasPendingRequest(
+                fingerprint: fingerprint
+            )
             let hasPendingSourceLine = targetSourceLine.map {
                 $0 > 0 && $0 != lastReachedSourceLine
             } == true
@@ -1205,11 +974,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                           signature: signature,
                           in: webView
                       ) else { return }
-                let restoreClaim = self.claimScrollRestoreRequest()
+                let restoreClaim = self.scrollRestoration.claimIfReady(
+                    pageIsReady: self.pageIsReady,
+                    fingerprint: self.fingerprint
+                )
                 var claimWasFinished = false
                 defer {
                     if let restoreClaim, !claimWasFinished {
-                        self.finishScrollRestoreClaim(restoreClaim, consumed: false)
+                        self.scrollRestoration.finish(restoreClaim, consumed: false)
                     }
                 }
                 var restoreSucceeded = false
@@ -1234,7 +1006,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     in: webView
                 ) else { return }
                 if let restoreClaim {
-                    self.finishScrollRestoreClaim(
+                    self.scrollRestoration.finish(
                         restoreClaim,
                         consumed: restoreSucceeded
                     )
@@ -1275,14 +1047,10 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask = nil
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
-            selectionSurfaceUpdateTask?.cancel()
-            selectionSurfaceUpdateTask = nil
-            findUpdateTask?.cancel()
-            findUpdateTask = nil
-            mermaidRuntimeLoadTask?.cancel()
-            mermaidRuntimeLoadTask = nil
-            mermaidRuntimeLoadID = nil
-            inFlightScrollRestoreClaim = nil
+            selectionCoordinator.cancel()
+            findCoordinator.cancel()
+            runtimeCoordinator.cancel()
+            scrollRestoration.cancelClaim()
             pageIsReady = false
             guard !keepingLoadIdentity else { return }
             loadGeneration &+= 1
@@ -1297,7 +1065,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             guard let fraction = (fractionValue as? NSNumber)?.doubleValue,
                   fraction.isFinite,
                   (0 ... 1).contains(fraction) else { return }
-            observedScrollPosition.updateFraction(fraction)
+            scrollRestoration.observedPosition.updateFraction(fraction)
             onScrollFractionChange?(fraction)
             guard let raw = anchorValue as? [String: Any],
                   let sourceOffset = (raw["sourceUTF16Offset"] as? NSNumber)?.intValue,
@@ -1315,7 +1083,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 fallbackFraction: fraction
             )
             if anchor.isValid(forUTF16Length: sourceUTF16Length) {
-                observedScrollPosition.anchor = anchor
+                scrollRestoration.observedPosition.anchor = anchor
                 onScrollAnchorChange?(anchor)
             }
         }
@@ -1329,7 +1097,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   (0 ... 1).contains(fraction),
                   requestedAnchor.sourceFingerprint == fingerprint,
                   requestedAnchor.isValid(forUTF16Length: sourceUTF16Length) else { return }
-            observedScrollPosition.updateFraction(fraction)
+            scrollRestoration.observedPosition.updateFraction(fraction)
             onScrollFractionChange?(fraction)
             let anchor = EditorScrollAnchor(
                 sourceFingerprint: requestedAnchor.sourceFingerprint,
@@ -1339,7 +1107,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 relativeBlockPosition: requestedAnchor.relativeBlockPosition,
                 fallbackFraction: fraction
             )
-            observedScrollPosition.anchor = anchor
+            scrollRestoration.observedPosition.anchor = anchor
             onScrollAnchorChange?(anchor)
         }
 
@@ -1502,11 +1270,28 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 || linkPreviews.contains { containsMath($0.htmlBody) }
         }
 
-        /// App-owned Read bridge executed in the named content world.
-        /// Parameters are embedded as JSON literals, so research text and CSS
-        /// are values inside this script rather than markup in the HTML
-        /// document. Dynamic CSS is applied with ``textContent`` and can never
-        /// change the page's node structure.
+        /// Starts the generated, type-checked Read runtime with one bounded
+        /// configuration value in the named content world. Research text never
+        /// enters executable JavaScript.
+        private struct ReadBridgeConfiguration: Encodable {
+            let version: Int
+            let documentID: String
+            let fingerprint: String
+            let loadGeneration: UInt64
+            let commentEnabled: Bool
+            let selectionEnabled: Bool
+            let testingEnabled: Bool
+            let presentationCSS: String
+            let userCSS: String
+            let localization: WebKitInterfaceLocalization
+            let linkPreviews: [ReadLinkPreview]
+            let vectorSymbols: [String: String]
+        }
+
+        private static var readerScript: String? {
+            ScholiumDocumentWebResources.text(named: "reader.bundle", extension: "js")
+        }
+
         static func bridgeScript(
             documentID: String,
             fingerprint: String,
@@ -1518,33 +1303,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             userCSS: String,
             localization: WebKitInterfaceLocalization = .current()
         ) -> String {
-            let encodedDocumentID = jsonLiteral(documentID)
-            let encodedFingerprint = jsonLiteral(fingerprint)
-            let commentFlag = commentEnabled ? "true" : "false"
-            let selectionFlag = selectionEnabled ? "true" : "false"
-            let localizationPayload = base64JSON(localization)
             #if DEBUG
-            let readScrollTestingMembers = """
-                  restoreCount: 0,
-                  recordRestoreAttempt() { this.restoreCount += 1; },
-                  testingSnapshot() {
-                    var previousTop = Number.NEGATIVE_INFINITY;
-                    var visualOrderIsMonotonic = true;
-                    for (const entry of scrollBlockRegistry.entries) {
-                      const top = entry.element.getBoundingClientRect().top;
-                      if (top + 1 < previousTop) visualOrderIsMonotonic = false;
-                      previousTop = Math.max(previousTop, top);
-                    }
-                    return {
-                      registryCount: scrollBlockRegistry.entries.length,
-                      visualOrderIsMonotonic
-                    };
-                  },
-            """
+            let testingEnabled = true
             #else
-            let readScrollTestingMembers = ""
+            let testingEnabled = false
             #endif
-            let previewPayload = base64JSON(linkPreviews.prefix(DocumentPreviewCatalogBuilder.maximumLinkCount).map {
+            let previews = linkPreviews.prefix(
+                DocumentPreviewCatalogBuilder.maximumLinkCount
+            ).map {
                 ReadLinkPreview(
                     utf16LowerBound: $0.sourceSpan.utf16LowerBound,
                     utf16UpperBound: $0.sourceSpan.utf16UpperBound,
@@ -1556,1233 +1322,32 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                         ? $0.htmlBody
                         : String($0.htmlBody.prefix(24_000))
                 )
-            })
+            }
+            let configuration = ReadBridgeConfiguration(
+                version: 1,
+                documentID: documentID,
+                fingerprint: fingerprint,
+                loadGeneration: loadGeneration,
+                commentEnabled: commentEnabled,
+                selectionEnabled: selectionEnabled,
+                testingEnabled: testingEnabled,
+                presentationCSS: presentationCSS,
+                userCSS: userCSS,
+                localization: localization,
+                linkPreviews: previews,
+                vectorSymbols: vectorSymbolDataURIs
+            )
+            let payload = base64JSON(configuration)
             return """
-              const presentationCSS = \(jsonLiteral(presentationCSS));
-              const userCSS = \(jsonLiteral(userCSS));
-              const presentationStyle = document.getElementById('scholium-presentation-css');
-              const userStyle = document.getElementById('scholium-user-css');
-              if (presentationStyle) presentationStyle.textContent = presentationCSS;
-              if (userStyle) userStyle.textContent = userCSS;
-              window.scholiumReadReady = (async () => {
-                'use strict';
-                const version = 1;
-                const documentID = \(encodedDocumentID);
-                const fingerprint = \(encodedFingerprint);
-                const loadGeneration = \(loadGeneration);
-                const commentEnabled = \(commentFlag);
-                const selectionEnabled = \(selectionFlag);
-                const localization = JSON.parse(new TextDecoder().decode(
-                  Uint8Array.from(atob(\(jsonLiteral(localizationPayload))), character => character.charCodeAt(0))
-                ));
-                const strings = localization.strings || {};
-                const localized = (key, replacements = {}) => String(strings[key] || key).replace(
-                  /\\{([A-Za-z]+)\\}/g,
-                  (placeholder, name) => Object.prototype.hasOwnProperty.call(replacements, name)
-                    ? String(replacements[name])
-                    : placeholder
-                );
-                const linkPreviews = JSON.parse(new TextDecoder().decode(
-                  Uint8Array.from(atob(\(jsonLiteral(previewPayload))), character => character.charCodeAt(0))
-                ));
-                const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(messageHandlerName);
-                const post = (type, extra = {}) => handler && handler.postMessage({version, documentID, fingerprint, loadGeneration, type, ...extra});
-                const popover = document.getElementById('scholium-preview-popover');
-                const previewTitle = popover.querySelector('.scholium-preview-title');
-                const previewMetadata = popover.querySelector('.scholium-preview-metadata');
-                const previewBody = popover.querySelector('.scholium-preview-body');
-                const selectionActions = document.getElementById('selection-actions');
-                const selectionToolbar = document.getElementById('selection-toolbar');
-                const commentButton = document.getElementById('comment-selection');
-                const commentComposer = document.getElementById('comment-composer');
-                const commentText = document.getElementById('comment-text');
-                const commentHelp = document.getElementById('comment-help');
-                const qaCommentSubmit = document.getElementById('qa-submit-comment');
-                const defaultCommentHelpText = localized('Return saves · Shift-Return adds a line · Escape cancels');
-                selectionToolbar.setAttribute('aria-label', localized('Selection actions'));
-                commentButton.querySelector('.scholium-selection-label').textContent = localized('Comment');
-                commentText.placeholder = localized('Comment');
-                commentText.setAttribute('aria-label', localized('Comment'));
-                commentHelp.textContent = defaultCommentHelpText;
-                if (qaCommentSubmit) qaCommentSubmit.textContent = localized('Submit Comment for QA');
-                const viewportRoot = document.documentElement;
-                const viewportResizeScrollBarClass = 'scholium-viewport-resize-suppresses-overlay-scrollbar';
-                const viewportResizeSettleDelay = 80;
-                // A fixed viewport-unit probe distinguishes a real WKWebView
-                // resize from the resize that WebKit reports when scrollbar
-                // presentation changes. Animation frames are not a reliable
-                // settling signal while an offscreen WebView is suspended.
-                const viewportGeometryProbe = document.createElement('span');
-                viewportGeometryProbe.setAttribute('aria-hidden', 'true');
-                viewportGeometryProbe.style.cssText = 'position:fixed;inline-size:100vw;block-size:100vh;visibility:hidden;pointer-events:none';
-                document.body.append(viewportGeometryProbe);
-                const viewportGeometry = () => viewportGeometryProbe.getBoundingClientRect();
-                let viewportResizeGeneration = 0;
-                let viewportResizeTimer;
-                let viewportBounds = viewportGeometry();
-                const viewportDidResize = () => {
-                  const nextBounds = viewportGeometry();
-                  if (Math.abs(nextBounds.width - viewportBounds.width) < 0.5
-                      && Math.abs(nextBounds.height - viewportBounds.height) < 0.5) return;
-                  viewportBounds = nextBounds;
-                  const overlayScrollBar = Math.abs(window.innerWidth - viewportRoot.clientWidth) < 1;
-                  if (!overlayScrollBar) {
-                    viewportRoot.classList.remove(viewportResizeScrollBarClass);
-                    return;
-                  }
-                  const generation = ++viewportResizeGeneration;
-                  viewportRoot.classList.add(viewportResizeScrollBarClass);
-                  clearTimeout(viewportResizeTimer);
-                  viewportResizeTimer = setTimeout(() => {
-                    if (generation === viewportResizeGeneration) {
-                      window.removeEventListener('resize', viewportDidResize);
-                      viewportRoot.classList.remove(viewportResizeScrollBarClass);
-                      setTimeout(() => {
-                        viewportBounds = viewportGeometry();
-                        window.addEventListener('resize', viewportDidResize);
-                      }, 0);
-                    }
-                  }, viewportResizeSettleDelay);
-                };
-                window.addEventListener('resize', viewportDidResize);
-                const synchronizeSelectionKeyboardFocus = target => {
-                  commentButton.classList.toggle(
-                    'scholium-selection-keyboard-focus',
-                    target === commentButton
-                  );
-                };
-                selectionActions.addEventListener('focusin', event => {
-                  synchronizeSelectionKeyboardFocus(event.target);
-                });
-                selectionActions.addEventListener('focusout', () => {
-                  queueMicrotask(() => synchronizeSelectionKeyboardFocus(document.activeElement));
-                });
-                const resizeCommentText = () => {
-                  commentText.style.height = 'auto';
-                  commentText.style.height = Math.min(
-                    Math.max(commentText.scrollHeight, 64),
-                    132
-                  ) + 'px';
-                  if (!commentComposer.hidden && commentSelectionRange) {
-                    positionSelectionActions(commentSelectionRange.getBoundingClientRect());
-                  }
-                };
-                \(ReviewSelectionTextExtraction.script)
-                \(ReviewSelectionPresentation.script)
-                let pendingCommentRequestID = null;
-                let commentAnchorElement = null;
-                let commentSelectionRange = null;
-                let reviewPointerSelectionActive = false;
-                let reviewSelectionSurfaceActive = true;
-                let suspendedCommentComposer = false;
-                const positionSelectionActions = anchorBounds => {
-                  selectionActions.hidden = false;
-                  const bounds = selectionActions.getBoundingClientRect();
-                  const viewportInset = 12;
-                  const verticalInset = 8;
-                  const gap = 6;
-                  const centeredLeft = anchorBounds.left
-                    + (anchorBounds.width - bounds.width) / 2;
-                  const aboveTop = anchorBounds.top - bounds.height - gap;
-                  const belowTop = anchorBounds.bottom + gap;
-                  const preferredTop = aboveTop >= verticalInset ? aboveTop : belowTop;
-                  selectionActions.style.left = window.scrollX + Math.max(
-                    viewportInset,
-                    Math.min(centeredLeft, window.innerWidth - bounds.width - viewportInset)
-                  ) + 'px';
-                  selectionActions.style.top = window.scrollY + Math.max(
-                    verticalInset,
-                    Math.min(preferredTop, window.innerHeight - bounds.height - verticalInset)
-                  ) + 'px';
-                };
-                let previewByRange = new Map(linkPreviews.map(preview => [
-                  preview.utf16LowerBound + ':' + preview.utf16UpperBound,
-                  preview
-                ]));
-                const origins = new Map();
-                const vectorSemantics = {
-                  neutral: {label: localized('Related note'), symbolName: 'link', symbol: \(jsonLiteral(vectorSymbolDataURIs["neutral"] ?? ""))},
-                  supports: {label: localized('Supports'), symbolName: 'plus', symbol: \(jsonLiteral(vectorSymbolDataURIs["supports"] ?? ""))},
-                  opposes: {label: localized('Opposes'), symbolName: 'minus', symbol: \(jsonLiteral(vectorSymbolDataURIs["opposes"] ?? ""))},
-                  incompatible: {label: localized('Incompatible'), symbolName: 'xmark', symbol: \(jsonLiteral(vectorSymbolDataURIs["incompatible"] ?? ""))}
-                };
-
-                function renderMathNodes() {
-                  const runtime = window.scholiumMath;
-                  if (!runtime || runtime.version !== 1) return;
-                  document.querySelectorAll('.scholium-math[data-math-source][data-math-kind]').forEach(element => {
-                    try {
-                      const source = new TextDecoder().decode(
-                        Uint8Array.from(atob(element.dataset.mathSource), character => character.charCodeAt(0))
-                      );
-                      const result = runtime.render({source, kind: element.dataset.mathKind});
-                      if (!result.ok) {
-                        element.classList.add('scholium-math-error');
-                        element.setAttribute(
-                          'aria-label',
-                          localized('Mathematics could not be rendered. Source is shown.')
-                        );
-                        return;
-                      }
-                      const fallback = element.querySelector('.scholium-math-source');
-                      const rendered = document.createElement('span');
-                      rendered.className = 'scholium-math-output';
-                      rendered.innerHTML = result.html;
-                      fallback && fallback.before(rendered);
-                      element.classList.add('scholium-math-rendered');
-                    } catch (_) {
-                      element.classList.add('scholium-math-error');
-                    }
-                  });
-                }
-                renderMathNodes();
-
-                function mermaidDiagnostic(wrapper, message) {
-                  const diagnostic = document.createElement('p');
-                  diagnostic.className = 'scholium-mermaid-diagnostic';
-                  diagnostic.textContent = message;
-                  wrapper.append(diagnostic);
-                }
-
-                function isMermaidCode(code) {
-                  return [...code.classList].some(name => name.toLowerCase() === 'language-mermaid');
-                }
-
-                let mermaidRuntimePromise = null;
-                function ensureMermaidRuntime() {
-                  const current = window.scholiumMermaid;
-                  if (current?.version === 2) return Promise.resolve(current);
-                  if (!handler) return Promise.resolve(null);
-                  if (mermaidRuntimePromise) return mermaidRuntimePromise;
-                  mermaidRuntimePromise = new Promise(resolve => {
-                    let settled = false;
-                    const finish = () => {
-                      if (settled) return;
-                      settled = true;
-                      clearTimeout(timeout);
-                      window.scholiumMermaidRuntimeDidLoad = undefined;
-                      const loaded = window.scholiumMermaid;
-                      if (loaded?.version !== 2) mermaidRuntimePromise = null;
-                      resolve(loaded?.version === 2 ? loaded : null);
-                    };
-                    const timeout = setTimeout(finish, 8000);
-                    window.scholiumMermaidRuntimeDidLoad = finish;
-                    post('requestMermaidRuntime');
-                  });
-                  return mermaidRuntimePromise;
-                }
-
-                async function renderMermaidWrapper(wrapper, source) {
-                  for (const child of [...wrapper.children]) {
-                    if (child.classList.contains('scholium-mermaid-output')
-                        || child.classList.contains('scholium-mermaid-diagnostic')
-                        || child.classList.contains('scholium-mermaid-accessible-source')) {
-                      child.remove();
-                    }
-                  }
-                  wrapper.classList.remove('scholium-mermaid-rendered', 'scholium-mermaid-error');
-                  const runtime = await ensureMermaidRuntime();
-                  if (!runtime) {
-                    wrapper.classList.add('scholium-mermaid-error');
-                    mermaidDiagnostic(
-                      wrapper,
-                      localized('Diagram rendering is unavailable. Mermaid source is shown.')
-                    );
-                    return;
-                  }
-                  try {
-                    const result = await runtime.render({source, themeRoot: document.documentElement});
-                    if (!result.ok) {
-                      wrapper.classList.add('scholium-mermaid-error');
-                      mermaidDiagnostic(
-                        wrapper,
-                        localized('This Mermaid diagram is unsupported or could not be rendered. Source is shown.')
-                      );
-                      return;
-                    }
-                    const output = document.createElement('div');
-                    output.className = 'scholium-mermaid-output';
-                    if (!runtime.mount(output, result.svg)) {
-                      wrapper.classList.add('scholium-mermaid-error');
-                      mermaidDiagnostic(
-                        wrapper,
-                        localized('This Mermaid diagram could not be isolated safely. Source is shown.')
-                      );
-                      return;
-                    }
-                    wrapper.prepend(output);
-                    wrapper.classList.add('scholium-mermaid-rendered');
-                    if (result.accessibilityWarning) {
-                      const accessibleSource = document.createElement('span');
-                      accessibleSource.className = 'scholium-mermaid-accessible-source';
-                      accessibleSource.textContent = localized('Mermaid source: {source}', {source});
-                      wrapper.append(accessibleSource);
-                      mermaidDiagnostic(
-                        wrapper,
-                        localized('Add accTitle and accDescr to provide a concise nonvisual account of this diagram.')
-                      );
-                    }
-                  } catch (_) {
-                    wrapper.classList.add('scholium-mermaid-error');
-                    mermaidDiagnostic(
-                      wrapper,
-                      localized('This Mermaid diagram could not be rendered. Source is shown.')
-                    );
-                  }
-                }
-
-                async function renderMermaidNodes() {
-                  const nodes = [...document.querySelectorAll('pre > code')]
-                    .filter(code => isMermaidCode(code) && !code.closest('.scholium-mermaid'));
-                  for (const code of nodes) {
-                    const original = code.parentElement;
-                    if (!original) continue;
-                    const source = code.textContent || '';
-                    const wrapper = document.createElement('figure');
-                    wrapper.className = 'scholium-mermaid';
-                    wrapper.dataset.scholiumProtected = 'mermaid';
-                    for (const name of ['data-source-utf16-start', 'data-source-utf16-end', 'data-source-start-line', 'data-source-end-line']) {
-                      if (original.hasAttribute(name)) wrapper.setAttribute(name, original.getAttribute(name));
-                    }
-                    const fallback = original.cloneNode(true);
-                    fallback.classList.add('scholium-mermaid-source');
-                    wrapper.append(fallback);
-                    original.replaceWith(wrapper);
-                    await renderMermaidWrapper(wrapper, source);
-                  }
-                }
-
-                async function refreshMermaidNodes() {
-                  for (const wrapper of document.querySelectorAll('.scholium-mermaid')) {
-                    const source = wrapper.querySelector('.scholium-mermaid-source > code')?.textContent || '';
-                    await renderMermaidWrapper(wrapper, source);
-                  }
-                }
-
-                function scheduleMermaidRefresh() {
-                  const current = window.scholiumMermaidReady || Promise.resolve();
-                  window.scholiumMermaidReady = current.catch(() => {}).then(refreshMermaidNodes);
-                }
-                window.scholiumMermaidReady = renderMermaidNodes();
-                await window.scholiumMermaidReady;
-                for (const mediaQuery of [
-                  matchMedia('(prefers-color-scheme: dark)'),
-                  matchMedia('(prefers-contrast: more)')
-                ]) {
-                  mediaQuery.addEventListener('change', scheduleMermaidRefresh);
-                }
-
-                document.querySelectorAll('a.wiki-link[data-vector-kind]').forEach(link => {
-                  const kind = link.dataset.vectorKind;
-                  const semantics = vectorSemantics[kind];
-                  if (!semantics) return;
-                  const noteName = (link.textContent || '').trim();
-                  link.classList.add('scholium-vector-link', 'scholium-vector-' + kind.replaceAll('_', '-'));
-                  link.dataset.scholiumProtected = 'vector-link';
-                  link.setAttribute('aria-label', semantics.label + ' ' + noteName);
-                  link.title = semantics.label + ' ' + noteName;
-                  const icon = document.createElement('span');
-                  icon.className = 'scholium-vector-icon';
-                  icon.setAttribute('aria-hidden', 'true');
-                  icon.dataset.scholiumSystemSymbol = semantics.symbolName;
-                  icon.style.webkitMaskImage = `url("${semantics.symbol}")`;
-                  icon.style.maskImage = `url("${semantics.symbol}")`;
-                  link.append(icon);
-                });
-
-                let popoverHideTimer;
-                function hidePopover() {
-                  clearTimeout(popoverHideTimer);
-                  popoverHideTimer = undefined;
-                  popover.hidden = true;
-                  previewTitle.textContent = '';
-                  previewMetadata.textContent = '';
-                  previewMetadata.hidden = true;
-                  previewBody.replaceChildren();
-                }
-
-                function cancelPopoverHide() {
-                  clearTimeout(popoverHideTimer);
-                  popoverHideTimer = undefined;
-                }
-
-                function schedulePopoverHide() {
-                  clearTimeout(popoverHideTimer);
-                  popoverHideTimer = setTimeout(hidePopover, 180);
-                }
-
-                function normalizedPreviewTitle(value) {
-                  return String(value || '').trim().replace(/\\s+/g, ' ').toLocaleLowerCase();
-                }
-
-                function sanitizeInertContent(container) {
-                  container.querySelectorAll('script, style, iframe, object, embed, form, input, button').forEach(node => node.remove());
-                  container.querySelectorAll('*').forEach(node => {
-                    Array.from(node.attributes).forEach(attribute => {
-                      if (attribute.name.toLowerCase().startsWith('on')) node.removeAttribute(attribute.name);
-                      if (attribute.name.toLowerCase().startsWith('data-source-')) {
-                        node.removeAttribute(attribute.name);
-                      }
-                    });
-                    node.removeAttribute('href');
-                    node.removeAttribute('contenteditable');
-                    node.removeAttribute('id');
-                    node.removeAttribute('for');
-                    node.removeAttribute('aria-describedby');
-                    node.removeAttribute('aria-labelledby');
-                    node.removeAttribute('aria-owns');
-                    node.tabIndex = -1;
-                  });
-                }
-
-                function installInertDocumentContent(container, preview) {
-                  container.innerHTML = preview.htmlBody;
-                  sanitizeInertContent(container);
-                  const firstHeading = container.querySelector(':scope > h1:first-child');
-                  if (firstHeading
-                      && normalizedPreviewTitle(firstHeading.textContent) === normalizedPreviewTitle(preview.title)) {
-                    firstHeading.remove();
-                  }
-                }
-
-                function embeddedNoteFor(anchor, preview, key) {
-                  const shell = document.createElement('section');
-                  shell.className = 'scholium-embedded-note';
-                  shell.dataset.scholiumProtected = 'embedded-note';
-                  shell.dataset.previewRange = key;
-                  shell.dataset.embedHref = anchor.getAttribute('href') || '';
-                  shell.dataset.embedLabel = (anchor.textContent || preview.title).trim();
-                  shell.setAttribute('role', 'group');
-                  shell.setAttribute(
-                    'aria-label',
-                    localized('Embedded note {title}', {title: preview.title})
-                  );
-                  for (const name of [
-                    'data-source-utf16-start', 'data-source-utf16-end',
-                    'data-source-start-line', 'data-source-end-line', 'data-source-line'
-                  ]) {
-                    if (anchor.hasAttribute(name)) shell.setAttribute(name, anchor.getAttribute(name));
-                  }
-
-                  const header = document.createElement('header');
-                  header.className = 'scholium-embedded-note-header';
-                  const open = document.createElement('a');
-                  open.className = 'wiki-link scholium-vector-link scholium-vector-neutral scholium-embedded-note-open';
-                  open.dir = 'auto';
-                  open.href = shell.dataset.embedHref;
-                  open.append(document.createTextNode(preview.title));
-                  open.setAttribute(
-                    'aria-label',
-                    localized('Open embedded note {title}', {title: preview.title})
-                  );
-                  open.title = localized('Open embedded note {title}', {title: preview.title});
-                  header.append(open);
-
-                  const viewport = document.createElement('div');
-                  viewport.className = 'scholium-embedded-note-viewport';
-                  viewport.tabIndex = 0;
-                  viewport.setAttribute('role', 'region');
-                  viewport.setAttribute(
-                    'aria-label',
-                    localized('Embedded note content for {title}', {title: preview.title})
-                  );
-                  const body = document.createElement('div');
-                  body.className = 'scholium-embedded-note-body scholium-document';
-                  installInertDocumentContent(body, preview);
-                  viewport.append(body);
-                  shell.append(header, viewport);
-                  return shell;
-                }
-
-                function restoreEmbeddedNoteFallback(shell) {
-                  const fallback = document.createElement('a');
-                  fallback.className = 'wiki-link scholium-embed';
-                  fallback.dir = 'auto';
-                  fallback.href = shell.dataset.embedHref || '';
-                  fallback.textContent = shell.dataset.embedLabel || localized('Embedded note');
-                  fallback.dataset.scholiumProtected = 'embed';
-                  for (const name of [
-                    'data-source-utf16-start', 'data-source-utf16-end',
-                    'data-source-start-line', 'data-source-end-line', 'data-source-line'
-                  ]) {
-                    if (shell.hasAttribute(name)) fallback.setAttribute(name, shell.getAttribute(name));
-                  }
-                  shell.replaceWith(fallback);
-                }
-
-                function renderEmbeddedNotes() {
-                  const documentRoot = document.getElementById('scholium-document');
-                  if (!documentRoot) return;
-                  for (const shell of [...documentRoot.querySelectorAll('.scholium-embedded-note[data-preview-range]')]) {
-                    if (shell.parentElement?.closest('.scholium-embedded-note')) continue;
-                    const preview = previewByRange.get(shell.dataset.previewRange);
-                    if (!preview || !preview.isEmbedded) {
-                      restoreEmbeddedNoteFallback(shell);
-                      continue;
-                    }
-                    const body = shell.querySelector('.scholium-embedded-note-body');
-                    const open = shell.querySelector('.scholium-embedded-note-open');
-                    if (body) installInertDocumentContent(body, preview);
-                    if (open) {
-                      const label = open.firstChild;
-                      if (label) label.textContent = preview.title;
-                      open.setAttribute(
-                        'aria-label',
-                        localized('Open embedded note {title}', {title: preview.title})
-                      );
-                      open.title = localized('Open embedded note {title}', {title: preview.title});
-                    }
-                    shell.setAttribute(
-                      'aria-label',
-                      localized('Embedded note {title}', {title: preview.title})
-                    );
-                  }
-                  const anchors = [...documentRoot.querySelectorAll('a.scholium-embed')]
-                    .filter(anchor => !anchor.parentElement?.closest('.scholium-embedded-note'));
-                  for (const anchor of anchors) {
-                    const key = anchor.dataset.sourceUtf16Start + ':' + anchor.dataset.sourceUtf16End;
-                    const preview = previewByRange.get(key);
-                    if (!preview || !preview.isEmbedded) continue;
-                    anchor.replaceWith(embeddedNoteFor(anchor, preview, key));
-                  }
-                }
-
-                window.scholiumSetLinkPreviews = previews => {
-                  if (!Array.isArray(previews)) return false;
-                  previewByRange = new Map(previews.map(preview => [
-                    preview.utf16LowerBound + ':' + preview.utf16UpperBound,
-                    preview
-                  ]));
-                  hidePopover();
-                  renderEmbeddedNotes();
-                  return true;
-                };
-
-                function positionPopover(anchor) {
-                  popover.hidden = false;
-                  const rect = anchor.getBoundingClientRect();
-                  const measured = popover.getBoundingClientRect();
-                  const left = Math.max(12, Math.min(rect.left, window.innerWidth - measured.width - 12));
-                  const below = rect.bottom + 8;
-                  const top = below + measured.height <= window.innerHeight - 12
-                    ? below
-                    : Math.max(12, rect.top - measured.height - 8);
-                  popover.style.left = left + 'px';
-                  popover.style.top = top + 'px';
-                }
-
-                function showFootnotePopover(button) {
-                  const ordinal = button.dataset.footnote;
-                  const definition = document.getElementById('fn-' + ordinal);
-                  const content = definition && definition.querySelector('.footnote-content');
-                  if (!content) return;
-                  previewTitle.textContent = localized('Footnote {ordinal}', {ordinal});
-                  previewMetadata.textContent = localized('Referenced footnote');
-                  previewMetadata.hidden = false;
-                  previewBody.replaceChildren(content.cloneNode(true));
-                  sanitizeInertContent(previewBody);
-                  positionPopover(button);
-                }
-
-                function showLinkPopover(link) {
-                  const key = link.dataset.sourceUtf16Start + ':' + link.dataset.sourceUtf16End;
-                  const preview = previewByRange.get(key);
-                  if (!preview) return;
-                  previewTitle.textContent = preview.title;
-                  previewMetadata.textContent = preview.fragment || '';
-                  previewMetadata.hidden = !preview.fragment;
-                  installInertDocumentContent(previewBody, preview);
-                  positionPopover(link);
-                }
-
-                function previewAnchorFor(target) {
-                  if (!(target instanceof Element)) return null;
-                  if (target.closest('.scholium-embedded-note')) return null;
-                  return target.closest('.footnote-reference, a.wiki-link');
-                }
-
-                function showPreviewFor(anchor) {
-                  if (anchor.matches('.footnote-reference')) {
-                    showFootnotePopover(anchor);
-                  } else if (anchor.matches('a.wiki-link')) {
-                    showLinkPopover(anchor);
-                  }
-                }
-
-                function remainsInsidePreviewAnchor(anchor, relatedTarget) {
-                  return relatedTarget instanceof Node && anchor.contains(relatedTarget);
-                }
-
-                document.addEventListener('pointerover', event => {
-                  const anchor = previewAnchorFor(event.target);
-                  if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
-                  cancelPopoverHide();
-                  showPreviewFor(anchor);
-                });
-                document.addEventListener('focusin', event => {
-                  const anchor = previewAnchorFor(event.target);
-                  if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
-                  cancelPopoverHide();
-                  showPreviewFor(anchor);
-                });
-                document.addEventListener('pointerout', event => {
-                  const anchor = previewAnchorFor(event.target);
-                  if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
-                  if (event.relatedTarget instanceof Node && popover.contains(event.relatedTarget)) {
-                    cancelPopoverHide();
-                  } else {
-                    schedulePopoverHide();
-                  }
-                });
-                document.addEventListener('focusout', event => {
-                  const anchor = previewAnchorFor(event.target);
-                  if (anchor && !remainsInsidePreviewAnchor(anchor, event.relatedTarget)) schedulePopoverHide();
-                });
-                popover.addEventListener('pointerenter', cancelPopoverHide);
-                popover.addEventListener('pointerleave', schedulePopoverHide);
-                window.addEventListener('scroll', hidePopover, {passive: true});
-                window.addEventListener('resize', hidePopover);
-                window.addEventListener('blur', hidePopover);
-                renderEmbeddedNotes();
-
-                document.addEventListener('click', event => {
-                  const reference = event.target.closest && event.target.closest('.footnote-reference');
-                  if (reference && !reference.disabled) {
-                    const ordinal = reference.dataset.footnote;
-                    const target = document.getElementById(reference.dataset.target);
-                    if (target) {
-                      const origin = reference.closest('.footnote-reference-wrap') || reference;
-                      origins.set(ordinal, origin.id);
-                      target.tabIndex = -1;
-                      target.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
-                      target.focus({preventScroll: true});
-                    }
-                    event.preventDefault();
-                    return;
-                  }
-                  const back = event.target.closest && event.target.closest('.footnote-return');
-                  if (back) {
-                    const ordinal = back.dataset.footnote;
-                    const originID = origins.get(ordinal) || 'fnref-' + ordinal + '-1';
-                    const origin = document.getElementById(originID);
-                    if (origin) {
-                      const focusTarget = origin.matches('.footnote-reference')
-                        ? origin
-                        : origin.querySelector('.footnote-reference');
-                      origin.scrollIntoView({block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
-                      (focusTarget || origin).focus({preventScroll: true});
-                    }
-                    event.preventDefault();
-                    return;
-                  }
-                  const link = event.target.closest && event.target.closest('a[href^="scholium-note:"]');
-                  if (link) {
-                    const encoded = link.getAttribute('href').slice('scholium-note:'.length);
-                    post('internalLink', {target: decodeURIComponent(encoded)});
-                    event.preventDefault();
-                  }
-                });
-
-                document.addEventListener('keydown', event => {
-                  if (event.key === 'Escape') {
-                    hidePopover();
-                    if (!commentComposer.hidden) return;
-                    commentComposer.hidden = true;
-                    selectionToolbar.hidden = false;
-                    commentText.value = '';
-                    selectionActions.hidden = true;
-                  }
-                });
-
-                function showCommentComposer() {
-                  if (!reviewSelectionSurfaceActive
-                      || !commentEnabled
-                      || selectionActions.hidden
-                      || !commentButton.dataset.startLine) return false;
-                  const startLine = Number(commentButton.dataset.startLine);
-                  const endLine = Number(commentButton.dataset.endLine || commentButton.dataset.startLine);
-                  commentText.setAttribute(
-                    'aria-label',
-                    startLine === endLine
-                      ? localized('Comment for line {start}', {start: startLine})
-                      : localized('Comment for lines {start} through {end}', {start: startLine, end: endLine})
-                  );
-                  selectionToolbar.hidden = true;
-                  commentComposer.hidden = false;
-                  suspendedCommentComposer = false;
-                  selectionActions.classList.add('scholium-comment-composing');
-                  commentComposer.removeAttribute('data-state');
-                  commentComposer.setAttribute('aria-busy', 'false');
-                  commentHelp.textContent = defaultCommentHelpText;
-                  resizeCommentText();
-                  const anchorBounds = commentSelectionRange?.getBoundingClientRect();
-                  if (anchorBounds) positionSelectionActions(anchorBounds);
-                  commentText.focus();
-                  return true;
-                }
-                window.scholiumShowCommentComposer = showCommentComposer;
-
-                function restoreCommentFocus() {
-                  const anchor = commentAnchorElement;
-                  const range = commentSelectionRange?.cloneRange();
-                  if (anchor instanceof HTMLElement) {
-                    const previousTabIndex = anchor.getAttribute('tabindex');
-                    anchor.tabIndex = -1;
-                    anchor.focus({preventScroll: true});
-                    if (previousTabIndex === null) anchor.removeAttribute('tabindex');
-                    else anchor.setAttribute('tabindex', previousTabIndex);
-                  }
-                  if (range) {
-                    const selection = window.getSelection();
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                  }
-                }
-
-                function cancelComment(restoreSelection, onlyWhenEmpty) {
-                  if (pendingCommentRequestID
-                      || (onlyWhenEmpty && commentText.value.trim())) return false;
-                  commentText.value = '';
-                  commentText.style.height = '';
-                  commentText.readOnly = false;
-                  commentComposer.removeAttribute('data-state');
-                  commentComposer.setAttribute('aria-busy', 'false');
-                  commentHelp.textContent = defaultCommentHelpText;
-                  commentComposer.hidden = true;
-                  suspendedCommentComposer = false;
-                  selectionToolbar.hidden = false;
-                  selectionActions.hidden = true;
-                  selectionActions.classList.remove('scholium-comment-composing');
-                  if (restoreSelection) {
-                    restoreCommentFocus();
-                  } else {
-                    commentText.blur();
-                    commentSelectionRange = null;
-                    commentAnchorElement = null;
-                  }
-                  return true;
-                }
-
-                window.scholiumSetReviewSelectionSurfaceActive = active => {
-                  const nextActive = Boolean(active);
-                  if (nextActive === reviewSelectionSurfaceActive) return true;
-                  reviewSelectionSurfaceActive = nextActive;
-                  reviewPointerSelectionActive = false;
-                  if (!nextActive) {
-                    const retainsDraft = !commentComposer.hidden
-                      && (Boolean(pendingCommentRequestID) || Boolean(commentText.value.trim()));
-                    suspendedCommentComposer = retainsDraft;
-                    selectionActions.hidden = true;
-                    reviewSelectionPresentation.clear();
-                    commentText.blur();
-                    if (!retainsDraft) cancelComment(false, false);
-                    return true;
-                  }
-                  if (suspendedCommentComposer && commentSelectionRange) {
-                    suspendedCommentComposer = false;
-                    selectionToolbar.hidden = true;
-                    commentComposer.hidden = false;
-                    selectionActions.hidden = false;
-                    selectionActions.classList.add('scholium-comment-composing');
-                    positionSelectionActions(commentSelectionRange.getBoundingClientRect());
-                    if (!pendingCommentRequestID) commentText.focus();
-                  } else {
-                    suspendedCommentComposer = false;
-                  }
-                  return true;
-                };
-
-                window.scholiumResolveCommentSubmission = (requestID, succeeded) => {
-                  if (!pendingCommentRequestID || requestID !== pendingCommentRequestID) return false;
-                  pendingCommentRequestID = null;
-                  commentText.readOnly = false;
-                  commentComposer.setAttribute('aria-busy', 'false');
-                  if (!succeeded) {
-                    commentHelp.textContent = localized('Could not save. Your Comment is still here.');
-                    commentComposer.dataset.state = 'error';
-                    if (reviewSelectionSurfaceActive) commentText.focus();
-                    return true;
-                  }
-                  commentText.value = '';
-                  commentText.style.height = '';
-                  commentComposer.removeAttribute('data-state');
-                  commentHelp.textContent = defaultCommentHelpText;
-                  commentComposer.hidden = true;
-                  selectionToolbar.hidden = false;
-                  selectionActions.hidden = true;
-                  selectionActions.classList.remove('scholium-comment-composing');
-                  suspendedCommentComposer = false;
-                  if (reviewSelectionSurfaceActive) {
-                    restoreCommentFocus();
-                  } else {
-                    commentText.blur();
-                    commentSelectionRange = null;
-                    commentAnchorElement = null;
-                  }
-                  return true;
-                };
-
-                if (selectionEnabled) {
-                  const reviewDocument = document.getElementById('scholium-document');
-                  const reviewMermaidElements = reviewDocument
-                    ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')]
-                    : [];
-                  const repositionReviewSelectionActions = () => {
-                    if (!reviewSelectionSurfaceActive
-                        || reviewPointerSelectionActive
-                        || !commentSelectionRange
-                        || selectionActions.hidden) return;
-                    positionSelectionActions(commentSelectionRange.getBoundingClientRect());
-                  };
-                  const clearReviewSelection = () => {
-                    commentSelectionRange = null;
-                    commentAnchorElement = null;
-                    selectionActions.hidden = true;
-                    post('selectionChanged');
-                  };
-                  const nodeBelongsToMermaid = node => {
-                    const element = node instanceof Element ? node : node?.parentElement;
-                    if (element?.closest?.('[data-scholium-protected="mermaid"]')) return true;
-                    const shadowHost = node?.getRootNode?.()?.host;
-                    return Boolean(shadowHost?.closest?.('[data-scholium-protected="mermaid"]'));
-                  };
-                  const rangeIntersectsMermaid = range => {
-                    if (nodeBelongsToMermaid(range.startContainer)
-                        || nodeBelongsToMermaid(range.endContainer)) return true;
-                    return reviewMermaidElements.some(element => {
-                      try {
-                        return range.intersectsNode(element);
-                      } catch (_) {
-                        return false;
-                      }
-                    });
-                  };
-                  const updateSelectionActions = () => {
-                    // Focusing the Comment textarea collapses the document
-                    // selection. Keep the anchored composer stable until the
-                    // researcher saves or cancels it; that focus transition is
-                    // not a request to discard the marginal note.
-                    if (!reviewSelectionSurfaceActive) {
-                      selectionActions.hidden = true;
-                      return;
-                    }
-                    if (!commentComposer.hidden) return;
-                    const selection = window.getSelection();
-                    const main = reviewDocument;
-                    reviewSelectionPresentation.update(selection, main, reviewRangeTextNodes);
-                    if (reviewPointerSelectionActive) {
-                      selectionActions.hidden = true;
-                      return;
-                    }
-                    if (!selection || selection.rangeCount !== 1 || selection.isCollapsed || !main) {
-                      clearReviewSelection();
-                      return;
-                    }
-                    const range = selection.getRangeAt(0);
-                    if (!main.contains(range.startContainer) || !main.contains(range.endContainer)) {
-                      clearReviewSelection();
-                      return;
-                    }
-                    if (rangeIntersectsMermaid(range)) {
-                      clearReviewSelection();
-                      return;
-                    }
-                    const text = boundedReviewRangeText(range, main, 2000);
-                    if (!text) {
-                      clearReviewSelection();
-                      return;
-                    }
-                    const rect = range.getBoundingClientRect();
-                    commentSelectionRange = range.cloneRange();
-                    const sourceElement = (range.startContainer.parentElement || range.startContainer)
-                      .closest && (range.startContainer.parentElement || range.startContainer).closest('[data-source-line]');
-                    const endSourceElement = (range.endContainer.parentElement || range.endContainer)
-                      .closest && (range.endContainer.parentElement || range.endContainer).closest('[data-source-line]');
-                    const startLine = Number(sourceElement ? sourceElement.dataset.sourceLine : '1');
-                    const endLine = Number(endSourceElement
-                      ? (endSourceElement.dataset.sourceEndLine || endSourceElement.dataset.sourceLine)
-                      : String(startLine));
-                    const payload = {
-                      text,
-                      contextBefore: reviewContextBefore(range, main, 80),
-                      contextAfter: reviewContextAfter(range, main, 80),
-                      startLine: Math.min(startLine, endLine),
-                      endLine: Math.max(startLine, endLine)
-                    };
-                    post('selectionChanged', payload);
-                    if (!commentEnabled) {
-                      selectionActions.hidden = true;
-                      return;
-                    }
-                    commentButton.dataset.startLine = String(payload.startLine);
-                    commentButton.dataset.endLine = String(payload.endLine);
-                    commentButton.dataset.selection = payload.text;
-                    commentButton.dataset.contextBefore = payload.contextBefore;
-                    commentButton.dataset.contextAfter = payload.contextAfter;
-                    commentAnchorElement = sourceElement;
-                    commentButton.hidden = !commentEnabled;
-                    positionSelectionActions(rect);
-                  };
-                  document.addEventListener('selectionchange', updateSelectionActions);
-                  reviewDocument?.addEventListener('pointerdown', event => {
-                    if (!reviewSelectionSurfaceActive || event.button !== 0) return;
-                    if (!commentComposer.hidden && !cancelComment(false, true)) {
-                      event.preventDefault();
-                      commentText.focus();
-                      return;
-                    }
-                    if (commentAnchorElement instanceof HTMLElement
-                        && document.activeElement === commentAnchorElement) {
-                      commentAnchorElement.blur();
-                    }
-                    commentSelectionRange = null;
-                    commentAnchorElement = null;
-                    reviewPointerSelectionActive = true;
-                    selectionActions.hidden = true;
-                  }, true);
-                  window.addEventListener('pointerup', event => {
-                    if (!reviewPointerSelectionActive || event.button !== 0) return;
-                    reviewPointerSelectionActive = false;
-                    queueMicrotask(updateSelectionActions);
-                  }, true);
-                  window.addEventListener('pointercancel', () => {
-                    reviewPointerSelectionActive = false;
-                    selectionActions.hidden = true;
-                  }, true);
-                  window.addEventListener('resize', repositionReviewSelectionActions);
-                  window.addEventListener('blur', () => {
-                    reviewPointerSelectionActive = false;
-                    if (commentComposer.hidden) selectionActions.hidden = true;
-                  });
-                }
-                if (commentEnabled) {
-                  // Keep the document selection alive through the button's
-                  // pointer-down. The subsequent click owns the deliberate
-                  // transition from the compact bar to the anchored field.
-                  commentButton.addEventListener('mousedown', event => event.preventDefault());
-                  commentButton.addEventListener('click', showCommentComposer);
-                  let preservesNextInsertedLineBreak = false;
-                  const makeRequestID = () => {
-                    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
-                      return globalThis.crypto.randomUUID();
-                    }
-                    const bytes = new Uint8Array(16);
-                    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
-                      globalThis.crypto.getRandomValues(bytes);
-                    } else {
-                      for (let index = 0; index < bytes.length; index += 1) {
-                        bytes[index] = Math.floor(Math.random() * 256);
-                      }
-                    }
-                    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-                    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-                    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
-                    return hex.slice(0, 4).join('') + '-' + hex.slice(4, 6).join('') + '-'
-                      + hex.slice(6, 8).join('') + '-' + hex.slice(8, 10).join('') + '-'
-                      + hex.slice(10, 16).join('');
-                  };
-                  const submitComment = () => {
-                    const comment = commentText.value.trim();
-                    if (!comment || pendingCommentRequestID) return;
-                    if (new TextEncoder().encode(comment).byteLength > 16384) {
-                      commentHelp.textContent = localized('This Comment is too long to save here.');
-                      commentComposer.dataset.state = 'error';
-                      return;
-                    }
-                    pendingCommentRequestID = makeRequestID();
-                    commentText.readOnly = true;
-                    commentComposer.setAttribute('aria-busy', 'true');
-                    commentHelp.textContent = localized('Saving…');
-                    commentComposer.dataset.state = 'saving';
-                    post('commentSubmitted', {
-                      requestID: pendingCommentRequestID,
-                      comment,
-                      text: commentButton.dataset.selection || '',
-                      contextBefore: commentButton.dataset.contextBefore || '',
-                      contextAfter: commentButton.dataset.contextAfter || '',
-                      startLine: Number(commentButton.dataset.startLine || '1'),
-                      endLine: Number(commentButton.dataset.endLine || commentButton.dataset.startLine || '1')
-                    });
-                  };
-                  qaCommentSubmit && qaCommentSubmit.addEventListener('click', submitComment);
-                  commentText.addEventListener('input', () => {
-                    resizeCommentText();
-                    if (commentComposer.dataset.state === 'error') {
-                      commentComposer.removeAttribute('data-state');
-                      commentHelp.textContent = defaultCommentHelpText;
-                    }
-                  });
-                  commentText.addEventListener('keydown', event => {
-                    if (event.key === 'Escape') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      cancelComment(true, false);
-                      return;
-                    }
-                    const isReturn = event.key === 'Enter'
-                      || event.key === 'Return'
-                      || event.code === 'Enter'
-                      || event.code === 'NumpadEnter';
-                    if (!isReturn || event.isComposing) return;
-                    if (event.shiftKey) {
-                      preservesNextInsertedLineBreak = true;
-                      setTimeout(() => { preservesNextInsertedLineBreak = false; }, 0);
-                      return;
-                    }
-                    event.preventDefault();
-                    submitComment();
-                  });
-                  // Accessibility text insertion can bypass DOM keydown while
-                  // still producing an InputEvent whose type is insertText.
-                  // Treat only an actually inserted line break as Return-to-save;
-                  // a real Shift-Return marks exactly its following input as prose.
-                  commentText.addEventListener('input', event => {
-                    const insertedLineBreak = event.inputType === 'insertLineBreak'
-                      || event.inputType === 'insertParagraph'
-                      || (event.inputType === 'insertText'
-                        && ((typeof event.data === 'string' && /[\\r\\n]/.test(event.data))
-                          || /[\\r\\n]$/.test(commentText.value)));
-                    if (!insertedLineBreak) return;
-                    if (preservesNextInsertedLineBreak) {
-                      preservesNextInsertedLineBreak = false;
-                      return;
-                    }
-                    submitComment();
-                  });
-                }
-
-                const scrollBlockRegistry = (() => {
-                  const root = document.getElementById('scholium-document');
-                  const entries = [];
-                  const byElement = new WeakMap();
-                  const byExactRange = new Map();
-                  if (!root) return {
-                    root,
-                    entries,
-                    byElement,
-                    byExactRange,
-                    bySource: [],
-                    sourcePrefixMaximumUpper: []
-                  };
-                  const candidates = root.querySelectorAll('[data-source-utf16-start][data-source-utf16-end]');
-                  for (const element of candidates) {
-                    const lower = Number(element.dataset.sourceUtf16Start);
-                    const upper = Number(element.dataset.sourceUtf16End);
-                    if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper < lower) continue;
-                    const style = getComputedStyle(element);
-                    if (style.display === 'inline' || style.display === 'contents'
-                        || style.display === 'none' || style.visibility === 'hidden') continue;
-                    const initialRect = element.getBoundingClientRect();
-                    if (initialRect.height <= 0) continue;
-                    const entry = {element, lower, upper, span: Math.max(0, upper - lower)};
-                    element.dataset.scholiumScrollAnchor = String(entries.length);
-                    entries.push(entry);
-                    byElement.set(element, entry);
-                    const key = lower + ':' + upper;
-                    const existing = byExactRange.get(key);
-                    if (!existing || entry.span < existing.span) byExactRange.set(key, entry);
-                  }
-                  const bySource = entries.slice().sort((left, right) =>
-                    left.lower - right.lower || left.span - right.span);
-                  let maximumUpper = Number.NEGATIVE_INFINITY;
-                  const sourcePrefixMaximumUpper = bySource.map(entry => {
-                    maximumUpper = Math.max(maximumUpper, entry.upper);
-                    return maximumUpper;
-                  });
-                  return {
-                    root,
-                    entries,
-                    byElement,
-                    byExactRange,
-                    bySource,
-                    sourcePrefixMaximumUpper
-                  };
-                })();
-
-                function scrollEntryForNode(node) {
-                  const root = scrollBlockRegistry.root;
-                  let element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
-                  while (element && element !== root) {
-                    const entry = scrollBlockRegistry.byElement.get(element);
-                    if (entry) return entry;
-                    element = element.parentElement;
-                  }
-                  return null;
-                }
-
-                function scrollEntryAtProbe(probe) {
-                  const registry = scrollBlockRegistry;
-                  if (!registry.root || !registry.entries.length) return null;
-                  const rootRect = registry.root.getBoundingClientRect();
-                  const probeX = Math.max(1, Math.min(window.innerWidth - 1,
-                    rootRect.left + Math.max(1, rootRect.width / 2)));
-                  let entry = scrollEntryForNode(document.elementFromPoint(probeX, probe));
-                  if (!entry && document.caretPositionFromPoint) {
-                    entry = scrollEntryForNode(document.caretPositionFromPoint(probeX, probe)?.offsetNode);
-                  }
-                  if (!entry && document.caretRangeFromPoint) {
-                    entry = scrollEntryForNode(document.caretRangeFromPoint(probeX, probe)?.startContainer);
-                  }
-                  if (entry) return entry;
-
-                  // Margins can leave the probe over the document background.
-                  // A logarithmic fallback reads only a bounded set of blocks.
-                  let low = 0;
-                  let high = registry.entries.length - 1;
-                  let nearestIndex = 0;
-                  let nearestDistance = Number.POSITIVE_INFINITY;
-                  while (low <= high) {
-                    const index = (low + high) >> 1;
-                    const candidate = registry.entries[index];
-                    const rect = candidate.element.getBoundingClientRect();
-                    const distance = rect.top <= probe && rect.bottom > probe
-                      ? 0
-                      : Math.min(Math.abs(rect.top - probe), Math.abs(rect.bottom - probe));
-                    if (distance < nearestDistance) {
-                      nearestDistance = distance;
-                      nearestIndex = index;
-                    }
-                    if (rect.bottom <= probe) low = index + 1;
-                    else if (rect.top > probe) high = index - 1;
-                    else return candidate;
-                  }
-                  const start = Math.max(0, nearestIndex - 2);
-                  const end = Math.min(registry.entries.length, nearestIndex + 3);
-                  let nearest = registry.entries[nearestIndex];
-                  for (let index = start; index < end; index += 1) {
-                    const candidate = registry.entries[index];
-                    const rect = candidate.element.getBoundingClientRect();
-                    const distance = rect.top <= probe && rect.bottom > probe
-                      ? 0
-                      : Math.min(Math.abs(rect.top - probe), Math.abs(rect.bottom - probe));
-                    if (distance < nearestDistance) {
-                      nearestDistance = distance;
-                      nearest = candidate;
-                    }
-                  }
-                  return nearest;
-                }
-
-                function scrollEntryForAnchor(anchor) {
-                  const offset = Number(anchor.sourceUTF16Offset);
-                  const lower = Number(anchor.blockUTF16LowerBound);
-                  const upper = Number(anchor.blockUTF16UpperBound);
-                  const exact = scrollBlockRegistry.byExactRange.get(lower + ':' + upper);
-                  if (exact) return exact;
-                  const entries = scrollBlockRegistry.bySource;
-                  let low = 0;
-                  let high = entries.length;
-                  while (low < high) {
-                    const middle = (low + high) >> 1;
-                    if (entries[middle].lower <= offset) low = middle + 1;
-                    else high = middle;
-                  }
-                  const insertion = low;
-                  let containing = null;
-                  for (let index = insertion - 1;
-                       index >= 0 && scrollBlockRegistry.sourcePrefixMaximumUpper[index] >= offset;
-                       index -= 1) {
-                    const candidate = entries[index];
-                    if (candidate.lower <= offset && candidate.upper >= offset
-                        && (!containing || candidate.span < containing.span)) containing = candidate;
-                  }
-                  if (containing) return containing;
-                  const before = entries[Math.max(0, insertion - 1)];
-                  const after = entries[Math.min(entries.length - 1, insertion)];
-                  if (!before) return after || null;
-                  if (!after) return before;
-                  return Math.abs(before.lower - offset) <= Math.abs(after.lower - offset) ? before : after;
-                }
-
-                function visibleScrollEntry(entry) {
-                  let candidate = entry;
-                  while (candidate) {
-                    if (candidate.element.getBoundingClientRect().height > 0) return candidate;
-                    var parent = candidate.element.parentElement;
-                    candidate = null;
-                    while (parent && parent !== scrollBlockRegistry.root) {
-                      const registered = scrollBlockRegistry.byElement.get(parent);
-                      if (registered) {
-                        candidate = registered;
-                        break;
-                      }
-                      parent = parent.parentElement;
-                    }
-                  }
-                  return null;
-                }
-
-                function currentReadScrollAnchor(fraction) {
-                  const probe = 8;
-                  const selected = scrollEntryAtProbe(probe);
-                  if (!selected) return null;
-                  const rect = selected.element.getBoundingClientRect();
-                  const relativeBlockPosition = Math.max(0, Math.min(1,
-                    (probe - rect.top) / Math.max(1, rect.height)));
-                  const sourceUTF16Offset = Math.max(selected.lower, Math.min(selected.upper,
-                    Math.round(selected.lower + selected.span * relativeBlockPosition)));
-                  return {
-                    sourceUTF16Offset,
-                    blockUTF16LowerBound: selected.lower,
-                    blockUTF16UpperBound: selected.upper,
-                    relativeBlockPosition,
-                    fallbackFraction: fraction
-                  };
-                }
-
-                function restoreReadScrollAnchor(anchor) {
-                  if (!anchor || typeof anchor !== 'object') return false;
-                  const offset = Number(anchor.sourceUTF16Offset);
-                  const lower = Number(anchor.blockUTF16LowerBound);
-                  const upper = Number(anchor.blockUTF16UpperBound);
-                  const relative = Number(anchor.relativeBlockPosition);
-                  if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
-                  const target = visibleScrollEntry(scrollEntryForAnchor(anchor));
-                  if (!target) return false;
-                  const rect = target.element.getBoundingClientRect();
-                  const height = Math.max(1, rect.height);
-                  const requestedOffset = Math.max(0, Math.min(1, relative)) * height;
-                  // WebKit can resolve a one-pixel boundary to the preceding
-                  // block after fractional layout or font substitution. Keep
-                  // the probe four CSS pixels inside the requested block so a
-                  // restore-generated scroll report resolves to that block.
-                  const interiorOffset = height > 8
-                    ? Math.max(4, Math.min(height - 4, requestedOffset))
-                    : requestedOffset;
-                  const requestedTop = window.scrollY + rect.top
-                    + interiorOffset - 8;
-                  window.scrollTo({top: Math.max(0, requestedTop), behavior: 'auto'});
-                  return true;
-                }
-
-                window.scholiumReadScroll = {
-                \(readScrollTestingMembers)
-                  current(fraction) { return currentReadScrollAnchor(fraction); },
-                  restore(anchor) {
-                    return restoreReadScrollAnchor(anchor);
-                  }
-                };
-
-                var scrollTimer;
-                window.addEventListener('scroll', () => {
-                  clearTimeout(scrollTimer);
-                  scrollTimer = setTimeout(() => {
-                    const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-                    const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
-                    post('scrollChanged', {fraction, anchor: currentReadScrollAnchor(fraction)});
-                  }, 120);
-                }, {passive: true});
-                // Install only after the rendered document and its event
-                // handlers exist. The native side also probes this API from
-                // didFinish, so a dropped early message cannot lose a query.
-              })();
+            const encodedConfiguration = "\(payload)";
+            const configuration = JSON.parse(new TextDecoder().decode(
+              Uint8Array.from(atob(encodedConfiguration), character => character.charCodeAt(0))
+            ));
+            if (!window.scholiumRead || typeof window.scholiumRead.initialize !== 'function') {
+              throw new Error('The bundled Read runtime could not start.');
+            }
+            window.scholiumRead.initialize(configuration);
             """
-        }
-
-        private static func jsonLiteral(_ value: String) -> String {
-            guard let data = try? JSONEncoder().encode(value),
-                  let literal = String(data: data, encoding: .utf8) else { return "\"\"" }
-            return literal
         }
 
         private struct ReadLinkPreview: Encodable {

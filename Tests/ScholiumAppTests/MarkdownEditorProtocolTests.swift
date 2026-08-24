@@ -123,7 +123,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 9,
+              "protocolVersion": 15,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -141,15 +141,80 @@ struct MarkdownEditorProtocolTests {
             }
             """.data(using: .utf8)
         )
-        let message = try JSONDecoder().decode(EditorBridgeMessage.self, from: data)
-        #expect(message.type == "contextMenuRequested")
+        let object = try JSONSerialization.jsonObject(with: data)
+        let decoded = try #require(EditorBridgeMessageDecoder.decode(object))
+        guard case .contextMenuRequested(let message) = decoded else {
+            Issue.record("The typed bridge did not decode a context-menu request.")
+            return
+        }
         #expect(message.clientX == 120.5)
         #expect(message.clientY == 88)
         #expect(message.mode == .livePreview)
-        #expect(message.context?.selections == [
+        #expect(message.context.selections == [
             MarkdownEditorSelectionRange(anchor: 4, head: 12)
         ])
-        #expect(message.context?.availableCommands == [.toggleTask])
+        #expect(message.context.availableCommands == [.toggleTask])
+    }
+
+    @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
+    func inboundBridgeRejectsUnrecognizedContracts() {
+        let envelope: [String: Any] = [
+            "protocolVersion": 15,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "session-document",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3,
+        ]
+        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
+            "type": "unknown",
+        ]) { _, next in next }) == nil)
+        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
+            "type": "requestSave",
+            "protocolVersion": 14,
+        ]) { _, next in next }) == nil)
+        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
+            "type": "requestSave",
+            "legacyDirty": true,
+        ]) { _, next in next }) == nil)
+        #expect(EditorBridgeMessageDecoder.decode([
+            "type": "editorError",
+            "message": "unbound",
+        ]) == nil)
+        #expect(EditorBridgeMessageDecoder.decode(envelope.merging([
+            "type": "editorError",
+            "message": "invalid",
+            "legacyFailure": true,
+        ]) { _, next in next }) == nil)
+    }
+
+    @Test("High-frequency deltas use the shared typed envelope and bounds")
+    func inboundDeltaUsesTypedDirectDecoder() throws {
+        let object: [String: Any] = [
+            "type": "documentChanged",
+            "protocolVersion": 15,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "session-document",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 4,
+            "baseGeneration": 3,
+            "resultingGeneration": 4,
+            "changes": [["from": 1, "to": 2, "insert": "价值"]],
+        ]
+        let decoded = try #require(EditorBridgeMessageDecoder.decode(object))
+        guard case .documentChanged(let message) = decoded else {
+            Issue.record("The typed bridge did not decode a document delta.")
+            return
+        }
+        #expect(message.envelope.documentVersion == 4)
+        #expect(message.baseGeneration == 3)
+        #expect(message.changes == [EditorBridgeChange(from: 1, to: 2, insert: "价值")])
+
+        var malformed = object
+        malformed["resultingGeneration"] = 5
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["changes"] = [["from": 2, "to": 1, "insert": "x"]]
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
     }
 
     @Test("Exact source-range reveal round trips as a nonmutating bridge operation")
@@ -454,6 +519,31 @@ struct MarkdownEditorProtocolTests {
         #expect(session.generation == 1)
         #expect(session.checkedSource.utf8.count == insertion.utf8.count)
         #expect(session.isDirty)
+    }
+
+    @MainActor
+    @Test("Context-menu selections use the unsaved checked editor generation")
+    func contextMenuSelectionUsesLiveCheckedLength() {
+        let session = MarkdownEditorSession()
+        session.loadDocument("abc", documentID: "context-menu-live-source", mode: .livePreview)
+
+        #expect(session.acceptEditorChanges(
+            [EditorBridgeChange(from: 3, to: 3, insert: " value")],
+            baseGeneration: 0,
+            resultingGeneration: 1
+        ))
+        #expect(session.acceptsInteractionRanges(
+            [MarkdownEditorSelectionRange(anchor: 9, head: 9)],
+            documentVersion: 1
+        ))
+        #expect(!session.acceptsInteractionRanges(
+            [MarkdownEditorSelectionRange(anchor: 9, head: 9)],
+            documentVersion: 0
+        ))
+        #expect(!session.acceptsInteractionRanges(
+            [MarkdownEditorSelectionRange(anchor: 10, head: 10)],
+            documentVersion: 1
+        ))
     }
 
     @MainActor

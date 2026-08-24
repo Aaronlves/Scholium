@@ -351,7 +351,8 @@ registered-Triptych projection, access-recovery state, installed capability
 generation, identity resolution, initial-restore attempt, and cancellable
 access/control/Metadata recovery. `WindowLibraryMutationController` owns
 Note/Folder exclusion, flush/revision preparation, import cancellation, Trash,
-and local-execution retry. `WindowZoteroCoordinator` owns cancellable
+and local-execution retry through `LibraryMutationUseCases` directly;
+`DocumentController` forwards no Library writes. `WindowZoteroCoordinator` owns cancellable
 search/binding tasks and committed messages. `ZoteroBindingPanelMutationOwner`
 owns the cancellable save/clear task and busy state; its view owns local
 error/recovery presentation. `WindowModel` installs capabilities/callbacks but

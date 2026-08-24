@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "build": "esbuild editor.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/editor.bundle.js",
+    "build": "esbuild editor.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/editor.bundle.js && esbuild reader.ts --bundle --format=iife --platform=browser --target=safari17 --outfile=../Scholium/Resources/Editor/reader.bundle.js",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run"
   },

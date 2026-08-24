@@ -5,13 +5,14 @@ repo_root="${0:A:h:h:h}"
 source_dir="$repo_root/WebEditor"
 run_tests=false
 output=""
+reader_output=""
 math_output=""
 mermaid_output=""
 mermaid_notices_output=""
 math_assets=""
 
 usage() {
-  print -u2 "Usage: $0 --output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
+  print -u2 "Usage: $0 --output <absolute-path> --reader-output <absolute-path> --math-output <absolute-path> --mermaid-output <absolute-path> --mermaid-notices-output <absolute-path> --math-assets <absolute-directory> [--test]"
   exit 64
 }
 
@@ -20,6 +21,11 @@ while (( $# > 0 )); do
     --output)
       (( $# >= 2 )) || usage
       output="$2"
+      shift 2
+      ;;
+    --reader-output)
+      (( $# >= 2 )) || usage
+      reader_output="$2"
       shift 2
       ;;
     --math-output)
@@ -53,12 +59,17 @@ while (( $# > 0 )); do
 done
 
 [[ -n "$output" && "$output" == /* ]] || usage
+[[ -n "$reader_output" && "$reader_output" == /* ]] || usage
 [[ -n "$math_output" && "$math_output" == /* ]] || usage
 [[ -n "$mermaid_output" && "$mermaid_output" == /* ]] || usage
 [[ -n "$mermaid_notices_output" && "$mermaid_notices_output" == /* ]] || usage
 [[ -n "$math_assets" && "$math_assets" == /* ]] || usage
 [[ -d "${output:h}" ]] || {
   print -u2 "The editor bundle output directory does not exist: ${output:h}"
+  exit 66
+}
+[[ -d "${reader_output:h}" ]] || {
+  print -u2 "The reader bundle output directory does not exist: ${reader_output:h}"
   exit 66
 }
 [[ -d "${math_output:h}" ]] || {
@@ -115,6 +126,13 @@ fi
   --platform=browser \
   --target=safari17 \
   --outfile="$output"
+
+./node_modules/.bin/esbuild reader.ts \
+  --bundle \
+  --format=iife \
+  --platform=browser \
+  --target=safari17 \
+  --outfile="$reader_output"
 
 ./node_modules/.bin/esbuild math-runtime.ts \
   --bundle \

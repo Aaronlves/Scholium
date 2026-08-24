@@ -1,13 +1,67 @@
 import Foundation
 
-public protocol DocumentUseCases: Sendable {
-    func snapshot() async throws -> [WorkspaceVaultSnapshot]
-    func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
-    func metadata(_ id: VaultQualifiedNoteID) async throws -> NoteMetadataSnapshot?
+/// Authoritative Library mutations consumed by the window-local mutation
+/// coordinator. Document presentation and editor-session owners do not need
+/// this capability merely to load or save one active document.
+public protocol LibraryMutationUseCases: Sendable {
     func importMarkdown(
         at sourceURL: URL,
         intoVault vaultID: UUID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    /// Creates one note through the sole role-seed and typed-metadata owner.
+    func createManagedNote(
+        _ request: ManagedNoteCreationRequest
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>
+    /// Creates the first unoccupied default folder in `parentRelativePath`.
+    func createUntitledFolder(
+        inVault vaultID: UUID,
+        parentRelativePath: String?
+    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath>
+    func moveFolder(
+        inVault vaultID: UUID,
+        from sourceRelativePath: String,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit>
+    func prepareFolderSystemTrash(
+        inVault vaultID: UUID,
+        relativePath: String
+    ) async throws -> SystemTrashDeletionPreview
+    func duplicate(
+        _ target: NoteMutationTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
+    func move(
+        _ target: NoteMutationTarget,
+        to destinationRelativePath: String
+    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
+    func prepareSystemTrash(
+        _ target: NoteMutationTarget
+    ) async throws -> SystemTrashDeletionPreview
+    func archiveUnsupportedLocalResearchExecutions(
+        _ preview: LocalResearchExecutionRecoveryPreview
+    ) async throws -> LocalResearchExecutionArchiveCommit
+    func moveToSystemTrash(
+        _ preview: SystemTrashDeletionPreview
+    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit>
+    func recoverInterruptedTransactions() async throws -> [String]
+}
+
+public extension LibraryMutationUseCases {
+    func createUntitledNote(
+        inVault vaultID: UUID,
+        folderRelativePath: String?
+    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
+        try await createManagedNote(try ManagedNoteCreationRequest(
+            vaultID: vaultID,
+            destination: .untitled(folderRelativePath: folderRelativePath)
+        ))
+    }
+}
+
+public protocol DocumentUseCases: LibraryMutationUseCases {
+    func snapshot() async throws -> [WorkspaceVaultSnapshot]
+    func load(_ id: VaultQualifiedNoteID) async throws -> NoteDocument
+    func metadata(_ id: VaultQualifiedNoteID) async throws -> NoteMetadataSnapshot?
     func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
@@ -35,32 +89,10 @@ public protocol DocumentUseCases: Sendable {
         _ source: String,
         at id: VaultQualifiedNoteID
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
-    /// Creates one note through the sole role-seed and typed-metadata owner.
-    func createManagedNote(
-        _ request: ManagedNoteCreationRequest
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit>
-    /// Creates the first unoccupied default folder in `parentRelativePath`.
-    func createUntitledFolder(
-        inVault vaultID: UUID,
-        parentRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath>
-    func moveFolder(
-        inVault vaultID: UUID,
-        from sourceRelativePath: String,
-        to destinationRelativePath: String
-    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit>
-    func prepareFolderSystemTrash(
-        inVault vaultID: UUID,
-        relativePath: String
-    ) async throws -> SystemTrashDeletionPreview
     func duplicate(
         _ id: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument>
-    func duplicate(
-        _ target: NoteMutationTarget,
-        to destinationRelativePath: String
     ) async throws -> WorkspaceMutationOutcome<NoteDocument>
     /// Commits authoritative source bytes and returns before disposable
     /// workspace projections necessarily reach the same revision.
@@ -85,19 +117,6 @@ public protocol DocumentUseCases: Sendable {
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func move(
-        _ target: NoteMutationTarget,
-        to destinationRelativePath: String
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit>
-    func prepareSystemTrash(
-        _ target: NoteMutationTarget
-    ) async throws -> SystemTrashDeletionPreview
-    func archiveUnsupportedLocalResearchExecutions(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async throws -> LocalResearchExecutionArchiveCommit
-    func moveToSystemTrash(
-        _ preview: SystemTrashDeletionPreview
-    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit>
     func interruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery]
     func interruptedSaveRecoveryContent(
         _ recovery: InterruptedSaveRecovery
@@ -108,7 +127,6 @@ public protocol DocumentUseCases: Sendable {
     func restoreInterruptedSaveRecovery(
         _ recovery: InterruptedSaveRecovery
     ) async throws -> WorkspaceMutationOutcome<InterruptedSaveRecoveryRestoreCommit>
-    func recoverInterruptedTransactions() async throws -> [String]
     func resolveIdentity(
         _ ambiguity: NoteIdentityAmbiguity,
         candidateID: UUID?
@@ -121,16 +139,6 @@ public protocol DocumentUseCases: Sendable {
 }
 
 public extension DocumentUseCases {
-    func createUntitledNote(
-        inVault vaultID: UUID,
-        folderRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
-        try await createManagedNote(try ManagedNoteCreationRequest(
-            vaultID: vaultID,
-            destination: .untitled(folderRelativePath: folderRelativePath)
-        ))
-    }
-
     func documentPreviewCatalog(
         source: VaultQualifiedNoteID,
         sourceFingerprint: DocumentFingerprint,

@@ -161,6 +161,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/Services/PerformanceProbe.swift",
             "Scholium/Localization/WebKitInterfaceLocalization.swift",
             "Scholium/Views/Note/MarkdownEditorWebView.swift",
+            "Scholium/Views/Note/ScholiumDocumentWebResources.swift",
             "Scholium/Styling/ScholiumWebFonts.swift",
             "Scholium/Styling/ScholiumWebFontResources.swift",
             "Scholium/Styling/ScholiumCalloutStyles.swift",

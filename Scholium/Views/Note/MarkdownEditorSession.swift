@@ -1075,6 +1075,21 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return true
     }
 
+    /// Validates an interaction payload against the same checked CodeMirror
+    /// generation and UTF-16 length that accepted editor deltas update. The
+    /// parent SwiftUI source is intentionally commit-paced and must never be
+    /// used to authorize a live selection.
+    func acceptsInteractionRanges(
+        _ ranges: [MarkdownEditorSelectionRange],
+        documentVersion: Int
+    ) -> Bool {
+        documentVersion == generation
+            && markdownEditorSelectionRangesAreValid(
+                ranges,
+                forEditorUTF16Length: checkedEditorUTF16Length
+            )
+    }
+
     /// A current-identity Web editor has already committed this generation, so
     /// rejecting its delta cannot leave the native mirror looking clean. Pin the
     /// exact buffer immediately and coalesce a full-buffer read through the same

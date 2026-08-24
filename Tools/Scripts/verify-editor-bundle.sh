@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="${0:A:h:h:h}"
 committed="$repo_root/Scholium/Resources/Editor/editor.bundle.js"
+committed_reader="$repo_root/Scholium/Resources/Editor/reader.bundle.js"
 callout_styles="$repo_root/Scholium/Resources/Editor/callouts.css"
 table_styles="$repo_root/Scholium/Resources/Editor/tables.css"
 footnote_styles="$repo_root/Scholium/Resources/Editor/footnotes.css"
@@ -10,7 +11,7 @@ editor_styles="$repo_root/Scholium/Resources/Editor/editor.css"
 read_styles="$repo_root/Scholium/Views/Note/SafeMarkdownReadWebView.swift"
 design_system="$repo_root/Scholium/UI/Foundation/ScholiumDesignSystem.swift"
 renderer="$repo_root/ScholiumContracts/SafeMarkdownRenderer.swift"
-live_editor="$repo_root/WebEditor/editor.ts"
+live_callouts="$repo_root/WebEditor/live-structured-block-projections.ts"
 committed_math="$repo_root/Scholium/Resources/Editor/math.bundle.js"
 committed_math_css="$repo_root/Scholium/Resources/Editor/katex.min.css"
 committed_mermaid="$repo_root/Scholium/Resources/Editor/mermaid.bundle.js"
@@ -18,6 +19,7 @@ committed_mermaid_css="$repo_root/Scholium/Resources/Editor/mermaid.css"
 committed_mermaid_notices="$repo_root/Tools/Packaging/Licenses/Mermaid-and-transitive-NOTICES.txt"
 temporary_root="$repo_root/.build/editor-verification-$$"
 temporary="$temporary_root/editor.bundle.js"
+temporary_reader="$temporary_root/reader.bundle.js"
 temporary_math="$temporary_root/math.bundle.js"
 temporary_mermaid="$temporary_root/mermaid.bundle.js"
 temporary_mermaid_notices="$temporary_root/Mermaid-and-transitive-NOTICES.txt"
@@ -28,7 +30,7 @@ mkdir -p "$temporary_root"
 if [[ ! -s "$callout_styles" ]] || \
    ! rg -q '^\.scholium-callout' "$callout_styles" || \
    ! rg -q '^\.cm-live-callout-widget' "$editor_styles" || \
-   ! rg -q 'callout\.classList\.add\("cm-live-callout-widget"\)' "$live_editor"; then
+   ! rg -q 'callout\.classList\.add\("cm-live-callout-widget"\)' "$live_callouts"; then
   print -u2 "The app-owned Callout stylesheet is missing or incomplete: $callout_styles"
   exit 1
 fi
@@ -97,6 +99,7 @@ fi
 
 "$repo_root/Tools/Scripts/run-editor-toolchain.sh" \
   --output "$temporary" \
+  --reader-output "$temporary_reader" \
   --math-output "$temporary_math" \
   --mermaid-output "$temporary_mermaid" \
   --mermaid-notices-output "$temporary_mermaid_notices" \
@@ -105,6 +108,11 @@ fi
 
 if ! cmp -s "$temporary" "$committed"; then
   print -u2 "The committed CodeMirror bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
+  exit 1
+fi
+
+if ! cmp -s "$temporary_reader" "$committed_reader"; then
+  print -u2 "The committed Read bundle is stale. Run Tools/Scripts/build-editor.sh and commit the result."
   exit 1
 fi
 
@@ -142,4 +150,4 @@ for font in "${temporary_fonts[@]}"; do
   fi
 done
 
-print "CodeMirror and shared document resources are reproducible and current."
+print "CodeMirror, Read, and shared document resources are reproducible and current."

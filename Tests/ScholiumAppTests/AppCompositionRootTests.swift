@@ -947,16 +947,18 @@ struct AppCompositionRootTests {
         let firstSessionIdentity = ObjectIdentifier(firstSession)
         let secondSessionIdentity = ObjectIdentifier(secondSession)
         let renamedPath = "Renamed/Shared.md"
-        let moveCommit = try await secondWindow.documentController.move(
-            originalID,
-            to: renamedPath,
-            expectedRevision: externalCommit.document.fingerprint
-        ).committedValue
+        try await secondWindow.libraryMutationController.moveNote(
+            NoteMutationTarget(
+                documentID: originalID,
+                stableNoteID: stableNoteID,
+                revision: externalCommit.document.fingerprint
+            ),
+            to: renamedPath
+        )
         let renamedID = VaultQualifiedNoteID(
             vaultID: analysesVault.id,
             relativePath: renamedPath
         )
-        #expect(moveCommit.destination == renamedID)
         try await waitUntil("both document controllers migrated the stable identity") {
             firstWindow?.documentController.activeDocument?.reference.relativePath == renamedPath
                 && secondWindow.documentController.activeDocument?.reference.relativePath == renamedPath
@@ -977,6 +979,7 @@ struct AppCompositionRootTests {
         #expect(secondWindow.noteIdentityByPath[renamedPath] == stableNoteID)
         #expect(firstWindow!.noteIdentityByPath["Shared.md"] == nil)
         #expect(secondWindow.noteIdentityByPath["Shared.md"] == nil)
+        let movedRevision = try #require(secondSession.editingRevision)
 
         weak let releasedWindow = firstWindow
         firstWindow = nil
@@ -994,7 +997,7 @@ struct AppCompositionRootTests {
         let survivingCommit = try await secondWindow.documentController.save(
             renamedID,
             changeSet: .source(survivingSource),
-            expectedRevision: moveCommit.committedRevision
+            expectedRevision: movedRevision
         ).committedValue
         try await waitUntil("the surviving window received a later live commit") {
             secondSession.editingSource == survivingSource

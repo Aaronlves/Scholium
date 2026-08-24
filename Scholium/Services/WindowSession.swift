@@ -51,6 +51,7 @@ struct WindowWorkspaceCapabilities: Sendable {
     let runtimeIdentity: TriptychRuntimeIdentity
     let assignment: TriptychAssignment
     let documents: any DocumentUseCases
+    let libraryMutations: any LibraryMutationUseCases
     let discovery: any DiscoveryUseCases
     let research: WindowResearchCapabilities
     let zoteroBindings: any ZoteroBindingUseCases
@@ -1219,6 +1220,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             runtimeIdentity: handle.runtimeIdentity,
             assignment: handle.assignment,
             documents: handle.documents,
+            libraryMutations: handle.documents,
             discovery: handle.discovery,
             research: WindowResearchCapabilities(
                 records: research,

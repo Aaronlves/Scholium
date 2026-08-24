@@ -515,17 +515,17 @@ extension MarkdownEditorWebViewIntegrationTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let readWebViewSource = try String(
+        let readerRuntimeSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+                "WebEditor/reader.ts"
             ),
             encoding: .utf8
         )
-        #expect(readWebViewSource.contains(
+        #expect(readerRuntimeSource.contains(
             "const centeredLeft = anchorBounds.left\n"
-                + "                    + (anchorBounds.width - bounds.width) / 2;"
+                + "      + (anchorBounds.width - bounds.width) / 2;"
         ))
-        #expect(!readWebViewSource.contains("rect.right - 175"))
+        #expect(!readerRuntimeSource.contains("rect.right - 175"))
     }
 
     @Test("Review Comment suspends across mode changes without trapping the next selection")

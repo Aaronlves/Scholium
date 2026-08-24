@@ -326,6 +326,7 @@ if rg -n --glob '*.swift' \
   --glob '!**/Services/PerformanceProbe.swift' \
   --glob '!**/Localization/WebKitInterfaceLocalization.swift' \
   --glob '!**/Views/Note/MarkdownEditorWebView.swift' \
+  --glob '!**/Views/Note/ScholiumDocumentWebResources.swift' \
   --glob '!**/Styling/ScholiumWebFonts.swift' \
   --glob '!**/Styling/ScholiumWebFontResources.swift' \
   --glob '!**/Styling/ScholiumCalloutStyles.swift' \

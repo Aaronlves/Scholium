@@ -72,7 +72,7 @@ acknowledged mode, never an unconfirmed request.
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
-neither Review nor Empty Note. Bridge v10 initialization maps one collapsed
+neither Review nor Empty Note. Bridge 15 initialization maps one collapsed
 body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
 Native code verifies that range, converges style and scroll, awaits focus, then
 publishes readiness, announces once, and consumes the intent. A clean external
@@ -138,20 +138,20 @@ editor text before persistence.
 The native implementation preserves that single ownership while separating
 code-element responsibilities. `MarkdownEditorSession` alone owns the retained
 WebView lifecycle, checked source mirror, generation, recovery, and pending
-requests. `MarkdownEditorBridgeAdapter` owns the typed wire envelope and
-structured JavaScript dispatcher; `MarkdownEditorNativeWebView` owns AppKit
+requests. `MarkdownEditorBridgeAdapter` owns typed inbound decoding and
+outbound JavaScript dispatch;
+`MarkdownEditorNativeWebView` owns AppKit
 attachment, image paste, and the context menu; and
 `MarkdownEditorWebView` is the
 SwiftUI/WebKit composition and message-routing boundary. Debug-only WebKit
 snapshot probes and interaction drivers live in the two
 `MarkdownEditorSessionTesting*` files and are absent from Release builds. On
 the Web side, `editor.ts` remains the sole composition root and source/identity
-owner. The immutable semantic catalog is owned by `live-projection-index`,
-Live selection meaning and text-only paint by `live-selection`, exact Source
-line direction by `source-direction`, and selection actions, cached preview
-presentation, caret-triggered input suggestions, and scroll
-observation/restoration by their bounded components around the same
-`EditorView`. None may persist Markdown or create another `EditorState`.
+owner. `live-projection-index` owns the semantic catalog,
+`projected-widget-registry` pointer mapping, `live-selection` selection paint,
+and bounded components semantic widgets and layout. Source direction, actions,
+previews, suggestions, and scroll remain separate around the same `EditorView`. None may
+persist Markdown or create another `EditorState`.
 
 Secondary click follows one public event path. A CodeMirror DOM `contextmenu`
 handler preserves an existing clicked selection or moves the sole
@@ -258,7 +258,7 @@ autosave. Both runtimes cap source at 8 MB UTF-8. Source crosses
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge v10 sends source deltas immediately in generation order, includes a
+Bridge 15 sends source deltas immediately in generation order, includes a
 nonmutating exact UTF-16 source-range reveal operation, and carries an optional
 initial selection in the same typed initialization transaction. Identity remains
 strict while snapshot queries may observe a later generation than the caller
@@ -268,7 +268,8 @@ next autosave instead of being rejected as a replaced session. Source-mutating
 bridge operations remain serialized; nonmutating snapshot and presentation
 queries do not wait behind that queue. It coalesces
 selection-only reports to the latest envelope per animation frame, with a 50 ms
-offscreen watchdog. Each envelope carries exact selection and coordinates but
+offscreen watchdog. Each typed inbound envelope is decoded once; source deltas
+avoid `Codable` re-encoding. It carries exact selection and coordinates but
 includes command availability only when changed. Swift keeps coordinates as
 non-Observable session state and publishes semantic or lifecycle changes only.
 The incremental native exact-source mirror is the live recovery authority.
@@ -571,10 +572,11 @@ while a later graph-bound preview revision updates one bounded in-page preview
 map. It cannot reload the document DOM, disturb selection or scroll, or become
 a writable source authority.
 
-The modes need not share one DOM tree. A shared component contract plus thin
-static-Read and editable-CodeMirror adapters preserves Read semantics and
-accessibility while keeping Live Preview an editor. Layout changes may update
-presentation variables and container size but must not reconstruct the retained
+Read and Live Preview use separate DOMs. Generated, type-checked
+`reader.bundle.js` from `reader*.ts` owns Read behavior;
+`SafeMarkdownReadWebView` owns page identity and configuration, while bounded
+native coordinators own cancellable work. Thin adapters preserve shared
+semantics and accessibility. Layout changes must not reconstruct the retained
 `WKWebView` or `EditorState`.
 
 The Host owns three ordered CSS layers on both surfaces: app/protected

@@ -83,11 +83,12 @@ struct InterfacePresentationOwnershipTests {
 
     let webPointerEvents = try occurrenceInventory(
       pattern: #"addEventListener\('(pointerover|pointerout|focusin|focusout)'"#,
-      extensions: ["swift"]
+      extensions: ["swift", "ts"],
+      roots: ["Scholium", "WebEditor"]
     )
     #expect(
       webPointerEvents == [
-        "Scholium/Views/Note/SafeMarkdownReadWebView.swift": 6
+        "WebEditor/reader.ts": 6
       ],
       Comment(rawValue: diagnostic(for: webPointerEvents))
     )
@@ -149,29 +150,29 @@ struct InterfacePresentationOwnershipTests {
 
   private func occurrenceInventory(
     pattern: String,
-    extensions: Set<String>
+    extensions: Set<String>,
+    roots: [String] = ["Scholium"]
   ) throws -> [String: Int] {
-    let scholiumRoot = repositoryRoot.appendingPathComponent(
-      "Scholium",
-      isDirectory: true
-    )
-    let enumerator = try #require(
-      FileManager.default.enumerator(
-        at: scholiumRoot,
-        includingPropertiesForKeys: [.isRegularFileKey],
-        options: [.skipsHiddenFiles]
-      )
-    )
     var inventory: [String: Int] = [:]
 
-    for case let fileURL as URL in enumerator {
-      guard extensions.contains(fileURL.pathExtension) else { continue }
-      let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-      guard values.isRegularFile == true else { continue }
-      let contents = try String(contentsOf: fileURL, encoding: .utf8)
-      let count = matchCount(pattern: pattern, in: contents)
-      guard count > 0 else { continue }
-      inventory[relativePath(for: fileURL)] = count
+    for root in roots {
+      let sourceRoot = repositoryRoot.appendingPathComponent(root, isDirectory: true)
+      let enumerator = try #require(
+        FileManager.default.enumerator(
+          at: sourceRoot,
+          includingPropertiesForKeys: [.isRegularFileKey],
+          options: [.skipsHiddenFiles]
+        )
+      )
+      for case let fileURL as URL in enumerator {
+        guard extensions.contains(fileURL.pathExtension) else { continue }
+        let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
+        guard values.isRegularFile == true else { continue }
+        let contents = try String(contentsOf: fileURL, encoding: .utf8)
+        let count = matchCount(pattern: pattern, in: contents)
+        guard count > 0 else { continue }
+        inventory[relativePath(for: fileURL)] = count
+      }
     }
 
     return inventory

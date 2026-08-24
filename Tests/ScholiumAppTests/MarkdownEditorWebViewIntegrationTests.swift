@@ -3274,7 +3274,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         pasteboard.clearContents()
     }
 
-    @Test("Bridge v10 preserves exact commands, diagnostics, mode chrome, and reconstruction state")
+    @Test("Current bridge preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
         // Let their short native-window journeys finish before this suite owns

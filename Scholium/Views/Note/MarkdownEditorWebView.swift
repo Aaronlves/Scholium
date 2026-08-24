@@ -223,27 +223,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.session.detach(webView)
     }
 
-    private static var editorResourceDirectory: URL? {
-        if let resourceURL = Bundle.main.resourceURL {
-            let packagedBundleURL = resourceURL
-                .appendingPathComponent("Scholium_ScholiumApp.bundle", isDirectory: true)
-            if let packagedResources = Bundle(url: packagedBundleURL)?.resourceURL,
-               FileManager.default.fileExists(
-                   atPath: packagedResources.appendingPathComponent("editor.bundle.js").path
-               ) {
-                return packagedResources
-            }
-        }
-        return Bundle.module.url(forResource: "index", withExtension: "html")?
-            .deletingLastPathComponent()
-    }
-
     private static var editorScript: String? {
-        guard let directory = editorResourceDirectory else { return nil }
-        return try? String(
-            contentsOf: directory.appendingPathComponent("editor.bundle.js"),
-            encoding: .utf8
-        )
+        ScholiumDocumentWebResources.text(named: "editor.bundle", extension: "js")
     }
 
     static var editorHTML: String? {
@@ -253,10 +234,9 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     static func editorHTML(
         localization: WebKitInterfaceLocalization
     ) -> String? {
-        guard let directory = editorResourceDirectory,
-              let css = try? String(
-                contentsOf: directory.appendingPathComponent("editor.css"),
-                encoding: .utf8
+        guard let css = ScholiumDocumentWebResources.text(
+                named: "editor",
+                extension: "css"
               ),
               !ScholiumCalloutStyles.css.isEmpty else { return nil }
         return """
@@ -363,112 +343,92 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             didReceive message: WKScriptMessage
         ) {
             guard message.name == "scholium" else { return }
-            if let object = message.body as? [String: Any],
-               object["type"] as? String == "documentChanged" {
-                applyIncrementalDocumentChange(
-                    object,
-                    in: message.webView ?? activeWebView
-                )
-                return
-            }
-            guard JSONSerialization.isValidJSONObject(message.body),
-                  let data = try? JSONSerialization.data(withJSONObject: message.body),
-                  data.count <= markdownEditorMaximumInboundBytes,
-                  let payload = try? JSONDecoder().decode(EditorBridgeMessage.self, from: data) else { return }
+            guard let payload = EditorBridgeMessageDecoder.decode(message.body) else { return }
 
-            switch payload.type {
-            case "ready":
+            switch payload {
+            case .ready:
                 signalReady()
-            case "documentEnded":
-                if payload.editorReady == true {
+            case .documentEnded(let editorReady):
+                if editorReady {
                     signalReady()
                 } else {
                     session.reportError(String(localized: "The Markdown editor script did not initialize.", table: "Localizable", bundle: .module))
                 }
-            case "editorError":
+            case .editorError(let error):
+                guard validEnvelope(error.envelope) else { return }
                 session.reportError(
-                    payload.message
+                    error.message
                         ?? WebKitInterfaceLocalization.current()
                         .string("The Markdown editor could not start.")
                 )
-            case "interactionChanged":
-                guard validEnvelope(payload),
-                      let selections = payload.selections,
-                      let line = payload.line,
-                      let column = payload.column,
-                      let lineCount = payload.lineCount,
-                      let documentVersion = payload.documentVersion else { return }
+            case .interactionChanged(let interaction):
+                guard validEnvelope(interaction.envelope) else { return }
                 session.updateInteraction(
-                    selections: selections,
-                    line: line,
-                    column: column,
-                    lineCount: lineCount,
-                    documentVersion: documentVersion,
-                    context: payload.context
+                    selections: interaction.selections,
+                    line: interaction.line,
+                    column: interaction.column,
+                    lineCount: interaction.lineCount,
+                    documentVersion: interaction.envelope.documentVersion,
+                    context: interaction.context
                 )
-            case "documentChanged":
-                guard validEnvelope(payload, allowingFutureVersion: true) else { return }
+            case .documentChanged(let change):
+                guard validEnvelope(change.envelope, allowingFutureGeneration: true) else {
+                    return
+                }
                 applyEditorChanges(
-                    from: payload,
+                    change,
                     in: message.webView ?? activeWebView
                 )
-            case "performanceSample":
-                guard validEnvelope(payload),
-                      let metric = payload.metric,
-                      let duration = payload.durationMilliseconds,
-                      duration.isFinite,
-                      duration > 0 else { return }
-                switch metric {
+            case .performanceSample(let performance):
+                guard validEnvelope(performance.envelope),
+                      performance.durationMilliseconds > 0 else { return }
+                switch performance.metric {
                 case "editor_key_to_paint":
                     PerformanceProbe.shared.recordEditorKeyToPaint(
                         documentID: performanceDocumentID,
-                        durationMilliseconds: duration
+                        durationMilliseconds: performance.durationMilliseconds
                     )
                 case "editor_cached_preview":
                     PerformanceProbe.shared.recordEditorWebDuration(
                         documentID: performanceDocumentID,
                         metric: .editorCachedPreview,
-                        durationMilliseconds: duration
+                        durationMilliseconds: performance.durationMilliseconds
                     )
                 case "editor_visible_projection":
                     PerformanceProbe.shared.recordEditorWebDuration(
                         documentID: performanceDocumentID,
                         metric: .editorVisibleProjection,
-                        durationMilliseconds: duration
+                        durationMilliseconds: performance.durationMilliseconds
                     )
                 default:
                     return
                 }
-            case "requestSave":
-                guard validEnvelope(payload) else { return }
+            case .requestSave(let envelope):
+                guard validEnvelope(envelope) else { return }
                 onRequestSave()
-            case "requestDocumentFind":
-                guard validEnvelope(payload), let action = payload.action else { return }
-                onRequestFind(action)
-            case "requestImportImage":
-                guard validEnvelope(payload) else { return }
+            case .requestDocumentFind(let request):
+                guard validEnvelope(request.envelope) else { return }
+                onRequestFind(request.action)
+            case .requestImportImage(let envelope):
+                guard validEnvelope(envelope) else { return }
                 onRequestImportImage()
-            case "requestIndexImage":
-                guard validEnvelope(payload) else { return }
+            case .requestIndexImage(let envelope):
+                guard validEnvelope(envelope) else { return }
                 onRequestIndexImage()
-            case "requestImagePaste":
-                guard validEnvelope(payload),
+            case .requestImagePaste(let envelope):
+                guard validEnvelope(envelope),
                       let webView = message.webView as? WindowAttachedWebView else { return }
                 _ = webView.consumePastedImage()
-            case "requestMermaidRuntime":
-                guard validEnvelope(payload), let webView = message.webView else { return }
+            case .requestMermaidRuntime(let envelope):
+                guard validEnvelope(envelope), let webView = message.webView else { return }
                 requestMermaidRuntime(in: webView)
-            case "requestMathRuntime":
-                guard validEnvelope(payload),
+            case .requestMathRuntime(let envelope):
+                guard validEnvelope(envelope),
                       let webView = message.webView ?? activeWebView else { return }
                 requestMathRuntime(in: webView)
-            case "linkCompletionQuery":
-                guard validEnvelope(payload),
-                      let requestID = payload.requestID,
-                      UUID(uuidString: requestID) != nil,
-                      let completionKind = payload.completionKind,
-                      let query = payload.query,
-                      query.utf16.count <= 512 else { return }
+            case .linkCompletionQuery(let request):
+                guard validEnvelope(request.envelope) else { return }
+                let requestID = request.requestID
                 let requestedDocumentID = documentID
                 let requestedFingerprint = startingFingerprint
                 let requestedVersion = session.generation
@@ -483,7 +443,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                             self.linkCompletionQueryTaskID = nil
                         }
                     }
-                    let candidates = await linkCompletionQuery(completionKind, query)
+                    let candidates = await linkCompletionQuery(
+                        request.completionKind,
+                        request.query
+                    )
                     guard !Task.isCancelled,
                           requestedDocumentID == documentID,
                           requestedFingerprint == startingFingerprint,
@@ -512,45 +475,35 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                         contentWorld: .page
                     )
                 }
-            case "linkActivated":
-                guard validEnvelope(payload), let target = payload.target, !target.isEmpty else { return }
-                onLinkActivation(target)
-            case "contextMenuRequested":
-                guard validEnvelope(payload),
-                      let clientX = payload.clientX,
-                      let clientY = payload.clientY,
-                      clientX.isFinite,
-                      clientY.isFinite,
-                      let context = payload.context,
-                      markdownEditorSelectionRangesAreValid(
-                          context.selections,
-                          forEditorUTF16Length: source.utf16.count
+            case .linkActivated(let activation):
+                guard validEnvelope(activation.envelope) else { return }
+                onLinkActivation(activation.target)
+            case .contextMenuRequested(let request):
+                guard validEnvelope(request.envelope),
+                      session.acceptsInteractionRanges(
+                          request.context.selections,
+                          documentVersion: request.envelope.documentVersion
                       ),
-                      let mode = payload.mode,
-                      mode == lastModeInput,
+                      request.mode == lastModeInput,
                       let webView = message.webView as? WindowAttachedWebView else { return }
                 webView.presentEditorContextMenu(
-                    clientX: clientX,
-                    clientY: clientY,
-                    context: context,
-                    mode: mode
+                    clientX: request.clientX,
+                    clientY: request.clientY,
+                    context: request.context,
+                    mode: request.mode
                 )
-            case "scrollChanged":
-                guard validEnvelope(payload),
-                      let fraction = payload.scrollFraction,
-                      fraction.isFinite,
-                      (0...1).contains(fraction) else { return }
+            case .scrollChanged(let scroll):
+                guard validEnvelope(scroll.envelope),
+                      (0...1).contains(scroll.fraction) else { return }
                 if let anchor = session.recordScrollPosition(
-                    payload.scrollAnchor,
-                    fallbackFraction: fraction
+                    scroll.anchor,
+                    fallbackFraction: scroll.fraction
                 ) {
                     onScrollAnchorChange(anchor)
                 } else {
-                    session.recordScrollFraction(fraction)
+                    session.recordScrollFraction(scroll.fraction)
                 }
-                onScrollFractionChange(fraction)
-            default:
-                break
+                onScrollFractionChange(scroll.fraction)
             }
         }
 
@@ -673,119 +626,40 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
 
         private func validEnvelope(
-            _ payload: EditorBridgeMessage,
-            allowingFutureVersion: Bool = false
+            _ envelope: EditorBridgeEnvelope,
+            allowingFutureGeneration: Bool = false
         ) -> Bool {
-            guard payload.protocolVersion == markdownEditorProtocolVersion,
-                  payload.sessionID == session.sessionID.uuidString,
-                  payload.documentID == documentID,
-                  payload.startingFingerprint == startingFingerprint,
-                  let version = payload.documentVersion else { return false }
-            return allowingFutureVersion
-                ? version >= session.generation
-                : version == session.generation
+            guard envelope.protocolVersion == markdownEditorProtocolVersion,
+                  envelope.sessionID == session.sessionID.uuidString,
+                  envelope.documentID == documentID,
+                  envelope.startingFingerprint == startingFingerprint else { return false }
+            return allowingFutureGeneration
+                ? envelope.documentVersion >= session.generation
+                : envelope.documentVersion == session.generation
         }
 
         private func applyEditorChanges(
-            from payload: EditorBridgeMessage,
+            _ change: EditorDocumentChangeMessage,
             in webView: WKWebView?
         ) {
-            guard let rawChanges = payload.changes,
-                  let baseGeneration = payload.baseGeneration,
-                  let resultingGeneration = payload.resultingGeneration,
-                  payload.documentVersion == resultingGeneration else { return }
             guard session.acceptEditorChanges(
-                rawChanges,
-                baseGeneration: baseGeneration,
-                resultingGeneration: resultingGeneration
+                change.changes,
+                baseGeneration: change.baseGeneration,
+                resultingGeneration: change.resultingGeneration
             ) else {
                 if let webView,
-                   resultingGeneration > session.generation {
+                   change.resultingGeneration > session.generation {
                     session.reconcileAfterRejectedEditorChanges(
-                        resultingGeneration: resultingGeneration,
+                        resultingGeneration: change.resultingGeneration,
                         in: webView
                     )
                 }
                 return
             }
-            if rawChanges.contains(where: { $0.insert.contains("$") }),
+            if change.changes.contains(where: { $0.insert.contains("$") }),
                let webView {
                 requestMathRuntime(in: webView)
             }
-        }
-
-        /// The app-private WebKit bridge has already converted the JavaScript
-        /// object into Foundation values. Ordinary typing takes this checked
-        /// direct path so a small delta is not encoded back to JSON and decoded
-        /// again on every English or IME transaction. Less frequent envelopes
-        /// retain the complete Codable decoder above.
-        private func applyIncrementalDocumentChange(
-            _ object: [String: Any],
-            in webView: WKWebView?
-        ) {
-            guard integer(object["protocolVersion"]) == markdownEditorProtocolVersion,
-                  object["sessionID"] as? String == session.sessionID.uuidString,
-                  object["documentID"] as? String == documentID,
-                  object["startingFingerprint"] as? String == startingFingerprint,
-                  let documentVersion = integer(object["documentVersion"]),
-                  let baseGeneration = integer(object["baseGeneration"]),
-                  let resultingGeneration = integer(object["resultingGeneration"]),
-                  documentVersion == resultingGeneration else { return }
-
-            let recoverRejectedChanges = {
-                guard let webView,
-                      resultingGeneration > self.session.generation else { return }
-                self.session.reconcileAfterRejectedEditorChanges(
-                    resultingGeneration: resultingGeneration,
-                    in: webView
-                )
-            }
-            guard let rawChanges = object["changes"] as? [Any],
-                  !rawChanges.isEmpty,
-                  rawChanges.count <= 512 else {
-                recoverRejectedChanges()
-                return
-            }
-
-            var insertedUTF8Bytes = 0
-            var changes: [EditorBridgeChange] = []
-            changes.reserveCapacity(rawChanges.count)
-            for rawChange in rawChanges {
-                guard let change = rawChange as? [String: Any],
-                      let from = integer(change["from"]),
-                      let to = integer(change["to"]),
-                      let insertion = change["insert"] as? String,
-                      from >= 0,
-                      to >= from else {
-                    recoverRejectedChanges()
-                    return
-                }
-                insertedUTF8Bytes += insertion.utf8.count
-                guard insertedUTF8Bytes <= MarkdownEditorDeltaApplier.maximumResultUTF8Bytes else {
-                    recoverRejectedChanges()
-                    return
-                }
-                changes.append(EditorBridgeChange(from: from, to: to, insert: insertion))
-            }
-            guard session.acceptEditorChanges(
-                changes,
-                baseGeneration: baseGeneration,
-                resultingGeneration: resultingGeneration
-            ) else {
-                recoverRejectedChanges()
-                return
-            }
-            if changes.contains(where: { $0.insert.contains("$") }),
-               let webView {
-                requestMathRuntime(in: webView)
-            }
-        }
-
-        private func integer(_ value: Any?) -> Int? {
-            guard let number = value as? NSNumber else { return nil }
-            let integer = number.intValue
-            guard NSNumber(value: integer) == number else { return nil }
-            return integer
         }
     }
 }

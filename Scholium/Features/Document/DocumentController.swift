@@ -289,16 +289,6 @@ final class DocumentController: ObservableObject {
         try await requireOperations().load(id)
     }
 
-    func importMarkdown(
-        at sourceURL: URL,
-        intoVault vaultID: UUID
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
-        try await requireOperations().importMarkdown(
-            at: sourceURL,
-            intoVault: vaultID
-        )
-    }
-
     func importImageAttachment(
         at sourceURL: URL,
         for note: VaultQualifiedNoteID
@@ -355,70 +345,6 @@ final class DocumentController: ObservableObject {
         )
     }
 
-    func createUntitledNote(
-        inVault vaultID: UUID,
-        folderRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<WorkspaceManagedNoteCommit> {
-        try await requireOperations().createUntitledNote(
-            inVault: vaultID,
-            folderRelativePath: folderRelativePath
-        )
-    }
-
-    func createUntitledFolder(
-        inVault vaultID: UUID,
-        parentRelativePath: String?
-    ) async throws -> WorkspaceMutationOutcome<VaultRelativeFolderPath> {
-        try await requireOperations().createUntitledFolder(
-            inVault: vaultID,
-            parentRelativePath: parentRelativePath
-        )
-    }
-
-    func moveFolder(
-        inVault vaultID: UUID,
-        from sourceRelativePath: String,
-        to destinationRelativePath: String
-    ) async throws -> WorkspaceMutationOutcome<FolderMoveCommit> {
-        try await requireOperations().moveFolder(
-            inVault: vaultID,
-            from: sourceRelativePath,
-            to: destinationRelativePath
-        )
-    }
-
-    func prepareFolderSystemTrash(
-        inVault vaultID: UUID,
-        relativePath: String
-    ) async throws -> SystemTrashDeletionPreview {
-        try await requireOperations().prepareFolderSystemTrash(
-            inVault: vaultID,
-            relativePath: relativePath
-        )
-    }
-
-    func duplicate(
-        _ id: VaultQualifiedNoteID,
-        to destinationRelativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
-        try await requireOperations().duplicate(
-            id,
-            to: destinationRelativePath,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func duplicate(
-        _ target: NoteMutationTarget,
-        to destinationRelativePath: String
-    ) async throws -> WorkspaceMutationOutcome<NoteDocument> {
-        try await requireOperations().duplicate(
-            target,
-            to: destinationRelativePath
-        )
-    }
-
     func save(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
@@ -459,50 +385,6 @@ final class DocumentController: ObservableObject {
             changeSet: changeSet,
             expectedRevision: expectedRevision
         )
-    }
-
-    func move(
-        _ id: VaultQualifiedNoteID,
-        to destinationRelativePath: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().move(
-            id,
-            to: destinationRelativePath,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func move(
-        _ target: NoteMutationTarget,
-        to destinationRelativePath: String
-    ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
-        try await requireOperations().move(
-            target,
-            to: destinationRelativePath
-        )
-    }
-
-    func prepareSystemTrash(
-        _ target: NoteMutationTarget
-    ) async throws -> SystemTrashDeletionPreview {
-        try await requireOperations().prepareSystemTrash(target)
-    }
-
-    func archiveUnsupportedLocalResearchExecutions(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async throws -> LocalResearchExecutionArchiveCommit {
-        try await requireOperations().archiveUnsupportedLocalResearchExecutions(preview)
-    }
-
-    func moveToSystemTrash(
-        _ preview: SystemTrashDeletionPreview
-    ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
-        try await requireOperations().moveToSystemTrash(preview)
-    }
-
-    func recoverInterruptedTransactions() async throws -> [String] {
-        try await requireOperations().recoverInterruptedTransactions()
     }
 
     @discardableResult

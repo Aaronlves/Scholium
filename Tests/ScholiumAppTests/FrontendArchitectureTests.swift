@@ -1553,7 +1553,7 @@ struct FrontendArchitectureTests {
         )
         let read = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+                "WebEditor/reader.ts"
             ),
             encoding: .utf8
         )
@@ -4295,16 +4295,15 @@ struct FrontendArchitectureTests {
         #expect(!sourceModeExtensions.contains("defaultHighlightStyle"))
         for liveOnlyExtension in [
             "liveProjectionIndex.extension",
-            "liveSemanticLineField",
-            "liveSemanticBlockSpacingField",
+            "liveSemanticLayout.extension",
             "liveFrontmatterGuardField",
             "liveSelection.extension",
-            "liveMermaidField",
-            "liveTableField",
-            "liveDisplayMathField",
-            "liveRawHTMLField",
-            "liveCalloutField",
-            "liveFootnoteReferenceField",
+            "liveMermaidProjection.extension",
+            "liveStructuredBlockProjections.tableExtension",
+            "liveDisplayMathProjection.extension",
+            "liveStructuredBlockProjections.rawHTMLExtension",
+            "liveStructuredBlockProjections.calloutExtension",
+            "liveFootnoteProjection.extension",
             "livePreview",
             "liveProjectionNavigationKeymap",
             "selectionActions.extension",
@@ -4377,23 +4376,26 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
-            encoding: .utf8
-        )
-        for field in [
-            "liveSemanticLineField",
-            "liveSemanticBlockSpacingField",
-            "liveMermaidField",
-            "liveTableField",
-            "liveDisplayMathField",
-            "liveRawHTMLField",
-            "liveCalloutField",
-            "liveFootnoteReferenceField",
-            "liveFrontmatterGuardField",
-        ] {
-            #expect(editorSource.contains("const \(field) = StateField.define"))
+        func source(_ path: String) throws -> String {
+            try String(
+                contentsOf: repository.appendingPathComponent(path),
+                encoding: .utf8
+            )
         }
+        let editorSource = try source("WebEditor/editor.ts")
+        let semanticLayout = try source("WebEditor/live-semantic-layout.ts")
+        let mermaidProjection = try source("WebEditor/live-mermaid-projection.ts")
+        let structuredBlocks = try source(
+            "WebEditor/live-structured-block-projections.ts"
+        )
+        let displayMath = try source("WebEditor/live-display-math-projection.ts")
+        let footnotes = try source("WebEditor/live-footnote-projection.ts")
+        #expect(semanticLayout.components(separatedBy: "StateField.define").count == 3)
+        #expect(mermaidProjection.contains("StateField.define<LiveMermaidProjectionState>"))
+        #expect(structuredBlocks.components(separatedBy: "StateField.define").count == 4)
+        #expect(displayMath.contains("StateField.define<LiveDisplayMathProjectionState>"))
+        #expect(footnotes.contains("StateField.define<LiveFootnoteReferenceState>"))
+        #expect(editorSource.contains("const liveFrontmatterGuardField = StateField.define"))
 
         let buildStart = try #require(
             editorSource.range(of: "function buildLiveDecorations(")
@@ -4999,7 +5001,7 @@ struct FrontendArchitectureTests {
             "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
         )
         let reviewSource = try source(
-            "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            "WebEditor/reader.ts"
         )
         let mermaidSource = try source("WebEditor/mermaid-runtime.ts")
 
@@ -5475,7 +5477,9 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let editorSource = try String(
-            contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
+            contentsOf: repository.appendingPathComponent(
+                "WebEditor/live-semantic-layout.ts"
+            ),
             encoding: .utf8
         )
 
@@ -5687,15 +5691,9 @@ struct FrontendArchitectureTests {
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: #"<pre><code class="language-mermaid">flowchart LR\nA --&gt; B</code></pre>"#,
         )
-        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
-            documentID: "Diagram.md",
-            fingerprint: DocumentFingerprint(content: "diagram").sha256,
-            loadGeneration: 1,
-            commentEnabled: false,
-            selectionEnabled: false,
-            linkPreviews: [],
-            presentationCSS: "",
-            userCSS: ""
+        let readRuntime = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            encoding: .utf8
         )
         let css = ScholiumMermaidAssets.css
 
@@ -5710,14 +5708,14 @@ struct FrontendArchitectureTests {
             !editorWebViewSource.contains(
                 "source: ScholiumMermaidAssets.runtimeJavaScript"
             ))
-        #expect(editorWebViewSource.contains("case \"requestMermaidRuntime\""))
+        #expect(editorWebViewSource.contains("case .requestMermaidRuntime"))
         #expect(readHTML.contains(css))
-        #expect(readBridge.contains("window.scholiumMermaidReady"))
-        #expect(readBridge.contains("post('requestMermaidRuntime')"))
-        #expect(readBridge.contains("runtime.mount(output, result.svg)"))
-        #expect(readBridge.contains("document.querySelectorAll('pre > code')"))
-        #expect(readBridge.contains("name.toLowerCase() === 'language-mermaid'"))
-        #expect(!readBridge.contains("diagnostic.setAttribute('role', 'status')"))
+        #expect(readRuntime.contains("readerWindow.scholiumMermaidReady"))
+        #expect(readRuntime.contains("post('requestMermaidRuntime')"))
+        #expect(readRuntime.contains("runtime.mount(output, result.svg)"))
+        #expect(readRuntime.contains("document.querySelectorAll('pre > code')"))
+        #expect(readRuntime.contains("name.toLowerCase() === 'language-mermaid'"))
+        #expect(!readRuntime.contains("diagnostic.setAttribute('role', 'status')"))
     }
 
     @Test("Structured Appearance CSS maps the exported typography and callout profile")
@@ -5790,31 +5788,33 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/editor.ts"),
             encoding: .utf8
         )
-        let referenceStart = try #require(editorSource.range(of: "class FootnoteReferenceWidget"))
+        let footnoteSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "WebEditor/live-footnote-projection.ts"
+            ),
+            encoding: .utf8
+        )
+        let referenceStart = try #require(
+            footnoteSource.range(of: "class FootnoteReferenceWidget")
+        )
         let referenceEnd = try #require(
-            editorSource.range(
-                of: "interface LiveFootnoteReferenceState",
-                range: referenceStart.upperBound..<editorSource.endIndex
+            footnoteSource.range(
+                of: "function decorations(",
+                range: referenceStart.upperBound..<footnoteSource.endIndex
             )
         )
         let editReference = String(
-            editorSource[referenceStart.lowerBound..<referenceEnd.lowerBound])
+            footnoteSource[referenceStart.lowerBound..<referenceEnd.lowerBound])
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body:
                 #"<p>Claim<button class="footnote-reference" data-footnote="1">1</button>.</p><section class="footnotes"><ol><li data-footnote="1"><div class="footnote-content">Basis.</div><button class="footnote-return">Return</button></li></ol></section>"#,
         )
-        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
-            documentID: "Footnotes.md",
-            fingerprint: DocumentFingerprint(content: "Claim[^one].\n\n[^one]: Basis.\n").sha256,
-            loadGeneration: 1,
-            commentEnabled: false,
-            selectionEnabled: true,
-            linkPreviews: [],
-            presentationCSS: "",
-            userCSS: ""
+        let readRuntime = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            encoding: .utf8
         )
 
-        #expect(editorSource.contains("reference.definitionContentFrom"))
+        #expect(footnoteSource.contains("reference.definitionContentFrom"))
         #expect(!editReference.contains("showFootnotePopover"))
         #expect(!editReference.contains("footnote-return"))
         #expect(
@@ -5824,14 +5824,14 @@ struct FrontendArchitectureTests {
         #expect(editorSource.contains("createLiveSelectionController"))
         #expect(!editorSource.contains("beginProjectedPointerSelection"))
         #expect(!editorSource.contains("liveBlockActivationField"))
-        #expect(!editorSource.contains("class FootnoteSectionWidget"))
-        #expect(!editorSource.contains("cm-live-footnotes-widget"))
-        #expect(!editorSource.contains("cm-live-footnote-definition-source"))
+        #expect(!footnoteSource.contains("class FootnoteSectionWidget"))
+        #expect(!footnoteSource.contains("cm-live-footnotes-widget"))
+        #expect(!footnoteSource.contains("cm-live-footnote-definition-source"))
         #expect(readHTML.contains("class=\"footnote-reference\""))
         #expect(readHTML.contains("class=\"footnote-return\""))
-        #expect(readBridge.contains("showFootnotePopover"))
-        #expect(readBridge.contains("event.target.closest('.footnote-reference')"))
-        #expect(readBridge.contains("event.target.closest('.footnote-return')"))
+        #expect(readRuntime.contains("showFootnotePopover"))
+        #expect(readRuntime.contains("eventElement?.closest<HTMLButtonElement>('.footnote-reference')"))
+        #expect(readRuntime.contains("eventElement?.closest<HTMLElement>('.footnote-return')"))
     }
 
     @Test("Read and Live Preview share the bounded preview presentation")
@@ -5877,22 +5877,16 @@ struct FrontendArchitectureTests {
             body:
                 #"<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="10">Target</a>"#
         )
-        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
-            documentID: "Source.md",
-            fingerprint: DocumentFingerprint(content: "[[Target]]").sha256,
-            loadGeneration: 1,
-            commentEnabled: false,
-            selectionEnabled: false,
-            linkPreviews: [preview],
-            presentationCSS: "",
-            userCSS: ""
+        let readRuntime = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            encoding: .utf8
         )
         #expect(readHTML.contains(css))
-        #expect(readBridge.contains("previewByRange"))
-        #expect(readBridge.contains("showLinkPopover"))
-        #expect(readBridge.contains("showFootnotePopover"))
-        #expect(readBridge.contains("renderEmbeddedNotes"))
-        #expect(readBridge.contains("scholium-embedded-note-viewport"))
+        #expect(readRuntime.contains("previewByRange"))
+        #expect(readRuntime.contains("showLinkPopover"))
+        #expect(readRuntime.contains("showFootnotePopover"))
+        #expect(readRuntime.contains("renderEmbeddedNotes"))
+        #expect(readRuntime.contains("scholium-embedded-note-viewport"))
         #expect(previewControllerSource.contains("ViewPlugin.define"))
         #expect(previewControllerSource.contains("populatePreviewDocument"))
         #expect(previewControllerSource.contains("scheduleHide"))
@@ -5932,24 +5926,18 @@ struct FrontendArchitectureTests {
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body: #"<p data-source-line="2">A bounded claim.</p>"#
         )
-        let readBridge = SafeMarkdownReadWebView.Coordinator.bridgeScript(
-            documentID: "Topic.md",
-            fingerprint: DocumentFingerprint(content: "# Topic\nA bounded claim.\n").sha256,
-            loadGeneration: 1,
-            commentEnabled: true,
-            selectionEnabled: true,
-            linkPreviews: [],
-            presentationCSS: "",
-            userCSS: ""
+        let readRuntime = try String(
+            contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
+            encoding: .utf8
         )
 
         #expect(
-            readBridge.contains(
+            readRuntime.contains(
                 "localized('Return saves · Shift-Return adds a line · Escape cancels')"
             )
         )
-        #expect(readBridge.contains("commentSubmitted"))
-        #expect(readBridge.contains("Comment for"))
+        #expect(readRuntime.contains("commentSubmitted"))
+        #expect(readRuntime.contains("Comment for"))
         #expect(readHTML.contains(#"class="scholium-selection-actions""#))
         #expect(readHTML.contains(#"class="scholium-selection-toolbar""#))
         #expect(
@@ -5957,10 +5945,10 @@ struct FrontendArchitectureTests {
                 #"id="comment-selection" class="scholium-selection-control""#
             ))
         #expect(readHTML.contains(#"class="scholium-selection-label"></span>"#))
-        #expect(readBridge.contains("textContent = localized('Comment')"))
-        #expect(readBridge.contains("scholium-selection-keyboard-focus"))
-        #expect(readBridge.contains("ResolveCommentSubmission"))
-        #expect(readBridge.contains("Your Comment is still here"))
+        #expect(readRuntime.contains("textContent = localized('Comment')"))
+        #expect(readRuntime.contains("scholium-selection-keyboard-focus"))
+        #expect(readRuntime.contains("ResolveCommentSubmission"))
+        #expect(readRuntime.contains("Your Comment is still here"))
         #expect(
             readHTML.contains(
                 "#comment-text:focus-visible { box-shadow: inset 0 0 0 1px var(--scholium-content-focus-ring); }"
@@ -5969,16 +5957,16 @@ struct FrontendArchitectureTests {
             !readHTML.contains(
                 "#comment-text:focus-visible { outline: 2px solid var(--scholium-content-focus-ring)"
             ))
-        #expect(readBridge.contains("TextEncoder"))
-        #expect(readBridge.contains("makeRequestID"))
-        #expect(readBridge.contains("globalThis.crypto.getRandomValues"))
-        #expect(readBridge.contains("commentSelectionRange = range.cloneRange()"))
-        #expect(readBridge.contains("const range = commentSelectionRange?.cloneRange()"))
-        #expect(readBridge.contains("selection.addRange(range)"))
+        #expect(readRuntime.contains("TextEncoder"))
+        #expect(readRuntime.contains("makeRequestID"))
+        #expect(readRuntime.contains("globalThis.crypto.getRandomValues"))
+        #expect(readRuntime.contains("commentSelectionRange = range.cloneRange()"))
+        #expect(readRuntime.contains("const range = commentSelectionRange?.cloneRange()"))
+        #expect(readRuntime.contains("selection.addRange(range)"))
         #expect(!readHTML.contains("Copy and Open Agent App"))
         #expect(!readHTML.contains("Copy Only"))
-        #expect(readBridge.contains("startLine"))
-        #expect(readBridge.contains("endLine"))
+        #expect(readRuntime.contains("startLine"))
+        #expect(readRuntime.contains("endLine"))
         #expect(!readHTML.contains("quotation:"))
         #expect(!readHTML.contains("utf16Range"))
         #expect(selectionActionsSource.contains("view.composing"))

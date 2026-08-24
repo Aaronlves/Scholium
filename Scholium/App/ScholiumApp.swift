@@ -1802,7 +1802,6 @@ final class WindowModel: ObservableObject {
         self?.handleWindowIntent(intent)
     }
     lazy var libraryMutationController = WindowLibraryMutationController(
-        documentController: documentController,
         dependencies: WindowLibraryMutationDependencies(
             context: { [weak self] in
                 guard let self,
@@ -2907,7 +2906,7 @@ final class WindowModel: ObservableObject {
     /// preparation therefore cannot surrender this still-open window's save
     /// ownership.
     func finalizeWindowClose() {
-        libraryMutationController.cancelAll()
+        libraryMutationController.unbind()
         zoteroCoordinator.cancelAll()
         windowWorkspaceController.cancelRecovery()
         documentTransitionCoordinator.cancelAll()
@@ -4274,7 +4273,7 @@ final class WindowModel: ObservableObject {
                 "Some Scholium research history could not be loaded. The affected files remain unchanged and edits to those records are blocked.",
             ] + activationIssues).joined(separator: "\n\n")
         }
-        let recoveryIssues = try await documentController.recoverInterruptedTransactions()
+        let recoveryIssues = try await libraryMutationController.recoverInterruptedTransactions()
         if !recoveryIssues.isEmpty {
             windowWorkspaceController.setRecoveryMessage(([
                 "An interrupted system Trash deletion still requires inspection.",
@@ -4316,6 +4315,7 @@ final class WindowModel: ObservableObject {
     ) {
         activeWorkspaceCapabilities = capabilities
         discoveryController.bind(to: capabilities.discovery)
+        libraryMutationController.bind(to: capabilities.libraryMutations)
         documentController.bind(
             to: capabilities.documents,
             snapshot: snapshot,

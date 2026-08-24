@@ -34,7 +34,8 @@ struct WindowControllerArchitectureTests {
         #expect(ownerSource.contains("archiveLocalExecutionsAndRetrySystemTrash"))
         #expect(ownerSource.contains("archiveUnsupportedLocalResearchExecutions"))
         #expect(ownerSource.contains("func executeSystemTrash("))
-        #expect(ownerSource.contains("documentController.moveToSystemTrash(preview)"))
+        #expect(ownerSource.contains("requireOperations().moveToSystemTrash(preview)"))
+        #expect(!ownerSource.contains("DocumentController"))
         #expect(appSource.contains("synchronizeSystemTrashPresentation(preview)"))
         #expect(!appSource.contains("func prepareNoteSystemTrash("))
         #expect(!appSource.contains("func executeSystemTrash("))
@@ -1610,10 +1611,6 @@ struct WindowControllerArchitectureTests {
             )
         }
         for movedOperation in [
-            "documentController.createUntitledNote(",
-            "documentController.createUntitledFolder(",
-            "documentController.importMarkdown(",
-            "documentController.moveToSystemTrash(",
             "func requestUntitledNoteCreation(",
             "func moveFolder(",
             "func moveNote(",
@@ -1622,6 +1619,15 @@ struct WindowControllerArchitectureTests {
             #expect(!windowModelSource.contains(movedOperation))
             #expect(libraryMutationSource.contains(movedOperation))
         }
+        for directCapabilityCall in [
+            "requireOperations().createUntitledNote(",
+            "requireOperations().createUntitledFolder(",
+            "requireOperations().importMarkdown(",
+            "requireOperations().moveToSystemTrash(",
+        ] {
+            #expect(libraryMutationSource.contains(directCapabilityCall))
+        }
+        #expect(!libraryMutationSource.contains("DocumentController"))
         #expect(libraryMutationSource.contains("enqueueDocumentTransition"))
         #expect(libraryMutationSource.contains("try Task.checkCancellation()"))
         #expect(libraryMutationSource.contains("systemTrashRecoveryTarget"))
@@ -1865,7 +1871,8 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("workspaceStore ?? WorkspaceStore()"))
         #expect(!windowModelSource.contains("DocumentSessionStore("))
         #expect(!windowModelSource.contains("documentController.moveToSystemTrash("))
-        #expect(libraryMutationSource.contains("documentController.moveToSystemTrash("))
+        #expect(libraryMutationSource.contains("requireOperations().moveToSystemTrash("))
+        #expect(!libraryMutationSource.contains("DocumentController"))
         #expect(!windowModelSource.contains("if triptychSettings.properties.isEmpty"))
         #expect(!windowModelSource.contains("cssSnippetStore.objectWillChange"))
 
@@ -2082,7 +2089,7 @@ struct WindowControllerArchitectureTests {
                 closeFinalizationStart.lowerBound..<closeFinalizationEnd.lowerBound
             ]
         )
-        #expect(closeFinalizationSource.contains("libraryMutationController.cancelAll()"))
+        #expect(closeFinalizationSource.contains("libraryMutationController.unbind()"))
         #expect(closeFinalizationSource.contains("zoteroCoordinator.cancelAll()"))
         #expect(closeFinalizationSource.contains("windowWorkspaceController.cancelRecovery()"))
         #expect(closeFinalizationSource.contains("documentTransitionCoordinator.cancelAll()"))

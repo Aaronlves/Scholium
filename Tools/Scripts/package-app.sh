@@ -115,7 +115,7 @@ EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle/
 if [[ ! -d "${EDITOR_RESOURCES}" ]]; then
   EDITOR_RESOURCES="${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
 fi
-for editor_resource in index.html editor.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
+for editor_resource in index.html editor.bundle.js reader.bundle.js editor.css callouts.css tables.css footnotes.css previews.css math.bundle.js katex.min.css mermaid.bundle.js mermaid.css; do
   [[ -s "${EDITOR_RESOURCES}/${editor_resource}" ]] || {
     print -u2 "Missing packaged editor resource: ${editor_resource}"
     exit 66

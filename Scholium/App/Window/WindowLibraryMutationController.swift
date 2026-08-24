@@ -94,25 +94,31 @@ final class WindowLibraryMutationController: ObservableObject {
     @Published private(set) var isCreatingNote = false
     @Published private(set) var isMutatingFolder = false
 
-    private let documentController: DocumentController
     private let dependencies: WindowLibraryMutationDependencies
+    private var operations: (any LibraryMutationUseCases)?
     private var markdownImportTask: Task<Void, Never>?
     private var folderMutationTask: Task<Void, Never>?
     private var mutationTaskCancellations: [UUID: @MainActor () -> Void] = [:]
     private var systemTrashRecoveryTarget: WindowSystemTrashRecoveryTarget?
     private var systemTrashRecoveryPreviewID: UUID?
 
-    init(
-        documentController: DocumentController,
-        dependencies: WindowLibraryMutationDependencies
-    ) {
-        self.documentController = documentController
+    init(dependencies: WindowLibraryMutationDependencies) {
         self.dependencies = dependencies
     }
 
     deinit {
         markdownImportTask?.cancel()
         folderMutationTask?.cancel()
+    }
+
+    func bind(to operations: any LibraryMutationUseCases) {
+        cancelAll()
+        self.operations = operations
+    }
+
+    func unbind() {
+        cancelAll()
+        operations = nil
     }
 
     func cancelAll() {
@@ -133,7 +139,7 @@ final class WindowLibraryMutationController: ObservableObject {
                   context.sourceScope == .library else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
-            let outcome = try await self.documentController.createUntitledNote(
+            let outcome = try await self.requireOperations().createUntitledNote(
                 inVault: context.vault.id,
                 folderRelativePath: folderRelativePath
             )
@@ -168,7 +174,7 @@ final class WindowLibraryMutationController: ObservableObject {
                 self.isMutatingFolder = false
             }
             do {
-                let outcome = try await self.documentController.createUntitledFolder(
+                let outcome = try await self.requireOperations().createUntitledFolder(
                     inVault: context.vault.id,
                     parentRelativePath: parentRelativePath
                 )
@@ -209,7 +215,7 @@ final class WindowLibraryMutationController: ObservableObject {
         defer { isMutatingFolder = false }
         try await dependencies.flushEditors(context.assignmentID)
         do {
-            let outcome = try await documentController.moveFolder(
+            let outcome = try await requireOperations().moveFolder(
                 inVault: target.vaultID,
                 from: target.relativePath,
                 to: destinationRelativePath
@@ -241,7 +247,7 @@ final class WindowLibraryMutationController: ObservableObject {
         try await dependencies.flushEditors(context.assignmentID)
         do {
             dependencies.presentSystemTrash(
-                try await documentController.prepareFolderSystemTrash(
+                try await requireOperations().prepareFolderSystemTrash(
                     inVault: target.vaultID,
                     relativePath: target.relativePath
                 )
@@ -273,7 +279,7 @@ final class WindowLibraryMutationController: ObservableObject {
         try await dependencies.flushActiveTarget(target)
         let authorizedTarget = try currentTarget(target)
         let destination = Self.markdownPath(requestedPath)
-        let outcome = try await documentController.duplicate(
+        let outcome = try await requireOperations().duplicate(
             authorizedTarget,
             to: destination
         )
@@ -300,7 +306,7 @@ final class WindowLibraryMutationController: ObservableObject {
         try await dependencies.flushActiveTarget(target)
         let authorizedTarget = try currentTarget(target)
         do {
-            let outcome = try await documentController.move(
+            let outcome = try await requireOperations().move(
                 authorizedTarget,
                 to: Self.markdownPath(requestedPath)
             )
@@ -327,7 +333,7 @@ final class WindowLibraryMutationController: ObservableObject {
         let authorizedTarget = try currentTarget(target)
         do {
             dependencies.presentSystemTrash(
-                try await documentController.prepareSystemTrash(authorizedTarget)
+                try await requireOperations().prepareSystemTrash(authorizedTarget)
             )
         } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
             systemTrashRecoveryTarget = .note(target)
@@ -368,7 +374,7 @@ final class WindowLibraryMutationController: ObservableObject {
         systemTrashRecoveryTarget = nil
         systemTrashRecoveryPreviewID = nil
         do {
-            _ = try await documentController.archiveUnsupportedLocalResearchExecutions(preview)
+            _ = try await requireOperations().archiveUnsupportedLocalResearchExecutions(preview)
             switch retryTarget {
             case .note(let target): try await prepareNoteSystemTrash(target)
             case .folder(let target): try await prepareFolderSystemTrash(target)
@@ -395,7 +401,7 @@ final class WindowLibraryMutationController: ObservableObject {
         }
         try await dependencies.flushEditors(context.assignmentID)
         do {
-            let outcome = try await documentController.moveToSystemTrash(preview)
+            let outcome = try await requireOperations().moveToSystemTrash(preview)
             await dependencies.committedSystemTrash(preview, outcome)
         } catch {
             await dependencies.refreshTransactionRecovery()
@@ -430,6 +436,10 @@ final class WindowLibraryMutationController: ObservableObject {
         }
     }
 
+    func recoverInterruptedTransactions() async throws -> [String] {
+        try await requireOperations().recoverInterruptedTransactions()
+    }
+
     func importMarkdownFiles(
         _ urls: [URL]
     ) async throws -> WindowMarkdownImportBatchOutcome {
@@ -446,7 +456,7 @@ final class WindowLibraryMutationController: ObservableObject {
                 throw CancellationError()
             }
             do {
-                let outcome = try await documentController.importMarkdown(
+                let outcome = try await requireOperations().importMarkdown(
                     at: url,
                     intoVault: context.vault.id
                 )
@@ -492,6 +502,13 @@ final class WindowLibraryMutationController: ObservableObject {
             stableNoteID: target.stableNoteID,
             revision: try dependencies.expectedRevision(target)
         )
+    }
+
+    private func requireOperations() throws -> any LibraryMutationUseCases {
+        guard let operations else {
+            throw WorkspaceRegistryError.incompleteWorkspace
+        }
+        return operations
     }
 
     private static func markdownPath(_ requestedPath: String) -> String {
