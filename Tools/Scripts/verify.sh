@@ -306,6 +306,7 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/App/ScholiumApp.swift"|\
     "${ROOT}/Scholium/App/ApplicationBootstrapController.swift"|\
     "${ROOT}/Scholium/App/Window/WindowWorkspaceController.swift"|\
+    "${ROOT}/Scholium/Services/LocalAgentBridgeRequestRouter.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
     "${ROOT}/ScholiumCLI/CLIContext.swift") ;;
     *)

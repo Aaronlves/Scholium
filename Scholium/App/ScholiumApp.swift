@@ -1718,7 +1718,6 @@ final class WindowModel: ObservableObject {
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
-    @Published var registeredVaults: [RegisteredVault] = []
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     lazy var discoveryController = DiscoveryController(
@@ -2015,18 +2014,19 @@ final class WindowModel: ObservableObject {
     }
 
     var workspaceAssignment: TriptychAssignment? {
-        get { windowWorkspaceController.state.assignment }
-        set { windowWorkspaceController.setAssignment(newValue) }
+        windowWorkspaceController.state.assignment
+    }
+
+    var registeredVaults: [RegisteredVault] {
+        windowWorkspaceController.state.registeredVaults
     }
 
     var registeredTriptychs: [TriptychAssignment] {
-        get { windowWorkspaceController.state.registeredTriptychs }
-        set { windowWorkspaceController.setRegisteredTriptychs(newValue) }
+        windowWorkspaceController.state.registeredTriptychs
     }
 
-    private(set) var activeTriptychServicesID: UUID? {
-        get { windowWorkspaceController.state.activeServicesID }
-        set { windowWorkspaceController.setActiveServicesID(newValue) }
+    var activeTriptychServicesID: UUID? {
+        windowWorkspaceController.state.activeServicesID
     }
 
     var notes: [WindowDocumentLocation] { workspaceProjectionController.notes }
@@ -2232,8 +2232,7 @@ final class WindowModel: ObservableObject {
 
     // MARK: Services
     private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities? {
-        get { windowWorkspaceController.activeCapabilities }
-        set { windowWorkspaceController.setActiveCapabilities(newValue) }
+        windowWorkspaceController.activeCapabilities
     }
     let cssSnippetStore: CSSSnippetStore
     private var requestedTriptychID: UUID? {
@@ -2275,7 +2274,7 @@ final class WindowModel: ObservableObject {
             guard let self else { return }
             self.libraryMutationController.unbind()
             self.zoteroCoordinator.cancelAll()
-            self.windowWorkspaceController.cancelRecovery()
+            self.windowWorkspaceController.cancelAll()
             self.documentTransitionCoordinator.cancelAll()
             self.libraryRevealTask?.cancel()
             self.libraryRevealTask = nil
@@ -2330,23 +2329,17 @@ final class WindowModel: ObservableObject {
             ScholiumWebKitProcessPrewarmer.shared.start()
         }
         cssSnippetStore = workspaceStore.cssSnippetStore
-        windowWorkspaceController.bindRecoveryDependencies(
-            WindowWorkspaceRecoveryDependencies(
-                configureTriptych: { [weak self] analyses, topics, works, portable, id, name in
+        windowWorkspaceController.bindDependencies(
+            WindowWorkspaceDependencies(
+                installSession: { [weak self] capabilities, snapshot in
                     guard let self else { throw CancellationError() }
-                    try await self.configureTriptych(
-                        paperAnalysisURL: analyses,
-                        topicKnowledgeURL: topics,
-                        outputURL: works,
-                        portableContainerURL: portable,
-                        triptychID: id,
-                        triptychName: name
+                    return try await self.installWindowWorkspaceSession(
+                        capabilities: capabilities,
+                        snapshot: snapshot
                     )
                 },
-                didRemoveRegistration: { [weak self] assignment, vaults, triptychs in
+                didRemoveRegistration: { [weak self] assignment in
                     guard let self else { return }
-                    self.registeredVaults = vaults
-                    self.registeredTriptychs = triptychs
                     let removedVaultIDs = Set(assignment.vaults.values.map(\.id))
                     if self.currentRegisteredVault.map({ removedVaultIDs.contains($0.id) }) == true {
                         self.currentRegisteredVault = nil
@@ -3855,7 +3848,7 @@ final class WindowModel: ObservableObject {
             return
         }
 
-        await refreshRegisteredVaults()
+        await windowWorkspaceController.refreshRegistrations()
         await refreshWorkspaceAssignment(
             preferredTriptychID: requestedTriptychID ?? stored.triptychID
         )
@@ -4043,49 +4036,17 @@ final class WindowModel: ObservableObject {
     }
 
     func refreshWorkspaceAssignment(preferredTriptychID: UUID? = nil) async {
-        let resolution = await windowWorkspaceController.resolveAssignment(
+        let outcome = await windowWorkspaceController.refreshWorkspaceAssignment(
             preferredTriptychID: preferredTriptychID,
-            currentTriptychID: workspaceAssignment?.id
+            openingVault: shellState.selectedWorkspace
         )
-        switch resolution {
-        case .unavailable(let assignments, let message):
-            registeredTriptychs = assignments
-            workspaceAssignment = nil
-            windowWorkspaceController.setRecoveryMessage(message)
-        case .unavailablePreserving(let assignments, let assignment, let message):
-            registeredTriptychs = assignments
-            workspaceAssignment = assignment
-            windowWorkspaceController.setRecoveryMessage(message)
-        case .selected(let assignments, let assignment, let repairFailure):
-            registeredTriptychs = assignments
-            workspaceAssignment = assignment
-            let activated = await activateTriptychServicesReportingFailure(
-                assignment: assignment
-            )
-            if activated, let repairFailure {
-                windowWorkspaceController.setRecoveryMessage(
-                    "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
-                )
-            }
-        }
-    }
-
-    @discardableResult
-    private func activateTriptychServicesReportingFailure(
-        assignment: TriptychAssignment
-    ) async -> Bool {
-        do {
-            try await activateTriptychServices(assignment: assignment)
-            return true
-        } catch {
-            if windowWorkspaceController.recordRecovery(for: error) {
-                vaultError = nil
-                return false
-            }
-            let message = "Scholium could not activate this Triptych's shared files, search, and research history. The registered locations remain unchanged. \(error.localizedDescription)"
-            windowWorkspaceController.setRecoveryMessage(message)
+        switch outcome {
+        case .unavailable, .activated:
+            break
+        case .recoveryRequired:
+            vaultError = nil
+        case .failed(let message):
             vaultError = message
-            return false
         }
     }
 
@@ -4098,26 +4059,16 @@ final class WindowModel: ObservableObject {
         triptychName: String? = nil
     ) async throws {
         let openingVault = requestedInitialWorkspaceSlot
-        let intendedTriptychID = triptychID ?? workspaceAssignment?.id ?? requestedTriptychID
-        let normalizedTriptychName = triptychName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let capabilities = try await workspaceStore.configureTriptychCapabilities(
+        let assignment = try await windowWorkspaceController.configureTriptych(
             paperAnalysisURL: paperAnalysisURL,
             topicKnowledgeURL: topicKnowledgeURL,
             outputURL: outputURL,
             portableContainerURL: portableContainerURL,
-            triptychID: intendedTriptychID,
-            triptychName: (normalizedTriptychName?.isEmpty == false ? normalizedTriptychName : nil)
-                ?? registeredTriptychs.first(where: { $0.id == triptychID })?.triptych.name
-                ?? workspaceAssignment?.triptych.name,
+            triptychID: triptychID,
+            triptychName: triptychName,
             openingVault: openingVault
         )
-        let assignment = capabilities.assignment
-        workspaceAssignment = assignment
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
-        windowWorkspaceController.setAccessRecovery(nil)
-        registeredVaults = try await workspaceStore.registeredVaults()
-        registeredTriptychs = try await workspaceStore.registeredTriptychs()
-        try await activateTriptychServices(assignment: assignment)
         if let current = currentRegisteredVault,
            let assignedCurrent = assignment.vaults.values.first(where: {
                $0.id == current.id || $0.canonicalPath == current.canonicalPath
@@ -4129,34 +4080,18 @@ final class WindowModel: ObservableObject {
         try await openWorkspaceVault(openingVault)
     }
 
-    func activateRegisteredTriptych(id: UUID) async {
-        await refreshWorkspaceAssignment(preferredTriptychID: id)
-    }
-
-    func portableContainerURL(for worksURL: URL) async -> URL? {
-        await workspaceStore.portableContainerURL(forWorksURL: worksURL)
-    }
-
     var requestedTriptychIDForRecovery: UUID? { requestedTriptychID }
 
-    private func activateTriptychServices(
-        assignment: TriptychAssignment
-    ) async throws {
+    private func installWindowWorkspaceSession(
+        capabilities: WindowWorkspaceCapabilities,
+        snapshot: WorkspaceSnapshot
+    ) async throws -> WindowWorkspaceInstallationFeedback {
         triptychPropertiesAreAuthoritative = false
-        let capabilities = try await workspaceStore.workspaceCapabilities(
-            id: assignment.id,
-            openingVault: shellState.selectedWorkspace
-        )
-        guard let activationSnapshot = workspaceStore.snapshot(
-            for: capabilities.runtimeIdentity
-        ) else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
         bindApplicationCapabilities(
             to: capabilities,
-            snapshot: activationSnapshot
+            snapshot: snapshot
         )
-        var activationIssues = activationSnapshot.research.healthIssues
+        var activationIssues = snapshot.research.healthIssues
         if let settingsIssue = try await loadTriptychSettingsProjection() {
             activationIssues.append(settingsIssue)
         }
@@ -4166,14 +4101,11 @@ final class WindowModel: ObservableObject {
             ] + activationIssues).joined(separator: "\n\n")
         }
         let recoveryIssues = try await libraryMutationController.recoverInterruptedTransactions()
-        if !recoveryIssues.isEmpty {
-            windowWorkspaceController.setRecoveryMessage(([
-                "An interrupted system Trash deletion still requires inspection.",
-            ] + recoveryIssues).joined(separator: "\n"))
-        }
         await refreshTransactionRecoveryRecords()
         PerformanceProbe.shared.markStartupSafetyReady()
-        activeTriptychServicesID = assignment.id
+        return WindowWorkspaceInstallationFeedback(
+            transactionRecoveryIssues: recoveryIssues
+        )
     }
 
     private func loadTriptychSettingsProjection() async throws -> String? {
@@ -4205,7 +4137,6 @@ final class WindowModel: ObservableObject {
         to capabilities: WindowWorkspaceCapabilities,
         snapshot: WorkspaceSnapshot? = nil
     ) {
-        activeWorkspaceCapabilities = capabilities
         discoveryController.bind(to: capabilities.discovery)
         libraryMutationController.bind(to: capabilities.libraryMutations)
         documentController.bind(
@@ -4287,31 +4218,11 @@ final class WindowModel: ObservableObject {
     }
 
     private func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
-        let previousIdentity = activeWorkspaceCapabilities?.runtimeIdentity
-        let intendedID = workspaceAssignment?.id
-            ?? activeTriptychServicesID
-            ?? requestedTriptychID
-        guard activation.workspaceID == intendedID
-                || previousIdentity.map(activation.replaces) == true else {
-            return
-        }
-        guard previousIdentity != activation.runtimeIdentity else { return }
+        guard let replacement = windowWorkspaceController.adopt(activation) else { return }
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
 
-        let previousAssignment = workspaceAssignment
+        let previousAssignment = replacement.previousAssignment
         let previousVault = currentRegisteredVault
-        workspaceAssignment = activation.capabilities.assignment
-        registeredTriptychs.removeAll {
-            $0.id == previousAssignment?.id || $0.id == activation.workspaceID
-        }
-        registeredTriptychs.append(activation.capabilities.assignment)
-        registeredTriptychs.sort {
-            let order = $0.triptych.name.localizedStandardCompare($1.triptych.name)
-            return order == .orderedSame
-                ? $0.id.uuidString < $1.id.uuidString
-                : order == .orderedAscending
-        }
-        activeTriptychServicesID = activation.workspaceID
         bindApplicationCapabilities(
             to: activation.capabilities,
             snapshot: activation.snapshot
@@ -4319,11 +4230,6 @@ final class WindowModel: ObservableObject {
         editorFlushCoordinator.activateTriptych(activation.workspaceID) { [weak self] in
             guard let self else { return }
             try await self.documentController.flushLeasedOrPinnedSessions()
-        }
-        Task { [weak self] in
-            await self?.workspaceStore.refreshPendingResearchAgentPermissions(
-                in: activation.workspaceID
-            )
         }
 
         if let previousVault {
@@ -4483,17 +4389,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    func refreshRegisteredVaults() async {
-        do {
-            let vaults = try await workspaceStore.registeredVaults()
-            let triptychs = try await workspaceStore.registeredTriptychs()
-            registeredVaults = vaults
-            registeredTriptychs = triptychs
-        } catch {
-            vaultError = error.localizedDescription
-        }
-    }
-
     func openWorkspaceVault(_ slot: WorkspaceVaultSlot) async throws {
         guard let vault = workspaceAssignment?.vault(for: slot) else {
             throw WorkspaceRegistryError.incompleteWorkspace
@@ -4579,7 +4474,7 @@ final class WindowModel: ObservableObject {
         let vaultSnapshot = try await currentWorkspaceVaultSnapshot(
             vaultID: registered.id
         )
-        let targetConfig = await workspaceStore.vaultConfig(
+        let targetConfig = await windowWorkspaceController.vaultConfig(
             rootURL: URL(
                 fileURLWithPath: registered.canonicalPath,
                 isDirectory: true
@@ -4649,9 +4544,8 @@ final class WindowModel: ObservableObject {
     }
 
     func openRegisteredVault(_ vault: RegisteredVault) async throws {
-        // WorkspaceStore resolves and retains any bookmark security scope while
-        // activating the shared Triptych runtime. WindowModel only subscribes to
-        // that runtime and never starts a second scope for the same vault.
+        // The Workspace controller resolves and retains the one capability
+        // session. This root applies only the selected Library projection.
         try await loadVault(vault)
     }
 
@@ -4666,18 +4560,12 @@ final class WindowModel: ObservableObject {
             guard let assignment = workspaceAssignment else {
                 throw WorkspaceRegistryError.incompleteWorkspace
             }
-            let capabilities: WindowWorkspaceCapabilities
-            if let activeWorkspaceCapabilities {
-                capabilities = activeWorkspaceCapabilities
-            } else {
-                capabilities = try await workspaceStore.workspaceCapabilities(id: assignment.id)
-                bindApplicationCapabilities(to: capabilities)
-            }
-            guard let workspaceSnapshot = workspaceStore.snapshot(
-                for: capabilities.runtimeIdentity
-            ) else {
-                throw WorkspaceRegistryError.incompleteWorkspace
-            }
+            let session = try await windowWorkspaceController.activeSession(
+                for: assignment,
+                openingVault: workspaceSlot(for: registered) ?? shellState.selectedWorkspace
+            )
+            let capabilities = session.capabilities
+            let workspaceSnapshot = session.snapshot
             let workspaceVaultSnapshots = workspaceSnapshot.vaults
             guard let vaultSnapshot = workspaceVaultSnapshots.first(where: {
                 $0.vault.id == registered.id
@@ -4692,7 +4580,7 @@ final class WindowModel: ObservableObject {
                 .sorted {
                     $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
                 }
-            let targetConfig = await workspaceStore.vaultConfig(
+            let targetConfig = await windowWorkspaceController.vaultConfig(
                 rootURL: URL(
                     fileURLWithPath: registered.canonicalPath,
                     isDirectory: true
@@ -4714,8 +4602,6 @@ final class WindowModel: ObservableObject {
             }
             currentRegisteredVault = registered
             currentVaultRole = registered.role
-            activeTriptychServicesID = assignment.id
-            activeWorkspaceCapabilities = capabilities
             vaultConfig = targetConfig
             workspaceProjectionController.replaceVisibleNotes(targetNotes)
             let commit = workspaceProjectionController.activate(
@@ -4764,7 +4650,7 @@ final class WindowModel: ObservableObject {
                     .topicKnowledge: topicsURL,
                     .output: worksURL,
                 ]
-                await refreshRegisteredVaults()
+                await windowWorkspaceController.refreshRegistrations()
                 let registered = registeredTriptychs.first { assignment in
                     WorkspaceVaultSlot.allCases.allSatisfy { slot in
                         guard let expected = fixtureURLs[slot],
@@ -4797,7 +4683,7 @@ final class WindowModel: ObservableObject {
             }
             return
         }
-        await refreshRegisteredVaults()
+        await windowWorkspaceController.refreshRegistrations()
         await refreshWorkspaceAssignment()
         guard workspaceAssignment != nil else {
             return

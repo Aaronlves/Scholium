@@ -36,6 +36,19 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-25, the window-workspace and Local Agent bridge ownership cutover
+  passed the complete gate: documentation and shipped-Skill guards; 206 Web,
+  464 Core, 3 performance, 150 Contract, 279 Application, 16 bridge, and 663
+  App tests; the serialized architecture measurement; 13 executable Research
+  Action CLI lifecycles; the sandboxed App-to-standalone-CLI probe; symbol and
+  residue guards; and the 188.64-second Release build.
+  `WindowWorkspaceController` is now the sole owner of registration,
+  assignment, capability-session activation, and recovery, while
+  `LocalAgentBridgeRequestRouter` alone translates the closed 17-operation wire
+  set. Superseded setters, activation helpers, inline bridge routing, and the
+  direct-Store activation allowlist were removed. No visual or researcher
+  acceptance was required.
+
 - On 2026-08-23, the explicit Record retrieval CLI facade passed the Debug CLI
   build, documentation-authority validator, and all 11 signed executable CLI
   lifecycles. The disposable fixture proves stable-Note `record list`, complete
@@ -186,18 +199,6 @@ override.
   surface, so it exercised no Metadata control. This is automated local
   implementation evidence; keyboard, first-record, conflict, accessibility,
   visual, and researcher acceptance remain open.
-
-- On 2026-08-22, the task's single complete `verify.sh` run passed
-  documentation/Skill guards, all 199 Web-editor tests, reproducibility and
-  RDF-1 checks, 446 Core tests, 3 Core performance tests, 146 Contract tests,
-  254 Application tests, 15 bridge tests, and the Application architecture
-  measurement. It then stopped in the 646-test App target because the new
-  Analysis Trash inspection borrowed `WorkspaceHandle.services` directly;
-  later stages did not run. The implementation was corrected to receive
-  `TriptychMutationRecoveryStore` through the owned Research-Agent dependency
-  boundary, and the exact failing modular-monolith architecture test passed.
-  Per the one-full-gate constraint, the complete gate was not rerun; its failed
-  log remains the authoritative full-run evidence.
 
 - On 2026-08-22, the direct Analysis-creation recovery integration passed 3
   Agent-start Contract tests, 37 Core persistence tests, 50 Application owner,

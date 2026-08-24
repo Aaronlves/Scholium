@@ -74,6 +74,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/App/ApplicationBootstrapController.swift",
             "Scholium/App/ScholiumApp.swift",
             "Scholium/App/Window/WindowWorkspaceController.swift",
+            "Scholium/Services/LocalAgentBridgeRequestRouter.swift",
             "Scholium/Services/WindowSession.swift",
             "ScholiumCLI/CLIContext.swift",
         ]
@@ -110,6 +111,34 @@ struct ArchitectureBoundaryTests {
         }
         #expect(coreImports.isEmpty, Comment(rawValue: coreImports.joined(separator: "\n")))
         #expect(applicationImports.isEmpty, Comment(rawValue: applicationImports.joined(separator: "\n")))
+    }
+
+    @Test("Agent bridge request routing has one delivery owner")
+    func agentBridgeRequestRoutingBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let store = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Services/WindowSession.swift"
+            ),
+            encoding: .utf8
+        )
+        let router = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Services/LocalAgentBridgeRequestRouter.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(store.contains("let router = LocalAgentBridgeRequestRouter("))
+        #expect(store.contains("try await router.handle(request)"))
+        #expect(!store.contains("switch request.operation"))
+        #expect(router.contains("final class LocalAgentBridgeRequestRouter"))
+        #expect(router.contains("switch request.operation"))
+        #expect(router.components(separatedBy: "case .").count - 1 == 17)
+        #expect(!router.contains("LocalAgentBridgeServer("))
     }
 
     @Test("WorkspaceStore completes event readiness before publishing capability activation")

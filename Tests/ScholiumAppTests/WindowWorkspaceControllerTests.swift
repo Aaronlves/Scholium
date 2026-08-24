@@ -8,21 +8,38 @@ import Testing
 struct WindowWorkspaceControllerTests {
     @Test("Cancelling recovery stops the owned operation before configuration returns")
     func recoveryCancellation() async throws {
-        let assignment = makeAssignment()
-        let analyses = try #require(assignment.vault(for: .paperAnalysis))
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let root = repositoryRoot
+            .appendingPathComponent(".build/app-unit-state", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let analyses = root.appendingPathComponent("Analyses", isDirectory: true)
+        let topics = root.appendingPathComponent("Topics", isDirectory: true)
+        let works = root.appendingPathComponent("Works", isDirectory: true)
+        for directory in [analyses, topics, works] {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+        }
         let controller = WindowWorkspaceController(
             workspaceStore: makeTestWorkspaceStore(),
             requestedTriptychID: nil
         )
-        controller.setAssignment(assignment)
-        controller.setAccessRecovery(WorkspaceAccessRecovery(
-            kind: .vault,
-            expectedPath: analyses.canonicalPath
-        ))
+        var installCount = 0
         var didStart = false
         var didFinish = false
-        controller.bindRecoveryDependencies(WindowWorkspaceRecoveryDependencies(
-            configureTriptych: { _, _, _, _, _, _ in
+        controller.bindDependencies(WindowWorkspaceDependencies(
+            installSession: { _, _ in
+                installCount += 1
+                guard installCount > 1 else {
+                    return WindowWorkspaceInstallationFeedback(
+                        transactionRecoveryIssues: []
+                    )
+                }
                 didStart = true
                 do {
                     try await Task.sleep(for: .seconds(30))
@@ -30,20 +47,37 @@ struct WindowWorkspaceControllerTests {
                 } catch is CancellationError {
                     throw CancellationError()
                 }
+                return WindowWorkspaceInstallationFeedback(
+                    transactionRecoveryIssues: []
+                )
             },
-            didRemoveRegistration: { _, _, _ in },
+            didRemoveRegistration: { _ in },
             reportInformation: { _ in }
+        ))
+        let assignment = try await controller.configureTriptych(
+            paperAnalysisURL: analyses,
+            topicKnowledgeURL: topics,
+            outputURL: works,
+            portableContainerURL: root,
+            triptychID: nil,
+            triptychName: "Recovery",
+            openingVault: .paperAnalysis
+        )
+        let registeredAnalyses = try #require(assignment.vault(for: .paperAnalysis))
+        controller.setAccessRecovery(WorkspaceAccessRecovery(
+            kind: .vault,
+            expectedPath: registeredAnalyses.canonicalPath
         ))
 
         let task = Task { @MainActor in
             try await controller.restoreWorkspaceAccess(
-                using: URL(fileURLWithPath: analyses.canonicalPath, isDirectory: true)
+                using: analyses
             )
         }
         for _ in 0..<100 where !didStart { await Task.yield() }
         #expect(controller.isRecovering)
 
-        controller.cancelRecovery()
+        controller.cancelAll()
         await #expect(throws: CancellationError.self) {
             try await task.value
         }
@@ -53,35 +87,4 @@ struct WindowWorkspaceControllerTests {
         #expect(controller.state.accessRecovery != nil)
     }
 
-    private func makeAssignment() -> TriptychAssignment {
-        let analyses = RegisteredVault(
-            name: "Analyses",
-            role: .sourceCorpus,
-            canonicalPath: "/nonexistent/window-recovery/Analyses"
-        )
-        let topics = RegisteredVault(
-            name: "Topics",
-            role: .topicKnowledge,
-            canonicalPath: "/nonexistent/window-recovery/Topics"
-        )
-        let works = RegisteredVault(
-            name: "Works",
-            role: .draftProject,
-            canonicalPath: "/nonexistent/window-recovery/Works"
-        )
-        return TriptychAssignment(
-            triptych: ScholiumTriptych(
-                name: "Recovery",
-                paperAnalysisVaultID: analyses.id,
-                topicKnowledgeVaultID: topics.id,
-                outputVaultID: works.id
-            ),
-            vaults: [
-                .paperAnalysis: analyses,
-                .topicKnowledge: topics,
-                .output: works,
-            ],
-            hasCommonParent: true
-        )
-    }
 }

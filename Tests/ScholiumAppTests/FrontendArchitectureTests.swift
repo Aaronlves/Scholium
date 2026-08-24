@@ -117,13 +117,15 @@ struct FrontendArchitectureTests {
         )
         let restore = try #require(source.range(of: "func restoreWorkspaceIfNeeded() async"))
         let fixtureEnd = try #require(source.range(
-            of: "await refreshRegisteredVaults()\n        await refreshWorkspaceAssignment()",
+            of: "await windowWorkspaceController.refreshRegistrations()\n        await refreshWorkspaceAssignment()",
             range: restore.upperBound..<source.endIndex
         ))
         let fixtureBranch = source[restore.lowerBound..<fixtureEnd.lowerBound]
 
         #expect(fixtureBranch.contains("try await configureTriptych("))
-        #expect(fixtureBranch.contains("await refreshRegisteredVaults()"))
+        #expect(fixtureBranch.contains(
+            "await windowWorkspaceController.refreshRegistrations()"
+        ))
         #expect(fixtureBranch.contains("shellState.selectWorkspace(requestedInitialWorkspaceSlot)"))
         #expect(fixtureBranch.contains("try await openRegisteredVault(openingVault)"))
         #expect(fixtureBranch.contains("openRequestedTestNoteIfNeeded()"))
@@ -149,8 +151,10 @@ struct FrontendArchitectureTests {
 
         #expect(initialPublication.contains("workspaceProjectionController.activate("))
         #expect(initialPublication.contains("applyWorkspaceProjectionCommit(commit)"))
-        #expect(initialPublication.contains("workspaceStore.snapshot("))
-        #expect(initialPublication.contains("for: capabilities.runtimeIdentity"))
+        #expect(initialPublication.contains("windowWorkspaceController.activeSession("))
+        #expect(initialPublication.contains("let workspaceSnapshot = session.snapshot"))
+        #expect(!initialPublication.contains("workspaceStore.snapshot("))
+        #expect(!initialPublication.contains("workspaceStore.workspaceCapabilities("))
         #expect(initialPublication.contains("markVaultConfigurationReady()"))
         #expect(initialPublication.contains("markWarmLibraryProjectionReady()"))
         #expect(initialPublication.contains("isLoading = false"))

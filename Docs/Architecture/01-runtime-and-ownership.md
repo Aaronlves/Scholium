@@ -58,6 +58,7 @@ ApplicationBootstrapController (one app-owned storage gate)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
         ├── ResearchConnectionCoordinator (one process generation)
         ├── LocalAgentBridge (127.0.0.1 framed transport only)
+        │   └── LocalAgentBridgeRequestRouter (wire-operation translation only)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
             │   ├── WindowShellState
@@ -331,25 +332,25 @@ mirrors. Each window receives one atomic capability generation. CSS/App
 Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
 store owns no Core authority.
 
-`WorkspaceStore` owns direct Agent connection through
-`ResearchConnectionCoordinator` and a loopback-only TCP bridge. App and CLI
-derive one private-range port from a logical per-user namespace that is never
-created. The App listens only on `127.0.0.1`; Pairing Code and Session
-credentials authorize operations without an App Group. The coordinator
-owns only process-local Pairing Codes/Sessions;
-each Run belongs to its exact `WorkspaceHandle`. The transport neither launches
-an Agent nor owns Run context, authorization, source, or recovery. Manual
-provider-neutral copy remains presentation-only and unrecorded.
+`WorkspaceStore` owns bridge startup, shutdown, and cross-window editor flush;
+`LocalAgentBridgeRequestRouter` alone translates the closed wire-operation set
+through the Application runtime, flush port, and permission-claim projection.
+The App listens only on `127.0.0.1`; Pairing Codes and Sessions authorize it
+without an App Group. `ResearchConnectionCoordinator` owns process-local
+credentials, while each Run stays with its `WorkspaceHandle`. Neither
+transport nor router owns Run context, source, recovery, or durable decisions.
 
 ### Window state and feature controllers
 
-`WindowModel` is the per-window composition and focused-command root.
-`WindowShellState` is the sole owner of the selected Triptych workspace,
-per-workspace Inspector mode, Library folder disclosure, initial-restore
-completion, peripheral visibility, document text scale, appearance, toast, and
-shell status; it owns no geometry, capability, buffer, or durable research
-state. `WindowWorkspaceController` owns Triptych selection, registration,
-capability generation, identity, access recovery, and cancellable restoration.
+`WindowModel` is the per-window composition root.
+`WindowShellState` alone owns selected workspace, Inspector mode, Library
+disclosure, initial restore, peripheral visibility, text scale, appearance,
+toast, and shell status. `WindowWorkspaceController` alone owns Triptych
+selection, registration, capability generation, identity, access recovery,
+and restoration. It calls `WorkspaceStore` for configuration, activation
+snapshots, replacement acceptance, and Vault configuration, then a
+typed installer lets the root bind that accepted generation into feature
+owners without selecting or mutating the session.
 `WindowLibraryMutationController` owns Note/Folder preparation and mutation
 through `LibraryMutationUseCases`; `DocumentController` forwards no Library
 writes. `WindowZoteroCoordinator` owns cancellable search/binding and committed
@@ -392,7 +393,7 @@ bounded owners directly. The scene root first retains `WindowModel` and
 instances into `ScholiumWindowObservedRoot`; child `ObservedObject`s are never
 derived from a newly constructed root instance that SwiftUI may discard.
 Direct `WorkspaceStore` use in `WindowModel` is limited to composition,
-subscription, exact-window external delivery, and Workspace activation. An
+subscription, and exact-window external delivery. An
 executable allowlist requires a fresh ownership audit for every new call family.
 `WindowCommandObservation` owns no product state: it advances
 one window-local revision only for the shell, assignment, Library source,

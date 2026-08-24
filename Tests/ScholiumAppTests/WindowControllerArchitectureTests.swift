@@ -106,7 +106,10 @@ struct WindowControllerArchitectureTests {
         var invalidations = 0
         let observation = session.objectWillChange.sink { invalidations += 1 }
 
-        workspaceController.setRecoveryMessage("Unrelated recovery state")
+        workspaceController.setAccessRecovery(WorkspaceAccessRecovery(
+            kind: .vault,
+            expectedPath: "/unrelated/recovery"
+        ))
         discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .output,
             sourceScope: .library
@@ -1914,7 +1917,14 @@ struct WindowControllerArchitectureTests {
             "private(set) var activeCapabilities: WindowWorkspaceCapabilities?"
         ))
         #expect(workspaceControllerSource.contains("func restoreWorkspaceAccess("))
-        #expect(workspaceControllerSource.contains("func cancelRecovery()"))
+        #expect(workspaceControllerSource.contains("func cancelAll()"))
+        #expect(workspaceControllerSource.contains("func refreshWorkspaceAssignment("))
+        #expect(workspaceControllerSource.contains("func configureTriptych("))
+        #expect(workspaceControllerSource.contains("workspaceStore.workspaceCapabilities("))
+        #expect(workspaceControllerSource.contains("workspaceStore.snapshot("))
+        #expect(!windowModelSource.contains("workspaceStore.workspaceCapabilities("))
+        #expect(!windowModelSource.contains("workspaceStore.snapshot("))
+        #expect(!windowModelSource.contains("workspaceStore.configureTriptychCapabilities("))
         #expect(!windowModelSource.contains("func restoreWorkspaceAccess("))
         #expect(zoteroCoordinatorSource.contains("final class WindowZoteroCoordinator"))
         #expect(zoteroCoordinatorSource.contains("func cancelAll()"))
@@ -2094,7 +2104,7 @@ struct WindowControllerArchitectureTests {
         #expect(closeCoordinatorSource.contains("finalizeDependencies()"))
         #expect(windowModelSource.contains("libraryMutationController.unbind()"))
         #expect(windowModelSource.contains("zoteroCoordinator.cancelAll()"))
-        #expect(windowModelSource.contains("windowWorkspaceController.cancelRecovery()"))
+        #expect(windowModelSource.contains("windowWorkspaceController.cancelAll()"))
         #expect(windowModelSource.contains("documentTransitionCoordinator.cancelAll()"))
         #expect(windowModelSource.contains("editorFlushCoordinator.shutdown()"))
         #expect(storeSource.contains(
@@ -2260,21 +2270,10 @@ struct WindowControllerArchitectureTests {
             "revealInFinder": 4,
             "openExternal": 1,
         ]
-        let workspaceActivationAndRecovery = [
-            "configureTriptychCapabilities": 1,
-            "registeredVaults": 2,
-            "registeredTriptychs": 2,
-            "portableContainerURL": 1,
-            "workspaceCapabilities": 2,
-            "refreshPendingResearchAgentPermissions": 1,
-            "vaultConfig": 2,
-            "snapshot": 2,
-        ]
         var approved: [String: Int] = [:]
         for category in [
             compositionAndSubscription,
             windowIntentAndDelivery,
-            workspaceActivationAndRecovery,
         ] {
             for (name, count) in category {
                 approved[name, default: 0] += count
@@ -2283,7 +2282,6 @@ struct WindowControllerArchitectureTests {
 
         #expect(compositionAndSubscription.values.reduce(0, +) == 12)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
-        #expect(workspaceActivationAndRecovery.values.reduce(0, +) == 13)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))
         #expect(!windowModelSource.contains("workspaceStore.saveWindowSession"))
