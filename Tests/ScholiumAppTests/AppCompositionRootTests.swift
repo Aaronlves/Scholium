@@ -234,7 +234,7 @@ struct AppCompositionRootTests {
         await window.restoreWindowSession(id: sessionID)
         window.setDocumentTextScale(1.7)
 
-        _ = try await window.prepareForWindowClose()
+        _ = try await window.windowCloseCoordinator.prepare()
 
         let saved = try #require(try await store.windowSession(id: sessionID))
         #expect(saved.documentTextScale == 1.7)
@@ -266,16 +266,16 @@ struct AppCompositionRootTests {
         await Task.yield()
         #expect(flushCount == 0)
 
-        _ = try await window.prepareForWindowClose()
+        _ = try await window.windowCloseCoordinator.prepare()
         #expect(flushCount == 1)
 
         // App termination can still be cancelled by another window. The same
         // open window must participate in a later close attempt.
-        _ = try await window.prepareForWindowClose()
+        _ = try await window.windowCloseCoordinator.prepare()
         #expect(flushCount == 2)
 
-        window.finalizeWindowClose()
-        _ = try await window.prepareForWindowClose()
+        window.windowCloseCoordinator.finalize()
+        _ = try await window.windowCloseCoordinator.prepare()
         #expect(flushCount == 2)
     }
 
@@ -378,7 +378,7 @@ struct AppCompositionRootTests {
         )
 
         do {
-            _ = try await window.prepareForWindowClose()
+            _ = try await window.windowCloseCoordinator.prepare()
             Issue.record("A hanging content flush incorrectly allowed close")
         } catch let error as ScholiumWindowLifecycleError {
             #expect(error == .timedOut(.contentFlush))
@@ -393,7 +393,7 @@ struct AppCompositionRootTests {
             flush: { retryFlushCount += 1 },
             captureForReconstruction: {}
         )
-        _ = try await window.prepareForWindowClose()
+        _ = try await window.windowCloseCoordinator.prepare()
         #expect(retryFlushCount == 1)
     }
 
@@ -439,7 +439,7 @@ struct AppCompositionRootTests {
             captureForReconstruction: {}
         )
 
-        let outcome = try await window.prepareForWindowClose()
+        let outcome = try await window.windowCloseCoordinator.prepare()
 
         #expect(contentFlushCount == 1)
         #expect(outcome.presentationWarning != nil)

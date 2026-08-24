@@ -35,7 +35,10 @@ final class WindowSessionPersistenceCoordinator {
     private let finalSaver: Saver?
     private var saveTask: Task<Void, Never>?
     private static var processWriteSequence: UInt64 = 0
-    private(set) var isFinalizing = false
+    private var activeFinalizationCount = 0
+    private(set) var isClosed = false
+
+    var isFinalizing: Bool { activeFinalizationCount > 0 }
 
     init(
         store: any WindowSessionPersistenceStore,
@@ -55,7 +58,7 @@ final class WindowSessionPersistenceCoordinator {
         snapshot: WindowSessionSnapshot,
         completion: @escaping @MainActor (Result<Void, Error>) -> Void
     ) {
-        guard !isFinalizing else { return }
+        guard !isFinalizing, !isClosed else { return }
         guard let attempt = nextWriteAttempt() else {
             completion(.failure(ScholiumWindowLifecycleError.failed(
                 "Window persistence attempt IDs were exhausted."
@@ -79,8 +82,9 @@ final class WindowSessionPersistenceCoordinator {
         snapshot: WindowSessionSnapshot,
         attemptIsCurrent: @escaping @MainActor () -> Bool
     ) async -> WindowSessionFinalPersistenceResult {
-        isFinalizing = true
-        defer { isFinalizing = false }
+        guard !isClosed else { return .superseded }
+        activeFinalizationCount += 1
+        defer { activeFinalizationCount -= 1 }
         let pending = saveTask
         saveTask = nil
         pending?.cancel()
@@ -108,6 +112,13 @@ final class WindowSessionPersistenceCoordinator {
             guard attemptIsCurrent() else { return .superseded }
             return .failed(error.localizedDescription)
         }
+    }
+
+    func close() {
+        guard !isClosed else { return }
+        isClosed = true
+        saveTask?.cancel()
+        saveTask = nil
     }
 
     private func nextWriteAttempt() -> LifecycleAttemptID? {

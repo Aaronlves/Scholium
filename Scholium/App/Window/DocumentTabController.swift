@@ -203,19 +203,6 @@ final class DocumentTabController: ObservableObject {
         }
     }
 
-    func restoreTabs(
-        _ tabs: [DocumentTabItem],
-        selectedTabID: UUID?,
-        in workspace: WorkspaceVaultSlot
-    ) {
-        tabsByWorkspace[workspace] = tabs
-        if let selectedTabID, tabs.contains(where: { $0.id == selectedTabID }) {
-            selectedTabIDsByWorkspace[workspace] = selectedTabID
-        } else {
-            selectedTabIDsByWorkspace[workspace] = nil
-        }
-    }
-
     func removeAll() {
         tabsByWorkspace = [:]
         selectedTabIDsByWorkspace = [:]

@@ -1068,10 +1068,12 @@ struct WindowControllerArchitectureTests {
     func workspacesRetainIndependentLibraryPresentation() {
         let shell = WindowShellState()
         let controller = DiscoveryController(shellState: shell)
+        let peerWindow = DiscoveryController()
         controller.synchronizeLibrarySelection(
             workspaceSlot: .paperAnalysis,
             sourceScope: .library
         )
+        controller.selectSortOrder(.titleAscending)
         controller.synchronizeLibrarySelection(
             workspaceSlot: .topicKnowledge,
             sourceScope: .library
@@ -1080,6 +1082,13 @@ struct WindowControllerArchitectureTests {
         #expect(controller.library.sourceScope == .library)
         shell.selectWorkspace(.topicKnowledge)
         #expect(controller.library.sourceScope == .library)
+        #expect(controller.library.sortOrder == .modifiedNewest)
+        controller.selectSortOrder(.titleDescending)
+        shell.selectWorkspace(.paperAnalysis)
+        #expect(controller.library.sortOrder == .titleAscending)
+        shell.selectWorkspace(.topicKnowledge)
+        #expect(controller.library.sortOrder == .titleDescending)
+        #expect(peerWindow.library.sortOrder == .modifiedNewest)
         #expect(
             controller.libraryState(for: .paperAnalysis).sourceScope == .library
         )
@@ -2031,6 +2040,12 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let closeCoordinatorSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/WindowCloseCoordinator.swift"
+            ),
+            encoding: .utf8
+        )
         let storeSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Services/WindowSession.swift"
@@ -2066,37 +2081,127 @@ struct WindowControllerArchitectureTests {
         #expect(coordinatorSource.contains("func activateTriptych("))
         #expect(coordinatorSource.contains("func updateWindowID("))
         #expect(coordinatorSource.contains("func shutdown()"))
-        #expect(windowModelSource.contains("func finalizeWindowClose()"))
-        let closePreparationStart = try #require(windowModelSource.range(
-            of: "func prepareForWindowClose() async throws -> ClosePreparationOutcome"
+        #expect(windowModelSource.contains(
+            "lazy var windowCloseCoordinator = WindowCloseCoordinator("
         ))
-        let closeFinalizationStart = try #require(windowModelSource.range(
-            of: "func finalizeWindowClose()",
-            range: closePreparationStart.upperBound..<windowModelSource.endIndex
-        ))
-        let closePreparationSource = String(
-            windowModelSource[
-                closePreparationStart.lowerBound..<closeFinalizationStart.lowerBound
-            ]
-        )
-        #expect(!closePreparationSource.contains("editorFlushCoordinator.shutdown()"))
-        let closeFinalizationEnd = try #require(windowModelSource.range(
-            of: "private func enqueueDocumentTransition(",
-            range: closeFinalizationStart.upperBound..<windowModelSource.endIndex
-        ))
-        let closeFinalizationSource = String(
-            windowModelSource[
-                closeFinalizationStart.lowerBound..<closeFinalizationEnd.lowerBound
-            ]
-        )
-        #expect(closeFinalizationSource.contains("libraryMutationController.unbind()"))
-        #expect(closeFinalizationSource.contains("zoteroCoordinator.cancelAll()"))
-        #expect(closeFinalizationSource.contains("windowWorkspaceController.cancelRecovery()"))
-        #expect(closeFinalizationSource.contains("documentTransitionCoordinator.cancelAll()"))
-        #expect(closeFinalizationSource.contains("editorFlushCoordinator.shutdown()"))
+        #expect(!windowModelSource.contains("func prepareForWindowClose("))
+        #expect(!windowModelSource.contains("func finalizeWindowClose("))
+        #expect(!windowModelSource.contains("private var closeAttemptSequence"))
+        #expect(closeCoordinatorSource.contains("final class WindowCloseCoordinator"))
+        #expect(closeCoordinatorSource.contains("func prepare() async throws"))
+        #expect(closeCoordinatorSource.contains("func finalize()"))
+        #expect(closeCoordinatorSource.contains("persistenceCoordinator.close()"))
+        #expect(closeCoordinatorSource.contains("finalizeDependencies()"))
+        #expect(windowModelSource.contains("libraryMutationController.unbind()"))
+        #expect(windowModelSource.contains("zoteroCoordinator.cancelAll()"))
+        #expect(windowModelSource.contains("windowWorkspaceController.cancelRecovery()"))
+        #expect(windowModelSource.contains("documentTransitionCoordinator.cancelAll()"))
+        #expect(windowModelSource.contains("editorFlushCoordinator.shutdown()"))
         #expect(storeSource.contains(
             "WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry"
         ))
+    }
+
+    @Test("Main window uses explicit document restore and single native close ownership")
+    func mainWindowLegacyPathsAreRetired() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/ScholiumApp.swift"
+            ),
+            encoding: .utf8
+        )
+        let windowSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
+        let splitSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift"
+            ),
+            encoding: .utf8
+        )
+        let tabSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/App/Window/DocumentTabController.swift"
+            ),
+            encoding: .utf8
+        )
+        let restoreStart = try #require(appSource.range(
+            of: "func restoreWindowSession(id: UUID) async"
+        ))
+        let restoreEnd = try #require(appSource.range(
+            of: "func persistWindowSessionNow()",
+            range: restoreStart.upperBound..<appSource.endIndex
+        ))
+        let restoreSource = appSource[
+            restoreStart.lowerBound..<restoreEnd.lowerBound
+        ]
+
+        #expect(restoreSource.contains(
+            "let requestedWorkspace = requestedInitialDocument.flatMap"
+        ))
+        #expect(!restoreSource.contains(
+            "activateWorkspaceReferenceInSelectedWorkspace("
+        ))
+        #expect(!restoreSource.contains("documentTabController.restoreTabs"))
+        #expect(!restoreSource.contains("restoredDocumentTab"))
+        #expect(!restoreSource.contains("documentTabController.selectedTab"))
+        #expect(!tabSource.contains("func restoreTabs("))
+        #expect(!appSource.contains("forKey: \"noteSortOrder\""))
+        #expect(!appSource.contains("var noteSortOrder: NoteSortOrder"))
+        #expect(!appSource.contains("forKey: \"libraryViewMode\""))
+        #expect(
+            appSource.components(
+                separatedBy: "openRequestedInitialDocumentIfNeeded()"
+            ).count - 1 == 2
+        )
+        #expect(!appSource.contains(
+            ".onDisappear {\n                windowCoordinator.detach()\n                appState.persistWindowSessionNow()"
+        ))
+        #expect(
+            windowSource.components(
+                separatedBy: "appState.windowCloseCoordinator.finalize()"
+            ).count - 1 == 1
+        )
+        let detachStart = try #require(windowSource.range(of: "    func detach() {"))
+        let terminalStart = try #require(windowSource.range(
+            of: "    private func finalizeWindowAttachments(",
+            range: detachStart.upperBound..<windowSource.endIndex
+        ))
+        let detachSource = windowSource[
+            detachStart.lowerBound..<terminalStart.lowerBound
+        ]
+        for terminalOperation in [
+            "unregisterResearchAgentPermissionWindow()",
+            "unregisterResearchRecordsWorkspace()",
+            "unregisterResearchNotificationWindow()",
+            "lifecycleRegistry.unregister(",
+            "detachWindow(",
+        ] {
+            #expect(!detachSource.contains(terminalOperation))
+        }
+        let terminalEnd = try #require(windowSource.range(
+            of: "    private func registerLifecycle()",
+            range: terminalStart.upperBound..<windowSource.endIndex
+        ))
+        let terminalSource = windowSource[
+            terminalStart.lowerBound..<terminalEnd.lowerBound
+        ]
+        #expect(terminalSource.contains("guard !didFinalizeWindowAttachments"))
+        #expect(terminalSource.contains("unregisterResearchAgentPermissionWindow()"))
+        #expect(terminalSource.contains("unregisterResearchRecordsWorkspace()"))
+        #expect(terminalSource.contains("unregisterResearchNotificationWindow()"))
+        #expect(terminalSource.contains("lifecycleRegistry.unregister("))
+        #expect(terminalSource.contains(
+            "detachWindow(restoringPreviousDelegate: false)"
+        ))
+        #expect(!splitSource.contains("apparatusItem.holdingPriority"))
     }
 
     @Test("Remaining WindowModel Store calls are classified and allowlisted")

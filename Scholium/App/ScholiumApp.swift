@@ -1028,7 +1028,6 @@ private struct ScholiumWindowObservedRoot: View {
             }
             .onDisappear {
                 windowCoordinator.detach()
-                appState.persistWindowSessionNow()
             }
             .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
     }
@@ -1677,10 +1676,6 @@ private struct ScholiumCommands: Commands {
 
 @MainActor
 final class WindowModel: ObservableObject {
-    struct ClosePreparationOutcome: Sendable {
-        let presentationWarning: String?
-    }
-
     private enum WindowNavigationError: LocalizedError {
         case noteUnavailable(String)
         case vaultUnavailable(String)
@@ -2106,14 +2101,6 @@ final class WindowModel: ObservableObject {
         set { updateDiscoveryFilters { $0.propertyValue = newValue } }
     }
 
-    var noteSortOrder: NoteSortOrder {
-        get { discoveryController.library.sortOrder }
-        set {
-            discoveryController.selectSortOrder(newValue)
-            UserDefaults.standard.set(newValue.rawValue, forKey: "noteSortOrder")
-        }
-    }
-
     private func updateDiscoveryFilters(
         _ update: (inout DiscoveryFilterState) -> Void
     ) {
@@ -2261,6 +2248,40 @@ final class WindowModel: ObservableObject {
     private let documentTransitionCoordinator = DocumentTransitionCoordinator()
     private let editorFlushCoordinator: WindowEditorFlushCoordinator
     private let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
+    lazy var windowCloseCoordinator = WindowCloseCoordinator(
+        lifecyclePolicy: lifecyclePolicy,
+        persistenceCoordinator: windowSessionPersistenceCoordinator,
+        flushContent: { [weak self] in
+            guard let self else {
+                throw ScholiumWindowLifecycleError.unregisteredBeforeReady
+            }
+            try await self.flushRegisteredEditorIfNeeded()
+        },
+        presentationSnapshot: { [weak self] in
+            guard let self,
+                  self.didRestoreWindowSession,
+                  !self.isRestoringWindowSession else { return nil }
+            return self.currentWindowSessionSnapshot()
+        },
+        recordPersistenceFailure: { [weak self] message in
+            guard let self else { return }
+            if let message {
+                self.shellState.recordWindowSessionPersistenceFailure(message)
+            } else {
+                self.shellState.clearWindowSessionPersistenceFailure()
+            }
+        },
+        finalizeDependencies: { [weak self] in
+            guard let self else { return }
+            self.libraryMutationController.unbind()
+            self.zoteroCoordinator.cancelAll()
+            self.windowWorkspaceController.cancelRecovery()
+            self.documentTransitionCoordinator.cancelAll()
+            self.libraryRevealTask?.cancel()
+            self.libraryRevealTask = nil
+            self.editorFlushCoordinator.shutdown()
+        }
+    )
     let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var researchActionOpenTask: Task<Void, Never>?
@@ -2270,8 +2291,6 @@ final class WindowModel: ObservableObject {
     private var discussionPresentationRequestID: UUID?
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
-    private var closeAttemptSequence: UInt64 = 0
-    private var currentCloseAttemptID = LifecycleAttemptID(rawValue: 0)
     private var identityRefreshGeneration: UInt64 = 0
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
     private var presentResearchRecordSearchResult:
@@ -2375,11 +2394,6 @@ final class WindowModel: ObservableObject {
                 }
             }
         }
-        if let saved = UserDefaults.standard.string(forKey: "noteSortOrder"),
-           let order = NoteSortOrder(rawValue: saved) {
-            noteSortOrder = order
-        }
-        UserDefaults.standard.removeObject(forKey: "libraryViewMode")
         searchController.loadSavedSearches()
         observeWindowSessionChanges()
     }
@@ -2867,52 +2881,6 @@ final class WindowModel: ObservableObject {
                 try await self.documentController.flushBeforeClosing(selectedDocument)
             }
         )
-    }
-
-    func prepareForWindowClose() async throws -> ClosePreparationOutcome {
-        guard closeAttemptSequence < UInt64.max else {
-            throw ScholiumWindowLifecycleError.failed(
-                "Window lifecycle attempt IDs were exhausted."
-            )
-        }
-        closeAttemptSequence += 1
-        let attempt = LifecycleAttemptID(rawValue: closeAttemptSequence)
-        currentCloseAttemptID = attempt
-        try await withScholiumLifecycleDeadline(
-            phase: .contentFlush,
-            timeout: lifecyclePolicy.contentFlush
-        ) { [weak self] in
-            guard let self else {
-                throw ScholiumWindowLifecycleError.unregisteredBeforeReady
-            }
-            try await self.flushRegisteredEditorIfNeeded()
-        }
-        guard attempt == currentCloseAttemptID else {
-            throw ScholiumWindowLifecycleError.cancelled
-        }
-
-        let presentationWarning = await persistWindowSessionBeforeClose(
-            attempt: attempt
-        )
-        guard attempt == currentCloseAttemptID else {
-            throw ScholiumWindowLifecycleError.cancelled
-        }
-        return ClosePreparationOutcome(presentationWarning: presentationWarning)
-    }
-
-    /// Releases cross-window flush capabilities only after AppKit has
-    /// committed to closing this exact window. A successful prepare can be
-    /// followed by a cancelled application quit when another window fails;
-    /// preparation therefore cannot surrender this still-open window's save
-    /// ownership.
-    func finalizeWindowClose() {
-        libraryMutationController.unbind()
-        zoteroCoordinator.cancelAll()
-        windowWorkspaceController.cancelRecovery()
-        documentTransitionCoordinator.cancelAll()
-        libraryRevealTask?.cancel()
-        libraryRevealTask = nil
-        editorFlushCoordinator.shutdown()
     }
 
     /// Serializes every transition that can replace the active document view.
@@ -3692,7 +3660,7 @@ final class WindowModel: ObservableObject {
     }
 
     func notesAreOrdered(_ lhs: WindowDocumentLocation, _ rhs: WindowDocumentLocation) -> Bool {
-        switch noteSortOrder {
+        switch discoveryController.library.sortOrder {
         case .modifiedNewest:
             if lhs.fileModifiedAt != rhs.fileModifiedAt { return lhs.fileModifiedAt > rhs.fileModifiedAt }
         case .modifiedOldest:
@@ -3875,11 +3843,6 @@ final class WindowModel: ObservableObject {
             showToast(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
             stored = nil
         }
-        if let restoredDocumentSession = stored?.workspaceSession(
-            for: stored?.selectedWorkspace ?? .paperAnalysis
-        ), restoredDocumentSession.selectedDocument != nil {
-            ScholiumWebKitProcessPrewarmer.shared.start()
-        }
         guard let stored else {
             // New configured windows keep the stable three-region shell.
             // Visibility changes only after a direct researcher action.
@@ -3974,55 +3937,10 @@ final class WindowModel: ObservableObject {
             isVisible: restoredPresentation.inspectorVisible
         )
 
-        for workspace in WorkspaceVaultSlot.allCases {
-            guard let session = restoredPresentation.workspaceSession(for: workspace) else {
-                continue
-            }
-            let tabs = session.openDocuments.compactMap(restoredDocumentTab)
-            let selectedID = session.selectedDocument.flatMap { selected in
-                tabs.first { tab in
-                    vaultQualifiedID(for: tab.document) == selected
-                }?.id
-            }
-            documentTabController.restoreTabs(
-                tabs,
-                selectedTabID: selectedID,
-                in: workspace
-            )
-        }
-
-        if let requestedInitialDocument {
-            do {
-                try activateWorkspaceReferenceInSelectedWorkspace(
-                    requestedInitialDocument,
-                    tabActivation: .place(.replaceSelected)
-                )
-            } catch {
-                documentController.clearSelectionAfterClosingLastTab()
-                showToast(error.localizedDescription, kind: .warning)
-            }
-        } else if let selected = documentTabController.selectedTab(
-            in: selectedWorkspace
-        )?.document {
-            do {
-                try activateDocumentInSelectedWorkspace(
-                    selected,
-                    tabActivation: .preserveTabMembership
-                )
-            } catch {
-                documentController.clearSelectionAfterClosingLastTab()
-                showToast(error.localizedDescription, kind: .warning)
-            }
-        }
         reconcileDocumentSessionLeases()
 
-        let hasRestorableDocument = documentTabController.selectedTab(
-            in: selectedWorkspace
-        ) != nil
         shellState.restoreLibraryVisibility(
-            hasRestorableDocument
-                ? (restoredPresentation.libraryVisible ?? true)
-                : true
+            restoredPresentation.libraryVisible ?? true
         )
         discoveryController.replaceSearchCriteria(SearchWorkspaceState(
             scope: restoredPresentation.searchState.scope
@@ -4036,7 +3954,8 @@ final class WindowModel: ObservableObject {
     func persistWindowSessionNow() {
         guard didRestoreWindowSession,
               !isRestoringWindowSession,
-              !windowSessionPersistenceCoordinator.isFinalizing else { return }
+              !windowSessionPersistenceCoordinator.isFinalizing,
+              !windowSessionPersistenceCoordinator.isClosed else { return }
         let snapshot = currentWindowSessionSnapshot()
         windowSessionPersistenceCoordinator.schedule(
             snapshot: snapshot,
@@ -4052,33 +3971,6 @@ final class WindowModel: ObservableObject {
                 }
             }
         )
-    }
-
-    /// Window state is recoverable presentation data, not document content.
-    /// A bounded failure is recorded for the next launch but cannot turn a
-    /// content-safe close into an unbounded or permanently blocked close.
-    private func persistWindowSessionBeforeClose(
-        attempt: LifecycleAttemptID
-    ) async -> String? {
-        guard didRestoreWindowSession,
-              !isRestoringWindowSession else { return nil }
-        let snapshot = currentWindowSessionSnapshot()
-        let result = await windowSessionPersistenceCoordinator.finalize(
-            snapshot: snapshot,
-            attemptIsCurrent: { [weak self] in
-                self?.currentCloseAttemptID == attempt
-            }
-        )
-        switch result {
-        case .saved:
-            shellState.clearWindowSessionPersistenceFailure()
-            return nil
-        case .failed(let message):
-            shellState.recordWindowSessionPersistenceFailure(message)
-            return message
-        case .superseded:
-            return nil
-        }
     }
 
     private func currentWindowSessionSnapshot() -> WindowSessionSnapshot {
@@ -5743,56 +5635,6 @@ final class WindowModel: ObservableObject {
         Task {
             await capabilities.openingPresentationDidComplete()
         }
-    }
-
-    private func openRestoredDocument(_ id: VaultQualifiedNoteID) {
-        guard let vault = workspaceAssignment?.vaults.values.first(where: { $0.id == id.vaultID }),
-              let snapshot = workspaceProjectionController.cachedNote(
-                  vaultID: id.vaultID,
-                  relativePath: id.relativePath
-              ) else { return }
-        PerformanceProbe.shared.beginReadActivation(documentID: id.relativePath)
-        documentController.installOpenedDocument(
-            snapshot,
-            vaultName: vault.name,
-            vaultRole: vault.role
-        )
-        synchronizeDocumentTabs(after: .place(.replaceSelected))
-    }
-
-    private func restoredDocumentTab(
-        _ id: VaultQualifiedNoteID
-    ) -> DocumentTabItem? {
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == id.vaultID
-        }), let snapshot = workspaceProjectionController.cachedNote(
-            vaultID: id.vaultID,
-            relativePath: id.relativePath
-        ) else { return nil }
-        let document: WindowSelectedDocument
-        if let noteID = snapshot.stableIdentity.resolvedID {
-            document = .workspace(WindowDocumentDescriptor(
-                sessionKey: DocumentSessionKey(vaultID: vault.id, noteID: noteID),
-                reference: VaultNoteReference(
-                    vaultID: vault.id,
-                    vaultName: vault.name,
-                    vaultRole: vault.role,
-                    relativePath: snapshot.id.relativePath,
-                    stableNoteID: noteID.uuidString.lowercased()
-                )
-            ))
-        } else {
-            document = .unavailable(
-                vaultID: vault.id,
-                relativePath: snapshot.id.relativePath
-            )
-        }
-        let presentation = documentTabPresentation(for: document)
-        return DocumentTabItem(
-            document: document,
-            title: presentation.title,
-            toolTip: presentation.toolTip
-        )
     }
 
     private func vaultQualifiedID(

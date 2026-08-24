@@ -402,6 +402,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var terminatesApplicationAfterClose = false
     private var readinessWasMarked = false
     private var isRegistered = false
+    private var didFinalizeWindowAttachments = false
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
     private var noteResearchRecordsPresenter: @MainActor () -> Void = {}
@@ -609,6 +610,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func attach(to window: NSWindow) {
+        guard !didFinalizeWindowAttachments else { return }
         if self.window === window, window.delegate === self {
             installLoadingToolbarIfNeeded()
             installToolbarIfPossible()
@@ -662,23 +664,34 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         closeAttemptGeneration &+= 1
         flushInFlight = false
         closeIsAuthorized = false
-        terminatesApplicationAfterClose = false
-        appState.finalizeWindowClose()
         removeToolbar()
         splitController = nil
-        unregisterResearchAgentPermissionWindow()
-        unregisterResearchRecordsWorkspace()
-        unregisterResearchNotificationWindow()
-        detachWindow()
         noteResearchRecordsPresenter = {}
         triptychResearchRecordsPresenter = {}
         researchRecordsWindowPresenter = {}
         researchResultReviewer = { _ in }
         attentionPresenter = { _, _, _ in }
+    }
+
+    private func finalizeWindowAttachments(
+        forwarding notification: Notification
+    ) -> Bool {
+        guard !didFinalizeWindowAttachments else { return false }
+        didFinalizeWindowAttachments = true
+        let shouldTerminateApplication = terminatesApplicationAfterClose
+        terminatesApplicationAfterClose = false
+        let forwardedDelegate = previousDelegate
+        detach()
+        unregisterResearchAgentPermissionWindow()
+        unregisterResearchRecordsWorkspace()
+        unregisterResearchNotificationWindow()
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
             isRegistered = false
         }
+        detachWindow(restoringPreviousDelegate: false)
+        forwardedDelegate?.windowWillClose?(notification)
+        return shouldTerminateApplication
     }
 
     private func registerLifecycle() {
@@ -688,7 +701,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             guard let appState else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
-            _ = try await appState.prepareForWindowClose()
+            _ = try await appState.windowCloseCoordinator.prepare()
         }
         isRegistered = true
     }
@@ -823,17 +836,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     func windowWillClose(_ notification: Notification) {
         // Release App-wide claims before SwiftUI tears down the per-window
         // model so an unresolved request can move to another exact window.
-        appState.finalizeWindowClose()
-        unregisterResearchAgentPermissionWindow()
-        unregisterResearchRecordsWorkspace()
-        unregisterResearchNotificationWindow()
-        if isRegistered {
-            lifecycleRegistry.unregister(id: windowID)
-            isRegistered = false
-        }
-        previousDelegate?.windowWillClose?(notification)
-        if terminatesApplicationAfterClose {
-            terminatesApplicationAfterClose = false
+        appState.windowCloseCoordinator.finalize()
+        if finalizeWindowAttachments(forwarding: notification) {
             DispatchQueue.main.async {
                 NSApplication.shared.terminate(nil)
             }
@@ -1084,8 +1088,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         toolbarController = nil
     }
 
-    private func detachWindow() {
-        if let window, window.delegate === self {
+    private func detachWindow(restoringPreviousDelegate: Bool = true) {
+        if restoringPreviousDelegate,
+           let window,
+           window.delegate === self {
             window.delegate = previousDelegate
         }
         window = nil
@@ -1104,7 +1110,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         Task { @MainActor [weak self, weak sender] in
             guard let self, let sender else { return }
             do {
-                let outcome = try await appState.prepareForWindowClose()
+                let outcome = try await appState.windowCloseCoordinator.prepare()
                 guard attempt == closeAttemptGeneration,
                       self.window === sender else { return }
                 closeIsAuthorized = true

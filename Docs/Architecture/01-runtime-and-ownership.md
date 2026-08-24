@@ -67,6 +67,7 @@ ApplicationBootstrapController (one app-owned storage gate)
             │   ├── WindowZoteroCoordinator
             │   ├── WindowCommandObservation (focused-command invalidation only)
             │   ├── WindowEditorFlushCoordinator
+            │   ├── WindowCloseCoordinator
             │   ├── WindowSessionPersistenceCoordinator
             │   ├── DocumentTransitionCoordinator
             │   ├── WindowWorkspaceProjectionController
@@ -343,30 +344,26 @@ provider-neutral copy remains presentation-only and unrecorded.
 `WindowModel` is the per-window composition and focused-command root.
 `WindowShellState` is the sole owner of the selected Triptych workspace,
 per-workspace Inspector mode, Library folder disclosure, initial-restore
-completion, per-window Sidebar/Inspector visibility, document text scale,
-appearance choice, transient toast, and shell status. It owns no split geometry,
-Triptych capability, document buffer, or durable research state.
-`WindowWorkspaceController` owns the requested Triptych, selected assignment,
-registered-Triptych projection, access-recovery state, installed capability
-generation, identity resolution, initial-restore attempt, and cancellable
-access/control/Metadata recovery. `WindowLibraryMutationController` owns
-Note/Folder exclusion, flush/revision preparation, import cancellation, Trash,
-and local-execution retry through `LibraryMutationUseCases` directly;
-`DocumentController` forwards no Library writes. `WindowZoteroCoordinator` owns cancellable
-search/binding tasks and committed messages. `ZoteroBindingPanelMutationOwner`
-owns the cancellable save/clear task and busy state; its view owns local
-error/recovery presentation. `WindowModel` installs capabilities/callbacks but
-proxies no operation. `WindowSessionPersistenceCoordinator` owns restore and
-replaceable/final saves through its Store port.
-`DocumentTransitionCoordinator` owns serialized transition identity and all
-running/queued tasks, cancelling them at teardown.
-`WindowEditorFlushCoordinator` preserves current-editor
-flush-before-capture ordering, supplies the aggregate per-window registration
-used by Triptych-wide operations, and tears both registrations down only after
-AppKit commits to closing the exact native window. Close preparation only
-flushes content and finalizes recoverable presentation; if another window
-cancels application termination, every still-open window retains its flush
-ownership for the next attempt. `ResearchActionController` owns the exact
+completion, peripheral visibility, document text scale, appearance, toast, and
+shell status; it owns no geometry, capability, buffer, or durable research
+state. `WindowWorkspaceController` owns Triptych selection, registration,
+capability generation, identity, access recovery, and cancellable restoration.
+`WindowLibraryMutationController` owns Note/Folder preparation and mutation
+through `LibraryMutationUseCases`; `DocumentController` forwards no Library
+writes. `WindowZoteroCoordinator` owns cancellable search/binding and committed
+messages. `ZoteroBindingPanelMutationOwner` owns save/clear lifetime and busy
+state; its view owns error/recovery presentation. `WindowModel` wires these
+owners but proxies no operation.
+
+`WindowSessionPersistenceCoordinator` owns restore and replaceable/final saves;
+after native close it refuses every write. `WindowCloseCoordinator` owns attempt
+identity, content-before-presentation sequencing, and once-only teardown.
+`WorkspaceWindowCoordinator` alone finalizes it from AppKit `windowWillClose`;
+SwiftUI disappearance only detaches presentation. `DocumentTransitionCoordinator`
+owns and cancels serialized transition tasks. `WindowEditorFlushCoordinator`
+owns ordered current-editor and aggregate-window registrations. They survive
+preparation so cancelled application termination remains retryable, and end
+only after AppKit commits the close. `ResearchActionController` owns the exact
 window's transient write-set subset sheet and the read-only projection of
 direct Continue Research children beneath the current parent Action. It owns no
 finalized-result or researcher-response presentation. The Records-only
@@ -774,8 +771,9 @@ presenting Agent; its local gate prevents Ready until registration succeeds,
 while Application owns the transaction and failure. Bootstrap and Workspace
 use nonoptional Codable route bindings with a `defaultValue`; the route's
 `windowID` is their only session identity. Workspace restoration is automatic,
-while Bootstrap restoration is disabled. Success opens one workspace and waits
-for that route's native coordinator readiness before dismissing Bootstrap;
-failure preserves setup. Restore Access rebinds expired authorization or asks
+while Bootstrap restoration is disabled. It recovers only Triptych and
+peripheral presentation; ordinary cold launch opens no Document unless an
+explicit route names one. Success waits for native window readiness before
+dismissing Bootstrap; failure preserves setup. Restore Access rebinds expired authorization or asks
 `WorkspaceRegistry` to remove one inactive machine-local registration without
 reading vaults before ordinary Bootstrap.

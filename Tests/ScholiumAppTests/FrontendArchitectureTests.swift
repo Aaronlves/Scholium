@@ -279,14 +279,20 @@ struct FrontendArchitectureTests {
         let tokenOwner = try #require(
             source.range(of: "private var performanceModeNotificationTokens")
         )
-        let registrationEnd = try #require(
+        let registrationStart = try #require(
             source.range(
-                of: "if let saved = UserDefaults.standard.string",
+                of: "if PerformanceProbe.shared.isEnabled,",
                 range: tokenOwner.lowerBound..<source.endIndex
             )
         )
+        let registrationEnd = try #require(
+            source.range(
+                of: "searchController.loadSavedSearches()",
+                range: registrationStart.upperBound..<source.endIndex
+            )
+        )
         let registration = source[
-            tokenOwner.lowerBound..<registrationEnd.lowerBound
+            registrationStart.lowerBound..<registrationEnd.lowerBound
         ]
         let requestOwner = try #require(
             source.range(of: "private func requestPerformanceEditorMode")

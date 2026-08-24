@@ -301,7 +301,7 @@ struct WindowLifecycleTests {
         )
         let peer = TerminationFailureProbe()
         registry.register(id: UUID()) {
-            _ = try await successfulWindow.prepareForWindowClose()
+            _ = try await successfulWindow.windowCloseCoordinator.prepare()
         }
         registry.register(id: UUID()) {
             if peer.shouldFail {
@@ -324,7 +324,7 @@ struct WindowLifecycleTests {
             Issue.record("A later termination attempt unexpectedly failed: \(error)")
         }
         #expect(successfulFlushCount == 2)
-        successfulWindow.finalizeWindowClose()
+        successfulWindow.windowCloseCoordinator.finalize()
     }
 
     @Test("A hanging window flush is bounded and does not starve a healthy peer")
@@ -358,8 +358,8 @@ struct WindowLifecycleTests {
         #expect(started.duration(to: clock.now) < .seconds(1))
     }
 
-    @Test("The workspace coordinator retains, forwards, and restores the native delegate")
-    func delegateRetentionAndRestoration() {
+    @Test("Presentation detach preserves the native close delegate until terminal teardown")
+    func delegateRetentionUntilClose() throws {
         let id = UUID()
         let registry = ScholiumWindowLifecycleRegistry()
         let model = WindowModel(
@@ -381,9 +381,15 @@ struct WindowLifecycleTests {
         #expect(retainedDelegate.value != nil)
         #expect(window.delegate === coordinator)
 
-        let expectedDelegate = retainedDelegate.value
+        let expectedDelegate = try #require(retainedDelegate.value)
         coordinator.detach()
-        #expect(window.delegate === expectedDelegate)
+        #expect(window.delegate === coordinator)
+
+        coordinator.windowWillClose(Notification(
+            name: NSWindow.willCloseNotification,
+            object: window
+        ))
+        #expect(expectedDelegate.didReceiveWindowWillClose)
     }
 
     @Test("Changing a window Triptych clears its transient research notification state")
@@ -559,8 +565,8 @@ struct WindowLifecycleTests {
         #expect(!inspectorItem.isCollapsed)
     }
 
-    @Test("Library collapse assigns released width to Document without resizing Inspector")
-    func libraryCollapseKeepsResearchInspectorWidthStable() throws {
+    @Test("Workspace split leaves compression priorities to AppKit")
+    func workspaceSplitUsesNativeCompressionPriorities() throws {
         let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: true,
@@ -577,43 +583,12 @@ struct WindowLifecycleTests {
             apparatus: Text("Research")
         )
         _ = controller.view
-        controller.view.frame = NSRect(x: 0, y: 0, width: 1_180, height: 760)
-        controller.viewWillAppear()
-        controller.view.layoutSubtreeIfNeeded()
-
-        let libraryItem = try #require(controller.splitViewItems.first)
         let documentItem = controller.splitViewItems[1]
         let inspectorItem = try #require(controller.splitViewItems.last)
-        let documentView = controller.splitView.arrangedSubviews[1]
-        let inspectorView = try #require(controller.splitView.arrangedSubviews.last)
         #expect(
             documentItem.holdingPriority.rawValue
-                < inspectorItem.holdingPriority.rawValue
+                == inspectorItem.holdingPriority.rawValue
         )
-        controller.splitView.setPosition(
-            ScholiumMetrics.Library.minimumReadableWidth,
-            ofDividerAt: 0
-        )
-        controller.splitView.setPosition(
-            controller.splitView.bounds.maxX - 360,
-            ofDividerAt: 1
-        )
-        controller.view.layoutSubtreeIfNeeded()
-
-        let initialDocumentWidth = documentView.frame.width
-        let initialInspectorWidth = inspectorView.frame.width
-        controller.setLibraryVisible(false, animated: false)
-
-        #expect(libraryItem.isCollapsed)
-        #expect(documentView.frame.width > initialDocumentWidth)
-        #expect(abs(inspectorView.frame.width - initialInspectorWidth) < 1)
-        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
-
-        controller.setLibraryVisible(true, animated: false)
-        #expect(!libraryItem.isCollapsed)
-        #expect(abs(documentView.frame.width - initialDocumentWidth) < 1)
-        #expect(abs(inspectorView.frame.width - initialInspectorWidth) < 1)
-        #expect(inspectorView.frame.maxX == controller.splitView.bounds.maxX)
     }
 
     @Test("Research Inspector divider resizes one pane while its trailing edge stays fixed")

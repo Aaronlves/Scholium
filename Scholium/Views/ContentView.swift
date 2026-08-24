@@ -810,7 +810,7 @@ struct ContentView: View {
             },
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },
-            selectSortOrder: { appState.noteSortOrder = $0 },
+            selectSortOrder: { appState.discoveryController.selectSortOrder($0) },
             showError: { appState.showToast($0, kind: .error) }
         )
     }
