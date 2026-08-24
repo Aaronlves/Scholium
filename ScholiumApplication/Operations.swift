@@ -363,6 +363,52 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         let handle = try await reference.requireHandle()
         return try await handle.search(request)
     }
+
+    public func links(
+        for note: VaultQualifiedNoteID,
+        direction: WorkspaceLinkDirection
+    ) async throws -> [LinkGraphEdge] {
+        try await graphQueries().links(for: note, direction: direction)
+    }
+
+    public func relationships(
+        for note: VaultQualifiedNoteID
+    ) async throws -> [RelationshipEdge] {
+        try await graphQueries().relationships(for: note)
+    }
+
+    public func linkDiagnostics() async throws -> [LinkGraphDiagnostic] {
+        try await graphQueries().diagnostics()
+    }
+
+    public func traceLinks(
+        from source: VaultQualifiedNoteID,
+        to target: VaultQualifiedNoteID,
+        maximumDepth: Int
+    ) async throws -> [[LinkGraphEdge]] {
+        try await graphQueries().traceLinks(
+            from: source,
+            to: target,
+            maximumDepth: maximumDepth
+        )
+    }
+
+    public func traceRelationships(
+        from source: VaultQualifiedNoteID,
+        to target: VaultQualifiedNoteID,
+        maximumDepth: Int
+    ) async throws -> [RelationshipTrace] {
+        try await graphQueries().traceRelationships(
+            from: source,
+            to: target,
+            maximumDepth: maximumDepth
+        )
+    }
+
+    private func graphQueries() async throws -> WorkspaceGraphQueries {
+        let handle = try await reference.requireHandle()
+        return WorkspaceGraphQueries(catalog: try await handle.snapshot().discovery.catalog)
+    }
 }
 
 public actor ResearchOperations:

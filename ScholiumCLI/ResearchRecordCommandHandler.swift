@@ -7,9 +7,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage(
-                "Usage: scholium record <list|read> ... [--triptych <uuid-or-unique-name>]"
-            )
+            throw commandUsageError("record")
         }
         let assignment = try await context.selectedTriptych(
             selector: option("--triptych", in: arguments)
@@ -48,9 +46,7 @@ extension ScholiumCLI {
     ) throws {
         guard let noteText = option("--note", in: arguments),
               let noteID = UUID(uuidString: noteText) else {
-            throw CLIError.usage(
-                "Usage: scholium record list --note <stable-note-uuid> [--triptych <selector>] [--format text|jsonl]"
-            )
+            throw commandUsageError("record list")
         }
         let isCurrentNote = discovery.catalog.notes.contains { note in
             note.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID
@@ -124,9 +120,7 @@ extension ScholiumCLI {
     ) throws {
         guard arguments.count >= 2,
               let recordID = UUID(uuidString: arguments[1]) else {
-            throw CLIError.usage(
-                "Usage: scholium record read <record-uuid> [--triptych <selector>] [--format json]"
-            )
+            throw commandUsageError("record read")
         }
         guard let record = research.finishedResearchRecords.first(where: {
             $0.id == recordID

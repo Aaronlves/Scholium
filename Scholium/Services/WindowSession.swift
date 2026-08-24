@@ -170,6 +170,15 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                         run: run,
                         pairingCode: pairingCode
                     ))
+                case .revokeSession:
+                    guard let credential = request.credential else {
+                        throw LocalAgentBridgeError.invalidRequest
+                    }
+                    return .sessionRevoked(
+                        try await runtime.revokeResearchAgentSession(
+                            credential: credential
+                        )
+                    )
                 case .context:
                     guard let run = request.run,
                           let credential = request.credential else {

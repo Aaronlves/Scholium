@@ -4,7 +4,7 @@ import Foundation
 extension ScholiumCLI {
     static func runVault(_ arguments: [String], context: CLIContext) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage("Usage: scholium vault list")
+            throw commandUsageError("vault list")
         }
         switch subcommand {
         case "list":
@@ -58,7 +58,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let first = arguments.first else {
-            throw CLIError.usage("Usage: scholium search <query> (--vault <selector> | --triptych <selector>) [options]")
+            throw commandUsageError("search")
         }
         let query: String
         let assignment: TriptychAssignment
@@ -619,7 +619,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage("Usage: scholium links <incoming|outgoing|relationships|diagnostics> ...")
+            throw commandUsageError("links")
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -629,49 +629,36 @@ extension ScholiumCLI {
         switch subcommand {
         case "incoming", "outgoing":
             guard arguments.count >= 2 else {
-                throw CLIError.usage("Usage: scholium links \(subcommand) <vault>:<path> --format json")
+                throw commandUsageError("links \(subcommand)")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
-            let catalog = try await handle.discovery.snapshot().catalog
-            guard let snapshot = catalog.graph else {
-                throw CLIError.unavailable("The Triptych graph is not ready.")
-            }
             let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
-            let edges = subcommand == "incoming" ? (snapshot.incoming[id] ?? []) : (snapshot.outgoing[id] ?? [])
+            let direction: WorkspaceLinkDirection = subcommand == "incoming"
+                ? .incoming
+                : .outgoing
+            let edges = try await handle.discovery.links(for: id, direction: direction)
             write(String(decoding: try encoder.encode(edges), as: UTF8.self) + "\n")
         case "relationships":
             guard arguments.count >= 2 else {
-                throw CLIError.usage("Usage: scholium links relationships <vault>:<path> --format json")
+                throw commandUsageError("links relationships")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
             let handle = try await context.handle(for: assignment)
-            let catalog = try await handle.discovery.snapshot().catalog
-            guard let snapshot = catalog.graph else {
-                throw CLIError.unavailable("The Triptych graph is not ready.")
-            }
             let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
-            let relationships = snapshot.relationships.filter {
-                $0.subjectNote == id || $0.objectNote == id
-                    || ($0.subjectNote == nil && $0.objectNote == nil
-                        && ($0.subjectPath == path || $0.objectPath == path))
-            }
+            let relationships = try await handle.discovery.relationships(for: id)
             write(String(decoding: try encoder.encode(relationships), as: UTF8.self) + "\n")
         case "diagnostics":
             guard arguments.contains("--workspace") else {
-                throw CLIError.usage("Usage: scholium links diagnostics --workspace [--triptych <selector>] --format json")
+                throw commandUsageError("links diagnostics")
             }
             let assignment = try await context.selectedTriptych(
                 selector: option("--triptych", in: arguments)
             )
             let handle = try await context.handle(for: assignment)
-            let catalog = try await handle.discovery.snapshot().catalog
-            guard let graph = catalog.graph else {
-                throw CLIError.unavailable("The Triptych graph is not ready.")
-            }
-            let diagnostics = graph.diagnostics
+            let diagnostics = try await handle.discovery.linkDiagnostics()
             write(String(decoding: try encoder.encode(diagnostics), as: UTF8.self) + "\n")
         default:
             throw CLIError.usage("Unknown links command '\(subcommand)'.")
@@ -683,7 +670,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard ["trace", "relation-trace"].contains(arguments.first ?? ""), arguments.count >= 3 else {
-            throw CLIError.usage("Usage: scholium graph <trace|relation-trace> <source> <target> --max-depth 3 --format json")
+            throw commandUsageError("graph")
         }
         let (sourceVault, sourcePath) = try await context.resolveTarget(arguments[1])
         let (targetVault, targetPath) = try await context.resolveTarget(arguments[2])
@@ -697,24 +684,23 @@ extension ScholiumCLI {
             throw CLIError.usage("Graph commands support --format json.")
         }
         let handle = try await context.handle(for: assignment)
-        let catalog = try await handle.discovery.snapshot().catalog
-        guard let snapshot = catalog.graph else {
-            throw CLIError.unavailable("The Triptych graph is not ready.")
-        }
         let source = VaultQualifiedNoteID(vaultID: sourceVault.id, relativePath: sourcePath)
         let target = VaultQualifiedNoteID(vaultID: targetVault.id, relativePath: targetPath)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         if arguments.first == "relation-trace" {
-            let paths = relationshipTracePaths(
+            let paths = try await handle.discovery.traceRelationships(
                 from: source,
                 to: target,
-                snapshot: snapshot,
                 maximumDepth: maximumDepth
             )
             write(String(decoding: try encoder.encode(paths), as: UTF8.self) + "\n")
         } else {
-            let paths = tracePaths(from: source, to: target, snapshot: snapshot, maximumDepth: maximumDepth)
+            let paths = try await handle.discovery.traceLinks(
+                from: source,
+                to: target,
+                maximumDepth: maximumDepth
+            )
             write(String(decoding: try encoder.encode(paths), as: UTF8.self) + "\n")
         }
     }
@@ -724,9 +710,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage(
-                "Usage: scholium workspace <catalog|skill-sources|attention|bootstrap>"
-            )
+            throw commandUsageError("workspace")
         }
         if subcommand == "bootstrap" {
             try await runWorkspaceBootstrap(Array(arguments.dropFirst()), context: context)
@@ -780,9 +764,7 @@ extension ScholiumCLI {
     ) async throws {
         guard let selector = option("--triptych", in: arguments),
               let targetPath = option("--target", in: arguments) else {
-            throw CLIError.usage(
-                "Usage: scholium workspace bootstrap --triptych <uuid-or-unique-name> --target <directory> [--conventions-file <file>] [--format markdown|json]"
-            )
+            throw commandUsageError("workspace bootstrap")
         }
         let assignment = try await context.triptych(selector: selector)
         let targetURL = URL(
@@ -830,7 +812,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage("Usage: scholium discuss <list|show|reply> ... [--triptych <uuid-or-unique-name>]")
+            throw commandUsageError("discuss")
         }
         let assignment = try await context.selectedTriptych(
             selector: option("--triptych", in: arguments)
@@ -861,7 +843,7 @@ extension ScholiumCLI {
             }
         case "show":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
-                throw CLIError.usage("Usage: scholium discuss show <discussion-id> [--format json]")
+                throw commandUsageError("discuss show")
             }
             let entry = try await research.activeDiscussion(id: id)
             let format = option("--format", in: arguments) ?? "text"
@@ -879,7 +861,7 @@ extension ScholiumCLI {
             }
         case "reply":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
-                throw CLIError.usage("Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->). External Agents must use authenticated scholium agent discuss-reply.")
+                throw commandUsageError("discuss reply")
             }
             let agentName = option("--agent", in: arguments)?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let agentName, !agentName.isEmpty else {
@@ -916,71 +898,6 @@ extension ScholiumCLI {
             write("Recorded reply \(reply.id.uuidString) for Discussion \(id.uuidString).\n")
         default:
             throw CLIError.usage("Unknown Discuss command '\(subcommand)'.")
-        }
-    }
-
-    private static func tracePaths(
-        from source: VaultQualifiedNoteID,
-        to target: VaultQualifiedNoteID,
-        snapshot: GraphSnapshot,
-        maximumDepth: Int
-    ) -> [[LinkGraphEdge]] {
-        var results: [[LinkGraphEdge]] = []
-        var queue: [(VaultQualifiedNoteID, [LinkGraphEdge], Set<VaultQualifiedNoteID>)] = [(source, [], [source])]
-        while !queue.isEmpty {
-            let (current, path, visited) = queue.removeFirst()
-            guard path.count < maximumDepth else { continue }
-            for edge in snapshot.outgoing[current] ?? [] {
-                guard let next = edge.destination?.note, !visited.contains(next) else { continue }
-                let nextPath = path + [edge]
-                if next == target {
-                    results.append(nextPath)
-                } else {
-                    queue.append((next, nextPath, visited.union([next])))
-                }
-            }
-        }
-        return results.sorted {
-            if $0.count != $1.count { return $0.count < $1.count }
-            return ($0.first?.source.relativePath ?? "") < ($1.first?.source.relativePath ?? "")
-        }
-    }
-
-    private static func relationshipTracePaths(
-        from source: VaultQualifiedNoteID,
-        to target: VaultQualifiedNoteID,
-        snapshot: GraphSnapshot,
-        maximumDepth: Int
-    ) -> [RelationshipTrace] {
-        var results: [RelationshipTrace] = []
-        var queue: [(VaultQualifiedNoteID, [RelationshipEdge], Set<VaultQualifiedNoteID>)] = [
-            (source, [], [source]),
-        ]
-        while !queue.isEmpty {
-            let (current, path, visited) = queue.removeFirst()
-            if current == target, !path.isEmpty {
-                results.append(RelationshipTrace(edges: path))
-                continue
-            }
-            guard path.count < maximumDepth else { continue }
-            let next = snapshot.relationships.compactMap { edge -> (VaultQualifiedNoteID, RelationshipEdge)? in
-                guard case .resolved = edge.resolution else { return nil }
-                if edge.subjectNote == current, let destination = edge.objectNote { return (destination, edge) }
-                if !edge.isDirectional, edge.objectNote == current, let destination = edge.subjectNote {
-                    return (destination, edge)
-                }
-                return nil
-            }.sorted {
-                if $0.0 != $1.0 { return $0.0 < $1.0 }
-                return $0.1.id.uuidString < $1.1.id.uuidString
-            }
-            for (destination, edge) in next where !visited.contains(destination) {
-                queue.append((destination, path + [edge], visited.union([destination])))
-            }
-        }
-        return results.sorted {
-            if $0.edges.count != $1.edges.count { return $0.edges.count < $1.edges.count }
-            return ($0.edges.first?.id.uuidString ?? "") < ($1.edges.first?.id.uuidString ?? "")
         }
     }
 

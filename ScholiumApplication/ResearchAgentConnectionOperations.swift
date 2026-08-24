@@ -118,6 +118,18 @@ extension WorkspaceRuntime {
         }
     }
 
+    public func revokeResearchAgentSession(
+        credential: ResearchConnectionCredential
+    ) async throws -> ResearchAgentSessionRevocationReceipt {
+        guard let sessions = researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        try await sessions.revokeSession(authenticating: credential)
+        return ResearchAgentSessionRevocationReceipt(
+            sessionID: credential.sessionID
+        )
+    }
+
     public func researchAgentContext(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator

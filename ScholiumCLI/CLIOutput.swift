@@ -8,12 +8,14 @@ extension ScholiumCLI {
         return arguments[index + 1]
     }
 
-    static func printHelp() {
-        printHelp(path: [], format: .text)
+    static func printHelp() throws {
+        try printHelp(path: [], format: .text)
     }
 
-    static func printHelp(path: [String], format: CLIOutputFormat) {
-        let text = helpText(for: path)
+    static func printHelp(path: [String], format: CLIOutputFormat) throws {
+        let key = path.joined(separator: " ")
+        let specification = commandSpecifications[key]
+        let text = try helpText(for: path)
         switch format {
         case .text, .markdown:
             write(text + (text.hasSuffix("\n") ? "" : "\n"))
@@ -21,7 +23,7 @@ extension ScholiumCLI {
             let report = CLIHelpReport(
                 path: path,
                 help: text,
-                agentCommand: agentCommandHelp[path.joined(separator: " ")]
+                agentCommand: specification?.agentCommand
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -33,13 +35,13 @@ extension ScholiumCLI {
         }
     }
 
-    static func helpText(for path: [String]) -> String {
+    static func helpText(for path: [String]) throws -> String {
         let key = path.joined(separator: " ")
-        if let help = agentCommandHelp[key] { return help.text }
-        if let help = commandHelp[key] { return help }
+        if let specification = commandSpecifications[key] {
+            return specification.help
+        }
         if !path.isEmpty {
-            let candidates = Set(commandHelp.keys)
-                .union(agentCommandHelp.keys)
+            let candidates = commandSpecifications.keys
                 .filter { $0.hasPrefix(key + " ") }
                 .sorted()
             if !candidates.isEmpty {
@@ -52,57 +54,13 @@ extension ScholiumCLI {
                 Run `scholium help \(key) <command>` for details.
                 """
             }
-            return "Unknown help topic '\(key)'. Run 'scholium help'."
+            throw CLIError.usage("Unknown help topic '\(key)'. Run 'scholium help'.")
         }
         return """
         Scholium CLI — agent-facing, local-first research access
 
-        Usage:
-          scholium help [command [subcommand]] [--format text|json]
-          scholium version [--format text|json]
-          scholium doctor [--format text|json]
-          scholium update [--check] [--format text|json]
-          scholium vault list
-          scholium search <query> --vault <selector> [--triptych <selector>]
-              [--limit 1...500] [--format text|jsonl]
-          scholium search <query> --triptych <uuid-or-unique-name>
-              [--limit 1...500] [--format text|jsonl]
-          scholium links incoming <vault>:<path> --format json
-          scholium links outgoing <vault>:<path> --format json
-          scholium links relationships <vault>:<path> --format json
-          scholium links diagnostics --workspace [--triptych <uuid-or-unique-name>] --format json
-          scholium graph trace <source> <target> --max-depth 3 --format json
-          scholium graph relation-trace <source> <target> --max-depth 3 --format json
-          scholium workspace catalog [--triptych <uuid-or-unique-name>] --format json
-          scholium workspace skill-sources [--triptych <uuid-or-unique-name>] --format json
-          scholium workspace attention [--triptych <uuid-or-unique-name>] [--kind <queue>] --format json
-          scholium workspace bootstrap --triptych <uuid-or-unique-name> --target <directory>
-              [--conventions-file <file>] [--format markdown|json]
-          scholium read <vault>:<relative-path> [--format json]
-          scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>]
-              [--analysis-from <json-file>]
-          scholium note metadata-read <vault>:<path> [--format json]
-          scholium note metadata-set <vault>:<path> <key> --value-from <json-file>
-              --expected <metadata-sha256|absent>
-          scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>
-          scholium note import <vault>:<path> --from <markdown-file>
-          scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>
-          scholium note move <vault>:<path> <new-path> --expected <sha256>
-          scholium note move-to-trash <vault>:<path> --expected <sha256>
-              --delete-associated-records
-          scholium record list --note <stable-note-uuid> [--triptych <uuid-or-unique-name>]
-              [--format text|jsonl]
-          scholium record read <record-uuid> [--triptych <uuid-or-unique-name>]
-              [--format json]
-          scholium discuss list [--triptych <uuid-or-unique-name>]
-              [--format json]
-          scholium discuss show <discussion-id> [--triptych <uuid-or-unique-name>] [--format json]
-          scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->)
-              [--triptych <uuid-or-unique-name>]
-          scholium zotero mcp config [--format text|json]
-          scholium zotero mcp status [--probe] [--format text|json]
-          scholium zotero mcp serve
-        \(agentCommandUsage)
+        Commands:
+        \(rootCommandUsage)
         Omitting --triptych requires exactly one configured Triptych.
         Triptych roles: analyses, topics, works
         Authenticated Agent commands preserve Run, Method, selected references, Research
@@ -154,7 +112,8 @@ private struct CLIHelpReport: Encodable {
     }
 }
 
-private struct AgentCLICommandHelp: Encodable {
+struct AgentCLICommandHelp: Encodable {
+    let rule: ScholiumCLI.CLICommandRule
     let usage: String
     let inputContract: String
     let input: String
@@ -182,33 +141,7 @@ private struct AgentCLICommandHelp: Encodable {
     }
 }
 
-private extension ScholiumCLI {
-    static let agentCommandOrder = [
-        "agent preflight-analysis",
-        "agent start",
-        "agent pair",
-        "agent context",
-        "agent reload",
-        "agent query",
-        "agent discuss-reply",
-        "agent finish-discussion",
-        "agent extend-write-set",
-        "agent write",
-        "agent write-zotero-binding",
-        "agent resolve-write-conflict",
-        "agent submit-result",
-        "agent continue",
-        "agent method-context",
-        "agent improve-method",
-        "agent end",
-    ]
-
-    static var agentCommandUsage: String {
-        agentCommandOrder.compactMap { key in
-            agentCommandHelp[key].map { "  " + $0.usage }
-        }.joined(separator: "\n")
-    }
-
+extension ScholiumCLI {
     static var agentCommandHelp: [String: AgentCLICommandHelp] {
         let roles = ResearchActionTargetRole.allCases.map(\.rawValue)
             .joined(separator: ", ")
@@ -227,6 +160,10 @@ private extension ScholiumCLI {
 
         return [
             "agent preflight-analysis": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--triptych": .value, "--from": .value]
+                ),
                 usage: "scholium agent preflight-analysis --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentAnalysisCreationPreflightRequest schema \(ResearchAgentAnalysisCreationPreflightRequest.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, request_id, destination {schema_version, managed_default_filename}, metadata {source_type, optional fields}, optional authored_yaml {summary, keywords}, and exactly one of source {library, item_key} or source_route=researcher_provided. Every managed field is optional. Omitted authored values remain summary:null and keywords:[]. Direct Agent creation always resolves one Markdown filename at the Analyses-vault root.",
@@ -238,6 +175,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent start": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--triptych": .value, "--from": .value]
+                ),
                 usage: "scholium agent start --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, action_id, exactly one of existing target {vault_id, relative_path} or the unchanged new_analysis payload returned by agent preflight-analysis, optional source_route=researcher_provided only for an existing Analysis, and academic_inputs containing every required current Profile field. Each academic input is a typed freeText, singleChoice, or multipleChoice value. Optional Settings preferences grant no authority and cannot invalidate creation; replay requires the exact complete start payload.",
@@ -249,6 +190,7 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent pair": AgentCLICommandHelp(
+                rule: .init(pathLength: 2, options: ["--run": .value]),
                 usage: "scholium agent pair --run <locator>",
                 inputContract: "ResearchPairingCode on standard input",
                 input: "When prompted, enter the one-time Pairing Code from the current handoff. Do not put it in an argument, URL, file, or log.",
@@ -258,6 +200,7 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent context": AgentCLICommandHelp(
+                rule: .init(pathLength: 2, options: ["--run": .value]),
                 usage: "scholium agent context --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the Run locator from the handoff. The CLI loads the hidden Session credential from protected local state.",
@@ -268,6 +211,7 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent reload": AgentCLICommandHelp(
+                rule: .init(pathLength: 2, options: ["--run": .value]),
                 usage: "scholium agent reload --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
@@ -279,6 +223,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent query": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent query --run <locator> --from <json|->",
                 inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
                 input: "Strict snake-case JSON fields: schema_version, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schema_version, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), use_eligibility, and only the fields allowed by its closed kind. Ordinary read_note uses query; a Fidelity inspection request supplied by Scholium instead uses exact note {vault_id, relative_path} plus expected_fingerprint. Send supplied inspection requests unchanged; do not reconstruct identity or fingerprints.",
@@ -289,6 +237,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent discuss-reply": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent discuss-reply --run <locator> --from <json|->",
                 inputContract: "AgentDiscussionReplyDraft",
                 input: "Strict JSON fields: statement_id (a stable UUID reused for an outcome-unknown retry), attribution, and text. The input appends one Agent-attributed turn to the active Discussion for this authenticated Discuss Run; it does not accept a local source path.",
@@ -300,6 +252,7 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent finish-discussion": AgentCLICommandHelp(
+                rule: .init(pathLength: 2, options: ["--run": .value]),
                 usage: "scholium agent finish-discussion --run <locator>",
                 inputContract: "Authenticated Discuss Run locator; no JSON body",
                 input: "Use the current Discuss Run after at least one durable Agent turn. Finishing forms the canonical portable Discussion Record and revokes this Run's Session; it does not edit a Note, submit a generic Result, or imply researcher acceptance.",
@@ -310,6 +263,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent extend-write-set": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent extend-write-set --run <locator> --from <json|->",
                 inputContract: "ResearchWriteSetExtensionIntent schema \(ResearchWriteSetExtensionIntent.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]. Only modify_metadata also requires nonempty metadata_keys with the exact requested managed keys. academic_reason explains why the current Method needs these targets.",
@@ -321,6 +278,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent write": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent write --run <locator> --from <json|->",
                 inputContract: "AgentDocumentWriteDraft",
                 input: "Strict JSON fields: role [\(roles)], relative_path, optional operation [\(documentWriteOperations)] defaulting to modify_markdown. modify_markdown requires content and changes the body only. modify_source requires the complete authored Markdown source. create_note may omit content, may add authored_yaml {summary, keywords}, and always creates the fixed summary/keywords scaffold. modify_metadata uses metadata [{key, value}]. Analysis create_note may add analysis_metadata {source_type, optional fields:[{key,value}]}. Authored source and portable Metadata remain separate transactions.",
@@ -331,6 +292,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent write-zotero-binding": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent write-zotero-binding --run <locator> --from <json|->",
                 inputContract: "AgentZoteroBindingWriteDraft",
                 input: "Strict JSON fields: role=analysis, relative_path, and operation set_zotero_binding or clear_zotero_binding. set_zotero_binding also requires library ({kind:user} or {kind:group,group_id:<positive integer>}) and item_key; clear_zotero_binding accepts neither. This command cannot write Markdown, Scholium Metadata, or Zotero library data.",
@@ -341,6 +306,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent resolve-write-conflict": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent resolve-write-conflict --run <locator> --from <json|->",
                 inputContract: "AgentWriteConflictResolutionDraft",
                 input: "Strict JSON fields: role [\(roles)], relative_path, and action [refresh_authority, abandon_write].",
@@ -351,6 +320,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent submit-result": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent submit-result --run <locator> --from <json|->",
                 inputContract: "ResearchAgentResultSubmission schema \(ResearchAgentResultSubmission.currentSchemaVersion) plus the current Run result_contract",
                 input: "Strict JSON fields: schema_version, record_title, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them. Every Fidelity outcome requires check [content, citations], state [passed, issues_found, unavailable], a nonempty attributed summary, and findings as an array of strings. passed requires empty findings; issues_found requires at least one finding; unavailable must be used for each fidelity_contract.required_unavailable_checks. For the default Check Fidelity profile, submit academic_results {values:{}} because Scholium derives the aggregate Finding fields from outcomes; a researcher-customized profile remains explicit in the returned template. The authenticated context next_actions supplies the complete strict template. record_title is the concise, one-line Record identity, not a duplicate academic result.",
@@ -361,6 +334,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent continue": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent continue --run <locator> --from <json|->",
                 inputContract: "ResearchContinuationRequest schema \(ResearchContinuationRequest.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, next_action_id, target_role [\(roles)], target_relative_path, academic_purpose, handoff items, and fidelity_checks [content, citations]. Each handoff item has content, epistemic_status [\(epistemicStatuses)], next_use, and source_references.",
@@ -371,6 +348,7 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent method-context": AgentCLICommandHelp(
+                rule: .init(pathLength: 2, options: ["--run": .value]),
                 usage: "scholium agent method-context --run <locator>",
                 inputContract: "Authenticated Method-improvement Run locator; no JSON body",
                 input: "Use the locator from an explicit Improve Current Method handoff. The CLI loads the hidden Session credential.",
@@ -381,6 +359,10 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent improve-method": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: ["--run": .value, "--from": .value]
+                ),
                 usage: "scholium agent improve-method --run <locator> --from <json|->",
                 inputContract: "ResearchMethodImprovementDraft",
                 input: "Strict JSON fields: target_id from method-context, disposition [replace, diagnosed_no_change, unavailable], optional replacement_source only for replace, and diagnosis.",
@@ -390,6 +372,7 @@ private extension ScholiumCLI {
                 ]
             ),
             "agent end": AgentCLICommandHelp(
+                rule: .init(pathLength: 2, options: ["--run": .value]),
                 usage: "scholium agent end --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current unfinished Run locator. No Result or cancellation payload is accepted.",
@@ -425,40 +408,6 @@ private extension ScholiumCLI {
         """
     }
 
-    static var commandHelp: [String: String] {
-        [
-            "update": "Usage: scholium update [--check] [--format text|json]\n\nChecks the official release checksum, provenance, code signature, and architecture. Without --check, an explicit newer release is installed into ~/.local/bin without changing PATH or shell configuration.",
-            "vault list": "Usage: scholium vault list [--format text|json]\n\nLists registered Triptychs and their three role vaults.",
-            "search": searchHelp,
-            "links incoming": "Usage: scholium links incoming <vault>:<path> --format json",
-            "links outgoing": "Usage: scholium links outgoing <vault>:<path> --format json",
-            "links relationships": "Usage: scholium links relationships <vault>:<path> --format json",
-            "links diagnostics": "Usage: scholium links diagnostics --workspace [--triptych <selector>] --format json",
-            "graph trace": "Usage: scholium graph trace <source> <target> [--max-depth <1...10>] --format json",
-            "graph relation-trace": "Usage: scholium graph relation-trace <source> <target> [--max-depth <1...10>] --format json",
-            "workspace catalog": "Usage: scholium workspace catalog [--triptych <selector>] --format json",
-            "workspace skill-sources": "Usage: scholium workspace skill-sources [--triptych <selector>] --format json\n\nReports the release-managed Core Protocol and exact enabled Triptych-managed Method folders that an authorized setup Agent may link into its host's project-level Skill directory. It creates no link, scans no arbitrary folder, and exposes no machine-local Method locator.",
-            "workspace attention": "Usage: scholium workspace attention [--triptych <selector>] [--kind <queue>] --format json",
-            "workspace bootstrap": "Usage: scholium workspace bootstrap --triptych <selector> --target <directory> [--conventions-file <file>] [--format markdown|json]",
-            "read": "Usage: scholium read <vault>:<relative-path> [--format text|json]",
-            "note create": "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]\n\nAlways creates fixed YAML with summary and keywords. Authored YAML JSON may supply {\"summary\":\"...\",\"keywords\":[\"...\"]}; omission keeps summary:null and keywords:[]. Body input is UTF-8 LF text without a top-level YAML envelope. Analysis JSON is {\"source_type\":\"journal_article\",\"fields\":[{\"key\":\"title\",\"value\":\"Example\"}]}; every managed field is optional.",
-            "note metadata-read": "Usage: scholium note metadata-read <vault>:<path> [--format json]\n\nReads only the Note's validated portable Scholium Metadata record and its independent metadata_sha256 revision. Markdown source remains separate.",
-            "note metadata-set": "Usage: scholium note metadata-set <vault>:<path> <key> --value-from <json-file> --expected <metadata-sha256|absent>\n\nSets one role-valid managed field through the same complete-record CAS used by the app. The value file contains one JSON scalar, array, or object matching the field contract. Use absent only when metadata-read reports no record.",
-            "note metadata-remove": "Usage: scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>\n\nRemoves one present managed field through the same complete-record CAS used by the app. It never changes YAML or Markdown.",
-            "note import": "Usage: scholium note import <vault>:<path> --from <markdown-file>\n\nImports complete authored Markdown source without applying managed New Note YAML.",
-            "note replace": "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>",
-            "note move": "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>",
-            "note move-to-trash": "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256> --delete-associated-records\n\nMoves the exact Note to the macOS system Trash and deletes every finished Research Record in which it directly participates. Multi-Note Records are deleted as whole records. Finder owns file restoration; Scholium cannot restore deleted Records.",
-            "record list": "Usage: scholium record list --note <stable-note-uuid> [--triptych <selector>] [--format text|jsonl]\n\nLists every complete finished Research Record in which the exact stable Note identity participates. JSONL begins with one manifest-bound summary and returns one fingerprinted Record summary per following line. It never infers relevance, acceptance, or a primary owner.",
-            "record read": "Usage: scholium record read <record-uuid> [--triptych <selector>] [--format json]\n\nReads one complete decoded portable Research Record together with its exact persisted-byte fingerprint. It fails closed when the complete Record projection or exact identity is unavailable and grants no mutation authority.",
-            "discuss list": "Usage: scholium discuss list [--triptych <selector>] [--format text|json]",
-            "discuss show": "Usage: scholium discuss show <discussion-id> [--triptych <selector>] [--format text|json]",
-            "discuss reply": "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis is a researcher-operated manual attribution route. External Agents must use the authenticated scholium agent discuss-reply command.",
-            "zotero mcp config": "Usage: scholium zotero mcp config [--format text|json]",
-            "zotero mcp status": "Usage: scholium zotero mcp status [--probe] [--format text|json]",
-            "zotero mcp serve": "Usage: scholium zotero mcp serve",
-        ]
-    }
 }
 
 

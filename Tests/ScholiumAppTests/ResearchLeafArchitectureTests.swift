@@ -174,7 +174,9 @@ struct ResearchLeafArchitectureTests {
         #expect(content.contains("openZoteroItem: { binding in"))
         #expect(content.contains("openInZotero(binding: binding)"))
         #expect(content.contains("mode: .refresh"))
-        #expect(content.contains("appState.prepareZoteroMetadataRefresh("))
+        #expect(content.contains(
+            "appState.zoteroCoordinator.prepareMetadataRefresh("
+        ))
         #expect(controller.contains("func requestOpen("))
         #expect(controller.contains("intentHandler(.openDocument(WindowDocumentRoute("))
     }

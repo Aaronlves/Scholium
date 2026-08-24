@@ -59,6 +59,12 @@ struct AgentSessionCredentialStore {
         self.directoryURL = directoryURL
     }
 
+    /// Establishes the protected parent and Session directory before a remote
+    /// operation can create or consume a bearer Session.
+    func prepare() throws {
+        try prepareDirectory()
+    }
+
     func save(
         _ credential: ResearchConnectionCredential,
         for run: ResearchRunLocator

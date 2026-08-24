@@ -67,6 +67,21 @@ struct ActionCLIExecutableLifecycleTests {
         )
         #expect(pairHelp.contains("standard input"))
         #expect(!pairHelp.contains("pairing-code.txt"))
+
+        let threePartHelp = String(
+            decoding: try cli.run([
+                "help", "zotero", "mcp", "config", "--format", "json",
+            ]).stdout,
+            as: UTF8.self
+        )
+        #expect(threePartHelp.contains("scholium zotero mcp config"))
+        let inlineThreePartHelp = String(
+            decoding: try cli.run([
+                "zotero", "mcp", "config", "--help", "--format", "json",
+            ]).stdout,
+            as: UTF8.self
+        )
+        #expect(inlineThreePartHelp.contains("scholium zotero mcp config"))
     }
 
     @Test("The real researcher CLI reads and CAS-updates managed Metadata without changing source")
@@ -79,6 +94,10 @@ struct ActionCLIExecutableLifecycleTests {
         defer { fixture.remove() }
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
         let target = "\(fixture.analysisTarget.note.vaultID.uuidString):\(fixture.analysisTarget.note.relativePath)"
+
+        let exactReadTarget = "\(fixture.analysisTarget.note.vaultID.uuidString):Exact Read.md"
+        let exactRead = try cli.run(["read", exactReadTarget]).stdout
+        #expect(exactRead == ActionCLIFixture.exactReadSource)
 
         let initial = try #require(
             JSONSerialization.jsonObject(with: try cli.run([
@@ -305,7 +324,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .pair, .query, .discussionReply, .discussionFinish,
+            case .pair, .revokeSession, .query, .discussionReply, .discussionFinish,
                     .extendWriteSet, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
@@ -592,7 +611,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .discussionFinish(finishReceipt)
-            case .query, .discussionReply,
+            case .revokeSession, .query, .discussionReply,
                     .extendWriteSet, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement, .end:
@@ -805,7 +824,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .context, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .context, .query, .discussionReply, .discussionFinish,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1332,7 +1351,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
-            case .context, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .context, .query, .discussionReply, .discussionFinish,
                     .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
@@ -1470,6 +1489,193 @@ struct ActionCLIExecutableLifecycleTests {
             == "start_new_action_from_current_revision")
     }
 
+    @Test("A credential-store failure revokes the new Session and preserves the Run recovery route")
+    func credentialStoreFailureRevokesNewSession() throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let root = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        )
+            .appendingPathComponent(".build/test-fixtures", isDirectory: true)
+            .appendingPathComponent(
+                "ScholiumAgentSessionFailure-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let bridgeContainer = root.appendingPathComponent("bridge", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: home,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o700)]
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let run = try #require(
+            ResearchRunLocator(rawValue: "sessionstorefailurerecovery")
+        )
+        let pairingCode = try #require(
+            ResearchPairingCode(rawValue: "23456789ABCDEFGHJKLMNPQR")
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "r", count: 48)
+        )
+        let sessionsURL = home.appendingPathComponent("sessions", isDirectory: true)
+        let revokedCredential = LockedRevokedCredential()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .pair:
+                guard request.run == run,
+                      request.pairingCode == pairingCode,
+                      FileManager.default.fileExists(atPath: sessionsURL.path) else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                try FileManager.default.removeItem(at: sessionsURL)
+                try Data("occupied".utf8).write(to: sessionsURL)
+                return .credential(credential)
+            case .revokeSession:
+                guard request.run == nil,
+                      request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                revokedCredential.capture(request.credential)
+                return .sessionRevoked(ResearchAgentSessionRevocationReceipt(
+                    sessionID: credential.sessionID
+                ))
+            default:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: home)
+        let result = try cli.runExpectingFailure(
+            ["agent", "pair", "--run", run.rawValue],
+            stdin: Data((pairingCode.rawValue + "\n").utf8),
+            environment: [
+                "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+            ]
+        )
+        let report = try #require(
+            JSONSerialization.jsonObject(with: result.stderr) as? [String: Any]
+        )
+        let recovery = try #require(report["recovery"] as? [String: Any])
+        #expect(report["code"] as? String == "session_store_unavailable")
+        #expect(recovery["safe_to_retry"] as? Bool == false)
+        #expect(recovery["must_reuse_request_identity"] as? Bool == true)
+        #expect(
+            recovery["next_step"] as? String
+                == "copy_new_handoff_and_pair_same_run"
+        )
+        #expect((report["message"] as? String)?.contains(run.rawValue) == true)
+        #expect(!String(decoding: result.stderr, as: UTF8.self).contains(credential.secret))
+        #expect(revokedCredential.value == credential)
+    }
+
+    @Test("A direct-start credential-store failure revokes its Session and retains the Run")
+    func directStartCredentialStoreFailureRevokesNewSession() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = fixture.rootURL.appendingPathComponent(
+            "start-session-store-failure-bridge",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        let run = try #require(
+            ResearchRunLocator(rawValue: "startsessionstorefailure")
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "d", count: 48)
+        )
+        let request = try ResearchAgentStartRequest(
+            actionID: .analyze,
+            target: fixture.analysisTarget.note,
+            sourceRoute: .researcherProvided
+        )
+        let receipt = try ResearchAgentStartReceipt(
+            run: run,
+            actionID: .analyze,
+            target: fixture.analysisTarget,
+            state: .prepared,
+            message: "The Agent-originated Run is active."
+        )
+        let sessionsURL = fixture.homeURL.appendingPathComponent(
+            "sessions",
+            isDirectory: true
+        )
+        let revokedCredential = LockedRevokedCredential()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { bridgeRequest in
+            switch bridgeRequest.operation {
+            case .start:
+                guard bridgeRequest.triptychID == fixture.assignment.id,
+                      bridgeRequest.startRequest == request,
+                      FileManager.default.fileExists(atPath: sessionsURL.path) else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                try FileManager.default.removeItem(at: sessionsURL)
+                try Data("occupied".utf8).write(to: sessionsURL)
+                return .started(receipt: receipt, credential: credential)
+            case .revokeSession:
+                guard bridgeRequest.credential == credential,
+                      bridgeRequest.run == nil else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                revokedCredential.capture(bridgeRequest.credential)
+                return .sessionRevoked(ResearchAgentSessionRevocationReceipt(
+                    sessionID: credential.sessionID
+                ))
+            default:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let result = try cli.runExpectingFailure(
+            [
+                "agent", "start", "--triptych",
+                fixture.assignment.id.uuidString, "--from", "-",
+            ],
+            stdin: try JSONEncoder().encode(request),
+            environment: [
+                "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+            ]
+        )
+        let report = try #require(
+            JSONSerialization.jsonObject(with: result.stderr) as? [String: Any]
+        )
+        let recovery = try #require(report["recovery"] as? [String: Any])
+        #expect(report["code"] as? String == "session_store_unavailable")
+        #expect(
+            recovery["next_step"] as? String
+                == "copy_new_handoff_and_pair_same_run"
+        )
+        #expect((report["message"] as? String)?.contains(run.rawValue) == true)
+        #expect(!String(decoding: result.stderr, as: UTF8.self).contains(
+            credential.secret
+        ))
+        #expect(revokedCredential.value == credential)
+    }
+
 
     @Test("Help, version, doctor, and strict parsing work without a configured Triptych")
     func discoveryAndStrictParsing() throws {
@@ -1504,6 +1710,10 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!rootHelpText.contains(retiredCommand))
         #expect(!rootHelpText.contains("prepare-fidelity"))
         #expect(!rootHelpText.contains("scholium action prepare"))
+        try cli.expectFailure(
+            ["help", "action"],
+            contains: "Unknown help topic 'action'"
+        )
         let resultHelp = try cli.run([
             "help", "agent", "submit-result", "--format", "json",
         ])
@@ -1647,7 +1857,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .context, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .context, .query, .discussionReply, .discussionFinish,
                     .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
@@ -1822,6 +2032,19 @@ private final class LockedCounter: @unchecked Sendable {
     }
 }
 
+private final class LockedRevokedCredential: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: ResearchConnectionCredential?
+
+    var value: ResearchConnectionCredential? {
+        lock.withLock { stored }
+    }
+
+    func capture(_ credential: ResearchConnectionCredential?) {
+        lock.withLock { stored = credential }
+    }
+}
+
 private struct ActionCLIProcess {
     struct Result {
         let stdout: Data
@@ -1911,6 +2134,10 @@ private enum ActionCLIProcessError: Error {
 }
 
 private struct ActionCLIFixture {
+    static let exactReadSource = Data(
+        "\u{FEFF}---\r\ntitle: Exact CLI Read\r\n---\r\n# Exact CLI Read\r\nNo final newline".utf8
+    )
+
     let rootURL: URL
     let homeURL: URL
     let assignment: TriptychAssignment
@@ -1950,6 +2177,10 @@ private struct ActionCLIFixture {
             "---\nsummary: inheritance-handoff map\n---\n# Analysis\n\nA synthetic analysis claim.\n\n+[[Topic]]\n".utf8
         )
             .write(to: analysisURL, options: .atomic)
+        try exactReadSource.write(
+            to: analyses.appendingPathComponent("Exact Read.md"),
+            options: .atomic
+        )
         try Data("# Topic\n\nA synthetic topic.\n".utf8)
             .write(to: topics.appendingPathComponent("Topic.md"), options: .atomic)
         try Data("# Draft Argument\n\nA synthetic work claim.\n".utf8)

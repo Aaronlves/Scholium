@@ -597,6 +597,20 @@ public struct ResearchAgentStartedSession: Hashable, Sendable {
     }
 }
 
+/// Confirms that one authenticated bearer Session was revoked without ending
+/// or otherwise mutating its Research Run.
+public struct ResearchAgentSessionRevocationReceipt: Codable, Hashable, Sendable {
+    public let sessionID: UUID
+
+    public init(sessionID: UUID) {
+        self.sessionID = sessionID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+    }
+}
+
 public enum ResearchAgentStartContractError: LocalizedError, Hashable, Sendable {
     case invalidRequest
     case unsupportedSchemaVersion

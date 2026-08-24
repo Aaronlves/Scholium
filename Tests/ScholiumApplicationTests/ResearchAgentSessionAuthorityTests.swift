@@ -1087,6 +1087,58 @@ struct ResearchAgentSessionAuthorityTests {
             _ = try ResearchAgentSessionAuthority(random: FailingResearchRandomSource())
         }
     }
+
+    @Test("Credential-authenticated revocation removes only the exact Session")
+    func authenticatedSessionRevocationKeepsRunRecoverable() async throws {
+        let authority = try ResearchAgentSessionAuthority(
+            random: FixedResearchRandomSource()
+        )
+        let runID = UUID()
+        let triptychID = UUID()
+        let issued = try await authority.issueAgentSession(
+            runID: runID,
+            triptychID: triptychID,
+            canWrite: true
+        )
+        let wrongCredential = try ResearchConnectionCredential(
+            sessionID: issued.credential.sessionID,
+            secret: String(repeating: "x", count: 48)
+        )
+
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            try await authority.revokeSession(authenticating: wrongCredential)
+        }
+        _ = try await authority.authenticate(
+            issued.credential,
+            run: issued.run,
+            requiresWrite: false
+        )
+
+        try await authority.revokeSession(authenticating: issued.credential)
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await authority.authenticate(
+                issued.credential,
+                run: issued.run,
+                requiresWrite: false
+            )
+        }
+
+        let replacementHandoff = try await authority.issuePairing(
+            runID: runID,
+            triptychID: triptychID,
+            canWrite: true
+        )
+        let replacement = try await authority.exchange(
+            run: replacementHandoff.run,
+            pairingCode: replacementHandoff.pairingCode
+        )
+        let authenticated = try await authority.authenticate(
+            replacement,
+            run: replacementHandoff.run,
+            requiresWrite: false
+        )
+        #expect(authenticated.runID == runID)
+    }
 }
 
 private enum ResearchAgentSessionTestFailure: Error {

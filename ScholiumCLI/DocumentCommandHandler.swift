@@ -7,7 +7,7 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let specification = arguments.first else {
-            throw CLIError.usage("Usage: scholium read <vault>:<relative-path>")
+            throw commandUsageError("read")
         }
         let format = option("--format", in: arguments) ?? "text"
         guard format == "text" || format == "json" else {
@@ -34,8 +34,9 @@ extension ScholiumCLI {
             write(String(decoding: data, as: UTF8.self) + "\n")
             return
         }
+        // Text mode is an exact-source stream so redirection and Agent reads
+        // preserve the authoritative bytes, including final-newline state.
         write(document.rawContent)
-        if !document.rawContent.hasSuffix("\n") { write("\n") }
     }
 
     static func runNote(
@@ -43,16 +44,12 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard let subcommand = arguments.first else {
-            throw CLIError.usage(
-                "Usage: scholium note <create|metadata-read|metadata-set|metadata-remove|replace|move|move-to-trash> ..."
-            )
+            throw commandUsageError("note")
         }
         switch subcommand {
         case "metadata-read":
             guard arguments.count >= 2 else {
-                throw CLIError.usage(
-                    "Usage: scholium note metadata-read <vault>:<path> [--format json]"
-                )
+                throw commandUsageError("note metadata-read")
             }
             let format = option("--format", in: arguments) ?? "json"
             guard format == "json" else {
@@ -74,9 +71,7 @@ extension ScholiumCLI {
             guard arguments.count >= 3,
                   let valuePath = option("--value-from", in: arguments),
                   let expected = option("--expected", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note metadata-set <vault>:<path> <key> --value-from <json-file> --expected <metadata-sha256|absent>"
-                )
+                throw commandUsageError("note metadata-set")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
@@ -105,9 +100,7 @@ extension ScholiumCLI {
         case "metadata-remove":
             guard arguments.count >= 3,
                   let expected = option("--expected", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note metadata-remove <vault>:<path> <key> --expected <metadata-sha256>"
-                )
+                throw commandUsageError("note metadata-remove")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
@@ -137,9 +130,7 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "create":
             guard arguments.count >= 2 else {
-                throw CLIError.usage(
-                    "Usage: scholium note create <vault>:<path> [--body-from <text-file>] [--authored-yaml-from <json-file>] [--analysis-from <json-file>]"
-                )
+                throw commandUsageError("note create")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
@@ -172,9 +163,7 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "import":
             guard arguments.count >= 2, let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note import <vault>:<path> --from <markdown-file>"
-                )
+                throw commandUsageError("note import")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
@@ -190,9 +179,7 @@ extension ScholiumCLI {
             guard arguments.count >= 2,
                   let input = option("--from", in: arguments),
                   let expected = option("--expected", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note replace <vault>:<path> --from <markdown-file> --expected <sha256>"
-                )
+                throw commandUsageError("note replace")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
@@ -212,9 +199,7 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "move":
             guard arguments.count >= 3, let expected = option("--expected", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note move <vault>:<path> <new-relative-path> --expected <sha256>"
-                )
+                throw commandUsageError("note move")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])
@@ -234,9 +219,7 @@ extension ScholiumCLI {
             guard arguments.count >= 2,
                   arguments.contains("--delete-associated-records"),
                   let expected = option("--expected", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256> --delete-associated-records"
-                )
+                throw commandUsageError("note move-to-trash")
             }
             let (vault, path) = try await context.resolveTarget(arguments[1])
             let assignment = try await context.triptych(containing: [vault.id])

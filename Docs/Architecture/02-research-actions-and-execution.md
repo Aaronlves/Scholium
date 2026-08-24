@@ -672,9 +672,17 @@ CLI decodes Contracts, invokes the same Application capabilities, and encodes
 canonical Run/Context/write/result families. Secrets arrive only through
 hidden local input and never shell arguments. CLI owns no eligibility, method
 routing, parser/ranker, write set, repository transaction, Record schema, or
-shell command string. Agent-start target JSON has one versioned snake-case wire
+shell command string. One command specification registry owns both accepted
+paths/options and rendered help; unknown help topics fail nonzero. Text-mode
+`read` emits exact authoritative source without adding a newline. Agent-start
+target JSON has one versioned snake-case wire
 shape. A healthy CLI registry projection resolves UUID or unique-name selectors,
 including UUID-shaped names; when that projection is absent or lacks a UUID,
 the UUID passes directly to Application for authorization. The protected
 credential store creates and validates its current-user-only parent and session
-directories on first use.
+directories before Session creation or Pairing consumption. If the directory
+becomes unavailable after Application returns a credential, the CLI presents
+the complete bearer value once to the bridge's authenticated Session-revocation
+operation. Confirmed revocation leaves the Run active and directs the Agent to
+copy a new handoff and pair that same Run; unknown revocation stops and reports.
+The bridge cannot revoke a Session from its UUID alone.

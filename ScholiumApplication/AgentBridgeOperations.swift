@@ -61,6 +61,20 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         return credential
     }
 
+    public func revokeSession(
+        _ credential: ResearchConnectionCredential
+    ) throws -> ResearchAgentSessionRevocationReceipt {
+        let response = try client.send(try LocalAgentBridgeRequest(
+            operation: .revokeSession,
+            credential: credential
+        ))
+        guard let receipt = response.sessionRevocationReceipt,
+              receipt.sessionID == credential.sessionID else {
+            throw LocalAgentBridgeError.invalidResponse
+        }
+        return receipt
+    }
+
     public func context(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential

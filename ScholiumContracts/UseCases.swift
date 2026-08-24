@@ -157,6 +157,24 @@ public protocol DiscoveryUseCases: Sendable {
     func snapshot() async throws -> WorkspaceDiscoverySnapshot
     func refresh() async throws -> WorkspaceSnapshot
     func search(_ request: SearchRequest) async throws -> SearchResponse
+    func links(
+        for note: VaultQualifiedNoteID,
+        direction: WorkspaceLinkDirection
+    ) async throws -> [LinkGraphEdge]
+    func relationships(
+        for note: VaultQualifiedNoteID
+    ) async throws -> [RelationshipEdge]
+    func linkDiagnostics() async throws -> [LinkGraphDiagnostic]
+    func traceLinks(
+        from source: VaultQualifiedNoteID,
+        to target: VaultQualifiedNoteID,
+        maximumDepth: Int
+    ) async throws -> [[LinkGraphEdge]]
+    func traceRelationships(
+        from source: VaultQualifiedNoteID,
+        to target: VaultQualifiedNoteID,
+        maximumDepth: Int
+    ) async throws -> [RelationshipTrace]
 }
 
 public protocol ResearchRecordUseCases: Sendable {
@@ -428,6 +446,9 @@ public protocol AgentBridgeUseCases: Sendable {
         run: ResearchRunLocator,
         pairingCode: ResearchPairingCode
     ) async throws -> ResearchConnectionCredential
+    func revokeSession(
+        _ credential: ResearchConnectionCredential
+    ) async throws -> ResearchAgentSessionRevocationReceipt
     func context(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential

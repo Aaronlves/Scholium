@@ -14,9 +14,7 @@ extension ScholiumCLI {
         if arguments.first == "preflight-analysis" {
             guard let triptychID,
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent preflight-analysis --triptych <selector> --from <json|->"
-                )
+                throw commandUsageError("agent preflight-analysis")
             }
             let request = try JSONDecoder().decode(
                 ResearchAgentAnalysisCreationPreflightRequest.self,
@@ -32,28 +30,30 @@ extension ScholiumCLI {
         if arguments.first == "start" {
             guard let triptychID,
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent start --triptych <selector> --from <json|->"
-                )
+                throw commandUsageError("agent start")
             }
             let request = try JSONDecoder().decode(
                 ResearchAgentStartRequest.self,
                 from: agentInput(input)
             )
+            try credentialStore.prepare()
             let started = try await operations.start(
                 triptychID: triptychID,
                 request: request
             )
-            try credentialStore.save(started.credential, for: started.receipt.run)
+            try await persistNewCredential(
+                started.credential,
+                for: started.receipt.run,
+                operations: operations,
+                credentialStore: credentialStore
+            )
             try writeAgentJSON(started.receipt)
             return
         }
         if arguments.first == "pair" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent pair --run <locator> (pairing code on standard input)"
-                )
+                throw commandUsageError("agent pair")
             }
             let input = try boundedAgentInput(
                 from: FileHandle.standardInput,
@@ -65,17 +65,21 @@ extension ScholiumCLI {
             guard let code = ResearchPairingCode(rawValue: rawCode) else {
                 throw CLIError.usage("Standard input did not contain one valid Pairing Code.")
             }
+            try credentialStore.prepare()
             let credential = try await operations.pair(run: run, pairingCode: code)
-            try credentialStore.save(credential, for: run)
+            try await persistNewCredential(
+                credential,
+                for: run,
+                operations: operations,
+                credentialStore: credentialStore
+            )
             try writeAgentJSON(AgentPairingReport(run: run))
             return
         }
         if arguments.first == "context" || arguments.first == "reload" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent \(arguments.first ?? "context") --run <locator>"
-                )
+                throw commandUsageError("agent \(arguments.first ?? "context")")
             }
             let credential = try credentialStore.load(for: run)
             let context = try await operations.context(
@@ -89,9 +93,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent query --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent query")
             }
             let data = try agentInput(input)
             let decoder = JSONDecoder()
@@ -110,9 +112,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent discuss-reply --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent discuss-reply")
             }
             let draft = try JSONDecoder().decode(
                 AgentDiscussionReplyDraft.self,
@@ -135,9 +135,7 @@ extension ScholiumCLI {
         if arguments.first == "finish-discussion" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent finish-discussion --run <locator>"
-                )
+                throw commandUsageError("agent finish-discussion")
             }
             let store = credentialStore
             let credential = try store.load(for: run)
@@ -159,9 +157,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent extend-write-set --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent extend-write-set")
             }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
@@ -182,9 +178,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent write --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent write")
             }
             let draft = try JSONDecoder().decode(
                 AgentDocumentWriteDraft.self,
@@ -215,9 +209,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent write-zotero-binding --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent write-zotero-binding")
             }
             let draft = try JSONDecoder().decode(
                 AgentZoteroBindingWriteDraft.self,
@@ -247,9 +239,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent resolve-write-conflict --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent resolve-write-conflict")
             }
             let draft = try JSONDecoder().decode(
                 AgentWriteConflictResolutionDraft.self,
@@ -277,9 +267,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent submit-result --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent submit-result")
             }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
@@ -300,9 +288,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent continue --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent continue")
             }
             let request = try JSONDecoder().decode(
                 ResearchContinuationRequest.self,
@@ -320,9 +306,7 @@ extension ScholiumCLI {
         if arguments.first == "method-context" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent method-context --run <locator>"
-                )
+                throw commandUsageError("agent method-context")
             }
             let credential = try credentialStore.load(for: run)
             let context = try await operations.methodImprovementContext(
@@ -336,9 +320,7 @@ extension ScholiumCLI {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent improve-method --run <locator> --from <json|->"
-                )
+                throw commandUsageError("agent improve-method")
             }
             let draft = try JSONDecoder().decode(
                 ResearchMethodImprovementDraft.self,
@@ -381,9 +363,7 @@ extension ScholiumCLI {
         if arguments.first == "end" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw CLIError.usage(
-                    "Usage: scholium agent end --run <locator>"
-                )
+                throw commandUsageError("agent end")
             }
             let store = credentialStore
             let credential = try store.load(for: run)
@@ -401,9 +381,7 @@ extension ScholiumCLI {
             try writeAgentJSON(receipt)
             return
         }
-        throw CLIError.usage(
-            "Usage: scholium agent preflight-analysis|start|pair|context|reload|query|discuss-reply|finish-discussion|extend-write-set|write|write-zotero-binding|resolve-write-conflict|submit-result|continue|method-context|improve-method|end"
-        )
+        throw commandUsageError("agent")
     }
 
     private static func writeAgentJSON(_ value: some Encodable) throws {
@@ -523,6 +501,55 @@ extension ScholiumCLI {
             String(fingerprint.dropFirst(16).prefix(4)),
             String(fingerprint.dropFirst(20).prefix(12)),
         ].joined(separator: "-"))!
+    }
+
+    private static func persistNewCredential(
+        _ credential: ResearchConnectionCredential,
+        for run: ResearchRunLocator,
+        operations: any AgentBridgeUseCases,
+        credentialStore: AgentSessionCredentialStore
+    ) async throws {
+        do {
+            try credentialStore.save(credential, for: run)
+        } catch {
+            let revocationConfirmed: Bool
+            do {
+                let receipt = try await operations.revokeSession(credential)
+                revocationConfirmed = receipt.sessionID == credential.sessionID
+            } catch {
+                revocationConfirmed = false
+            }
+            throw AgentSessionPersistenceError(
+                run: run,
+                revocationConfirmed: revocationConfirmed
+            )
+        }
+    }
+}
+
+private struct AgentSessionPersistenceError: LocalizedError,
+    AgentCommandErrorCodeProviding
+{
+    let run: ResearchRunLocator
+    let revocationConfirmed: Bool
+
+    var errorDescription: String? {
+        if revocationConfirmed {
+            return "The protected local Session store became unavailable after Session creation. Scholium revoked that Session; Run \(run.rawValue) remains active. Copy a new handoff and pair the same Run."
+        }
+        return "The protected local Session store became unavailable after Session creation, and revocation could not be confirmed for Run \(run.rawValue). Stop and report this state without retrying the request."
+    }
+
+    var agentCommandErrorCode: String { "session_store_unavailable" }
+
+    var agentCommandRecovery: AgentOperationRecovery? {
+        AgentOperationRecovery(
+            safeToRetry: false,
+            mustReuseRequestIdentity: revocationConfirmed,
+            nextStep: revocationConfirmed
+                ? .copyNewHandoffAndPairSameRun
+                : .stopAndReport
+        )
     }
 }
 

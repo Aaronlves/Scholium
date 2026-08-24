@@ -7,6 +7,7 @@ public enum LocalAgentBridgeOperation: String, Codable, Sendable {
     case preflightAnalysisCreation = "preflight_analysis_creation"
     case start
     case pair
+    case revokeSession = "revoke_session"
     case context
     case query
     case discussionReply = "discussion_reply"
@@ -69,7 +70,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 18
+    public static let currentSchemaVersion = 19
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -131,6 +132,15 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode != nil && credential == nil
                 && contextRequest == nil
+                && writeSetIntent == nil && documentWriteIntent == nil
+                && zoteroBindingWriteIntent == nil
+                && conflictResolutionIntent == nil
+                && resultSubmission == nil && continuationRequest == nil
+                && methodImprovementSubmission == nil
+        case .revokeSession:
+            triptychID == nil && startRequest == nil
+                && run == nil && pairingCode == nil && credential != nil
+                && contextRequest == nil && discussionReplyRequest == nil
                 && writeSetIntent == nil && documentWriteIntent == nil
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
@@ -520,7 +530,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
                 mustReuseRequestIdentity: true,
                 nextStep: .retryExactRequest
             )
-        case .discussionFinish, .end:
+        case .discussionFinish, .revokeSession, .end:
             AgentOperationRecovery(
                 safeToRetry: false,
                 mustReuseRequestIdentity: false,
@@ -630,13 +640,14 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 21
+    public static let currentSchemaVersion = 22
 
     public let schemaVersion: Int
     public let correlationID: UUID
     public let analysisCreationPreflight: ResearchAgentAnalysisCreationPreflight?
     public let credential: ResearchConnectionCredential?
     public let startReceipt: ResearchAgentStartReceipt?
+    public let sessionRevocationReceipt: ResearchAgentSessionRevocationReceipt?
     public let context: ResearchAuthenticatedRunContext?
     public let researchContext: ResearchContextResponse?
     public let discussionReplyReceipt: ResearchAgentDiscussionReplyReceipt?
@@ -657,6 +668,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         analysisCreationPreflight: ResearchAgentAnalysisCreationPreflight? = nil,
         credential: ResearchConnectionCredential? = nil,
         startReceipt: ResearchAgentStartReceipt? = nil,
+        sessionRevocationReceipt: ResearchAgentSessionRevocationReceipt? = nil,
         context: ResearchAuthenticatedRunContext? = nil,
         researchContext: ResearchContextResponse? = nil,
         discussionReplyReceipt: ResearchAgentDiscussionReplyReceipt? = nil,
@@ -676,6 +688,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             analysisCreationPreflight != nil,
             credential != nil && startReceipt == nil,
             startReceipt != nil,
+            sessionRevocationReceipt != nil,
             context != nil,
             researchContext != nil,
             discussionReplyReceipt != nil,
@@ -703,6 +716,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         self.analysisCreationPreflight = analysisCreationPreflight
         self.credential = credential
         self.startReceipt = startReceipt
+        self.sessionRevocationReceipt = sessionRevocationReceipt
         self.context = context
         self.researchContext = researchContext
         self.discussionReplyReceipt = discussionReplyReceipt
@@ -729,6 +743,7 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         case correlationID = "correlation_id"
         case analysisCreationPreflight = "analysis_creation_preflight"
         case credential, startReceipt = "start_receipt", context
+        case sessionRevocationReceipt = "session_revocation_receipt"
         case researchContext = "research_context"
         case discussionReplyReceipt = "discussion_reply_receipt"
         case discussionFinishReceipt = "discussion_finish_receipt"
@@ -757,6 +772,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             forKey: .credential
         )
         try container.encodeIfPresent(startReceipt, forKey: .startReceipt)
+        try container.encodeIfPresent(
+            sessionRevocationReceipt,
+            forKey: .sessionRevocationReceipt
+        )
         try container.encodeIfPresent(context, forKey: .context)
         try container.encodeIfPresent(researchContext, forKey: .researchContext)
         try container.encodeIfPresent(
@@ -814,6 +833,10 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             startReceipt: container.decodeIfPresent(
                 ResearchAgentStartReceipt.self,
                 forKey: .startReceipt
+            ),
+            sessionRevocationReceipt: container.decodeIfPresent(
+                ResearchAgentSessionRevocationReceipt.self,
+                forKey: .sessionRevocationReceipt
             ),
             context: container.decodeIfPresent(
                 ResearchAuthenticatedRunContext.self,
@@ -1030,6 +1053,7 @@ public enum LocalAgentBridgeHandlerResult: Sendable {
         credential: ResearchConnectionCredential
     )
     case credential(ResearchConnectionCredential)
+    case sessionRevoked(ResearchAgentSessionRevocationReceipt)
     case context(ResearchAuthenticatedRunContext)
     case researchContext(ResearchContextResponse)
     case discussionReply(ResearchAgentDiscussionReplyReceipt)
@@ -1259,6 +1283,11 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,
                     credential: credential
+                )
+            case .sessionRevoked(let receipt):
+                try LocalAgentBridgeResponse(
+                    correlationID: request.correlationID,
+                    sessionRevocationReceipt: receipt
                 )
             case .context(let context):
                 try LocalAgentBridgeResponse(

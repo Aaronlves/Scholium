@@ -7,12 +7,12 @@ extension ScholiumCLI {
         context: CLIContext
     ) async throws {
         guard arguments.first == "mcp" else {
-            throw CLIError.usage("Usage: scholium zotero mcp <config|status|serve> [--probe] [--format text|json]")
+            throw commandUsageError("zotero mcp")
         }
         let subcommand = arguments.dropFirst().first ?? "status"
         if subcommand == "serve" {
             guard arguments.count == 2 else {
-                throw CLIError.usage("Usage: scholium zotero mcp serve")
+                throw commandUsageError("zotero mcp serve")
             }
             try await serveZoteroMCP(using: context.runtime.zotero)
             return

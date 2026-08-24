@@ -369,6 +369,29 @@ if rg -n --glob '*.swift' 'LinkGraphBuilder\.(build|resolve)' \
   exit 1
 fi
 
+# CLI graph commands resolve selectors and format outputs only. Vault-qualified
+# relationship membership and traversal semantics belong to Application.
+if rg -n --glob '*.swift' \
+  '\bGraphSnapshot\b|\btracePaths[[:space:]]*\(|\brelationshipTracePaths[[:space:]]*\(|subjectNote[[:space:]]*==[[:space:]]*nil' \
+  "${ROOT}/ScholiumCLI"; then
+  echo "Application ownership guard failed: the CLI owns Graph query semantics." >&2
+  exit 1
+fi
+
+# Executable syntax and rendered help derive from one command specification
+# registry; parallel rule/help dictionaries can drift silently.
+if rg -n --glob '*.swift' \
+  '\b(commandRules|commandHelp)[[:space:]]*[:=]' \
+  "${ROOT}/ScholiumCLI"; then
+  echo "CLI command registry guard failed: a parallel rule or help registry returned." >&2
+  exit 1
+fi
+if rg -n --glob '*.swift' --glob '!CLICommandCatalog.swift' \
+  '"Usage: scholium' "${ROOT}/ScholiumCLI"; then
+  echo "CLI command registry guard failed: a handler restates registered usage." >&2
+  exit 1
+fi
+
 # Zotero request handling is composed by ScholiumApplication; the CLI owns
 # only argument parsing, MCP framing, and output formatting.
 if rg -n --glob '*.swift' '\b(ZoteroMCPServer|ZoteroMCPTransportLocator)[[:space:]]*[.(]' \

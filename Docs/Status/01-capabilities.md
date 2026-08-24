@@ -157,7 +157,11 @@
   A healthy CLI registry resolves UUID or unique-name selectors, including a
   UUID-shaped name; if that projection is absent or lacks a UUID, Application
   validates the UUID directly. First use creates and validates the current-user-
-  only CLI home and Session directory. Both routes use the same protected
+  only CLI home and Session directory before Session creation or Pairing. If
+  credential persistence then fails, the CLI asks Application to authenticate
+  and revoke that exact Session while retaining the Run; confirmed cleanup
+  returns a same-Run re-pair route, while unknown cleanup stops and reports.
+  Both routes use the same protected
   Session for subsequent operations. Authenticated Context supplies fillable
   current `next_actions` for all six Actions: Discuss reply/finish, each ready
   bounded write, and every non-Discuss Result submission.
@@ -349,6 +353,11 @@
   destination, and readback.
 - The native app and CLI share Application capabilities. CLI delivery cannot
   bypass source, Action, Session, recovery, or Record authority.
+- Application owns vault-qualified Link/Relationship membership, diagnostics,
+  and bounded Graph traversal. The CLI only resolves selectors and formats
+  results; same relative paths in different vaults cannot enter a fallback
+  join. Its text `read` is exact-source, and one registry supplies command
+  validation plus help; an unknown help topic fails.
 - First-launch Agent preparation and Research Guidance Settings copy the same
   fixed official installation instruction for the independently packaged CLI.
   The App has no CLI installer or machine-status owner and never embeds,
@@ -358,7 +367,11 @@
   The installed CLI now owns explicit `scholium update --check` and
   `scholium update` commands; they verify the official archive, checksum,
   release provenance, architecture, and signature before a recoverable
-  user-local replacement, and never edit PATH or shell profiles.
+  user-local replacement, and never edit PATH or shell profiles. The updater
+  recursively synchronizes and promotes a complete durable transaction before
+  replacement. Updater and packaged installer share one protected lock; the
+  installer uses no-clobber publication for first installation or an exact
+  partial first install only and refuses a complete pair.
 - The first-launch preparation prompt uses a CLI read-only Skill-source
   manifest and deterministic workspace-bootstrap candidate. The manifest
   exposes only the installed Core Protocol and enabled Triptych-managed Method

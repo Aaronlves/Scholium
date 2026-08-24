@@ -13,6 +13,14 @@ struct CLIApplicationDelegationTests {
         #expect(sources.entry.contains("await context.shutdown()"))
         #expect(sources.workspace.contains("handle.discovery.search("))
         #expect(sources.workspace.contains("handle.discovery.snapshot().catalog"))
+        #expect(sources.workspace.contains("handle.discovery.links("))
+        #expect(sources.workspace.contains("handle.discovery.relationships("))
+        #expect(sources.workspace.contains("handle.discovery.linkDiagnostics("))
+        #expect(sources.workspace.contains("handle.discovery.traceLinks("))
+        #expect(sources.workspace.contains("handle.discovery.traceRelationships("))
+        #expect(!sources.workspace.contains("tracePaths("))
+        #expect(!sources.workspace.contains("relationshipTracePaths("))
+        #expect(!sources.workspace.contains("subjectNote == nil"))
         #expect(sources.workspace.contains(
             "context.runtime.skillDiscoverySourceManifest("
         ))
@@ -66,6 +74,8 @@ struct CLIApplicationDelegationTests {
         #expect(!sources.entry.contains(#"case "action":"#))
         #expect(!sources.output.contains("scholium action prepare"))
         #expect(sources.agent.contains("operations.start("))
+        #expect(sources.agent.contains("credentialStore.prepare()"))
+        #expect(sources.agent.contains("operations.revokeSession(credential)"))
         #expect(sources.agent.contains("operations.context("))
         #expect(sources.agent.contains("operations.query("))
         #expect(sources.agent.contains("operations.submitResult("))
@@ -176,7 +186,11 @@ struct CLIApplicationDelegationTests {
         #expect(sources.workspace.contains("let freshnessToken: SearchFreshnessToken"))
         #expect(sources.workspace.contains("encoder.keyEncodingStrategy = .convertToSnakeCase"))
         #expect(sources.output.contains("let capabilities = SearchCapabilities.current"))
-        #expect(sources.output.contains(#""search": searchHelp"#))
+        #expect(sources.catalog.contains("help: searchHelp"))
+        #expect(sources.arguments.contains("commandSpecifications[key]?.rule"))
+        #expect(!sources.arguments.contains("commandRules"))
+        #expect(sources.output.contains("commandSpecifications[key]"))
+        #expect(!sources.output.contains("commandHelp"))
         #expect(!sources.workspace.contains("raw_score"))
         #expect(sources.workspace.contains(
             "String(decoding: try encoder.encode(snapshot), as: UTF8.self) + \"\\n\""
@@ -184,6 +198,8 @@ struct CLIApplicationDelegationTests {
         for key in ["vault_id", "vault_name", "relative_path", "sha256", "content"] {
             #expect(sources.document.contains("\"\(key)\""))
         }
+        #expect(sources.document.contains("write(document.rawContent)"))
+        #expect(!sources.document.contains("write(document.rawContent + \"\\n\")"))
         #expect(sources.document.contains("Created "))
         #expect(sources.document.contains("Replaced "))
         #expect(sources.document.contains("Moved "))
@@ -215,6 +231,8 @@ private struct CLISources {
     let document: String
     let zotero: String
     let agent: String
+    let arguments: String
+    let catalog: String
 
     static func load() throws -> Self {
         let root = URL(fileURLWithPath: #filePath)
@@ -255,6 +273,14 @@ private struct CLISources {
             ),
             agent: String(
                 contentsOf: cli.appendingPathComponent("AgentCommandHandler.swift"),
+                encoding: .utf8
+            ),
+            arguments: String(
+                contentsOf: cli.appendingPathComponent("CLIArguments.swift"),
+                encoding: .utf8
+            ),
+            catalog: String(
+                contentsOf: cli.appendingPathComponent("CLICommandCatalog.swift"),
                 encoding: .utf8
             )
         )

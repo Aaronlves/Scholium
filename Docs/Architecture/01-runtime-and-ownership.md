@@ -258,6 +258,8 @@ than returning its lexical clauses as a broadened substitute. An ordinary
 lexical query remains independently available from its last complete compatible
 Note generation. There is no parallel direct-connection Search presentation;
 explicit relation clauses are the only Search consumer of Graph neighborhoods.
+`DiscoveryOperations` owns vault-qualified Link/Relationship and bounded Graph
+queries; CLI only formats results.
 Privacy-safe measurements record enumerate/read/parse/source-
 projection counts and durations, identity and research-state projection,
 graph construction, dynamic Search projection and synchronization, snapshot
@@ -759,7 +761,8 @@ Packaging emits a sandboxed App archive and an independent CLI archive with
 `scholium`, its Core resource bundle, and a user-local installer. Both carry
 matching provenance. The CLI has no App Sandbox or App Group entitlement. The
 CLI update module owns verified, recoverable self-update and has no App
-authority. The App retains sandboxing, user-selected read-write access,
+authority. It promotes a complete transaction before replacement; the packaged
+installer is first-install-only. The App retains sandboxing, user-selected read-write access,
 app-scoped bookmarks,
 Zotero client access, and loopback server access. One home-relative exception
 exposes only `Library/Application Support/Scholium`; the App has no `.local`

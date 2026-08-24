@@ -316,7 +316,7 @@ scholium version --format json
 scholium doctor --format json
 scholium update --check
 scholium update
-scholium help action
+scholium help agent
 scholium help agent start
 ```
 
@@ -327,13 +327,17 @@ explicit `record list --note <stable-note-uuid>` and `record read <record-uuid>`
 retrieval, and revision-checked Note operations. Record retrieval returns the
 portable Record owner and its exact fingerprint without creating a Note
 dossier. Existing-note mutations require the current SHA-256 returned by
-`scholium read --format json`.
+`scholium read --format json`; text-mode `scholium read` emits the exact source
+bytes without adding a final newline.
 
 `Tools/Scripts/package-app.sh` emits the independent
 `Scholium-CLI-macos.zip`, whose provenance reports the verified architecture.
 Its `install.sh` performs the same
-user-local installation used by the copied Agent instructions without changing
-shell or macOS security configuration.
+user-local first installation used by the copied Agent instructions without
+changing shell or macOS security configuration. It resumes only an exact
+partial copy from the same package and refuses to replace a complete install;
+use `scholium update` for replacement. Installer and updater share one lock,
+so concurrent attempts cannot publish a mixed executable/resource pair.
 An installed CLI can explicitly check the official release with
 `scholium update --check` or install a newer verified release with
 `scholium update`; self-update does not run in the background or edit PATH and

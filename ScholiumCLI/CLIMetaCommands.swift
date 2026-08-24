@@ -17,21 +17,21 @@ extension ScholiumCLI {
         }
 
         if first == "help" || first == "--help" || first == "-h" {
-            let remainder = first == "help" ? Array(arguments.dropFirst()) : Array(arguments.dropFirst())
+            let remainder = Array(arguments.dropFirst())
             try validateMetaArguments(remainder, allowsHelpPath: true)
             let format = try metaFormat(in: remainder)
             let path = helpPath(in: remainder)
-            guard path.count <= 2 else {
-                throw CLIError.usage("Help accepts at most a command and subcommand.")
-            }
-            printHelp(path: path, format: format)
+            try printHelp(path: path, format: format)
             return true
         }
 
         if let helpIndex = arguments.firstIndex(where: { $0 == "--help" || $0 == "-h" }) {
             let format = try metaFormat(in: Array(arguments[(helpIndex + 1)...]))
-            let path = Array(arguments[..<helpIndex].prefix(2))
-            printHelp(path: path, format: format)
+            let commandArguments = Array(arguments[..<helpIndex])
+            let path = commandSpecificationKey(matching: commandArguments)?
+                .split(separator: " ").map(String.init)
+                ?? commandArguments
+            try printHelp(path: path, format: format)
             return true
         }
         return false
@@ -41,7 +41,6 @@ extension ScholiumCLI {
         _ arguments: [String],
         allowsHelpPath: Bool
     ) throws {
-        var positionalCount = 0
         var index = 0
         while index < arguments.count {
             let token = arguments[index]
@@ -53,14 +52,10 @@ extension ScholiumCLI {
             } else if token.hasPrefix("-") {
                 throw CLIError.usage("Unknown option '\(token)'.")
             } else if allowsHelpPath {
-                positionalCount += 1
                 index += 1
             } else {
                 throw CLIError.usage("Unexpected argument '\(token)'.")
             }
-        }
-        if positionalCount > 2 {
-            throw CLIError.usage("Help accepts at most a command and subcommand.")
         }
     }
 

@@ -17,7 +17,7 @@ struct ScholiumCLI {
 
     private static func run(_ arguments: [String]) async throws {
         guard let command = arguments.first else {
-            printHelp()
+            try printHelp()
             return
         }
 

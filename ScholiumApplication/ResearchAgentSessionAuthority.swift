@@ -658,6 +658,24 @@ actor ResearchAgentSessionAuthority {
         }
     }
 
+    /// Authenticates the complete bearer value before revoking its exact
+    /// Session. A delivery adapter must never be able to revoke by UUID alone.
+    func revokeSession(
+        authenticating credential: ResearchConnectionCredential,
+        userID: uid_t = geteuid()
+    ) throws {
+        guard let session = sessions[credential.sessionID],
+              session.userID == userID,
+              Self.constantTimeEqual(session.generationDigest, generationDigest),
+              Self.constantTimeEqual(
+                session.secretDigest,
+                Self.digest(Data(credential.secret.utf8))
+              ) else {
+            throw ResearchAgentSessionError.sessionRejected
+        }
+        revokeSession(credential.sessionID)
+    }
+
     private func remove(locator: ResearchRunLocator, fromSession sessionID: UUID) {
         guard var session = sessions[sessionID] else { return }
         session.runLocators.remove(locator)

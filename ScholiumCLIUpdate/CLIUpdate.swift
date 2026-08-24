@@ -149,16 +149,27 @@ public struct CLIUpdateEngine: Sendable {
     public typealias ArchitectureInspector = @Sendable (URL) throws -> Set<String>
     public typealias SignatureVerifier = @Sendable (URL) throws -> Void
 
+    enum InstallationStage: Hashable, Sendable {
+        case stagedContentSynchronized
+        case transactionPromoted
+        case executableReplaced
+        case bundleReplaced
+        case installedContentSynchronized
+        case committedManifestWritten
+    }
+
     private let fetchResource: ResourceFetcher
     private let extractArchive: ArchiveExtractor
     private let inspectArchitectures: ArchitectureInspector
     private let verifySignature: SignatureVerifier
+    private let installationFault: @Sendable (InstallationStage) throws -> Void
 
     public init() {
         self.fetchResource = Self.fetchOfficialResource
         self.extractArchive = Self.extractOfficialArchive
         self.inspectArchitectures = Self.detectArchitectures
         self.verifySignature = Self.verifyCodeSignature
+        self.installationFault = { _ in }
     }
 
     public init(
@@ -171,6 +182,21 @@ public struct CLIUpdateEngine: Sendable {
         self.extractArchive = extractArchive
         self.inspectArchitectures = inspectArchitectures
         self.verifySignature = verifySignature
+        self.installationFault = { _ in }
+    }
+
+    init(
+        fetchResource: @escaping ResourceFetcher,
+        extractArchive: @escaping ArchiveExtractor,
+        inspectArchitectures: @escaping ArchitectureInspector,
+        verifySignature: @escaping SignatureVerifier,
+        installationFault: @escaping @Sendable (InstallationStage) throws -> Void
+    ) {
+        self.fetchResource = fetchResource
+        self.extractArchive = extractArchive
+        self.inspectArchitectures = inspectArchitectures
+        self.verifySignature = verifySignature
+        self.installationFault = installationFault
     }
 
     public func run(
@@ -273,7 +299,7 @@ public struct CLIUpdateEngine: Sendable {
                       latest.bundleFingerprint == current.bundleFingerprint else {
                     throw CLIUpdateError.concurrentUpdate
                 }
-                try Self.install(
+                try install(
                     candidate: candidate,
                     current: latest,
                     root: root
@@ -302,10 +328,26 @@ public struct CLIUpdateEngine: Sendable {
             options: []
         )
 
-        var seen: Set<String> = []
-        for transaction in children where transaction.lastPathComponent.hasPrefix(transactionPrefix) {
-            guard seen.insert(transaction.path).inserted else { continue }
-            let values = try transaction.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        for staging in children where staging.lastPathComponent.hasPrefix(stagingPrefix) {
+            let values = try staging.resourceValues(
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            )
+            guard values.isDirectory == true, values.isSymbolicLink != true else {
+                throw CLIUpdateError.recoveryConflict(
+                    "staging path is not a real directory: \(staging.path)"
+                )
+            }
+            // A staging directory has never been promoted to an authoritative
+            // transaction, so no root item could have been replaced from it.
+            try fileManager.removeItem(at: staging)
+            try synchronizeDirectory(root)
+        }
+
+        for transaction in children
+            where transaction.lastPathComponent.hasPrefix(transactionPrefix) {
+            let values = try transaction.resourceValues(
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            )
             guard values.isDirectory == true, values.isSymbolicLink != true else {
                 throw CLIUpdateError.recoveryConflict(
                     "transaction path is not a real directory: \(transaction.path)"
@@ -377,7 +419,9 @@ public struct CLIUpdateEngine: Sendable {
 
     private static let executableName = "scholium"
     private static let bundleName = "Scholium_ScholiumCore.bundle"
-    private static let transactionPrefix = ".scholium-cli-update-"
+    private static let stagingPrefix = ".scholium-cli-update-staging-"
+    private static let transactionPrefix = ".scholium-cli-update-transaction-"
+    private static let installationLockName = ".scholium-cli-install.lock"
     private static let maximumArchiveBytes = 256 * 1024 * 1024
     private static let maximumChecksumBytes = 64 * 1024
 
@@ -446,38 +490,49 @@ public struct CLIUpdateEngine: Sendable {
         )
     }
 
-    private static func install(
+    private func install(
         candidate: Candidate,
         current: InstallationSnapshot,
         root: URL
     ) throws {
         let fileManager = FileManager.default
-        let transaction = root.appendingPathComponent(
-            transactionPrefix + UUID().uuidString.lowercased(),
+        let identifier = UUID().uuidString.lowercased()
+        let staging = root.appendingPathComponent(
+            Self.stagingPrefix + identifier,
             isDirectory: true
         )
-        let backup = transaction.appendingPathComponent("backup", isDirectory: true)
-        let incoming = transaction.appendingPathComponent("incoming", isDirectory: true)
-        var preparedManifestWritten = false
+        let transaction = root.appendingPathComponent(
+            Self.transactionPrefix + identifier,
+            isDirectory: true
+        )
+        let stagingBackup = staging.appendingPathComponent("backup", isDirectory: true)
+        let stagingIncoming = staging.appendingPathComponent("incoming", isDirectory: true)
+        var transactionPromoted = false
         var committedManifestWritten = false
         do {
-            try fileManager.createDirectory(at: backup, withIntermediateDirectories: true)
-            try fileManager.createDirectory(at: incoming, withIntermediateDirectories: true)
+            try fileManager.createDirectory(
+                at: stagingBackup,
+                withIntermediateDirectories: true
+            )
+            try fileManager.createDirectory(
+                at: stagingIncoming,
+                withIntermediateDirectories: true
+            )
             try fileManager.copyItem(
                 at: current.executable,
-                to: backup.appendingPathComponent(executableName)
+                to: stagingBackup.appendingPathComponent(Self.executableName)
             )
             try fileManager.copyItem(
                 at: current.bundle,
-                to: backup.appendingPathComponent(bundleName, isDirectory: true)
+                to: stagingBackup.appendingPathComponent(Self.bundleName, isDirectory: true)
             )
             try fileManager.copyItem(
                 at: candidate.executable,
-                to: incoming.appendingPathComponent(executableName)
+                to: stagingIncoming.appendingPathComponent(Self.executableName)
             )
             try fileManager.copyItem(
                 at: candidate.bundle,
-                to: incoming.appendingPathComponent(bundleName, isDirectory: true)
+                to: stagingIncoming.appendingPathComponent(Self.bundleName, isDirectory: true)
             )
 
             var manifest = InstallationManifest(
@@ -487,26 +542,50 @@ public struct CLIUpdateEngine: Sendable {
                 newExecutableFingerprint: candidate.executableFingerprint,
                 newBundleFingerprint: candidate.bundleFingerprint
             )
-            try writeManifest(manifest, transaction: transaction)
-            preparedManifestWritten = true
+            try Self.synchronizeTree(stagingBackup)
+            try Self.synchronizeTree(stagingIncoming)
+            try Self.writeManifest(manifest, transaction: staging)
+            try installationFault(.stagedContentSynchronized)
 
-            try replace(
-                at: root.appendingPathComponent(executableName),
-                with: incoming.appendingPathComponent(executableName)
+            // Promotion is the cutover point: before this same-directory
+            // rename, recovery may discard staging because root is untouched;
+            // after it, a complete manifest and both backups are present.
+            try fileManager.moveItem(at: staging, to: transaction)
+            transactionPromoted = true
+            try Self.synchronizeDirectory(root)
+            try installationFault(.transactionPromoted)
+
+            let incoming = transaction.appendingPathComponent(
+                "incoming",
+                isDirectory: true
             )
-            try replace(
-                at: root.appendingPathComponent(bundleName, isDirectory: true),
-                with: incoming.appendingPathComponent(bundleName, isDirectory: true)
+
+            try Self.replace(
+                at: root.appendingPathComponent(Self.executableName),
+                with: incoming.appendingPathComponent(Self.executableName)
             )
+            try installationFault(.executableReplaced)
+            try Self.replace(
+                at: root.appendingPathComponent(Self.bundleName, isDirectory: true),
+                with: incoming.appendingPathComponent(Self.bundleName, isDirectory: true)
+            )
+            try installationFault(.bundleReplaced)
+
+            try Self.synchronizeFile(root.appendingPathComponent(Self.executableName))
+            try Self.synchronizeTree(
+                root.appendingPathComponent(Self.bundleName, isDirectory: true)
+            )
+            try Self.synchronizeDirectory(root)
+            try installationFault(.installedContentSynchronized)
 
             let installed = try InstallationSnapshot(
-                executable: root.appendingPathComponent(executableName),
-                bundle: root.appendingPathComponent(bundleName, isDirectory: true),
-                executableFingerprint: fileFingerprint(
-                    root.appendingPathComponent(executableName)
+                executable: root.appendingPathComponent(Self.executableName),
+                bundle: root.appendingPathComponent(Self.bundleName, isDirectory: true),
+                executableFingerprint: Self.fileFingerprint(
+                    root.appendingPathComponent(Self.executableName)
                 ),
-                bundleFingerprint: directoryFingerprint(
-                    root.appendingPathComponent(bundleName, isDirectory: true)
+                bundleFingerprint: Self.directoryFingerprint(
+                    root.appendingPathComponent(Self.bundleName, isDirectory: true)
                 ),
                 architectures: current.architectures
             )
@@ -517,21 +596,23 @@ public struct CLIUpdateEngine: Sendable {
                 )
             }
             manifest.state = .committed
-            try writeManifest(manifest, transaction: transaction)
+            try Self.writeManifest(manifest, transaction: transaction)
             committedManifestWritten = true
+            try installationFault(.committedManifestWritten)
             try fileManager.removeItem(at: transaction)
+            try Self.synchronizeDirectory(root)
         } catch let error as CLIUpdateError {
             if committedManifestWritten {
                 throw CLIUpdateError.replacement(
-                    "the update committed, but its recovery transaction could not be removed at (transaction.path): (error.localizedDescription)"
+                    "the update committed, but recovery transaction cleanup did not complete at \(transaction.path): \(error.localizedDescription)"
                 )
             }
-            if !preparedManifestWritten {
-                try? fileManager.removeItem(at: transaction)
+            if !transactionPromoted {
+                try? fileManager.removeItem(at: staging)
                 throw error
             }
             do {
-                try restore(transaction: transaction, root: root)
+                try Self.restore(transaction: transaction, root: root)
             } catch {
                 throw CLIUpdateError.replacement(
                     "\(error.localizedDescription); recovery transaction retained at \(transaction.path)"
@@ -541,15 +622,15 @@ public struct CLIUpdateEngine: Sendable {
         } catch {
             if committedManifestWritten {
                 throw CLIUpdateError.replacement(
-                    "the update committed, but its recovery transaction could not be removed at (transaction.path): (error.localizedDescription)"
+                    "the update committed, but recovery transaction cleanup did not complete at \(transaction.path): \(error.localizedDescription)"
                 )
             }
-            if !preparedManifestWritten {
-                try? fileManager.removeItem(at: transaction)
+            if !transactionPromoted {
+                try? fileManager.removeItem(at: staging)
                 throw CLIUpdateError.replacement(error.localizedDescription)
             }
             do {
-                try restore(transaction: transaction, root: root)
+                try Self.restore(transaction: transaction, root: root)
             } catch {
                 throw CLIUpdateError.replacement(
                     "\(error.localizedDescription); recovery transaction retained at \(transaction.path)"
@@ -572,13 +653,16 @@ public struct CLIUpdateEngine: Sendable {
         switch (manifest.state, isOld, isNew) {
         case (.committed, _, true):
             try FileManager.default.removeItem(at: transaction)
+            try synchronizeDirectory(root)
         case (.prepared, _, true):
             var committed = manifest
             committed.state = .committed
             try writeManifest(committed, transaction: transaction)
             try FileManager.default.removeItem(at: transaction)
+            try synchronizeDirectory(root)
         case (_, true, _):
             try FileManager.default.removeItem(at: transaction)
+            try synchronizeDirectory(root)
         default:
             try restore(transaction: transaction, root: root)
         }
@@ -598,6 +682,11 @@ public struct CLIUpdateEngine: Sendable {
             to: root.appendingPathComponent(bundleName, isDirectory: true),
             transaction: transaction
         )
+        try synchronizeFile(root.appendingPathComponent(executableName))
+        try synchronizeTree(
+            root.appendingPathComponent(bundleName, isDirectory: true)
+        )
+        try synchronizeDirectory(root)
         let current = try currentFingerprints(
             executable: root.appendingPathComponent(executableName),
             bundle: root.appendingPathComponent(bundleName, isDirectory: true)
@@ -609,6 +698,7 @@ public struct CLIUpdateEngine: Sendable {
             )
         }
         try FileManager.default.removeItem(at: transaction)
+        try synchronizeDirectory(root)
     }
 
     private static func restoreItem(
@@ -657,6 +747,93 @@ public struct CLIUpdateEngine: Sendable {
             to: transaction.appendingPathComponent("manifest.json"),
             options: .atomic
         )
+        try synchronizeFile(
+            transaction.appendingPathComponent("manifest.json")
+        )
+        try synchronizeDirectory(transaction)
+    }
+
+    private static func synchronizeFile(_ url: URL) throws {
+        try synchronize(
+            url,
+            flags: O_RDONLY | O_NOFOLLOW,
+            description: "manifest file"
+        )
+    }
+
+    private static func synchronizeDirectory(_ url: URL) throws {
+        try synchronize(
+            url,
+            flags: O_RDONLY | O_DIRECTORY | O_NOFOLLOW,
+            description: "update directory"
+        )
+    }
+
+    private static func synchronizeTree(_ root: URL) throws {
+        let rootValues = try root.resourceValues(
+            forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
+        guard rootValues.isDirectory == true,
+              rootValues.isSymbolicLink != true,
+              let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [
+                    .isDirectoryKey,
+                    .isRegularFileKey,
+                    .isSymbolicLinkKey,
+                ],
+                options: []
+              ) else {
+            throw CLIUpdateError.replacement(
+                "could not enumerate recovery content at \(root.path)"
+            )
+        }
+        var directories = [root]
+        for case let item as URL in enumerator {
+            let values = try item.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isRegularFileKey,
+                .isSymbolicLinkKey,
+            ])
+            guard values.isSymbolicLink != true else {
+                throw CLIUpdateError.replacement(
+                    "recovery content contains a symbolic link: \(item.path)"
+                )
+            }
+            if values.isDirectory == true {
+                directories.append(item)
+            } else if values.isRegularFile == true {
+                try synchronizeFile(item)
+            } else {
+                throw CLIUpdateError.replacement(
+                    "recovery content contains an unsupported entry: \(item.path)"
+                )
+            }
+        }
+        for directory in directories.sorted(by: { left, right in
+            left.pathComponents.count > right.pathComponents.count
+        }) {
+            try synchronizeDirectory(directory)
+        }
+    }
+
+    private static func synchronize(
+        _ url: URL,
+        flags: Int32,
+        description: String
+    ) throws {
+        let descriptor = Darwin.open(url.path, flags)
+        guard descriptor >= 0 else {
+            throw CLIUpdateError.replacement(
+                "could not open the \(description) for durable recovery (errno \(errno))"
+            )
+        }
+        defer { Darwin.close(descriptor) }
+        guard fsync(descriptor) == 0 else {
+            throw CLIUpdateError.replacement(
+                "could not synchronize the \(description) for durable recovery (errno \(errno))"
+            )
+        }
     }
 
     private static func readManifest(
@@ -1062,7 +1239,7 @@ public struct CLIUpdateEngine: Sendable {
         return try directoryFingerprint(url)
     }
 
-    private static func fileFingerprint(_ url: URL) throws -> String {
+    static func fileFingerprint(_ url: URL) throws -> String {
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         guard values.isRegularFile == true, values.isSymbolicLink != true else {
             throw CLIUpdateError.invalidInstallation("not a regular file: \(url.path)")
@@ -1070,7 +1247,7 @@ public struct CLIUpdateEngine: Sendable {
         return sha256Hex(try Data(contentsOf: url))
     }
 
-    private static func directoryFingerprint(_ root: URL) throws -> String {
+    static func directoryFingerprint(_ root: URL) throws -> String {
         try validateDirectory(root)
         try validateTree(root)
         guard let enumerator = FileManager.default.enumerator(
@@ -1116,13 +1293,25 @@ public struct CLIUpdateEngine: Sendable {
         _ body: () throws -> T
     ) throws -> T {
         try validateDirectory(root)
-        let descriptor = root.path.withCString { Darwin.open($0, O_RDONLY) }
+        let lock = root.appendingPathComponent(installationLockName)
+        let descriptor = lock.path.withCString {
+            Darwin.open($0, O_RDWR | O_CREAT | O_NOFOLLOW, 0o600)
+        }
         guard descriptor >= 0 else {
             throw CLIUpdateError.invalidInstallation(
-                "could not open the installation directory for locking"
+                "could not open the shared installation lock"
             )
         }
         defer { _ = Darwin.close(descriptor) }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0,
+              info.st_uid == geteuid(),
+              (info.st_mode & S_IFMT) == S_IFREG,
+              (info.st_mode & 0o077) == 0 else {
+            throw CLIUpdateError.invalidInstallation(
+                "the shared installation lock is not a protected current-user file"
+            )
+        }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
             throw CLIUpdateError.concurrentUpdate
         }
