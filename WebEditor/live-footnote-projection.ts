@@ -5,13 +5,15 @@ import type {
   FootnoteReferencePresentation,
 } from "./footnote-presentation";
 import {localizedTemplate} from "./localization";
-import {activeProjectionSignature, selectionIntersectsProjection} from "./projection-update";
-import type {ProjectionSourceRange} from "./projection-update";
-import {transactionChangedSyntaxTree} from "./projection-update";
+import {
+  activeProjectionSignature,
+  selectionIntersectsProjection,
+  transactionChangedSyntaxTree,
+  type ProjectionSourceRange,
+} from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
 import type {LiveSelectionController} from "./live-selection";
 import type {ProjectedWidgetRegistry} from "./projected-widget-registry";
-import type {LiveWidgetReuseCounts} from "./live-structured-block-projections";
 
 interface LiveFootnoteReferenceState {
   readonly decorations: DecorationSet;
@@ -24,7 +26,7 @@ export function createLiveFootnoteProjection(options: {
   selection: LiveSelectionController;
   projections: LiveProjectionIndexController;
   widgets: ProjectedWidgetRegistry;
-  reuseCounts: LiveWidgetReuseCounts;
+  reuseCounts: {footnote: number};
 }): {extension: Extension} {
   class FootnoteReferenceWidget extends WidgetType {
     constructor(readonly reference: FootnoteReferencePresentation) { super(); }

@@ -40,18 +40,12 @@ interface LiveCalloutProjectionState extends LiveBlockProjectionState {
   readonly active: boolean;
 }
 
-export interface LiveWidgetReuseCounts {
-  table: number;
-  callout: number;
-  footnote: number;
-}
-
 export function createLiveStructuredBlockProjections(options: {
   selection: LiveSelectionController;
   projections: LiveProjectionIndexController;
   widgets: ProjectedWidgetRegistry;
   editingDialect(): MarkdownEditingDialect | null;
-  reuseCounts: LiveWidgetReuseCounts;
+  reuseCounts: {table: number; callout: number};
 }): {
   tableExtension: Extension;
   rawHTMLExtension: Extension;

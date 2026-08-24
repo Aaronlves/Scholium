@@ -4305,7 +4305,7 @@ struct FrontendArchitectureTests {
             "liveStructuredBlockProjections.calloutExtension",
             "liveFootnoteProjection.extension",
             "livePreview",
-            "liveProjectionNavigationKeymap",
+            "liveProjectionNavigation.extension",
             "selectionActions.extension",
             "previewPopover.extension",
         ] {
@@ -4461,7 +4461,7 @@ struct FrontendArchitectureTests {
 
         let structuralKeymap = try section(
             from: "const structuralInteractionKeymap = keymap.of",
-            to: "function revealProjectedBlockForVerticalMove"
+            to: "const liveProjectionNavigation = createLiveProjectionNavigation"
         )
         #expect(structuralKeymap.contains("continueList(view.state.doc"))
         #expect(structuralKeymap.contains("tableTabAction(view.state.doc"))

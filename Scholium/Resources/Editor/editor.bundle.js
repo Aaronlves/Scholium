@@ -34285,6 +34285,438 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     return { extension: field };
   }
 
+  // live-projection-navigation.ts
+  function createLiveProjectionNavigation(options) {
+    function blockRanges(state) {
+      return [
+        ...options.projections.index(state).blockRanges,
+        ...options.mermaidPresentations(state).map(({ from, to }) => ({
+          from,
+          to,
+          kind: "mermaid"
+        }))
+      ].sort((left, right) => left.from - right.from || left.to - right.to);
+    }
+    function horizontalRangeAt(state, offset, forward) {
+      const index = options.projections.index(state);
+      const boundary = forward ? "start" : "end";
+      const blockRange = projectionRangeAtBoundary(index.blockRanges, offset, boundary);
+      const listPrefixRange = projectionRangeAtBoundary(
+        index.listPrefixRanges,
+        offset,
+        boundary
+      );
+      const mermaidRange = projectionRangeAtBoundary(
+        options.mermaidPresentations(state),
+        offset,
+        boundary
+      );
+      const inlineLinkRange = projectionRangeAtBoundary(
+        index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink" || candidate.kind === "vectorLink"),
+        offset,
+        boundary
+      );
+      const candidates = [
+        blockRange,
+        listPrefixRange ? { ...listPrefixRange, kind: "listPrefix" } : null,
+        mermaidRange ? { ...mermaidRange, kind: "mermaid" } : null,
+        inlineLinkRange
+      ].filter((candidate) => candidate !== null);
+      return candidates.sort(
+        (left, right) => left.from - right.from || left.to - right.to
+      )[0] ?? null;
+    }
+    function revealForVerticalMove(view, forward, extend) {
+      if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+      const selection = view.state.selection.main;
+      const moved = view.moveVertically(selection, forward);
+      const crossed = projectionRangesIntersecting(
+        blockRanges(view.state),
+        Math.min(selection.head, moved.head),
+        Math.max(selection.head, moved.head) + 1
+      ).filter((candidate) => {
+        const alreadyActive = view.state.selection.ranges.some((range) => candidate.kind === "callout" ? selectionActivatesCallout(range, candidate) : selectionIntersectsProjection(range, candidate));
+        if (alreadyActive) return false;
+        return forward ? selection.head <= candidate.from && moved.head >= candidate.to : selection.head >= candidate.to && moved.head <= candidate.from;
+      });
+      const projection = forward ? crossed[0] : crossed.at(-1);
+      if (!projection) return false;
+      const isCallout = projection.kind === "callout";
+      const sourceHead = forward ? projection.from : isCallout ? projection.to : Math.max(projection.from, projection.to - 1);
+      const originalCoords = view.coordsAtPos(selection.head);
+      const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
+      const anchor = extend ? selection.anchor : sourceHead;
+      view.dispatch({
+        selection: { anchor, head: sourceHead },
+        scrollIntoView: true
+      });
+      if (isCallout) {
+        view.requestMeasure();
+        return true;
+      }
+      view.requestMeasure({
+        read: () => {
+          const line = view.state.doc.lineAt(sourceHead);
+          const lineEdge = forward ? line.from : line.to;
+          const coords = view.coordsAtPos(lineEdge);
+          if (!coords) return sourceHead;
+          return view.posAtCoords({
+            x: desiredX,
+            y: (coords.top + coords.bottom) / 2
+          }) ?? sourceHead;
+        },
+        write: (measuredHead) => {
+          if (view.state.selection.main.head !== sourceHead) return;
+          view.dispatch({
+            selection: { anchor, head: measuredHead },
+            scrollIntoView: true
+          });
+        }
+      });
+      return true;
+    }
+    function revealForHorizontalMove(view, forward, extend) {
+      if (options.mode(view.state) !== "livePreview" || view.composing) return false;
+      const selection = view.state.selection.main;
+      const projection = horizontalRangeAt(view.state, selection.head, forward);
+      if (!projection) return false;
+      const alreadyActive = projection.kind === "callout" ? selectionActivatesCallout(selection, projection) : selectionIntersectsProjection(selection, projection);
+      const isProjectedLink = projection.kind === "wikilink" || projection.kind === "vectorLink";
+      if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
+        return false;
+      }
+      const head = forward ? isProjectedLink ? projection.to : projection.from : projection.kind === "callout" ? projection.to : Math.max(projection.from, projection.to - 1);
+      view.dispatch({
+        selection: { anchor: extend ? selection.anchor : head, head },
+        scrollIntoView: true
+      });
+      return true;
+    }
+    return {
+      extension: keymap.of([
+        { key: "ArrowDown", run: (view) => revealForVerticalMove(view, true, false) },
+        { key: "Shift-ArrowDown", run: (view) => revealForVerticalMove(view, true, true) },
+        { key: "ArrowUp", run: (view) => revealForVerticalMove(view, false, false) },
+        { key: "Shift-ArrowUp", run: (view) => revealForVerticalMove(view, false, true) },
+        { key: "ArrowRight", run: (view) => revealForHorizontalMove(view, true, false) },
+        { key: "Shift-ArrowRight", run: (view) => revealForHorizontalMove(view, true, true) },
+        { key: "ArrowLeft", run: (view) => revealForHorizontalMove(view, false, false) },
+        { key: "Shift-ArrowLeft", run: (view) => revealForHorizontalMove(view, false, true) }
+      ])
+    };
+  }
+
+  // live-inline-widgets.ts
+  var legacyRelationshipPredicates = /* @__PURE__ */ new Set([
+    "supports",
+    "contradicts",
+    "extends",
+    "refines",
+    "incompatible_with",
+    "cites",
+    "see_also",
+    "connected",
+    "answers",
+    "subquestion_of",
+    "premise_of",
+    "concludes",
+    "assumes",
+    "pressures",
+    "uses_concept",
+    "has_commitment",
+    "targets",
+    "objects_to",
+    "rebuts",
+    "undercuts",
+    "replies_to",
+    "concedes",
+    "depends_on",
+    "supersedes",
+    "qualifies",
+    "elicits",
+    "tests",
+    "illustrates",
+    "counterexample_to",
+    "evidence_for",
+    "attributes_to",
+    "interprets",
+    "derived_from",
+    "is_case_for",
+    "is_source_for",
+    "is_background_for",
+    "is_not_evidence_for"
+  ]);
+  function isLegacyRelationshipPredicate(raw) {
+    const normalized2 = raw.trim().toLowerCase().replaceAll("-", "_");
+    if (legacyRelationshipPredicates.has(normalized2)) return true;
+    return [
+      "seealso",
+      "objectsto",
+      "repliesto",
+      "dependson",
+      "iscasefor",
+      "issourcefor",
+      "isbackgroundfor",
+      "isnotevidencefor"
+    ].includes(normalized2);
+  }
+  function createLiveInlineWidgets(options) {
+    function listIndent(depth2) {
+      if (depth2 <= 0) return "";
+      return `calc(${Array.from(
+        { length: depth2 },
+        () => "var(--scholium-list-indent)"
+      ).join(" + ")})`;
+    }
+    class ListMarkerWidget extends WidgetType {
+      constructor(value) {
+        super();
+        this.value = value;
+      }
+      value;
+      eq(other) {
+        return other.value.marker === this.value.marker && other.value.markerFrom === this.value.markerFrom && other.value.markerTo === this.value.markerTo && other.value.ordered === this.value.ordered && other.value.depth === this.value.depth && other.value.task === this.value.task && other.value.taskMarkerFrom === this.value.taskMarkerFrom && other.value.taskMarkerTo === this.value.taskMarkerTo && other.value.taskChecked === this.value.taskChecked;
+      }
+      toDOM(view) {
+        const span = document.createElement("span");
+        span.className = [
+          "cm-live-list-marker",
+          this.value.ordered ? "cm-live-list-marker-ordered" : "cm-live-list-marker-unordered",
+          this.value.task ? "cm-live-list-marker-task" : ""
+        ].filter(Boolean).join(" ");
+        const indent = listIndent(this.value.depth);
+        if (indent) span.style.marginInlineStart = indent;
+        const projected = this.value.task ? this.taskCheckbox(view) : document.createElement("span");
+        projected.classList.add("cm-live-list-marker-projected");
+        if (!this.value.task) {
+          projected.textContent = this.value.ordered ? this.value.marker : this.value.depth > 0 ? "\u25E6" : "\u2022";
+          span.addEventListener("mousedown", (event) => {
+            if (event.button !== 0 || view.composing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (this.value.markerFrom < 0 || this.value.markerTo <= this.value.markerFrom || this.value.markerTo > view.state.doc.length) return;
+            view.dispatch({
+              selection: { anchor: this.value.markerFrom },
+              scrollIntoView: true
+            });
+            view.focus();
+          });
+        }
+        span.append(projected);
+        if (!this.value.task) span.setAttribute("aria-hidden", "true");
+        return span;
+      }
+      taskCheckbox(view) {
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "cm-live-task-checkbox";
+        checkbox.checked = this.value.taskChecked;
+        checkbox.tabIndex = -1;
+        checkbox.setAttribute("aria-label", localized("Task item"));
+        checkbox.addEventListener("mousedown", (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        checkbox.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.toggleTask(view);
+        });
+        return checkbox;
+      }
+      toggleTask(view) {
+        const { taskMarkerFrom, taskMarkerTo } = this.value;
+        if (view.composing || taskMarkerFrom === null || taskMarkerTo === null) return;
+        const current = view.state.doc.sliceString(taskMarkerFrom, taskMarkerTo);
+        const insert2 = toggledTaskMarker(current);
+        if (insert2 === null) return;
+        view.dispatch({
+          changes: { from: taskMarkerFrom, to: taskMarkerTo, insert: insert2 },
+          annotations: Transaction.userEvent.of("input.scholium.toggleTask")
+        });
+        options.didToggleTask();
+        view.focus();
+      }
+      ignoreEvent(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(".cm-live-task-checkbox")) {
+          return !(event instanceof MouseEvent) || event.button === 0;
+        }
+        if (target?.closest(".cm-live-list-marker") && event instanceof MouseEvent) {
+          return event.button === 0;
+        }
+        return false;
+      }
+    }
+    class VectorLinkIconWidget extends WidgetType {
+      constructor(kind) {
+        super();
+        this.kind = kind;
+      }
+      kind;
+      eq(other) {
+        return other.kind === this.kind;
+      }
+      toDOM() {
+        const semantics = vectorLinkSemantics[this.kind];
+        const span = systemSymbolElement(
+          semantics.symbol,
+          `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`
+        );
+        span.title = semantics.label;
+        return span;
+      }
+      ignoreEvent() {
+        return false;
+      }
+    }
+    class EmbeddedNoteWidget extends WidgetType {
+      constructor(preview, target, sourceCaret) {
+        super();
+        this.preview = preview;
+        this.target = target;
+        this.sourceCaret = sourceCaret;
+      }
+      preview;
+      target;
+      sourceCaret;
+      eq(other) {
+        return other.target === this.target && other.sourceCaret === this.sourceCaret && other.preview.title === this.preview.title && other.preview.htmlBody === this.preview.htmlBody;
+      }
+      toDOM() {
+        const shell = document.createElement("section");
+        shell.className = "scholium-embedded-note cm-live-embedded-note-widget";
+        shell.dataset.scholiumProtected = "embedded-note";
+        shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
+        shell.setAttribute("role", "group");
+        shell.setAttribute(
+          "aria-label",
+          localizedTemplate("Embedded note {title}", { title: this.preview.title })
+        );
+        const header = document.createElement("header");
+        header.className = "scholium-embedded-note-header";
+        const open = document.createElement("span");
+        open.className = "cm-live-vector-link cm-live-vector-neutral scholium-embedded-note-open";
+        open.dir = "auto";
+        open.dataset.scholiumLinkTarget = this.target;
+        open.dataset.scholiumSourceCaret = String(this.sourceCaret);
+        open.setAttribute(
+          "aria-label",
+          localizedTemplate("Open embedded note {title}", { title: this.preview.title })
+        );
+        open.append(document.createTextNode(this.preview.title));
+        header.append(open);
+        const viewport = document.createElement("div");
+        viewport.className = "scholium-embedded-note-viewport";
+        viewport.tabIndex = 0;
+        viewport.setAttribute("role", "region");
+        viewport.setAttribute(
+          "aria-label",
+          localizedTemplate("Embedded note content for {title}", { title: this.preview.title })
+        );
+        const body = document.createElement("div");
+        body.className = "scholium-embedded-note-body scholium-document";
+        populatePreviewDocument(body, this.preview);
+        viewport.append(body);
+        shell.append(header, viewport);
+        return shell;
+      }
+      ignoreEvent(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest(".scholium-embedded-note-viewport")) return true;
+        return event.type !== "mousedown";
+      }
+    }
+    class MathWidget extends WidgetType {
+      constructor(expression) {
+        super();
+        this.expression = expression;
+      }
+      expression;
+      eq(other) {
+        return other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
+      }
+      toDOM() {
+        const element = document.createElement("span");
+        element.className = `scholium-math scholium-math-${this.expression.kind} cm-live-math`;
+        element.dataset.scholiumProtected = "math";
+        const runtime = window.scholiumMath;
+        if (runtime?.version !== 1) options.requestMathRuntime();
+        const rendered = runtime?.version === 1 ? runtime.render({ source: this.expression.content, kind: this.expression.kind }) : { ok: false, reason: "invalid-source" };
+        if (rendered.ok) {
+          element.classList.add("scholium-math-rendered");
+          const output = document.createElement("span");
+          output.className = "scholium-math-output";
+          output.innerHTML = rendered.html;
+          element.append(output);
+        } else {
+          const source = document.createElement("code");
+          const delimiter = "$".repeat(this.expression.delimiterLength);
+          source.className = "scholium-math-source";
+          source.textContent = this.expression.kind === "display" ? `${delimiter}
+${this.expression.content}
+${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
+          element.classList.add("scholium-math-error");
+          element.setAttribute(
+            "aria-label",
+            localized("Mathematics could not be rendered. Source is shown.")
+          );
+          element.append(source);
+        }
+        if (this.expression.kind === "display") {
+          const slot = document.createElement("div");
+          slot.className = "cm-live-math-slot";
+          slot.append(element);
+          return slot;
+        }
+        return element;
+      }
+      ignoreEvent() {
+        return false;
+      }
+    }
+    function wikilinkPresentation(targetStart, target, annotationStart, annotation) {
+      const targetPresentation = {
+        displayStart: targetStart,
+        displayEnd: targetStart + target.length,
+        isLegacyRelationship: false
+      };
+      if (annotationStart === null || annotation === void 0) return targetPresentation;
+      const trimmed = annotation.trim();
+      if (trimmed.startsWith(":") && isLegacyRelationshipPredicate(trimmed.slice(1))) {
+        return { ...targetPresentation, isLegacyRelationship: true };
+      }
+      const lastColon = trimmed.lastIndexOf(":");
+      if (lastColon >= 0 && isLegacyRelationshipPredicate(trimmed.slice(lastColon + 1))) {
+        const rawAlias = trimmed.slice(0, lastColon);
+        const alias = rawAlias.trim();
+        if (!alias) return { ...targetPresentation, isLegacyRelationship: true };
+        const trimmedOffset = annotation.indexOf(trimmed);
+        const aliasOffset = rawAlias.indexOf(alias);
+        const displayStart = annotationStart + trimmedOffset + aliasOffset;
+        return {
+          displayStart,
+          displayEnd: displayStart + alias.length,
+          isLegacyRelationship: true
+        };
+      }
+      return {
+        displayStart: annotationStart,
+        displayEnd: annotationStart + annotation.length,
+        isLegacyRelationship: false
+      };
+    }
+    return {
+      embeddedNote: (preview, target, sourceCaret) => new EmbeddedNoteWidget(preview, target, sourceCaret),
+      listIndent,
+      listMarker: (value) => new ListMarkerWidget(value),
+      math: (expression) => new MathWidget(expression),
+      vectorLinkIcon: (kind) => new VectorLinkIconWidget(kind),
+      wikilinkPresentation
+    };
+  }
+
   // source-direction.ts
   function directionDecorations(view) {
     const ranges = [];
@@ -35779,248 +36211,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function calloutDefinition2(rawKind) {
     return calloutDefinition(editingDialect, rawKind);
   }
-  var ListMarkerWidget = class extends WidgetType {
-    marker;
-    markerFrom;
-    markerTo;
-    ordered;
-    depth;
-    task;
-    taskMarkerFrom;
-    taskMarkerTo;
-    taskChecked;
-    constructor(marker, markerFrom, markerTo, ordered, depth2, task, taskMarkerFrom, taskMarkerTo, taskChecked) {
-      super();
-      this.marker = marker;
-      this.markerFrom = markerFrom;
-      this.markerTo = markerTo;
-      this.ordered = ordered;
-      this.depth = depth2;
-      this.task = task;
-      this.taskMarkerFrom = taskMarkerFrom;
-      this.taskMarkerTo = taskMarkerTo;
-      this.taskChecked = taskChecked;
-    }
-    eq(other) {
-      return other.marker === this.marker && other.markerFrom === this.markerFrom && other.markerTo === this.markerTo && other.ordered === this.ordered && other.depth === this.depth && other.task === this.task && other.taskMarkerFrom === this.taskMarkerFrom && other.taskMarkerTo === this.taskMarkerTo && other.taskChecked === this.taskChecked;
-    }
-    toDOM(view) {
-      const span = document.createElement("span");
-      span.className = [
-        "cm-live-list-marker",
-        this.ordered ? "cm-live-list-marker-ordered" : "cm-live-list-marker-unordered",
-        this.task ? "cm-live-list-marker-task" : ""
-      ].filter(Boolean).join(" ");
-      const indent = listIndent(this.depth);
-      if (indent) span.style.marginInlineStart = indent;
-      const projected = this.task ? this.taskCheckbox(view) : document.createElement("span");
-      projected.classList.add("cm-live-list-marker-projected");
-      if (!this.task) {
-        projected.textContent = this.ordered ? this.marker : this.depth > 0 ? "\u25E6" : "\u2022";
-        span.addEventListener("mousedown", (event) => {
-          if (event.button !== 0 || view.composing) return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (this.markerFrom < 0 || this.markerTo <= this.markerFrom || this.markerTo > view.state.doc.length) return;
-          view.dispatch({
-            selection: { anchor: this.markerFrom },
-            scrollIntoView: true
-          });
-          view.focus();
-        });
-      }
-      span.append(projected);
-      if (!this.task) span.setAttribute("aria-hidden", "true");
-      return span;
-    }
-    taskCheckbox(view) {
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.className = "cm-live-task-checkbox";
-      checkbox.checked = this.taskChecked;
-      checkbox.tabIndex = -1;
-      checkbox.setAttribute("aria-label", localized("Task item"));
-      checkbox.addEventListener("mousedown", (event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      checkbox.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.toggleTask(view);
-      });
-      return checkbox;
-    }
-    toggleTask(view) {
-      if (view.composing || this.taskMarkerFrom === null || this.taskMarkerTo === null) return;
-      const current = view.state.doc.sliceString(this.taskMarkerFrom, this.taskMarkerTo);
-      const insert2 = toggledTaskMarker(current);
-      if (insert2 === null) return;
-      view.dispatch({
-        changes: {
-          from: this.taskMarkerFrom,
-          to: this.taskMarkerTo,
-          insert: insert2
-        },
-        annotations: Transaction.userEvent.of("input.scholium.toggleTask")
-      });
-      lastUndoLabel = "Toggle Task";
-      lastRedoLabel = "Toggle Task";
-      view.focus();
-    }
-    // Let CodeMirror own pointer placement at the exact source marker. If the
-    // browser handles selection inside this replacement widget, a single click
-    // can start a native DOM selection that spans unrelated projected prose.
-    ignoreEvent(event) {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest(".cm-live-task-checkbox")) {
-        return !(event instanceof MouseEvent) || event.button === 0;
-      }
-      if (target?.closest(".cm-live-list-marker") && event instanceof MouseEvent) {
-        return event.button === 0;
-      }
-      return false;
-    }
-  };
-  function listIndent(depth2) {
-    if (depth2 <= 0) return "";
-    return `calc(${Array.from(
-      { length: depth2 },
-      () => "var(--scholium-list-indent)"
-    ).join(" + ")})`;
-  }
-  var VectorLinkIconWidget = class extends WidgetType {
-    kind;
-    constructor(kind) {
-      super();
-      this.kind = kind;
-    }
-    eq(other) {
-      return other.kind === this.kind;
-    }
-    toDOM() {
-      const semantics = vectorLinkSemantics[this.kind];
-      const span = systemSymbolElement(
-        semantics.symbol,
-        `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`
-      );
-      span.title = semantics.label;
-      return span;
-    }
-    // Let CodeMirror place the caret at this replacement when it is clicked so
-    // the exact source marker becomes available for editing immediately.
-    ignoreEvent() {
-      return false;
-    }
-  };
-  var EmbeddedNoteWidget = class extends WidgetType {
-    preview;
-    target;
-    sourceCaret;
-    constructor(preview, target, sourceCaret) {
-      super();
-      this.preview = preview;
-      this.target = target;
-      this.sourceCaret = sourceCaret;
-    }
-    eq(other) {
-      return other.target === this.target && other.sourceCaret === this.sourceCaret && other.preview.title === this.preview.title && other.preview.htmlBody === this.preview.htmlBody;
-    }
-    toDOM() {
-      const shell = document.createElement("section");
-      shell.className = "scholium-embedded-note cm-live-embedded-note-widget";
-      shell.dataset.scholiumProtected = "embedded-note";
-      shell.dataset.scholiumSourceCaret = String(this.sourceCaret);
-      shell.setAttribute("role", "group");
-      shell.setAttribute(
-        "aria-label",
-        localizedTemplate("Embedded note {title}", { title: this.preview.title })
-      );
-      const header = document.createElement("header");
-      header.className = "scholium-embedded-note-header";
-      const open = document.createElement("span");
-      open.className = "cm-live-vector-link cm-live-vector-neutral scholium-embedded-note-open";
-      open.dir = "auto";
-      open.dataset.scholiumLinkTarget = this.target;
-      open.dataset.scholiumSourceCaret = String(this.sourceCaret);
-      open.setAttribute(
-        "aria-label",
-        localizedTemplate("Open embedded note {title}", { title: this.preview.title })
-      );
-      open.append(document.createTextNode(this.preview.title));
-      header.append(open);
-      const viewport = document.createElement("div");
-      viewport.className = "scholium-embedded-note-viewport";
-      viewport.tabIndex = 0;
-      viewport.setAttribute("role", "region");
-      viewport.setAttribute(
-        "aria-label",
-        localizedTemplate("Embedded note content for {title}", { title: this.preview.title })
-      );
-      const body = document.createElement("div");
-      body.className = "scholium-embedded-note-body scholium-document";
-      populatePreviewDocument(body, this.preview);
-      viewport.append(body);
-      shell.append(header, viewport);
-      return shell;
-    }
-    ignoreEvent(event) {
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest(".scholium-embedded-note-viewport")) return true;
-      return event.type !== "mousedown";
-    }
-  };
-  var MathWidget = class extends WidgetType {
-    expression;
-    constructor(expression) {
-      super();
-      this.expression = expression;
-    }
-    eq(other) {
-      return other.expression.kind === this.expression.kind && other.expression.content === this.expression.content && other.expression.delimiterLength === this.expression.delimiterLength;
-    }
-    toDOM() {
-      const element = document.createElement("span");
-      element.className = `scholium-math scholium-math-${this.expression.kind} cm-live-math`;
-      element.dataset.scholiumProtected = "math";
-      const runtime = window.scholiumMath;
-      if (runtime?.version !== 1) post({ type: "requestMathRuntime" });
-      const rendered = runtime?.version === 1 ? runtime.render({ source: this.expression.content, kind: this.expression.kind }) : { ok: false, reason: "invalid-source" };
-      if (rendered.ok) {
-        element.classList.add("scholium-math-rendered");
-        const output = document.createElement("span");
-        output.className = "scholium-math-output";
-        output.innerHTML = rendered.html;
-        element.append(output);
-      } else {
-        const source = document.createElement("code");
-        const delimiter = "$".repeat(this.expression.delimiterLength);
-        source.className = "scholium-math-source";
-        source.textContent = this.expression.kind === "display" ? `${delimiter}
-${this.expression.content}
-${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
-        element.classList.add("scholium-math-error");
-        element.setAttribute(
-          "aria-label",
-          localized("Mathematics could not be rendered. Source is shown.")
-        );
-        element.append(source);
-      }
-      if (this.expression.kind === "display") {
-        const slot = document.createElement("div");
-        slot.className = "cm-live-math-slot";
-        slot.append(element);
-        return slot;
-      }
-      return element;
-    }
-    // A click places the caret at the replacement boundary so the exact source
-    // construct is revealed on the next projection update.
-    ignoreEvent() {
-      return false;
-    }
-  };
   function isFencedDelimiterLine2(doc2, block, lineFrom) {
     if (!block.fenced) return false;
     return block.markerRanges.some((range) => doc2.lineAt(range.from).from === lineFrom);
@@ -36039,90 +36229,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ),
       ...changedCodeBlocks
     ]);
-  }
-  var legacyRelationshipPredicates = /* @__PURE__ */ new Set([
-    "supports",
-    "contradicts",
-    "extends",
-    "refines",
-    "incompatible_with",
-    "cites",
-    "see_also",
-    "connected",
-    "answers",
-    "subquestion_of",
-    "premise_of",
-    "concludes",
-    "assumes",
-    "pressures",
-    "uses_concept",
-    "has_commitment",
-    "targets",
-    "objects_to",
-    "rebuts",
-    "undercuts",
-    "replies_to",
-    "concedes",
-    "depends_on",
-    "supersedes",
-    "qualifies",
-    "elicits",
-    "tests",
-    "illustrates",
-    "counterexample_to",
-    "evidence_for",
-    "attributes_to",
-    "interprets",
-    "derived_from",
-    "is_case_for",
-    "is_source_for",
-    "is_background_for",
-    "is_not_evidence_for"
-  ]);
-  function isLegacyRelationshipPredicate(raw) {
-    const normalized2 = raw.trim().toLowerCase().replaceAll("-", "_");
-    if (legacyRelationshipPredicates.has(normalized2)) return true;
-    return [
-      "seealso",
-      "objectsto",
-      "repliesto",
-      "dependson",
-      "iscasefor",
-      "issourcefor",
-      "isbackgroundfor",
-      "isnotevidencefor"
-    ].includes(normalized2);
-  }
-  function wikilinkPresentation(targetStart, target, annotationStart, annotation) {
-    const targetPresentation = {
-      displayStart: targetStart,
-      displayEnd: targetStart + target.length,
-      isLegacyRelationship: false
-    };
-    if (annotationStart === null || annotation === void 0) return targetPresentation;
-    const trimmed = annotation.trim();
-    if (trimmed.startsWith(":") && isLegacyRelationshipPredicate(trimmed.slice(1))) {
-      return { ...targetPresentation, isLegacyRelationship: true };
-    }
-    const lastColon = trimmed.lastIndexOf(":");
-    if (lastColon >= 0 && isLegacyRelationshipPredicate(trimmed.slice(lastColon + 1))) {
-      const rawAlias = trimmed.slice(0, lastColon);
-      const alias = rawAlias.trim();
-      if (!alias) return { ...targetPresentation, isLegacyRelationship: true };
-      const trimmedOffset = annotation.indexOf(trimmed);
-      const aliasOffset = rawAlias.indexOf(alias);
-      const displayStart = annotationStart + trimmedOffset + aliasOffset;
-      return {
-        displayStart,
-        displayEnd: displayStart + alias.length,
-        isLegacyRelationship: true
-      };
-    }
-    return {
-      displayStart: annotationStart,
-      displayEnd: annotationStart + annotation.length,
-      isLegacyRelationship: false
-    };
   }
   function dispatchProjectedPointerSelection(view, event, sourceOffset) {
     const head = Math.max(0, Math.min(sourceOffset, view.state.doc.length));
@@ -36169,6 +36275,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     currentThemeRevision: () => mermaidThemeRevision,
     refreshThemeEffect: refreshMermaidThemeEffect
   });
+  var liveInlineWidgets = createLiveInlineWidgets({
+    requestMathRuntime: () => post({ type: "requestMathRuntime" }),
+    didToggleTask: () => {
+      lastUndoLabel = "Toggle Task";
+      lastRedoLabel = "Toggle Task";
+    }
+  });
   var liveStructuredBlockProjections = createLiveStructuredBlockProjections({
     selection: liveSelection,
     projections: liveProjectionIndex,
@@ -36179,7 +36292,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var liveDisplayMathProjection = createLiveDisplayMathProjection({
     selection: liveSelection,
     projections: liveProjectionIndex,
-    widget: (expression) => new MathWidget(expression)
+    widget: (expression) => liveInlineWidgets.math(expression)
   });
   var liveFootnoteProjection = createLiveFootnoteProjection({
     selection: liveSelection,
@@ -36274,7 +36387,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       );
       if (activeConstruct) continue;
       addAtomicReplacement(Decoration.replace({
-        widget: new MathWidget(expression)
+        widget: liveInlineWidgets.math(expression)
       }), expression.from, expression.to);
     }
     literals2.sort((left, right) => left.from - right.from || left.to - right.to);
@@ -36395,7 +36508,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               const className = [
                 "cm-live-list-source-prefix"
               ].join(" ");
-              const indent = listIndent(listDepth);
+              const indent = liveInlineWidgets.listIndent(listDepth);
               const attributes = { class: className };
               if (indent) attributes.style = `margin-inline-start: ${indent}`;
               const range = Decoration.mark({ attributes }).range(replacementFrom, replacementTo);
@@ -36404,17 +36517,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
               const taskMarkerSource = list.taskMarkerRange ? doc2.sliceString(list.taskMarkerRange.from, list.taskMarkerRange.to) : "";
               addAtomicReplacement(
                 Decoration.replace({
-                  widget: new ListMarkerWidget(
+                  widget: liveInlineWidgets.listMarker({
                     marker,
-                    listMarker.from,
-                    listMarker.to,
+                    markerFrom: listMarker.from,
+                    markerTo: listMarker.to,
                     ordered,
-                    listDepth,
+                    depth: listDepth,
                     task,
-                    list.taskMarkerRange?.from ?? null,
-                    list.taskMarkerRange?.to ?? null,
-                    /^\[[xX]\]$/.test(taskMarkerSource)
-                  )
+                    taskMarkerFrom: list.taskMarkerRange?.from ?? null,
+                    taskMarkerTo: list.taskMarkerRange?.to ?? null,
+                    taskChecked: /^\[[xX]\]$/.test(taskMarkerSource)
+                  })
                 }),
                 replacementFrom,
                 replacementTo
@@ -36450,7 +36563,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const kind = construct.kind === "vectorLink" ? editingDialect?.vectorLinkOperators.find((candidate) => candidate.marker === marker)?.kind ?? "neutral" : "neutral";
             const target = doc2.sliceString(targetRange.from, targetRange.to);
             const alias = construct.aliasRange ? doc2.sliceString(construct.aliasRange.from, construct.aliasRange.to) : void 0;
-            const presentation = wikilinkPresentation(
+            const presentation = liveInlineWidgets.wikilinkPresentation(
               targetRange.from,
               target,
               construct.aliasRange?.from ?? null,
@@ -36461,7 +36574,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             if (embed && preview?.isEmbedded) {
               addAtomicReplacement(
                 Decoration.replace({
-                  widget: new EmbeddedNoteWidget(preview, target, construct.to)
+                  widget: liveInlineWidgets.embeddedNote(preview, target, construct.to)
                 }),
                 construct.from,
                 construct.to
@@ -36494,7 +36607,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             }
             if (!embed) {
               decorations2.push(Decoration.widget({
-                widget: new VectorLinkIconWidget(kind),
+                widget: liveInlineWidgets.vectorLinkIcon(kind),
                 side: -1
               }).range(presentation.displayEnd));
             }
@@ -36901,125 +37014,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     }
   ]);
-  function liveNavigationBlockRanges(state) {
-    return [
-      ...liveProjectionIndex.index(state).blockRanges,
-      ...liveMermaidProjection.presentations(state).map(({ from, to }) => ({
-        from,
-        to,
-        kind: "mermaid"
-      }))
-    ].sort((left, right) => left.from - right.from || left.to - right.to);
-  }
-  function liveHorizontalNavigationRangeAt(state, offset, forward) {
-    const index = liveProjectionIndex.index(state);
-    const boundary = forward ? "start" : "end";
-    const blockRange = projectionRangeAtBoundary(index.blockRanges, offset, boundary);
-    const listPrefixRange = projectionRangeAtBoundary(
-      index.listPrefixRanges,
-      offset,
-      boundary
-    );
-    const mermaidRange = projectionRangeAtBoundary(
-      liveMermaidProjection.presentations(state),
-      offset,
-      boundary
-    );
-    const inlineLinkRange = projectionRangeAtBoundary(
-      index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink" || candidate.kind === "vectorLink"),
-      offset,
-      boundary
-    );
-    const candidates = [
-      blockRange,
-      listPrefixRange ? { ...listPrefixRange, kind: "listPrefix" } : null,
-      mermaidRange ? { ...mermaidRange, kind: "mermaid" } : null,
-      inlineLinkRange
-    ].filter((candidate) => candidate !== null);
-    return candidates.sort(
-      (left, right) => left.from - right.from || left.to - right.to
-    )[0] ?? null;
-  }
-  function revealProjectedBlockForVerticalMove(view, forward, extend) {
-    if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
-    const selection = view.state.selection.main;
-    const moved = view.moveVertically(selection, forward);
-    const crossed = projectionRangesIntersecting(
-      liveNavigationBlockRanges(view.state),
-      Math.min(selection.head, moved.head),
-      Math.max(selection.head, moved.head) + 1
-    ).filter((candidate) => {
-      const alreadyActive = view.state.selection.ranges.some((range) => candidate.kind === "callout" ? selectionActivatesCallout(range, candidate) : selectionIntersectsProjection(range, candidate));
-      if (alreadyActive) return false;
-      return forward ? selection.head <= candidate.from && moved.head >= candidate.to : selection.head >= candidate.to && moved.head <= candidate.from;
-    });
-    const projection = forward ? crossed[0] : crossed.at(-1);
-    if (!projection) return false;
-    const isCallout = projection.kind === "callout";
-    const sourceHead = forward ? projection.from : isCallout ? projection.to : Math.max(projection.from, projection.to - 1);
-    const originalCoords = view.coordsAtPos(selection.head);
-    const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
-    const anchor = extend ? selection.anchor : sourceHead;
-    view.dispatch({
-      selection: { anchor, head: sourceHead },
-      scrollIntoView: true
-    });
-    if (isCallout) {
-      view.requestMeasure();
-      return true;
-    }
-    view.requestMeasure({
-      read: () => {
-        const line = view.state.doc.lineAt(sourceHead);
-        const lineEdge = forward ? line.from : line.to;
-        const coords = view.coordsAtPos(lineEdge);
-        if (!coords) return sourceHead;
-        return view.posAtCoords({
-          x: desiredX,
-          y: (coords.top + coords.bottom) / 2
-        }) ?? sourceHead;
-      },
-      write: (measuredHead) => {
-        if (view.state.selection.main.head !== sourceHead) return;
-        view.dispatch({
-          selection: { anchor, head: measuredHead },
-          scrollIntoView: true
-        });
-      }
-    });
-    return true;
-  }
-  function revealProjectedBlockForHorizontalMove(view, forward, extend) {
-    if (configuredEditorMode(view.state) !== "livePreview" || view.composing) return false;
-    const selection = view.state.selection.main;
-    const projection = liveHorizontalNavigationRangeAt(
-      view.state,
-      selection.head,
-      forward
-    );
-    if (!projection) return false;
-    const alreadyActive = projection.kind === "callout" ? selectionActivatesCallout(selection, projection) : selectionIntersectsProjection(selection, projection);
-    const isProjectedLink = projection.kind === "wikilink" || projection.kind === "vectorLink";
-    if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
-      return false;
-    }
-    const head = forward ? isProjectedLink ? projection.to : projection.from : projection.kind === "callout" ? projection.to : Math.max(projection.from, projection.to - 1);
-    view.dispatch({
-      selection: { anchor: extend ? selection.anchor : head, head },
-      scrollIntoView: true
-    });
-    return true;
-  }
-  var liveProjectionNavigationKeymap = keymap.of([
-    { key: "ArrowDown", run: (view) => revealProjectedBlockForVerticalMove(view, true, false) },
-    { key: "Shift-ArrowDown", run: (view) => revealProjectedBlockForVerticalMove(view, true, true) },
-    { key: "ArrowUp", run: (view) => revealProjectedBlockForVerticalMove(view, false, false) },
-    { key: "Shift-ArrowUp", run: (view) => revealProjectedBlockForVerticalMove(view, false, true) },
-    { key: "ArrowRight", run: (view) => revealProjectedBlockForHorizontalMove(view, true, false) },
-    { key: "Shift-ArrowRight", run: (view) => revealProjectedBlockForHorizontalMove(view, true, true) },
-    { key: "ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, false) },
-    { key: "Shift-ArrowLeft", run: (view) => revealProjectedBlockForHorizontalMove(view, false, true) }
-  ]);
+  var liveProjectionNavigation = createLiveProjectionNavigation({
+    mode: configuredEditorMode,
+    projections: liveProjectionIndex,
+    mermaidPresentations: (state) => liveMermaidProjection.presentations(state)
+  });
   function applySelectionAction(view, command2) {
     const transformed = transformMarkdown(
       view.state.doc.toString(),
@@ -37102,7 +37101,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     liveStructuredBlockProjections.calloutExtension,
     liveFootnoteProjection.extension,
     livePreview,
-    Prec.high(liveProjectionNavigationKeymap),
+    Prec.high(liveProjectionNavigation.extension),
     selectionActions.extension,
     previewPopover.extension,
     EditorView.lineWrapping
