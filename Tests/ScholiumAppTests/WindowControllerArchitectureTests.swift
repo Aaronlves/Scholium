@@ -106,9 +106,8 @@ struct WindowControllerArchitectureTests {
         var invalidations = 0
         let observation = session.objectWillChange.sink { invalidations += 1 }
 
-        workspaceController.setAccessRecovery(WorkspaceAccessRecovery(
-            kind: .vault,
-            expectedPath: "/unrelated/recovery"
+        #expect(workspaceController.recordRecovery(
+            for: WorkspaceRegistryError.vaultAccessUnavailable("/unrelated/recovery")
         ))
         discoveryController.synchronizeLibrarySelection(
             workspaceSlot: .output,
@@ -1918,6 +1917,7 @@ struct WindowControllerArchitectureTests {
         ))
         #expect(workspaceControllerSource.contains("func restoreWorkspaceAccess("))
         #expect(workspaceControllerSource.contains("func cancelAll()"))
+        #expect(workspaceControllerSource.contains("func dismissAccessRecovery()"))
         #expect(workspaceControllerSource.contains("func refreshWorkspaceAssignment("))
         #expect(workspaceControllerSource.contains("func configureTriptych("))
         #expect(workspaceControllerSource.contains("workspaceStore.workspaceCapabilities("))
@@ -1925,6 +1925,9 @@ struct WindowControllerArchitectureTests {
         #expect(!windowModelSource.contains("workspaceStore.workspaceCapabilities("))
         #expect(!windowModelSource.contains("workspaceStore.snapshot("))
         #expect(!windowModelSource.contains("workspaceStore.configureTriptychCapabilities("))
+        #expect(!windowModelSource.contains("private var activeWorkspaceCapabilities"))
+        #expect(!workspaceControllerSource.contains("func setAccessRecovery("))
+        #expect(!workspaceControllerSource.contains("WindowWorkspaceInstallationFeedback"))
         #expect(!windowModelSource.contains("func restoreWorkspaceAccess("))
         #expect(zoteroCoordinatorSource.contains("final class WindowZoteroCoordinator"))
         #expect(zoteroCoordinatorSource.contains("func cancelAll()"))

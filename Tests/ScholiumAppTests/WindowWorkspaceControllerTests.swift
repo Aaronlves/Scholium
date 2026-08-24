@@ -36,9 +36,7 @@ struct WindowWorkspaceControllerTests {
             installSession: { _, _ in
                 installCount += 1
                 guard installCount > 1 else {
-                    return WindowWorkspaceInstallationFeedback(
-                        transactionRecoveryIssues: []
-                    )
+                    return ["Fixture transaction recovery issue"]
                 }
                 didStart = true
                 do {
@@ -47,9 +45,7 @@ struct WindowWorkspaceControllerTests {
                 } catch is CancellationError {
                     throw CancellationError()
                 }
-                return WindowWorkspaceInstallationFeedback(
-                    transactionRecoveryIssues: []
-                )
+                return []
             },
             didRemoveRegistration: { _ in },
             reportInformation: { _ in }
@@ -63,10 +59,14 @@ struct WindowWorkspaceControllerTests {
             triptychName: "Recovery",
             openingVault: .paperAnalysis
         )
+        #expect(controller.state.recoveryMessage?.contains(
+            "Fixture transaction recovery issue"
+        ) == true)
         let registeredAnalyses = try #require(assignment.vault(for: .paperAnalysis))
-        controller.setAccessRecovery(WorkspaceAccessRecovery(
-            kind: .vault,
-            expectedPath: registeredAnalyses.canonicalPath
+        #expect(controller.recordRecovery(
+            for: WorkspaceRegistryError.vaultAccessUnavailable(
+                registeredAnalyses.canonicalPath
+            )
         ))
 
         let task = Task { @MainActor in

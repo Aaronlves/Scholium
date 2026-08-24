@@ -37,17 +37,17 @@ override.
 ## Focused interface evidence
 
 - On 2026-08-25, the window-workspace and Local Agent bridge ownership cutover
-  passed the complete gate: documentation and shipped-Skill guards; 206 Web,
-  464 Core, 3 performance, 150 Contract, 279 Application, 16 bridge, and 663
-  App tests; the serialized architecture measurement; 13 executable Research
-  Action CLI lifecycles; the sandboxed App-to-standalone-CLI probe; symbol and
+  passed the complete gate: documentation/Skill guards; 206 Web, 464 Core, 3
+  performance, 150 Contract, 279 Application, 16 bridge, and 663 App tests;
+  architecture measurement; 13 CLI lifecycles; App-to-standalone-CLI probe;
   residue guards; and the 188.64-second Release build.
-  `WindowWorkspaceController` is now the sole owner of registration,
-  assignment, capability-session activation, and recovery, while
-  `LocalAgentBridgeRequestRouter` alone translates the closed 17-operation wire
-  set. Superseded setters, activation helpers, inline bridge routing, and the
-  direct-Store activation allowlist were removed. No visual or researcher
-  acceptance was required.
+  `WindowWorkspaceController` alone owns registration, assignment, capability
+  activation, and recovery; `LocalAgentBridgeRequestRouter` alone translates
+  the closed 17-operation wire set. A subsequent 197-test residue pass removed
+  the generic recovery setter, single-field feedback wrapper, capability
+  relay, and duplicate recovery finalizers; transaction notices now survive
+  successful installation. No visible behavior changed, so no visual or
+  researcher acceptance was required.
 
 - On 2026-08-23, the explicit Record retrieval CLI facade passed the Debug CLI
   build, documentation-authority validator, and all 11 signed executable CLI

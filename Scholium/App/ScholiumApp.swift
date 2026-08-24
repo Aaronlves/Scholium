@@ -889,7 +889,11 @@ private struct ScholiumWindowObservedRoot: View {
             )
             .sheet(item: Binding(
                 get: { windowWorkspaceController.state.accessRecovery },
-                set: { windowWorkspaceController.setAccessRecovery($0) }
+                set: { recovery in
+                    if recovery == nil {
+                        windowWorkspaceController.dismissAccessRecovery()
+                    }
+                }
             )) { recovery in
                 RestoreWorkspaceAccessView(
                     recovery: recovery,
@@ -909,7 +913,7 @@ private struct ScholiumWindowObservedRoot: View {
                         openOrdinaryBootstrapAfterRegistrationRemoval()
                     },
                     quitApplication: {
-                        windowWorkspaceController.setAccessRecovery(nil)
+                        windowWorkspaceController.dismissAccessRecovery()
                         windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
                     }
                 )
@@ -922,11 +926,8 @@ private struct ScholiumWindowObservedRoot: View {
                 windowCoordinator.update(reduceMotion: reduceMotion)
                 await appState.restoreWindowSession(id: route.windowID)
                 if let proofURL = ScholiumRuntimeIsolation.fileSelectionRecoveryProofURL() {
-                    windowWorkspaceController.setAccessRecovery(
-                        WorkspaceAccessRecovery(
-                            kind: .vault,
-                            expectedPath: proofURL.path
-                        )
+                    _ = windowWorkspaceController.recordRecovery(
+                        for: WorkspaceRegistryError.vaultAccessUnavailable(proofURL.path)
                     )
                 }
                 redirectUnconfiguredWindowToBootstrapIfNeeded()
@@ -1885,7 +1886,7 @@ final class WindowModel: ObservableObject {
             capability: { [weak self] in
                 (
                     self?.workspaceAssignment?.id,
-                    self?.activeWorkspaceCapabilities?.zoteroBindings
+                    self?.windowWorkspaceController.activeCapabilities?.zoteroBindings
                 )
             },
             reportInformation: { [weak self] message in
@@ -2231,9 +2232,6 @@ final class WindowModel: ObservableObject {
     }
 
     // MARK: Services
-    private var activeWorkspaceCapabilities: WindowWorkspaceCapabilities? {
-        windowWorkspaceController.activeCapabilities
-    }
     let cssSnippetStore: CSSSnippetStore
     private var requestedTriptychID: UUID? {
         windowWorkspaceController.requestedTriptychID
@@ -3567,7 +3565,7 @@ final class WindowModel: ObservableObject {
         do {
             let snapshot = try await discoveryController.refreshWorkspace()
             guard currentRegisteredVault?.id == vaultID,
-                  let capabilities = activeWorkspaceCapabilities,
+                  let capabilities = windowWorkspaceController.activeCapabilities,
                   let commit = workspaceProjectionController.replaceSnapshot(
                       snapshot,
                       runtimeIdentity: capabilities.runtimeIdentity,
@@ -4085,7 +4083,7 @@ final class WindowModel: ObservableObject {
     private func installWindowWorkspaceSession(
         capabilities: WindowWorkspaceCapabilities,
         snapshot: WorkspaceSnapshot
-    ) async throws -> WindowWorkspaceInstallationFeedback {
+    ) async throws -> [String] {
         triptychPropertiesAreAuthoritative = false
         bindApplicationCapabilities(
             to: capabilities,
@@ -4103,9 +4101,7 @@ final class WindowModel: ObservableObject {
         let recoveryIssues = try await libraryMutationController.recoverInterruptedTransactions()
         await refreshTransactionRecoveryRecords()
         PerformanceProbe.shared.markStartupSafetyReady()
-        return WindowWorkspaceInstallationFeedback(
-            transactionRecoveryIssues: recoveryIssues
-        )
+        return recoveryIssues
     }
 
     private func loadTriptychSettingsProjection() async throws -> String? {
@@ -5514,7 +5510,7 @@ final class WindowModel: ObservableObject {
     }
 
     func openingDocumentPresentationDidComplete() {
-        guard let capabilities = activeWorkspaceCapabilities,
+        guard let capabilities = windowWorkspaceController.activeCapabilities,
               presentedOpeningRuntimeIdentity != capabilities.runtimeIdentity else { return }
         presentedOpeningRuntimeIdentity = capabilities.runtimeIdentity
         ScholiumWebKitProcessPrewarmer.shared.finish()
@@ -6353,7 +6349,7 @@ final class WindowModel: ObservableObject {
     }
 
     private func receiveWorkspaceEvents(_ events: [UUID: WorkspaceEvent]) {
-        guard let capabilities = activeWorkspaceCapabilities,
+        guard let capabilities = windowWorkspaceController.activeCapabilities,
               let event = events[capabilities.id] else { return }
         guard workspaceProjectionController.canReceive(
             event,

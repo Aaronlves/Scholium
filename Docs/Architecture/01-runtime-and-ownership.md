@@ -348,7 +348,7 @@ disclosure, initial restore, peripheral visibility, text scale, appearance,
 toast, and shell status. `WindowWorkspaceController` alone owns Triptych
 selection, registration, capability generation, identity, access recovery,
 and restoration. It calls `WorkspaceStore` for configuration, activation
-snapshots, replacement acceptance, and Vault configuration, then a
+snapshots, registration, permissions, and Vault configuration, then a
 typed installer lets the root bind that accepted generation into feature
 owners without selecting or mutating the session.
 `WindowLibraryMutationController` owns Note/Folder preparation and mutation

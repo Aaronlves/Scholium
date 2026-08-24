@@ -24,10 +24,6 @@ enum WindowWorkspaceActivationOutcome {
     case failed(String)
 }
 
-struct WindowWorkspaceInstallationFeedback {
-    let transactionRecoveryIssues: [String]
-}
-
 struct WindowWorkspaceActiveSession {
     let capabilities: WindowWorkspaceCapabilities
     let snapshot: WorkspaceSnapshot
@@ -51,7 +47,7 @@ struct WindowWorkspaceDependencies {
     let installSession: @MainActor (
         WindowWorkspaceCapabilities,
         WorkspaceSnapshot
-    ) async throws -> WindowWorkspaceInstallationFeedback
+    ) async throws -> [String]
     let didRemoveRegistration: @MainActor (TriptychAssignment) -> Void
     let reportInformation: @MainActor (String) -> Void
 }
@@ -79,8 +75,8 @@ final class WindowWorkspaceController: ObservableObject {
         self.requestedTriptychID = requestedTriptychID
     }
 
-    func setAccessRecovery(_ recovery: WorkspaceAccessRecovery?) {
-        state.accessRecovery = recovery
+    func dismissAccessRecovery() {
+        state.accessRecovery = nil
     }
 
     func bindDependencies(_ dependencies: WindowWorkspaceDependencies) {
@@ -148,7 +144,9 @@ final class WindowWorkspaceController: ObservableObject {
             do {
                 try await activate(assignment: assignment, openingVault: openingVault)
                 if let repairFailure {
-                    state.recoveryMessage = "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
+                    appendRecoveryMessage(
+                        "Scholium opened the registered Triptych, but could not repair its stored vault identities. \(repairFailure)"
+                    )
                 }
                 return .activated
             } catch {
@@ -188,8 +186,6 @@ final class WindowWorkspaceController: ObservableObject {
         let registeredVaults = try await workspaceStore.registeredVaults()
         let registeredTriptychs = try await workspaceStore.registeredTriptychs()
         try await install(capabilities: capabilities)
-        state.accessRecovery = nil
-        state.recoveryMessage = nil
         state.registeredVaults = registeredVaults
         state.registeredTriptychs = registeredTriptychs
         return capabilities.assignment
@@ -218,7 +214,7 @@ final class WindowWorkspaceController: ObservableObject {
         await workspaceStore.vaultConfig(rootURL: rootURL)
     }
 
-    func portableContainerURL(for worksURL: URL) async -> URL? {
+    private func portableContainerURL(for worksURL: URL) async -> URL? {
         await workspaceStore.portableContainerURL(forWorksURL: worksURL)
     }
 
@@ -267,15 +263,21 @@ final class WindowWorkspaceController: ObservableObject {
               let snapshot = workspaceStore.snapshot(for: capabilities.runtimeIdentity) else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        let feedback = try await dependencies.installSession(capabilities, snapshot)
+        let transactionRecoveryIssues = try await dependencies.installSession(
+            capabilities,
+            snapshot
+        )
         try Task.checkCancellation()
         activeCapabilities = capabilities
         state.assignment = capabilities.assignment
         state.activeServicesID = capabilities.assignment.id
-        if !feedback.transactionRecoveryIssues.isEmpty {
+        state.accessRecovery = nil
+        if transactionRecoveryIssues.isEmpty {
+            state.recoveryMessage = nil
+        } else {
             state.recoveryMessage = ([
                 "An interrupted system Trash deletion still requires inspection.",
-            ] + feedback.transactionRecoveryIssues).joined(separator: "\n")
+            ] + transactionRecoveryIssues).joined(separator: "\n")
         }
     }
 
@@ -359,8 +361,6 @@ final class WindowWorkspaceController: ObservableObject {
                 triptychName: assignment.triptych.name,
                 openingVault: preferredOpeningVault
             )
-            state.accessRecovery = nil
-            state.recoveryMessage = nil
         }
     }
 
@@ -399,8 +399,6 @@ final class WindowWorkspaceController: ObservableObject {
                 triptychName: assignment.triptych.name,
                 openingVault: preferredOpeningVault
             )
-            state.accessRecovery = nil
-            state.recoveryMessage = nil
             dependencies.reportInformation(
                 "Previous portable control was preserved at \(preserved.path)."
             )
@@ -445,8 +443,6 @@ final class WindowWorkspaceController: ObservableObject {
                 triptychName: assignment.triptych.name,
                 openingVault: preferredOpeningVault
             )
-            state.accessRecovery = nil
-            state.recoveryMessage = nil
             dependencies.reportInformation(
                 "Invalid Metadata record preserved at \(preserved.path)."
             )
@@ -555,6 +551,14 @@ final class WindowWorkspaceController: ObservableObject {
             "Scholium must archive the unsupported portable control folder at '\(recovery.expectedPath)' before rebuilding current control state."
         case .invalidNoteMetadataRecord:
             "Scholium must archive the exact invalid Metadata record before reloading this Triptych."
+        }
+    }
+
+    private func appendRecoveryMessage(_ message: String) {
+        if let current = state.recoveryMessage, !current.isEmpty {
+            state.recoveryMessage = current + "\n\n" + message
+        } else {
+            state.recoveryMessage = message
         }
     }
 
