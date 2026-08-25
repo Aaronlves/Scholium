@@ -180,9 +180,11 @@ final class DocumentController: ObservableObject {
     var closedPresentationCount: Int { closedPresentations.count }
 
     init(intentHandler: @escaping IntentHandler = { _ in }) {
-        presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .livePreview) }
-        )
+        var initialPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            initialPresentationModes[workspace] = .livePreview
+        }
+        presentationModesByWorkspace = initialPresentationModes
         self.intentHandler = intentHandler
     }
 
@@ -740,11 +742,11 @@ final class DocumentController: ObservableObject {
     func restorePresentationModes(
         _ modesByWorkspace: [WorkspaceVaultSlot: NotePresentationMode]
     ) {
-        presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
-                (workspace, modesByWorkspace[workspace] ?? .livePreview)
-            }
-        )
+        var restoredPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            restoredPresentationModes[workspace] = modesByWorkspace[workspace] ?? .livePreview
+        }
+        presentationModesByWorkspace = restoredPresentationModes
         currentPresentationMode = presentationMode(for: activeWorkspace)
         refreshChromeProjection()
     }
@@ -859,9 +861,11 @@ final class DocumentController: ObservableObject {
         restoredScrollPositionsByVault = [:]
         restoredUnqualifiedScrollPositions = [:]
         activeWorkspace = .paperAnalysis
-        presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .livePreview) }
-        )
+        var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            resetPresentationModes[workspace] = .livePreview
+        }
+        presentationModesByWorkspace = resetPresentationModes
         currentPresentationMode = .livePreview
         for session in sessions.retainedSessions.values {
             session.resetPresentation()
@@ -890,9 +894,11 @@ final class DocumentController: ObservableObject {
             pendingChromeRefreshes.removeAll()
         }
         activeWorkspace = .paperAnalysis
-        presentationModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .livePreview) }
-        )
+        var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            resetPresentationModes[workspace] = .livePreview
+        }
+        presentationModesByWorkspace = resetPresentationModes
         currentPresentationMode = .livePreview
         selectedDocument = nil
         chromeProjection = .empty

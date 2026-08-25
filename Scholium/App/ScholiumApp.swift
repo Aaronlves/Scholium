@@ -9,7 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
-final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate {
+final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
     let researchRecordsWindowCoordinator = ResearchRecordsWindowCoordinator()
     let researchResultNotificationCoordinator =
@@ -92,15 +92,7 @@ struct ScholiumApp: App {
         WindowGroup(
             id: "scholium-bootstrap",
             for: BootstrapWindowRoute.self,
-            content: { route in
-                ApplicationBootstrapGate(controller: applicationBootstrap) { workspaceStore in
-                    ScholiumBootstrapRoot(
-                        workspaceStore: workspaceStore,
-                        route: route.wrappedValue,
-                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
-                    )
-                }
-            },
+            content: makeBootstrapWindowContent,
             defaultValue: {
                 BootstrapWindowRoute(purpose: .firstConfiguration)
             }
@@ -113,23 +105,13 @@ struct ScholiumApp: App {
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.presented)
         .restorationBehavior(.disabled)
+        .environmentObject(applicationBootstrap)
+        .environmentObject(applicationDelegate)
 
         WindowGroup(
             id: "scholium-main",
             for: TriptychWindowRoute.self,
-            content: { route in
-                ApplicationBootstrapGate(controller: applicationBootstrap) { workspaceStore in
-                    ScholiumWindowRoot(
-                        workspaceStore: workspaceStore,
-                        route: route.wrappedValue,
-                        lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
-                        researchRecordsWindowCoordinator:
-                            applicationDelegate.researchRecordsWindowCoordinator,
-                        researchResultNotificationCoordinator:
-                            applicationDelegate.researchResultNotificationCoordinator
-                    )
-                }
-            },
+            content: makeMainWindowContent,
             defaultValue: { TriptychWindowRoute() }
         )
         .defaultSize(
@@ -145,21 +127,17 @@ struct ScholiumApp: App {
                 : .automatic
         )
         .windowToolbarStyle(.unified(showsTitle: true))
-        .commands { ScholiumCommands(storageReady: applicationBootstrap.isReady) }
+        .environmentObject(applicationBootstrap)
+        .environmentObject(applicationDelegate)
+        .commands {
+            ScholiumCommands()
+        }
 
         WindowGroup(
             "Research Records",
             id: "scholium-research-records",
             for: UUID.self,
-            content: { triptychID in
-                ApplicationBootstrapGate(controller: applicationBootstrap) { workspaceStore in
-                    ScholiumResearchRecordsRoot(
-                        workspaceStore: workspaceStore,
-                        triptychID: triptychID.wrappedValue,
-                        coordinator: applicationDelegate.researchRecordsWindowCoordinator
-                    )
-                }
-            },
+            content: makeResearchRecordsWindowContent,
             defaultValue: { UUID() }
         )
         .windowToolbarStyle(.unified(showsTitle: false))
@@ -167,12 +145,12 @@ struct ScholiumApp: App {
         .windowResizability(.contentMinSize)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
+        .environmentObject(applicationBootstrap)
+        .environmentObject(applicationDelegate)
         .commandsRemoved()
 
         Settings {
-            ApplicationBootstrapGate(controller: applicationBootstrap) { workspaceStore in
-                ScholiumSettingsRoot(workspaceStore: workspaceStore)
-            }
+            ScholiumSettingsWindowContent()
             .frame(width: 700, height: 560, alignment: .topLeading)
             .background {
                 ScholiumSettingsWindowBackground()
@@ -182,6 +160,8 @@ struct ScholiumApp: App {
                 ScholiumSettingsWindowBackground()
             }
         }
+        .environmentObject(applicationBootstrap)
+        .environmentObject(applicationDelegate)
 
         #if DEBUG
         Window(
@@ -196,6 +176,191 @@ struct ScholiumApp: App {
         .restorationBehavior(.disabled)
         .commandsRemoved()
         #endif
+    }
+}
+
+// SwiftUI's macOS 27 scene content callbacks are declared nonisolated even
+// though the view graph is delivered on the main thread. Keep this one
+// framework boundary explicit and narrow; all stateful content remains owned
+// by the main-actor environment views below.
+private func makeBootstrapWindowContent(
+    _ route: Binding<BootstrapWindowRoute>
+) -> ScholiumBootstrapWindowContent {
+    ScholiumBootstrapWindowContent(route: route)
+}
+
+private func makeMainWindowContent(
+    _ route: Binding<TriptychWindowRoute>
+) -> ScholiumMainWindowContent {
+    ScholiumMainWindowContent(route: route)
+}
+
+private func makeResearchRecordsWindowContent(
+    _ triptychID: Binding<UUID>
+) -> ScholiumResearchRecordsWindowContent {
+    ScholiumResearchRecordsWindowContent(triptychID: triptychID)
+}
+
+private struct ScholiumBootstrapWindowContent: View {
+    @Binding var route: BootstrapWindowRoute
+
+    nonisolated init(route: Binding<BootstrapWindowRoute>) {
+        self._route = route
+    }
+
+    var body: some View {
+        ScholiumBootstrapWindowEnvironmentContent(route: $route)
+    }
+}
+
+@MainActor
+private struct ScholiumBootstrapWindowEnvironmentContent: View {
+    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
+    @Binding var route: BootstrapWindowRoute
+
+    var body: some View {
+        ApplicationBootstrapGate(controller: applicationBootstrap) {
+            ScholiumBootstrapWindowReadyContent(route: $route)
+        }
+        .focusedSceneValue(
+            \.scholiumApplicationBootstrapStatus,
+            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
+        )
+    }
+}
+
+@MainActor
+private struct ScholiumBootstrapWindowReadyContent: View {
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
+    @EnvironmentObject private var workspaceStore: WorkspaceStore
+    @Binding var route: BootstrapWindowRoute
+
+    var body: some View {
+        ScholiumBootstrapRoot(
+            workspaceStore: workspaceStore,
+            route: route,
+            lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
+        )
+    }
+}
+
+private struct ScholiumMainWindowContent: View {
+    @Binding var route: TriptychWindowRoute
+
+    nonisolated init(route: Binding<TriptychWindowRoute>) {
+        self._route = route
+    }
+
+    var body: some View {
+        ScholiumMainWindowEnvironmentContent(route: $route)
+    }
+}
+
+@MainActor
+private struct ScholiumMainWindowEnvironmentContent: View {
+    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
+    @Binding var route: TriptychWindowRoute
+
+    var body: some View {
+        ApplicationBootstrapGate(controller: applicationBootstrap) {
+            ScholiumMainWindowReadyContent(route: $route)
+        }
+        .focusedSceneValue(
+            \.scholiumApplicationBootstrapStatus,
+            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
+        )
+    }
+}
+
+@MainActor
+private struct ScholiumMainWindowReadyContent: View {
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
+    @EnvironmentObject private var workspaceStore: WorkspaceStore
+    @Binding var route: TriptychWindowRoute
+
+    var body: some View {
+        ScholiumWindowRoot(
+            workspaceStore: workspaceStore,
+            route: route,
+            lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
+            researchRecordsWindowCoordinator:
+                applicationDelegate.researchRecordsWindowCoordinator,
+            researchResultNotificationCoordinator:
+                applicationDelegate.researchResultNotificationCoordinator
+        )
+    }
+}
+
+private struct ScholiumResearchRecordsWindowContent: View {
+    @Binding var triptychID: UUID
+
+    nonisolated init(triptychID: Binding<UUID>) {
+        self._triptychID = triptychID
+    }
+
+    var body: some View {
+        ScholiumResearchRecordsWindowEnvironmentContent(triptychID: $triptychID)
+    }
+}
+
+@MainActor
+private struct ScholiumResearchRecordsWindowEnvironmentContent: View {
+    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
+    @Binding var triptychID: UUID
+
+    var body: some View {
+        ApplicationBootstrapGate(controller: applicationBootstrap) {
+            ScholiumResearchRecordsWindowReadyContent(triptychID: $triptychID)
+        }
+        .focusedSceneValue(
+            \.scholiumApplicationBootstrapStatus,
+            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
+        )
+    }
+}
+
+@MainActor
+private struct ScholiumResearchRecordsWindowReadyContent: View {
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
+    @EnvironmentObject private var workspaceStore: WorkspaceStore
+    @Binding var triptychID: UUID
+
+    var body: some View {
+        ScholiumResearchRecordsRoot(
+            workspaceStore: workspaceStore,
+            triptychID: triptychID,
+            coordinator: applicationDelegate.researchRecordsWindowCoordinator
+        )
+    }
+}
+
+private struct ScholiumSettingsWindowContent: View {
+    var body: some View {
+        ScholiumSettingsWindowEnvironmentContent()
+    }
+}
+
+@MainActor
+private struct ScholiumSettingsWindowEnvironmentContent: View {
+    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
+
+    var body: some View {
+        ApplicationBootstrapGate(controller: applicationBootstrap) {
+            ScholiumSettingsWindowReadyContent()
+        }
+        .focusedSceneValue(
+            \.scholiumApplicationBootstrapStatus,
+            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
+        )
+    }
+}
+
+@MainActor
+private struct ScholiumSettingsWindowReadyContent: View {
+    @EnvironmentObject private var workspaceStore: WorkspaceStore
+
+    var body: some View {
+        ScholiumSettingsRoot(workspaceStore: workspaceStore)
     }
 }
 
@@ -800,9 +965,10 @@ private struct ScholiumWindowRoot: View {
             appState: model,
             lifecycleRegistry: lifecycleRegistry,
             researchRecordsWindowCoordinator: researchRecordsWindowCoordinator,
-            researchResultNotificationCoordinator:
+                researchResultNotificationCoordinator:
                 researchResultNotificationCoordinator
         ))
+        model.startWorkspaceObservers()
     }
 
     var body: some View {
@@ -839,6 +1005,7 @@ private struct ScholiumWindowObservedRoot: View {
         ResearchResultNotificationCoordinator
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
+    @State private var accessRecovery: WorkspaceAccessRecovery?
 
     init(
         appState: WindowModel,
@@ -862,19 +1029,19 @@ private struct ScholiumWindowObservedRoot: View {
         self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
         self.researchResultNotificationCoordinator =
             researchResultNotificationCoordinator
+        _accessRecovery = State(
+            initialValue: appState.windowWorkspaceController.state.accessRecovery
+        )
     }
 
     var body: some View {
-        Group {
-            if shellState.hasCompletedInitialRestore, appState.vaultConfig != nil {
-                ContentView(
-                    appState: appState,
-                    windowCoordinator: windowCoordinator
-                )
-            } else {
-                ScholiumLaunchPlaceholderView()
-            }
-        }
+        let hasReadyWorkspace =
+            shellState.hasCompletedInitialRestore && appState.vaultConfig != nil
+        ScholiumWindowObservedContent(
+            isReady: hasReadyWorkspace,
+            appState: appState,
+            windowCoordinator: windowCoordinator
+        )
             .navigationTitle(workspaceWindowTitle)
             .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
@@ -887,14 +1054,9 @@ private struct ScholiumWindowObservedRoot: View {
                     colorScheme: shellState.colorScheme
                 )
             )
-            .sheet(item: Binding(
-                get: { windowWorkspaceController.state.accessRecovery },
-                set: { recovery in
-                    if recovery == nil {
-                        windowWorkspaceController.dismissAccessRecovery()
-                    }
-                }
-            )) { recovery in
+            .sheet(item: $accessRecovery, onDismiss: {
+                windowWorkspaceController.dismissAccessRecovery()
+            }) { recovery in
                 RestoreWorkspaceAccessView(
                     recovery: recovery,
                     restore: {
@@ -919,6 +1081,9 @@ private struct ScholiumWindowObservedRoot: View {
                 )
             }
             .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
+            .onChange(of: windowWorkspaceController.state.accessRecovery) { _, recovery in
+                accessRecovery = recovery
+            }
             .task(id: presentationRouter.fileImport) {
                 await selectMarkdownFilesForImportIfRequested()
             }
@@ -1105,6 +1270,23 @@ private struct ScholiumWindowObservedRoot: View {
 
 }
 
+private struct ScholiumWindowObservedContent: View {
+    let isReady: Bool
+    let appState: WindowModel
+    let windowCoordinator: WorkspaceWindowCoordinator
+
+    var body: some View {
+        if isReady {
+            ContentView(
+                appState: appState,
+                windowCoordinator: windowCoordinator
+            )
+        } else {
+            ScholiumLaunchPlaceholderView()
+        }
+    }
+}
+
 private struct ScholiumSettingsRoot: View {
     @AppStorage(WindowColorSchemeChoice.defaultsKey)
     private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
@@ -1140,6 +1322,14 @@ private struct ScholiumSettingsRoot: View {
 
 struct ScholiumSearchActions {
     let begin: (SearchInvocation) -> Void
+}
+
+struct ScholiumApplicationBootstrapStatus: Equatable, Sendable {
+    let isReady: Bool
+}
+
+struct ScholiumApplicationBootstrapStatusFocusedKey: FocusedValueKey {
+    typealias Value = ScholiumApplicationBootstrapStatus
 }
 
 struct ScholiumSearchActionsFocusedKey: FocusedValueKey {
@@ -1181,6 +1371,11 @@ struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
 }
 
 extension FocusedValues {
+    var scholiumApplicationBootstrapStatus: ScholiumApplicationBootstrapStatus? {
+        get { self[ScholiumApplicationBootstrapStatusFocusedKey.self] }
+        set { self[ScholiumApplicationBootstrapStatusFocusedKey.self] = newValue }
+    }
+
     var scholiumSearchActions: ScholiumSearchActions? {
         get { self[ScholiumSearchActionsFocusedKey.self] }
         set { self[ScholiumSearchActionsFocusedKey.self] = newValue }
@@ -1202,422 +1397,586 @@ extension FocusedValues {
     }
 }
 
-private struct ScholiumCommands: Commands {
+private struct ScholiumNewWindowCommandContent: View {
     let storageReady: Bool
-    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
-    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
-    @FocusedObject private var appState: WindowModel?
-    @FocusedObject private var commandObservation: WindowCommandObservation?
-    @FocusedValue(\.scholiumSearchActions) private var searchActions
-    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
-    @FocusedValue(\.scholiumResearchActionActions) private var researchActionActions
-    @FocusedValue(\.scholiumEditorActions) private var editorActions
     @Environment(\.openWindow) private var openWindow
+    @FocusedObject private var appState: WindowModel?
 
-    var body: some Commands {
-        let _ = commandObservation?.revision
-        CommandGroup(replacing: .newItem) {
-            Button("New Window") {
-                openWindow(
-                    id: "scholium-main",
-                    value: TriptychWindowRoute(triptychID: appState?.workspaceAssignment?.id)
-                )
-            }
-                .keyboardShortcut("n", modifiers: [.command])
-                .disabled(!storageReady)
-        }
-        CommandGroup(after: .newItem) {
-            Button("New Triptych…") {
-                openWindow(
-                    id: "scholium-bootstrap",
-                    value: BootstrapWindowRoute(purpose: .newTriptych)
-                )
-            }
-            .disabled(!storageReady)
-            Menu("Open Triptych") {
-                ForEach(appState?.registeredTriptychs ?? []) { assignment in
-                    Button(triptychCommandLabel(assignment)) {
-                        openWindow(
-                            id: "scholium-main",
-                            value: TriptychWindowRoute(triptychID: assignment.id)
-                        )
-                    }
-                }
-            }
-            .disabled(appState?.registeredTriptychs.isEmpty != false)
-            Divider()
-            Button("New Note") {
-                appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
-            }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-                .disabled(
-                    appState?.workspaceAssignment == nil
-                        || appState?.noteSourceScope != .library
-                        || appState?.libraryMutationController.isCreatingNote == true
-                )
-            Button("Import Markdown…") { appState?.showMarkdownImporter = true }
-                .disabled(appState?.workspaceAssignment == nil)
-            Divider()
-            Button("Duplicate Note…") {
-                guard let note = appState?.currentNote,
-                      let target = NoteMutationTarget(note) else { return }
-                appState?.noteFileRequest = .duplicate(target)
-            }
-            .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
-            Button("Rename Note…") {
-                guard let note = appState?.currentNote,
-                      let target = NoteMutationTarget(note) else { return }
-                appState?.noteFileRequest = .rename(target)
-            }
-            .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
-            Button("Move Note…") {
-                guard let note = appState?.currentNote,
-                      let target = NoteMutationTarget(note) else { return }
-                appState?.noteFileRequest = .move(target)
-            }
-            .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
-            Button("Move to Trash…") {
-                appState?.requestCurrentNoteSystemTrash()
-            }
-            .keyboardShortcut(.delete, modifiers: [.command])
-            .disabled(
-                appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
-                    != true
+    var body: some View {
+        Button("New Window") {
+            openWindow(
+                id: "scholium-main",
+                value: TriptychWindowRoute(triptychID: appState?.workspaceAssignment?.id)
             )
-            Divider()
-            Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
-                .disabled(appState?.vaultConfig == nil)
         }
-        CommandGroup(after: .pasteboard) {
-            Button("Paste as Markdown") {
-                guard let payload = markdownPasteboardPayload() else { return }
-                editorActions?.performWithArgument(.pasteMarkdown, payload)
-            }
-            .keyboardShortcut("v", modifiers: [.command, .shift])
-            .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
-            Divider()
-            Menu("Find") {
-                Button("Find…") { editorActions?.presentFind() }
-                    .keyboardShortcut("f", modifiers: [.command])
-                    .disabled(editorActions == nil)
-                Button("Find and Replace…") { editorActions?.presentFind() }
-                    .disabled(editorActions?.allowsReplace != true)
-                Divider()
-                Button("Find Next") { editorActions?.findNext() }
-                    .keyboardShortcut("g", modifiers: [.command])
-                    .disabled(editorActions == nil)
-                Button("Find Previous") { editorActions?.findPrevious() }
-                    .keyboardShortcut("g", modifiers: [.command, .shift])
-                    .disabled(editorActions == nil)
-                Button("Use Selection for Find") { editorActions?.useSelectionForFind() }
-                    .keyboardShortcut("e", modifiers: [.command])
-                    .disabled(editorActions == nil)
-            }
-            .disabled(appState?.currentNote == nil)
-            Button("Document Statistics") {
-                editorActions?.announceDocumentStatistics()
-            }
-            .disabled(editorActions == nil || appState?.currentNote == nil)
-            Button("Edit Metadata…") { appState?.showMetadataEditor = true }
-                .disabled(appState?.canEditCurrentNote != true)
-        }
-        CommandGroup(after: .textFormatting) {
-            Divider()
-            Button("Bold") { editorActions?.perform(.bold) }
-                .keyboardShortcut("b", modifiers: [.command])
-                .disabled(editorActions?.isAvailable(.bold) != true)
-            Button("Italic") { editorActions?.perform(.emphasis) }
-                .keyboardShortcut("i", modifiers: [.command])
-                .disabled(editorActions?.isAvailable(.emphasis) != true)
-            Button("Strikethrough") { editorActions?.perform(.strikethrough) }
-                .disabled(editorActions?.isAvailable(.strikethrough) != true)
-            Button("Highlight") { editorActions?.perform(.highlight) }
-                .disabled(editorActions?.isAvailable(.highlight) != true)
-            Button("Inline Code") { editorActions?.perform(.inlineCode) }
-                .disabled(editorActions?.isAvailable(.inlineCode) != true)
-            Button("Import Image…") { editorActions?.importImage() }
-                .disabled(editorActions?.isAvailable(.insertImage) != true)
-            Button("Index Image…") { editorActions?.indexImage() }
-                .disabled(editorActions?.isAvailable(.insertImage) != true)
-            Divider()
-            Menu("Heading") {
-                Button("Paragraph") { editorActions?.perform(.paragraph) }
-                    .disabled(editorActions?.isAvailable(.paragraph) != true)
-                ForEach(1...6, id: \.self) { level in
-                    Button("Heading \(level)") {
-                        let command: MarkdownEditorCommand = switch level {
-                        case 1: .heading1
-                        case 2: .heading2
-                        case 3: .heading3
-                        case 4: .heading4
-                        case 5: .heading5
-                        default: .heading6
-                        }
-                        editorActions?.perform(command)
-                    }
-                    .disabled(editorActions?.isAvailable(headingCommand(level)) != true)
-                }
-            }
-            Menu("Lists") {
-                Button("Bulleted List") { editorActions?.perform(.bulletList) }
-                    .disabled(editorActions?.isAvailable(.bulletList) != true)
-                Button("Numbered List") { editorActions?.perform(.numberedList) }
-                    .disabled(editorActions?.isAvailable(.numberedList) != true)
-                Button("Task List") { editorActions?.perform(.taskList) }
-                    .disabled(editorActions?.isAvailable(.taskList) != true)
-                Button("Toggle Task") { editorActions?.perform(.toggleTask) }
-                    .disabled(editorActions?.isAvailable(.toggleTask) != true)
-            }
-            Menu("Table") {
-                Button("Insert Row Before") { editorActions?.perform(.tableInsertRowBefore) }
-                    .disabled(editorActions?.isAvailable(.tableInsertRowBefore) != true)
-                Button("Insert Row After") { editorActions?.perform(.tableInsertRowAfter) }
-                    .disabled(editorActions?.isAvailable(.tableInsertRowAfter) != true)
-                Button("Delete Row") { editorActions?.perform(.tableDeleteRow) }
-                    .disabled(editorActions?.isAvailable(.tableDeleteRow) != true)
-                Divider()
-                Button("Insert Column Before") { editorActions?.perform(.tableInsertColumnBefore) }
-                    .disabled(editorActions?.isAvailable(.tableInsertColumnBefore) != true)
-                Button("Insert Column After") { editorActions?.perform(.tableInsertColumnAfter) }
-                    .disabled(editorActions?.isAvailable(.tableInsertColumnAfter) != true)
-                Button("Delete Column") { editorActions?.perform(.tableDeleteColumn) }
-                    .disabled(editorActions?.isAvailable(.tableDeleteColumn) != true)
-                Divider()
-                Button("Align Left") { editorActions?.perform(.tableAlignLeft) }
-                    .disabled(editorActions?.isAvailable(.tableAlignLeft) != true)
-                Button("Align Center") { editorActions?.perform(.tableAlignCenter) }
-                    .disabled(editorActions?.isAvailable(.tableAlignCenter) != true)
-                Button("Align Right") { editorActions?.perform(.tableAlignRight) }
-                    .disabled(editorActions?.isAvailable(.tableAlignRight) != true)
-            }
-            Button("Block Quotation") { editorActions?.perform(.blockQuotation) }
-                .disabled(editorActions?.isAvailable(.blockQuotation) != true)
-            Button("Fenced Code") { editorActions?.perform(.fencedCode) }
-                .disabled(editorActions?.isAvailable(.fencedCode) != true)
-            Button("Markdown Comment") { editorActions?.perform(.markdownComment) }
-                .disabled(editorActions?.isAvailable(.markdownComment) != true)
-        }
-        CommandMenu("Insert") {
-            Button("Import Image…") { editorActions?.importImage() }
-                .disabled(editorActions?.isAvailable(.insertImage) != true)
-            Button("Index Image…") { editorActions?.indexImage() }
-                .disabled(editorActions?.isAvailable(.insertImage) != true)
-            Divider()
-            Button("Link") { editorActions?.perform(.standardLink) }
-                .keyboardShortcut("k", modifiers: [.command])
-                .disabled(editorActions?.isAvailable(.standardLink) != true)
-            Button("Wikilink") { editorActions?.perform(.wikilink) }
-                .disabled(editorActions?.isAvailable(.wikilink) != true)
-            Menu("Vector Link") {
-                Button("Supports") { editorActions?.perform(.vectorSupports) }
-                    .disabled(editorActions?.isAvailable(.vectorSupports) != true)
-                Button("Opposes") { editorActions?.perform(.vectorOpposes) }
-                    .disabled(editorActions?.isAvailable(.vectorOpposes) != true)
-                Button("Incompatible") { editorActions?.perform(.vectorIncompatible) }
-                    .disabled(editorActions?.isAvailable(.vectorIncompatible) != true)
-            }
-            Divider()
-            Button("Footnote") { editorActions?.perform(.insertFootnote) }
-                .disabled(editorActions?.isAvailable(.insertFootnote) != true)
-            Button("Table") { editorActions?.perform(.insertTable) }
-                .disabled(editorActions?.isAvailable(.insertTable) != true)
-            Button("Thematic Break") { editorActions?.perform(.thematicBreak) }
-                .disabled(editorActions?.isAvailable(.thematicBreak) != true)
-            Menu("Callout") {
-                Button("Orientation") { editorActions?.perform(.calloutOrient) }
-                    .disabled(editorActions?.isAvailable(.calloutOrient) != true)
-                Button("Source") { editorActions?.perform(.calloutCite) }
-                    .disabled(editorActions?.isAvailable(.calloutCite) != true)
-                Button("Connections") { editorActions?.perform(.calloutConnect) }
-                    .disabled(editorActions?.isAvailable(.calloutConnect) != true)
-                Button("Statement") { editorActions?.perform(.calloutState) }
-                    .disabled(editorActions?.isAvailable(.calloutState) != true)
-                Button("Illustration") { editorActions?.perform(.calloutIllustrate) }
-                    .disabled(editorActions?.isAvailable(.calloutIllustrate) != true)
-                Button("Quotation") { editorActions?.perform(.calloutQuote) }
-                    .disabled(editorActions?.isAvailable(.calloutQuote) != true)
-                Button("Caution") { editorActions?.perform(.calloutFlag) }
-                    .disabled(editorActions?.isAvailable(.calloutFlag) != true)
-            }
-            Divider()
-            Button("Comment on Selection…") { editorActions?.startComment() }
-                .scholiumKeyboardShortcut(shortcut(for: .commentOnSelection))
-                .disabled(
-                    editorActions?.canCommentOnSelectedPassage() != true
-                        || editorActions?.isComposing == true
-                )
-        }
-        CommandGroup(replacing: .sidebar) {
-            Button("Back") {
-                appState?.navigateDocumentHistory(.back)
-            }
-            .disabled(appState?.documentNavigationHistoryController.canGoBack != true)
-            Button("Forward") {
-                appState?.navigateDocumentHistory(.forward)
-            }
-            .disabled(appState?.documentNavigationHistoryController.canGoForward != true)
-            Divider()
-            Button(
-                ScholiumL10n.dynamicString(
-                    appState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar"
-                )
-            ) {
-                guard let appState else { return }
-                workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
-            }
-            .scholiumKeyboardShortcut(shortcut(for: .toggleLibrary))
-            .disabled(workspaceWindowActions == nil)
-            Divider()
-            Button("Search…") {
-                searchActions?.begin(.general)
-            }
-            .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
-            .disabled(searchActions == nil)
-            Button(
-                ScholiumL10n.dynamicString(
-                    appState?.researchInspectorVisible == true
-                        ? "Hide Research Inspector"
-                        : "Show Research Inspector"
-                )
-            ) {
-                guard let appState else { return }
-                workspaceWindowActions?.setResearchInspectorVisible(
-                    !appState.researchInspectorVisible
-                )
-            }
-            .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
-            .disabled(
-                workspaceWindowActions == nil
-                    || (appState?.researchInspectorVisible != true
-                        && appState?.currentNote == nil)
+        .keyboardShortcut("n", modifiers: [.command])
+        .disabled(!storageReady)
+    }
+}
+
+private struct ScholiumAfterNewItemCommandContent: View {
+    let storageReady: Bool
+    @Environment(\.openWindow) private var openWindow
+    @FocusedObject private var appState: WindowModel?
+
+    var body: some View {
+        Button("New Triptych…") {
+            openWindow(
+                id: "scholium-bootstrap",
+                value: BootstrapWindowRoute(purpose: .newTriptych)
             )
-            Menu("Document Mode") {
-                if appState?.presentedDocumentMode == .read {
-                    Button("Review") { appState?.requestDocumentMode(.read) }
-                    Button("Edit") { appState?.requestDocumentMode(.livePreview) }
-                        .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
-                        .disabled(appState?.canEditCurrentNote != true)
-                } else {
-                    Button("Review") { appState?.requestDocumentMode(.read) }
-                        .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
-                    Button("Edit") { appState?.requestDocumentMode(.livePreview) }
-                        .disabled(appState?.canEditCurrentNote != true)
-                }
-                Button("Source") { appState?.requestDocumentMode(.source) }
-                    .scholiumKeyboardShortcut(shortcut(for: .showSource))
-                    .disabled(appState?.canEditCurrentNote != true)
-            }
-            .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
-            Divider()
-            Menu("Document Text Size") {
-                Button("Increase Text Size") {
-                    appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
-                }
-                    .keyboardShortcut("=", modifiers: [.command])
-                    .disabled(
-                        appState?.currentNote == nil
-                            || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+        }
+        .disabled(!storageReady)
+        Menu("Open Triptych") {
+            ForEach(appState?.registeredTriptychs ?? []) { assignment in
+                Button(triptychCommandLabel(assignment)) {
+                    openWindow(
+                        id: "scholium-main",
+                        value: TriptychWindowRoute(triptychID: assignment.id)
                     )
-                Button("Decrease Text Size") {
-                    appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
                 }
-                    .keyboardShortcut("-", modifiers: [.command])
-                    .disabled(
-                        appState?.currentNote == nil
-                            || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
-                    )
-                Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
-                    .keyboardShortcut("0", modifiers: [.command])
-                    .disabled(
-                        appState?.currentNote == nil
-                            || appState?.documentTextScale == ScholiumMetrics.Document.defaultTextScale
-                    )
-                Divider()
-                Button("150%") { appState?.setDocumentTextScale(1.5) }
-                    .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.5)
-                Button("200%") {
-                    appState?.setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
-                }
-                    .disabled(
-                        appState?.currentNote == nil
-                            || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
-                    )
-            }
-            .disabled(appState?.currentNote == nil)
-            Menu("Appearance") {
-                Button("Use System Appearance") { appState?.colorScheme = .system }
-                Button("Light") { appState?.colorScheme = .light }
-                Button("Dark") { appState?.colorScheme = .dark }
             }
         }
-        CommandGroup(after: .windowArrangement) {
-            Button("Attention") {
-                workspaceWindowActions?.showPreferredAttention()
-            }
-            .scholiumKeyboardShortcut(shortcut(for: .showAttention))
-            .disabled(workspaceWindowActions?.canShowAttention() != true)
+        .disabled(appState?.registeredTriptychs.isEmpty != false)
+        Divider()
+        Button("New Note") {
+            appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
         }
-        CommandMenu("Research") {
-            if let appState, researchActionActions != nil {
-                ForEach(appState.researchController.actions.availability) { action in
-                    Button {
-                        researchActionActions?.open(action.id)
-                    } label: {
-                        Text(verbatim: action.buttonName)
-                    }
-                    .disabled(
-                        !action.canPresentInInterface
-                            || !appState.hasConfirmedCurrentResearchActionAvailability
-                            || appState.researchController.actions.hasCancellationBarrier
-                    )
-                }
-            }
-            Divider()
-            Button("Triptych Records") {
-                workspaceWindowActions?.showTriptychResearchRecords()
-            }
-            .scholiumKeyboardShortcut(shortcut(for: .showTriptychRecords))
+            .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(
                 appState?.workspaceAssignment == nil
-                    || workspaceWindowActions == nil
+                    || appState?.noteSourceScope != .library
+                    || appState?.libraryMutationController.isCreatingNote == true
             )
+        Button("Import Markdown…") { appState?.showMarkdownImporter = true }
+            .disabled(appState?.workspaceAssignment == nil)
+        Divider()
+        Button("Duplicate Note…") {
+            guard let note = appState?.currentNote,
+                  let target = NoteMutationTarget(note) else { return }
+            appState?.noteFileRequest = .duplicate(target)
         }
-        #if DEBUG
-        if qaEditorFaultsAreEnabled || qaResearchWorkflowProofsAreEnabled {
-            CommandMenu("QA") {
-                if qaEditorFaultsAreEnabled {
-                    Button("Simulate Editor Process Termination") {
-                        guard let documentID = editorActions?.documentID else { return }
-                        DistributedNotificationCenter.default().postNotificationName(
-                            Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
-                            object: nil,
-                            userInfo: ["documentID": documentID],
-                            deliverImmediately: true
-                        )
-                    }
-                    .keyboardShortcut("w", modifiers: [.command, .option, .control])
-                    .disabled(editorActions == nil)
-                }
-                if qaEditorFaultsAreEnabled && qaResearchWorkflowProofsAreEnabled {
-                    Divider()
-                }
-                if qaResearchWorkflowProofsAreEnabled {
-                    Button("Open Research Workflow Interface Proofs") {
-                        openWindow(id: "scholium-research-workflow-proofs")
-                    }
-                }
-            }
+        .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
+        Button("Rename Note…") {
+            guard let note = appState?.currentNote,
+                  let target = NoteMutationTarget(note) else { return }
+            appState?.noteFileRequest = .rename(target)
         }
-        #endif
+        .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
+        Button("Move Note…") {
+            guard let note = appState?.currentNote,
+                  let target = NoteMutationTarget(note) else { return }
+            appState?.noteFileRequest = .move(target)
+        }
+        .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
+        Button("Move to Trash…") {
+            appState?.requestCurrentNoteSystemTrash()
+        }
+        .keyboardShortcut(.delete, modifiers: [.command])
+        .disabled(
+            appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
+                != true
+        )
+        Divider()
+        Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
+            .disabled(appState?.vaultConfig == nil)
     }
 
-    private func shortcut(
-        for command: ScholiumHotkeyCommand
-    ) -> ScholiumHotkeyBinding? {
+    private func triptychCommandLabel(_ assignment: TriptychAssignment) -> String {
+        let registered = appState?.registeredTriptychs ?? []
+        let duplicates = registered.filter {
+            $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
+        }
+        guard duplicates.count > 1,
+              let works = assignment.vault(for: .output) else {
+            return assignment.triptych.name
+        }
+        let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
+            .deletingLastPathComponent().lastPathComponent
+        return "\(assignment.triptych.name) — \(parent)"
+    }
+}
+
+private struct ScholiumPasteboardCommandContent: View {
+    @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
+
+    var body: some View {
+        Button("Paste as Markdown") {
+            guard let payload = markdownPasteboardPayload() else { return }
+            editorActions?.performWithArgument(.pasteMarkdown, payload)
+        }
+        .keyboardShortcut("v", modifiers: [.command, .shift])
+        .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
+        Divider()
+        Menu("Find") {
+            Button("Find…") { editorActions?.presentFind() }
+                .keyboardShortcut("f", modifiers: [.command])
+                .disabled(editorActions == nil)
+            Button("Find and Replace…") { editorActions?.presentFind() }
+                .disabled(editorActions?.allowsReplace != true)
+            Divider()
+            Button("Find Next") { editorActions?.findNext() }
+                .keyboardShortcut("g", modifiers: [.command])
+                .disabled(editorActions == nil)
+            Button("Find Previous") { editorActions?.findPrevious() }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(editorActions == nil)
+            Button("Use Selection for Find") { editorActions?.useSelectionForFind() }
+                .keyboardShortcut("e", modifiers: [.command])
+                .disabled(editorActions == nil)
+        }
+        .disabled(appState?.currentNote == nil)
+        Button("Document Statistics") {
+            editorActions?.announceDocumentStatistics()
+        }
+        .disabled(editorActions == nil || appState?.currentNote == nil)
+        Button("Edit Metadata…") { appState?.showMetadataEditor = true }
+            .disabled(appState?.canEditCurrentNote != true)
+    }
+
+    private func markdownPasteboardPayload() -> String? {
+        let pasteboard = NSPasteboard.general
+        let plainText = pasteboard.string(forType: .string) ?? ""
+        let html = pasteboard.string(forType: .html)
+        guard !plainText.isEmpty || html?.isEmpty == false else { return nil }
+        var payload = ["plainText": plainText]
+        if let html, !html.isEmpty { payload["html"] = html }
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+}
+
+private struct ScholiumTextFormattingCommandContent: View {
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
+
+    var body: some View {
+        Divider()
+        Button("Bold") { editorActions?.perform(.bold) }
+            .keyboardShortcut("b", modifiers: [.command])
+            .disabled(editorActions?.isAvailable(.bold) != true)
+        Button("Italic") { editorActions?.perform(.emphasis) }
+            .keyboardShortcut("i", modifiers: [.command])
+            .disabled(editorActions?.isAvailable(.emphasis) != true)
+        Button("Strikethrough") { editorActions?.perform(.strikethrough) }
+            .disabled(editorActions?.isAvailable(.strikethrough) != true)
+        Button("Highlight") { editorActions?.perform(.highlight) }
+            .disabled(editorActions?.isAvailable(.highlight) != true)
+        Button("Inline Code") { editorActions?.perform(.inlineCode) }
+            .disabled(editorActions?.isAvailable(.inlineCode) != true)
+        Button("Import Image…") { editorActions?.importImage() }
+            .disabled(editorActions?.isAvailable(.insertImage) != true)
+        Button("Index Image…") { editorActions?.indexImage() }
+            .disabled(editorActions?.isAvailable(.insertImage) != true)
+        Divider()
+        Menu("Heading") {
+            Button("Paragraph") { editorActions?.perform(.paragraph) }
+                .disabled(editorActions?.isAvailable(.paragraph) != true)
+            ForEach(1...6, id: \.self) { level in
+                Button("Heading \(level)") {
+                    editorActions?.perform(headingCommand(level))
+                }
+                .disabled(editorActions?.isAvailable(headingCommand(level)) != true)
+            }
+        }
+        Menu("Lists") {
+            Button("Bulleted List") { editorActions?.perform(.bulletList) }
+                .disabled(editorActions?.isAvailable(.bulletList) != true)
+            Button("Numbered List") { editorActions?.perform(.numberedList) }
+                .disabled(editorActions?.isAvailable(.numberedList) != true)
+            Button("Task List") { editorActions?.perform(.taskList) }
+                .disabled(editorActions?.isAvailable(.taskList) != true)
+            Button("Toggle Task") { editorActions?.perform(.toggleTask) }
+                .disabled(editorActions?.isAvailable(.toggleTask) != true)
+        }
+        Menu("Table") {
+            Button("Insert Row Before") { editorActions?.perform(.tableInsertRowBefore) }
+                .disabled(editorActions?.isAvailable(.tableInsertRowBefore) != true)
+            Button("Insert Row After") { editorActions?.perform(.tableInsertRowAfter) }
+                .disabled(editorActions?.isAvailable(.tableInsertRowAfter) != true)
+            Button("Delete Row") { editorActions?.perform(.tableDeleteRow) }
+                .disabled(editorActions?.isAvailable(.tableDeleteRow) != true)
+            Divider()
+            Button("Insert Column Before") { editorActions?.perform(.tableInsertColumnBefore) }
+                .disabled(editorActions?.isAvailable(.tableInsertColumnBefore) != true)
+            Button("Insert Column After") { editorActions?.perform(.tableInsertColumnAfter) }
+                .disabled(editorActions?.isAvailable(.tableInsertColumnAfter) != true)
+            Button("Delete Column") { editorActions?.perform(.tableDeleteColumn) }
+                .disabled(editorActions?.isAvailable(.tableDeleteColumn) != true)
+            Divider()
+            Button("Align Left") { editorActions?.perform(.tableAlignLeft) }
+                .disabled(editorActions?.isAvailable(.tableAlignLeft) != true)
+            Button("Align Center") { editorActions?.perform(.tableAlignCenter) }
+                .disabled(editorActions?.isAvailable(.tableAlignCenter) != true)
+            Button("Align Right") { editorActions?.perform(.tableAlignRight) }
+                .disabled(editorActions?.isAvailable(.tableAlignRight) != true)
+        }
+        Button("Block Quotation") { editorActions?.perform(.blockQuotation) }
+            .disabled(editorActions?.isAvailable(.blockQuotation) != true)
+        Button("Fenced Code") { editorActions?.perform(.fencedCode) }
+            .disabled(editorActions?.isAvailable(.fencedCode) != true)
+        Button("Markdown Comment") { editorActions?.perform(.markdownComment) }
+            .disabled(editorActions?.isAvailable(.markdownComment) != true)
+    }
+
+    private func headingCommand(_ level: Int) -> MarkdownEditorCommand {
+        switch level {
+        case 1: .heading1
+        case 2: .heading2
+        case 3: .heading3
+        case 4: .heading4
+        case 5: .heading5
+        default: .heading6
+        }
+    }
+}
+
+private struct ScholiumInsertCommandContent: View {
+    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
+    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
+
+    var body: some View {
+        Button("Import Image…") { editorActions?.importImage() }
+            .disabled(editorActions?.isAvailable(.insertImage) != true)
+        Button("Index Image…") { editorActions?.indexImage() }
+            .disabled(editorActions?.isAvailable(.insertImage) != true)
+        Divider()
+        Button("Link") { editorActions?.perform(.standardLink) }
+            .keyboardShortcut("k", modifiers: [.command])
+            .disabled(editorActions?.isAvailable(.standardLink) != true)
+        Button("Wikilink") { editorActions?.perform(.wikilink) }
+            .disabled(editorActions?.isAvailable(.wikilink) != true)
+        Menu("Vector Link") {
+            Button("Supports") { editorActions?.perform(.vectorSupports) }
+                .disabled(editorActions?.isAvailable(.vectorSupports) != true)
+            Button("Opposes") { editorActions?.perform(.vectorOpposes) }
+                .disabled(editorActions?.isAvailable(.vectorOpposes) != true)
+            Button("Incompatible") { editorActions?.perform(.vectorIncompatible) }
+                .disabled(editorActions?.isAvailable(.vectorIncompatible) != true)
+        }
+        Divider()
+        Button("Footnote") { editorActions?.perform(.insertFootnote) }
+            .disabled(editorActions?.isAvailable(.insertFootnote) != true)
+        Button("Table") { editorActions?.perform(.insertTable) }
+            .disabled(editorActions?.isAvailable(.insertTable) != true)
+        Button("Thematic Break") { editorActions?.perform(.thematicBreak) }
+            .disabled(editorActions?.isAvailable(.thematicBreak) != true)
+        Menu("Callout") {
+            Button("Orientation") { editorActions?.perform(.calloutOrient) }
+                .disabled(editorActions?.isAvailable(.calloutOrient) != true)
+            Button("Source") { editorActions?.perform(.calloutCite) }
+                .disabled(editorActions?.isAvailable(.calloutCite) != true)
+            Button("Connections") { editorActions?.perform(.calloutConnect) }
+                .disabled(editorActions?.isAvailable(.calloutConnect) != true)
+            Button("Statement") { editorActions?.perform(.calloutState) }
+                .disabled(editorActions?.isAvailable(.calloutState) != true)
+            Button("Illustration") { editorActions?.perform(.calloutIllustrate) }
+                .disabled(editorActions?.isAvailable(.calloutIllustrate) != true)
+            Button("Quotation") { editorActions?.perform(.calloutQuote) }
+                .disabled(editorActions?.isAvailable(.calloutQuote) != true)
+            Button("Caution") { editorActions?.perform(.calloutFlag) }
+                .disabled(editorActions?.isAvailable(.calloutFlag) != true)
+        }
+        Divider()
+        Button("Comment on Selection…") { editorActions?.startComment() }
+            .scholiumKeyboardShortcut(shortcut(for: .commentOnSelection))
+            .disabled(
+                editorActions?.canCommentOnSelectedPassage() != true
+                    || editorActions?.isComposing == true
+            )
+    }
+
+    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
         ScholiumHotkeyPreferences.binding(
             for: command,
             data: hotkeyPreferencesData
         )
+    }
+}
+
+private struct ScholiumSidebarCommandContent: View {
+    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
+    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumSearchActions) private var searchActions
+    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
+
+    var body: some View {
+        Button("Back") {
+            appState?.navigateDocumentHistory(.back)
+        }
+        .disabled(appState?.documentNavigationHistoryController.canGoBack != true)
+        Button("Forward") {
+            appState?.navigateDocumentHistory(.forward)
+        }
+        .disabled(appState?.documentNavigationHistoryController.canGoForward != true)
+        Divider()
+        Button(
+            ScholiumL10n.dynamicString(
+                appState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar"
+            )
+        ) {
+            guard let appState else { return }
+            workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
+        }
+        .scholiumKeyboardShortcut(shortcut(for: .toggleLibrary))
+        .disabled(workspaceWindowActions == nil)
+        Divider()
+        Button("Search…") {
+            searchActions?.begin(.general)
+        }
+        .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
+        .disabled(searchActions == nil)
+        Button(
+            ScholiumL10n.dynamicString(
+                appState?.researchInspectorVisible == true
+                    ? "Hide Research Inspector"
+                    : "Show Research Inspector"
+            )
+        ) {
+            guard let appState else { return }
+            workspaceWindowActions?.setResearchInspectorVisible(
+                !appState.researchInspectorVisible
+            )
+        }
+        .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
+        .disabled(
+            workspaceWindowActions == nil
+                || (appState?.researchInspectorVisible != true
+                    && appState?.currentNote == nil)
+        )
+        Menu("Document Mode") {
+            if appState?.presentedDocumentMode == .read {
+                Button("Review") { appState?.requestDocumentMode(.read) }
+                Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                    .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
+                    .disabled(appState?.canEditCurrentNote != true)
+            } else {
+                Button("Review") { appState?.requestDocumentMode(.read) }
+                    .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
+                Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                    .disabled(appState?.canEditCurrentNote != true)
+            }
+            Button("Source") { appState?.requestDocumentMode(.source) }
+                .scholiumKeyboardShortcut(shortcut(for: .showSource))
+                .disabled(appState?.canEditCurrentNote != true)
+        }
+        .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
+        Divider()
+        Menu("Document Text Size") {
+            Button("Increase Text Size") {
+                appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
+            }
+                .keyboardShortcut("=", modifiers: [.command])
+                .disabled(
+                    appState?.currentNote == nil
+                        || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                )
+            Button("Decrease Text Size") {
+                appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
+            }
+                .keyboardShortcut("-", modifiers: [.command])
+                .disabled(
+                    appState?.currentNote == nil
+                        || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
+                )
+            Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
+                .keyboardShortcut("0", modifiers: [.command])
+                .disabled(
+                    appState?.currentNote == nil
+                        || appState?.documentTextScale == ScholiumMetrics.Document.defaultTextScale
+                )
+            Divider()
+            Button("150%") { appState?.setDocumentTextScale(1.5) }
+                .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.5)
+            Button("200%") {
+                appState?.setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
+            }
+                .disabled(
+                    appState?.currentNote == nil
+                        || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
+                )
+        }
+        .disabled(appState?.currentNote == nil)
+        Menu("Appearance") {
+            Button("Use System Appearance") { appState?.colorScheme = .system }
+            Button("Light") { appState?.colorScheme = .light }
+            Button("Dark") { appState?.colorScheme = .dark }
+        }
+    }
+
+    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
+        ScholiumHotkeyPreferences.binding(
+            for: command,
+            data: hotkeyPreferencesData
+        )
+    }
+}
+
+private struct ScholiumAttentionCommandContent: View {
+    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
+    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
+
+    var body: some View {
+        Button("Attention") {
+            workspaceWindowActions?.showPreferredAttention()
+        }
+        .scholiumKeyboardShortcut(shortcut(for: .showAttention))
+        .disabled(workspaceWindowActions?.canShowAttention() != true)
+    }
+
+    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
+        ScholiumHotkeyPreferences.binding(
+            for: command,
+            data: hotkeyPreferencesData
+        )
+    }
+}
+
+private struct ScholiumResearchCommandContent: View {
+    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
+    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
+    @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumResearchActionActions) private var researchActionActions
+    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
+
+    var body: some View {
+        if let appState, researchActionActions != nil {
+            ForEach(appState.researchController.actions.availability) { action in
+                Button {
+                    researchActionActions?.open(action.id)
+                } label: {
+                    Text(verbatim: action.buttonName)
+                }
+                .disabled(
+                    !action.canPresentInInterface
+                        || !appState.hasConfirmedCurrentResearchActionAvailability
+                        || appState.researchController.actions.hasCancellationBarrier
+                )
+            }
+        }
+        Divider()
+        Button("Triptych Records") {
+            workspaceWindowActions?.showTriptychResearchRecords()
+        }
+        .scholiumKeyboardShortcut(shortcut(for: .showTriptychRecords))
+        .disabled(
+            appState?.workspaceAssignment == nil
+                || workspaceWindowActions == nil
+        )
+    }
+
+    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
+        ScholiumHotkeyPreferences.binding(
+            for: command,
+            data: hotkeyPreferencesData
+        )
+    }
+}
+
+#if DEBUG
+private struct ScholiumQACommandContent: View {
+    @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
+
+    var body: some View {
+        if qaEditorFaultsAreEnabled {
+            Button("Simulate Editor Process Termination") {
+                guard let documentID = editorActions?.documentID else { return }
+                DistributedNotificationCenter.default().postNotificationName(
+                    Notification.Name("com.scholium.qa.simulate-editor-process-termination"),
+                    object: nil,
+                    userInfo: ["documentID": documentID],
+                    deliverImmediately: true
+                )
+            }
+            .keyboardShortcut("w", modifiers: [.command, .option, .control])
+            .disabled(editorActions == nil)
+        }
+        if qaEditorFaultsAreEnabled && qaResearchWorkflowProofsAreEnabled {
+            Divider()
+        }
+        if qaResearchWorkflowProofsAreEnabled {
+            Button("Open Research Workflow Interface Proofs") {
+                openWindow(id: "scholium-research-workflow-proofs")
+            }
+        }
+    }
+
+    private var qaEditorFaultsAreEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.scholium.qa"
+            && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
+    }
+
+    private var qaResearchWorkflowProofsAreEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.scholium.qa"
+            && ProcessInfo.processInfo.arguments.contains(
+                "--scholium-research-workflow-proofs"
+            )
+    }
+}
+#endif
+
+private struct ScholiumCommands: Commands {
+    @FocusedValue(\.scholiumApplicationBootstrapStatus)
+    private var applicationBootstrapStatus
+    @FocusedObject private var commandObservation: WindowCommandObservation?
+
+    var body: some Commands {
+        let _ = commandObservation?.revision
+        let storageReady = applicationBootstrapStatus?.isReady == true
+        let newWindowCommand = ScholiumNewWindowCommandContent(
+            storageReady: storageReady
+        )
+        let afterNewItemCommand = ScholiumAfterNewItemCommandContent(
+            storageReady: storageReady
+        )
+        let pasteboardCommand = ScholiumPasteboardCommandContent()
+        let textFormattingCommand = ScholiumTextFormattingCommandContent()
+        let insertCommand = ScholiumInsertCommandContent()
+        let sidebarCommand = ScholiumSidebarCommandContent()
+        let attentionCommand = ScholiumAttentionCommandContent()
+        let researchCommand = ScholiumResearchCommandContent()
+        #if DEBUG
+        let qaCommand = ScholiumQACommandContent()
+        #endif
+        CommandGroup(replacing: .newItem) {
+            newWindowCommand
+        }
+        CommandGroup(after: .newItem) {
+            afterNewItemCommand
+        }
+        CommandGroup(after: .pasteboard) {
+            pasteboardCommand
+        }
+        CommandGroup(after: .textFormatting) {
+            textFormattingCommand
+        }
+        CommandMenu("Insert") {
+            insertCommand
+        }
+        CommandGroup(replacing: .sidebar) {
+            sidebarCommand
+        }
+        CommandGroup(after: .windowArrangement) {
+            attentionCommand
+        }
+        CommandMenu("Research") {
+            researchCommand
+        }
+        #if DEBUG
+        if qaEditorFaultsAreEnabled || qaResearchWorkflowProofsAreEnabled {
+            CommandMenu("QA") {
+                qaCommand
+            }
+        }
+        #endif
     }
 
     #if DEBUG
@@ -1634,43 +1993,56 @@ private struct ScholiumCommands: Commands {
     }
     #endif
 
-    private func markdownPasteboardPayload() -> String? {
-        let pasteboard = NSPasteboard.general
-        let plainText = pasteboard.string(forType: .string) ?? ""
-        let html = pasteboard.string(forType: .html)
-        guard !plainText.isEmpty || html?.isEmpty == false else { return nil }
-        var payload = ["plainText": plainText]
-        if let html, !html.isEmpty { payload["html"] = html }
-        guard JSONSerialization.isValidJSONObject(payload),
-              let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
+}
 
-    private func headingCommand(_ level: Int) -> MarkdownEditorCommand {
-        switch level {
-        case 1: .heading1
-        case 2: .heading2
-        case 3: .heading3
-        case 4: .heading4
-        case 5: .heading5
-        default: .heading6
-        }
-    }
+private final class WindowModelObserverRelay: @unchecked Sendable {
+    weak var model: WindowModel?
 
-    private func triptychCommandLabel(_ assignment: TriptychAssignment) -> String {
-        let registered = appState?.registeredTriptychs ?? []
-        let duplicates = registered.filter {
-            $0.triptych.name.caseInsensitiveCompare(assignment.triptych.name) == .orderedSame
-        }
-        guard duplicates.count > 1,
-              let works = assignment.vault(for: .output) else {
-            return assignment.triptych.name
-        }
-        let parent = URL(fileURLWithPath: works.canonicalPath, isDirectory: true)
-            .deletingLastPathComponent().lastPathComponent
-        return "\(assignment.triptych.name) — \(parent)"
+    init(model: WindowModel) {
+        self.model = model
     }
+}
 
+// Combine may synchronously replay the current @Published value while a
+// subscription is installed. Keep this transform outside the @MainActor
+// WindowModel method so that replay does not perform an invalid executor
+// check before the window has finished constructing.
+private func nonisolatedWorkspaceActivation(
+    _ activation: WorkspaceActivation?
+) -> WorkspaceActivation? {
+    activation
+}
+
+private func nonisolatedWorkspaceAssignmentID(
+    _ state: WindowWorkspaceSessionState
+) -> UUID? {
+    state.assignment?.id
+}
+
+private func nonisolatedDiscardPublisherValue<Value>(_ _: Value) {}
+
+private func deliverWorkspaceActivation(
+    _ activation: WorkspaceActivation,
+    to model: WindowModel?
+) {
+    Task { @MainActor in
+        model?.adoptWorkspaceActivation(activation)
+    }
+}
+
+private func deliverWorkspaceEvents(
+    _ events: [UUID: WorkspaceEvent],
+    to model: WindowModel?
+) {
+    Task { @MainActor in
+        model?.receiveWorkspaceEvents(events)
+    }
+}
+
+private func deliverWindowSessionPersistence(to model: WindowModel?) {
+    Task { @MainActor in
+        model?.persistWindowSessionNow()
+    }
 }
 
 // MARK: - App State
@@ -2281,6 +2653,7 @@ final class WindowModel: ObservableObject {
     )
     let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
+    private var didStartWorkspaceObservers = false
     private var researchActionOpenTask: Task<Void, Never>?
     private var libraryRevealTask: Task<Void, Never>?
     private var requestedWorkspaceSelection: WorkspaceVaultSlot?
@@ -2349,17 +2722,6 @@ final class WindowModel: ObservableObject {
                 }
             )
         )
-        workspaceStore.$latestWorkspaceActivation
-            .compactMap { $0 }
-            .sink { [weak self] activation in
-                self?.adoptWorkspaceActivation(activation)
-            }
-            .store(in: &workspaceCancellables)
-        workspaceStore.$workspaceEvents
-            .sink { [weak self] events in
-                self?.receiveWorkspaceEvents(events)
-            }
-            .store(in: &workspaceCancellables)
         if PerformanceProbe.shared.isEnabled,
            ProcessInfo.processInfo.arguments.contains(
                "--scholium-performance-editor-mode-notifications"
@@ -2386,6 +2748,28 @@ final class WindowModel: ObservableObject {
             }
         }
         searchController.loadSavedSearches()
+    }
+
+    fileprivate func startWorkspaceObservers() {
+        guard !didStartWorkspaceObservers else { return }
+        didStartWorkspaceObservers = true
+
+        let relay = WindowModelObserverRelay(model: self)
+        let activationHandler: @Sendable (WorkspaceActivation) -> Void = { activation in
+            deliverWorkspaceActivation(activation, to: relay.model)
+        }
+        workspaceStore.$latestWorkspaceActivation
+            .compactMap(nonisolatedWorkspaceActivation)
+            .sink(receiveValue: activationHandler)
+            .store(in: &workspaceCancellables)
+
+        let workspaceEventsHandler: @Sendable ([UUID: WorkspaceEvent]) -> Void = { events in
+            deliverWorkspaceEvents(events, to: relay.model)
+        }
+        workspaceStore.$workspaceEvents
+            .sink(receiveValue: workspaceEventsHandler)
+            .store(in: &workspaceCancellables)
+
         observeWindowSessionChanges()
     }
 
@@ -3996,28 +4380,50 @@ final class WindowModel: ObservableObject {
     private func observeWindowSessionChanges() {
         let stateChanges: [AnyPublisher<Void, Never>] = [
             windowWorkspaceController.$state
-                .map { $0.assignment?.id }
+                .map(nonisolatedWorkspaceAssignmentID)
                 .removeDuplicates()
-                .map { _ in () }
+                .map(nonisolatedDiscardPublisherValue)
                 .eraseToAnyPublisher(),
-            $currentRegisteredVault.map { _ in () }.eraseToAnyPublisher(),
-            documentController.$selectedDocument.map { _ in () }.eraseToAnyPublisher(),
-            documentController.$currentPresentationMode.map { _ in () }.eraseToAnyPublisher(),
-            shellState.$libraryVisible.map { _ in () }.eraseToAnyPublisher(),
-            shellState.$documentTextScale.map { _ in () }.eraseToAnyPublisher(),
-            shellState.$selectedWorkspace.map { _ in () }.eraseToAnyPublisher(),
-            shellState.$inspector.map { _ in () }.eraseToAnyPublisher(),
-            discoveryController.$search.map { _ in () }.eraseToAnyPublisher(),
+            $currentRegisteredVault.map(nonisolatedDiscardPublisherValue).eraseToAnyPublisher(),
+            documentController.$selectedDocument
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
+            documentController.$currentPresentationMode
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
+            shellState.$libraryVisible
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
+            shellState.$documentTextScale
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
+            shellState.$selectedWorkspace
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
+            shellState.$inspector
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
+            discoveryController.$search
+                .map(nonisolatedDiscardPublisherValue)
+                .eraseToAnyPublisher(),
         ]
-        let changes = stateChanges.map { $0.dropFirst().eraseToAnyPublisher() }
-            + [
-                documentTabController.objectWillChange.eraseToAnyPublisher(),
-                discoveryController.objectWillChange.eraseToAnyPublisher(),
-                documentPresentationDidChange.eraseToAnyPublisher(),
-            ]
+        var changes: [AnyPublisher<Void, Never>] = []
+        changes.reserveCapacity(stateChanges.count + 3)
+        for stateChange in stateChanges {
+            changes.append(stateChange.dropFirst().eraseToAnyPublisher())
+        }
+        changes.append(contentsOf: [
+            documentTabController.objectWillChange.eraseToAnyPublisher(),
+            discoveryController.objectWillChange.eraseToAnyPublisher(),
+            documentPresentationDidChange.eraseToAnyPublisher(),
+        ])
+        let relay = WindowModelObserverRelay(model: self)
+        let persistenceHandler: @Sendable () -> Void = {
+            deliverWindowSessionPersistence(to: relay.model)
+        }
         Publishers.MergeMany(changes)
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] in self?.persistWindowSessionNow() }
+            .sink(receiveValue: persistenceHandler)
             .store(in: &workspaceCancellables)
     }
 
@@ -4213,7 +4619,7 @@ final class WindowModel: ObservableObject {
         reconcileResearchActionPresentation()
     }
 
-    private func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
+    fileprivate func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
         guard let replacement = windowWorkspaceController.adopt(activation) else { return }
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
 
@@ -6348,7 +6754,7 @@ final class WindowModel: ObservableObject {
         identityResolutionError = nil
     }
 
-    private func receiveWorkspaceEvents(_ events: [UUID: WorkspaceEvent]) {
+    fileprivate func receiveWorkspaceEvents(_ events: [UUID: WorkspaceEvent]) {
         guard let capabilities = windowWorkspaceController.activeCapabilities,
               let event = events[capabilities.id] else { return }
         guard workspaceProjectionController.canReceive(

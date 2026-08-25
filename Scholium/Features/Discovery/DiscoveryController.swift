@@ -147,13 +147,13 @@ final class DiscoveryController: ObservableObject {
         shellState: WindowShellState = WindowShellState(),
         intentHandler: @escaping IntentHandler = { _ in }
     ) {
-        librariesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
-                var state = initialLibraryState
-                state.workspaceSlot = workspace
-                return (workspace, state)
-            }
-        )
+        var initialLibraries: [WorkspaceVaultSlot: DiscoveryLibraryState] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            var state = initialLibraryState
+            state.workspaceSlot = workspace
+            initialLibraries[workspace] = state
+        }
+        librariesByWorkspace = initialLibraries
         self.shellState = shellState
         self.intentHandler = intentHandler
     }

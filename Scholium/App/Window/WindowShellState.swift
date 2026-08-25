@@ -90,9 +90,11 @@ final class WindowShellState: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        inspectorModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .overview) }
-        )
+        var initialInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            initialInspectorModes[workspace] = .overview
+        }
+        inspectorModesByWorkspace = initialInspectorModes
         colorScheme = userDefaults.string(forKey: WindowColorSchemeChoice.defaultsKey)
             .flatMap(WindowColorSchemeChoice.init(rawValue:))
             ?? .system
@@ -141,9 +143,11 @@ final class WindowShellState: ObservableObject {
 
     func resetWorkspaceSessions() {
         selectedWorkspace = .paperAnalysis
-        inspectorModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, .overview) }
-        )
+        var resetInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            resetInspectorModes[workspace] = .overview
+        }
+        inspectorModesByWorkspace = resetInspectorModes
         inspector.mode = .overview
     }
 
@@ -157,14 +161,12 @@ final class WindowShellState: ObservableObject {
     ) {
         guard !didRestoreInspector else { return }
         didRestoreInspector = true
-        inspectorModesByWorkspace = Dictionary(
-            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { workspace in
-                (
-                    workspace,
-                    ResearchInspectorMode(restoring: modesByWorkspace[workspace])
-                )
-            }
-        )
+        var restoredInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
+        for workspace in WorkspaceVaultSlot.allCases {
+            restoredInspectorModes[workspace] =
+                ResearchInspectorMode(restoring: modesByWorkspace[workspace])
+        }
+        inspectorModesByWorkspace = restoredInspectorModes
         inspector.mode = inspectorMode(for: selectedWorkspace)
         inspector.isVisible = isVisible ?? false
     }

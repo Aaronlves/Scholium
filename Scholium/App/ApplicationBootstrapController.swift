@@ -211,7 +211,15 @@ final class ApplicationBootstrapController: ObservableObject {
 
 struct ApplicationBootstrapGate<Content: View>: View {
     @ObservedObject var controller: ApplicationBootstrapController
-    @ViewBuilder let content: (WorkspaceStore) -> Content
+    let content: Content
+
+    init(
+        controller: ApplicationBootstrapController,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.controller = controller
+        self.content = content()
+    }
 
     var body: some View {
         Group {
@@ -219,7 +227,7 @@ struct ApplicationBootstrapGate<Content: View>: View {
             case .starting:
                 ScholiumLaunchPlaceholderView()
             case .ready(let store):
-                content(store)
+                content.environmentObject(store)
             case .storageUnavailable(let failure):
                 ApplicationStorageUnavailableView(
                     failure: failure,

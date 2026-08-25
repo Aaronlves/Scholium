@@ -6,12 +6,22 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
-    @Test("Initial Review consumes the bounded source-free prewarmed WebView")
+    @Test("Initial Review consumes only a finished source-free prewarmed WebView")
     func readConsumesPreparedWebView() async throws {
         let prewarmer = ScholiumWebKitProcessPrewarmer.shared
         prewarmer.finish()
         prewarmer.start()
         let preparedIdentity = try #require(prewarmer.testingPreparedWebViewIdentity)
+        #expect(!prewarmer.testingPreparedWebViewIsReady)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while !prewarmer.testingPreparedWebViewIsReady {
+            try #require(
+                clock.now < deadline,
+                "The isolated prewarm page did not finish before the bounded handoff window."
+            )
+            try await Task.sleep(for: .milliseconds(20))
+        }
         let source = "# Prepared Review\n\nThe exact source remains authoritative.\n"
         let document = NoteDocument(relativePath: "Prepared.md", rawContent: source)
         let harness = ReadHarness(
