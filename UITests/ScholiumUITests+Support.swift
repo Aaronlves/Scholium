@@ -371,6 +371,34 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
     }
 
+    @MainActor
+    func waitForCurrentDocumentSurface() {
+        XCTAssertTrue(waitUntil(timeout: 20) { self.documentSurfaceIsUsable() })
+    }
+
+    @MainActor
+    func documentSurfaceIsUsable(for relativePath: String? = nil) -> Bool {
+        if let relativePath,
+           !app.descendants(matching: .any)[
+               "scholium.noteRow.\(relativePath)"
+           ].isSelected {
+            return false
+        }
+        let usableSurface = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format:
+                    "label IN %@ OR title IN %@ OR "
+                    + "(identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@)",
+                ["Markdown editor, Edit mode", "Markdown source editor"],
+                ["Markdown editor, Edit mode", "Markdown source editor"],
+                "scholium.renderedDocument.",
+                "scholium.renderedDocument.loading",
+                "scholium.renderedDocument.failed"
+            )
+        ).firstMatch
+        return usableSurface.exists
+    }
+
     /// Exercises the stable native-toolbar Sidebar and Inspector visibility
     /// controls through their actual pointer hit-testing paths.
     @MainActor

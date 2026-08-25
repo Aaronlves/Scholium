@@ -181,12 +181,11 @@ final class ScholiumUITests: XCTestCase {
             return
         }
         if let initialOpenNote = initialOpenNoteForCurrentTest {
-            let renderedDocument = app.descendants(matching: .any)[
-                "scholium.renderedDocument.\(initialOpenNote)"
-            ]
             XCTAssertTrue(
-                waitUntil(timeout: initialWorkspaceReadyTimeout) { renderedDocument.exists },
-                "The isolated QA window appeared without reaching a usable document surface."
+                waitUntil(timeout: initialWorkspaceReadyTimeout) {
+                    self.documentSurfaceIsUsable(for: initialOpenNote)
+                },
+                "The isolated QA window appeared without exposing the initial document in its current mode."
             )
         }
         if name.contains(

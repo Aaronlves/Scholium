@@ -968,7 +968,6 @@ private struct ScholiumWindowRoot: View {
                 researchResultNotificationCoordinator:
                 researchResultNotificationCoordinator
         ))
-        model.startWorkspaceObservers()
     }
 
     var body: some View {
@@ -2653,7 +2652,6 @@ final class WindowModel: ObservableObject {
     )
     let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
-    private var didStartWorkspaceObservers = false
     private var researchActionOpenTask: Task<Void, Never>?
     private var libraryRevealTask: Task<Void, Never>?
     private var requestedWorkspaceSelection: WorkspaceVaultSlot?
@@ -2748,12 +2746,10 @@ final class WindowModel: ObservableObject {
             }
         }
         searchController.loadSavedSearches()
+        startWorkspaceObservers()
     }
 
-    fileprivate func startWorkspaceObservers() {
-        guard !didStartWorkspaceObservers else { return }
-        didStartWorkspaceObservers = true
-
+    private func startWorkspaceObservers() {
         let relay = WindowModelObserverRelay(model: self)
         let activationHandler: @Sendable (WorkspaceActivation) -> Void = { activation in
             deliverWorkspaceActivation(activation, to: relay.model)

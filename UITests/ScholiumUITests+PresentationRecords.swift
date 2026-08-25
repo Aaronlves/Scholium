@@ -31,7 +31,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testWorkspaceInitialDefaultPreservesNativeReachability() throws {
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let window = app.windows.firstMatch
         guard abs(window.frame.width - QAWorkspaceMetricContract.preferredWidth)
             <= QAWorkspaceMetricContract.frameTolerance else {
@@ -39,12 +39,16 @@ extension ScholiumUITests {
                 "AppKit restored a test-owned frame; rerun this first-presentation journey from a clean QA preference domain."
             )
         }
-        XCTAssertTrue(app.descendants(matching: .any)["Rendered Markdown"].exists)
         XCTAssertTrue(
-            app.descendants(matching: .any)["scholium.toggleSidebar"]
+            app.descendants(matching: .any)["Markdown editor, Edit mode"].exists
+        )
+        XCTAssertTrue(
+            app.toolbars.firstMatch.buttons["Hide Sidebar"]
                 .waitForExistence(timeout: 5)
         )
-        let inspectorButton = app.descendants(matching: .any)["scholium.toggleInspector"]
+        let inspectorButton = app.toolbars.firstMatch.buttons[
+            "Show Research Inspector"
+        ]
         XCTAssertTrue(inspectorButton.waitForExistence(timeout: 5))
         XCTAssertTrue(inspectorButton.isEnabled)
     }

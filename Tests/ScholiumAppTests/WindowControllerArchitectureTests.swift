@@ -2212,8 +2212,10 @@ struct WindowControllerArchitectureTests {
         #expect(terminalSource.contains("unregisterResearchNotificationWindow()"))
         #expect(terminalSource.contains("lifecycleRegistry.unregister("))
         #expect(terminalSource.contains(
-            "detachWindow(restoringPreviousDelegate: false)"
+            "detachWindow(restoringPreviousDelegate: true)"
         ))
+        #expect(windowSource.contains("scheduleAuthorizedClose(sender, attempt: attempt)"))
+        #expect(windowSource.contains("DispatchQueue.main.async { @MainActor"))
         #expect(!splitSource.contains("apparatusItem.holdingPriority"))
     }
 

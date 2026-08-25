@@ -689,7 +689,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             lifecycleRegistry.unregister(id: windowID)
             isRegistered = false
         }
-        detachWindow(restoringPreviousDelegate: false)
+        // AppKit can still deliver order-off notifications after
+        // windowWillClose. Restore SwiftUI's retained delegate before this
+        // coordinator becomes unreachable so those callbacks never target a
+        // released forwarding object.
+        detachWindow(restoringPreviousDelegate: true)
         forwardedDelegate?.windowWillClose?(notification)
         return shouldTerminateApplication
     }
@@ -1113,15 +1117,13 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 let outcome = try await appState.windowCloseCoordinator.prepare()
                 guard attempt == closeAttemptGeneration,
                       self.window === sender else { return }
-                closeIsAuthorized = true
-                flushInFlight = false
                 if let warning = outcome.presentationWarning {
                     appState.showToast(
                         "The document was saved, but window state could not be saved. \(warning)",
                         kind: .warning
                     )
                 }
-                sender.performClose(nil)
+                scheduleAuthorizedClose(sender, attempt: attempt)
             } catch {
                 guard attempt == closeAttemptGeneration,
                       self.window === sender else { return }
@@ -1134,6 +1136,24 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             }
         }
         return false
+    }
+
+    private func scheduleAuthorizedClose(
+        _ sender: NSWindow,
+        attempt: UInt64
+    ) {
+        // AppKit synchronously invalidates the closing window's SwiftUI graph.
+        // Let the async flush task unwind before beginning that invalidation so
+        // SDK 27 does not evaluate View/Commands builders through the task's
+        // stale executor context.
+        DispatchQueue.main.async { @MainActor [weak self, weak sender] in
+            guard let self, let sender,
+                  attempt == self.closeAttemptGeneration,
+                  self.window === sender else { return }
+            self.closeIsAuthorized = true
+            self.flushInFlight = false
+            sender.performClose(nil)
+        }
     }
 
     override func responds(to selector: Selector!) -> Bool {
