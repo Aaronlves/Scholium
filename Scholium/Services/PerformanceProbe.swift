@@ -66,6 +66,7 @@ final class PerformanceProbe {
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = CommandLine.arguments,
         bundleID: String? = Bundle.main.bundleIdentifier,
         now: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
     ) {
@@ -78,7 +79,13 @@ final class PerformanceProbe {
               let rawRunID = environment["SCHOLIUM_PERFORMANCE_RUN_ID"],
               Self.isSafeRunID(rawRunID),
               let bundleID,
-              let resultURL = Self.safeResultURL(rawURL, runID: rawRunID, bundleID: bundleID),
+              Self.allowsConfiguration(bundleID: bundleID, arguments: arguments),
+              let resultURL = Self.safeResultURL(
+                  rawURL,
+                  runID: rawRunID,
+                  bundleID: bundleID,
+                  isolatedHomePath: environment["SCHOLIUM_HOME"]
+              ),
               let rawSample = environment["SCHOLIUM_PERFORMANCE_SAMPLE"],
               let sample = Int(rawSample),
               sample >= 0,
@@ -616,7 +623,8 @@ final class PerformanceProbe {
     private static func safeResultURL(
         _ rawPath: String,
         runID: String,
-        bundleID: String
+        bundleID: String,
+        isolatedHomePath: String?
     ) -> URL? {
         guard bundleID == "com.scholium.app" || bundleID == "com.scholium.qa" else {
             return nil
@@ -628,24 +636,54 @@ final class PerformanceProbe {
         }
         let parent = candidate.deletingLastPathComponent().resolvingSymlinksInPath()
         let isolatedSuffix = "/.build/performance-\(runID)/app-state/raw"
-        let isSystemTemporary = parent.path == "/tmp"
-            || parent.path.hasPrefix("/tmp/")
-            || parent.path == "/private/tmp"
-            || parent.path.hasPrefix("/private/tmp/")
+        let isSystemTemporary = bundleID == "com.scholium.qa"
+            && (parent.path == "/tmp"
+                || parent.path.hasPrefix("/tmp/")
+                || parent.path == "/private/tmp"
+                || parent.path.hasPrefix("/private/tmp/"))
         let isolatedRaw = parent.path.components(separatedBy: isolatedSuffix).first.map {
             $0 + isolatedSuffix
         }
-        let isIsolatedBuildOutput = parent.path.hasPrefix("/Users/")
+        let isIsolatedBuildOutput = bundleID == "com.scholium.qa"
+            && parent.path.hasPrefix("/Users/")
             && isolatedRaw.map {
                 parent.path == $0 || parent.path.hasPrefix($0 + "/")
             } == true
-        guard isSystemTemporary || isIsolatedBuildOutput else {
+        let packagedRunRoot = isolatedHomePath.map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+                .standardizedFileURL
+                .resolvingSymlinksInPath()
+                .deletingLastPathComponent()
+        }
+        let packagedRawRoot = packagedRunRoot?.appendingPathComponent(
+            "raw",
+            isDirectory: true
+        )
+        let isPackagedOutput = bundleID == "com.scholium.app"
+            && packagedRunRoot?.lastPathComponent == runID
+            && packagedRunRoot?.deletingLastPathComponent().lastPathComponent
+                == "Performance Runs"
+            && packagedRawRoot.map {
+                parent.path == $0.path || parent.path.hasPrefix($0.path + "/")
+            } == true
+        guard isSystemTemporary || isIsolatedBuildOutput || isPackagedOutput else {
             return nil
         }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory),
               isDirectory.boolValue else { return nil }
         return parent.appendingPathComponent(candidate.lastPathComponent, isDirectory: false)
+    }
+
+    private static func allowsConfiguration(
+        bundleID: String,
+        arguments: [String]
+    ) -> Bool {
+        bundleID == "com.scholium.qa"
+            || (bundleID == "com.scholium.app"
+                && arguments.contains(
+                    ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument
+                ))
     }
 
     private static func isSafeRunID(_ value: String) -> Bool {

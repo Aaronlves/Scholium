@@ -7,6 +7,82 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    @Test("Packaged probe writes only inside its explicit performance run")
+    func packagedProbeRequiresDriverOwnedResultRoot() throws {
+        let fileManager = FileManager.default
+        let temporary = URL(
+            fileURLWithPath: "/private/tmp/scholium-packaged-performance-probe-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let runID = "packaged_probe_test"
+        let runRoot = temporary
+            .appendingPathComponent("Performance Runs", isDirectory: true)
+            .appendingPathComponent(runID, isDirectory: true)
+        let home = runRoot.appendingPathComponent(
+            "home-warm-library",
+            isDirectory: true
+        )
+        let raw = runRoot.appendingPathComponent("raw", isDirectory: true)
+        let outside = runRoot.appendingPathComponent("outside", isDirectory: true)
+        try fileManager.createDirectory(at: home, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: raw, withIntermediateDirectories: true)
+        try fileManager.createDirectory(
+            at: outside,
+            withIntermediateDirectories: true
+        )
+        defer { try? fileManager.removeItem(at: temporary) }
+
+        let result = raw.appendingPathComponent("warm_library_launch.jsonl")
+        let environment = [
+            "SCHOLIUM_HOME": home.path,
+            "SCHOLIUM_PERFORMANCE_RESULTS_PATH": result.path,
+            "SCHOLIUM_PERFORMANCE_METRIC": "warm_library_launch",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": runID,
+            "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+            "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+            "SCHOLIUM_PERFORMANCE_EXPECTED_COUNT": "267",
+            "SCHOLIUM_PERFORMANCE_STARTED_NS": "1000000",
+        ]
+        var times: [UInt64] = [
+            2_000_000, 6_000_000, 11_000_000, 20_000_000,
+        ]
+        let probe = PerformanceProbe(
+            environment: environment,
+            arguments: [
+                "Scholium",
+                ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument,
+            ],
+            bundleID: "com.scholium.app",
+            now: { times.removeFirst() }
+        )
+        #expect(probe.isEnabled)
+        probe.markWarmLibraryWindowModelInitializationStarted()
+        probe.markWarmLibraryWorkspaceReady()
+        probe.markWarmLibraryProjectionReady()
+        probe.markLibraryReady(noteCount: 267)
+        #expect(fileManager.fileExists(atPath: result.path))
+
+        var rejectedEnvironment = environment
+        rejectedEnvironment["SCHOLIUM_PERFORMANCE_RESULTS_PATH"] = outside
+            .appendingPathComponent("warm_library_launch.jsonl").path
+        let wrongRoot = PerformanceProbe(
+            environment: rejectedEnvironment,
+            arguments: [
+                "Scholium",
+                ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument,
+            ],
+            bundleID: "com.scholium.app"
+        )
+        #expect(!wrongRoot.isEnabled)
+
+        let ordinaryRelease = PerformanceProbe(
+            environment: environment,
+            arguments: ["Scholium"],
+            bundleID: "com.scholium.app"
+        )
+        #expect(!ordinaryRelease.isEnabled)
+    }
+
     @Test("Large CJK correctness remains distinct from latency measurement")
     func largeCJKCorrectnessHasDedicatedProbeMode() throws {
         let directory = URL(

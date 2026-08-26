@@ -103,6 +103,9 @@ struct FrontendArchitectureTests {
         #expect(preparer.contains("Cool the reference machine before invoking"))
         #expect(runner.contains("testRDF1HundredThousandCJKCorrectness"))
         #expect(runner.contains("SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH"))
+        #expect(runner.contains("APP_RESULT_ROOT=\"${APP_SCRATCH}/raw\""))
+        #expect(runner.contains("cp \"${driver_results}\" \"${results}\""))
+        #expect(runner.contains("cp \"${cjk_driver_results}\" \"${cjk_results}\""))
     }
 
     @Test("Fixture launch opens the requested Vault once before its document")

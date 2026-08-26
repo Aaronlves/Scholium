@@ -265,6 +265,10 @@ fi
 FIXTURE_COPY="${APP_SCRATCH}/rdf1"
 RAW="${SCRATCH}/raw"
 DERIVED="${SCRATCH}/derived-data"
+APP_RESULT_ROOT="${RAW}"
+if [[ "${ARTIFACT_KIND}" == packaged_release ]]; then
+  APP_RESULT_ROOT="${APP_SCRATCH}/raw"
+fi
 
 cleanup() {
   local exit_code=$?
@@ -297,7 +301,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${SCRATCH}" "${RAW}" "${OUTPUT}"
+mkdir -p "${SCRATCH}" "${RAW}" "${OUTPUT}" "${APP_RESULT_ROOT}"
 ditto --norsrc --noextattr --noqtn --noacl "${FIXTURE}" "${FIXTURE_COPY}"
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
   --output "${FIXTURE_COPY}" \
@@ -338,6 +342,7 @@ set_test_environment() {
 
 for metric in "${LATENCY_METRICS[@]}"; do
   results="${RAW}/${metric}.jsonl"
+  driver_results="${APP_RESULT_ROOT}/${metric}.jsonl"
   home="${APP_SCRATCH}/home-${metric}"
   run_file="${DRIVER_PRODUCTS}/ScholiumPerformance-${RUN_ID}-${metric}.xctestrun"
   DRIVER_RUN_FILES+=("${run_file}")
@@ -347,7 +352,8 @@ for metric in "${LATENCY_METRICS[@]}"; do
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_METRIC "${metric}"
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${FIXTURE_COPY}"
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${home}"
-  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RESULTS_PATH "${results}"
+  set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RESULTS_PATH \
+    "${driver_results}"
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${RUN_ID}"
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_WARMUPS "${WARMUPS}"
   set_test_environment "${run_file}" SCHOLIUM_PERFORMANCE_DRIVER_SAMPLES "${SAMPLES}"
@@ -361,6 +367,9 @@ for metric in "${LATENCY_METRICS[@]}"; do
     test-without-building \
     -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1PerformanceSamples \
     >"${SCRATCH}/${metric}.log"
+  if [[ "${driver_results}" != "${results}" ]]; then
+    cp "${driver_results}" "${results}"
+  fi
   if [[ "${MODE}" == product_gate ]]; then
     sleep "${METRIC_COOLDOWN_SECONDS}"
   fi
@@ -370,7 +379,7 @@ done
 # service map rather than PPID or process-name matching. The UI journey owns
 # the real mode transitions; the external sampler owns attribution and RSS.
 if (( RUN_MEMORY )); then
-memory_handoff="${RAW}/editor-retained-memory-handoff"
+memory_handoff="${APP_RESULT_ROOT}/editor-retained-memory-handoff"
 memory_results="${memory_handoff}/editor_retained_memory.jsonl"
 memory_progress="${memory_handoff}/editor_retained_memory_progress.jsonl"
 memory_acknowledgment="${memory_handoff}/editor_retained_memory.ack"
@@ -422,6 +431,7 @@ fi
 
 if [[ "${MODE}" == product_gate ]]; then
 cjk_results="${RAW}/editor_large_cjk_correctness.jsonl"
+cjk_driver_results="${APP_RESULT_ROOT}/editor_large_cjk_correctness.jsonl"
 cjk_home="${APP_SCRATCH}/home-editor-large-cjk-correctness"
 cjk_run_file="${DRIVER_PRODUCTS}/ScholiumPerformance-${RUN_ID}-editor-large-cjk-correctness.xctestrun"
 DRIVER_RUN_FILES+=("${cjk_run_file}")
@@ -431,7 +441,8 @@ set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_APP_PATH "${A
 set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_FIXTURE_ROOT "${FIXTURE_COPY}"
 set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_HOME_ROOT "${cjk_home}"
 set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_DRIVER_RUN_ID "${RUN_ID}"
-set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH "${cjk_results}"
+set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH \
+  "${cjk_driver_results}"
 "${DEVELOPER_DIR}/usr/bin/xcodebuild" \
   -xctestrun "${cjk_run_file}" \
   -destination "platform=macOS,arch=$(uname -m)" \
@@ -441,6 +452,9 @@ set_test_environment "${cjk_run_file}" SCHOLIUM_PERFORMANCE_CJK_RESULTS_PATH "${
   test-without-building \
   -only-testing:ScholiumUITests/ScholiumPerformanceUITests/testRDF1HundredThousandCJKCorrectness \
   >"${SCRATCH}/editor-large-cjk-correctness.log"
+if [[ "${cjk_driver_results}" != "${cjk_results}" ]]; then
+  cp "${cjk_driver_results}" "${cjk_results}"
+fi
 fi
 
 python3 "${ROOT}/Tools/Scripts/generate-rdf1.py" \
