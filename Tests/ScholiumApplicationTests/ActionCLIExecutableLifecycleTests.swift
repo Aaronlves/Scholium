@@ -390,7 +390,8 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!startedOutput.contains(credential.secret))
 
         let credentialURL = freshAgentHome
-            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
             .appendingPathComponent(run.rawValue + ".json")
         let homeMode = try #require(
             FileManager.default.attributesOfItem(atPath: freshAgentHome.path)[
@@ -640,7 +641,8 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!pairingOutput.contains(credential.secret))
         #expect(!pairingOutput.contains(code.rawValue))
         let credentialURL = fixture.homeURL
-            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
             .appendingPathComponent(run.rawValue + ".json")
         let mode = try #require(
             FileManager.default.attributesOfItem(atPath: credentialURL.path)[
@@ -670,10 +672,26 @@ struct ActionCLIExecutableLifecycleTests {
             [.posixPermissions: 0o600],
             ofItemAtPath: credentialURL.path
         )
-        try cli.expectFailure(
+        let invalidSession = try cli.runExpectingFailure(
             ["agent", "context", "--run", run.rawValue],
             environment: environment,
-            contains: "No valid local Connection Session exists"
+        )
+        let invalidSessionReport = try #require(
+            JSONSerialization.jsonObject(with: invalidSession.stderr)
+                as? [String: Any]
+        )
+        #expect(invalidSessionReport["code"] as? String == "session_expired")
+        #expect(
+            (invalidSessionReport["message"] as? String)?.contains(
+                "copy a new handoff"
+            ) == true
+        )
+        let invalidSessionRecovery = try #require(
+            invalidSessionReport["recovery"] as? [String: Any]
+        )
+        #expect(
+            invalidSessionRecovery["next_step"] as? String
+                == "copy_new_handoff_and_pair_same_run"
         )
         storedCredential.removeValue(forKey: "unexpected_authority")
         try JSONSerialization.data(withJSONObject: storedCredential)
@@ -1543,7 +1561,14 @@ struct ActionCLIExecutableLifecycleTests {
             sessionID: UUID(),
             secret: String(repeating: "r", count: 48)
         )
-        let sessionsURL = home.appendingPathComponent("sessions", isDirectory: true)
+        let sessionsURL = home
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: sessionsURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o700)]
+        )
         let revokedCredential = LockedRevokedCredential()
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
@@ -1632,9 +1657,13 @@ struct ActionCLIExecutableLifecycleTests {
             state: .prepared,
             message: "The Agent-originated Run is active."
         )
-        let sessionsURL = fixture.homeURL.appendingPathComponent(
-            "sessions",
-            isDirectory: true
+        let sessionsURL = fixture.homeURL
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: sessionsURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: NSNumber(value: 0o700)]
         )
         let revokedCredential = LockedRevokedCredential()
         let server = try LocalAgentBridgeServer(
@@ -2190,6 +2219,10 @@ private struct ActionCLIFixture {
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: 0o700)],
             ofItemAtPath: home.path
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: appSupport.path
         )
         let analysisURL = analyses.appendingPathComponent("Analysis.md")
         try Data(

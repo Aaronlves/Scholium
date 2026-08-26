@@ -627,7 +627,13 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
                 mustReuseRequestIdentity: false,
                 nextStep: .correctRequest
             )
-        case .unavailable, .permissionDenied, .missingSourceEvidence, .operationFailed:
+        case .missingSourceEvidence:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .correctRequest
+            )
+        case .unavailable, .permissionDenied, .operationFailed:
             AgentOperationRecovery(
                 safeToRetry: false,
                 mustReuseRequestIdentity: false,
@@ -1451,9 +1457,8 @@ enum LocalAgentBridgeWireCoding {
              ResearchActionRunContractError.targetIdentityChanged,
              ResearchActionRunContractError.materialChanged:
             code = .staleRun
-        case ResearchActionRunContractError.sourceAccessUnavailable(let failure)
-            where failure.code == .missingBinding:
-            code = .missingSourceEvidence
+        case ResearchActionRunContractError.sourceAccessUnavailable(let failure):
+            code = sourceAccessBridgeCode(for: failure.code)
         case ResearchAgentConnectionError.analysisPathOccupied,
              VaultRepositoryError.fileAlreadyExists,
              VaultRepositoryError.pathCollision:
@@ -1520,6 +1525,21 @@ enum LocalAgentBridgeWireCoding {
             recovery: (error as? any AgentCommandErrorCodeProviding)?
                 .agentCommandRecovery
         )
+    }
+
+    private static func sourceAccessBridgeCode(
+        for failure: ResearchSourceAccessFailureCode
+    ) -> LocalAgentBridgeErrorCode {
+        switch failure {
+        case .missingBinding, .sourceMissing, .zoteroAttachmentMissing:
+            return .missingSourceEvidence
+        case .sourceChanged:
+            return .staleRun
+        case .corruptBinding, .bookmarkUnavailable, .bookmarkStale,
+             .sourceUnreadable, .sourceNotRegular, .sourceIsSymbolicLink,
+             .zoteroUnavailable, .zoteroIdentityMismatch:
+            return .sourceUnreadable
+        }
     }
 
     private struct AnyCodingKey: CodingKey {

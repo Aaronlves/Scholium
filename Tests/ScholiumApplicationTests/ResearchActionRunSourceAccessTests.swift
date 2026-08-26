@@ -35,6 +35,23 @@ extension ResearchActionRunOperationsTests {
             analyzeAvailability.repairReasons.first?.sourceAccessFailure?.code
                 == .missingBinding
         )
+        do {
+            _ = try await runtime.startResearchAgentRun(
+                triptychID: fixture.assignment.id,
+                request: ResearchAgentStartRequest(
+                    actionID: .analyze,
+                    target: fixture.analysisID
+                ),
+                sessionValidity: 300
+            )
+            Issue.record("Expected direct Agent start to require source evidence.")
+        } catch let error as ResearchActionRunContractError {
+            guard case .sourceAccessUnavailable(let failure) = error else {
+                Issue.record("Unexpected direct Agent start error: \(error)")
+                return
+            }
+            #expect(failure.code == .missingBinding)
+        }
         await #expect(throws: ResearchActionRunContractError.self) {
             _ = try await handle.research.prepareActionRun(
                 ResearchActionRunRequest(actionID: .analyze, target: analysis)

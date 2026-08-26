@@ -159,21 +159,28 @@ struct AgentSessionCredentialStore {
 
     private func prepareDirectory() throws {
         let parentURL = directoryURL.deletingLastPathComponent()
-        if mkdir(parentURL.path, 0o700) != 0, errno != EEXIST {
-            throw AgentSessionCredentialStoreError.unsafeState
+        // An explicit isolated Home is allowed to be fresh on first use. The
+        // private root is the only additional ancestor the store owns; create
+        // it before ApplicationSupport so every store-owned directory still
+        // receives the same strict ownership and mode checks.
+        let privateRootURL = parentURL.deletingLastPathComponent()
+        var privateRootInfo = stat()
+        if lstat(privateRootURL.path, &privateRootInfo) != 0 {
+            guard errno == ENOENT else {
+                throw AgentSessionCredentialStoreError.unsafeState
+            }
+            try ensureSecureDirectory(at: privateRootURL)
         }
-        var parentInfo = stat()
-        guard lstat(parentURL.path, &parentInfo) == 0,
-              parentInfo.st_uid == geteuid(),
-              (parentInfo.st_mode & S_IFMT) == S_IFDIR,
-              (parentInfo.st_mode & 0o077) == 0 else {
-            throw AgentSessionCredentialStoreError.unsafeState
-        }
-        if mkdir(directoryURL.path, 0o700) != 0, errno != EEXIST {
+        try ensureSecureDirectory(at: parentURL)
+        try ensureSecureDirectory(at: directoryURL)
+    }
+
+    private func ensureSecureDirectory(at url: URL) throws {
+        if mkdir(url.path, 0o700) != 0, errno != EEXIST {
             throw AgentSessionCredentialStoreError.unsafeState
         }
         var info = stat()
-        guard lstat(directoryURL.path, &info) == 0,
+        guard lstat(url.path, &info) == 0,
               info.st_uid == geteuid(),
               (info.st_mode & S_IFMT) == S_IFDIR,
               (info.st_mode & 0o077) == 0 else {
@@ -201,7 +208,9 @@ struct AgentSessionCredentialStore {
     }
 }
 
-enum AgentSessionCredentialStoreError: LocalizedError {
+enum AgentSessionCredentialStoreError: LocalizedError,
+    AgentCommandErrorCodeProviding
+{
     case unsafeState
     case missingOrUnsafe
 
@@ -210,7 +219,31 @@ enum AgentSessionCredentialStoreError: LocalizedError {
         case .unsafeState:
             "The protected local Session store is unavailable or unsafe."
         case .missingOrUnsafe:
-            "No valid local Connection Session exists for this Run; pair again."
+            "No valid local Connection Session exists for this Run; copy a new handoff and pair the same Run."
+        }
+    }
+
+    var agentCommandErrorCode: String {
+        switch self {
+        case .unsafeState: "session_store_unavailable"
+        case .missingOrUnsafe: "session_expired"
+        }
+    }
+
+    var agentCommandRecovery: AgentOperationRecovery? {
+        switch self {
+        case .unsafeState:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: false,
+                nextStep: .stopAndReport
+            )
+        case .missingOrUnsafe:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .copyNewHandoffAndPairSameRun
+            )
         }
     }
 }

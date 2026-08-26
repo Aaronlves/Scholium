@@ -287,8 +287,24 @@ extension WorkspaceHandle {
             checkingSourceAccess: !allowsResearcherProvidedSource
         )
         guard let action = available.first(where: {
-            $0.id == request.actionID && $0.isEnabled
+            $0.id == request.actionID
         }) else {
+            throw ResearchActionExecutionContractError.actionUnavailable(
+                request.actionID
+            )
+        }
+        guard action.isEnabled else {
+            if let sourceFailure = action.repairReasons.first(where: {
+                $0.code == .sourceAccessRequired
+            })?.sourceAccessFailure {
+                // Availability is deliberately non-authorizing, but a direct
+                // Agent start still needs the same typed repair contract as a
+                // later preparation failure. Do not flatten a missing source
+                // route into the generic action-unavailable error.
+                throw ResearchActionRunContractError.sourceAccessUnavailable(
+                    sourceFailure
+                )
+            }
             throw ResearchActionExecutionContractError.actionUnavailable(
                 request.actionID
             )

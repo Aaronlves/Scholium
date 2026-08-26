@@ -159,6 +159,39 @@ struct LocalAgentBridgeTests {
         )
         #expect(missingSource.code == .missingSourceEvidence)
         #expect(missingSource.message.contains("source_route=researcher_provided"))
+        #expect(missingSource.recovery.nextStep == .correctRequest)
+
+        for failure in [
+            ResearchSourceAccessFailureCode.sourceMissing,
+            .zoteroAttachmentMissing,
+        ] {
+            #expect(LocalAgentBridgeWireCoding.errorPayload(
+                ResearchActionRunContractError.sourceAccessUnavailable(
+                    ResearchSourceAccessFailure(code: failure)
+                )
+            ).code == .missingSourceEvidence)
+        }
+        for failure in [
+            ResearchSourceAccessFailureCode.corruptBinding,
+            .bookmarkUnavailable,
+            .bookmarkStale,
+            .sourceUnreadable,
+            .sourceNotRegular,
+            .sourceIsSymbolicLink,
+            .zoteroUnavailable,
+            .zoteroIdentityMismatch,
+        ] {
+            #expect(LocalAgentBridgeWireCoding.errorPayload(
+                ResearchActionRunContractError.sourceAccessUnavailable(
+                    ResearchSourceAccessFailure(code: failure)
+                )
+            ).code == .sourceUnreadable)
+        }
+        #expect(LocalAgentBridgeWireCoding.errorPayload(
+            ResearchActionRunContractError.sourceAccessUnavailable(
+                ResearchSourceAccessFailure(code: .sourceChanged)
+            )
+        ).code == .staleRun)
 
         let expired = LocalAgentBridgeWireCoding.errorPayload(
             ResearchAgentSessionError.sessionRejected
