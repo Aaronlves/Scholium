@@ -683,7 +683,12 @@ shape. A healthy CLI registry projection resolves UUID or unique-name selectors,
 including UUID-shaped names; when that projection is absent or lacks a UUID,
 the UUID passes directly to Application for authorization. The protected
 credential store creates and validates its current-user-only parent and session
-directories before Session creation or Pairing consumption. If the directory
+directories before Session creation or Pairing consumption. In production,
+`AgentSessionCredentialStore` persists beneath
+`Scholium/State-v1/Agent Sessions` in the shared per-user Application Support
+root; an explicit `SCHOLIUM_HOME` launch uses only its isolated
+`ApplicationSupport/Agent Sessions` child. The retired home-level
+`~/.scholium/sessions` path is not a compatibility route. If the directory
 becomes unavailable after Application returns a credential, the CLI presents
 the complete bearer value once to the bridge's authenticated Session-revocation
 operation. Confirmed revocation leaves the Run active and directs the Agent to

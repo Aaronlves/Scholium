@@ -252,13 +252,16 @@ PATH／profile 编辑、替代下载来源和 quarantine 修改。应用不会�
 
 ```bash
 Tools/Scripts/install-cli.sh
+export PATH="$PWD/.build/cli-prefix/bin:$PATH"
 scholium version --format json
 scholium doctor --format json
-scholium update --check
-scholium update
 scholium help action
 scholium help agent start
 ```
+
+源码 checkout 的安装器会把开发版可执行文件及其资源 bundle 收束在
+`.build/cli-prefix` 下。经验证的 `scholium update` 只适用于单独安装在
+`~/.local/bin` 下的发行版 CLI。
 
 CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关注、准确读取、Discussion
 回复、可恢复 Actions、推荐文献、按稳定 Note UUID 执行的 `record list`、按 Record
@@ -286,10 +289,10 @@ Run。配对码只通过标准输入读取；Scholium 不会启动或监管 Agen
 Skills、当前研究者状态、活跃 Discussion 和白名单 Research Records。
 
 Bookmark、绝对路径、窗口 session、索引、保存的查询、受保护执行、恢复、传输
-状态、组装后的指令与未知预发布字节保存在本机：
+状态、Agent Session、本机桥命名空间、组装后的指令与未知预发布字节保存在本机：
 
 ```text
-~/Library/Application Support/Scholium/
+~/Library/Application Support/Scholium/State-v1/
 ```
 
 每次权威写入都必须验证容纳边界与预期修订、保留被替换字节、验证目标源码、原子

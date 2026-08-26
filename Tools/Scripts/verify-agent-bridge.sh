@@ -7,7 +7,11 @@ SCRATCH="${ROOT}/.build/ab"
 BUILD="${SCHOLIUM_AGENT_BRIDGE_BUILD:-${SCRATCH}/build}"
 APP="${SCRATCH}/Scholium-Agent-Bridge-Probe.app"
 RUN_ID="$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-' | cut -c1-8)"
-BUNDLE_ID="com.scholium.abp.r${RUN_ID}"
+# Keep one test-owned sandbox identity. A random bundle identifier makes
+# macOS allocate a permanent container root for every probe invocation.
+BUNDLE_ID="com.scholium.abp"
+TEST_CONTAINER="${HOME}/Library/Containers/${BUNDLE_ID}"
+TEST_APPLICATION_SCRIPTS="${HOME}/Library/Application Scripts/${BUNDLE_ID}"
 PROBE_ROOT="${HOME}/Library/Application Support/Scholium/Bridge-Probes/${RUN_ID}"
 PROBE_HOME="${PROBE_ROOT}/home"
 SUPPORT="${SCRATCH}/bridge-namespace"
@@ -21,6 +25,12 @@ cleanup() {
     wait "${APP_PID}" 2>/dev/null || true
   fi
   rm -rf "${PROBE_ROOT}"
+  if [[ -e "${TEST_CONTAINER}" ]]; then
+    /usr/bin/trash "${TEST_CONTAINER}" 2>/dev/null || true
+  fi
+  if [[ -e "${TEST_APPLICATION_SCRIPTS}" ]]; then
+    /usr/bin/trash "${TEST_APPLICATION_SCRIPTS}" 2>/dev/null || true
+  fi
   if [[ "${SCRATCH}" == "${ROOT}/.build/ab" ]] \
     && (( exit_code == 0 )); then
     rm -rf "${SCRATCH}"

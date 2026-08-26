@@ -7,7 +7,7 @@ MANIFEST_TOOL="${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
 DEFAULT_ALLOWLIST="${ROOT}/Tools/Fixtures/qa-upgrade-portable-allowlist.txt"
 BASELINE=""
 CANDIDATE=""
-FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${HOME}/Desktop/TestVaults}"
+FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${ROOT}/.build/test-vaults}"
 OUTPUT=""
 ALLOWLIST="${DEFAULT_ALLOWLIST}"
 

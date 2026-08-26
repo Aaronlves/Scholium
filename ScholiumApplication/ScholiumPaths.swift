@@ -5,6 +5,8 @@ import Foundation
 public enum ScholiumPaths {
     public static let applicationSupportDirectoryName = "Scholium"
     public static let machineStateDirectoryName = "State-v1"
+    public static let agentSessionDirectoryName = "Agent Sessions"
+    public static let agentBridgeDirectoryName = "AgentBridge"
 
     /// Returns the current machine-state namespace. Unsupported pre-release
     /// bytes at the parent Scholium directory remain untouched and cannot
@@ -29,11 +31,16 @@ public enum ScholiumPaths {
             .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
             .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
         try fileManager.createDirectory(at: current, withIntermediateDirectories: true)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: current.path
+        )
         return current
     }
 
-    /// Agent-facing CLI state is deliberately separate from authoritative
-    /// vaults. `SCHOLIUM_HOME` makes the location explicit and testable.
+    /// Returns the explicit isolated CLI home. Production machine state is
+    /// stored under Application Support; `SCHOLIUM_HOME` is reserved for
+    /// isolated launches and tests.
     public static func cliHomeURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
@@ -43,6 +50,33 @@ public enum ScholiumPaths {
         }
         return fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent(".scholium", isDirectory: true)
+    }
+
+    /// Returns the protected local Session directory. Production credentials
+    /// belong to the shared machine-state root and never to a portable
+    /// Triptych. Explicit isolated launches keep the same ownership boundary
+    /// below their private test home.
+    public static func agentSessionCredentialDirectoryURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default,
+        homeURL: URL? = nil
+    ) throws -> URL {
+        if environment["SCHOLIUM_HOME"] != nil {
+            return cliHomeURL(environment: environment, fileManager: fileManager)
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+                .appendingPathComponent(agentSessionDirectoryName, isDirectory: true)
+        }
+
+        let stateRoot: URL
+        if let homeURL {
+            stateRoot = homeURL
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+                .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
+                .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
+        } else {
+            stateRoot = try sharedApplicationSupportURL(fileManager: fileManager)
+        }
+        return stateRoot.appendingPathComponent(agentSessionDirectoryName, isDirectory: true)
     }
 
     /// Returns the login account's ordinary Application Support directory
@@ -88,19 +122,25 @@ public enum ScholiumPaths {
         }
         if environment["SCHOLIUM_HOME"] != nil {
             return cliHomeURL(environment: environment, fileManager: fileManager)
-                .appendingPathComponent("AgentBridge", isDirectory: true)
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+                .appendingPathComponent(agentBridgeDirectoryName, isDirectory: true)
         }
 #if DEBUG
         if let debugFallbackURL {
             return debugFallbackURL
-                .appendingPathComponent("AgentBridge", isDirectory: true)
+                .appendingPathComponent(agentBridgeDirectoryName, isDirectory: true)
         }
 #endif
-        let loginHome = homeURL ?? loginAccountHomeURL(
-            accountHomePath: currentLoginAccountHomePath()
-        ) ?? fileManager.homeDirectoryForCurrentUser
-        return loginHome
-            .appendingPathComponent(".scholium/AgentBridge", isDirectory: true)
+        let stateRoot: URL
+        if let homeURL {
+            stateRoot = homeURL
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+                .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
+                .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
+        } else {
+            stateRoot = try sharedApplicationSupportURL(fileManager: fileManager)
+        }
+        return stateRoot.appendingPathComponent(agentBridgeDirectoryName, isDirectory: true)
     }
 
     public static func loginAccountHomeURL(accountHomePath: String?) -> URL? {

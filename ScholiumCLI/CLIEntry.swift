@@ -27,7 +27,7 @@ struct ScholiumCLI {
         if command == "agent" {
             let agentArguments = Array(arguments.dropFirst())
             let operations = try CLIContext.makeAgentBridge()
-            let credentialStore = CLIContext.makeAgentCredentialStore()
+            let credentialStore = try CLIContext.makeAgentCredentialStore()
             if agentArguments.first == "start"
                 || agentArguments.first == "preflight-analysis" {
                 let triptychID = try await agentStartTriptychID(

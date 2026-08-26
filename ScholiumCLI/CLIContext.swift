@@ -37,10 +37,9 @@ struct CLIContext: Sendable {
         )
     }
 
-    static func makeAgentCredentialStore() -> AgentSessionCredentialStore {
+    static func makeAgentCredentialStore() throws -> AgentSessionCredentialStore {
         AgentSessionCredentialStore(
-            directoryURL: ScholiumPaths.cliHomeURL()
-                .appendingPathComponent("sessions", isDirectory: true)
+            directoryURL: try ScholiumPaths.agentSessionCredentialDirectoryURL()
         )
     }
 

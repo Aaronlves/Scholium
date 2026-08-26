@@ -314,13 +314,16 @@ For a source checkout:
 
 ```bash
 Tools/Scripts/install-cli.sh
+export PATH="$PWD/.build/cli-prefix/bin:$PATH"
 scholium version --format json
 scholium doctor --format json
-scholium update --check
-scholium update
 scholium help agent
 scholium help agent start
 ```
+
+The source-checkout installer keeps the development executable and its resource
+bundle under `.build/cli-prefix`. The verified `scholium update` commands are
+for the separately installed release pair under `~/.local/bin`.
 
 The CLI shares Application capabilities for registered Triptychs, Search,
 links and graph traces, workspace catalog and Attention, exact reads,
@@ -366,8 +369,9 @@ state, active Discussion, and whitelisted Research Records defined by the
 specification.
 
 Bookmarks, absolute paths, window sessions, indexes, saved queries, protected
-execution, recovery, transport state, assembled instructions, and unsupported
-pre-production bytes remain machine-local under:
+execution, recovery, transport state, Agent Sessions, the local bridge
+namespace, assembled instructions, and unsupported pre-production bytes remain
+machine-local under:
 
 ```text
 ~/Library/Application Support/Scholium/State-v1/

@@ -157,8 +157,8 @@
   A healthy CLI registry resolves UUID or unique-name selectors, including a
   UUID-shaped name; if that projection is absent or lacks a UUID, Application
   validates the UUID directly. First use creates and validates the current-user-
-  only CLI home and Session directory before Session creation or Pairing. If
-  credential persistence then fails, the CLI asks Application to authenticate
+  only the machine-state parent and protected `Agent Sessions` directory before
+  Session creation or Pairing. If credential persistence then fails, the CLI asks Application to authenticate
   and revoke that exact Session while retaining the Run; confirmed cleanup
   returns a same-Run re-pair route, while unknown cleanup stops and reports.
   Both routes use the same protected

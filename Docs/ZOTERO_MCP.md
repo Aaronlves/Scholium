@@ -34,6 +34,7 @@ executable without its adjacent resource bundle:
 
 ```sh
 Tools/Scripts/install-cli.sh
+export PATH="$PWD/.build/cli-prefix/bin:$PATH"
 ```
 
 ## Configure an MCP client
