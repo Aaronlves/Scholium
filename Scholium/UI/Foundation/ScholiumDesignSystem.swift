@@ -2973,7 +2973,7 @@ enum ScholiumMotion {
     }
 
     static func searchExpansion(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.18)
+        reduceMotion ? nil : .snappy(duration: 0.28)
     }
 
     static func disclosure(reduceMotion: Bool) -> Animation? {

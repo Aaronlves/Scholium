@@ -388,13 +388,16 @@ final class DiscoveryController: ObservableObject {
 
     func replaceSearchCriteria(_ criteria: SearchWorkspaceState) {
         let scope = criteria.scope
-        search.criteria = SearchWorkspaceState(
-            query: criteria.query,
-            scope: scope
-        )
-        search.ordinaryScope = scope
-        search.invocation = .general
-        invalidateSearchProjection()
+        activeSearchRequestID = nil
+        updateSearchState { search in
+            search.criteria = SearchWorkspaceState(
+                query: criteria.query,
+                scope: scope
+            )
+            search.ordinaryScope = scope
+            search.invocation = .general
+            invalidateSearchProjection(&search)
+        }
     }
 
     /// Clears transient results and installs the invocation-specific scope
@@ -464,32 +467,39 @@ final class DiscoveryController: ObservableObject {
     }
 
     func updateSearchQuery(_ query: String) {
-        search.criteria.query = query
-        invalidateSearchProjection()
+        activeSearchRequestID = nil
+        updateSearchState { search in
+            search.criteria.query = query
+            invalidateSearchProjection(&search)
+        }
     }
 
     func selectSearchScope(_ scope: SearchPresentationScope) {
-        search.criteria.scope = scope
-        search.selectedResultID = nil
-        search.responseRequestID = nil
-        search.freshnessToken = nil
-        switch search.invocation {
-        case .general:
-            search.ordinaryScope = scope
-        case .findInNote:
-            // An explicit scope choice converts temporary Find into ordinary
-            // Search so closing it must not restore an older scope.
-            search.ordinaryScope = scope
-            search.invocation = .general
+        activeSearchRequestID = nil
+        updateSearchState { search in
+            search.criteria.scope = scope
+            search.selectedResultID = nil
+            search.responseRequestID = nil
+            search.freshnessToken = nil
+            switch search.invocation {
+            case .general:
+                search.ordinaryScope = scope
+            case .findInNote:
+                // An explicit scope choice converts temporary Find into ordinary
+                // Search so closing it must not restore an older scope.
+                search.ordinaryScope = scope
+                search.invocation = .general
+            }
+            invalidateSearchProjection(&search)
         }
-        invalidateSearchProjection()
     }
 
     /// A Search projection is meaningful only for the exact query and scope
     /// that produced it. Remove it synchronously before the replacement
     /// cancellable request so a visible row can never route through stale criteria.
-    private func invalidateSearchProjection() {
-        activeSearchRequestID = nil
+    private func invalidateSearchProjection(
+        _ search: inout DiscoverySearchState
+    ) {
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
@@ -511,18 +521,20 @@ final class DiscoveryController: ObservableObject {
         )
         let request = DiscoverySearchRequest(id: UUID(), criteria: canonicalCriteria)
         activeSearchRequestID = request.id
-        search.criteria = canonicalCriteria
-        search.responseRequestID = nil
-        search.freshnessToken = nil
-        search.executionIssue = nil
-        search.explanation = nil
-        search.diagnostics = []
-        search.hasMore = false
-        search.isRunning = !canonicalCriteria.query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty
-        if !search.isRunning {
-            search.results = []
+        updateSearchState { search in
+            search.criteria = canonicalCriteria
+            search.responseRequestID = nil
+            search.freshnessToken = nil
+            search.executionIssue = nil
+            search.explanation = nil
+            search.diagnostics = []
+            search.hasMore = false
+            search.isRunning = !canonicalCriteria.query
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+            if !search.isRunning {
+                search.results = []
+            }
         }
         return request
     }
@@ -532,16 +544,18 @@ final class DiscoveryController: ObservableObject {
         for request: DiscoverySearchRequest
     ) {
         guard isCurrent(request), response.requestID == request.id else { return }
-        search.results = response.results
-        search.selectedResultID = nil
-        search.responseRequestID = response.requestID
-        search.freshnessToken = response.freshnessToken
-        search.explanation = response.explanation
-        search.availability = response.availability
-        search.diagnostics = response.diagnostics
-        search.hasMore = response.hasMore
-        search.executionIssue = nil
-        search.isRunning = false
+        updateSearchState { search in
+            search.results = response.results
+            search.selectedResultID = nil
+            search.responseRequestID = response.requestID
+            search.freshnessToken = response.freshnessToken
+            search.explanation = response.explanation
+            search.availability = response.availability
+            search.diagnostics = response.diagnostics
+            search.hasMore = response.hasMore
+            search.executionIssue = nil
+            search.isRunning = false
+        }
     }
 
     func failSearch(
@@ -565,15 +579,17 @@ final class DiscoveryController: ObservableObject {
     }
 
     private func completeSearchFailure(_ issue: SearchExecutionIssue) {
-        search.results = []
-        search.selectedResultID = nil
-        search.responseRequestID = nil
-        search.freshnessToken = nil
-        search.explanation = nil
-        search.diagnostics = []
-        search.hasMore = false
-        search.executionIssue = issue
-        search.isRunning = false
+        updateSearchState { search in
+            search.results = []
+            search.selectedResultID = nil
+            search.responseRequestID = nil
+            search.freshnessToken = nil
+            search.explanation = nil
+            search.diagnostics = []
+            search.hasMore = false
+            search.executionIssue = issue
+            search.isRunning = false
+        }
     }
 
     func cancelSearch() {
@@ -581,7 +597,9 @@ final class DiscoveryController: ObservableObject {
     }
 
     func selectSearchResult(_ id: String?) {
-        search.selectedResultID = id
+        updateSearchState { search in
+            search.selectedResultID = id
+        }
     }
 
     func isCurrentSearch(_ request: DiscoverySearchRequest) -> Bool {
@@ -670,6 +688,17 @@ final class DiscoveryController: ObservableObject {
         var state = libraryState(for: workspace)
         update(&state)
         librariesByWorkspace[workspace] = state
+    }
+
+    /// Publishes one coherent Search projection and suppresses no-op updates so
+    /// the visible result boundary is not delayed by redundant SwiftUI passes.
+    private func updateSearchState(
+        _ update: (inout DiscoverySearchState) -> Void
+    ) {
+        var next = search
+        update(&next)
+        guard next != search else { return }
+        search = next
     }
 
     private func requireOperations() throws -> any DiscoveryUseCases {

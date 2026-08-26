@@ -15,6 +15,40 @@ private final class WindowSearchPresentationProbe {
 @Suite("Window Search controller")
 @MainActor
 struct WindowSearchControllerTests {
+    @Test("Search request and response publish only changed coherent projections")
+    func coherentProjectionPublication() {
+        let discovery = DiscoveryController()
+        var invalidations = 0
+        let observation = discovery.objectWillChange.sink { invalidations += 1 }
+
+        discovery.updateSearchQuery("indexed")
+        #expect(invalidations == 1)
+
+        invalidations = 0
+        let request = discovery.beginSearch(discovery.search.criteria)
+        discovery.selectSearchResult(nil)
+        #expect(invalidations == 0)
+
+        let generation = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 1,
+            sourceManifestHash: "manifest"
+        )
+        discovery.receiveSearchResponse(SearchResponse(
+            requestID: request.id,
+            scope: .triptych,
+            explanation: explanation(provider: .note),
+            freshnessToken: .triptych(generation),
+            availability: .note(.current(generation)),
+            results: [],
+            hasMore: false
+        ), for: request)
+
+        #expect(invalidations == 1)
+        #expect(!discovery.search.isRunning)
+        observation.cancel()
+    }
+
     @Test("Discovery changes do not invalidate the Saved Search owner")
     func observationOwnership() async {
         let savedSearch = SavedSearch(
