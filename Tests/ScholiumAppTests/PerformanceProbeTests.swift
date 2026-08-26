@@ -7,6 +7,51 @@ import Testing
 @Suite("Performance probe")
 @MainActor
 struct PerformanceProbeTests {
+    @Test("Read and first-use Edit metrics establish Review before selection")
+    func reviewSetupIsMetricBound() throws {
+        let directory = URL(
+            fileURLWithPath: "/private/tmp/scholium-performance-review-setup-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        for metric in [
+            PerformanceProbe.Metric.warmReadActivation,
+            .firstReadActivation,
+            .firstEditActivation,
+        ] {
+            let probe = PerformanceProbe(
+                environment: [
+                    "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                        .appendingPathComponent("\(metric.rawValue).jsonl").path,
+                    "SCHOLIUM_PERFORMANCE_METRIC": metric.rawValue,
+                    "SCHOLIUM_PERFORMANCE_RUN_ID": "review_setup_test",
+                    "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                    "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+                ],
+                bundleID: "com.scholium.qa"
+            )
+            #expect(probe.requiresInitialReviewPresentation)
+        }
+
+        let search = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                    .appendingPathComponent("indexed_search.jsonl").path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "indexed_search",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "review_setup_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "1",
+            ],
+            bundleID: "com.scholium.qa"
+        )
+        #expect(!search.requiresInitialReviewPresentation)
+    }
+
     @Test("Packaged probe writes only inside its explicit performance run")
     func packagedProbeRequiresDriverOwnedResultRoot() throws {
         let fileManager = FileManager.default

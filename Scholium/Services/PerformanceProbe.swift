@@ -136,6 +136,11 @@ final class PerformanceProbe {
             || configuration?.metric == .warmEditActivation
             || configuration?.metric == .firstEditActivation
     }
+    var requiresInitialReviewPresentation: Bool {
+        configuration?.metric == .warmReadActivation
+            || configuration?.metric == .firstReadActivation
+            || configuration?.metric == .firstEditActivation
+    }
 
     func markWarmLibraryWindowModelInitializationStarted() {
         guard configuration?.metric == .warmLibraryLaunch,

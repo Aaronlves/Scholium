@@ -532,11 +532,13 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "The warm metric setup document did not expose an accessible surface."
         )
         if metric == .warmReadActivation {
-            requestPerformanceEditorAction("review")
             let modeMenu = application.descendants(matching: .any)[
                 "scholium.documentModeButton"
             ]
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            if (modeMenu.value as? String) != "Review" {
+                application.typeKey("r", modifierFlags: [.command])
+            }
             XCTAssertTrue(
                 waitUntil(timeout: 30) {
                     (modeMenu.value as? String) == "Review"
@@ -904,7 +906,6 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "Sample \(sample): setup selected a document before the measured action."
         )
 
-        requestPerformanceEditorAction("review")
         target.click()
         XCTAssertTrue(
             waitForRenderedDocument(documentID, in: application, timeout: 60),

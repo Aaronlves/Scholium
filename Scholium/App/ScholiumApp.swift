@@ -5104,6 +5104,7 @@ final class WindowModel: ObservableObject {
                 }
                 // Either the already-registered reopen or `configureTriptych`
                 // opens the requested Vault exactly once before this route.
+                preparePerformancePresentationModeIfNeeded()
                 openRequestedTestNoteIfNeeded()
             } catch {
                 vaultError = error.localizedDescription
@@ -5157,6 +5158,13 @@ final class WindowModel: ObservableObject {
             ? notes.sorted(by: notesAreOrdered).first?.relativePath
             : requested
         if let path { openNote(path) }
+    }
+
+    private func preparePerformancePresentationModeIfNeeded() {
+        guard PerformanceProbe.shared.requiresInitialReviewPresentation else {
+            return
+        }
+        documentController.rememberPresentationMode(.read)
     }
 
     func refreshWindowProjection() async {
