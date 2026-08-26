@@ -4,9 +4,9 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
-**当前公开 Beta：**[v0.1.0-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.10) ·
-[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg) ·
-[下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip)
+**当前公开 Beta：**[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
+[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg) ·
+[下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
 
 Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境。它的内容核心是
 一套由研究者治理、以文档为权威，并可由一位研究者与获得授权的外部 Agent 共同
@@ -191,26 +191,27 @@ SHA-256 校验值。tag、版本和 package provenance 必须一致。应用启�
 安装只需执行一次普通拖拽。
 
 当前版本是
-[v0.1.0-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.10)：
+[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1)：
 
-- [macOS arm64 版 Scholium 应用 DMG](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg)
-  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg.sha256)）；
-- [独立 Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip)
-  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip.sha256)）；
-- [准确标签源码](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.10)。
+- [macOS arm64 版 Scholium 应用 DMG](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg)
+  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg.sha256)）；
+- [独立 Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
+  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip.sha256)）；
+- [准确标签源码](https://github.com/Aaronlves/Scholium/tree/v0.1.1-beta1)。
 
 把产物与对应 checksum 文件下载到同一文件夹后，先运行：
 
 ```bash
-shasum -a 256 -c Scholium-v0.1.0-beta.10-macos-arm64.dmg.sha256
+shasum -a 256 -c Scholium-v0.1.1-beta1-macos-arm64.dmg.sha256
 shasum -a 256 -c Scholium-CLI-macos.zip.sha256
 ```
 
 准确 tag 已通过完整仓库门禁、优化 Release 构建、隔离 CLI 安装与 PATH 启动、
-DMG 结构与签名检查以及 package checksum。四个已发布资产随后均从 GitHub 重新下载
-并通过 release checksum。发布负责人批准此 Beta 在打包性能、干净账户、视觉和
-首次启动 UI 验收仍未完成的情况下发布；这些缺口仍然开放，不计作已经通过的证据。
-准确测试数量与边界见[验证证据](Docs/Status/04-verification.md)。
+DMG 结构与签名检查、package checksum 以及固定 5 + 30 的打包性能门禁。四个已发布
+资产随后均从 GitHub 重新下载并通过 release checksum。完整自动化 UI 运行加上聚焦的
+干净账户闭合验证建立了 88 项功能通过证据；环境没有提供 VoiceOver 时，真实
+VoiceOver journey 仍为条件性跳过。人工挂载 DMG、视觉与辅助技术验收仍然开放，
+不计作已经通过的证据。准确测试数量与边界见[验证证据](Docs/Status/04-verification.md)。
 
 便利版应用没有 Developer ID 签名，也未经过公证。DMG 版本从可信的项目 release
 下载并核对校验值后：
