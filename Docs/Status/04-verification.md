@@ -458,7 +458,10 @@ fixtures execute all six Actions, required exact reads, bounded Search, owner-
 routed initial Action/Method context, reload-only initial-delivery recovery,
 required-only Result templates, Continue after Result, and exact expired-
 credential pruning while preserving malformed and symlink entries. Query calls
-create no Context Use claim. This is disposable local engineering evidence, not
+create no Context Use claim. The same signed CLI simulation proves every
+Action's first start output contains the exact bundled Core runtime protocol and
+exact Action-specific `SKILL.md` plus its installed folder; reload omits Core
+while retaining that Method. This is disposable local engineering evidence, not
 packaged clean-account use, scholarly adequacy, or human acceptance.
 
 On 2026-08-21, independent-review hardening passed 34 Core storage tests, 19

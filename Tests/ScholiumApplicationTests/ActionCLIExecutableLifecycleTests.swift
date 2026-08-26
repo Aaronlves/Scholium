@@ -233,6 +233,13 @@ struct ActionCLIExecutableLifecycleTests {
             cli: cli,
             environment: environment
         )
+        try Self.verifyExternalInstructionDelivery(
+            actionID: .discuss,
+            run: discuss.receipt.run,
+            context: discuss.context,
+            cli: cli,
+            environment: environment
+        )
         try Self.executeEvidenceQueriesThroughCLI(
             context: discuss.context,
             cli: cli,
@@ -291,6 +298,13 @@ struct ActionCLIExecutableLifecycleTests {
                 sourceRoute: simulation.action == .analyze
                     ? .researcherProvided
                     : nil
+            )
+            try Self.verifyExternalInstructionDelivery(
+                actionID: simulation.action,
+                run: started.receipt.run,
+                context: started.context,
+                cli: cli,
+                environment: environment
             )
             try Self.executeEvidenceQueriesThroughCLI(
                 context: started.context,
@@ -2721,6 +2735,81 @@ struct ActionCLIExecutableLifecycleTests {
             )
             #expect(!response.outcomes.isEmpty)
         }
+    }
+
+    private static func verifyExternalInstructionDelivery(
+        actionID: ResearchActionID,
+        run: ResearchRunLocator,
+        context: ResearchAuthenticatedRunContext,
+        cli: ActionCLIProcess,
+        environment: [String: String]
+    ) throws {
+        let expectedCore = try repositoryResource(
+            "ScholiumCore/Resources/Skills/Scholium System Skills/"
+                + "scholium-core-protocol/references/runtime-protocol.md"
+        )
+        let receivedCore = try #require(context.coreProtocol)
+        #expect(receivedCore == expectedCore)
+        let normalizedCore = receivedCore
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        #expect(normalizedCore.contains(
+            "Follow each typed `next_actions` requirement."
+        ))
+        #expect(normalizedCore.contains(
+            "Calling a query is not evidence that its returned material was actually used"
+        ))
+        #expect(normalizedCore.contains(
+            "a finalized Result needs no extra end operation"
+        ))
+
+        let skillDirectory = switch actionID {
+        case .discuss: "scholium-discuss"
+        case .analyze: "scholium-analyze"
+        case .synthesize: "scholium-synthesize"
+        case .write: "scholium-write"
+        case .critique: "scholium-critique"
+        case .checkFidelity: "scholium-content-fidelity"
+        }
+        let expectedSkill = try repositoryResource(
+            "ScholiumCore/Resources/Skills/Scholium Method Skills/"
+                + skillDirectory + "/SKILL.md"
+        )
+        #expect(context.method.primaryMarkdown == expectedSkill)
+        #expect(context.method.primaryMarkdown.contains(
+            "name: \(skillDirectory)"
+        ))
+        let receivedFolder = URL(fileURLWithPath: try #require(
+            context.method.skillFolderPath
+        ), isDirectory: true)
+        #expect(receivedFolder.lastPathComponent == actionID.rawValue)
+        #expect(try String(
+            contentsOf: receivedFolder.appendingPathComponent("SKILL.md"),
+            encoding: .utf8
+        ) == expectedSkill)
+
+        let reload = try cli.run(
+            ["agent", "reload", "--run", run.rawValue],
+            environment: environment
+        )
+        let reloaded = try decoder().decode(
+            ResearchAuthenticatedRunContext.self,
+            from: reload.stdout
+        )
+        #expect(reloaded.coreProtocol == nil)
+        #expect(reloaded.method == context.method)
+        #expect(reloaded.brief.actionID == actionID)
+    }
+
+    private static func repositoryResource(_ relativePath: String) throws -> String {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryRoot.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
     }
 
     private static func recordActionsThroughCLI(
